@@ -33,7 +33,13 @@ export function mermaidPlugin(enabled: () => boolean): PreviewPlugin {
     const key = `${initializedTheme}\u0000${code}`;
     let svg = cache.get(key);
     if (svg === undefined) {
-      ({ svg } = await mermaid.render(`mermaid-${++seq}`, code));
+      const id = `mermaid-${++seq}`;
+      try {
+        ({ svg } = await mermaid.render(id, code));
+      } finally {
+        // 語法錯誤時 Mermaid 會把繪圖用的暫存元素留在 body 裡。
+        document.getElementById(`d${id}`)?.remove();
+      }
       if (cache.size >= 100) cache.clear();
       cache.set(key, svg);
     }

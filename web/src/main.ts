@@ -93,12 +93,9 @@ const outlineEmpty = $("#outline-empty");
 const parseErrorEl = $("#parse-error");
 const emptyStateEl = $("#empty-state");
 const formatBar = $("#format-bar");
-const fileNameInput = $<HTMLInputElement>("#file-name");
 const kindSelect = $<HTMLSelectElement>("#doc-kind");
-const dirtyEl = $("#dirty");
 const fileInput = $<HTMLInputElement>("#file-input");
 const status = {
-  kind: $("#status-kind"),
   cursor: $("#status-cursor"),
   stats: $("#status-stats"),
   save: $("#status-save"),
@@ -641,7 +638,6 @@ function updateActiveHeading(): void {
 }
 
 function renderStats({ stats }: RenderResult): void {
-  status.kind.textContent = KINDS[kind].label;
   if (kind === "json") {
     status.stats.textContent = `${editor.view.state.doc.lines.toLocaleString()} 行 · ${editor.text.length.toLocaleString()} 字元`;
     return;
@@ -654,7 +650,6 @@ function renderStats({ stats }: RenderResult): void {
 function renderSaveState(): void {
   const text = editor.text;
   const dirty = baseline !== hash(text);
-  dirtyEl.hidden = !dirty;
   if (active.dirty !== dirty) {
     active.dirty = dirty;
     renderTabs();
@@ -667,6 +662,9 @@ function renderSaveState(): void {
   status.save.dataset.state = dirty ? "dirty" : "saved";
   if (!dirty) status.save.textContent = fileBacked ? "已儲存" : "";
   else status.save.textContent = (fileBacked ? "尚未存檔" : "尚未存成檔案") + (draftSaved ? " · 草稿已自動保存" : "");
+  status.save.hidden = !status.save.textContent;
+  status.save.title = dirty ? "按一下存檔（Ctrl+S）" : "";
+  (status.save as HTMLButtonElement).disabled = !dirty;
 }
 
 // ---- 捲動同步：編輯器帶動預覽 ---------------------------------------------
@@ -723,7 +721,6 @@ function flushDraft(): void {
 
 function setFileName(name: string): void {
   fileName = name;
-  fileNameInput.value = name;
   persistSession();
   renderSaveState();
   renderTabs();
@@ -757,13 +754,36 @@ const tabBar = new TabBar($("#tab-bar"), {
   },
   close: (id) => void closeTab(id).catch(reportError),
   create: () => void commands.run("new"),
+  canRename: (id) => {
+    const doc = docs.find((d) => d.id === id);
+    if (!doc) return false;
+    if ((doc === active ? fileHandle : doc.handle) === null) return true;
+    toast("已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。");
+    return false;
+  },
+  rename: (id, name) => renameDoc(id, name),
 });
+
+/** 還沒存成檔案的文件改名（存檔時當成預設檔名）。輸入已知的副檔名時順便切換文件類型。 */
+function renameDoc(id: string, name: string): void {
+  const doc = docs.find((d) => d.id === id);
+  if (!doc) return;
+  if (doc !== active) {
+    doc.name = name;
+    persistSession();
+    renderTabs();
+    return;
+  }
+  setFileName(name);
+  const k = kindFromFileName(name);
+  if (/\.(md|markdown|txt|json)$/i.test(name) && k !== kind) setKind(k, { rename: false });
+}
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-type SidePanel = "files" | "outline" | "search";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search"];
-const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".side-tabs [role=tab]")];
+type SidePanel = "files" | "outline" | "search" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "git"];
+const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
 let sidePanel: SidePanel = SIDE_PANELS.find((p) => p === storage.load("side-panel")) ?? "outline";
 /** 目前開啟的資料夾（工作區）。 */
 let workspaceRoot: Folder | null = null;
@@ -783,11 +803,25 @@ const fileTree = desktop
 
 const gitPanel =
   desktop && fileTree
-    ? new GitPanel($("#git-bar"), desktop, settings, fileTree, () => workspaceRoot?.path ?? null)
+    ? new GitPanel($("#git-host"), desktop, settings, fileTree, {
+        root: () => workspaceRoot?.path ?? null,
+        open: (path) => void openPath(path).catch(reportError),
+        changed: (status) => {
+          const tab = $("#side-tab-git");
+          tab.hidden = !status;
+          const count = status?.changes.length ?? 0;
+          const badge = $("#git-badge");
+          badge.hidden = !count;
+          badge.textContent = count > 99 ? "99+" : String(count);
+          tab.setAttribute("aria-label", count ? `原始碼控制（Git），${count} 個變更` : "原始碼控制（Git）");
+          tab.title = tab.getAttribute("aria-label")!;
+          if (!status && sidePanel === "git") showPanel("files", false);
+        },
+      })
     : null;
 
 const searchPanel = desktop
-  ? new SearchPanel($("#panel-search"), {
+  ? new SearchPanel($("#search-host"), {
       search: (query, caseSensitive, regex) =>
         workspaceRoot
           ? desktop!.search(query, caseSensitive, regex, workspaceRoot.path)
@@ -797,6 +831,7 @@ const searchPanel = desktop
   : null;
 
 function showPanel(panel: SidePanel, reveal = true): void {
+  if (panel === "git" && $("#side-tab-git").hidden) panel = "files";
   sidePanel = panel;
   storage.save("side-panel", panel);
   for (const tab of sideTabs) {
@@ -810,13 +845,20 @@ function showPanel(panel: SidePanel, reveal = true): void {
 }
 
 for (const tab of sideTabs) {
-  tab.addEventListener("click", () => showPanel(tab.dataset.panel as SidePanel));
+  tab.title ||= tab.getAttribute("aria-label") ?? "";
+  // 和 VS Code 一樣：再按一次目前的圖示會收起側邊欄。
+  tab.addEventListener("click", () => {
+    const panel = tab.dataset.panel as SidePanel;
+    if (panel === sidePanel && outlineShown) setOutline(false);
+    else showPanel(panel);
+  });
 }
-$(".side-tabs").addEventListener("keydown", (e) => {
-  const i = sideTabs.indexOf(document.activeElement as HTMLButtonElement);
-  if (i < 0 || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
+$(".activity-tabs").addEventListener("keydown", (e) => {
+  const tabs = sideTabs.filter((t) => !t.hidden);
+  const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
+  if (i < 0 || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
   e.preventDefault();
-  const next = sideTabs[(i + (e.key === "ArrowRight" ? 1 : -1) + sideTabs.length) % sideTabs.length];
+  const next = tabs[(i + (e.key === "ArrowDown" ? 1 : -1) + tabs.length) % tabs.length];
   next.focus();
   showPanel(next.dataset.panel as SidePanel);
 });
@@ -850,7 +892,7 @@ async function renderFilesEmpty(): Promise<void> {
   remote.append(icon("cloud"), "連線到 WebDAV");
   remote.addEventListener("click", () => void commands.run("connect-webdav").catch(reportError));
   const actions = document.createElement("div");
-  actions.className = "side-actions";
+  actions.className = "side-buttons";
   actions.append(open, remote);
   box.replaceChildren(p, actions);
   const [{ folders }, conns] = await Promise.all([desktop.recent(), desktop.davConnections().catch(() => [])]);
@@ -927,7 +969,7 @@ async function setWorkspace(folder: Folder | null): Promise<void> {
   if (folder) storage.save("workspace", folder.path);
   else storage.remove("workspace");
   const name = $("#folder-name");
-  name.textContent = folder?.name ?? "";
+  name.textContent = folder?.name ?? "檔案";
   name.title = folder ? displayPath(folder.path) : "";
   await fileTree?.setRoot(folder?.path ?? null, folder?.name);
   treeActive = fileHandle?.path ?? null;
@@ -990,7 +1032,6 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
         doc.handle = desktopHandle(moved, basename(moved));
       }
       ({ name: fileName, handle: fileHandle } = active);
-      fileNameInput.value = fileName;
       fileListCache = null;
       persistSession();
       renderSaveState();
@@ -1053,7 +1094,7 @@ if (!desktop) {
   p.className = "side-empty";
   p.textContent = "搜尋整個資料夾的內容需要桌面版。要搜尋目前的文件，請按 ";
   p.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys("Mod-f") }), "。");
-  $("#panel-search").append(p);
+  $("#search-host").append(p);
 }
 
 // ---- 快速開啟（Ctrl+P） --------------------------------------------------
@@ -1157,7 +1198,6 @@ function activate(doc: Doc): void {
   active = doc;
   ({ kind, name: fileName, handle: fileHandle, baseline, fileBacked } = doc);
   kindSelect.value = kind;
-  fileNameInput.value = fileName;
   if (doc.state) editor.restore(doc.state, kind, doc.scrollTop);
   else editor.load(loadDraft(doc.id) ?? "", kind);
   editorTopLine = 1;
@@ -1242,13 +1282,14 @@ function openDocument(
     return;
   }
   // 目前分頁是空白、未存成檔案的新文件時直接沿用，否則開新分頁。
-  if (fileBacked || editor.text !== "") addTab(makeDoc({ name, kind: docKind ?? kindFromFileName(name) }));
+  // 沒動過的範例文件也直接換掉，免得每次開檔都多一個「未命名」分頁。
+  const untouched = !fileBacked && (editor.text === "" || (editor.text === sample && !active.dirty));
+  if (!untouched) addTab(makeDoc({ name, kind: docKind ?? kindFromFileName(name) }));
   if (review.active) review.finish();
   fileHandle = handle;
   kind = docKind ?? kindFromFileName(name);
   kindSelect.value = kind;
   fileName = name;
-  fileNameInput.value = name;
   editor.load(text, kind);
   editorTopLine = 1;
   previewScroller.scrollTop = 0;
@@ -1513,7 +1554,7 @@ commands.register(
   { id: "show-files", title: "顯示檔案", group: "檢視", icon: "folder", keys: "Mod-Shift-e", run: () => showPanel("files") },
   { id: "show-outline", title: "顯示大綱", group: "檢視", icon: "list-tree", run: () => showPanel("outline") },
   { id: "save", title: "儲存", group: "檔案", icon: "save", keys: "Mod-s", run: () => save(false) },
-  { id: "save-as", title: "另存新檔…", group: "檔案", keys: "Mod-Shift-s", run: () => save(true) },
+  { id: "save-as", title: "另存新檔…", group: "檔案", icon: "file", keys: "Mod-Shift-s", run: () => save(true) },
   {
     id: "export-html",
     title: "匯出成 HTML 檔",
@@ -1549,6 +1590,20 @@ commands.register(
     },
   },
   { id: "palette", title: "開啟指令面板", group: "說明", icon: "command", keys: "Mod-Shift-p", run: () => palette.open() },
+  {
+    id: "rename-doc",
+    title: "重新命名文件…",
+    group: "檔案",
+    icon: "pencil",
+    run: () => tabBar.startRename(active.id),
+  },
+  {
+    id: "toggle-format-bar",
+    title: "顯示／隱藏格式工具列",
+    group: "檢視",
+    icon: "bold",
+    run: () => settings.update({ formatBar: !settings.value.formatBar }),
+  },
   {
     id: "find",
     title: "搜尋與取代",
@@ -1964,7 +2019,15 @@ commands.register(
   },
   ...(
     [
-      ["git-commit", "Git：提交變更…", "git-commit-horizontal", () => gitPanel?.openCommit()],
+      [
+        "git-commit",
+        "Git：提交變更…",
+        "git-commit-horizontal",
+        () => {
+          showPanel("git");
+          gitPanel?.focusMessage();
+        },
+      ],
       ["git-pull", "Git：拉取", "arrow-down-to-line", () => gitPanel?.pull()],
       ["git-push", "Git：推送", "arrow-up-from-line", () => gitPanel?.push()],
     ] as const
@@ -2058,14 +2121,10 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
   if (btn.classList.contains("icon-only")) btn.setAttribute("aria-label", cmd.title);
   btn.addEventListener("click", () => commands.run(cmd.id).catch(reportError));
 });
-$("#palette-kbd").textContent = formatKeys("Mod-Shift-p");
-
-setupMenu($<HTMLButtonElement>("#file-menu"), commands, [
+setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "new",
   "open",
   "open-folder",
-  "connect-webdav",
-  "quick-open",
   "open-recent",
   "-",
   "save",
@@ -2074,8 +2133,9 @@ setupMenu($<HTMLButtonElement>("#file-menu"), commands, [
   "-",
   "export-html",
   "export-pdf",
-  "copy-html",
 ]);
+setupMenu($<HTMLButtonElement>("#files-more"), commands, ["open-folder", "connect-webdav", "open-recent"]);
+status.save.addEventListener("click", () => void commands.run("save").catch(reportError));
 
 const themeButton = $<HTMLButtonElement>("#theme-menu");
 setupMenu(
@@ -2089,19 +2149,38 @@ setupMenu(
   })),
 );
 
-/** 格式工具列依文件類型切換：Markdown 顯示格式按鈕、JSON 顯示格式化。 */
+/** 格式工具列的下拉按鈕（標題、插入），建立一次之後重複使用。 */
+function formatMenuButton(id: string, label: string, iconName: string, entries: string[]): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.id = id;
+  b.className = "btn format-menu";
+  b.title = label;
+  b.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }), icon("chevron-down"));
+  b.addEventListener("mousedown", (e) => e.preventDefault());
+  setupMenu(b, commands, entries);
+  return b;
+}
+const headingMenu = formatMenuButton("fmt-heading", "標題", "heading", ["h1", "h2", "h3"]);
+const insertMenu = formatMenuButton("fmt-insert", "插入", "plus", ["table", "code-block", "hr"]);
+
+/**
+ * 格式工具列依文件類型切換：Markdown 顯示常用格式（標題與插入收在下拉選單裡），
+ * JSON 顯示格式化，純文字不顯示。可以在設定或指令面板中整個隱藏。
+ */
 function buildFormatBar(): void {
-  const groups: string[][] =
+  const groups: (string | HTMLElement)[][] =
     kind === "markdown"
-      ? [["h1", "h2", "h3"], ["bold", "italic", "strike", "code", "link"], ["bullet", "ordered", "task", "quote"], ["code-block", "table", "hr"]]
+      ? [[headingMenu], ["bold", "italic", "strike", "code", "link"], ["bullet", "ordered", "task", "quote"], [insertMenu]]
       : kind === "json"
         ? [["format-json"]]
         : [];
-  formatBar.hidden = groups.length === 0;
+  formatBar.hidden = groups.length === 0 || !settings.value.formatBar;
   formatBar.replaceChildren(
-    ...groups.flatMap((ids, gi) => {
-      const buttons = ids.map((id) => {
-        const cmd = commands.get(id)!;
+    ...groups.flatMap((items, gi) => {
+      const buttons = items.map((item) => {
+        if (typeof item !== "string") return item;
+        const cmd = commands.get(item)!;
         const b = document.createElement("button");
         b.type = "button";
         b.className = kind === "json" ? "btn" : "btn icon-only";
@@ -2111,7 +2190,7 @@ function buildFormatBar(): void {
         if (kind === "json") b.append(Object.assign(document.createElement("span"), { textContent: cmd.title }));
         // 用 mousedown 阻止預設行為，按下按鈕時編輯器才不會失去選取範圍。
         b.addEventListener("mousedown", (e) => e.preventDefault());
-        b.addEventListener("click", () => commands.run(id).catch(reportError));
+        b.addEventListener("click", () => commands.run(item).catch(reportError));
         return b;
       });
       if (gi === 0) return buttons;
@@ -2133,25 +2212,6 @@ formatBar.addEventListener("keydown", (e) => {
   e.preventDefault();
 });
 
-fileNameInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") fileNameInput.blur();
-  if (e.key === "Escape") {
-    fileNameInput.value = fileName;
-    fileNameInput.blur();
-  }
-});
-fileNameInput.addEventListener("change", () => {
-  const name = fileNameInput.value.trim();
-  if (!name) {
-    fileNameInput.value = fileName;
-    return;
-  }
-  setFileName(name);
-  const k = kindFromFileName(name);
-  // 只在使用者明確打了已知副檔名時切換類型。
-  if (/\.(md|markdown|txt|json)$/i.test(name) && k !== kind) setKind(k, { rename: false });
-});
-
 kindSelect.addEventListener("change", () => setKind(kindSelect.value as DocKind));
 
 // ---- 版面 ---------------------------------------------------------------
@@ -2164,6 +2224,7 @@ function applyLayout(): void {
   workspace.classList.toggle("outline-hidden", !outlineShown);
   workspace.classList.toggle("narrow", narrow);
   const cols = [
+    narrow ? "0px" : "var(--activity-width)",
     outlineShown && !narrow ? "var(--outline-width)" : "0px",
     effective === "preview" ? "0px" : effective === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
     effective === "split" ? "var(--splitter-width)" : "0px",
@@ -2247,6 +2308,10 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
     });
   }
   if (changed.includes("editorFontSize")) editor.view.requestMeasure();
+  if (changed.includes("formatBar")) {
+    buildFormatBar();
+    editor.view.requestMeasure();
+  }
   if (changed.includes("math") || changed.includes("mermaid")) {
     preview.clear();
     renderNow();
@@ -2283,7 +2348,9 @@ narrowQuery.addEventListener("change", () => {
 
 // 手機版：大綱以抽屜方式蓋在內容上，點外面關閉。
 workspace.addEventListener("click", (e) => {
-  if (narrowQuery.matches && outlineShown && !(e.target as HTMLElement).closest(".outline")) setOutline(false);
+  if (narrowQuery.matches && outlineShown && !(e.target as HTMLElement).closest(".sidebar, .activity-bar")) {
+    setOutline(false);
+  }
 });
 
 // ---- 貼上、拖曳圖片 -------------------------------------------------------
@@ -2425,7 +2492,6 @@ window.addEventListener("drop", async (e) => {
 const savedView = storage.load("view");
 view = savedView === "editor" || savedView === "preview" ? savedView : "split";
 kindSelect.value = kind;
-fileNameInput.value = fileName;
 setTheme(themePref);
 applySettings(settings.value);
 if (settingsRecovered) toast("設定檔有無法讀取的內容，相關選項已恢復成預設值。", { tone: "error", duration: 8000 });

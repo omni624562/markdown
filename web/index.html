@@ -18,80 +18,79 @@
   <body>
     <a class="skip-link" href="#editor">跳到編輯區</a>
 
-    <header class="appbar">
-      <div class="doc-id">
-        <span class="logo" aria-hidden="true"><i data-icon="file-text"></i></span>
-        <input id="file-name" class="file-name" aria-label="檔名（可直接修改）" spellcheck="false" autocomplete="off" />
-        <span id="dirty" class="dirty" role="img" aria-label="有變更尚未存檔" title="有變更尚未存檔" hidden></span>
-        <select id="doc-kind" class="kind-select" aria-label="文件類型">
-          <option value="markdown">Markdown</option>
-          <option value="text">純文字</option>
-          <option value="json">JSON</option>
-        </select>
-      </div>
-
-      <div class="actions">
-        <button type="button" id="file-menu" class="btn">
-          <i data-icon="folder-open"></i><span class="label">檔案</span><i data-icon="chevron-down"></i>
-        </button>
-        <button type="button" class="btn" data-command="save">
-          <i data-icon="save"></i><span class="label">儲存</span>
-        </button>
-
+    <header class="topbar">
+      <button type="button" class="btn icon-only nav-toggle" data-command="toggle-outline" aria-pressed="false">
+        <i data-icon="menu"></i>
+      </button>
+      <div class="tab-bar" id="tab-bar"></div>
+      <div class="top-actions">
         <div class="segmented" role="radiogroup" aria-label="檢視模式">
           <button type="button" role="radio" data-view="editor"><i data-icon="pencil"></i><span class="label">編輯</span></button>
           <button type="button" role="radio" data-view="split" class="split-only"><i data-icon="columns-2"></i><span class="label">分割</span></button>
           <button type="button" role="radio" data-view="preview"><i data-icon="eye"></i><span class="label">預覽</span></button>
         </div>
-
-        <button type="button" class="btn icon-only" data-command="toggle-outline" aria-pressed="true">
-          <i data-icon="panel-left"></i>
-        </button>
-        <button type="button" id="theme-menu" class="btn icon-only" aria-label="主題"><span class="theme-icon"></span></button>
-        <button type="button" class="btn icon-only" data-command="settings"><i data-icon="settings"></i></button>
-        <button type="button" class="btn palette-btn" data-command="palette">
-          <i data-icon="command"></i><span class="label">指令</span><kbd id="palette-kbd"></kbd>
-        </button>
+        <button type="button" class="btn icon-only" data-command="palette"><i data-icon="command"></i></button>
+        <button type="button" id="main-menu" class="btn icon-only" title="更多功能" aria-label="更多功能"><i data-icon="ellipsis"></i></button>
       </div>
     </header>
 
-    <div class="tab-bar" id="tab-bar" hidden></div>
-
     <main class="workspace" data-view="split">
-      <nav class="outline sidebar" id="outline" aria-label="側邊欄">
-        <div class="side-tabs" role="tablist" aria-label="側邊欄">
-          <button type="button" role="tab" id="side-tab-files" data-panel="files" aria-controls="panel-files">
-            <i data-icon="folder"></i><span>檔案</span>
+      <nav class="activity-bar" aria-label="側邊欄">
+        <div class="activity-tabs" role="tablist" aria-label="側邊欄" aria-orientation="vertical">
+          <button type="button" role="tab" id="side-tab-files" data-panel="files" aria-controls="panel-files" aria-label="檔案">
+            <i data-icon="files"></i>
           </button>
-          <button type="button" role="tab" id="side-tab-outline" data-panel="outline" aria-controls="panel-outline">
-            <i data-icon="list-tree"></i><span>大綱</span>
+          <button type="button" role="tab" id="side-tab-outline" data-panel="outline" aria-controls="panel-outline" aria-label="大綱">
+            <i data-icon="list-tree"></i>
           </button>
-          <button type="button" role="tab" id="side-tab-search" data-panel="search" aria-controls="panel-search">
-            <i data-icon="search"></i><span>搜尋</span>
+          <button type="button" role="tab" id="side-tab-search" data-panel="search" aria-controls="panel-search" aria-label="搜尋">
+            <i data-icon="search"></i>
+          </button>
+          <button type="button" role="tab" id="side-tab-git" data-panel="git" aria-controls="panel-git" aria-label="原始碼控制（Git）" hidden>
+            <i data-icon="git-branch"></i><span class="activity-badge" id="git-badge" hidden></span>
           </button>
         </div>
+        <div class="activity-bottom">
+          <button type="button" class="activity-btn" id="theme-menu" aria-label="主題"><span class="theme-icon"></span></button>
+          <button type="button" class="activity-btn" data-command="settings"><i data-icon="settings"></i></button>
+        </div>
+      </nav>
 
+      <aside class="sidebar" id="sidebar" aria-label="側邊欄內容">
         <section class="side-panel" id="panel-files" role="tabpanel" aria-labelledby="side-tab-files" hidden>
-          <div class="side-head" id="files-head" hidden>
-            <h2 id="folder-name"></h2>
-            <button type="button" class="btn icon-only" id="tree-new-file" title="新增檔案" aria-label="新增檔案"><i data-icon="file-plus"></i></button>
-            <button type="button" class="btn icon-only" id="tree-new-folder" title="新增資料夾" aria-label="新增資料夾"><i data-icon="folder-plus"></i></button>
-            <button type="button" class="btn icon-only" id="tree-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
-            <button type="button" class="btn icon-only" data-command="open-folder"><i data-icon="folder-open"></i></button>
-            <button type="button" class="btn icon-only" data-command="connect-webdav"><i data-icon="cloud"></i></button>
+          <div class="side-head">
+            <h2 id="folder-name">檔案</h2>
+            <div class="side-actions" id="files-head" hidden>
+              <button type="button" class="btn icon-only" id="tree-new-file" title="新增檔案" aria-label="新增檔案"><i data-icon="file-plus"></i></button>
+              <button type="button" class="btn icon-only" id="tree-new-folder" title="新增資料夾" aria-label="新增資料夾"><i data-icon="folder-plus"></i></button>
+              <button type="button" class="btn icon-only" id="tree-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
+              <button type="button" class="btn icon-only" id="files-more" title="開啟其他資料夾" aria-label="開啟其他資料夾"><i data-icon="ellipsis"></i></button>
+            </div>
           </div>
-          <div class="git-bar" id="git-bar" hidden></div>
-          <div class="tree" id="file-tree" aria-label="工作區檔案"></div>
-          <div class="side-empty" id="files-empty"></div>
+          <div class="side-body">
+            <div class="tree" id="file-tree" aria-label="工作區檔案"></div>
+            <div class="side-empty" id="files-empty"></div>
+          </div>
         </section>
 
         <section class="side-panel" id="panel-outline" role="tabpanel" aria-labelledby="side-tab-outline">
-          <ol id="outline-list"></ol>
-          <p id="outline-empty" class="outline-empty" hidden></p>
+          <div class="side-head"><h2>大綱</h2></div>
+          <div class="side-body">
+            <ol id="outline-list"></ol>
+            <p id="outline-empty" class="outline-empty" hidden></p>
+          </div>
         </section>
 
-        <section class="side-panel" id="panel-search" role="tabpanel" aria-labelledby="side-tab-search" hidden></section>
-      </nav>
+        <section class="side-panel" id="panel-search" role="tabpanel" aria-labelledby="side-tab-search" hidden>
+          <div class="side-head"><h2>搜尋</h2></div>
+          <div class="side-body" id="search-host"></div>
+        </section>
+
+        <section class="side-panel" id="panel-git" role="tabpanel" aria-labelledby="side-tab-git" hidden>
+          <div class="side-head"><h2>原始碼控制</h2></div>
+          <div class="side-body" id="git-host"></div>
+        </section>
+      </aside>
 
       <section class="pane editor-pane" aria-label="編輯區">
         <div class="format-bar" id="format-bar" role="toolbar" aria-label="格式工具列" aria-controls="editor"></div>
@@ -113,10 +112,14 @@
     <section class="terminal-panel" id="terminal-panel" aria-label="終端機" hidden></section>
 
     <footer class="statusbar">
-      <span id="status-kind"></span>
+      <select id="doc-kind" class="status-select" aria-label="文件類型" title="文件類型">
+        <option value="markdown">Markdown</option>
+        <option value="text">純文字</option>
+        <option value="json">JSON</option>
+      </select>
       <span id="status-cursor"></span>
       <span id="status-stats"></span>
-      <span id="status-save" class="save-state"></span>
+      <button type="button" id="status-save" class="status-btn save-state"></button>
       <span id="status-update" class="update-state" role="status" hidden></span>
       <button type="button" class="status-btn" data-command="toggle-terminal" hidden><i data-icon="square-terminal"></i><span>終端機</span></button>
     </footer>

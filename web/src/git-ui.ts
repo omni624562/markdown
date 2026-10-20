@@ -1,6 +1,6 @@
 /**
- * Git 整合（桌面版）：檔案面板上方的狀態列、檔案樹的變更標記、提交對話框、自動同步。
- * 找不到 git 或資料夾不是 Git 儲存庫時整個隱藏。
+ * Git 整合（桌面版）：側邊欄的「原始碼控制」面板、檔案樹的變更標記、自動同步。
+ * 找不到 git 或資料夾不是 Git 儲存庫時，面板和活動列的圖示都會隱藏。
  */
 import type { Desktop, GitChange, GitStatus } from "./desktop.ts";
 import type { SettingsStore } from "./settings.ts";
@@ -37,27 +37,47 @@ export function syncMessage(date = new Date()): string {
   return `自動同步 ${f.format(date)}`;
 }
 
+const baseName = (p: string) => p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1);
+
+export interface GitPanelHooks {
+  /** 目前的工作區根目錄。 */
+  root(): string | null;
+  /** 點變更清單中的檔案。 */
+  open(path: string): void;
+  /** 儲存庫狀態改變（顯示或隱藏活動列圖示、更新變更數）。 */
+  changed(status: GitStatus | null): void;
+}
+
 export class GitPanel {
   #d: Desktop;
   #settings: SettingsStore;
   #tree: FileTree;
-  #bar: HTMLElement;
-  #root: () => string | null;
+  #host: HTMLElement;
+  #hooks: GitPanelHooks;
   #status: GitStatus | null = null;
   #busy = false;
   #refreshTimer = 0;
   #syncTimer = 0;
   /** 自動同步出錯後，這次開啟期間先暫停。 */
   #syncPaused = false;
-  #dialog: HTMLDialogElement;
+  #message: HTMLTextAreaElement;
 
-  constructor(bar: HTMLElement, d: Desktop, settings: SettingsStore, tree: FileTree, root: () => string | null) {
-    this.#bar = bar;
+  constructor(host: HTMLElement, d: Desktop, settings: SettingsStore, tree: FileTree, hooks: GitPanelHooks) {
+    this.#host = host;
     this.#d = d;
     this.#settings = settings;
     this.#tree = tree;
-    this.#root = root;
-    this.#dialog = this.#buildDialog();
+    this.#hooks = hooks;
+    this.#message = document.createElement("textarea");
+    this.#message.className = "git-message";
+    this.#message.rows = 3;
+    this.#message.setAttribute("aria-label", "提交說明");
+    this.#message.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing) {
+        e.preventDefault();
+        void this.commit(false);
+      }
+    });
     settings.subscribe((_, changed) => {
       if (changed.includes("gitAutoSync") || changed.includes("gitSyncMinutes")) {
         this.#syncPaused = false;
@@ -79,56 +99,108 @@ export class GitPanel {
   }
 
   async refresh(): Promise<void> {
-    if (!this.#root()) {
+    if (!this.#hooks.root()) {
       this.#status = null;
-      this.#render();
-      return;
-    }
-    try {
-      this.#status = await this.#d.gitStatus();
-    } catch {
-      this.#status = null;
+    } else {
+      try {
+        this.#status = await this.#d.gitStatus();
+      } catch {
+        this.#status = null;
+      }
     }
     const marks = new Map<string, string>();
     for (const c of this.#status?.changes ?? []) marks.set(c.path, MARK[c.status]);
     this.#tree.setStatus(marks);
     this.#render();
+    this.#hooks.changed(this.#status?.repo ? this.#status : null);
     this.#scheduleSync();
+  }
+
+  /** 把焦點放到提交說明（指令「Git：提交變更」）。 */
+  focusMessage(): void {
+    this.#message.focus();
   }
 
   #render(): void {
     const s = this.#status;
-    this.#bar.hidden = !s?.repo;
-    if (!s?.repo) return;
+    if (!s?.repo) {
+      this.#host.replaceChildren();
+      return;
+    }
     const b = s.branch;
+    const changes = s.changes;
+
+    // 分支與同步按鈕
+    const branch = document.createElement("div");
+    branch.className = "git-branch";
     const info = document.createElement("span");
     info.className = "git-info";
     info.title = b?.upstream ? `追蹤 ${b.upstream}` : "這個分支還沒有設定遠端";
-    info.append(icon("git-branch"), b?.name ?? "（未知分支）");
+    info.append(icon("git-branch"), Object.assign(document.createElement("strong"), { textContent: b?.name ?? "（未知分支）" }));
     if (b?.ahead) info.append(Object.assign(document.createElement("small"), { textContent: `↑${b.ahead}`, title: `${b.ahead} 個提交還沒推送` }));
     if (b?.behind) info.append(Object.assign(document.createElement("small"), { textContent: `↓${b.behind}`, title: `遠端有 ${b.behind} 個新提交` }));
-    const count = document.createElement("span");
-    count.className = "git-count";
-    count.textContent = s.changes.length ? `${s.changes.length} 個變更` : "沒有變更";
-    if (s.changes.some((c) => c.status === "conflicted")) count.textContent += "（有衝突）";
-    const button = (label: string, iconName: string, run: () => Promise<void>) => {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.className = "btn icon-only";
-      el.title = label;
-      el.setAttribute("aria-label", label);
-      el.disabled = this.#busy;
-      el.append(icon(iconName));
-      el.addEventListener("click", () => void run());
-      return el;
-    };
-    this.#bar.replaceChildren(
-      info,
-      count,
-      button("提交…", "git-commit-horizontal", () => this.openCommit()),
-      button("拉取", "arrow-down-to-line", () => this.pull()),
-      button("推送", "arrow-up-from-line", () => this.push()),
+    const sync = document.createElement("div");
+    sync.className = "git-sync";
+    sync.append(
+      this.#button("拉取", "arrow-down-to-line", () => this.pull()),
+      this.#button("推送", "arrow-up-from-line", () => this.push()),
     );
+    branch.append(info, sync);
+
+    // 提交
+    const root = this.#hooks.root() ?? "";
+    this.#message.placeholder = changes.length
+      ? `提交說明（留空就用「${defaultMessage(changes, baseName)}」）`
+      : "沒有需要提交的變更";
+    this.#message.disabled = this.#busy || !changes.length;
+    const actions = document.createElement("div");
+    actions.className = "git-actions";
+    const commit = this.#button("提交", "git-commit-horizontal", () => this.commit(false));
+    const commitPush = this.#button("提交並推送", "arrow-up-from-line", () => this.commit(true));
+    commitPush.classList.add("btn-primary");
+    for (const el of [commit, commitPush]) el.disabled = this.#busy || !changes.length;
+    commit.title = "提交（Ctrl+Enter）";
+    actions.append(commit, commitPush);
+
+    // 變更清單
+    const head = document.createElement("h3");
+    head.className = "git-changes-head";
+    head.textContent = changes.length ? `變更（${changes.length}）` : "沒有變更";
+    if (changes.some((c) => c.status === "conflicted")) head.textContent += "・有衝突";
+    const list = document.createElement("ul");
+    list.className = "git-files";
+    list.append(
+      ...changes.map((c) => {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.dataset.status = c.status;
+        const rel = c.path.startsWith(root) ? c.path.slice(root.length + 1) : c.path;
+        const dir = rel.includes("/") || rel.includes("\\") ? rel.slice(0, rel.length - baseName(rel).length - 1) : "";
+        btn.title = `${LABEL[c.status]}：${rel}`;
+        btn.append(
+          Object.assign(document.createElement("span"), { className: "git-file-name", textContent: baseName(rel) }),
+          Object.assign(document.createElement("span"), { className: "git-file-dir", textContent: dir }),
+          Object.assign(document.createElement("b"), { textContent: MARK[c.status], title: LABEL[c.status] }),
+        );
+        btn.disabled = c.status === "deleted";
+        btn.addEventListener("click", () => this.#hooks.open(c.path));
+        li.append(btn);
+        return li;
+      }),
+    );
+
+    this.#host.replaceChildren(branch, this.#message, actions, head, list);
+  }
+
+  #button(label: string, iconName: string, run: () => Promise<void>): HTMLButtonElement {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "btn";
+    el.disabled = this.#busy;
+    el.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }));
+    el.addEventListener("click", () => void run());
+    return el;
   }
 
   async #run(label: string, task: () => Promise<string>, quiet = false): Promise<boolean> {
@@ -156,67 +228,20 @@ export class GitPanel {
     return this.#run("Git", () => this.#d.gitPush()).then(() => {});
   }
 
-  async openCommit(): Promise<void> {
-    await this.refresh();
+  async commit(push: boolean): Promise<void> {
     const changes = this.#status?.changes ?? [];
     if (!changes.length) {
       toast("沒有需要提交的變更。");
       return;
     }
-    const root = this.#root() ?? "";
-    const rel = (p: string) => (p.startsWith(root) ? p.slice(root.length + 1) : p);
-    const name = (p: string) => p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1);
-    const message = this.#dialog.querySelector("textarea")!;
-    message.value = "";
-    message.placeholder = defaultMessage(changes, name);
-    this.#dialog.querySelector(".git-files")!.replaceChildren(
-      ...changes.map((c) => {
-        const li = document.createElement("li");
-        li.append(Object.assign(document.createElement("b"), { textContent: MARK[c.status], title: LABEL[c.status] }), rel(c.path));
-        li.dataset.status = c.status;
-        return li;
-      }),
-    );
-    this.#dialog.showModal();
-    message.focus();
-  }
-
-  async #commit(push: boolean): Promise<void> {
-    const textarea = this.#dialog.querySelector("textarea")!;
-    const message = textarea.value.trim() || textarea.placeholder;
-    this.#dialog.close();
+    const message = this.#message.value.trim() || defaultMessage(changes, baseName);
     const ok = await this.#run("提交失敗", async () => {
       const summary = await this.#d.gitCommit(message);
       return `已提交：${summary}`;
     });
-    if (ok && push) await this.push();
-  }
-
-  #buildDialog(): HTMLDialogElement {
-    const d = document.createElement("dialog");
-    d.className = "choice git-dialog";
-    d.setAttribute("aria-labelledby", "git-dialog-title");
-    d.innerHTML = `
-      <h2 id="git-dialog-title">提交變更</h2>
-      <label for="git-message">說明</label>
-      <textarea id="git-message" rows="3"></textarea>
-      <ul class="git-files" aria-label="要提交的檔案"></ul>
-      <div class="choice-actions">
-        <button type="button" class="btn" data-act="cancel">取消</button>
-        <button type="button" class="btn" data-act="commit">提交</button>
-        <button type="button" class="btn btn-primary" data-act="push">提交並推送</button>
-      </div>`;
-    d.querySelector("[data-act=cancel]")!.addEventListener("click", () => d.close());
-    d.querySelector("[data-act=commit]")!.addEventListener("click", () => void this.#commit(false));
-    d.querySelector("[data-act=push]")!.addEventListener("click", () => void this.#commit(true));
-    d.querySelector("textarea")!.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing) {
-        e.preventDefault();
-        void this.#commit(false);
-      }
-    });
-    document.body.append(d);
-    return d;
+    if (!ok) return;
+    this.#message.value = "";
+    if (push) await this.push();
   }
 
   // ---- 自動同步 -----------------------------------------------------------

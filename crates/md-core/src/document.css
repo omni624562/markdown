@@ -84,6 +84,8 @@ body {
 .markdown-body li + li { margin-top: 0.25em; }
 .markdown-body .task-list-item { list-style: none; }
 .markdown-body .task-list-item input { margin: 0 0.4em 0 -1.5em; vertical-align: middle; accent-color: var(--md-link); }
+/* 項目之間有空白行時（鬆散清單），文字包在 <p> 裡；勾選框浮在第一行左邊，不要自己佔一行。 */
+.markdown-body .task-list-item > input:has(+ p) { float: left; margin-top: 0.45em; }
 
 .markdown-body blockquote {
   padding: 0 1em;
