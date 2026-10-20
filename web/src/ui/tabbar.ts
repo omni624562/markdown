@@ -14,10 +14,14 @@ export interface TabBarHandlers {
   select(id: string): void;
   close(id: string): void;
   create(): void;
+  /** 雙擊分頁改名；回傳 false 表示這個分頁不能直接改名。 */
+  canRename(id: string): boolean;
+  rename(id: string, name: string): void;
 }
 
 /**
- * 分頁列。中鍵點分頁可以關閉；左右方向鍵在分頁間移動（WAI-ARIA tabs 模式）。
+ * 分頁列（也是視窗最上方的標題列）。中鍵點分頁可以關閉；雙擊分頁可以改名；
+ * 左右方向鍵在分頁間移動（WAI-ARIA tabs 模式）。
  */
 export class TabBar {
   #el: HTMLElement;
@@ -88,6 +92,10 @@ export class TabBar {
         });
         tab.append(name, close);
         tab.addEventListener("click", () => this.#handlers.select(t.id));
+        tab.addEventListener("dblclick", (e) => {
+          if ((e.target as HTMLElement).closest(".tab-close")) return;
+          this.startRename(t.id);
+        });
         tab.addEventListener("auxclick", (e) => {
           if (e.button === 1) {
             e.preventDefault();
@@ -98,5 +106,41 @@ export class TabBar {
       }),
     );
     this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  /** 把分頁名稱換成輸入框；Enter 確定、Esc 取消。 */
+  startRename(id: string): void {
+    if (!this.#handlers.canRename(id)) return;
+    const tab = this.#list.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`);
+    const name = tab?.querySelector<HTMLElement>(".tab-name");
+    if (!tab || !name) return;
+    const input = document.createElement("input");
+    input.className = "tab-rename";
+    input.value = name.textContent ?? "";
+    input.setAttribute("aria-label", "文件名稱");
+    input.spellcheck = false;
+    let done = false;
+    const finish = (commit: boolean) => {
+      if (done) return;
+      done = true;
+      const value = input.value.trim();
+      input.replaceWith(name);
+      if (commit && value && value !== name.textContent) this.#handlers.rename(id, value);
+      tab.focus();
+    };
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.isComposing) return;
+      if (e.key === "Enter") finish(true);
+      else if (e.key === "Escape") finish(false);
+    });
+    input.addEventListener("blur", () => finish(true));
+    input.addEventListener("click", (e) => e.stopPropagation());
+    input.addEventListener("dblclick", (e) => e.stopPropagation());
+    name.replaceWith(input);
+    input.focus();
+    // 先選取主檔名（不含副檔名），和檔案總管一樣。
+    const dot = input.value.lastIndexOf(".");
+    input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
   }
 }

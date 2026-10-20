@@ -1,4 +1,9 @@
 import {
+  Ellipsis,
+  Menu,
+  Files,
+  Heading,
+  SquarePlus,
   AArrowDown,
   AArrowUp,
   ClipboardPaste,
@@ -68,6 +73,11 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  ellipsis: Ellipsis,
+  menu: Menu,
+  files: Files,
+  heading: Heading,
+  "square-plus": SquarePlus,
   "a-arrow-down": AArrowDown,
   "a-arrow-up": AArrowUp,
   "clipboard-paste": ClipboardPaste,

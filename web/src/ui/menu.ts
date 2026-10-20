@@ -64,12 +64,21 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
     // 對齊按鈕下緣；靠近右邊界時改為靠右對齊。
     const r = button.getBoundingClientRect();
     menu.style.top = `${r.bottom + 6}px`;
+    menu.style.bottom = "auto";
     const alignRight = r.left + 260 > window.innerWidth;
     menu.style.left = alignRight ? "auto" : `${Math.max(8, r.left)}px`;
     menu.style.right = alignRight ? `${Math.max(8, window.innerWidth - r.right)}px` : "auto";
   });
   menu.addEventListener("toggle", (e) => {
-    if ((e as ToggleEvent).newState === "open") menu.querySelector<HTMLElement>("button")?.focus();
+    if ((e as ToggleEvent).newState !== "open") return;
+    // 下方放不下時（例如左下角的按鈕）改成往上開，並放在按鈕右邊。
+    const r = button.getBoundingClientRect();
+    if (menu.getBoundingClientRect().bottom > window.innerHeight - 8) {
+      menu.style.top = "auto";
+      menu.style.bottom = `${Math.max(8, window.innerHeight - r.bottom)}px`;
+      menu.style.left = `${r.right + 6}px`;
+    }
+    menu.querySelector<HTMLElement>("button")?.focus();
   });
   menu.addEventListener("keydown", (e) => {
     const items = [...menu.querySelectorAll<HTMLElement>("button")];

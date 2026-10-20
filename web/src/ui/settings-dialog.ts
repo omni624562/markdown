@@ -49,11 +49,19 @@ interface Field {
   hint?: string;
 }
 
+/** 「外觀」頁中，主題下面的選項。 */
+const LOOK_FIELDS: Field[] = [
+  { key: "previewWidth", label: "預覽的文字欄寬" },
+  { key: "formatBar", label: "顯示格式工具列", hint: "編輯區上方的粗體、清單等按鈕；隱藏後仍可用快速鍵或指令面板" },
+  { key: "math", label: "顯示數學公式", hint: "用 $…$ 或 $$…$$ 撰寫，使用 KaTeX" },
+  { key: "mermaid", label: "顯示流程圖", hint: "```mermaid 程式碼區塊" },
+];
+
 const SECTIONS: { title: string; fields: Field[] }[] = [
   {
     title: "編輯",
     fields: [
-      { key: "editorFontSize", label: "編輯區字級" },
+      { key: "editorFontSize", label: "編輯區字級", hint: "也可以按 Ctrl+= 或 Ctrl+- 調整" },
       { key: "lineNumbers", label: "顯示行號" },
       { key: "autoPairBrackets", label: "自動補上右括號與引號", hint: "包含全形「」『』（）《》【】" },
       { key: "tableAutoFormat", label: "在表格中按 Tab 時自動對齊", hint: "依中文字寬對齊，原始碼中的直線會對齊" },
@@ -64,14 +72,6 @@ const SECTIONS: { title: string; fields: Field[] }[] = [
       },
       { key: "focusMode", label: "專注模式", hint: "淡化目前段落以外的文字" },
       { key: "typewriterMode", label: "打字機模式", hint: "游標所在的行保持在畫面中央" },
-    ],
-  },
-  {
-    title: "預覽",
-    fields: [
-      { key: "previewWidth", label: "文字欄寬" },
-      { key: "math", label: "顯示數學公式", hint: "用 $…$ 或 $$…$$ 撰寫，使用 KaTeX" },
-      { key: "mermaid", label: "顯示流程圖", hint: "```mermaid 程式碼區塊" },
     ],
   },
 ];
@@ -85,6 +85,7 @@ export class SettingsDialog {
 
   #ai: AiHooks | null;
   #actions!: HTMLElement;
+  #page = 0;
 
   constructor(
     store: SettingsStore,
@@ -111,9 +112,18 @@ export class SettingsDialog {
     header.append(h, close);
     d.append(header);
 
+    // 左邊是分類，右邊一次只顯示一個分類的選項。
+    const layout = document.createElement("div");
+    layout.className = "settings-layout";
+    const nav = document.createElement("div");
+    nav.className = "settings-nav";
+    nav.role = "tablist";
+    nav.setAttribute("aria-label", "設定分類");
+    nav.setAttribute("aria-orientation", "vertical");
     const body = document.createElement("div");
     body.className = "settings-body";
-    d.append(body);
+    layout.append(nav, body);
+    d.append(layout);
 
     // 外觀：主題沿用標題列主題選單的同一份狀態。
     const look = this.#section("外觀");
@@ -133,6 +143,7 @@ export class SettingsDialog {
         return sel;
       }),
     );
+    for (const f of LOOK_FIELDS) look.append(this.#row(f.key, f.label, f.hint, () => this.#control(f.key)));
     body.append(look);
 
     for (const section of SECTIONS) {
@@ -181,6 +192,7 @@ export class SettingsDialog {
     }
     advanced.append(this.#row("reset", "所有設定", "主題、版面配置不受影響", () => reset));
     body.append(advanced);
+    this.#buildNav(nav, body);
 
     d.addEventListener("click", (e) => {
       if (e.target === d) d.close();
@@ -193,6 +205,43 @@ export class SettingsDialog {
     this.#sync();
     this.#dialog.showModal();
     void this.#refreshTools();
+  }
+
+  /** 每個 section 成為左邊的一個分類；方向鍵上下切換。 */
+  #buildNav(nav: HTMLElement, body: HTMLElement): void {
+    const sections = [...body.querySelectorAll<HTMLElement>(":scope > section")];
+    const tabs = sections.map((section, i) => {
+      const id = `settings-page-${i}`;
+      section.id = id;
+      section.role = "tabpanel";
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.role = "tab";
+      tab.id = `${id}-tab`;
+      tab.setAttribute("aria-controls", id);
+      section.setAttribute("aria-labelledby", tab.id);
+      tab.textContent = section.querySelector("h3")?.textContent ?? "";
+      tab.addEventListener("click", () => show(i));
+      return tab;
+    });
+    const show = (i: number) => {
+      this.#page = i;
+      sections.forEach((s, j) => (s.hidden = j !== i));
+      tabs.forEach((t, j) => {
+        t.setAttribute("aria-selected", String(j === i));
+        t.tabIndex = j === i ? 0 : -1;
+      });
+      body.scrollTop = 0;
+    };
+    nav.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      const next = (this.#page + (e.key === "ArrowDown" ? 1 : -1) + tabs.length) % tabs.length;
+      show(next);
+      tabs[next].focus();
+    });
+    nav.append(...tabs);
+    show(0);
   }
 
   #aiSection(): HTMLElement {
