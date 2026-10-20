@@ -223,6 +223,25 @@ export class Editor {
     this.#handlers.onSelection(this.view);
   }
 
+  /** 目前的完整狀態（內容、游標、復原紀錄），切換分頁時保存。 */
+  get state(): EditorState {
+    return this.view.state;
+  }
+
+  /** 換回先前保存的狀態，並套用目前的設定（保存後設定可能已經改過）。 */
+  restore(state: EditorState, kind: DocKind, scrollTop = 0): void {
+    this.#kind = kind;
+    this.view.setState(state);
+    this.view.dispatch({
+      effects: [
+        this.#gutter.reconfigure(this.#gutterFor(this.#options)),
+        this.#language.reconfigure(this.#languageFor(kind)),
+      ],
+    });
+    requestAnimationFrame(() => (this.view.scrollDOM.scrollTop = scrollTop));
+    this.#handlers.onSelection(this.view);
+  }
+
   /** 把游標移到指定行（與欄）並捲到畫面上方。 */
   reveal(line: number, column = 1): void {
     const doc = this.view.state.doc;
@@ -235,9 +254,17 @@ export class Editor {
     this.view.focus();
   }
 
+  /** 換掉整份內容（可復原）。只替換有差異的中間段落，游標和捲動位置才不會跳走。 */
   replaceAll(text: string): void {
+    const old = this.view.state.doc.toString();
+    const max = Math.min(old.length, text.length);
+    let start = 0;
+    while (start < max && old.charCodeAt(start) === text.charCodeAt(start)) start++;
+    let end = 0;
+    while (end < max - start && old.charCodeAt(old.length - 1 - end) === text.charCodeAt(text.length - 1 - end)) end++;
+    if (start === old.length && old.length === text.length) return;
     this.view.dispatch({
-      changes: { from: 0, to: this.view.state.doc.length, insert: text },
+      changes: { from: start, to: old.length - end, insert: text.slice(start, text.length - end) },
       userEvent: "input.format",
     });
   }

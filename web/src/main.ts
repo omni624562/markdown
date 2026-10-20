@@ -1,8 +1,9 @@
 import "../../crates/md-core/src/document.css";
 import "./styles.css";
 
+import { undo } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import init, {
   type Heading,
   type RenderResult,
@@ -11,27 +12,45 @@ import init, {
   formatTable,
   kindFromFileName,
 } from "../pkg/md_wasm.js";
-import { type Command, Commands, formatKeys } from "./commands.ts";
+import { type Command, Commands, formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, cursorInfo } from "./editor.ts";
-import { desktop } from "./desktop.ts";
-import { type FileHandle, type OpenedFile, download, openFile, openInitialFile, replaceExtension, saveFile, stem } from "./files.ts";
+import { type Entry, type FileItem, type Folder, desktop } from "./desktop.ts";
+import type { EditorState } from "@codemirror/state";
+import {
+  type FileHandle,
+  type OpenedFile,
+  desktopHandle,
+  download,
+  fromDesktop,
+  openFile,
+  replaceExtension,
+  saveFile,
+  stem,
+} from "./files.ts";
 import { TABLE_TEMPLATE, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
-import { type DocKind, KINDS, isKind } from "./kinds.ts";
+import { type DocKind, KINDS } from "./kinds.ts";
+import { basename, dirname, isInside, markdownUrl, rebase } from "./paths.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
+import { localImagesPlugin } from "./plugins/local-images.ts";
 import { mathPlugin } from "./plugins/math.ts";
 import { mermaidPlugin } from "./plugins/mermaid.ts";
 import { Preview } from "./preview.ts";
 import sample from "./sample.md?raw";
 import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
 import { type Settings, SettingsStore } from "./settings.ts";
+import { type DocMeta, dropDraft, loadDraft, loadSession, newId, saveDraft, saveSession } from "./session.ts";
 import * as storage from "./storage.ts";
 import { editTable } from "./table.ts";
 import { choose } from "./ui/choice.ts";
+import { FileTree, type TreeAction } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { setupMenu } from "./ui/menu.ts";
 import { Palette } from "./ui/palette.ts";
+import { Picker } from "./ui/picker.ts";
 import { Review } from "./ui/review.ts";
+import { SearchPanel } from "./ui/search-panel.ts";
 import { SettingsDialog } from "./ui/settings-dialog.ts";
+import { TabBar } from "./ui/tabbar.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { toast } from "./ui/toast.ts";
 
@@ -65,21 +84,6 @@ const { store: settings, recovered: settingsRecovered } = await SettingsStore.lo
 // ---- 狀態 ---------------------------------------------------------------
 
 const narrowQuery = matchMedia("(max-width: 720px)");
-const storedKind = storage.load("kind");
-let kind: DocKind = isKind(storedKind) ? storedKind : "markdown";
-let fileName = storage.load("name") ?? `未命名${KINDS[kind].ext}`;
-let fileHandle: FileHandle | null = null;
-/** 最後一次存檔／開檔／新增時內容的雜湊；目前內容與它不同就代表有未存檔的變更。 */
-let baseline = storage.load("baseline");
-/** 目前內容是否對應到一個實際存過或開啟過的檔案。 */
-let fileBacked = storage.load("file-backed") === "1";
-let draftSaved = false;
-let view: ViewMode = "split";
-let outlineShown = storage.load("outline") !== "hidden";
-let splitRatio = Number(storage.load("split")) || 0.5;
-let themePref: ThemePref = (storage.load("theme") as ThemePref | null) ?? "system";
-let blocks: Block[] | null = null;
-let editorTopLine = 1;
 
 /** FNV-1a，只用來比較內容是否相同。 */
 function hash(text: string): string {
@@ -91,12 +95,72 @@ function hash(text: string): string {
   return `${text.length}:${(h >>> 0).toString(36)}`;
 }
 
+/** 一個分頁。目前分頁的欄位另外放在下方的全域變數，切換分頁時互相同步。 */
+interface Doc extends DocMeta {
+  handle: FileHandle | null;
+  /** 不在前景時保存的編輯器狀態（含復原紀錄）。 */
+  state: EditorState | null;
+  scrollTop: number;
+  dirty: boolean;
+  /** 檔案已從磁碟刪除。 */
+  missing?: boolean;
+}
+
+function makeDoc(meta: Partial<DocMeta> & { name: string; kind: DocKind }): Doc {
+  return {
+    id: newId(),
+    path: null,
+    // 新的空白文件不算有未存檔的變更。
+    baseline: hash(""),
+    fileBacked: false,
+    handle: null,
+    state: null,
+    scrollTop: 0,
+    dirty: false,
+    ...meta,
+  };
+}
+
+const restored = loadSession();
+let docs: Doc[] = (restored?.docs ?? []).map((m) => ({
+  ...makeDoc(m),
+  ...m,
+  // 只有桌面版會記下路徑；先建立控制代碼，否則第一次保存分頁狀態時路徑會被清掉。
+  handle: m.path && desktop ? desktopHandle(m.path, m.name) : null,
+  dirty: hash(loadDraft(m.id) ?? "") !== m.baseline,
+}));
+if (!docs.length) {
+  // 第一次使用：開啟範例文件，並以它為基準（不顯示未存檔）。
+  const first = makeDoc({ name: "未命名.md", kind: "markdown", baseline: hash(sample) });
+  saveDraft(first.id, sample);
+  docs = [first];
+}
+let active: Doc = docs.find((d) => d.id === restored?.activeId) ?? docs[0];
+
+let kind: DocKind = active.kind;
+let fileName = active.name;
+let fileHandle: FileHandle | null = active.handle;
+/** 最後一次存檔／開檔／新增時內容的雜湊；目前內容與它不同就代表有未存檔的變更。 */
+let baseline = active.baseline;
+/** 目前內容是否對應到一個實際存過或開啟過的檔案。 */
+let fileBacked = active.fileBacked;
+let draftSaved = false;
+let view: ViewMode = "split";
+let outlineShown = storage.load("outline") !== "hidden";
+let splitRatio = Number(storage.load("split")) || 0.5;
+let themePref: ThemePref = (storage.load("theme") as ThemePref | null) ?? "system";
+let blocks: Block[] | null = null;
+let editorTopLine = 1;
+
 // ---- 編輯器與預覽 -------------------------------------------------------
 
 const preview = new Preview(previewEl, [
   highlightPlugin(),
   mathPlugin(() => settings.value.math),
   mermaidPlugin(() => settings.value.mermaid),
+  ...(desktop
+    ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl)]
+    : []),
 ]);
 
 /** 表格排版：關閉自動對齊時只移動游標，不重排。 */
@@ -104,7 +168,7 @@ const tableFormatter = (block: string) => (settings.value.tableAutoFormat ? form
 
 const review = new Review($("#review-bar"));
 
-const editor = new Editor($("#editor"), storage.load("doc") ?? sample, kind, {
+const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   onChange(doc) {
     scheduleRender();
     scheduleAutosave(doc);
@@ -120,7 +184,27 @@ const editor = new Editor($("#editor"), storage.load("doc") ?? sample, kind, {
   lineNumbers: settings.value.lineNumbers,
   autoPairBrackets: settings.value.autoPairBrackets,
   formatTable: tableFormatter,
-  extra: [review.extension],
+  extra: [
+    review.extension,
+    EditorView.domEventHandlers({
+      paste(e) {
+        // 從 Word、Excel 複製的內容也帶有圖片版本；有文字時一律當成貼上文字。
+        const files = imageFiles(e.clipboardData?.files);
+        if (!files.length || e.clipboardData?.getData("text/plain")) return false;
+        e.preventDefault();
+        void insertImages(files).catch(reportError);
+        return true;
+      },
+      drop(e, v) {
+        if (!e.dataTransfer?.files.length) return false;
+        // 檔案交給視窗的 drop 處理（文字檔開新分頁、圖片插入），不讓編輯器把檔案內容當成文字插入。
+        // 圖片要插入在放開的位置，先把游標移過去。
+        const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos !== null && imageFiles(e.dataTransfer.files).length) v.dispatch({ selection: { anchor: pos } });
+        return true;
+      },
+    }),
+  ],
 });
 review.attach(editor.view);
 
@@ -263,6 +347,10 @@ function renderSaveState(): void {
   const text = editor.text;
   const dirty = baseline !== hash(text);
   dirtyEl.hidden = !dirty;
+  if (active.dirty !== dirty) {
+    active.dirty = dirty;
+    renderTabs();
+  }
   const title = `${dirty ? "● " : ""}${fileName} - Markdown 編輯器`;
   if (document.title !== title) {
     document.title = title;
@@ -301,14 +389,26 @@ previewScroller.addEventListener("scroll", () => view === "preview" && updateAct
 // ---- 自動儲存草稿 -------------------------------------------------------
 
 let saveTimer: number | undefined;
+let pendingDraft: { id: string; text: string } | null = null;
+
 function scheduleAutosave(doc: string): void {
   clearTimeout(saveTimer);
   draftSaved = false;
-  saveTimer = window.setTimeout(() => {
-    draftSaved = storage.save("doc", doc);
-    if (!draftSaved) toast("瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。", { tone: "error" });
-    renderSaveState();
-  }, 400);
+  // 記下是哪個分頁的內容：計時器觸發前可能已經切換到別的分頁。
+  pendingDraft = { id: active.id, text: doc };
+  saveTimer = window.setTimeout(flushDraft, 400);
+}
+
+/** 立刻寫入尚未儲存的草稿（切換、關閉分頁前呼叫）。 */
+function flushDraft(): void {
+  clearTimeout(saveTimer);
+  if (!pendingDraft) return;
+  const { id, text } = pendingDraft;
+  pendingDraft = null;
+  if (!docs.some((d) => d.id === id)) return; // 分頁已經關閉
+  draftSaved = saveDraft(id, text);
+  if (!draftSaved) toast("瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。", { tone: "error" });
+  renderSaveState();
 }
 
 // ---- 文件操作 -----------------------------------------------------------
@@ -316,15 +416,16 @@ function scheduleAutosave(doc: string): void {
 function setFileName(name: string): void {
   fileName = name;
   fileNameInput.value = name;
-  storage.save("name", name);
+  persistSession();
   renderSaveState();
+  renderTabs();
 }
 
 function setKind(next: DocKind, { rename = true } = {}): void {
   if (next === kind) return;
   kind = next;
   kindSelect.value = next;
-  storage.save("kind", next);
+  persistSession();
   editor.setKind(next);
   // 還沒對應到實際檔案時，順便改副檔名，存檔時才會是正確的類型。
   if (rename && !fileHandle) setFileName(replaceExtension(fileName, KINDS[next].ext));
@@ -336,8 +437,408 @@ function setKind(next: DocKind, { rename = true } = {}): void {
 function setBaseline(text: string, backed: boolean): void {
   baseline = hash(text);
   fileBacked = backed;
-  storage.save("baseline", baseline);
-  storage.save("file-backed", backed ? "1" : "");
+  persistSession();
+}
+
+// ---- 分頁 ---------------------------------------------------------------
+
+const tabBar = new TabBar($("#tab-bar"), {
+  select: (id) => {
+    const doc = docs.find((d) => d.id === id);
+    if (doc) activate(doc);
+  },
+  close: (id) => void closeTab(id).catch(reportError),
+  create: () => void commands.run("new"),
+});
+
+// ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
+
+type SidePanel = "files" | "outline" | "search";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search"];
+const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".side-tabs [role=tab]")];
+let sidePanel: SidePanel = SIDE_PANELS.find((p) => p === storage.load("side-panel")) ?? "outline";
+/** 目前開啟的資料夾（工作區）。 */
+let workspaceRoot: Folder | null = null;
+/** Ctrl+P 用的工作區檔案清單；資料夾內容變動時清掉重抓。 */
+let fileListCache: FileItem[] | null = null;
+let treeActive: string | null = null;
+
+const DOWNLOAD_URL = "https://github.com/omni624562/markdown/releases/download/latest/md-editor.exe";
+
+const fileTree = desktop
+  ? new FileTree($("#file-tree"), {
+      list: (dir) => desktop!.listDir(dir),
+      open: (path) => void openPath(path).catch(reportError),
+      action: (action, entry) => void treeAction(action, entry).catch(reportError),
+    })
+  : null;
+
+const searchPanel = desktop
+  ? new SearchPanel($("#panel-search"), {
+      search: (query, caseSensitive, regex) => desktop!.search(query, caseSensitive, regex),
+      open: (path, line, column) => void openPath(path, line, column).catch(reportError),
+    })
+  : null;
+
+function showPanel(panel: SidePanel, reveal = true): void {
+  sidePanel = panel;
+  storage.save("side-panel", panel);
+  for (const tab of sideTabs) {
+    const on = tab.dataset.panel === panel;
+    tab.setAttribute("aria-selected", String(on));
+    tab.tabIndex = on ? 0 : -1;
+    $(`#panel-${tab.dataset.panel}`).hidden = !on;
+  }
+  if (reveal && !outlineShown) setOutline(true);
+  if (panel === "outline") updateActiveHeading();
+}
+
+for (const tab of sideTabs) {
+  tab.addEventListener("click", () => showPanel(tab.dataset.panel as SidePanel));
+}
+$(".side-tabs").addEventListener("keydown", (e) => {
+  const i = sideTabs.indexOf(document.activeElement as HTMLButtonElement);
+  if (i < 0 || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
+  e.preventDefault();
+  const next = sideTabs[(i + (e.key === "ArrowRight" ? 1 : -1) + sideTabs.length) % sideTabs.length];
+  next.focus();
+  showPanel(next.dataset.panel as SidePanel);
+});
+
+/** 沒有開啟資料夾時，檔案面板顯示說明、開啟按鈕與最近開啟的資料夾。 */
+async function renderFilesEmpty(): Promise<void> {
+  const box = $("#files-empty");
+  $("#files-head").hidden = !workspaceRoot;
+  box.hidden = !!workspaceRoot;
+  if (workspaceRoot) return;
+  const p = document.createElement("p");
+  if (!desktop) {
+    p.textContent = "開啟資料夾、管理檔案與搜尋整個資料夾需要桌面版（Windows，免安裝）。";
+    const a = Object.assign(document.createElement("a"), {
+      className: "btn",
+      href: DOWNLOAD_URL,
+      textContent: "下載桌面版",
+    });
+    box.replaceChildren(p, a);
+    return;
+  }
+  p.textContent = "開啟一個資料夾，就能在這裡瀏覽、新增、重新命名檔案，也能搜尋整個資料夾的內容。";
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "btn";
+  open.append(icon("folder-open"), "開啟資料夾");
+  open.addEventListener("click", () => void commands.run("open-folder").catch(reportError));
+  box.replaceChildren(p, open);
+  const { folders } = await desktop.recent();
+  if (!folders.length || workspaceRoot) return;
+  const h = document.createElement("h3");
+  h.textContent = "最近開啟";
+  const list = document.createElement("ul");
+  list.className = "recent-list";
+  for (const path of folders) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = path;
+    b.append(icon("folder"), Object.assign(document.createElement("span"), { textContent: basename(path) || path }));
+    b.addEventListener("click", () => void openRecentFolder(path));
+    const li = document.createElement("li");
+    li.append(b);
+    list.append(li);
+  }
+  box.append(h, list);
+}
+
+async function setWorkspace(folder: Folder | null): Promise<void> {
+  workspaceRoot = folder;
+  fileListCache = null;
+  if (folder) storage.save("workspace", folder.path);
+  else storage.remove("workspace");
+  const name = $("#folder-name");
+  name.textContent = folder?.name ?? "";
+  name.title = folder?.path ?? "";
+  await fileTree?.setRoot(folder?.path ?? null, folder?.name);
+  treeActive = fileHandle?.path ?? null;
+  await fileTree?.setActive(treeActive);
+  await renderFilesEmpty();
+}
+
+async function openRecentFolder(path: string): Promise<void> {
+  try {
+    await setWorkspace(await desktop!.reopenFolder(path));
+    showPanel("files");
+  } catch (e) {
+    reportError(e);
+    await renderFilesEmpty(); // 找不到的資料夾已從清單移除
+  }
+}
+
+/** 開啟（或切換到）指定路徑的檔案，可再跳到指定的行與欄。 */
+async function openPath(path: string, line?: number, column?: number): Promise<void> {
+  const existing = tabForPath(path);
+  if (existing) activate(existing);
+  else if (desktop) openOpenedFile(fromDesktop(await desktop.reopenFile(path)));
+  if (line) {
+    if (view === "preview") setView("split");
+    editor.reveal(line, column);
+  }
+  if (narrowQuery.matches) setOutline(false);
+}
+
+/** 檔案樹右鍵選單與快速鍵的動作。 */
+async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
+  const d = desktop;
+  if (!d || !fileTree) return;
+  switch (action) {
+    case "new-file":
+    case "new-folder": {
+      const isDir = action === "new-folder";
+      let name = await fileTree.promptName(entry.path, isDir ? "新資料夾" : "未命名.md", isDir ? "folder" : "file");
+      if (!name) return;
+      if (!isDir && !name.includes(".")) name += ".md";
+      const path = await d.createEntry(entry.path, name, isDir);
+      fileListCache = null;
+      await fileTree.refresh([entry.path]);
+      if (!isDir) await openPath(path);
+      break;
+    }
+    case "rename": {
+      const parent = dirname(entry.path);
+      const name = await fileTree.promptName(parent, entry.name, "rename", entry.path);
+      if (!name || name === entry.name) return;
+      const to = await d.renameEntry(entry.path, name);
+      // 已開啟的分頁（含改名資料夾底下的檔案）改用新路徑。
+      stash();
+      for (const doc of docs) {
+        const moved = doc.path && rebase(doc.path, entry.path, to);
+        if (!moved) continue;
+        doc.path = moved;
+        if (doc.path === to) doc.name = basename(to);
+        doc.handle = desktopHandle(moved, basename(moved));
+      }
+      ({ name: fileName, handle: fileHandle } = active);
+      fileNameInput.value = fileName;
+      fileListCache = null;
+      persistSession();
+      renderSaveState();
+      renderTabs();
+      await fileTree.refresh([parent]);
+      break;
+    }
+    case "trash": {
+      stash();
+      const affected = docs.filter((doc) => doc.path && isInside(doc.path, entry.path));
+      const what = entry.isDir ? `資料夾「${entry.name}」和裡面所有的檔案` : `「${entry.name}」`;
+      const note = affected.some((doc) => doc.dirty) ? "已開啟的分頁會保留內容，但有尚未存檔的變更。" : "";
+      const choice = await choose("移到資源回收筒？", `要把${what}移到資源回收筒嗎？之後可以從資源回收筒還原。${note}`, [
+        { id: "trash", label: "移到資源回收筒", danger: true },
+        { id: "cancel", label: "取消" },
+      ]);
+      if (choice !== "trash") return;
+      await d.trashEntry(entry.path);
+      for (const doc of affected) doc.missing = true;
+      fileListCache = null;
+      renderTabs();
+      await fileTree.refresh([dirname(entry.path)]);
+      toast(`已把「${entry.name}」移到資源回收筒`);
+      break;
+    }
+    case "reveal":
+      await d.revealEntry(entry.path);
+      break;
+    case "copy-path":
+      await navigator.clipboard.writeText(entry.path);
+      toast("已複製路徑");
+      break;
+  }
+}
+
+function rootEntry(): Entry | null {
+  return workspaceRoot && { path: workspaceRoot.path, name: workspaceRoot.name, isDir: true };
+}
+$("#tree-new-file").addEventListener("click", () => {
+  const root = rootEntry();
+  if (root) void treeAction("new-file", root).catch(reportError);
+});
+$("#tree-new-folder").addEventListener("click", () => {
+  const root = rootEntry();
+  if (root) void treeAction("new-folder", root).catch(reportError);
+});
+$("#tree-refresh").addEventListener("click", () => {
+  fileListCache = null;
+  void fileTree?.refresh().catch(reportError);
+});
+if (!desktop) {
+  const p = document.createElement("p");
+  p.className = "side-empty";
+  p.textContent = "搜尋整個資料夾的內容需要桌面版。要搜尋目前的文件，請按 ";
+  p.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys("Mod-f") }), "。");
+  $("#panel-search").append(p);
+}
+
+// ---- 快速開啟（Ctrl+P） --------------------------------------------------
+
+interface QuickItem {
+  title: string;
+  detail: string;
+  doc?: Doc;
+  path?: string;
+}
+
+const quickOpen = new Picker<QuickItem>({
+  label: "快速開啟",
+  placeholder: desktop ? "輸入檔名，例如「週報」" : "輸入檔名切換分頁",
+  empty: "找不到符合的檔案",
+  async query(q) {
+    stash();
+    // 已開啟的分頁優先，目前分頁放最後（按 Enter 不會停在原地）。
+    const items: QuickItem[] = [...docs.filter((d) => d !== active), active].map((d) => ({
+      title: d.name,
+      detail: d === active ? "目前分頁" : "已開啟",
+      doc: d,
+    }));
+    const seen = new Set(docs.map((d) => d.path).filter(Boolean));
+    if (desktop) {
+      if (workspaceRoot) {
+        fileListCache ??= await desktop.listFiles().catch(() => []);
+        for (const f of fileListCache) {
+          if (seen.has(f.path)) continue;
+          seen.add(f.path);
+          const dir = f.rel.includes("/") ? f.rel.slice(0, f.rel.lastIndexOf("/")) : "";
+          items.push({ title: basename(f.path), detail: dir || workspaceRoot.name, path: f.path });
+        }
+      }
+      const { files } = await desktop.recent().catch(() => ({ files: [] as string[] }));
+      for (const path of files) {
+        if (seen.has(path)) continue;
+        seen.add(path);
+        items.push({ title: basename(path), detail: `最近開啟 · ${dirname(path)}`, path });
+      }
+    }
+    if (!q.trim()) return items.slice(0, 200);
+    return items
+      .map((it) => ({ it, score: Math.max(fuzzyScore(q, it.title) * 2, fuzzyScore(q, `${it.detail}/${it.title}`)) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 200)
+      .map((x) => x.it);
+  },
+  render: (it) => ({ title: it.title, detail: it.detail, icon: it.doc ? "file-text" : "file" }),
+  pick: (it) => (it.doc ? activate(it.doc) : void openPath(it.path!).catch(reportError)),
+});
+
+/** 把全域變數（目前分頁）寫回分頁物件。 */
+function stash(): void {
+  Object.assign(active, {
+    kind,
+    name: fileName,
+    handle: fileHandle,
+    path: fileHandle?.path ?? null,
+    baseline,
+    fileBacked,
+    state: editor.state,
+    scrollTop: editor.view.scrollDOM.scrollTop,
+    dirty: baseline !== hash(editor.text),
+  });
+}
+
+function persistSession(): void {
+  stash();
+  saveSession({
+    activeId: active.id,
+    docs: docs.map(({ id, name, kind, path, baseline, fileBacked }) => ({ id, name, kind, path, baseline, fileBacked })),
+  });
+}
+
+function renderTabs(): void {
+  tabBar.render(
+    docs.map((d) => ({
+      id: d.id,
+      name: d === active ? fileName : d.name,
+      title: (d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name),
+      dirty: d.dirty,
+      missing: d.missing,
+    })),
+    active.id,
+  );
+  const path = fileHandle?.path ?? null;
+  if (path !== treeActive) {
+    treeActive = path;
+    void fileTree?.setActive(path);
+  }
+}
+
+/** 切換到另一個分頁。 */
+function activate(doc: Doc): void {
+  if (doc === active) return;
+  flushDraft();
+  if (review.active) review.finish();
+  if (docs.includes(active)) stash();
+  active = doc;
+  ({ kind, name: fileName, handle: fileHandle, baseline, fileBacked } = doc);
+  kindSelect.value = kind;
+  fileNameInput.value = fileName;
+  if (doc.state) editor.restore(doc.state, kind, doc.scrollTop);
+  else editor.load(loadDraft(doc.id) ?? "", kind);
+  editorTopLine = 1;
+  preview.clear();
+  previewScroller.scrollTop = 0;
+  buildFormatBar();
+  persistSession();
+  renderNow();
+  renderTabs();
+}
+
+/** 新增一個分頁並切換過去（不會寫入內容，呼叫端負責）。 */
+function addTab(doc: Doc): void {
+  const i = docs.indexOf(active);
+  docs.splice(i + 1, 0, doc);
+  activate(doc);
+}
+
+async function closeTab(id: string): Promise<void> {
+  const doc = docs.find((d) => d.id === id);
+  if (!doc) return;
+  if (doc === active) stash();
+  if (doc.dirty) {
+    const choice = await choose("要儲存變更嗎？", `「${doc.name}」有尚未存檔的變更。`, [
+      { id: "save", label: "儲存", primary: true },
+      { id: "discard", label: "不儲存", danger: true },
+      { id: "cancel", label: "取消" },
+    ]);
+    if (choice === "save") {
+      activate(doc);
+      await save(false);
+      if (active.dirty || baseline !== hash(editor.text)) return; // 取消存檔或存檔失敗
+    } else if (choice !== "discard") {
+      return;
+    }
+  }
+  if (pendingDraft?.id === doc.id) pendingDraft = null;
+  const i = docs.indexOf(doc);
+  docs.splice(i, 1);
+  dropDraft(doc.id);
+  if (!docs.length) {
+    const blank = makeDoc({ name: `未命名${KINDS[kind].ext}`, kind });
+    docs.push(blank);
+  }
+  if (doc === active) {
+    const next = docs[Math.min(i, docs.length - 1)];
+    active = doc; // 讓 activate 知道要換掉的是這個分頁
+    activate(next);
+  } else {
+    persistSession();
+    renderTabs();
+  }
+}
+
+function cycleTab(step: number): void {
+  const i = docs.indexOf(active);
+  activate(docs[(i + step + docs.length) % docs.length]);
+}
+
+/** 找出已經開啟同一個檔案的分頁。 */
+function tabForPath(path: string): Doc | undefined {
+  return docs.find((d) => (d === active ? fileHandle?.path : d.path) === path);
 }
 
 function openDocument(
@@ -346,20 +847,30 @@ function openDocument(
   handle: FileHandle | null,
   { kind: docKind, fromFile = true }: { kind?: DocKind; fromFile?: boolean } = {},
 ): void {
+  const path = handle?.path;
+  const existing = path ? tabForPath(path) : undefined;
+  if (existing) {
+    activate(existing);
+    return;
+  }
+  // 目前分頁是空白、未存成檔案的新文件時直接沿用，否則開新分頁。
+  if (fileBacked || editor.text !== "") addTab(makeDoc({ name, kind: docKind ?? kindFromFileName(name) }));
   if (review.active) review.finish();
   fileHandle = handle;
   kind = docKind ?? kindFromFileName(name);
   kindSelect.value = kind;
-  storage.save("kind", kind);
-  setFileName(name);
+  fileName = name;
+  fileNameInput.value = name;
   editor.load(text, kind);
   editorTopLine = 1;
   previewScroller.scrollTop = 0;
-  storage.save("doc", text);
+  saveDraft(active.id, text);
+  active.missing = false;
   setBaseline(text, fromFile);
   preview.clear();
   buildFormatBar();
   renderNow();
+  renderTabs();
 }
 
 function openOpenedFile(file: OpenedFile): void {
@@ -379,6 +890,7 @@ async function save(saveAs: boolean, force = false): Promise<void> {
     return;
   }
   fileHandle = out.handle;
+  active.missing = false;
   setBaseline(text, true);
   setFileName(out.name);
   toast(out.handle ? `已儲存到「${out.name}」` : `已下載「${out.name}」`, { tone: "success" });
@@ -435,27 +947,24 @@ commands.register(
     title: "新增文件",
     group: "檔案",
     icon: "file-plus",
+    keys: "Mod-Alt-n",
     run() {
-      const prev = { name: fileName, text: editor.text, handle: fileHandle, kind, baseline, fileBacked };
-      openDocument(`未命名${KINDS[kind].ext}`, "", null, { kind, fromFile: false });
-      if (prev.text) {
-        toast("已建立新文件", {
-          action: {
-            label: "復原",
-            run() {
-              openDocument(prev.name, prev.text, prev.handle, { kind: prev.kind });
-              baseline = prev.baseline;
-              fileBacked = prev.fileBacked;
-              storage.save("baseline", baseline ?? "");
-              storage.save("file-backed", fileBacked ? "1" : "");
-              renderSaveState();
-            },
-          },
-        });
-      }
+      const doc = makeDoc({ name: `未命名${KINDS[kind].ext}`, kind });
+      saveDraft(doc.id, "");
+      addTab(doc);
       editor.view.focus();
     },
   },
+  { id: "tab-next", title: "下一個分頁", group: "檢視", keys: "Ctrl-Tab", when: () => docs.length > 1, run: () => cycleTab(1) },
+  {
+    id: "tab-prev",
+    title: "上一個分頁",
+    group: "檢視",
+    keys: "Ctrl-Shift-Tab",
+    when: () => docs.length > 1,
+    run: () => cycleTab(-1),
+  },
+  { id: "tab-close", title: "關閉分頁", group: "檔案", icon: "x", keys: "Mod-w", run: () => closeTab(active.id) },
   {
     id: "open",
     title: "開啟檔案…",
@@ -467,6 +976,44 @@ commands.register(
       if (file) openOpenedFile(file);
     },
   },
+  {
+    id: "open-folder",
+    title: "開啟資料夾…",
+    group: "檔案",
+    icon: "folder-open",
+    when: () => !!desktop,
+    async run() {
+      const folder = await desktop?.openFolder();
+      if (!folder) return;
+      await setWorkspace(folder);
+      showPanel("files");
+    },
+  },
+  {
+    id: "quick-open",
+    title: "快速開啟檔案…",
+    group: "檔案",
+    icon: "search",
+    keys: "Mod-p",
+    run: () => quickOpen.open(),
+  },
+  {
+    id: "search-in-folder",
+    title: "在資料夾中搜尋",
+    group: "編輯",
+    icon: "search",
+    keys: "Mod-Shift-f",
+    when: () => !!desktop,
+    run() {
+      showPanel("search");
+      // 選取範圍只有一行時，直接拿來當搜尋關鍵字。
+      const { from, to } = editor.view.state.selection.main;
+      const selected = editor.view.state.sliceDoc(from, to);
+      searchPanel?.focus(selected && !selected.includes("\n") ? selected : undefined);
+    },
+  },
+  { id: "show-files", title: "顯示檔案", group: "檢視", icon: "folder", keys: "Mod-Shift-e", run: () => showPanel("files") },
+  { id: "show-outline", title: "顯示大綱", group: "檢視", icon: "list-tree", run: () => showPanel("outline") },
   { id: "save", title: "儲存", group: "檔案", icon: "save", keys: "Mod-s", run: () => save(false) },
   { id: "save-as", title: "另存新檔…", group: "檔案", keys: "Mod-Shift-s", run: () => save(true) },
   {
@@ -583,7 +1130,7 @@ commands.register(
   ),
   {
     id: "toggle-outline",
-    title: "顯示／隱藏大綱",
+    title: "顯示／隱藏側邊欄",
     group: "檢視",
     icon: "panel-left",
     keys: "Mod-Shift-o",
@@ -650,6 +1197,8 @@ $("#palette-kbd").textContent = formatKeys("Mod-Shift-p");
 setupMenu($<HTMLButtonElement>("#file-menu"), commands, [
   "new",
   "open",
+  "open-folder",
+  "quick-open",
   "-",
   "save",
   "save-as",
@@ -836,6 +1385,104 @@ workspace.addEventListener("click", (e) => {
   if (narrowQuery.matches && outlineShown && !(e.target as HTMLElement).closest(".outline")) setOutline(false);
 });
 
+// ---- 貼上、拖曳圖片 -------------------------------------------------------
+
+const IMAGE_EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/svg+xml": "svg",
+  "image/bmp": "bmp",
+  "image/avif": "avif",
+};
+/** 網頁版內嵌圖片（data: 網址）的大小上限，太大會讓文件難以編輯。 */
+const EMBED_LIMIT = 2 * 1024 * 1024;
+
+function imageFiles(list: FileList | null | undefined): File[] {
+  return [...(list ?? [])].filter((f) => f.type in IMAGE_EXT);
+}
+
+function readDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+/** 圖片的替代文字：用檔名，但截圖工具產生的「image.png」之類的名稱沒有意義就留白。 */
+function altText(name: string): string {
+  const s = stem(name);
+  return /^(image|img|clipboard|screenshot|untitled)[-_ ]?\d*$/i.test(s) ? "" : s.replace(/[[\]]/g, "");
+}
+
+function insertAtCursor(text: string): void {
+  const { from, to } = editor.view.state.selection.main;
+  editor.view.dispatch({
+    changes: { from, to, insert: text },
+    selection: { anchor: from + text.length },
+    userEvent: "input.paste",
+    scrollIntoView: true,
+  });
+  editor.view.focus();
+}
+
+/**
+ * 插入圖片。桌面版把圖片存到文件旁邊的 assets 資料夾並插入相對路徑；
+ * 網頁版無法寫入檔案，詢問後改用內嵌的 data: 網址。
+ */
+async function insertImages(files: File[]): Promise<void> {
+  if (kind !== "markdown") {
+    toast("只有 Markdown 文件可以插入圖片。");
+    return;
+  }
+  if (!desktop) {
+    if (files.reduce((n, f) => n + f.size, 0) > EMBED_LIMIT) {
+      toast("圖片超過 2 MB，網頁版無法內嵌。桌面版會把圖片另存成檔案，沒有這個限制。", { tone: "error", duration: 8000 });
+      return;
+    }
+    toast("網頁版無法把圖片另存成檔案。要直接內嵌在文件裡嗎？（文件會變大）", {
+      duration: 10000,
+      action: {
+        label: "內嵌圖片",
+        run: () =>
+          void Promise.all(files.map(readDataUrl))
+            .then((urls) => insertAtCursor(urls.map((url, i) => `![${altText(files[i].name)}](${url})`).join("\n")))
+            .catch(reportError),
+      },
+    });
+    return;
+  }
+  const docPath = fileHandle?.path;
+  if (!docPath) {
+    toast("請先存檔：圖片會存到文件所在資料夾的 assets 資料夾裡。", {
+      duration: 8000,
+      action: {
+        label: "儲存",
+        run: () =>
+          void save(false)
+            .then(() => (fileHandle?.path ? insertImages(files) : undefined))
+            .catch(reportError),
+      },
+    });
+    return;
+  }
+  const doc = active;
+  const links: string[] = [];
+  for (const file of files) {
+    const data = (await readDataUrl(file)).split(",")[1];
+    const rel = await desktop.saveImage(docPath, data, IMAGE_EXT[file.type]);
+    links.push(`![${altText(file.name)}](${markdownUrl(rel)})`);
+  }
+  if (active !== doc) return; // 存圖片時使用者切換了分頁
+  insertAtCursor(links.join("\n"));
+  toast(files.length > 1 ? `已把 ${files.length} 張圖片存到 assets 資料夾` : "已把圖片存到 assets 資料夾", {
+    tone: "success",
+  });
+}
+
 // ---- 拖曳開檔 -----------------------------------------------------------
 
 const overlay = $(".drop-overlay");
@@ -856,7 +1503,13 @@ window.addEventListener("drop", async (e) => {
   e.preventDefault();
   dragDepth = 0;
   overlay.hidden = true;
-  const file = e.dataTransfer?.files[0];
+  const files = [...(e.dataTransfer?.files ?? [])];
+  const images = imageFiles(e.dataTransfer?.files);
+  if (images.length && images.length === files.length) {
+    await insertImages(images).catch(reportError);
+    return;
+  }
+  const file = files.find((f) => !images.includes(f));
   if (!file) return;
   if (file.size > 20 * 1024 * 1024) {
     toast("檔案超過 20 MB，可能不是文字檔。", { tone: "error" });
@@ -870,21 +1523,159 @@ window.addEventListener("drop", async (e) => {
 
 const savedView = storage.load("view");
 view = savedView === "editor" || savedView === "preview" ? savedView : "split";
-// 第一次使用（或清除過資料）時，以目前內容（範例文件）為基準，不顯示未存檔。
-if (!baseline) setBaseline(editor.text, false);
 kindSelect.value = kind;
 fileNameInput.value = fileName;
 setTheme(themePref);
 applySettings(settings.value);
 if (settingsRecovered) toast("設定檔有無法讀取的內容，相關選項已恢復成預設值。", { tone: "error", duration: 8000 });
 buildFormatBar();
+showPanel(sidePanel, false);
+void renderFilesEmpty();
 // 手機上大綱是蓋在內容上的抽屜，一開始先收起來。
 if (narrowQuery.matches) outlineShown = false;
 applyLayout();
 renderNow();
+renderTabs();
+persistSession();
 updateCursor(editor.view);
 
-// 桌面版：開啟從命令列帶入的檔案（例如把 .md 拖到 exe 上）。
-openInitialFile()
-  .then((file) => file && openOpenedFile(file))
-  .catch(reportError);
+if (desktop) void startDesktop(desktop).catch(reportError);
+
+/**
+ * 桌面版啟動：開始監看檔案變動、還原工作區、重新讀取分頁對應的檔案，
+ * 最後處理命令列帶入的檔案或資料夾。
+ */
+async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
+  await Promise.all([
+    d.onFileChanged(({ path }) => void onExternalChange(path).catch(reportError)),
+    d.onFileRemoved(({ path }) => {
+      const doc = tabForPath(path);
+      if (!doc || doc.missing) return;
+      doc.missing = true;
+      renderTabs();
+      toast(`「${doc.name}」已從磁碟刪除或移走。內容仍保留在分頁中，存檔會重新建立檔案。`, { duration: 8000 });
+    }),
+    d.onTreeChanged(({ dirs }) => {
+      fileListCache = null;
+      void fileTree?.refresh(dirs);
+      searchPanel?.rerun();
+    }),
+  ]);
+
+  const target = await d.startupTarget();
+  if (target?.kind === "folder") {
+    await setWorkspace(target);
+    showPanel("files");
+  } else {
+    const last = storage.load("workspace");
+    const folder = last ? await d.reopenFolder(last).catch(() => null) : null;
+    await setWorkspace(folder);
+  }
+
+  for (const doc of docs) {
+    const path = doc === active ? (fileHandle?.path ?? doc.path) : doc.path;
+    if (!path) continue;
+    try {
+      const file = fromDesktop(await d.reopenFile(path));
+      const draft = doc === active ? editor.text : (loadDraft(doc.id) ?? "");
+      const clean = hash(draft) === doc.baseline;
+      if (doc === active) fileHandle = file.handle;
+      doc.handle = file.handle;
+      if (clean && file.text !== draft) {
+        // 沒有未存檔的變更：直接採用磁碟上的最新內容。
+        saveDraft(doc.id, file.text);
+        doc.baseline = hash(file.text);
+        doc.state = null;
+        if (doc === active) {
+          editor.load(file.text, kind);
+          baseline = doc.baseline;
+          renderNow();
+        }
+      } else if (!clean && hash(file.text) !== doc.baseline) {
+        toast(`「${doc.name}」在上次關閉後被其他程式修改過，你也有未存檔的變更。`, {
+          duration: 12000,
+          action: { label: "比較差異", run: () => void compareDoc(doc).catch(reportError) },
+        });
+      }
+    } catch {
+      doc.missing = true;
+    }
+  }
+  persistSession();
+  renderTabs();
+  // 有了檔案路徑，預覽中的相對路徑圖片才能顯示。
+  preview.clear();
+  renderNow();
+
+  if (target?.kind === "file") openOpenedFile(fromDesktop(target));
+}
+
+/** 每個分頁上次提示「被其他程式修改」的時間。 */
+const changeNoticeAt = new Map<string, number>();
+
+/** 已開啟的檔案被其他程式（同步軟體、其他編輯器、AI 工具）改過。 */
+async function onExternalChange(path: string): Promise<void> {
+  const doc = tabForPath(path);
+  if (!doc || !desktop) return;
+  if (doc === active) stash();
+  if (doc.dirty) {
+    // 同步軟體常會連續寫入好幾次，提示一次就好。
+    const now = Date.now();
+    if (now - (changeNoticeAt.get(doc.id) ?? 0) < 15_000) return;
+    changeNoticeAt.set(doc.id, now);
+    toast(`「${doc.name}」被其他程式修改了，你也有未存檔的變更。`, {
+      duration: 12000,
+      action: { label: "比較差異", run: () => void compareDoc(doc).catch(reportError) },
+    });
+    return;
+  }
+  // 沒有未存檔的變更：直接重新載入。重新讀取也會更新原生端記錄的內容，之後存檔才不會誤判為衝突。
+  const file = await desktop.reopenFile(path);
+  saveDraft(doc.id, file.text);
+  doc.baseline = hash(file.text);
+  doc.missing = false;
+  if (doc === active) {
+    if (pendingDraft?.id === doc.id) pendingDraft = null;
+    baseline = doc.baseline;
+    if (file.text !== editor.text) {
+      editor.replaceAll(file.text);
+      toast(`「${doc.name}」已被其他程式更新，已重新載入。`, {
+        action: { label: "復原", run: () => void undo(editor.view) },
+      });
+    }
+  } else {
+    doc.state = null;
+    doc.dirty = false;
+    toast(`「${doc.name}」已被其他程式更新，已重新載入。`);
+  }
+  persistSession();
+  renderTabs();
+}
+
+/** 切換到分頁，重新讀取磁碟上的版本並逐段比較。 */
+async function compareDoc(doc: Doc): Promise<void> {
+  changeNoticeAt.delete(doc.id);
+  activate(doc);
+  const path = fileHandle?.path;
+  if (!path || !desktop) return;
+  compareWithDisk((await desktop.reopenFile(path)).text);
+}
+
+/**
+ * 把目前內容和磁碟上的版本逐段比較。呼叫前應已重新讀取檔案，
+ * 這樣比較完存檔時會直接覆寫，不會再跳出衝突提示。
+ */
+function compareWithDisk(diskText: string): void {
+  setBaseline(diskText, true);
+  renderSaveState();
+  const started = review.start(diskText, {
+    title: "與磁碟上的版本比較",
+    hint: "逐段選擇要採用哪個版本，處理完記得存檔。",
+    acceptLabel: "採用磁碟版本",
+    rejectLabel: "保留我的版本",
+  });
+  if (!started) toast("目前內容和磁碟上的版本相同。");
+}
+
+// 關閉視窗或重新整理前，把還沒寫入的草稿存起來。
+window.addEventListener("pagehide", flushDraft);
