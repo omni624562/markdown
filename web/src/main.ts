@@ -6,7 +6,8 @@ import type { EditorView } from "@codemirror/view";
 import init, { type Heading, type RenderResult, formatJson, kindFromFileName, renderDocument } from "../pkg/md_wasm.js";
 import { type Command, Commands, formatKeys } from "./commands.ts";
 import { Editor, cursorInfo } from "./editor.ts";
-import { type FileHandle, download, openFile, replaceExtension, saveFile, stem } from "./files.ts";
+import { desktop } from "./desktop.ts";
+import { type FileHandle, type OpenedFile, download, openFile, openInitialFile, replaceExtension, saveFile, stem } from "./files.ts";
 import { TABLE_TEMPLATE, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
 import { type DocKind, KINDS, isKind } from "./kinds.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
@@ -232,7 +233,11 @@ function renderSaveState(): void {
   const text = editor.text;
   const dirty = baseline !== hash(text);
   dirtyEl.hidden = !dirty;
-  document.title = `${dirty ? "● " : ""}${fileName} - Markdown 編輯器`;
+  const title = `${dirty ? "● " : ""}${fileName} - Markdown 編輯器`;
+  if (document.title !== title) {
+    document.title = title;
+    desktop?.setTitle(title).catch(console.error);
+  }
   status.save.dataset.state = dirty ? "dirty" : "saved";
   if (!dirty) status.save.textContent = fileBacked ? "已儲存" : "";
   else status.save.textContent = (fileBacked ? "尚未存檔" : "尚未存成檔案") + (draftSaved ? " · 草稿已自動保存" : "");
@@ -326,6 +331,13 @@ function openDocument(
   renderNow();
 }
 
+function openOpenedFile(file: OpenedFile): void {
+  openDocument(file.name, file.text, file.handle);
+  if (file.encoding === "big5") {
+    toast("這個檔案是 Big5 編碼，已轉換後顯示；存檔時會改存成 UTF-8。", { duration: 8000 });
+  }
+}
+
 async function save(saveAs: boolean): Promise<void> {
   const text = editor.text;
   const saved = await saveFile(text, fileName, kind, fileHandle, saveAs);
@@ -380,7 +392,7 @@ commands.register(
     keys: "Mod-o",
     async run() {
       const file = await openFile(fileInput);
-      if (file) openDocument(file.name, file.text, file.handle);
+      if (file) openOpenedFile(file);
     },
   },
   { id: "save", title: "儲存", group: "檔案", icon: "save", keys: "Mod-s", run: () => save(false) },
@@ -390,9 +402,10 @@ commands.register(
     title: "匯出成 HTML 檔",
     group: "檔案",
     icon: "download",
-    run() {
+    async run() {
       const html = renderDocument(editor.text, { kind, title: stem(fileName) });
-      download(replaceExtension(fileName, ".html"), html, "text/html");
+      const name = replaceExtension(fileName, ".html");
+      if ((await download(name, html, "text/html")) && desktop) toast(`已匯出「${name}」`, { tone: "success" });
     },
   },
   {
@@ -737,3 +750,8 @@ if (narrowQuery.matches) outlineShown = false;
 applyLayout();
 renderNow();
 updateCursor(editor.view);
+
+// 桌面版：開啟從命令列帶入的檔案（例如把 .md 拖到 exe 上）。
+openInitialFile()
+  .then((file) => file && openOpenedFile(file))
+  .catch(reportError);

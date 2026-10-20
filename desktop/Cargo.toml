@@ -1,0 +1,30 @@
+[package]
+name = "md-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Markdown 編輯器桌面版（Tauri）"
+
+[[bin]]
+name = "md-editor"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.4", features = [] }
+rfd = "0.17.2"
+serde = { version = "1", features = ["derive"] }
+encoding_rs = "0.8"
+
+[features]
+# 預設把前端打包進執行檔；開發時用 `cargo run --no-default-features` 改連 Vite 開發伺服器。
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
+strip = true

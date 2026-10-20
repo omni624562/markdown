@@ -1,0 +1,4 @@
+# 一律以 LF 換行存放，避免 Windows 上的 CI 取出 CRLF 檔案。
+* text=auto eol=lf
+*.png binary
+*.ico binary

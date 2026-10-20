@@ -44,6 +44,26 @@
 | 顯示／隱藏大綱 | `Ctrl+Shift+O` | `⌘⇧O` |
 | 搜尋與取代 | `Ctrl+F` | `⌘F` |
 
+## 桌面版（Windows 免安裝）
+
+到 GitHub 的 **Actions → Desktop** 打開最新一次執行，在頁面下方的 **Artifacts** 下載 `md-editor-windows-x64`，解壓縮後直接執行 `md-editor.exe`，不需要安裝。
+推送 `v` 開頭的標籤（例如 `v0.1.0`）時，也會自動建立 Release 並附上執行檔。
+
+- 介面和網頁版相同，開檔、存檔改用 Windows 原生對話框，`Ctrl+S` 會直接寫回原檔
+- 可以把 `.md`／`.txt`／`.json` 檔拖到 `md-editor.exe` 上開啟，或在「開啟檔案」中設定成預設程式
+- 原本是 CRLF 換行或有 BOM 的檔案，存檔時會維持原樣；不是 UTF-8 的舊檔案會以 Big5 讀取（存檔時改存 UTF-8，開啟時會提示）
+- 需要 Microsoft Edge WebView2 執行階段：Windows 10／11 已內建；若是精簡版系統，可到微軟官網下載安裝
+- 草稿與設定存在 `%LOCALAPPDATA%\io.github.omni624562.markdown`
+
+自己編譯（需要 Windows 與上面「開發」段落的工具）：
+
+```sh
+cd web && npm install && npm run wasm && npm run build
+cd ../desktop && cargo build --release   # 產生 desktop/target/release/md-editor.exe
+```
+
+開發時可先在 `web/` 執行 `npm run dev`，再於 `desktop/` 執行 `cargo run --no-default-features`，桌面視窗會直接連到開發伺服器、即時更新。
+
 ## 架構
 
 ```
@@ -51,6 +71,7 @@ crates/
   md-core/   Rust 核心：Markdown（comrak）、純文字、JSON（serde_json）轉 HTML，擷取大綱、字數統計
   md-wasm/   md-core 的 WebAssembly 綁定（wasm-bindgen），回傳一般的 JS 物件
   md-cli/    命令列工具 mdtool，跟網頁共用同一個核心
+desktop/     桌面版（Tauri 2）：沿用網頁介面，補上原生開檔／存檔對話框
 web/
   src/main.ts        組裝各個模組
   src/commands.ts    指令中心：工具列、選單、指令面板、快速鍵共用同一份指令清單

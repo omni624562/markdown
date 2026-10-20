@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主視窗的基本權限（檔案讀寫透過本程式自訂的指令，不開放一般檔案系統存取）",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
