@@ -35,10 +35,17 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "toki
 tokio = { version = "1", features = ["net", "sync", "time", "process", "io-util", "rt"] }
 schemars = "1.2.3"
 getrandom = "0.4.3"
+# WebDAV 遠端工作區
+keyring-core = "1.0.1"
+quick-xml = "0.42.0"
 # 自動更新
 ureq = { version = "3.4.2", default-features = false, features = ["rustls", "platform-verifier", "win-system-proxy"] }
 sha2 = "0.11.1"
 self-replace = "1.5.0"
+
+# Windows 認證管理員（WebDAV 密碼）。其他平台不保存密碼，只在這次開啟期間記在記憶體裡。
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1.1.0"
 
 [features]
 # 預設把前端打包進執行檔；開發時用 `cargo run --no-default-features` 改連 Vite 開發伺服器。
@@ -50,3 +57,6 @@ lto = true
 opt-level = "s"
 codegen-units = 1
 strip = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

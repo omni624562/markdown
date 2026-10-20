@@ -11,8 +11,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai;
+mod dav;
 mod files;
+mod git;
+mod history;
 mod images;
+mod io;
 mod settings;
 mod trust;
 mod update;
@@ -52,9 +56,8 @@ enum StartupTarget {
 
 /// 例如把 .md 檔或資料夾拖到 exe 上、或設定成預設開啟程式時，命令列會帶入路徑。
 #[tauri::command]
-fn startup_target(
+async fn startup_target(
     app: AppHandle,
-    known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
 ) -> Result<Option<StartupTarget>, String> {
     let Some(arg) = std::env::args_os()
@@ -64,15 +67,37 @@ fn startup_target(
         return Ok(None);
     };
     let path = PathBuf::from(arg);
-    let path = dunce::canonicalize(&path).unwrap_or(path);
-    if path.is_dir() {
+    let p = path.clone();
+    let (path, is_dir) = io::blocking(move || {
+        let p = dunce::canonicalize(&p).unwrap_or(p);
+        let is_dir = p.is_dir();
+        Ok((p, is_dir))
+    })
+    .await?;
+    if is_dir {
         return Ok(Some(StartupTarget::Folder(
             workspace::open_folder_from_cli(&app, path),
         )));
     }
-    let opened = files::read_file(&app, path.clone(), &known)?;
+    let opened = files::read_in_background(&app, path.clone()).await?;
     trust.add_file(&app, &path);
     Ok(Some(StartupTarget::File(opened)))
+}
+
+/// 檢查檔案所在的資料夾現在連得到嗎（網路磁碟斷線後，前端定時呼叫來偵測恢復）。
+#[tauri::command]
+async fn probe_path(path: String, known: State<'_, KnownFiles>) -> Result<bool, String> {
+    let path = PathBuf::from(path);
+    // 只回答已開啟過的檔案，避免變成任意路徑的探測工具。
+    if !known.contains(&path) {
+        return Ok(false);
+    }
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or(path);
+    Ok(
+        io::blocking_for(std::time::Duration::from_secs(5), move || Ok(dir.is_dir()))
+            .await
+            .unwrap_or(false),
+    )
 }
 
 #[tauri::command]
@@ -88,12 +113,14 @@ fn main() {
         .manage(ai::term::Terminals::default())
         .manage(ai::mcp::Mcp::default())
         .manage(ai::run::Runs::default())
+        .manage(dav::Dav::default())
         .setup(|app| {
             app.manage(Trust::load(app.handle()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             startup_target,
+            probe_path,
             set_title,
             files::open_file,
             files::reopen_file,
@@ -112,6 +139,27 @@ fn main() {
             workspace::reveal_entry,
             workspace::search,
             images::save_image,
+            history::history_list,
+            dav::dav_connections,
+            dav::dav_connect,
+            dav::dav_reconnect,
+            dav::dav_disconnect,
+            dav::dav_forget,
+            dav::dav_list,
+            dav::dav_list_files,
+            dav::dav_read,
+            dav::dav_write,
+            dav::dav_create,
+            dav::dav_rename,
+            dav::dav_delete,
+            dav::dav_save_image,
+            dav::dav_image,
+            dav::dav_probe,
+            git::git_status,
+            git::git_commit,
+            git::git_pull,
+            git::git_push,
+            history::history_read,
             ai::tools::ai_tools,
             ai::term::term_open,
             ai::term::term_write,

@@ -24,19 +24,8 @@ pub fn unique_name(dir: &Path, stem: &str, stamp: &str, ext: &str) -> PathBuf {
     candidate
 }
 
-/// 把圖片存到 `doc_path` 旁的 `assets/`，回傳相對路徑（以 `/` 分隔，可直接放進 Markdown）。
-#[tauri::command]
-pub fn save_image(
-    doc_path: String,
-    data_base64: String,
-    ext: String,
-    known: State<'_, KnownFiles>,
-) -> Result<String, String> {
-    let doc = PathBuf::from(&doc_path);
-    // 只允許存在已開啟的文件旁邊。
-    if !known.contains(&doc) {
-        return Err("請先存檔，圖片會存在文件旁的 assets 資料夾".into());
-    }
+/// 檢查圖片格式與大小，解出位元組（本機與 WebDAV 共用）。
+pub fn decode_image(data_base64: &str, ext: &str) -> Result<Vec<u8>, String> {
     let ext = ext.trim_start_matches('.').to_ascii_lowercase();
     if !ALLOWED.contains(&ext.as_str()) {
         return Err(format!("不支援的圖片格式：{ext}"));
@@ -47,17 +36,38 @@ pub fn save_image(
     if bytes.len() > MAX_BYTES {
         return Err("圖片超過 30 MB".into());
     }
-    let dir = doc.parent().ok_or("路徑無效")?.join("assets");
-    fs::create_dir_all(&dir).map_err(|e| format!("無法建立 assets 資料夾：{e}"))?;
-    let stem = doc
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "image".into());
-    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    let target = unique_name(&dir, &stem, &stamp, &ext);
-    fs::write(&target, &bytes).map_err(|e| format!("無法儲存圖片：{e}"))?;
-    let name = target.file_name().unwrap().to_string_lossy();
-    Ok(format!("assets/{name}"))
+    Ok(bytes)
+}
+
+/// 把圖片存到 `doc_path` 旁的 `assets/`，回傳相對路徑（以 `/` 分隔，可直接放進 Markdown）。
+#[tauri::command]
+pub async fn save_image(
+    doc_path: String,
+    data_base64: String,
+    ext: String,
+    known: State<'_, KnownFiles>,
+) -> Result<String, String> {
+    let doc = PathBuf::from(&doc_path);
+    // 只允許存在已開啟的文件旁邊。
+    if !known.contains(&doc) {
+        return Err("請先存檔，圖片會存在文件旁的 assets 資料夾".into());
+    }
+    let bytes = decode_image(&data_base64, &ext)?;
+    let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+    crate::io::blocking(move || {
+        let dir = doc.parent().ok_or("路徑無效")?.join("assets");
+        fs::create_dir_all(&dir).map_err(|e| crate::io::describe(&e, "無法建立 assets 資料夾"))?;
+        let stem = doc
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "image".into());
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let target = unique_name(&dir, &stem, &stamp, &ext);
+        fs::write(&target, &bytes).map_err(|e| crate::io::describe(&e, "無法儲存圖片"))?;
+        let name = target.file_name().unwrap().to_string_lossy();
+        Ok(format!("assets/{name}"))
+    })
+    .await
 }
 
 #[cfg(test)]

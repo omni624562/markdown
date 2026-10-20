@@ -940,3 +940,87 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .quick-action :disabled { opacity: 0.55; }
 .settings-row :disabled, .settings .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .update-state { color: var(--accent); }
+
+/* ---- 網路磁碟斷線提示 ---- */
+.offline-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+}
+.offline-bar[hidden] { display: none; }
+.offline-bar p { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin: 0; }
+.offline-bar p span { color: var(--muted); font-size: 12px; }
+.offline-bar .icon { color: var(--danger); }
+.offline-bar.back { border-bottom-color: color-mix(in srgb, var(--success) 40%, transparent); background: color-mix(in srgb, var(--success) 10%, var(--bg)); }
+.offline-bar.back .icon { color: var(--success); }
+.offline-bar .btn { border-color: var(--border-strong); background: var(--bg); }
+
+/* ---- Git ---- */
+.git-bar { display: flex; gap: 4px; align-items: center; margin: 0 0 6px 4px; color: var(--muted); font-size: 12px; }
+.git-bar[hidden] { display: none; }
+.git-info { display: flex; flex: 1; gap: 4px; align-items: center; min-width: 0; overflow: hidden; color: var(--fg); white-space: nowrap; }
+.git-info .icon { width: 14px; height: 14px; color: var(--muted); }
+.git-info small { color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; }
+.git-count { flex: none; }
+.git-bar .btn { width: 26px; height: 26px; color: var(--muted); }
+.git-bar .btn .icon { width: 15px; height: 15px; }
+.tree-row > span:not(.git-badge) { flex: 1; }
+.git-badge { flex: none; margin-left: 4px; font: 600 11px var(--font-mono); }
+.tree-row[data-git="M"] > span:not(.git-badge), .tree-row[data-git="M"] .git-badge { color: #b08800; }
+.tree-row[data-git="U"] > span:not(.git-badge), .tree-row[data-git="U"] .git-badge,
+.tree-row[data-git="A"] > span:not(.git-badge), .tree-row[data-git="A"] .git-badge { color: var(--success); }
+.tree-row[data-git="!"] > span:not(.git-badge), .tree-row[data-git="!"] .git-badge,
+.tree-row[data-git="D"] .git-badge { color: var(--danger); }
+.tree-row[data-git="•"] .git-badge { color: var(--muted); }
+:root[data-theme="dark"] .tree-row[data-git="M"] > span:not(.git-badge), :root[data-theme="dark"] .tree-row[data-git="M"] .git-badge { color: #d29922; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tree-row[data-git="M"] > span:not(.git-badge),
+  :root:not([data-theme="light"]) .tree-row[data-git="M"] .git-badge { color: #d29922; }
+}
+.git-dialog label { display: block; margin-bottom: 4px; font-weight: 600; font-size: 13px; }
+.git-dialog textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+.git-files { max-height: 180px; margin: 10px 0 16px; padding: 0; overflow: auto; list-style: none; font-size: 12.5px; color: var(--muted); }
+.git-files li { display: flex; gap: 8px; padding: 2px 0; }
+.git-files b { width: 1em; font-family: var(--font-mono); text-align: center; }
+.git-files li[data-status="modified"] b { color: #b08800; }
+.git-files li[data-status="untracked"] b, .git-files li[data-status="added"] b { color: var(--success); }
+.git-files li[data-status="deleted"] b, .git-files li[data-status="conflicted"] b { color: var(--danger); }
+
+/* ---- WebDAV ---- */
+.side-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.recent-list li { display: flex; align-items: center; }
+.recent-list li > button:first-child { flex: 1; min-width: 0; }
+.recent-list .recent-forget { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
+.recent-list li:hover .recent-forget, .recent-list .recent-forget:focus-visible { opacity: 1; }
+.recent-list .recent-forget:hover { background: var(--active-line); color: var(--fg); }
+.recent-list .recent-forget .icon { width: 14px; height: 14px; }
+.dav-dialog label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.dav-dialog input:not([type="checkbox"]) {
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-weight: 400;
+}
+.dav-dialog input:read-only { color: var(--muted); }
+.dav-dialog .dav-remember { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
+.dav-hint { font-size: 12.5px; }
+.dav-error { margin: 0 0 12px !important; color: var(--danger) !important; font-size: 13px; }

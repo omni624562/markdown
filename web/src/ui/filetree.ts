@@ -1,7 +1,7 @@
 /**
  * 工作區的檔案樹：延遲載入子資料夾、鍵盤操作（WAI-ARIA tree 模式）、右鍵選單、原地改名。
  */
-import type { Entry } from "../desktop.ts";
+import { displayPath, type Entry } from "../desktop.ts";
 import { dirname, isInside } from "../paths.ts";
 import { icon } from "./icons.ts";
 
@@ -29,6 +29,9 @@ export class FileTree {
   #expanded = new Set<string>();
   #active: string | null = null;
   #menu: HTMLElement;
+  /** Git 狀態：檔案路徑 → 標記（M、U、A、D、R、!），以及含有變更的資料夾。 */
+  #status = new Map<string, string>();
+  #changedDirs = new Set<string>();
 
   constructor(el: HTMLElement, handlers: FileTreeHandlers) {
     this.#el = el;
@@ -74,6 +77,37 @@ export class FileTree {
       else if (dir === this.#root.path) await this.#renderAll();
     }
     this.#markActive();
+  }
+
+  /** 顯示 Git 狀態標記。`status` 的鍵是檔案路徑，值是一個字母（M、U、A、D、R、!）。 */
+  setStatus(status: Map<string, string>): void {
+    this.#status = status;
+    this.#changedDirs = new Set();
+    for (const path of status.keys()) {
+      for (let dir = dirname(path); dir && dir !== dirname(dir); dir = dirname(dir)) {
+        if (this.#changedDirs.has(dir)) break;
+        this.#changedDirs.add(dir);
+      }
+    }
+    for (const row of this.#el.querySelectorAll<HTMLElement>(".tree-row")) this.#decorate(row);
+  }
+
+  #decorate(row: HTMLElement): void {
+    const path = row.dataset.path!;
+    const mark = row.dataset.dir === "1" ? (this.#changedDirs.has(path) ? "•" : "") : (this.#status.get(path) ?? "");
+    let badge = row.querySelector<HTMLElement>(".git-badge");
+    if (!mark) {
+      badge?.remove();
+      row.removeAttribute("data-git");
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "git-badge";
+      row.append(badge);
+    }
+    badge.textContent = mark;
+    row.dataset.git = mark;
   }
 
   /** 標示目前開啟的檔案，並展開它所在的資料夾。 */
@@ -205,7 +239,7 @@ export class FileTree {
     row.tabIndex = -1;
     row.dataset.path = entry.path;
     row.dataset.dir = entry.isDir ? "1" : "";
-    row.title = entry.path;
+    row.title = displayPath(entry.path);
     row.style.setProperty("--level", String(level));
     if (entry.isDir) {
       row.setAttribute("aria-expanded", String(this.#expanded.has(entry.path)));
@@ -216,6 +250,7 @@ export class FileTree {
     const name = document.createElement("span");
     name.textContent = entry.name;
     row.append(name);
+    this.#decorate(row);
     row.addEventListener("click", () => {
       this.#focus(row);
       if (entry.isDir) void this.#toggle(row, entry);
@@ -251,7 +286,7 @@ export class FileTree {
   }
 
   #entryOf(row: HTMLElement): Entry {
-    return { path: row.dataset.path!, name: row.querySelector("span")!.textContent!, isDir: row.dataset.dir === "1" };
+    return { path: row.dataset.path!, name: row.querySelector("span:not(.git-badge)")!.textContent!, isDir: row.dataset.dir === "1" };
   }
 
   #focus(row: HTMLElement): void {
