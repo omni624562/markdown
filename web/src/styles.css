@@ -1,0 +1,219 @@
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --fg: #1f2328;
+  --muted: #6e7781;
+  --border: #d1d9e0;
+  --accent: #0969da;
+  --accent-fg: #ffffff;
+  --active-line: rgba(9, 105, 218, 0.06);
+  --selection: rgba(9, 105, 218, 0.2);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "PingFang TC",
+    "Microsoft JhengHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --syn-heading: #0550ae;
+  --syn-link: #0969da;
+  --syn-code: #953800;
+  --syn-meta: #6e7781;
+  --syn-keyword: #cf222e;
+  --syn-string: #0a3069;
+  --syn-number: #0550ae;
+  --syn-comment: #6e7781;
+  --syn-function: #8250df;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --surface: #151b23;
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --border: #3d444d;
+    --accent: #4493f8;
+    --accent-fg: #0d1117;
+    --active-line: rgba(68, 147, 248, 0.08);
+    --selection: rgba(68, 147, 248, 0.3);
+    --syn-heading: #79c0ff;
+    --syn-link: #4493f8;
+    --syn-code: #ffa657;
+    --syn-meta: #8b949e;
+    --syn-keyword: #ff7b72;
+    --syn-string: #a5d6ff;
+    --syn-number: #79c0ff;
+    --syn-comment: #8b949e;
+    --syn-function: #d2a8ff;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --surface: #151b23;
+  --fg: #e6edf3;
+  --muted: #8b949e;
+  --border: #3d444d;
+  --accent: #4493f8;
+  --accent-fg: #0d1117;
+  --active-line: rgba(68, 147, 248, 0.08);
+  --selection: rgba(68, 147, 248, 0.3);
+  --syn-heading: #79c0ff;
+  --syn-link: #4493f8;
+  --syn-code: #ffa657;
+  --syn-meta: #8b949e;
+  --syn-keyword: #ff7b72;
+  --syn-string: #a5d6ff;
+  --syn-number: #79c0ff;
+  --syn-comment: #8b949e;
+  --syn-function: #d2a8ff;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+/* ---- 工具列 ---- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.brand { font-weight: 700; margin-right: auto; }
+.group { display: flex; flex-wrap: wrap; gap: 4px; }
+.toolbar button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.toolbar button:hover { border-color: var(--accent); }
+.toolbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.toolbar button[aria-checked="true"],
+.toolbar button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* ---- 工作區 ---- */
+.workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "outline editor preview";
+  min-height: 0;
+}
+.workspace.no-outline { grid-template-columns: 0 minmax(0, 1fr) minmax(0, 1fr); }
+.workspace[data-view="editor"] { grid-template-columns: 220px minmax(0, 1fr) 0; }
+.workspace[data-view="preview"] { grid-template-columns: 220px 0 minmax(0, 1fr); }
+.workspace.no-outline[data-view="editor"] { grid-template-columns: 0 minmax(0, 1fr) 0; }
+.workspace.no-outline[data-view="preview"] { grid-template-columns: 0 0 minmax(0, 1fr); }
+.workspace[data-view="editor"] .preview-pane,
+.workspace[data-view="preview"] .editor-pane,
+.workspace.no-outline .outline { display: none; }
+
+.pane { min-height: 0; overflow: auto; }
+.editor-pane { grid-area: editor; overflow: hidden; border-right: 1px solid var(--border); }
+.workspace[data-view="editor"] .editor-pane { border-right: none; }
+.preview-pane { grid-area: preview; position: relative; background: var(--md-bg); }
+
+.outline {
+  grid-area: outline;
+  overflow: auto;
+  padding: 12px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+.outline h2 {
+  margin: 0 8px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.outline ol { margin: 0; padding: 0; list-style: none; }
+.outline a {
+  display: block;
+  overflow: hidden;
+  padding: 3px 8px 3px calc(8px + (var(--level) - 1) * 12px);
+  border-radius: 4px;
+  color: var(--fg);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outline a:hover { background: var(--active-line); color: var(--accent); }
+.outline ol:empty::after { content: "（沒有標題）"; display: block; padding: 0 8px; color: var(--muted); }
+
+/* ---- 狀態列 ---- */
+.statusbar {
+  display: flex;
+  gap: 16px;
+  padding: 4px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+#status-saved { margin-left: auto; }
+
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border: 3px dashed var(--accent);
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.drop-overlay[hidden] { display: none; }
+
+/* ---- highlight.js 色彩（沿用編輯器的語法色） ---- */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-meta .hljs-keyword { color: var(--syn-keyword); }
+.hljs-string, .hljs-regexp, .hljs-attr .hljs-string, .hljs-template-string { color: var(--syn-string); }
+.hljs-number, .hljs-literal, .hljs-variable.constant_, .hljs-attr { color: var(--syn-number); }
+.hljs-comment, .hljs-quote { color: var(--syn-comment); font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-title.class_, .hljs-type { color: var(--syn-function); }
+.hljs-meta, .hljs-symbol { color: var(--syn-code); }
+
+/* ---- 窄螢幕 ---- */
+@media (max-width: 960px) {
+  .workspace, .workspace.no-outline { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "editor preview"; }
+  .workspace[data-view="editor"], .workspace.no-outline[data-view="editor"] { grid-template-columns: minmax(0, 1fr) 0; }
+  .workspace[data-view="preview"], .workspace.no-outline[data-view="preview"] { grid-template-columns: 0 minmax(0, 1fr); }
+  .outline, [data-action="toggle-outline"] { display: none; }
+}
+@media (max-width: 640px) {
+  .brand { display: none; }
+  .toolbar { gap: 6px 8px; padding: 6px 8px; }
+  .toolbar button { padding: 4px 8px; }
+  .workspace[data-view="split"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "editor" "preview";
+  }
+  .workspace[data-view="split"] .editor-pane { border-right: none; border-bottom: 1px solid var(--border); }
+  .markdown-body { padding: 16px; }
+}

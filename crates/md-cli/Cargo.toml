@@ -1,0 +1,13 @@
+[package]
+name = "md-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mdtool"
+path = "src/main.rs"
+
+[dependencies]
+md-core = { path = "../md-core" }
+clap = { version = "4.6", features = ["derive"] }

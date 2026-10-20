@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Markdown 編輯器</title>
+  </head>
+  <body>
+    <header class="toolbar">
+      <span class="brand">Markdown 編輯器</span>
+      <div class="group">
+        <button type="button" data-action="new" title="新文件">新增</button>
+        <button type="button" data-action="open" title="開啟 .md 檔（也可以直接拖曳檔案進來）">開啟</button>
+        <button type="button" data-action="save" title="下載 Markdown（Ctrl+S）">儲存 .md</button>
+        <button type="button" data-action="export" title="匯出成獨立的 HTML 檔">匯出 HTML</button>
+        <button type="button" data-action="copy-html" title="複製渲染後的 HTML">複製 HTML</button>
+      </div>
+      <div class="group" role="radiogroup" aria-label="檢視模式">
+        <button type="button" data-view="editor" role="radio">編輯</button>
+        <button type="button" data-view="split" role="radio">分割</button>
+        <button type="button" data-view="preview" role="radio">預覽</button>
+      </div>
+      <div class="group">
+        <button type="button" data-action="toggle-outline" aria-pressed="true">大綱</button>
+        <button type="button" data-action="toggle-theme" title="切換深色／淺色模式">主題</button>
+      </div>
+      <input type="file" id="file-input" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden />
+    </header>
+
+    <main class="workspace" data-view="split">
+      <nav class="outline" aria-label="文件大綱">
+        <h2>大綱</h2>
+        <ol id="outline-list"></ol>
+      </nav>
+      <section class="pane editor-pane" id="editor" aria-label="Markdown 原始碼"></section>
+      <section class="pane preview-pane" id="preview-scroller" aria-label="預覽">
+        <article class="markdown-body" id="preview"></article>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status-file">未命名.md</span>
+      <span id="status-stats"></span>
+      <span id="status-saved" aria-live="polite"></span>
+    </footer>
+
+    <div class="drop-overlay" hidden>放開以開啟檔案</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
