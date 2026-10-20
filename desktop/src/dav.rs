@@ -1064,6 +1064,22 @@ pub async fn dav_save_image(
     .await
 }
 
+/// 自動完成連結時讀取另一份遠端文件的標題用：不記錄 ETag，不會被當成已開啟的檔案監看。
+#[tauri::command]
+pub async fn dav_peek(path: String, dav: State<'_, Dav>) -> Result<String, String> {
+    let (session, rel) = dav.resolve(&path)?;
+    if !is_doc(std::path::Path::new(&rel)) {
+        return Err("只能讀取文件".into());
+    }
+    let (bytes, _) =
+        crate::io::blocking(move || session.client.get(&rel).map_err(|e| e.message("無法讀取")))
+            .await?;
+    if bytes.len() as u64 > crate::workspace::PEEK_LIMIT {
+        return Err("檔案太大".into());
+    }
+    Ok(decode(&bytes).0)
+}
+
 /// 讀取遠端的圖片（給預覽顯示），回傳 data: 網址。
 #[tauri::command]
 pub async fn dav_image(path: String, dav: State<'_, Dav>) -> Result<String, String> {

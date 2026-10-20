@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { basename, dirname, isInside, localImagePath, markdownUrl, rebase, resolvePath } from "./paths.ts";
+import { basename, dirname, isInside, localImagePath, markdownUrl, rebase, relativePath, resolvePath } from "./paths.ts";
 
 test("dirname 與 basename 接受兩種分隔符號", () => {
   assert.equal(dirname("C:\\筆記\\週報.md"), "C:\\筆記");
@@ -45,4 +45,13 @@ test("localImagePath 只處理本機相對路徑", () => {
 test("markdownUrl 在需要時加上角括號", () => {
   assert.equal(markdownUrl("assets/週報-20261020.png"), "assets/週報-20261020.png");
   assert.equal(markdownUrl("assets/my note (1).png"), "<assets/my note (1).png>");
+});
+
+test("relativePath 產生 Markdown 連結用的相對路徑", () => {
+  assert.equal(relativePath("/ws/筆記", "/ws/筆記/週報.md"), "週報.md");
+  assert.equal(relativePath("/ws/筆記", "/ws/待辦.md"), "../待辦.md");
+  assert.equal(relativePath("/ws", "/ws/筆記/深入/a.md"), "筆記/深入/a.md");
+  assert.equal(relativePath("C:\\Notes\\週報", "c:\\notes\\會議\\a.md"), "../會議/a.md");
+  assert.equal(relativePath("C:\\Notes", "D:\\a.md"), null);
+  assert.equal(relativePath("webdav://abc/筆記", "webdav://abc/日記/今天.md"), "../日記/今天.md");
 });

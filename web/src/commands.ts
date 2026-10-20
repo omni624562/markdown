@@ -18,11 +18,17 @@ export interface Command {
 
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
+/** 用 `-` 分隔的快速鍵寫法裡，`=` 和 `-` 鍵改用名稱表示。 */
+const NAMED_KEYS: Record<string, { label: string; codes: string[] }> = {
+  Equal: { label: "=", codes: ["Equal", "NumpadAdd"] },
+  Minus: { label: "-", codes: ["Minus", "NumpadSubtract"] },
+};
+
 /** 把 `Mod-Shift-p` 轉成 `⌘⇧P` 或 `Ctrl+Shift+P`。 */
 export function formatKeys(keys: string, mac = isMac): string {
   const parts = keys.split("-");
   const key = parts.pop()!;
-  const label = key.length === 1 ? key.toUpperCase() : key;
+  const label = NAMED_KEYS[key]?.label ?? (key.length === 1 ? key.toUpperCase() : key);
   if (mac) {
     const sym: Record<string, string> = { Mod: "⌘", Ctrl: "⌃", Shift: "⇧", Alt: "⌥" };
     return parts.map((p) => sym[p] ?? p).join("") + label;
@@ -56,6 +62,7 @@ export function matchKeys(keys: string, e: KeyLike, mac = isMac): boolean {
   if (e.ctrlKey !== want.ctrl || e.metaKey !== want.meta || e.shiftKey !== want.shift || e.altKey !== want.alt) {
     return false;
   }
+  if (NAMED_KEYS[key]) return NAMED_KEYS[key].codes.includes(e.code);
   if (/^[a-z]$/i.test(key)) return e.code === `Key${key.toUpperCase()}`;
   if (/^\d$/.test(key)) return e.code === `Digit${key}`;
   return e.key === key;

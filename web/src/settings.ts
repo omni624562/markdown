@@ -22,6 +22,12 @@ export interface Settings {
   autoPairBrackets: boolean;
   /** 在表格中按 Tab 時自動對齊整個表格。 */
   tableAutoFormat: boolean;
+  /** 從網頁、Google 文件、Word 貼上時轉成 Markdown（Ctrl+Shift+V 一律貼純文字）。 */
+  smartPaste: boolean;
+  /** 專注模式：淡化目前段落以外的文字。 */
+  focusMode: boolean;
+  /** 打字機模式：游標所在行保持在畫面中央。 */
+  typewriterMode: boolean;
   /** 預覽與匯出的文字欄寬。 */
   previewWidth: "narrow" | "medium" | "wide";
   /** 用 KaTeX 顯示 `$…$` 數學公式。 */
@@ -60,6 +66,9 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   lineNumbers: true,
   autoPairBrackets: true,
   tableAutoFormat: true,
+  smartPaste: true,
+  focusMode: false,
+  typewriterMode: false,
   previewWidth: "medium",
   math: true,
   mermaid: true,
@@ -91,6 +100,9 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("lineNumbers");
   bool("autoPairBrackets");
   bool("tableAutoFormat");
+  bool("smartPaste");
+  bool("focusMode");
+  bool("typewriterMode");
   bool("math");
   bool("mermaid");
   bool("aiEnabled");

@@ -49,6 +49,23 @@ export function resolvePath(dir: string, relative: string): string {
   return parts.length === 1 ? joined + sep : joined;
 }
 
+/**
+ * 從資料夾 `fromDir` 到檔案 `to` 的相對路徑，一律用 `/` 分隔（Markdown 連結用）。
+ * Windows 路徑不分大小寫；不在同一個磁碟機時回傳 null。
+ */
+export function relativePath(fromDir: string, to: string): string | null {
+  const windows = /^[a-zA-Z]:|^\\\\/.test(fromDir) || fromDir.includes("\\");
+  const split = (p: string) => p.split(/[\\/]/).filter((seg, i) => seg !== "" || i === 0);
+  const a = split(fromDir);
+  const b = split(to);
+  const same = (x: string, y: string) => (windows ? x.toLowerCase() === y.toLowerCase() : x === y);
+  if (!a.length || !b.length || !same(a[0], b[0])) return null;
+  let common = 0;
+  while (common < a.length && common < b.length - 1 && same(a[common], b[common])) common++;
+  const up = a.length - common;
+  return [...Array<string>(up).fill(".."), ...b.slice(common)].join("/");
+}
+
 /** 本機絕對路徑（`C:\…`、`\\nas\…`、`/home/…`）。 */
 export function isAbsolutePath(path: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("\\\\") || path.startsWith("/");

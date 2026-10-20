@@ -1,4 +1,4 @@
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
 import { json } from "@codemirror/lang-json";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
@@ -20,6 +20,8 @@ import type { SourceError } from "../pkg/md_wasm.js";
 import { bracketPairing } from "./brackets.ts";
 import type { DocKind } from "./kinds.ts";
 import { type Formatter, newRow, nextCell, previousCell } from "./table.ts";
+import { cjkWords } from "./words.ts";
+import { focusMode, typewriterMode } from "./writing-modes.ts";
 
 /** 顏色全部走 CSS 變數，深淺色主題只要在 styles.css 切換變數即可。 */
 const syntaxColors = HighlightStyle.define([
@@ -69,6 +71,10 @@ export interface EditorOptions {
   autoPairBrackets: boolean;
   /** 表格排版器；不需要自動對齊時傳入原樣回傳的函式。 */
   formatTable: Formatter;
+  /** 專注模式：淡化目前段落以外的文字。 */
+  focusMode?: boolean;
+  /** 打字機模式：游標所在行保持在畫面中央。 */
+  typewriterMode?: boolean;
   /** 其他擴充（例如差異檢視）。 */
   extra?: Extension[];
 }
@@ -91,6 +97,7 @@ export class Editor {
   readonly view: EditorView;
   #language = new Compartment();
   #gutter = new Compartment();
+  #writing = new Compartment();
   #extensions: Extension[];
   #handlers: EditorHandlers;
   #kind: DocKind;
@@ -102,6 +109,7 @@ export class Editor {
     this.#options = options;
     this.#extensions = [
       this.#gutter.of(this.#gutterFor(options)),
+      this.#writing.of(this.#writingFor(options)),
       history(),
       drawSelection(),
       indentOnInput(),
@@ -110,6 +118,7 @@ export class Editor {
       highlightSelectionMatches(),
       EditorView.lineWrapping,
       EditorView.contentAttributes.of({ "aria-label": "文件內容", spellcheck: "false" }),
+      cjkWords(),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
       syntaxHighlighting(syntaxColors),
       theme,
@@ -149,6 +158,10 @@ export class Editor {
     return options.lineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : [];
   }
 
+  #writingFor(options: EditorOptions): Extension {
+    return [options.focusMode ? focusMode() : [], options.typewriterMode ? typewriterMode() : []];
+  }
+
   #languageFor(kind: DocKind): Extension {
     const common = placeholder(PLACEHOLDER[kind]);
     const brackets = this.#options.autoPairBrackets ? bracketPairing() : [];
@@ -183,6 +196,7 @@ export class Editor {
     this.view.dispatch({
       effects: [
         this.#gutter.reconfigure(this.#gutterFor(this.#options)),
+        this.#writing.reconfigure(this.#writingFor(this.#options)),
         this.#language.reconfigure(this.#languageFor(this.#kind)),
       ],
     });
@@ -216,6 +230,7 @@ export class Editor {
     this.view.dispatch({
       effects: [
         this.#gutter.reconfigure(this.#gutterFor(this.#options)),
+        this.#writing.reconfigure(this.#writingFor(this.#options)),
         this.#language.reconfigure(this.#languageFor(kind)),
       ],
     });
@@ -235,6 +250,7 @@ export class Editor {
     this.view.dispatch({
       effects: [
         this.#gutter.reconfigure(this.#gutterFor(this.#options)),
+        this.#writing.reconfigure(this.#writingFor(this.#options)),
         this.#language.reconfigure(this.#languageFor(kind)),
       ],
     });
@@ -254,8 +270,11 @@ export class Editor {
     this.view.focus();
   }
 
-  /** 換掉整份內容（可復原）。只替換有差異的中間段落，游標和捲動位置才不會跳走。 */
-  replaceAll(text: string): void {
+  /**
+   * 換掉整份內容（可復原）。只替換有差異的中間段落，游標和捲動位置才不會跳走。
+   * `isolate` 為 true 時自成一個復原步驟，不會和前後的輸入合併。
+   */
+  replaceAll(text: string, { userEvent = "input.format", isolate = false } = {}): void {
     const old = this.view.state.doc.toString();
     const max = Math.min(old.length, text.length);
     let start = 0;
@@ -265,7 +284,8 @@ export class Editor {
     if (start === old.length && old.length === text.length) return;
     this.view.dispatch({
       changes: { from: start, to: old.length - end, insert: text.slice(start, text.length - end) },
-      userEvent: "input.format",
+      userEvent,
+      annotations: isolate ? isolateHistory.of("full") : undefined,
     });
   }
 

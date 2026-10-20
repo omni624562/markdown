@@ -404,6 +404,21 @@ kbd {
 .outline a[style*="--level: 1"] { color: var(--fg); font-weight: 600; }
 .outline a:hover { background: var(--active-line); color: var(--fg); }
 .outline a[aria-current="location"] { background: var(--accent-soft); color: var(--accent); }
+/* 大綱拖曳重排章節：插入線畫在標題上緣或下緣。 */
+.outline li { position: relative; }
+.outline li.dragging a { opacity: 0.45; }
+.outline li.drop-before::before, .outline li.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.outline li.drop-before::before { top: -1px; }
+.outline li.drop-after::after { bottom: -1px; }
 .outline-empty { margin: 0 10px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 
 /* ---- 預覽：錯誤、空白狀態 ---- */
@@ -1024,3 +1039,7 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .dav-dialog .dav-remember { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
 .dav-hint { font-size: 12.5px; }
 .dav-error { margin: 0 0 12px !important; color: var(--danger) !important; font-size: 13px; }
+
+/* 列印／匯出 PDF 用的 iframe：不顯示在畫面上。 */
+/* 放在畫面外但保留正常尺寸，排版才會和一般頁面一樣。 */
+.print-frame { position: fixed; top: 0; left: -10000px; width: 900px; height: 600px; border: 0; }

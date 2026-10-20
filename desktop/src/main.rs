@@ -23,10 +23,11 @@ mod update;
 mod watch;
 mod workspace;
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, RunEvent, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindow};
 
 use files::{KnownFiles, OpenedFile};
 use trust::Trust;
@@ -47,7 +48,7 @@ pub fn track_file(app: &AppHandle, path: &Path) {
 }
 
 /// 啟動時從命令列帶入的檔案或資料夾。
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum StartupTarget {
     File(OpenedFile),
@@ -56,17 +57,24 @@ enum StartupTarget {
 
 /// 例如把 .md 檔或資料夾拖到 exe 上、或設定成預設開啟程式時，命令列會帶入路徑。
 #[tauri::command]
-async fn startup_target(
-    app: AppHandle,
-    trust: State<'_, Trust>,
-) -> Result<Option<StartupTarget>, String> {
-    let Some(arg) = std::env::args_os()
-        .skip(1)
-        .find(|a| !a.to_string_lossy().starts_with('-'))
-    else {
+async fn startup_target(app: AppHandle) -> Result<Option<StartupTarget>, String> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let Some(path) = path_arg(std::env::args_os().skip(1), &cwd) else {
         return Ok(None);
     };
-    let path = PathBuf::from(arg);
+    resolve_target(&app, path).await.map(Some)
+}
+
+/// 命令列參數中的第一個路徑（略過 `-` 開頭的選項）。相對路徑以 `cwd` 為準。
+fn path_arg(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Option<PathBuf> {
+    let arg = args
+        .into_iter()
+        .find(|a| !a.is_empty() && !a.to_string_lossy().starts_with('-'))?;
+    Some(cwd.join(arg))
+}
+
+/// 開啟命令列帶入的路徑：資料夾成為工作區，檔案則讀進來並加入允許清單。
+async fn resolve_target(app: &AppHandle, path: PathBuf) -> Result<StartupTarget, String> {
     let p = path.clone();
     let (path, is_dir) = io::blocking(move || {
         let p = dunce::canonicalize(&p).unwrap_or(p);
@@ -75,13 +83,36 @@ async fn startup_target(
     })
     .await?;
     if is_dir {
-        return Ok(Some(StartupTarget::Folder(
-            workspace::open_folder_from_cli(&app, path),
+        return Ok(StartupTarget::Folder(workspace::open_folder_from_cli(
+            app, path,
         )));
     }
-    let opened = files::read_in_background(&app, path.clone()).await?;
-    trust.add_file(&app, &path);
-    Ok(Some(StartupTarget::File(opened)))
+    let opened = files::read_in_background(app, path.clone()).await?;
+    app.state::<Trust>().add_file(app, &path);
+    Ok(StartupTarget::File(opened))
+}
+
+/// 已經開著編輯器時再開一次 exe（例如在檔案總管雙擊另一個 .md）：
+/// 不開新視窗，把路徑交給原本的視窗開成新分頁。
+fn on_second_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    let Some(path) = path_arg(
+        args.into_iter().skip(1).map(OsString::from),
+        Path::new(&cwd),
+    ) else {
+        return;
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = match resolve_target(&app, path).await {
+            Ok(target) => app.emit("open-target", target),
+            Err(message) => app.emit("open-target-failed", message),
+        };
+    });
 }
 
 /// 檢查檔案所在的資料夾現在連得到嗎（網路磁碟斷線後，前端定時呼叫來偵測恢復）。
@@ -100,6 +131,22 @@ async fn probe_path(path: String, known: State<'_, KnownFiles>) -> Result<bool, 
     )
 }
 
+/// 在預設瀏覽器（或郵件程式）開啟預覽中的外部連結。只接受 http、https、mailto。
+#[tauri::command]
+fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let lower = url.trim().to_ascii_lowercase();
+    if !["http://", "https://", "mailto:"]
+        .iter()
+        .any(|p| lower.starts_with(p))
+    {
+        return Err("只能開啟網頁或電子郵件連結".into());
+    }
+    app.opener()
+        .open_url(url.trim(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn set_title(window: WebviewWindow, title: String) -> Result<(), String> {
     window.set_title(&title).map_err(|e| e.to_string())
@@ -107,6 +154,12 @@ fn set_title(window: WebviewWindow, title: String) -> Result<(), String> {
 
 fn main() {
     tauri::Builder::default()
+        // 必須最先註冊，第二個執行個體才會在建立視窗前就結束。
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            on_second_instance(app, args, cwd)
+        }))
+        // 只給 open_external 使用；沒有在 capabilities 開放給網頁直接呼叫。
+        .plugin(tauri_plugin_opener::init())
         .manage(KnownFiles::default())
         .manage(Workspace::default())
         .manage(Watcher::default())
@@ -121,6 +174,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             startup_target,
             probe_path,
+            open_external,
             set_title,
             files::open_file,
             files::reopen_file,
@@ -138,6 +192,7 @@ fn main() {
             workspace::trash_entry,
             workspace::reveal_entry,
             workspace::search,
+            workspace::peek_text,
             images::save_image,
             history::history_list,
             dav::dav_connections,
@@ -154,6 +209,7 @@ fn main() {
             dav::dav_delete,
             dav::dav_save_image,
             dav::dav_image,
+            dav::dav_peek,
             dav::dav_probe,
             git::git_status,
             git::git_commit,
@@ -185,4 +241,25 @@ fn main() {
                 ai::mcp::mcp_stop(app.state());
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_the_path_argument() {
+        let cwd = Path::new("/home/me");
+        let args = |a: &[&str]| a.iter().map(OsString::from).collect::<Vec<_>>();
+        assert_eq!(path_arg(args(&[]), cwd), None);
+        assert_eq!(path_arg(args(&["--flag", ""]), cwd), None);
+        assert_eq!(
+            path_arg(args(&["-x", "筆記.md"]), cwd),
+            Some(PathBuf::from("/home/me/筆記.md"))
+        );
+        assert_eq!(
+            path_arg(args(&["/abs/a.md"]), cwd),
+            Some(PathBuf::from("/abs/a.md"))
+        );
+    }
 }

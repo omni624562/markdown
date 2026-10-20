@@ -57,6 +57,13 @@ const SECTIONS: { title: string; fields: Field[] }[] = [
       { key: "lineNumbers", label: "顯示行號" },
       { key: "autoPairBrackets", label: "自動補上右括號與引號", hint: "包含全形「」『』（）《》【】" },
       { key: "tableAutoFormat", label: "在表格中按 Tab 時自動對齊", hint: "依中文字寬對齊，原始碼中的直線會對齊" },
+      {
+        key: "smartPaste",
+        label: "貼上網頁、Google 文件、Word 時轉成 Markdown",
+        hint: "保留標題、清單、粗體、連結和表格；按 Ctrl+Shift+V 一律貼純文字",
+      },
+      { key: "focusMode", label: "專注模式", hint: "淡化目前段落以外的文字" },
+      { key: "typewriterMode", label: "打字機模式", hint: "游標所在的行保持在畫面中央" },
     ],
   },
   {

@@ -11,6 +11,7 @@ import init, {
   formatJson,
   formatTable,
   kindFromFileName,
+  render as renderMarkdown,
   spacingPositions,
 } from "../pkg/md_wasm.js";
 import { AiController } from "./ai.ts";
@@ -41,7 +42,7 @@ import {
 } from "./files.ts";
 import { TABLE_TEMPLATE, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
 import { type DocKind, KINDS } from "./kinds.ts";
-import { basename, dirname, isInside, markdownUrl, rebase } from "./paths.ts";
+import { basename, dirname, isInside, localImagePath, markdownUrl, rebase, resolvePath } from "./paths.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
 import { localImagesPlugin } from "./plugins/local-images.ts";
 import { mathPlugin } from "./plugins/math.ts";
@@ -49,7 +50,16 @@ import { mermaidPlugin } from "./plugins/mermaid.ts";
 import { Preview } from "./preview.ts";
 import sample from "./sample.md?raw";
 import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
-import { type QuickAction, type Settings, SettingsStore } from "./settings.ts";
+import {
+  DEFAULTS as DEFAULT_SETTINGS,
+  FONT_SIZE_RANGE,
+  type QuickAction,
+  type Settings,
+  SettingsStore,
+} from "./settings.ts";
+import { pasteAsMarkdown } from "./html-paste.ts";
+import { moveSection, sectionRange, swapSection } from "./sections.ts";
+import { type HeadingRef, linkCompletion } from "./link-complete.ts";
 import { type DocMeta, dropDraft, loadDraft, loadSession, newId, saveDraft, saveSession } from "./session.ts";
 import * as storage from "./storage.ts";
 import { editTable } from "./table.ts";
@@ -191,6 +201,9 @@ let ai: AiController | null = null;
 let terminal: TerminalPanel | null = null;
 let updater: Updater | null = null;
 
+/** 按下 Ctrl+Shift+V 後的短時間內，貼上一律用純文字。 */
+let plainPasteUntil = 0;
+
 const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   onChange(doc) {
     scheduleRender();
@@ -211,15 +224,47 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   lineNumbers: settings.value.lineNumbers,
   autoPairBrackets: settings.value.autoPairBrackets,
   formatTable: tableFormatter,
+  focusMode: settings.value.focusMode,
+  typewriterMode: settings.value.typewriterMode,
   extra: [
     review.extension,
+    linkCompletion({
+      enabled: () => kind === "markdown",
+      docPath: () => fileHandle?.path ?? null,
+      files: async () => {
+        if (!desktop || !workspaceRoot) return [];
+        fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
+        return fileListCache.map((f) => f.path);
+      },
+      headings: () => preview.result?.headings ?? [],
+      fileHeadings: headingsOfFile,
+    }),
     EditorView.domEventHandlers({
-      paste(e) {
+      keydown(e) {
+        // Ctrl+Shift+V：接下來的貼上一律貼純文字（交給編輯器原本的處理）。
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyV") {
+          plainPasteUntil = Date.now() + 1000;
+        }
+        return false;
+      },
+      paste(e, v) {
+        const data = e.clipboardData;
         // 從 Word、Excel 複製的內容也帶有圖片版本；有文字時一律當成貼上文字。
-        const files = imageFiles(e.clipboardData?.files);
-        if (!files.length || e.clipboardData?.getData("text/plain")) return false;
+        const files = imageFiles(data?.files);
+        if (files.length && !data?.getData("text/plain")) {
+          e.preventDefault();
+          void insertImages(files).catch(reportError);
+          return true;
+        }
+        const plainOnly = Date.now() < plainPasteUntil;
+        plainPasteUntil = 0;
+        // 從 VS Code 等編輯器複製的程式碼帶有上色用的 HTML，照原樣貼上純文字。
+        if (plainOnly || !data || kind !== "markdown" || !settings.value.smartPaste) return false;
+        if (data.types.includes("vscode-editor-data")) return false;
+        const md = pasteAsMarkdown(data.getData("text/html"), data.getData("text/plain"));
+        if (md === null) return false;
         e.preventDefault();
-        void insertImages(files).catch(reportError);
+        v.dispatch(v.state.replaceSelection(md), { scrollIntoView: true, userEvent: "input.paste" });
         return true;
       },
       contextmenu(e, v) {
@@ -319,13 +364,19 @@ function renderOutline(headings: Heading[]): void {
   outlineEmpty.hidden = headings.length > 0;
   outlineEmpty.textContent =
     kind === "markdown" ? "文件中還沒有標題。用 # 開頭的行會出現在這裡。" : "只有 Markdown 文件的標題會顯示在大綱中。";
+  outlineHeadings = headings;
+  const movable = kind === "markdown";
+  // 重新產生大綱時保留鍵盤焦點（例如用 Alt+↑／↓ 連續搬移章節）。
+  const focused = document.activeElement as HTMLElement | null;
+  const focusedIndex = focused && outlineList.contains(focused) ? Number(focused.dataset.index) : -1;
   outlineList.replaceChildren(
-    ...headings.map((h) => {
+    ...headings.map((h, i) => {
       const li = document.createElement("li");
       const a = document.createElement("a");
       a.href = `#${encodeURIComponent(h.id)}`;
       a.dataset.id = h.id;
       a.dataset.line = String(h.line);
+      a.dataset.index = String(i);
       a.textContent = h.text || "（空白標題）";
       a.style.setProperty("--level", String(h.level));
       a.addEventListener("click", (e) => {
@@ -334,11 +385,233 @@ function renderOutline(headings: Heading[]): void {
         if (view !== "editor") document.getElementById(h.id)?.scrollIntoView({ block: "start" });
         if (narrowQuery.matches) setOutline(false);
       });
+      if (movable) {
+        a.draggable = true;
+        a.title = "拖曳可以搬移整個章節；也可以按 Alt+↑／↓";
+      }
       li.append(a);
       return li;
     }),
   );
+  if (focusedIndex >= 0) outlineList.querySelectorAll<HTMLElement>("a")[focusedIndex]?.focus({ preventScroll: true });
 }
+
+// ---- 連結：自動完成另一份文件的標題、點預覽中的連結（E9） ------------------------
+
+const headingCache = new Map<string, { at: number; headings: HeadingRef[] }>();
+
+/** 另一份文件的標題。已開啟的分頁用目前（可能還沒存檔）的內容，其他檔案從磁碟讀取（快取 10 秒）。 */
+async function headingsOfFile(path: string): Promise<HeadingRef[]> {
+  if (!/\.(md|markdown)$/i.test(path)) return [];
+  const open = tabForPath(path);
+  let text: string | null = open ? (open === active ? editor.text : loadDraft(open.id)) : null;
+  if (text === null) {
+    const cached = headingCache.get(path);
+    if (cached && Date.now() - cached.at < 10_000) return cached.headings;
+    if (!desktop) return [];
+    text = await desktop.peekText(path);
+  }
+  const headings = renderMarkdown(text, { kind: "markdown" }).headings;
+  if (!open) headingCache.set(path, { at: Date.now(), headings });
+  return headings;
+}
+
+/** 捲到目前文件中的錨點（標題或註腳）。 */
+function scrollToAnchor(id: string): void {
+  const heading = preview.result?.headings.find((h) => h.id === id);
+  if (heading && view !== "preview") editor.reveal(heading.line);
+  if (view !== "editor") document.getElementById(id)?.scrollIntoView({ block: "start" });
+}
+
+function decodeHref(part: string): string {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
+}
+
+/** 點預覽中的連結：錨點在文件內捲動、外部網址用瀏覽器開啟、相對路徑的文件開成分頁。 */
+async function followLink(href: string): Promise<void> {
+  if (href.startsWith("#")) {
+    scrollToAnchor(decodeHref(href.slice(1)));
+    return;
+  }
+  if (/^(https?:|mailto:)/i.test(href)) {
+    if (desktop) await desktop.openExternal(href);
+    else window.open(href, "_blank", "noopener,noreferrer");
+    return;
+  }
+  // 其他協定（file: 等）一律不處理。
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("//")) return;
+  const hashAt = href.indexOf("#");
+  const rel = decodeHref(hashAt >= 0 ? href.slice(0, hashAt) : href);
+  const anchor = hashAt >= 0 ? decodeHref(href.slice(hashAt + 1)) : "";
+  const base = fileHandle?.path;
+  if (!desktop || !base) {
+    toast(desktop ? "存檔之後才能開啟相對路徑的連結。" : "網頁版無法開啟相對路徑的檔案，請改用桌面版。");
+    return;
+  }
+  const target = resolvePath(dirname(base), rel);
+  if (!/\.(md|markdown|txt|json)$/i.test(target)) {
+    toast("只能在編輯器中開啟 Markdown、純文字與 JSON 檔。");
+    return;
+  }
+  await openPath(target);
+  if (anchor) {
+    renderNow();
+    scrollToAnchor(anchor);
+  }
+}
+
+previewEl.addEventListener("click", (e) => {
+  const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[href]");
+  if (!link || e.defaultPrevented) return;
+  // 不讓整個編輯器視窗被導到別的網頁。
+  e.preventDefault();
+  void followLink(link.getAttribute("href") ?? "").catch(reportError);
+});
+
+// ---- 列印／匯出 PDF（E11） ------------------------------------------------------
+
+/**
+ * 用和「匯出 HTML」相同的內容（公式、流程圖都已轉好）建立一個看不見的 iframe 來列印，
+ * 在列印對話框中選「另存為 PDF」就能存成 PDF。一律用淺色主題列印。
+ */
+async function printDocument(): Promise<void> {
+  if (preview.result?.error) {
+    toast("文件有格式錯誤，修正後才能列印。", { tone: "error" });
+    return;
+  }
+  const html = await preview.exportDocument(editor.text, kind, stem(fileName));
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.documentElement.dataset.theme = "light";
+  await resolvePrintImages(doc);
+  document.querySelector("iframe.print-frame")?.remove();
+  const frame = document.createElement("iframe");
+  frame.className = "print-frame";
+  frame.setAttribute("aria-hidden", "true");
+  frame.tabIndex = -1;
+  const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+  frame.srcdoc = `<!doctype html>\n${doc.documentElement.outerHTML}`;
+  document.body.append(frame);
+  await loaded;
+  const win = frame.contentWindow!;
+  const images = [...frame.contentDocument!.images].filter((img) => !img.complete);
+  await Promise.all(
+    images.map(
+      (img) =>
+        new Promise((resolve) => {
+          img.addEventListener("load", resolve);
+          img.addEventListener("error", resolve);
+        }),
+    ),
+  );
+  await frame.contentDocument!.fonts?.ready;
+  win.addEventListener("afterprint", () => setTimeout(() => frame.remove(), 0), { once: true });
+  win.focus();
+  win.print();
+}
+
+/** 文件中以相對路徑引用的圖片，換成列印用的 iframe 能載入的網址。 */
+async function resolvePrintImages(doc: Document): Promise<void> {
+  const docPath = fileHandle?.path;
+  if (!desktop || !docPath) return;
+  const dir = dirname(docPath);
+  await Promise.all(
+    [...doc.querySelectorAll<HTMLImageElement>("img[src]")].map(async (img) => {
+      const path = localImagePath(img.getAttribute("src")!, dir);
+      if (!path) return;
+      try {
+        img.setAttribute("src", isRemote(path) ? await desktop!.davImage(path) : desktop!.fileUrl(path));
+      } catch {
+        img.alt = `${img.alt || "圖片"}（無法載入）`;
+      }
+    }),
+  );
+}
+
+// ---- 大綱拖曳重排章節（E10） ----------------------------------------------------
+
+let outlineHeadings: Heading[] = [];
+let draggingSection: number | null = null;
+
+/** 搬移章節（一次可復原的編輯），再把大綱焦點放回被搬移的標題。 */
+function applySectionMove(text: string | null, movedIndex: number, focusLink: boolean): void {
+  if (text === null) return;
+  if (review.active) review.finish();
+  editor.replaceAll(text, { userEvent: "move.section", isolate: true });
+  renderNow();
+  const link = outlineList.querySelectorAll<HTMLAnchorElement>("a")[movedIndex];
+  if (!link) return;
+  if (view !== "preview") editor.reveal(Number(link.dataset.line));
+  if (focusLink) link.focus();
+}
+
+function clearDropMarks(): void {
+  for (const el of outlineList.querySelectorAll(".drop-before, .drop-after, .dragging")) {
+    el.classList.remove("drop-before", "drop-after", "dragging");
+  }
+}
+
+/** 放開的位置：滑鼠在標題上半部是「搬到這個標題前面」，下半部是「搬到下一個標題前面」。 */
+function dropTarget(e: DragEvent): { li: HTMLElement; before: number; after: boolean } | null {
+  const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
+  if (!link) return null;
+  const li = link.parentElement!;
+  const rect = link.getBoundingClientRect();
+  const after = e.clientY > rect.top + rect.height / 2;
+  return { li, before: Number(link.dataset.index) + (after ? 1 : 0), after };
+}
+
+outlineList.addEventListener("dragstart", (e) => {
+  const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
+  if (!link || kind !== "markdown") return;
+  draggingSection = Number(link.dataset.index);
+  link.parentElement!.classList.add("dragging");
+  e.dataTransfer!.effectAllowed = "move";
+  e.dataTransfer!.setData("text/plain", link.textContent ?? "");
+});
+outlineList.addEventListener("dragover", (e) => {
+  if (draggingSection === null) return;
+  const t = dropTarget(e);
+  if (!t) return;
+  e.preventDefault();
+  e.dataTransfer!.dropEffect = "move";
+  for (const el of outlineList.querySelectorAll(".drop-before, .drop-after")) el.classList.remove("drop-before", "drop-after");
+  t.li.classList.add(t.after ? "drop-after" : "drop-before");
+});
+outlineList.addEventListener("dragleave", (e) => {
+  if (!outlineList.contains(e.relatedTarget as Node)) {
+    for (const el of outlineList.querySelectorAll(".drop-before, .drop-after")) el.classList.remove("drop-before", "drop-after");
+  }
+});
+outlineList.addEventListener("drop", (e) => {
+  const from = draggingSection;
+  const t = dropTarget(e);
+  clearDropMarks();
+  draggingSection = null;
+  if (from === null || !t) return;
+  e.preventDefault();
+  const out = moveSection(editor.text, outlineHeadings, from, t.before);
+  if (out === null) return;
+  // 搬移後，被搬移的標題在大綱中的新位置。
+  const count = sectionRange(outlineHeadings, from, editor.view.state.doc.lines);
+  const size = outlineHeadings.filter((h) => h.line >= count.first && h.line < count.end).length;
+  applySectionMove(out, t.before > from ? t.before - size : t.before, false);
+});
+outlineList.addEventListener("dragend", () => {
+  clearDropMarks();
+  draggingSection = null;
+});
+outlineList.addEventListener("keydown", (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
+  if (!link || kind !== "markdown") return;
+  e.preventDefault();
+  const moved = swapSection(editor.text, outlineHeadings, Number(link.dataset.index), e.key === "ArrowUp" ? -1 : 1);
+  if (moved) applySectionMove(moved.text, moved.index, true);
+});
 
 /** 大綱標示目前閱讀到的段落。 */
 function updateActiveHeading(): void {
@@ -1253,6 +1526,13 @@ commands.register(
     },
   },
   {
+    id: "export-pdf",
+    title: "列印／匯出 PDF…",
+    group: "檔案",
+    icon: "printer",
+    run: () => printDocument(),
+  },
+  {
     id: "copy-html",
     title: "複製 HTML",
     group: "檔案",
@@ -1387,6 +1667,46 @@ commands.register(
       run: () => setView(mode),
     }),
   ),
+  {
+    id: "toggle-focus-mode",
+    title: "專注模式（淡化其他段落）",
+    group: "檢視",
+    icon: "focus",
+    when: () => view !== "preview",
+    run: () => toggleSetting("focusMode", "專注模式"),
+  },
+  {
+    id: "toggle-typewriter-mode",
+    title: "打字機模式（游標保持在畫面中央）",
+    group: "檢視",
+    icon: "text-cursor",
+    when: () => view !== "preview",
+    run: () => toggleSetting("typewriterMode", "打字機模式"),
+  },
+  {
+    id: "font-bigger",
+    title: "放大編輯區文字",
+    group: "檢視",
+    icon: "a-arrow-up",
+    keys: "Mod-Equal",
+    run: () => changeFontSize(1),
+  },
+  {
+    id: "font-smaller",
+    title: "縮小編輯區文字",
+    group: "檢視",
+    icon: "a-arrow-down",
+    keys: "Mod-Minus",
+    run: () => changeFontSize(-1),
+  },
+  {
+    id: "font-reset",
+    title: "編輯區文字恢復預設大小",
+    group: "檢視",
+    icon: "text-cursor",
+    keys: "Mod-0",
+    run: () => settings.update({ editorFontSize: DEFAULT_SETTINGS.editorFontSize }),
+  },
   {
     id: "toggle-outline",
     title: "顯示／隱藏側邊欄",
@@ -1546,6 +1866,32 @@ function showAiMenu(x: number, y: number): void {
   setTimeout(show);
 }
 
+// ---- 最近開啟（W8） ------------------------------------------------------------
+
+const RECENT_LIMITS = { files: 10, folders: 5 } as const;
+
+const recentPicker = new Picker<{ path: string; folder: boolean }>({
+  label: "最近開啟",
+  placeholder: "輸入檔名或資料夾名稱",
+  empty: "還沒有最近開啟的檔案或資料夾。",
+  async query(q) {
+    if (!desktop) return [];
+    const { files, folders } = await desktop.recent();
+    const items = [
+      ...files.slice(0, RECENT_LIMITS.files).map((path) => ({ path, folder: false })),
+      ...folders.slice(0, RECENT_LIMITS.folders).map((path) => ({ path, folder: true })),
+    ];
+    const needle = q.trim().toLowerCase();
+    return needle ? items.filter((i) => i.path.toLowerCase().includes(needle)) : items;
+  },
+  render: (i) => ({
+    title: basename(i.path) || i.path,
+    detail: `${i.folder ? "資料夾 · " : ""}${displayPath(dirname(i.path))}`,
+    icon: i.folder ? "folder" : "file-text",
+  }),
+  pick: (i) => void (i.folder ? openRecentFolder(i.path) : openPath(i.path)).catch(reportError),
+});
+
 // ---- 本機版本記錄（E12） ------------------------------------------------------
 
 const historyPicker = new Picker<FileVersion & { path: string }>({
@@ -1633,6 +1979,14 @@ commands.register(
     }),
   ),
   {
+    id: "open-recent",
+    title: "最近開啟…",
+    group: "檔案",
+    icon: "clock",
+    when: () => !!desktop,
+    run: () => recentPicker.open(),
+  },
+  {
     id: "history",
     title: "版本記錄…",
     group: "檔案",
@@ -1712,12 +2066,14 @@ setupMenu($<HTMLButtonElement>("#file-menu"), commands, [
   "open-folder",
   "connect-webdav",
   "quick-open",
+  "open-recent",
   "-",
   "save",
   "save-as",
   "history",
   "-",
   "export-html",
+  "export-pdf",
   "copy-html",
 ]);
 
@@ -1860,13 +2216,35 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
 
 const PREVIEW_WIDTH: Record<Settings["previewWidth"], string> = { narrow: "680px", medium: "820px", wide: "1080px" };
 
+function toggleSetting(key: "focusMode" | "typewriterMode", label: string): void {
+  const on = !settings.value[key];
+  settings.update({ [key]: on });
+  toast(`${label}已${on ? "開啟" : "關閉"}`);
+  editor.view.focus();
+}
+
+function changeFontSize(delta: number): void {
+  const size = Math.min(FONT_SIZE_RANGE.max, Math.max(FONT_SIZE_RANGE.min, settings.value.editorFontSize + delta));
+  if (size === settings.value.editorFontSize) {
+    toast(delta > 0 ? `已經是最大的字級（${size}px）` : `已經是最小的字級（${size}px）`);
+    return;
+  }
+  settings.update({ editorFontSize: size });
+}
+
 function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): void {
   const root = document.documentElement.style;
   root.setProperty("--editor-font-size", `${s.editorFontSize}px`);
   root.setProperty("--preview-width", PREVIEW_WIDTH[s.previewWidth]);
   if (!changed) return;
-  if (changed.includes("lineNumbers") || changed.includes("autoPairBrackets")) {
-    editor.configure({ lineNumbers: s.lineNumbers, autoPairBrackets: s.autoPairBrackets });
+  const editorKeys: (keyof Settings)[] = ["lineNumbers", "autoPairBrackets", "focusMode", "typewriterMode"];
+  if (changed.some((k) => editorKeys.includes(k))) {
+    editor.configure({
+      lineNumbers: s.lineNumbers,
+      autoPairBrackets: s.autoPairBrackets,
+      focusMode: s.focusMode,
+      typewriterMode: s.typewriterMode,
+    });
   }
   if (changed.includes("editorFontSize")) editor.view.requestMeasure();
   if (changed.includes("math") || changed.includes("mermaid")) {
@@ -2083,6 +2461,11 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
       void fileTree?.refresh(dirs).then(() => gitPanel?.refreshSoon());
       searchPanel?.rerun();
     }),
+    d.onOpenTarget((t) => {
+      if (t.kind === "file") openOpenedFile(fromDesktop(t));
+      else void setWorkspace(t).then(() => showPanel("files")).catch(reportError);
+    }),
+    d.onOpenTargetFailed((message) => reportError(new Error(message))),
   ]);
 
   const target = await d.startupTarget();
