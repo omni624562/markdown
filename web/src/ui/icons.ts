@@ -1,4 +1,5 @@
 import {
+  BookOpenText,
   Ellipsis,
   Menu,
   Files,
@@ -73,6 +74,7 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  "book-open-text": BookOpenText,
   ellipsis: Ellipsis,
   menu: Menu,
   files: Files,

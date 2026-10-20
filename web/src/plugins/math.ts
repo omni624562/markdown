@@ -57,3 +57,15 @@ export function mathPlugin(enabled: () => boolean): PreviewPlugin {
     },
   };
 }
+
+/** 即時預覽用：把一段 TeX 轉成 KaTeX 的 HTML（第一次呼叫時才載入 KaTeX）。 */
+export async function renderTex(tex: string, display: boolean): Promise<string> {
+  const katex = await loadKatex();
+  return katex.renderToString(tex.trim(), {
+    displayMode: display,
+    throwOnError: false,
+    output: "htmlAndMathml",
+    trust: false,
+    strict: "ignore",
+  });
+}

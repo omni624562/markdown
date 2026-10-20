@@ -45,7 +45,8 @@ import { type DocKind, KINDS } from "./kinds.ts";
 import { basename, dirname, isInside, localImagePath, markdownUrl, rebase, resolvePath } from "./paths.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
 import { localImagesPlugin } from "./plugins/local-images.ts";
-import { mathPlugin } from "./plugins/math.ts";
+import { mathPlugin, renderTex } from "./plugins/math.ts";
+import { livePreview } from "./live-preview.ts";
 import { mermaidPlugin } from "./plugins/mermaid.ts";
 import { Preview } from "./preview.ts";
 import sample from "./sample.md?raw";
@@ -81,7 +82,7 @@ import type { FileVersion } from "./desktop.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { toast } from "./ui/toast.ts";
 
-type ViewMode = "editor" | "split" | "preview";
+type ViewMode = "editor" | "live" | "split" | "preview";
 type ThemePref = "system" | "light" | "dark";
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -223,6 +224,21 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   formatTable: tableFormatter,
   focusMode: settings.value.focusMode,
   typewriterMode: settings.value.typewriterMode,
+  live: livePreview({
+    imageUrl(src) {
+      if (/^(https?:|data:image\/)/i.test(src)) return src;
+      const docPath = fileHandle?.path;
+      if (!desktop || !docPath) return null;
+      const path = localImagePath(src, dirname(docPath));
+      if (!path) return null;
+      return isRemote(path) ? desktop.davImage(path) : desktop.fileUrl(path);
+    },
+    renderTable: (markdown) => renderMarkdown(markdown, { kind: "markdown" }).html,
+    renderMath: renderTex,
+    mathEnabled: () => settings.value.math,
+    openLink: (href) => void followLink(href).catch(reportError),
+    enabled: () => !review.active,
+  }),
   extra: [
     review.extension,
     linkCompletion({
@@ -379,7 +395,7 @@ function renderOutline(headings: Heading[]): void {
       a.addEventListener("click", (e) => {
         e.preventDefault();
         if (view !== "preview") editor.reveal(h.line);
-        if (view !== "editor") document.getElementById(h.id)?.scrollIntoView({ block: "start" });
+        if (previewVisible()) document.getElementById(h.id)?.scrollIntoView({ block: "start" });
         if (narrowQuery.matches) setOutline(false);
       });
       if (movable) {
@@ -417,7 +433,7 @@ async function headingsOfFile(path: string): Promise<HeadingRef[]> {
 function scrollToAnchor(id: string): void {
   const heading = preview.result?.headings.find((h) => h.id === id);
   if (heading && view !== "preview") editor.reveal(heading.line);
-  if (view !== "editor") document.getElementById(id)?.scrollIntoView({ block: "start" });
+  if (previewVisible()) document.getElementById(id)?.scrollIntoView({ block: "start" });
 }
 
 function decodeHref(part: string): string {
@@ -1712,12 +1728,17 @@ commands.register(
     keys: "Mod-,",
     run: () => settingsDialog.open(),
   },
-  ...(["editor", "split", "preview"] as const).map(
+  ...(["editor", "live", "split", "preview"] as const).map(
     (mode): Command => ({
       id: `view-${mode}`,
-      title: { editor: "只顯示編輯區", split: "編輯與預覽並排", preview: "只顯示預覽" }[mode],
+      title: {
+        editor: "只顯示原始碼",
+        live: "即時預覽（在編輯區直接顯示排版）",
+        split: "原始碼與預覽並排",
+        preview: "只顯示預覽",
+      }[mode],
       group: "檢視",
-      icon: { editor: "pencil", split: "columns-2", preview: "eye" }[mode],
+      icon: { editor: "code", live: "book-open-text", split: "columns-2", preview: "eye" }[mode],
       when: () => mode !== "split" || !narrowQuery.matches,
       run: () => setView(mode),
     }),
@@ -2216,22 +2237,36 @@ kindSelect.addEventListener("change", () => setKind(kindSelect.value as DocKind)
 
 // ---- 版面 ---------------------------------------------------------------
 
+/** 預覽窗格現在看得到嗎（分割或只顯示預覽）。 */
+function previewVisible(): boolean {
+  return view === "preview" || (view === "split" && !narrowQuery.matches);
+}
+
+let liveApplied = false;
+
 function applyLayout(): void {
   const narrow = narrowQuery.matches;
   // 手機寬度放不下並排，分割模式改為只顯示編輯區（可用分頁切換到預覽）。
   const effective: ViewMode = narrow && view === "split" ? "editor" : view;
-  workspace.dataset.view = effective;
+  // 即時預覽的版面和只顯示編輯區相同，差別在編輯區裡直接顯示排版。
+  const layout = effective === "live" ? "editor" : effective;
+  workspace.dataset.view = layout;
+  workspace.classList.toggle("live", effective === "live");
+  if (liveApplied !== (effective === "live")) {
+    liveApplied = effective === "live";
+    editor.configure({ livePreview: liveApplied });
+  }
   workspace.classList.toggle("outline-hidden", !outlineShown);
   workspace.classList.toggle("narrow", narrow);
   const cols = [
     narrow ? "0px" : "var(--activity-width)",
     outlineShown && !narrow ? "var(--outline-width)" : "0px",
-    effective === "preview" ? "0px" : effective === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
-    effective === "split" ? "var(--splitter-width)" : "0px",
-    effective === "editor" ? "0px" : effective === "split" ? `minmax(0, ${1 - splitRatio}fr)` : "minmax(0, 1fr)",
+    layout === "preview" ? "0px" : layout === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
+    layout === "split" ? "var(--splitter-width)" : "0px",
+    layout === "editor" ? "0px" : layout === "split" ? `minmax(0, ${1 - splitRatio}fr)` : "minmax(0, 1fr)",
   ];
   workspace.style.gridTemplateColumns = cols.join(" ");
-  document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach((b) => {
+  document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((b) => {
     b.setAttribute("aria-checked", String(b.dataset.view === effective));
   });
   $("[data-command='toggle-outline']").setAttribute("aria-pressed", String(outlineShown));
@@ -2328,7 +2363,7 @@ const settingsDialog = new SettingsDialog(
     : null,
 );
 
-document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach((btn) => {
+document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((btn) => {
   const mode = btn.dataset.view as ViewMode;
   btn.title = commands.get(`view-${mode}`)!.title;
   btn.addEventListener("click", () => setView(mode));
@@ -2490,7 +2525,7 @@ window.addEventListener("drop", async (e) => {
 // ---- 初始狀態 -----------------------------------------------------------
 
 const savedView = storage.load("view");
-view = savedView === "editor" || savedView === "preview" ? savedView : "split";
+view = savedView === "editor" || savedView === "live" || savedView === "preview" ? savedView : "split";
 kindSelect.value = kind;
 setTheme(themePref);
 applySettings(settings.value);
