@@ -11,8 +11,10 @@ import init, {
   formatJson,
   formatTable,
   kindFromFileName,
+  spacingPositions,
 } from "../pkg/md_wasm.js";
 import { AiController } from "./ai.ts";
+import { GitPanel } from "./git-ui.ts";
 import { type Command, Commands, formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, cursorInfo } from "./editor.ts";
 import { type EditorSnapshot, type Entry, type FileItem, type Folder, desktop } from "./desktop.ts";
@@ -54,6 +56,8 @@ import { SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
 import { TerminalPanel } from "./ui/terminal-panel.ts";
 import { Updater, versionLabel } from "./updater.ts";
+import { sizeLabel, versionTitle } from "./history-label.ts";
+import type { FileVersion } from "./desktop.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { toast } from "./ui/toast.ts";
 
@@ -494,6 +498,11 @@ const fileTree = desktop
     })
   : null;
 
+const gitPanel =
+  desktop && fileTree
+    ? new GitPanel($("#git-bar"), desktop, settings, fileTree, () => workspaceRoot?.path ?? null)
+    : null;
+
 const searchPanel = desktop
   ? new SearchPanel($("#panel-search"), {
       search: (query, caseSensitive, regex) => desktop!.search(query, caseSensitive, regex),
@@ -581,6 +590,7 @@ async function setWorkspace(folder: Folder | null): Promise<void> {
   treeActive = fileHandle?.path ?? null;
   await fileTree?.setActive(treeActive);
   await renderFilesEmpty();
+  void gitPanel?.refresh();
 }
 
 async function openRecentFolder(path: string): Promise<void> {
@@ -807,6 +817,7 @@ function activate(doc: Doc): void {
   persistSession();
   renderNow();
   renderTabs();
+  renderOffline();
   if (doc.externalOriginal !== undefined) {
     const original = doc.externalOriginal;
     doc.externalOriginal = undefined;
@@ -910,7 +921,16 @@ function openOpenedFile(file: OpenedFile): void {
 async function save(saveAs: boolean, force = false): Promise<void> {
   if (review.active) review.finish();
   const text = editor.text;
-  const out = await saveFile(text, fileName, kind, fileHandle, { saveAs, force });
+  let out: Awaited<ReturnType<typeof saveFile>>;
+  try {
+    out = await saveFile(text, fileName, kind, fileHandle, { saveAs, force });
+  } catch (e) {
+    if (isOffline(e) && fileHandle?.path) {
+      showOffline(fileHandle.path);
+      return;
+    }
+    throw e;
+  }
   if (!out) return;
   if (out.status === "conflict") {
     await resolveConflict(out.name, out.diskText);
@@ -918,9 +938,77 @@ async function save(saveAs: boolean, force = false): Promise<void> {
   }
   fileHandle = out.handle;
   active.missing = false;
+  if (offline && offline.path === fileHandle?.path) clearOffline();
+  gitPanel?.refreshSoon(300);
   setBaseline(text, true);
   setFileName(out.name);
   toast(out.handle ? `已儲存到「${out.name}」` : `已下載「${out.name}」`, { tone: "success" });
+}
+
+// ---- 網路磁碟斷線（R1） --------------------------------------------------------
+
+/** 原生端回報網路錯誤時，訊息以這段文字開頭。 */
+const OFFLINE = "網路磁碟無法連線";
+const offlineBar = $("#offline-bar");
+let offline: { path: string; timer: number; back: boolean } | null = null;
+
+function isOffline(e: unknown): boolean {
+  return (e instanceof Error ? e.message : String(e)).startsWith(OFFLINE);
+}
+
+/** 存檔時網路磁碟無法連線：保留內容，每 10 秒檢查一次，恢復後提醒存檔。 */
+function showOffline(path: string): void {
+  if (offline?.path !== path) {
+    clearOffline();
+    offline = { path, back: false, timer: window.setInterval(() => void probeOffline(), 10_000) };
+  } else {
+    offline.back = false;
+  }
+  renderOffline();
+}
+
+async function probeOffline(): Promise<void> {
+  if (!offline || offline.back || !desktop) return;
+  const reachable = await desktop.probePath(offline.path).catch(() => false);
+  if (!reachable || !offline) return;
+  offline.back = true;
+  clearInterval(offline.timer);
+  renderOffline();
+  if (fileHandle?.path !== offline.path) {
+    toast("網路磁碟已恢復連線，記得回到那份文件存檔。");
+  }
+}
+
+function clearOffline(): void {
+  if (offline) clearInterval(offline.timer);
+  offline = null;
+  renderOffline();
+}
+
+function renderOffline(): void {
+  const show = !!offline && fileHandle?.path === offline.path;
+  offlineBar.hidden = !show;
+  if (!show || !offline) return;
+  const msg = document.createElement("p");
+  msg.append(icon(offline.back ? "refresh-cw" : "circle-alert"));
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn";
+  if (offline.back) {
+    msg.append("網路磁碟已恢復連線。");
+    button.textContent = "立即存檔";
+    button.addEventListener("click", () => void save(false).catch(reportError));
+  } else {
+    msg.append(
+      Object.assign(document.createElement("strong"), { textContent: "網路磁碟無法連線" }),
+      Object.assign(document.createElement("span"), {
+        textContent: "這次沒有存到檔案。內容會保留在編輯器裡（草稿也已自動保存），連線恢復後會提醒你。",
+      }),
+    );
+    button.textContent = "重試存檔";
+    button.addEventListener("click", () => void save(false).catch(reportError));
+  }
+  offlineBar.replaceChildren(msg, button);
 }
 
 /** 檔案在開啟後被別的程式改過：讓使用者比較差異、覆蓋或另存。 */
@@ -1138,6 +1226,40 @@ commands.register(
     },
   },
   {
+    id: "tidy-spacing",
+    title: "整理文件：在中文與英文、數字之間加空格",
+    group: "編輯",
+    icon: "wand-sparkles",
+    when: () => kind !== "json" && view !== "preview",
+    run() {
+      const text = editor.text;
+      const positions = spacingPositions(text, kind);
+      if (!positions.length) {
+        toast("沒有需要加空格的地方。");
+        return;
+      }
+      // 原本對齊的表格補完空格後重新對齊；整個過程是一次可復原的編輯。
+      const realign = kind === "markdown" && formatAllTables(text) === text;
+      let spaced = "";
+      let last = 0;
+      for (const p of positions) {
+        spaced += `${text.slice(last, p)} `;
+        last = p;
+      }
+      spaced += text.slice(last);
+      const result = realign ? formatAllTables(spaced) : spaced;
+      if (result === spaced) {
+        editor.view.dispatch({
+          changes: [...positions].map((from) => ({ from, insert: " " })),
+          userEvent: "input.format",
+        });
+      } else {
+        editor.replaceAll(result);
+      }
+      toast(`已補上 ${positions.length} 個空格（可用 Ctrl+Z 復原）`, { tone: "success" });
+    },
+  },
+  {
     id: "settings",
     title: "設定",
     group: "說明",
@@ -1314,6 +1436,41 @@ function showAiMenu(x: number, y: number): void {
   setTimeout(show);
 }
 
+// ---- 本機版本記錄（E12） ------------------------------------------------------
+
+const historyPicker = new Picker<FileVersion & { path: string }>({
+  label: "版本記錄",
+  placeholder: "選擇一個版本，和目前的內容比較",
+  empty: "這個檔案還沒有版本記錄。存檔時會自動保存。",
+  async query(q) {
+    const path = fileHandle?.path;
+    if (!desktop || !path) return [];
+    const versions = await desktop.historyList(path);
+    return versions
+      .map((v) => ({ ...v, path }))
+      .filter((v) => !q.trim() || versionTitle(v.id).includes(q.trim()));
+  },
+  render: (v) => ({
+    title: versionTitle(v.id),
+    detail: `${v.kind === "disk" ? "存檔前磁碟上的內容 · " : ""}${sizeLabel(v.size)}`,
+    icon: "history",
+  }),
+  pick: (v) => void compareWithVersion(v).catch(reportError),
+});
+
+async function compareWithVersion(v: FileVersion & { path: string }): Promise<void> {
+  if (!desktop || fileHandle?.path !== v.path) return;
+  const text = await desktop.historyRead(v.path, v.id);
+  if (review.active) review.finish();
+  const started = review.start(text, {
+    title: `與 ${versionTitle(v.id)} 的版本比較`,
+    hint: "「採用舊版」會把那一段換回舊版的內容，可以用 Ctrl+Z 復原；處理完記得存檔",
+    acceptLabel: "採用舊版",
+    rejectLabel: "保留目前",
+  });
+  if (!started) toast("這個版本和目前的內容相同。");
+}
+
 /** 外部修改後，以修改前的版本為基準逐段標示（A4）。沒有差異時回傳 false。 */
 function showExternalChanges(original: string, current: string): boolean {
   return review.start(current, {
@@ -1348,6 +1505,30 @@ commands.register(
       if (from === to) toast("請先選取要處理的文字。");
       else aiPicker.open();
     },
+  },
+  ...(
+    [
+      ["git-commit", "Git：提交變更…", "git-commit-horizontal", () => gitPanel?.openCommit()],
+      ["git-pull", "Git：拉取", "arrow-down-to-line", () => gitPanel?.pull()],
+      ["git-push", "Git：推送", "arrow-up-from-line", () => gitPanel?.push()],
+    ] as const
+  ).map(
+    ([id, title, iconName, run]): Command => ({
+      id,
+      title,
+      group: "檔案",
+      icon: iconName,
+      when: () => !!gitPanel?.status?.repo,
+      run: () => void run(),
+    }),
+  ),
+  {
+    id: "history",
+    title: "版本記錄…",
+    group: "檔案",
+    icon: "history",
+    when: () => !!desktop && !!fileHandle?.path,
+    run: () => historyPicker.open(),
   },
   {
     id: "check-update",
@@ -1423,6 +1604,7 @@ setupMenu($<HTMLButtonElement>("#file-menu"), commands, [
   "-",
   "save",
   "save-as",
+  "history",
   "-",
   "export-html",
   "copy-html",
@@ -1787,7 +1969,7 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
     }),
     d.onTreeChanged(({ dirs }) => {
       fileListCache = null;
-      void fileTree?.refresh(dirs);
+      void fileTree?.refresh(dirs).then(() => gitPanel?.refreshSoon());
       searchPanel?.rerun();
     }),
   ]);

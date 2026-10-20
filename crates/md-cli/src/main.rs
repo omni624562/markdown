@@ -71,6 +71,9 @@ enum Command {
         /// 直接覆寫輸入檔
         #[arg(short, long)]
         write: bool,
+        /// 在中文與英文、數字之間補上空格（程式碼、網址不動）
+        #[arg(long)]
+        spacing: bool,
     },
 }
 
@@ -184,7 +187,11 @@ fn run(cli: Cli) -> io::Result<()> {
             println!("預估閱讀時間：{} 分鐘", s.reading_minutes);
             Ok(())
         }
-        Command::Fmt { input, write } => {
+        Command::Fmt {
+            input,
+            write,
+            spacing,
+        } => {
             if write && is_stdin(input.input.as_ref()) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -192,6 +199,12 @@ fn run(cli: Cli) -> io::Result<()> {
                 ));
             }
             let (text, kind) = input.read()?;
+            // 先補空格再對齊表格，表格的直線才會對齊補過空格的內容。
+            let text = if spacing {
+                md_core::add_spacing(&text, kind)
+            } else {
+                text
+            };
             let formatted = match kind {
                 DocKind::Json => md_core::format_json(&text).map_err(parse_error)?,
                 DocKind::Markdown => md_core::format_all_tables(&text),

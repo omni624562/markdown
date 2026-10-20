@@ -1,4 +1,6 @@
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Bold,
   Braces,
   Check,
@@ -18,10 +20,13 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  GitBranch,
+  GitCommitHorizontal,
   GitCompare,
   Heading1,
   Heading2,
   Heading3,
+  History,
   Image,
   Italic,
   Link,
@@ -54,6 +59,8 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  "arrow-down-to-line": ArrowDownToLine,
+  "arrow-up-from-line": ArrowUpFromLine,
   bold: Bold,
   braces: Braces,
   check: Check,
@@ -73,10 +80,13 @@ const ICONS: Record<string, IconNode> = {
   folder: Folder,
   "folder-open": FolderOpen,
   "folder-plus": FolderPlus,
+  "git-branch": GitBranch,
+  "git-commit-horizontal": GitCommitHorizontal,
   "git-compare": GitCompare,
   "heading-1": Heading1,
   "heading-2": Heading2,
   "heading-3": Heading3,
+  history: History,
   image: Image,
   italic: Italic,
   link: Link,

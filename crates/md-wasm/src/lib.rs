@@ -152,6 +152,29 @@ pub fn format_table(block: &str) -> Option<String> {
     md_core::format_table(block)
 }
 
+/// 在中文與英文、數字之間補空格的位置（UTF-16 位移，與 JavaScript 字串一致），由小到大。
+#[wasm_bindgen(js_name = spacingPositions)]
+pub fn spacing_positions(text: &str, kind: &str) -> Vec<u32> {
+    let kind = match kind {
+        "markdown" => md_core::DocKind::Markdown,
+        "json" => md_core::DocKind::Json,
+        _ => md_core::DocKind::Text,
+    };
+    let bytes = md_core::spacing_positions(text, kind);
+    // 位元組位移換算成 UTF-16 位移。
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut utf16 = 0u32;
+    let mut next = bytes.iter().peekable();
+    for (i, c) in text.char_indices() {
+        while next.peek().is_some_and(|&&b| b == i) {
+            out.push(utf16);
+            next.next();
+        }
+        utf16 += c.len_utf16() as u32;
+    }
+    out
+}
+
 /// 排版文件中所有的表格，略過程式碼區塊。
 #[wasm_bindgen(js_name = formatAllTables)]
 pub fn format_all_tables(text: &str) -> String {

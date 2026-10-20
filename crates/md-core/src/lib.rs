@@ -7,11 +7,13 @@
 mod html;
 mod json;
 mod markdown;
+mod spacing;
 mod stats;
 mod table;
 
 use html::escape_html;
 pub use json::format_json;
+pub use spacing::{add_spacing, spacing_positions};
 pub use stats::{count_text, Stats};
 pub use table::{format_all_tables, format_table};
 

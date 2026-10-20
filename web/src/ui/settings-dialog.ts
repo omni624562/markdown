@@ -26,6 +26,12 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["claude", "Claude Code"],
     ["codex", "Codex"],
   ],
+  gitSyncMinutes: [
+    ["5", "每 5 分鐘"],
+    ["10", "每 10 分鐘"],
+    ["30", "每 30 分鐘"],
+    ["60", "每小時"],
+  ],
 };
 
 /** 桌面版提供：目前版本與手動檢查更新。 */
@@ -129,6 +135,16 @@ export class SettingsDialog {
     }
 
     body.append(this.#aiSection());
+    if (ai) {
+      const git = this.#section("Git");
+      git.append(
+        this.#row("gitAutoSync", "自動同步", "開啟的資料夾是 Git 儲存庫時，定時提交、拉取、推送；遇到衝突會暫停", () =>
+          this.#control("gitAutoSync"),
+        ),
+        this.#row("gitSyncMinutes", "同步頻率", undefined, () => this.#control("gitSyncMinutes")),
+      );
+      body.append(git);
+    }
 
     const advanced = this.#section("進階");
     const reset = document.createElement("button");
@@ -360,7 +376,9 @@ export class SettingsDialog {
     const sel = document.createElement("select");
     sel.dataset.key = key;
     for (const [v, l] of SELECT_OPTIONS[key] ?? []) sel.append(new Option(l, v));
-    sel.addEventListener("change", () => this.#store.update({ [key]: sel.value }));
+    sel.addEventListener("change", () =>
+      this.#store.update({ [key]: key === "gitSyncMinutes" ? Number(sel.value) : sel.value }),
+    );
     return sel;
   }
 

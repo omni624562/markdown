@@ -30,6 +30,8 @@ body {
 
 .markdown-body {
   box-sizing: border-box;
+  /* 支援的瀏覽器會在中英文之間自動留一點空隙（只影響顯示，不改內容）。 */
+  text-autospace: normal;
   max-width: var(--preview-width, 820px);
   margin: 0 auto;
   padding: 40px 32px 96px;

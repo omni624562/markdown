@@ -129,6 +129,28 @@ export interface UpdateManifest {
   size: number;
 }
 
+export interface GitChange {
+  path: string;
+  status: "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
+}
+
+export interface GitStatus {
+  /** 電腦上有沒有安裝 git。 */
+  available: boolean;
+  /** 開啟的資料夾是不是 Git 儲存庫。 */
+  repo: boolean;
+  branch: { name: string; upstream: string | null; ahead: number; behind: number } | null;
+  changes: GitChange[];
+}
+
+export interface FileVersion {
+  /** 保存時間（Unix 毫秒）。 */
+  id: number;
+  /** `save`：存檔的內容；`disk`：存檔前磁碟上的內容（例如被其他程式改過）。 */
+  kind: "save" | "disk";
+  size: number;
+}
+
 export type AiRunEvent =
   | { kind: "delta"; id: number; text: string }
   | { kind: "done"; id: number; text: string; costUsd: number | null; tokens: number | null }
@@ -141,6 +163,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     reopenFile: (path: string) => core.invoke<DesktopFile>("reopen_file", { path }),
     saveFile: (req: SaveRequest) => core.invoke<DesktopSaveOutcome>("save_file", { ...req }),
     setTitle: (title: string) => core.invoke<void>("set_title", { title }),
+    /** 檔案所在的資料夾現在連得到嗎（網路磁碟斷線後偵測恢復用）。 */
+    probePath: (path: string) => core.invoke<boolean>("probe_path", { path }),
     loadSettings: () => core.invoke<string | null>("load_settings"),
     saveSettings: (json: string) => core.invoke<void>("save_settings", { json }),
 
@@ -174,6 +198,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
     aiRun: (id: number, tool: AiTool, prompt: string) => core.invoke<void>("ai_run", { id, tool, prompt }),
     aiCancel: (id: number) => core.invoke<void>("ai_cancel", { id }),
 
+    gitStatus: () => core.invoke<GitStatus>("git_status"),
+    gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
+    gitPull: () => core.invoke<string>("git_pull"),
+    gitPush: () => core.invoke<string>("git_push"),
+    historyList: (path: string) => core.invoke<FileVersion[]>("history_list", { path }),
+    historyRead: (path: string, id: number) => core.invoke<string>("history_read", { path, id }),
     appVersion: () => core.invoke<AppVersion>("app_version"),
     updateCheck: () => core.invoke<{ current: AppVersion; latest: UpdateManifest | null }>("update_check"),
     updateInstall: () => core.invoke<void>("update_install"),

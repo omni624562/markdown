@@ -79,6 +79,7 @@
             <button type="button" class="btn icon-only" id="tree-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
             <button type="button" class="btn icon-only" data-command="open-folder"><i data-icon="folder-open"></i></button>
           </div>
+          <div class="git-bar" id="git-bar" hidden></div>
           <div class="tree" id="file-tree" aria-label="工作區檔案"></div>
           <div class="side-empty" id="files-empty"></div>
         </section>
@@ -95,6 +96,7 @@
         <div class="format-bar" id="format-bar" role="toolbar" aria-label="格式工具列" aria-controls="editor"></div>
         <div class="review-bar" id="review-bar" role="status" hidden></div>
         <div class="ai-bar" id="ai-bar" role="status" aria-live="polite" hidden></div>
+        <div class="offline-bar" id="offline-bar" role="alert" hidden></div>
         <div class="editor-host" id="editor"></div>
       </section>
 

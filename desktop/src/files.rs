@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 use crate::trust::Trust;
 
@@ -138,7 +138,8 @@ pub fn encode(text: &str, format: FileFormat) -> Vec<u8> {
 
 /// 讀取檔案、登記為已知檔案，並允許預覽顯示同資料夾的圖片。
 pub fn read_file(app: &AppHandle, path: PathBuf, known: &KnownFiles) -> Result<OpenedFile, String> {
-    let bytes = fs::read(&path).map_err(|e| format!("無法讀取「{}」：{e}", path.display()))?;
+    let bytes = fs::read(&path)
+        .map_err(|e| crate::io::describe(&e, &format!("無法讀取「{}」", display_name(&path))))?;
     let (text, format, encoding) = decode(&bytes);
     known.0.lock().unwrap().insert(
         path.clone(),
@@ -183,7 +184,8 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// 寫入檔案，回傳寫入內容的雜湊。
 fn write_file(path: &Path, text: &str, format: FileFormat) -> Result<u64, String> {
     let bytes = encode(text, format);
-    write_atomic(path, &bytes).map_err(|e| format!("無法寫入「{}」：{e}", path.display()))?;
+    write_atomic(path, &bytes)
+        .map_err(|e| crate::io::describe(&e, &format!("無法寫入「{}」", display_name(path))))?;
     Ok(hash_bytes(&bytes))
 }
 
@@ -204,7 +206,6 @@ fn saved(path: &Path) -> SaveOutcome {
 pub async fn open_file(
     app: AppHandle,
     window: WebviewWindow,
-    known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
 ) -> Result<Option<OpenedFile>, String> {
     let picked = rfd::AsyncFileDialog::new()
@@ -221,27 +222,39 @@ pub async fn open_file(
         return Ok(None);
     };
     let path = handle.path().to_path_buf();
-    let opened = read_file(&app, path.clone(), &known)?;
+    let opened = read_in_background(&app, path.clone()).await?;
     trust.add_file(&app, &path);
     Ok(Some(opened))
 }
 
 /// 重新開啟先前開過的檔案（還原分頁、最近開啟）。只允許信任清單裡的路徑。
 #[tauri::command]
-pub fn reopen_file(
+pub async fn reopen_file(
     app: AppHandle,
     path: String,
     known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
-    workspace: State<'_, crate::workspace::Workspace>,
 ) -> Result<OpenedFile, String> {
     let path = PathBuf::from(path);
-    if !known.contains(&path) && !trust.allows(&path) && !workspace.contains(&path) {
-        return Err("這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。".into());
-    }
-    let opened = read_file(&app, path.clone(), &known)?;
+    let allowed = known.contains(&path) || trust.allows(&path);
+    let app2 = app.clone();
+    let p = path.clone();
+    let opened = crate::io::blocking(move || {
+        // 位於工作區內的判斷需要讀取磁碟（解析實際路徑），也放在背景執行。
+        if !allowed && !app2.state::<crate::workspace::Workspace>().contains(&p) {
+            return Err("這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。".into());
+        }
+        read_file(&app2, p, &app2.state::<KnownFiles>())
+    })
+    .await?;
     trust.add_file(&app, &path);
     Ok(opened)
+}
+
+/// 在背景執行緒讀取檔案（網路磁碟斷線時不會卡住介面）。
+pub async fn read_in_background(app: &AppHandle, path: PathBuf) -> Result<OpenedFile, String> {
+    let app = app.clone();
+    crate::io::blocking(move || read_file(&app, path, &app.state::<KnownFiles>())).await
 }
 
 /// 儲存文字檔。`path` 是先前開啟或存過的檔案時直接覆寫；否則跳出另存新檔對話框。
@@ -263,28 +276,10 @@ pub async fn save_file(
     force: Option<bool>,
 ) -> Result<SaveOutcome, String> {
     if let Some(path) = path.map(PathBuf::from) {
-        let state = known.0.lock().unwrap().get(&path).copied();
-        if let Some(state) = state {
-            if !force.unwrap_or(false) {
-                let disk = fs::read(&path).ok();
-                if changed_on_disk(state.hash, disk.as_deref()) {
-                    let (disk_text, _, _) = decode(&disk.unwrap_or_default());
-                    return Ok(SaveOutcome::Conflict {
-                        name: display_name(&path),
-                        path: path_string(&path),
-                        disk_text,
-                    });
-                }
-            }
-            let hash = write_file(&path, &text, state.format)?;
-            known.0.lock().unwrap().insert(
-                path.clone(),
-                FileState {
-                    hash: Some(hash),
-                    ..state
-                },
-            );
-            return Ok(saved(&path));
+        if known.contains(&path) {
+            let app = app.clone();
+            let force = force.unwrap_or(false);
+            return crate::io::blocking(move || overwrite(&app, &path, &text, force)).await;
         }
     }
 
@@ -311,17 +306,56 @@ pub async fn save_file(
         .get(&path)
         .map(|s| s.format)
         .unwrap_or_default();
-    let hash = write_file(&path, &text, format)?;
+    let app2 = app.clone();
+    let p = path.clone();
+    crate::io::blocking(move || {
+        let disk = fs::read(&p).ok();
+        let hash = write_file(&p, &text, format)?;
+        crate::history::on_save(&app2, &p, disk.as_deref(), &text);
+        app2.state::<KnownFiles>().0.lock().unwrap().insert(
+            p.clone(),
+            FileState {
+                format,
+                hash: Some(hash),
+            },
+        );
+        crate::track_file(&app2, &p);
+        Ok(())
+    })
+    .await?;
+    trust.add_file(&app, &path);
+    Ok(saved(&path))
+}
+
+/// 覆寫已開啟過的檔案。磁碟上的內容在開啟後被改過時回傳 `Conflict`（除非 `force`）。
+fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<SaveOutcome, String> {
+    let known = app.state::<KnownFiles>();
+    let state = known
+        .0
+        .lock()
+        .unwrap()
+        .get(path)
+        .copied()
+        .unwrap_or_default();
+    let disk = fs::read(path).ok();
+    if !force && changed_on_disk(state.hash, disk.as_deref()) {
+        let (disk_text, _, _) = decode(disk.as_deref().unwrap_or_default());
+        return Ok(SaveOutcome::Conflict {
+            name: display_name(path),
+            path: path_string(path),
+            disk_text,
+        });
+    }
+    let hash = write_file(path, text, state.format)?;
+    crate::history::on_save(app, path, disk.as_deref(), text);
     known.0.lock().unwrap().insert(
-        path.clone(),
+        path.to_path_buf(),
         FileState {
-            format,
             hash: Some(hash),
+            ..state
         },
     );
-    trust.add_file(&app, &path);
-    crate::track_file(&app, &path);
-    Ok(saved(&path))
+    Ok(saved(path))
 }
 
 #[cfg(test)]

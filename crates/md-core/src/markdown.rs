@@ -5,7 +5,7 @@ use comrak::{format_html, parse_document, Anchorizer, Arena, Node, Options};
 
 use crate::{count_text, Heading, RenderOptions, Rendered};
 
-fn comrak_options(opts: &RenderOptions) -> Options<'static> {
+pub(crate) fn comrak_options(opts: &RenderOptions) -> Options<'static> {
     let mut o = Options::default();
     let ext = &mut o.extension;
     ext.strikethrough = true;

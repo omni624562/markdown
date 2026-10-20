@@ -11,7 +11,7 @@ use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{sinks::UTF8, SearcherBuilder};
 use ignore::WalkBuilder;
 use serde::Serialize;
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 use crate::files::{display_name, path_string, KnownFiles};
 use crate::trust::Trust;
@@ -60,11 +60,12 @@ pub fn resolve_inside(root: &Path, path: &Path) -> Result<PathBuf, String> {
         rest.push(existing.file_name().ok_or("路徑無效")?);
         existing = existing.parent().ok_or("路徑無效")?;
     }
-    let mut real = dunce::canonicalize(existing).map_err(|e| e.to_string())?;
+    let mut real =
+        dunce::canonicalize(existing).map_err(|e| crate::io::describe(&e, "無法存取這個位置"))?;
     for part in rest.into_iter().rev() {
         real.push(part);
     }
-    let root = dunce::canonicalize(root).map_err(|e| e.to_string())?;
+    let root = dunce::canonicalize(root).map_err(|e| crate::io::describe(&e, "無法存取資料夾"))?;
     if real.starts_with(&root) {
         Ok(path.to_path_buf())
     } else {
@@ -174,17 +175,16 @@ pub struct FolderInfo {
     name: String,
 }
 
-fn activate(
-    app: &AppHandle,
-    root: PathBuf,
-    workspace: &Workspace,
-    trust: &Trust,
-    watcher: &Watcher,
-) -> FolderInfo {
+fn activate(app: &AppHandle, root: PathBuf, workspace: &Workspace, trust: &Trust) -> FolderInfo {
     *workspace.0.lock().unwrap() = Some(root.clone());
     trust.add_folder(app, &root);
     crate::allow_assets_in(app, &root);
-    watcher.watch_workspace(app, &root);
+    // 網路磁碟的監看要先掃描整個資料夾，可能很久，放在背景進行。
+    let app2 = app.clone();
+    let root2 = root.clone();
+    std::thread::spawn(move || {
+        app2.state::<Watcher>().watch_workspace(&app2, &root2);
+    });
     FolderInfo {
         name: display_name(&root),
         path: path_string(&root),
@@ -198,49 +198,47 @@ pub async fn open_folder(
     window: WebviewWindow,
     workspace: State<'_, Workspace>,
     trust: State<'_, Trust>,
-    watcher: State<'_, Watcher>,
 ) -> Result<Option<FolderInfo>, String> {
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
         .set_title("開啟資料夾")
         .pick_folder()
         .await;
-    Ok(picked.map(|h| activate(&app, h.path().to_path_buf(), &workspace, &trust, &watcher)))
+    Ok(picked.map(|h| activate(&app, h.path().to_path_buf(), &workspace, &trust)))
 }
 
 /// 重新開啟最近使用過的資料夾（只允許信任清單中的資料夾）。
 #[tauri::command]
-pub fn reopen_folder(
+pub async fn reopen_folder(
     app: AppHandle,
     path: String,
     workspace: State<'_, Workspace>,
     trust: State<'_, Trust>,
-    watcher: State<'_, Watcher>,
 ) -> Result<FolderInfo, String> {
     let path = PathBuf::from(path);
     if !trust.allows_folder(&path) {
         return Err("這個資料夾不在最近開啟的清單中".into());
     }
-    if !path.is_dir() {
+    let p = path.clone();
+    let exists = crate::io::blocking(move || match fs::metadata(&p) {
+        Ok(m) => Ok(m.is_dir()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(crate::io::describe(&e, "無法開啟資料夾")),
+    })
+    .await?;
+    if !exists {
         trust.remove(&app, &path);
         return Err(format!(
             "找不到資料夾「{}」，可能已被移動或刪除",
             path.display()
         ));
     }
-    Ok(activate(&app, path, &workspace, &trust, &watcher))
+    Ok(activate(&app, path, &workspace, &trust))
 }
 
 /// 以命令列帶入的資料夾開啟工作區（例如把資料夾拖到 exe 上）。
 pub fn open_folder_from_cli(app: &AppHandle, path: PathBuf) -> FolderInfo {
-    use tauri::Manager;
-    activate(
-        app,
-        path,
-        &app.state::<Workspace>(),
-        &app.state::<Trust>(),
-        &app.state::<Watcher>(),
-    )
+    activate(app, path, &app.state::<Workspace>(), &app.state::<Trust>())
 }
 
 #[tauri::command]
@@ -258,10 +256,15 @@ pub fn recent(trust: State<'_, Trust>) -> crate::trust::Recent {
 
 /// 列出資料夾的直接子項目（資料夾在前，只列出可開啟的文件）。
 #[tauri::command]
-pub fn list_dir(path: String, workspace: State<'_, Workspace>) -> Result<Vec<Entry>, String> {
-    let root = workspace.require_root()?;
-    let dir = resolve_inside(&root, Path::new(&path))?;
-    Ok(list_children(&dir))
+pub async fn list_dir(app: AppHandle, path: String) -> Result<Vec<Entry>, String> {
+    crate::io::blocking(move || {
+        let root = app.state::<Workspace>().require_root()?;
+        let dir = resolve_inside(&root, Path::new(&path))?;
+        // 先確認讀得到（列出內容時會略過個別項目的錯誤，斷線時要明確回報）。
+        fs::read_dir(&dir).map_err(|e| crate::io::describe(&e, "無法讀取資料夾"))?;
+        Ok(list_children(&dir))
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -302,15 +305,24 @@ pub async fn list_files(workspace: State<'_, Workspace>) -> Result<Vec<FileItem>
 
 /// 新增檔案或資料夾；檔案會建立成空白檔。回傳新路徑。
 #[tauri::command]
-pub fn create_entry(
+pub async fn create_entry(
+    app: AppHandle,
     parent: String,
     name: String,
     is_dir: bool,
-    workspace: State<'_, Workspace>,
 ) -> Result<String, String> {
-    let root = workspace.require_root()?;
-    let parent = resolve_inside(&root, Path::new(&parent))?;
-    let target = parent.join(validate_name(&name)?);
+    crate::io::blocking(move || create_entry_now(&app, &parent, &name, is_dir)).await
+}
+
+fn create_entry_now(
+    app: &AppHandle,
+    parent: &str,
+    name: &str,
+    is_dir: bool,
+) -> Result<String, String> {
+    let root = app.state::<Workspace>().require_root()?;
+    let parent = resolve_inside(&root, Path::new(parent))?;
+    let target = parent.join(validate_name(name)?);
     if target.exists() {
         return Err(format!("「{}」已經存在", display_name(&target)));
     }
@@ -323,63 +335,68 @@ pub fn create_entry(
             .open(&target)
             .map(|_| ())
     }
-    .map_err(|e| format!("無法建立「{}」：{e}", display_name(&target)))?;
+    .map_err(|e| crate::io::describe(&e, &format!("無法建立「{}」", display_name(&target))))?;
     Ok(path_string(&target))
 }
 
 /// 重新命名（同一個資料夾內）。已開啟的檔案會沿用原本的狀態。
 #[tauri::command]
-pub fn rename_entry(
+pub async fn rename_entry(
     app: AppHandle,
     path: String,
     new_name: String,
-    workspace: State<'_, Workspace>,
-    known: State<'_, KnownFiles>,
-    trust: State<'_, Trust>,
 ) -> Result<String, String> {
-    let root = workspace.require_root()?;
-    let from = resolve_inside(&root, Path::new(&path))?;
+    crate::io::blocking(move || rename_entry_now(&app, &path, &new_name)).await
+}
+
+fn rename_entry_now(app: &AppHandle, path: &str, new_name: &str) -> Result<String, String> {
+    let root = app.state::<Workspace>().require_root()?;
+    let from = resolve_inside(&root, Path::new(path))?;
     if from == root {
         return Err("不能重新命名工作區資料夾本身".into());
     }
     let to = from
         .parent()
         .ok_or("路徑無效")?
-        .join(validate_name(&new_name)?);
+        .join(validate_name(new_name)?);
     // 只改大小寫時（Windows 不分大小寫），目標「存在」其實就是自己。
     let same_file = from.to_string_lossy().to_lowercase() == to.to_string_lossy().to_lowercase();
     if to.exists() && !same_file {
         return Err(format!("「{}」已經存在", display_name(&to)));
     }
-    fs::rename(&from, &to).map_err(|e| format!("無法重新命名：{e}"))?;
-    known.rename(&from, &to);
-    trust.rename(&app, &from, &to);
+    fs::rename(&from, &to).map_err(|e| crate::io::describe(&e, "無法重新命名"))?;
+    app.state::<KnownFiles>().rename(&from, &to);
+    crate::history::on_rename(app, &from, &to);
+    app.state::<Trust>().rename(app, &from, &to);
     Ok(path_string(&to))
 }
 
 /// 移到資源回收筒（可以從回收筒還原）。
 #[tauri::command]
-pub fn trash_entry(
-    app: AppHandle,
-    path: String,
-    workspace: State<'_, Workspace>,
-    trust: State<'_, Trust>,
-) -> Result<(), String> {
-    let root = workspace.require_root()?;
-    let path = resolve_inside(&root, Path::new(&path))?;
-    if path == root {
-        return Err("不能刪除工作區資料夾本身".into());
-    }
-    trash::delete(&path).map_err(|e| format!("無法移到資源回收筒：{e}"))?;
-    trust.remove(&app, &path);
-    Ok(())
+pub async fn trash_entry(app: AppHandle, path: String) -> Result<(), String> {
+    crate::io::blocking(move || {
+        let root = app.state::<Workspace>().require_root()?;
+        let path = resolve_inside(&root, Path::new(&path))?;
+        if path == root {
+            return Err("不能刪除工作區資料夾本身".into());
+        }
+        // 網路磁碟上的檔案通常沒有資源回收筒，系統會回報錯誤。
+        trash::delete(&path).map_err(|e| format!("無法移到資源回收筒：{e}"))?;
+        app.state::<Trust>().remove(&app, &path);
+        Ok(())
+    })
+    .await
 }
 
 /// 在檔案總管中顯示。
 #[tauri::command]
-pub fn reveal_entry(path: String, workspace: State<'_, Workspace>) -> Result<(), String> {
-    let root = workspace.require_root()?;
-    let path = resolve_inside(&root, Path::new(&path))?;
+pub async fn reveal_entry(app: AppHandle, path: String) -> Result<(), String> {
+    crate::io::blocking(move || reveal_now(&app, &path)).await
+}
+
+fn reveal_now(app: &AppHandle, path: &str) -> Result<(), String> {
+    let root = app.state::<Workspace>().require_root()?;
+    let path = resolve_inside(&root, Path::new(path))?;
     // explorer 不接受整個被引號包住的 `"/select,路徑"`（Rust 遇到空白會自動加引號），
     // 所以自己組參數，只把路徑放進引號。
     #[cfg(target_os = "windows")]

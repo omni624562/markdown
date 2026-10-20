@@ -1,7 +1,7 @@
 //! 監看檔案變動：工作區資料夾，以及工作區外已開啟檔案所在的資料夾。
 //!
 //! 只在內容真的和編輯器最後一次同步時不同才通知前端（自己存檔不會觸發）。
-//! 網路磁碟（UNC 路徑）不保證會發出變動通知，改用每 5 秒輪詢。
+//! 網路磁碟（UNC 路徑、對應的網路磁碟機）不保證會發出變動通知，改用每 5 秒輪詢。
 
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
@@ -40,14 +40,10 @@ impl Active {
 #[derive(Default)]
 pub struct Watcher {
     workspace: Mutex<Option<Active>>,
-    /// 工作區外檔案所在資料夾的監看（不遞迴）。
+    /// 工作區外檔案所在資料夾的監看（不遞迴）。網路資料夾另外用輪詢的方式監看。
     outside: Mutex<Option<Active>>,
+    outside_poll: Mutex<Option<Active>>,
     outside_dirs: Mutex<HashSet<PathBuf>>,
-}
-
-/// UNC 路徑（\\server\share）或其他網路位置。
-pub fn is_network_path(path: &Path) -> bool {
-    path.to_string_lossy().starts_with(r"\\")
 }
 
 fn create(app: &AppHandle, poll: bool) -> notify::Result<Active> {
@@ -76,7 +72,7 @@ impl Watcher {
     pub fn watch_workspace(&self, app: &AppHandle, root: &Path) {
         let mut slot = self.workspace.lock().unwrap();
         *slot = None; // 先停止舊的監看
-        match create(app, is_network_path(root)).and_then(|mut w| {
+        match create(app, crate::io::is_network_path(root)).and_then(|mut w| {
             w.watch(root, RecursiveMode::Recursive)?;
             Ok(w)
         }) {
@@ -94,9 +90,14 @@ impl Watcher {
         if !self.outside_dirs.lock().unwrap().insert(dir.to_path_buf()) {
             return;
         }
-        let mut slot = self.outside.lock().unwrap();
+        let poll = crate::io::is_network_path(dir);
+        let mut slot = if poll {
+            self.outside_poll.lock().unwrap()
+        } else {
+            self.outside.lock().unwrap()
+        };
         if slot.is_none() {
-            match create(app, false) {
+            match create(app, poll) {
                 Ok(w) => *slot = Some(w),
                 Err(e) => {
                     eprintln!("無法建立檔案監看：{e}");
@@ -208,12 +209,5 @@ mod tests {
             DataChange::Any
         ))));
         assert!(is_relevant(&EventKind::Create(CreateKind::File)));
-    }
-
-    #[test]
-    fn detects_unc_paths() {
-        assert!(is_network_path(Path::new(r"\\nas\共用\筆記")));
-        assert!(!is_network_path(Path::new(r"C:\筆記")));
-        assert!(!is_network_path(Path::new("/home/user")));
     }
 }

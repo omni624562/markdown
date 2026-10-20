@@ -39,6 +39,9 @@ export interface Settings {
   quickActions: QuickAction[];
   /** 桌面版：每天檢查一次有沒有新版（下載前會先詢問）。 */
   autoUpdate: boolean;
+  /** 開啟的資料夾是 Git 儲存庫時，定時提交、拉取、推送。預設關閉。 */
+  gitAutoSync: boolean;
+  gitSyncMinutes: 5 | 10 | 30 | 60;
 }
 
 export const DEFAULT_QUICK_ACTIONS: readonly QuickAction[] = Object.freeze([
@@ -66,6 +69,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   markExternalChanges: true,
   quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
   autoUpdate: true,
+  gitAutoSync: false,
+  gitSyncMinutes: 10,
 });
 
 export const FONT_SIZE_RANGE = { min: 12, max: 24 } as const;
@@ -92,6 +97,12 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("mcpServer");
   bool("markExternalChanges");
   bool("autoUpdate");
+  bool("gitAutoSync");
+  if ("gitSyncMinutes" in input) {
+    const m = input.gitSyncMinutes;
+    if (m === 5 || m === 10 || m === 30 || m === 60) out.gitSyncMinutes = m;
+    else problems++;
+  }
   if ("aiTool" in input) {
     if (input.aiTool === "claude" || input.aiTool === "codex") out.aiTool = input.aiTool;
     else problems++;
