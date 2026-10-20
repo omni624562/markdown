@@ -59,7 +59,8 @@ fn now_ms() -> u64 {
 fn file_dir(root: &Path, path: &Path) -> PathBuf {
     let mut key = path.to_string_lossy().into_owned();
     if cfg!(windows) {
-        key = key.to_lowercase();
+        // Windows 的路徑不分大小寫，`/` 和 `\` 也通用（改名後 join 出來的路徑常混用兩種）。
+        key = key.to_lowercase().replace('/', "\\");
     }
     let digest = Sha256::digest(key.as_bytes());
     let name: String = digest[..10].iter().map(|b| format!("{b:02x}")).collect();

@@ -386,6 +386,8 @@ mod tests {
         git(dir, &["init", "--quiet", "-b", "main"]);
         git(dir, &["config", "user.name", "測試"]);
         git(dir, &["config", "user.email", "test@example.com"]);
+        // Windows 的 Git 預設會把換行轉成 CRLF，測試比對檔案內容時固定用 LF。
+        git(dir, &["config", "core.autocrlf", "false"]);
     }
 
     #[test]
