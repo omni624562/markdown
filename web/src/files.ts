@@ -3,8 +3,9 @@
  * 支援 File System Access API 的瀏覽器（Chrome、Edge）可以直接寫回原檔；
  * 其他瀏覽器則退回「選擇檔案」與「下載」。
  */
+import { type DocKind, KINDS, OPEN_ACCEPT } from "./kinds.ts";
 
-interface FileHandle {
+export interface FileHandle {
   name: string;
   getFile(): Promise<File>;
   createWritable(): Promise<{ write(data: string): Promise<void>; close(): Promise<void> }>;
@@ -22,8 +23,6 @@ declare global {
   }
 }
 
-const MD_TYPES = [{ description: "Markdown", accept: { "text/markdown": [".md", ".markdown"] } }];
-
 export interface OpenedFile {
   name: string;
   text: string;
@@ -38,7 +37,7 @@ function isAbort(e: unknown): boolean {
 export async function openFile(fallbackInput: HTMLInputElement): Promise<OpenedFile | null> {
   if (window.showOpenFilePicker) {
     try {
-      const [handle] = await window.showOpenFilePicker({ types: MD_TYPES });
+      const [handle] = await window.showOpenFilePicker({ types: [OPEN_ACCEPT] });
       const file = await handle.getFile();
       return { name: file.name, text: await file.text(), handle };
     } catch (e) {
@@ -58,19 +57,26 @@ export async function openFile(fallbackInput: HTMLInputElement): Promise<OpenedF
 }
 
 /**
- * 儲存 Markdown。有檔案控制代碼時直接覆寫；否則跳出另存新檔或改用下載。
+ * 儲存文件。有檔案控制代碼時直接覆寫；否則跳出另存新檔或改用下載。
+ * `saveAs` 為 true 時一律重新選擇位置。
  * 回傳之後應沿用的控制代碼與檔名；使用者取消時回傳 `null`。
  */
 export async function saveFile(
   text: string,
   name: string,
+  kind: DocKind,
   handle: FileHandle | null,
+  saveAs = false,
 ): Promise<{ name: string; handle: FileHandle | null } | null> {
+  const info = KINDS[kind];
   try {
-    if (!handle && window.showSaveFilePicker) {
-      handle = await window.showSaveFilePicker({ suggestedName: name, types: MD_TYPES });
+    if ((saveAs || !handle) && window.showSaveFilePicker) {
+      handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: info.label, accept: info.accept }],
+      });
     }
-    if (handle) {
+    if (handle && !(saveAs && !window.showSaveFilePicker)) {
       const writable = await handle.createWritable();
       await writable.write(text);
       await writable.close();
@@ -80,7 +86,7 @@ export async function saveFile(
     if (isAbort(e)) return null;
     throw e;
   }
-  download(name, text, "text/markdown");
+  download(name, text, info.mime);
   return { name, handle: null };
 }
 
@@ -101,4 +107,9 @@ export function download(filename: string, content: string, type: string): void 
 export function replaceExtension(name: string, ext: string): string {
   const dot = name.lastIndexOf(".");
   return (dot > 0 ? name.slice(0, dot) : name) + ext;
+}
+
+/** 去掉副檔名。 */
+export function stem(name: string): string {
+  return replaceExtension(name, "");
 }

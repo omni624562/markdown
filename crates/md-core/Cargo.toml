@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 comrak = { version = "0.56", default-features = false }
+serde_json = { version = "1.0.154", features = ["preserve_order", "arbitrary_precision"] }
 serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
