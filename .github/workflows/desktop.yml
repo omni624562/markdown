@@ -4,6 +4,7 @@ name: Desktop
 # - 每次 PR 都會產生 Artifact（需登入 GitHub 才能下載），方便測試。
 # - 合併到 main 時，更新公開的「最新版」Release：不用登入就能下載。
 # - 推送 v* 標籤時，另外建立該版本的 Release。
+# - 建置流水號（run_number）會編進執行檔；「最新版」附上 version.json，讓程式自動更新。
 on:
   push:
     branches: [main]
@@ -49,6 +50,10 @@ jobs:
 
       - name: 編譯執行檔
         working-directory: desktop
+        env:
+          # 自動更新用：比較流水號判斷新舊。
+          MD_EDITOR_BUILD: ${{ github.run_number }}
+          MD_EDITOR_COMMIT: ${{ github.sha }}
         run: cargo build --release --locked
 
       - uses: actions/upload-artifact@v4
@@ -69,21 +74,50 @@ jobs:
       group: publish-latest
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: desktop/Cargo.toml
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
         with:
           name: md-editor-windows-x64
+      - name: 產生更新資訊（version.json）
+        env:
+          BUILD: ${{ github.run_number }}
+          # 合併 PR 時，提交訊息第三行是 PR 標題；直接推送時用第一行。
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' desktop/Cargo.toml | head -1)"
+          if [[ "$MESSAGE" == "Merge pull request"* ]]; then
+            notes="$(printf '%s\n' "$MESSAGE" | sed -n '3p')"
+          else
+            notes="$(printf '%s\n' "$MESSAGE" | head -1)"
+          fi
+          jq -n \
+            --argjson build "$BUILD" \
+            --arg version "$version" \
+            --arg commit "$GITHUB_SHA" \
+            --arg date "$(TZ=Asia/Taipei date +%Y-%m-%d)" \
+            --arg notes "$notes" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/latest/md-editor.exe" \
+            --arg sha256 "$(sha256sum md-editor.exe | cut -d' ' -f1)" \
+            --argjson size "$(stat -c%s md-editor.exe)" \
+            '{build: $build, version: $version, commit: $commit, date: $date, notes: $notes, url: $url, sha256: $sha256, size: $size}' \
+            > version.json
+          cat version.json
       - name: 更新「最新版」Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           short="${GITHUB_SHA::7}"
           today="$(TZ=Asia/Taipei date +%Y-%m-%d)"
-          notes="main 分支 ${short} 的自動建置（${today}）。
+          notes="main 分支 ${short} 的自動建置（第 ${{ github.run_number }} 版，${today}）。
 
           下載 md-editor.exe 後直接執行即可，不需要安裝。
-          第一次執行時若出現「Windows 已保護您的電腦」，請點「其他資訊」→「仍要執行」（這個執行檔沒有數位簽章）。"
+          第一次執行時若出現「Windows 已保護您的電腦」，請點「其他資訊」→「仍要執行」（這個執行檔沒有數位簽章）。
+          之後有新版時，程式會自動提示更新。"
           gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          gh release create latest md-editor.exe --repo "$GITHUB_REPOSITORY" \
+          gh release create latest md-editor.exe version.json --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "最新版（${today}）" --notes "$notes" --latest
 
   release:

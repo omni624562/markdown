@@ -42,7 +42,7 @@ impl Workspace {
     }
 }
 
-fn is_doc(path: &Path) -> bool {
+pub fn is_doc(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| DOC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))

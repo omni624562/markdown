@@ -27,6 +27,18 @@ trash = "5.2.9"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dunce = "1.0.5"
+# AI 協作（第 3 批，預設關閉）
+portable-pty = "0.9.0"
+which = "8.0.6"
+rmcp = { version = "3.5.1", default-features = false, features = ["server", "macros", "transport-streamable-http-server"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
+tokio = { version = "1", features = ["net", "sync", "time", "process", "io-util", "rt"] }
+schemars = "1.2.3"
+getrandom = "0.4.3"
+# 自動更新
+ureq = { version = "3.4.2", default-features = false, features = ["rustls", "platform-verifier", "win-system-proxy"] }
+sha2 = "0.11.1"
+self-replace = "1.5.0"
 
 [features]
 # 預設把前端打包進執行檔；開發時用 `cargo run --no-default-features` 改連 Vite 開發伺服器。

@@ -1,0 +1,515 @@
+//! 編輯器的 MCP 伺服器：讓 Claude Code、Codex 知道使用者正在看哪份文件、選了哪一段，
+//! 並能「提出」修改。修改不會直接寫入檔案，而是在編輯器中以差異檢視呈現，由使用者決定。
+//!
+//! 只綁定 127.0.0.1，每個請求都要帶 `Authorization: Bearer <權杖>`。
+//! 權杖存在 app 設定資料夾，優先使用固定的連接埠，這樣手動註冊過的設定下次啟動仍然有效。
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::Duration;
+
+use axum::extract::{Request, State as AxumState};
+use axum::http::{header, StatusCode};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
+use rmcp::transport::streamable_http_server::{
+    session::local::LocalSessionManager, StreamableHttpService,
+};
+use rmcp::{schemars, tool, tool_handler, tool_router, ServerHandler};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::oneshot;
+
+use crate::workspace::{is_doc, resolve_inside, Workspace};
+
+/// Codex 從這個環境變數讀取權杖。
+pub const TOKEN_ENV: &str = "MD_EDITOR_MCP_TOKEN";
+const PREFERRED_PORT: u16 = 47321;
+const SERVER_NAME: &str = "md-editor";
+/// 等使用者決定的時間。有些用戶端（例如 Codex 預設 60 秒）會更早放棄，所以超過就先回覆「還在等」。
+const DECISION_WAIT: Duration = Duration::from_secs(50);
+
+#[derive(Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Selection {
+    text: String,
+    from_line: u32,
+    to_line: u32,
+}
+
+#[derive(Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveDoc {
+    path: Option<String>,
+    name: String,
+    text: String,
+    dirty: bool,
+    selection: Option<Selection>,
+}
+
+#[derive(Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenDoc {
+    path: Option<String>,
+    name: String,
+    dirty: bool,
+}
+
+/// 前端定時同步過來的編輯器狀態。
+#[derive(Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Snapshot {
+    active: Option<ActiveDoc>,
+    open: Vec<OpenDoc>,
+}
+
+pub struct Connection {
+    pub url: String,
+    pub token: String,
+    pub config_path: PathBuf,
+}
+
+struct Running {
+    conn: Connection,
+    shutdown: oneshot::Sender<()>,
+}
+
+#[derive(Default)]
+pub struct Mcp {
+    snapshot: Arc<RwLock<Snapshot>>,
+    pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Decision>>>>,
+    next: Arc<AtomicU64>,
+    running: Mutex<Option<Running>>,
+}
+
+impl Mcp {
+    /// 伺服器在執行時，回傳連線資訊（給終端機啟動 Claude Code、Codex 時帶入）。
+    pub fn connection(&self) -> Option<Connection> {
+        self.running.lock().unwrap().as_ref().map(|r| Connection {
+            url: r.conn.url.clone(),
+            token: r.conn.token.clone(),
+            config_path: r.conn.config_path.clone(),
+        })
+    }
+}
+
+/// 使用者對提議的決定（由前端回報）。
+#[derive(Deserialize)]
+pub struct Decision {
+    ok: bool,
+    message: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ProposalEvent {
+    id: u64,
+    path: Option<String>,
+    /// `edits`：依原文取代；`selection`：取代目前選取範圍。
+    kind: &'static str,
+    edits: Vec<Edit>,
+    replacement: String,
+    summary: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, schemars::JsonSchema)]
+pub struct Edit {
+    /// 要被取代的原文。必須和文件中的文字完全相同（包括空白與換行），而且只出現一次。
+    old_text: String,
+    /// 取代後的新文字。
+    new_text: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ReadArgs {
+    /// 文件的完整路徑（可以從 list_open_documents 取得，或是工作區資料夾內的 .md／.txt／.json 檔）。
+    path: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ProposeArgs {
+    /// 要修改的文件路徑；省略時是使用者目前正在看的文件。
+    path: Option<String>,
+    /// 一或多處修改，依原文比對位置。
+    edits: Vec<Edit>,
+    /// 用一句話向使用者說明這次修改的目的。
+    summary: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ReplaceSelectionArgs {
+    /// 用來取代使用者目前選取範圍的新文字。
+    replacement: String,
+    /// 用一句話向使用者說明這次修改的目的。
+    summary: Option<String>,
+}
+
+#[derive(Clone)]
+struct EditorTools {
+    app: AppHandle,
+    snapshot: Arc<RwLock<Snapshot>>,
+    pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Decision>>>>,
+    next: Arc<AtomicU64>,
+}
+
+fn describe(doc: &ActiveDoc) -> String {
+    format!(
+        "檔名：{}\n路徑：{}\n有未存檔的變更：{}",
+        doc.name,
+        doc.path.as_deref().unwrap_or("（尚未存檔）"),
+        if doc.dirty { "是" } else { "否" }
+    )
+}
+
+#[tool_router]
+impl EditorTools {
+    #[tool(
+        description = "取得使用者目前在 Markdown 編輯器中正在看的文件：檔名、路徑與編輯器中的完整內容（包含尚未存檔的變更）。"
+    )]
+    fn get_active_document(&self) -> Result<String, String> {
+        let snap = self.snapshot.read().unwrap();
+        let doc = snap.active.as_ref().ok_or("編輯器目前沒有開啟文件")?;
+        Ok(format!("{}\n\n---\n{}", describe(doc), doc.text))
+    }
+
+    #[tool(description = "取得使用者目前在編輯器中選取的文字與所在行號。")]
+    fn get_selection(&self) -> Result<String, String> {
+        let snap = self.snapshot.read().unwrap();
+        let doc = snap.active.as_ref().ok_or("編輯器目前沒有開啟文件")?;
+        match &doc.selection {
+            Some(sel) if !sel.text.is_empty() => Ok(format!(
+                "文件：{}\n選取範圍：第 {} 行到第 {} 行\n\n---\n{}",
+                doc.name, sel.from_line, sel.to_line, sel.text
+            )),
+            _ => Ok("使用者目前沒有選取任何文字。".into()),
+        }
+    }
+
+    #[tool(description = "列出編輯器中所有已開啟的分頁（檔名、路徑、是否有未存檔的變更）。")]
+    fn list_open_documents(&self) -> String {
+        let snap = self.snapshot.read().unwrap();
+        let active = snap.active.as_ref().and_then(|d| d.path.clone());
+        let lines: Vec<String> = snap
+            .open
+            .iter()
+            .map(|d| {
+                format!(
+                    "- {}{}{}：{}",
+                    d.name,
+                    if d.dirty { "（未存檔）" } else { "" },
+                    if d.path.is_some() && d.path == active {
+                        "（目前分頁）"
+                    } else {
+                        ""
+                    },
+                    d.path.as_deref().unwrap_or("尚未存檔")
+                )
+            })
+            .collect();
+        if lines.is_empty() {
+            "沒有已開啟的分頁。".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
+    #[tool(
+        description = "讀取一份文件的內容。可以讀取已開啟的分頁（會包含尚未存檔的變更），或使用者開啟的資料夾中的 .md／.txt／.json 檔。"
+    )]
+    fn read_document(&self, Parameters(args): Parameters<ReadArgs>) -> Result<String, String> {
+        {
+            let snap = self.snapshot.read().unwrap();
+            if let Some(doc) = snap
+                .active
+                .as_ref()
+                .filter(|d| d.path.as_deref() == Some(args.path.as_str()))
+            {
+                return Ok(doc.text.clone());
+            }
+        }
+        let path = self.allowed_path(&args.path)?;
+        let bytes = std::fs::read(&path).map_err(|e| format!("無法讀取：{e}"))?;
+        Ok(crate::files::decode(&bytes).0)
+    }
+
+    #[tool(
+        description = "向使用者提出修改一份文件。修改不會直接寫入：編輯器會逐段標示差異，由使用者決定接受或拒絕，結果會回覆給你。每一處修改用 old_text（必須與文件內容完全相同且只出現一次）與 new_text 表示。"
+    )]
+    async fn propose_edit(
+        &self,
+        Parameters(args): Parameters<ProposeArgs>,
+    ) -> Result<String, String> {
+        if args.edits.is_empty() {
+            return Err("edits 不能是空的".into());
+        }
+        let path = match args.path {
+            Some(p) => Some(self.allowed_path(&p)?.to_string_lossy().into_owned()),
+            None => None,
+        };
+        self.propose(ProposalEvent {
+            id: 0,
+            path,
+            kind: "edits",
+            edits: args.edits,
+            replacement: String::new(),
+            summary: args.summary.unwrap_or_default(),
+        })
+        .await
+    }
+
+    #[tool(
+        description = "向使用者提出用新文字取代目前的選取範圍。編輯器會標示差異，由使用者決定是否套用，結果會回覆給你。"
+    )]
+    async fn propose_replace_selection(
+        &self,
+        Parameters(args): Parameters<ReplaceSelectionArgs>,
+    ) -> Result<String, String> {
+        self.propose(ProposalEvent {
+            id: 0,
+            path: None,
+            kind: "selection",
+            edits: vec![],
+            replacement: args.replacement,
+            summary: args.summary.unwrap_or_default(),
+        })
+        .await
+    }
+}
+
+impl EditorTools {
+    /// 只允許已開啟的分頁，或工作區內的文件。
+    fn allowed_path(&self, path: &str) -> Result<PathBuf, String> {
+        let open = self
+            .snapshot
+            .read()
+            .unwrap()
+            .open
+            .iter()
+            .any(|d| d.path.as_deref() == Some(path));
+        let p = PathBuf::from(path);
+        if open {
+            return Ok(p);
+        }
+        let root = self
+            .app
+            .state::<Workspace>()
+            .root()
+            .ok_or("只能存取已開啟的分頁，或使用者開啟的資料夾中的文件")?;
+        resolve_inside(&root, &p)?;
+        if !is_doc(&p) {
+            return Err("只能存取 .md、.txt、.json 等文字文件".into());
+        }
+        Ok(p)
+    }
+
+    async fn propose(&self, mut event: ProposalEvent) -> Result<String, String> {
+        let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
+        event.id = id;
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().unwrap().insert(id, tx);
+        self.app
+            .emit("ai-proposal", event)
+            .map_err(|e| e.to_string())?;
+        match tokio::time::timeout(DECISION_WAIT, rx).await {
+            Ok(Ok(d)) if d.ok => Ok(d.message),
+            Ok(Ok(d)) => Err(d.message),
+            Ok(Err(_)) => Err("編輯器已關閉這個提議".into()),
+            Err(_) => {
+                self.pending.lock().unwrap().remove(&id);
+                Ok("修改已顯示在使用者的編輯器中，使用者還沒做出決定。不需要重複提出，使用者會自行接受或拒絕；之後可以用 get_active_document 確認結果。".into())
+            }
+        }
+    }
+}
+
+#[tool_handler]
+impl ServerHandler for EditorTools {
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
+            .with_instructions(
+            "Markdown 編輯器：可以讀取使用者正在編輯的文件與選取範圍。要修改文件時請使用 propose_edit 或 propose_replace_selection，由使用者在編輯器中確認，不要直接寫入檔案。",
+        )
+    }
+}
+
+async fn require_token(
+    AxumState(token): AxumState<Arc<str>>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let given = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    if given.is_some_and(|t| constant_time_eq(t.as_bytes(), token.as_bytes())) {
+        next.run(req).await
+    } else {
+        (StatusCode::UNAUTHORIZED, "需要正確的權杖").into_response()
+    }
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+fn new_token() -> Result<String, String> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).map_err(|e| e.to_string())?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// 讀取（或第一次時建立）權杖。存在 app 設定資料夾，不放在使用者的筆記資料夾裡。
+fn load_token(dir: &Path) -> Result<String, String> {
+    let path = dir.join("mcp-token");
+    if let Ok(t) = std::fs::read_to_string(&path) {
+        let t = t.trim();
+        if t.len() >= 32 && t.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Ok(t.to_string());
+        }
+    }
+    let token = new_token()?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    crate::files::write_atomic(&path, token.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(token)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpInfo {
+    url: String,
+    /// 手動註冊到 Claude Code 的指令。
+    claude_add: String,
+    /// 手動註冊到 Codex 的指令（需要先把權杖設成環境變數）。
+    codex_add: String,
+}
+
+fn info(conn: &Connection) -> McpInfo {
+    McpInfo {
+        url: conn.url.clone(),
+        claude_add: format!(
+            "claude mcp add --transport http {SERVER_NAME} {} --header \"Authorization: Bearer {}\"",
+            conn.url, conn.token
+        ),
+        codex_add: format!(
+            "setx {TOKEN_ENV} {}\ncodex mcp add {SERVER_NAME} --url {} --bearer-token-env-var {TOKEN_ENV}",
+            conn.token, conn.url
+        ),
+    }
+}
+
+/// 啟動 MCP 伺服器（已在執行時直接回傳連線資訊）。
+#[tauri::command]
+pub async fn mcp_start(app: AppHandle, mcp: State<'_, Mcp>) -> Result<McpInfo, String> {
+    if let Some(r) = mcp.running.lock().unwrap().as_ref() {
+        return Ok(info(&r.conn));
+    }
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let token = load_token(&config_dir)?;
+    let listener = match tokio::net::TcpListener::bind(("127.0.0.1", PREFERRED_PORT)).await {
+        Ok(l) => l,
+        Err(_) => tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .map_err(|e| format!("無法啟動 MCP 伺服器：{e}"))?,
+    };
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let url = format!("http://127.0.0.1:{port}/mcp");
+
+    // 給 `claude --mcp-config` 用的設定檔。
+    let cache_dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+    let config_path = cache_dir.join("mcp.json");
+    let config = serde_json::json!({
+        "mcpServers": { SERVER_NAME: {
+            "type": "http",
+            "url": url,
+            "headers": { "Authorization": format!("Bearer {token}") }
+        }}
+    });
+    crate::files::write_atomic(&config_path, config.to_string().as_bytes())
+        .map_err(|e| e.to_string())?;
+
+    let tools = EditorTools {
+        app: app.clone(),
+        snapshot: mcp.snapshot.clone(),
+        pending: mcp.pending.clone(),
+        next: mcp.next.clone(),
+    };
+    let service: StreamableHttpService<EditorTools, LocalSessionManager> =
+        StreamableHttpService::new(
+            move || Ok(tools.clone()),
+            Default::default(),
+            Default::default(),
+        );
+    let router = axum::Router::new().nest_service("/mcp", service).layer(
+        axum::middleware::from_fn_with_state(Arc::<str>::from(token.as_str()), require_token),
+    );
+    let (shutdown, stop) = oneshot::channel::<()>();
+    tauri::async_runtime::spawn(async move {
+        let _ = axum::serve(listener, router)
+            .with_graceful_shutdown(async {
+                let _ = stop.await;
+            })
+            .await;
+    });
+
+    let conn = Connection {
+        url,
+        token,
+        config_path,
+    };
+    let result = info(&conn);
+    *mcp.running.lock().unwrap() = Some(Running { conn, shutdown });
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn mcp_stop(mcp: State<'_, Mcp>) {
+    if let Some(r) = mcp.running.lock().unwrap().take() {
+        let _ = r.shutdown.send(());
+        let _ = std::fs::remove_file(&r.conn.config_path);
+    }
+    // 還在等決定的提議一律取消。
+    mcp.pending.lock().unwrap().clear();
+}
+
+/// 前端同步目前的文件、選取範圍與分頁清單。
+#[tauri::command]
+pub fn mcp_sync(snapshot: Snapshot, mcp: State<'_, Mcp>) {
+    *mcp.snapshot.write().unwrap() = snapshot;
+}
+
+/// 使用者對提議的決定。
+#[tauri::command]
+pub fn mcp_respond(id: u64, decision: Decision, mcp: State<'_, Mcp>) {
+    if let Some(tx) = mcp.pending.lock().unwrap().remove(&id) {
+        let _ = tx.send(decision);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_comparison() {
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"abcd"));
+    }
+
+    #[test]
+    fn token_is_created_once_and_reused() {
+        let dir = std::env::temp_dir().join(format!("md-mcp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let a = load_token(&dir).unwrap();
+        assert_eq!(a.len(), 64);
+        assert_eq!(load_token(&dir).unwrap(), a);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

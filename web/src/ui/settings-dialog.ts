@@ -1,6 +1,41 @@
-import { FONT_SIZE_RANGE, type Settings, type SettingsStore } from "../settings.ts";
+import {
+  FONT_SIZE_RANGE,
+  QUICK_ACTION_LIMITS,
+  type QuickAction,
+  type Settings,
+  type SettingsStore,
+} from "../settings.ts";
+import { icon } from "./icons.ts";
+import { toast } from "./toast.ts";
 
 type ThemePref = "system" | "light" | "dark";
+
+/** 桌面版提供：偵測已安裝的 AI 工具、取得手動註冊 MCP 伺服器的指令。 */
+export interface AiHooks {
+  available(): Promise<{ claude: string | null; codex: string | null }>;
+  registration(): Promise<{ claudeAdd: string; codexAdd: string }>;
+}
+
+const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
+  previewWidth: [
+    ["narrow", "窄"],
+    ["medium", "中"],
+    ["wide", "寬"],
+  ],
+  aiTool: [
+    ["claude", "Claude Code"],
+    ["codex", "Codex"],
+  ],
+};
+
+/** 桌面版提供：目前版本與手動檢查更新。 */
+export interface UpdateHooks {
+  version(): Promise<string>;
+  check(): void;
+}
+
+/** AI 區中，總開關關閉時一起停用的選項。 */
+const AI_DEPENDENT: (keyof Settings)[] = ["aiTool", "mcpServer", "markExternalChanges"];
 
 interface Field {
   key: keyof Settings;
@@ -35,7 +70,16 @@ export class SettingsDialog {
   #dialog: HTMLDialogElement;
   #store: SettingsStore;
 
-  constructor(store: SettingsStore, theme: { get(): ThemePref; set(t: ThemePref): void }) {
+  #ai: AiHooks | null;
+  #actions!: HTMLElement;
+
+  constructor(
+    store: SettingsStore,
+    theme: { get(): ThemePref; set(t: ThemePref): void },
+    ai: AiHooks | null = null,
+    update: UpdateHooks | null = null,
+  ) {
+    this.#ai = ai;
     this.#store = store;
     const d = document.createElement("dialog");
     d.className = "settings";
@@ -84,6 +128,8 @@ export class SettingsDialog {
       body.append(el);
     }
 
+    body.append(this.#aiSection());
+
     const advanced = this.#section("進階");
     const reset = document.createElement("button");
     reset.type = "button";
@@ -93,11 +139,24 @@ export class SettingsDialog {
       store.reset();
       this.#sync();
     });
+    if (update) {
+      const checkBtn = document.createElement("button");
+      checkBtn.type = "button";
+      checkBtn.className = "btn";
+      checkBtn.textContent = "檢查更新";
+      checkBtn.addEventListener("click", () => update.check());
+      const versionRow = this.#row("version", "版本", "讀取中…", () => checkBtn);
+      d.addEventListener("toggle", () => {
+        if (d.open) void update.version().then((v) => (versionRow.querySelector("small")!.textContent = v));
+      });
+      advanced.append(
+        versionRow,
+        this.#row("autoUpdate", "自動檢查更新", "每天檢查一次 GitHub 上的最新版，下載前會先詢問", () =>
+          this.#control("autoUpdate"),
+        ),
+      );
+    }
     advanced.append(this.#row("reset", "所有設定", "主題、版面配置不受影響", () => reset));
-    const ai = document.createElement("p");
-    ai.className = "settings-note";
-    ai.textContent = "AI 協作（Claude Code／Codex）會在之後的版本加入，屆時可在這裡開啟；預設為關閉。";
-    advanced.append(ai);
     body.append(advanced);
 
     d.addEventListener("click", (e) => {
@@ -110,6 +169,144 @@ export class SettingsDialog {
   open(): void {
     this.#sync();
     this.#dialog.showModal();
+    void this.#refreshTools();
+  }
+
+  #aiSection(): HTMLElement {
+    const section = this.#section("AI 協作");
+    if (!this.#ai) {
+      const p = document.createElement("p");
+      p.className = "settings-note";
+      p.textContent = "AI 協作（Claude Code／Codex）需要桌面版。";
+      section.append(p);
+      return section;
+    }
+    const intro = document.createElement("p");
+    intro.className = "settings-note";
+    intro.textContent =
+      "使用你自己安裝並登入的 Claude Code 或 Codex，編輯器不會儲存任何帳號或金鑰。AI 提出的修改一律先標示差異，由你決定是否套用。";
+    section.append(
+      intro,
+      this.#row("aiEnabled", "啟用 AI 協作", "開啟後可使用終端機、選取段落快捷動作", () => this.#control("aiEnabled")),
+      this.#row("aiTool", "快捷動作使用", undefined, () => this.#control("aiTool")),
+      this.#row(
+        "mcpServer",
+        "讓 AI 讀取目前的文件",
+        "終端機中的 Claude Code／Codex 可以讀取你正在看的文件與選取範圍，並提出修改。只接受本機連線。",
+        () => this.#control("mcpServer"),
+      ),
+      this.#row(
+        "markExternalChanges",
+        "外部修改時逐段標示",
+        "AI 或其他程式改了已開啟的檔案時，標示改了哪些地方，可以逐段還原",
+        () => this.#control("markExternalChanges"),
+      ),
+    );
+
+    const register = document.createElement("div");
+    register.className = "settings-register";
+    for (const [tool, label] of [
+      ["claude", "複製 Claude Code 註冊指令"],
+      ["codex", "複製 Codex 註冊指令"],
+    ] as const) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn";
+      b.textContent = label;
+      b.dataset.aiDependent = "1";
+      b.addEventListener("click", async () => {
+        try {
+          const r = await this.#ai!.registration();
+          await navigator.clipboard.writeText(tool === "claude" ? r.claudeAdd : r.codexAdd);
+          toast("已複製。在終端機貼上執行一次，之後在任何地方啟動都能連到編輯器（編輯器要開著）。", { duration: 8000 });
+        } catch (e) {
+          toast(`無法取得註冊指令：${e instanceof Error ? e.message : e}`, { tone: "error" });
+        }
+      });
+      register.append(b);
+    }
+    section.append(
+      this.#row("register", "在編輯器外使用", "從編輯器的終端機啟動時會自動連線；在其他終端機使用前，先註冊一次", () => register),
+    );
+
+    const h = document.createElement("h4");
+    h.textContent = "選取段落快捷動作";
+    const hint = document.createElement("p");
+    hint.className = "settings-note";
+    hint.textContent = "選取文字後按 Ctrl+J（或在選取範圍按右鍵）執行。提示詞會連同選取的文字一起送出。";
+    this.#actions = document.createElement("div");
+    this.#actions.className = "quick-actions";
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "btn";
+    add.dataset.aiDependent = "1";
+    add.append(icon("plus"), "新增動作");
+    add.addEventListener("click", () => {
+      const list = [...this.#store.value.quickActions, { name: "新動作", prompt: "請描述要 AI 怎麼處理選取的文字" }];
+      this.#store.update({ quickActions: list });
+      this.#renderActions();
+      this.#actions.querySelector<HTMLInputElement>(".quick-action:last-child input")?.select();
+    });
+    section.append(h, hint, this.#actions, add);
+    return section;
+  }
+
+  #renderActions(): void {
+    if (!this.#actions) return;
+    const save = () => {
+      const rows = [...this.#actions.querySelectorAll<HTMLElement>(".quick-action")];
+      const list: QuickAction[] = rows.map((r) => ({
+        name: r.querySelector("input")!.value,
+        prompt: r.querySelector("textarea")!.value,
+      }));
+      this.#store.update({ quickActions: list });
+    };
+    const disabled = !this.#store.value.aiEnabled;
+    this.#actions.replaceChildren(
+      ...this.#store.value.quickActions.map((a, i) => {
+        const row = document.createElement("div");
+        row.className = "quick-action";
+        const name = document.createElement("input");
+        name.value = a.name;
+        name.maxLength = QUICK_ACTION_LIMITS.name;
+        name.setAttribute("aria-label", `第 ${i + 1} 個動作的名稱`);
+        const prompt = document.createElement("textarea");
+        prompt.value = a.prompt;
+        prompt.rows = 2;
+        prompt.maxLength = QUICK_ACTION_LIMITS.prompt;
+        prompt.setAttribute("aria-label", `「${a.name}」的提示詞`);
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "btn icon-only";
+        del.title = "刪除這個動作";
+        del.setAttribute("aria-label", `刪除「${a.name}」`);
+        del.append(icon("x"));
+        del.addEventListener("click", () => {
+          row.remove();
+          save();
+          this.#renderActions();
+        });
+        for (const el of [name, prompt]) el.addEventListener("change", save);
+        for (const el of [name, prompt, del]) el.disabled = disabled;
+        row.append(name, del, prompt);
+        return row;
+      }),
+    );
+  }
+
+  /** 標出沒有安裝的工具。 */
+  async #refreshTools(): Promise<void> {
+    if (!this.#ai) return;
+    const sel = this.#dialog.querySelector<HTMLSelectElement>("select[data-key=aiTool]");
+    try {
+      const found = await this.#ai.available();
+      for (const opt of sel?.options ?? []) {
+        const ok = !!found[opt.value as "claude" | "codex"];
+        opt.textContent = `${opt.value === "claude" ? "Claude Code" : "Codex"}${ok ? "" : "（未安裝）"}`;
+      }
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   #section(title: string): HTMLElement {
@@ -162,14 +359,8 @@ export class SettingsDialog {
     }
     const sel = document.createElement("select");
     sel.dataset.key = key;
-    for (const [v, l] of [
-      ["narrow", "窄"],
-      ["medium", "中"],
-      ["wide", "寬"],
-    ]) {
-      sel.append(new Option(l, v));
-    }
-    sel.addEventListener("change", () => this.#store.update({ previewWidth: sel.value as Settings["previewWidth"] }));
+    for (const [v, l] of SELECT_OPTIONS[key] ?? []) sel.append(new Option(l, v));
+    sel.addEventListener("change", () => this.#store.update({ [key]: sel.value }));
     return sel;
   }
 
@@ -180,6 +371,10 @@ export class SettingsDialog {
       const value = v[el.dataset.key as keyof Settings];
       if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = value as boolean;
       else el.value = String(value);
+      if (AI_DEPENDENT.includes(el.dataset.key as keyof Settings)) el.disabled = !v.aiEnabled;
     }
+    for (const el of this.#dialog.querySelectorAll<HTMLButtonElement>("[data-ai-dependent]")) el.disabled = !v.aiEnabled;
+    // 正在輸入時不要重畫，避免游標跳走。
+    if (!this.#actions?.contains(document.activeElement)) this.#renderActions();
   }
 }

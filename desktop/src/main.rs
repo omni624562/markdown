@@ -1,7 +1,8 @@
 //! Markdown 編輯器桌面版。
 //!
 //! 介面直接沿用 `web/` 的網頁版（編譯時打包進執行檔），這裡只補上網頁做不到的事：
-//! 原生的開檔／存檔對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、設定檔讀寫。
+//! 原生的開檔／存檔對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、設定檔讀寫，
+//! 以及（預設關閉的）AI 協作：內嵌終端機、編輯器 MCP 伺服器、選取段落快捷動作。
 //!
 //! 安全考量：前端只能讀寫「使用者在對話框選過」「從命令列帶入」或
 //! 「位於使用者開啟的資料夾內」的檔案，不提供任意路徑的檔案存取。
@@ -9,17 +10,19 @@
 // 正式版不要跳出命令提示字元視窗。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ai;
 mod files;
 mod images;
 mod settings;
 mod trust;
+mod update;
 mod watch;
 mod workspace;
 
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Manager, RunEvent, State, WebviewWindow};
 
 use files::{KnownFiles, OpenedFile};
 use trust::Trust;
@@ -82,6 +85,9 @@ fn main() {
         .manage(KnownFiles::default())
         .manage(Workspace::default())
         .manage(Watcher::default())
+        .manage(ai::term::Terminals::default())
+        .manage(ai::mcp::Mcp::default())
+        .manage(ai::run::Runs::default())
         .setup(|app| {
             app.manage(Trust::load(app.handle()));
             Ok(())
@@ -106,7 +112,29 @@ fn main() {
             workspace::reveal_entry,
             workspace::search,
             images::save_image,
+            ai::tools::ai_tools,
+            ai::term::term_open,
+            ai::term::term_write,
+            ai::term::term_resize,
+            ai::term::term_close,
+            ai::mcp::mcp_start,
+            ai::mcp::mcp_stop,
+            ai::mcp::mcp_sync,
+            ai::mcp::mcp_respond,
+            ai::run::ai_run,
+            ai::run::ai_cancel,
+            update::app_version,
+            update::update_check,
+            update::update_install,
+            update::update_restart,
         ])
-        .run(tauri::generate_context!())
-        .expect("無法啟動應用程式");
+        .build(tauri::generate_context!())
+        .expect("無法啟動應用程式")
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                // 關閉 app 時，終端機裡的程式（含 Claude Code、Codex）一併結束。
+                app.state::<ai::term::Terminals>().kill_all();
+                ai::mcp::mcp_stop(app.state());
+            }
+        });
 }

@@ -1,5 +1,5 @@
 /**
- * 桌面版（Tauri）專用的橋接：原生對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔。
+ * 桌面版（Tauri）專用的橋接：原生對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、AI 協作。
  * 在一般瀏覽器裡 `desktop` 為 null，其餘程式碼照常走網頁 API。
  */
 
@@ -79,6 +79,61 @@ export interface Recent {
   files: string[];
 }
 
+export type AiTool = "claude" | "codex";
+export type TermProgram = "shell" | AiTool;
+
+export interface McpInfo {
+  url: string;
+  claudeAdd: string;
+  codexAdd: string;
+}
+
+/** 給 MCP 伺服器的編輯器狀態。 */
+export interface EditorSnapshot {
+  active: {
+    path: string | null;
+    name: string;
+    text: string;
+    dirty: boolean;
+    selection: { text: string; fromLine: number; toLine: number } | null;
+  } | null;
+  open: { path: string | null; name: string; dirty: boolean }[];
+}
+
+/** AI 透過 MCP 提出的修改。 */
+export interface AiProposal {
+  id: number;
+  path: string | null;
+  kind: "edits" | "selection";
+  edits: { old_text: string; new_text: string }[];
+  replacement: string;
+  summary: string;
+}
+
+export interface AppVersion {
+  version: string;
+  /** CI 建置流水號；自己編譯的版本沒有。 */
+  build: number | null;
+  commit: string | null;
+  updatable: boolean;
+}
+
+export interface UpdateManifest {
+  build: number;
+  version: string;
+  commit: string;
+  date: string;
+  notes: string;
+  url: string;
+  sha256: string;
+  size: number;
+}
+
+export type AiRunEvent =
+  | { kind: "delta"; id: number; text: string }
+  | { kind: "done"; id: number; text: string; costUsd: number | null; tokens: number | null }
+  | { kind: "error"; id: number; message: string };
+
 function bridge(core: TauriCore, event: TauriEvent) {
   return {
     startupTarget: () => core.invoke<StartupTarget | null>("startup_target"),
@@ -105,6 +160,27 @@ function bridge(core: TauriCore, event: TauriEvent) {
     saveImage: (docPath: string, dataBase64: string, ext: string) =>
       core.invoke<string>("save_image", { docPath, dataBase64, ext }),
 
+    aiTools: () => core.invoke<{ claude: string | null; codex: string | null }>("ai_tools"),
+    termOpen: (program: TermProgram, cols: number, rows: number) =>
+      core.invoke<number>("term_open", { program, cols, rows }),
+    termWrite: (id: number, data: string) => core.invoke<void>("term_write", { id, data }),
+    termResize: (id: number, cols: number, rows: number) => core.invoke<void>("term_resize", { id, cols, rows }),
+    termClose: (id: number) => core.invoke<void>("term_close", { id }),
+    mcpStart: () => core.invoke<McpInfo>("mcp_start"),
+    mcpStop: () => core.invoke<void>("mcp_stop"),
+    mcpSync: (snapshot: EditorSnapshot) => core.invoke<void>("mcp_sync", { snapshot }),
+    mcpRespond: (id: number, decision: { ok: boolean; message: string }) =>
+      core.invoke<void>("mcp_respond", { id, decision }),
+    aiRun: (id: number, tool: AiTool, prompt: string) => core.invoke<void>("ai_run", { id, tool, prompt }),
+    aiCancel: (id: number) => core.invoke<void>("ai_cancel", { id }),
+
+    appVersion: () => core.invoke<AppVersion>("app_version"),
+    updateCheck: () => core.invoke<{ current: AppVersion; latest: UpdateManifest | null }>("update_check"),
+    updateInstall: () => core.invoke<void>("update_install"),
+    updateRestart: () => core.invoke<void>("update_restart"),
+    onUpdateProgress: (fn: (p: { downloaded: number; total: number }) => void) =>
+      event.listen<{ downloaded: number; total: number }>("update-progress", (e) => fn(e.payload)),
+
     /** 本機檔案在預覽中可以使用的網址。 */
     fileUrl: (path: string) => core.convertFileSrc(path),
     onFileChanged: (fn: (p: { path: string; text: string }) => void) =>
@@ -113,6 +189,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
       event.listen<{ path: string }>("file-removed", (e) => fn(e.payload)),
     onTreeChanged: (fn: (p: { dirs: string[] }) => void) =>
       event.listen<{ dirs: string[] }>("tree-changed", (e) => fn(e.payload)),
+    onTermOutput: (fn: (p: { id: number; data: string }) => void) =>
+      event.listen<{ id: number; data: string }>("term-output", (e) => fn(e.payload)),
+    onTermExit: (fn: (p: { id: number; code: number | null }) => void) =>
+      event.listen<{ id: number; code: number | null }>("term-exit", (e) => fn(e.payload)),
+    onAiProposal: (fn: (p: AiProposal) => void) => event.listen<AiProposal>("ai-proposal", (e) => fn(e.payload)),
+    onAiRun: (fn: (p: AiRunEvent) => void) => event.listen<AiRunEvent>("ai-run", (e) => fn(e.payload)),
   };
 }
 

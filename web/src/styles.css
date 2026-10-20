@@ -45,7 +45,7 @@ html, body { height: 100%; }
 
 body {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto auto;
   height: 100dvh;
   margin: 0;
   background: var(--bg);
@@ -832,3 +832,111 @@ kbd {
   .tab { height: 40px; }
   .tab-close { width: 32px; height: 32px; }
 }
+
+/* ---- 狀態列按鈕 ---- */
+.status-btn {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.status-btn .icon { width: 14px; height: 14px; }
+.status-btn:hover, .status-btn[aria-pressed="true"] { background: var(--active-line); color: var(--fg); }
+
+/* ---- 終端機面板 ---- */
+body.resizing-rows { cursor: row-resize; user-select: none; }
+.terminal-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: var(--term-height, 280px);
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.terminal-panel[hidden] { display: none; }
+.term-resize { position: absolute; inset: -4px 0 auto; z-index: 3; height: 8px; cursor: row-resize; }
+.term-resize:hover, .term-resize:focus-visible { background: color-mix(in srgb, var(--accent) 50%, transparent); outline: none; }
+.term-head { display: flex; flex: none; gap: 8px; align-items: center; min-height: 34px; padding: 0 6px 0 4px; border-bottom: 1px solid var(--border); }
+.term-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.term-tab {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  align-items: center;
+  height: 33px;
+  padding: 0 2px 0 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.term-tab:hover { color: var(--fg); }
+.term-tab[aria-selected="true"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+.term-tab.exited span { color: var(--muted); font-style: italic; }
+.term-actions { display: flex; flex: none; gap: 2px; align-items: center; }
+.term-actions .btn { height: 28px; color: var(--muted); font-size: 12.5px; }
+.term-actions .btn:hover { color: var(--fg); }
+.term-actions .btn[hidden] { display: none; }
+.term-actions .icon { width: 16px; height: 16px; }
+.term-body { position: relative; flex: 1; min-height: 0; }
+.term-host { position: absolute; inset: 4px 0 0 8px; }
+.term-host[hidden] { display: none; }
+.term-host .xterm { height: 100%; }
+/* 最後一列下方不滿一列高的空間也用主題的背景色。 */
+.term-host, .term-host .xterm, .term-host .xterm-viewport, .term-host .xterm-screen { background-color: var(--surface) !important; }
+.term-host .xterm-viewport { scrollbar-width: thin; }
+
+/* ---- AI 處理中提示 ---- */
+.ai-bar {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--accent-soft);
+}
+.ai-bar[hidden] { display: none; }
+.ai-bar p { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin: 0; }
+.ai-bar p .icon { color: var(--accent); }
+.ai-bar p span { color: var(--muted); font-size: 12px; }
+.ai-bar .btn { border-color: var(--border-strong); background: var(--bg); }
+.ai-stream {
+  grid-column: 1 / -1;
+  max-height: 4.8em;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+/* ---- 設定：AI 快捷動作 ---- */
+.settings h4 { margin: 14px 0 2px; font-size: 13px; font-weight: 600; }
+.settings-register { display: flex; flex-direction: column; gap: 6px; }
+.quick-actions { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.quick-action { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
+.quick-action input, .quick-action textarea {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.quick-action input { font-weight: 600; }
+.quick-action textarea { grid-column: 1 / -1; resize: vertical; font-size: 13px; line-height: 1.5; }
+.quick-action :disabled { opacity: 0.55; }
+.settings-row :disabled, .settings .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.update-state { color: var(--accent); }

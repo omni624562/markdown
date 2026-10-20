@@ -18,6 +18,13 @@ export interface ReviewOptions {
   /** 每一段的按鈕文字，預設為「保留新內容」與「還原」。 */
   acceptLabel?: string;
   rejectLabel?: string;
+  /**
+   * 比較的基準。省略時是目前編輯器的內容；外部修改時則是修改前的版本
+   * （編輯器內容換成新版本，「還原」會回到這個版本）。
+   */
+  original?: string;
+  /** 標記這次檢視的來源，讓呼叫端判斷是否要接續前一次（例如連續的外部修改）。 */
+  source?: string;
   /** 檢視結束時呼叫；`changed` 表示最後的內容是否和開始前不同。 */
   onFinish?: (result: { changed: boolean }) => void;
 }
@@ -41,7 +48,7 @@ export class Review {
   #view!: EditorView;
   #compartment = new Compartment();
   #bar: HTMLElement;
-  #active: (ReviewOptions & { before: string }) | null = null;
+  #active: (ReviewOptions & { before: string; original: string }) | null = null;
 
   constructor(bar: HTMLElement) {
     this.#bar = bar;
@@ -70,17 +77,23 @@ export class Review {
     return this.#active !== null;
   }
 
+  /** 進行中的檢視的來源與比較基準。 */
+  get current(): { source?: string; original: string } | null {
+    return this.#active && { source: this.#active.source, original: this.#active.original };
+  }
+
   /** 開始檢視：目前內容是基準，`proposed` 是新內容。內容相同時直接回傳 false。 */
   start(proposed: string, opts: ReviewOptions): boolean {
     if (this.#active) this.finish();
     const before = this.#view.state.doc.toString();
-    if (before === proposed) return false;
-    this.#active = { ...opts, before };
+    const original = opts.original ?? before;
+    if (original === proposed) return false;
+    this.#active = { ...opts, before, original };
     this.#view.dispatch({
       changes: { from: 0, to: before.length, insert: proposed },
       effects: this.#compartment.reconfigure(
         unifiedMergeView({
-          original: before,
+          original,
           mergeControls: chunkButton(opts),
           highlightChanges: true,
           gutter: true,
