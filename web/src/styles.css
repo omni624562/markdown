@@ -957,6 +957,8 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .offline-bar p { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin: 0; }
 .offline-bar p span { color: var(--muted); font-size: 12px; }
 .offline-bar .icon { color: var(--danger); }
+.offline-bar.back { border-bottom-color: color-mix(in srgb, var(--success) 40%, transparent); background: color-mix(in srgb, var(--success) 10%, var(--bg)); }
+.offline-bar.back .icon { color: var(--success); }
 .offline-bar .btn { border-color: var(--border-strong); background: var(--bg); }
 
 /* ---- Git ---- */
@@ -999,3 +1001,26 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .git-files li[data-status="modified"] b { color: #b08800; }
 .git-files li[data-status="untracked"] b, .git-files li[data-status="added"] b { color: var(--success); }
 .git-files li[data-status="deleted"] b, .git-files li[data-status="conflicted"] b { color: var(--danger); }
+
+/* ---- WebDAV ---- */
+.side-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.recent-list li { display: flex; align-items: center; }
+.recent-list li > button:first-child { flex: 1; min-width: 0; }
+.recent-list .recent-forget { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
+.recent-list li:hover .recent-forget, .recent-list .recent-forget:focus-visible { opacity: 1; }
+.recent-list .recent-forget:hover { background: var(--active-line); color: var(--fg); }
+.recent-list .recent-forget .icon { width: 14px; height: 14px; }
+.dav-dialog label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.dav-dialog input:not([type="checkbox"]) {
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-weight: 400;
+}
+.dav-dialog input:read-only { color: var(--muted); }
+.dav-dialog .dav-remember { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
+.dav-hint { font-size: 12.5px; }
+.dav-error { margin: 0 0 12px !important; color: var(--danger) !important; font-size: 13px; }

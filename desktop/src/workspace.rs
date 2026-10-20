@@ -32,6 +32,11 @@ impl Workspace {
         self.0.lock().unwrap().clone()
     }
 
+    /// 改開遠端（WebDAV）工作區時關閉本機工作區。
+    pub fn clear(&self) {
+        *self.0.lock().unwrap() = None;
+    }
+
     pub fn contains(&self, path: &Path) -> bool {
         self.root()
             .is_some_and(|root| resolve_inside(&root, path).is_ok())
@@ -91,7 +96,7 @@ pub fn validate_name(name: &str) -> Result<&str, String> {
 }
 
 /// 自然排序：資料夾在前；「第2章」排在「第10章」前面；不分大小寫。
-fn natural_cmp(a: &str, b: &str) -> Ordering {
+pub fn natural_cmp(a: &str, b: &str) -> Ordering {
     let (mut ai, mut bi) = (a.chars().peekable(), b.chars().peekable());
     loop {
         match (ai.peek(), bi.peek()) {
@@ -132,6 +137,20 @@ pub struct Entry {
     name: String,
     path: String,
     is_dir: bool,
+}
+
+impl Entry {
+    pub fn new(name: String, path: String, is_dir: bool) -> Self {
+        Entry { name, path, is_dir }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn is_dir(&self) -> bool {
+        self.is_dir
+    }
 }
 
 /// 依 .gitignore 規則、略過隱藏檔的走訪器。
@@ -175,8 +194,15 @@ pub struct FolderInfo {
     name: String,
 }
 
+impl FolderInfo {
+    pub fn new(path: String, name: String) -> Self {
+        FolderInfo { path, name }
+    }
+}
+
 fn activate(app: &AppHandle, root: PathBuf, workspace: &Workspace, trust: &Trust) -> FolderInfo {
     *workspace.0.lock().unwrap() = Some(root.clone());
+    app.state::<crate::dav::Dav>().disconnect();
     trust.add_folder(app, &root);
     crate::allow_assets_in(app, &root);
     // 網路磁碟的監看要先掃描整個資料夾，可能很久，放在背景進行。
@@ -272,6 +298,12 @@ pub struct FileItem {
     path: String,
     /// 相對於工作區的路徑，以 `/` 分隔，給 Ctrl+P 顯示與比對。
     rel: String,
+}
+
+impl FileItem {
+    pub fn new(path: String, rel: String) -> Self {
+        FileItem { path, rel }
+    }
 }
 
 fn rel_path(root: &Path, path: &Path) -> String {

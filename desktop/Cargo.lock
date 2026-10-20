@@ -2045,6 +2045,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keyring-core"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29fbf4b551298c67925f38cf341a1ada797a75f1837bdf8ae1fc8e2ebc6efb59"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "kqueue"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2186,8 +2195,10 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "keyring-core",
  "notify-debouncer-full",
  "portable-pty",
+ "quick-xml 0.42.0",
  "rfd",
  "rmcp",
  "schemars 1.2.3",
@@ -2201,6 +2212,7 @@ dependencies = [
  "trash",
  "ureq",
  "which",
+ "windows-native-keyring-store",
 ]
 
 [[package]]
@@ -5123,6 +5135,19 @@ name = "windows-link"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+
+[[package]]
+name = "windows-native-keyring-store"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "063426e76fdec7438d56bb777f67e318a84a25c707b07e575cb8b78e10c028f8"
+dependencies = [
+ "byteorder",
+ "keyring-core",
+ "regex",
+ "windows-sys 0.61.2",
+ "zeroize",
+]
 
 [[package]]
 name = "windows-numerics"

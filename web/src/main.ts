@@ -17,7 +17,16 @@ import { AiController } from "./ai.ts";
 import { GitPanel } from "./git-ui.ts";
 import { type Command, Commands, formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, cursorInfo } from "./editor.ts";
-import { type EditorSnapshot, type Entry, type FileItem, type Folder, desktop } from "./desktop.ts";
+import {
+  type DavConnection,
+  type EditorSnapshot,
+  type Entry,
+  type FileItem,
+  type Folder,
+  desktop,
+  displayPath,
+  isRemote,
+} from "./desktop.ts";
 import type { EditorState } from "@codemirror/state";
 import {
   type FileHandle,
@@ -55,6 +64,7 @@ import { SearchPanel } from "./ui/search-panel.ts";
 import { SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
 import { TerminalPanel } from "./ui/terminal-panel.ts";
+import { WebDavDialog } from "./ui/webdav-dialog.ts";
 import { Updater, versionLabel } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
 import type { FileVersion } from "./desktop.ts";
@@ -168,7 +178,7 @@ const preview = new Preview(previewEl, [
   mathPlugin(() => settings.value.math),
   mermaidPlugin(() => settings.value.mermaid),
   ...(desktop
-    ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl)]
+    ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, desktop.davImage)]
     : []),
 ]);
 
@@ -505,7 +515,10 @@ const gitPanel =
 
 const searchPanel = desktop
   ? new SearchPanel($("#panel-search"), {
-      search: (query, caseSensitive, regex) => desktop!.search(query, caseSensitive, regex),
+      search: (query, caseSensitive, regex) =>
+        workspaceRoot
+          ? desktop!.search(query, caseSensitive, regex, workspaceRoot.path)
+          : Promise.reject(new Error("還沒有開啟資料夾")),
       open: (path, line, column) => void openPath(path, line, column).catch(reportError),
     })
   : null;
@@ -558,24 +571,81 @@ async function renderFilesEmpty(): Promise<void> {
   open.className = "btn";
   open.append(icon("folder-open"), "開啟資料夾");
   open.addEventListener("click", () => void commands.run("open-folder").catch(reportError));
-  box.replaceChildren(p, open);
-  const { folders } = await desktop.recent();
-  if (!folders.length || workspaceRoot) return;
+  const remote = document.createElement("button");
+  remote.type = "button";
+  remote.className = "btn";
+  remote.append(icon("cloud"), "連線到 WebDAV");
+  remote.addEventListener("click", () => void commands.run("connect-webdav").catch(reportError));
+  const actions = document.createElement("div");
+  actions.className = "side-actions";
+  actions.append(open, remote);
+  box.replaceChildren(p, actions);
+  const [{ folders }, conns] = await Promise.all([desktop.recent(), desktop.davConnections().catch(() => [])]);
+  if ((!folders.length && !conns.length) || workspaceRoot) return;
   const h = document.createElement("h3");
   h.textContent = "最近開啟";
   const list = document.createElement("ul");
   list.className = "recent-list";
-  for (const path of folders) {
+  const add = (iconName: string, label: string, title: string, run: () => void, forget?: () => void) => {
     const b = document.createElement("button");
     b.type = "button";
-    b.title = path;
-    b.append(icon("folder"), Object.assign(document.createElement("span"), { textContent: basename(path) || path }));
-    b.addEventListener("click", () => void openRecentFolder(path));
+    b.title = title;
+    b.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }));
+    b.addEventListener("click", run);
     const li = document.createElement("li");
     li.append(b);
+    if (forget) {
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "recent-forget";
+      x.title = "從清單移除（也會刪除記住的密碼）";
+      x.setAttribute("aria-label", `移除「${label}」`);
+      x.append(icon("x"));
+      x.addEventListener("click", forget);
+      li.append(x);
+    }
     list.append(li);
+  };
+  for (const path of folders) add("folder", basename(path) || path, path, () => void openRecentFolder(path));
+  for (const c of conns) {
+    add("cloud", c.name, `${c.url}（${c.username}）`, () => void openRemote(c), () =>
+      void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError),
+    );
   }
   box.append(h, list);
+}
+
+const davDialog = desktop ? new WebDavDialog(desktop) : null;
+
+/** 原生端在遠端檔案的連線沒有連上時回傳的錯誤開頭。 */
+const NOT_CONNECTED = ["還沒有連線到 WebDAV 伺服器", "這個檔案屬於另一個 WebDAV 連線"];
+
+/** 遠端檔案所屬的連線目前沒有連上：提示重新連線（不自動跳出對話框打斷）。 */
+async function suggestReconnect(path: string, message: (name: string) => string, label = "重新連線"): Promise<boolean> {
+  const id = path.slice("webdav://".length).split("/")[0];
+  const c = (await desktop?.davConnections().catch(() => []))?.find((x) => x.id === id);
+  if (!c) return false;
+  toast(message(c.name), {
+    duration: 15000,
+    action: { label, run: () => void openRemote(c).catch(reportError) },
+  });
+  return true;
+}
+
+/** 開啟已儲存的 WebDAV 連線；沒有記住密碼時先詢問。 */
+async function openRemote(c: Pick<DavConnection, "id" | "url" | "username">): Promise<void> {
+  if (!desktop || !davDialog) return;
+  let folder: Folder | null;
+  try {
+    folder = await desktop.reopenFolder(`webdav://${c.id}`);
+  } catch (e) {
+    if (String(e instanceof Error ? e.message : e) !== "NEED_PASSWORD") throw e;
+    folder = await davDialog.open({ passwordOnly: true, url: c.url, username: c.username, id: c.id });
+  }
+  if (!folder) return;
+  await setWorkspace(folder);
+  showPanel("files");
+  await reloadRemoteDocs(folder.path);
 }
 
 async function setWorkspace(folder: Folder | null): Promise<void> {
@@ -585,7 +655,7 @@ async function setWorkspace(folder: Folder | null): Promise<void> {
   else storage.remove("workspace");
   const name = $("#folder-name");
   name.textContent = folder?.name ?? "";
-  name.title = folder?.path ?? "";
+  name.title = folder ? displayPath(folder.path) : "";
   await fileTree?.setRoot(folder?.path ?? null, folder?.name);
   treeActive = fileHandle?.path ?? null;
   await fileTree?.setActive(treeActive);
@@ -660,17 +730,24 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
       const affected = docs.filter((doc) => doc.path && isInside(doc.path, entry.path));
       const what = entry.isDir ? `資料夾「${entry.name}」和裡面所有的檔案` : `「${entry.name}」`;
       const note = affected.some((doc) => doc.dirty) ? "已開啟的分頁會保留內容，但有尚未存檔的變更。" : "";
-      const choice = await choose("移到資源回收筒？", `要把${what}移到資源回收筒嗎？之後可以從資源回收筒還原。${note}`, [
-        { id: "trash", label: "移到資源回收筒", danger: true },
-        { id: "cancel", label: "取消" },
-      ]);
+      // WebDAV 沒有資源回收筒：講清楚是永久刪除。
+      const remote = isRemote(entry.path);
+      const choice = remote
+        ? await choose("永久刪除？", `要刪除${what}嗎？遠端（WebDAV）沒有資源回收筒，刪除後無法復原。${note}`, [
+            { id: "trash", label: "永久刪除", danger: true },
+            { id: "cancel", label: "取消", primary: true },
+          ])
+        : await choose("移到資源回收筒？", `要把${what}移到資源回收筒嗎？之後可以從資源回收筒還原。${note}`, [
+            { id: "trash", label: "移到資源回收筒", danger: true },
+            { id: "cancel", label: "取消" },
+          ]);
       if (choice !== "trash") return;
       await d.trashEntry(entry.path);
       for (const doc of affected) doc.missing = true;
       fileListCache = null;
       renderTabs();
       await fileTree.refresh([dirname(entry.path)]);
-      toast(`已把「${entry.name}」移到資源回收筒`);
+      toast(remote ? `已刪除「${entry.name}」` : `已把「${entry.name}」移到資源回收筒`);
       break;
     }
     case "reveal":
@@ -730,7 +807,7 @@ const quickOpen = new Picker<QuickItem>({
     const seen = new Set(docs.map((d) => d.path).filter(Boolean));
     if (desktop) {
       if (workspaceRoot) {
-        fileListCache ??= await desktop.listFiles().catch(() => []);
+        fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
         for (const f of fileListCache) {
           if (seen.has(f.path)) continue;
           seen.add(f.path);
@@ -742,7 +819,7 @@ const quickOpen = new Picker<QuickItem>({
       for (const path of files) {
         if (seen.has(path)) continue;
         seen.add(path);
-        items.push({ title: basename(path), detail: `最近開啟 · ${dirname(path)}`, path });
+        items.push({ title: basename(path), detail: `最近開啟 · ${displayPath(dirname(path))}`, path });
       }
     }
     if (!q.trim()) return items.slice(0, 200);
@@ -785,7 +862,7 @@ function renderTabs(): void {
     docs.map((d) => ({
       id: d.id,
       name: d === active ? fileName : d.name,
-      title: (d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name),
+      title: ((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name),
       dirty: d.dirty,
       missing: d.missing,
     })),
@@ -929,6 +1006,11 @@ async function save(saveAs: boolean, force = false): Promise<void> {
       showOffline(fileHandle.path);
       return;
     }
+    const path = fileHandle?.path;
+    const message = e instanceof Error ? e.message : String(e);
+    if (isRemote(path) && NOT_CONNECTED.some((m) => message.startsWith(m))) {
+      if (await suggestReconnect(path, (name) => `還沒有連線到「${name}」，重新連線後再存檔。`)) return;
+    }
     throw e;
   }
   if (!out) return;
@@ -975,7 +1057,7 @@ async function probeOffline(): Promise<void> {
   clearInterval(offline.timer);
   renderOffline();
   if (fileHandle?.path !== offline.path) {
-    toast("網路磁碟已恢復連線，記得回到那份文件存檔。");
+    toast(`${isRemote(offline.path) ? "WebDAV 伺服器" : "網路磁碟"}已恢復連線，記得回到那份文件存檔。`);
   }
 }
 
@@ -989,18 +1071,20 @@ function renderOffline(): void {
   const show = !!offline && fileHandle?.path === offline.path;
   offlineBar.hidden = !show;
   if (!show || !offline) return;
+  offlineBar.classList.toggle("back", offline.back);
+  const where = isRemote(offline.path) ? "WebDAV 伺服器" : "網路磁碟";
   const msg = document.createElement("p");
   msg.append(icon(offline.back ? "refresh-cw" : "circle-alert"));
   const button = document.createElement("button");
   button.type = "button";
   button.className = "btn";
   if (offline.back) {
-    msg.append("網路磁碟已恢復連線。");
+    msg.append(`${where}已恢復連線。`);
     button.textContent = "立即存檔";
     button.addEventListener("click", () => void save(false).catch(reportError));
   } else {
     msg.append(
-      Object.assign(document.createElement("strong"), { textContent: "網路磁碟無法連線" }),
+      Object.assign(document.createElement("strong"), { textContent: `${where}無法連線` }),
       Object.assign(document.createElement("span"), {
         textContent: "這次沒有存到檔案。內容會保留在編輯器裡（草稿也已自動保存），連線恢復後會提醒你。",
       }),
@@ -1011,11 +1095,24 @@ function renderOffline(): void {
   offlineBar.replaceChildren(msg, button);
 }
 
+/** 提示文字用：遠端檔案存在「伺服器」，本機檔案存在「磁碟」。 */
+function storeName(path = fileHandle?.path): string {
+  return isRemote(path) ? "伺服器" : "磁碟";
+}
+
+/** 提示文字用：誰會在背後改檔案。 */
+function otherWriter(path = fileHandle?.path): string {
+  return isRemote(path) ? "其他電腦或程式" : "其他程式";
+}
+
 /** 檔案在開啟後被別的程式改過：讓使用者比較差異、覆蓋或另存。 */
 async function resolveConflict(name: string, diskText: string): Promise<void> {
+  const remote = isRemote(fileHandle?.path);
   const choice = await choose(
-    "檔案已被其他程式修改",
-    `「${name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？`,
+    `檔案已被${otherWriter()}修改`,
+    remote
+      ? `「${name}」在你開啟之後被其他電腦或程式改過。要怎麼處理？`
+      : `「${name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？`,
     [
       { id: "compare", label: "比較差異", primary: true },
       { id: "overwrite", label: "用我的版本覆蓋", danger: true },
@@ -1027,9 +1124,9 @@ async function resolveConflict(name: string, diskText: string): Promise<void> {
   else if (choice === "save-as") await save(true);
   else if (choice === "compare") {
     const started = review.start(diskText, {
-      title: "與磁碟上的版本比較",
+      title: `與${storeName()}上的版本比較`,
       hint: "逐段選擇要採用哪個版本，全部處理完會自動存檔。",
-      acceptLabel: "採用磁碟版本",
+      acceptLabel: `採用${storeName()}版本`,
       rejectLabel: "保留我的版本",
       onFinish: () => void save(false, true).catch(reportError),
     });
@@ -1099,6 +1196,19 @@ commands.register(
     when: () => !!desktop,
     async run() {
       const folder = await desktop?.openFolder();
+      if (!folder) return;
+      await setWorkspace(folder);
+      showPanel("files");
+    },
+  },
+  {
+    id: "connect-webdav",
+    title: "連線到 WebDAV 遠端資料夾…",
+    group: "檔案",
+    icon: "cloud",
+    when: () => !!desktop,
+    async run() {
+      const folder = await davDialog?.open();
       if (!folder) return;
       await setWorkspace(folder);
       showPanel("files");
@@ -1452,7 +1562,7 @@ const historyPicker = new Picker<FileVersion & { path: string }>({
   },
   render: (v) => ({
     title: versionTitle(v.id),
-    detail: `${v.kind === "disk" ? "存檔前磁碟上的內容 · " : ""}${sizeLabel(v.size)}`,
+    detail: `${v.kind === "disk" ? `存檔前${storeName(v.path)}上的內容 · ` : ""}${sizeLabel(v.size)}`,
     icon: "history",
   }),
   pick: (v) => void compareWithVersion(v).catch(reportError),
@@ -1600,6 +1710,7 @@ setupMenu($<HTMLButtonElement>("#file-menu"), commands, [
   "new",
   "open",
   "open-folder",
+  "connect-webdav",
   "quick-open",
   "-",
   "save",
@@ -1980,37 +2091,30 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
     showPanel("files");
   } else {
     const last = storage.load("workspace");
-    const folder = last ? await d.reopenFolder(last).catch(() => null) : null;
+    let needPassword = false;
+    const folder = last
+      ? await d.reopenFolder(last).catch((e) => {
+          // 遠端連線沒有記住密碼：提示使用者輸入，不自動跳出對話框打斷。
+          if (isRemote(last) && String(e instanceof Error ? e.message : e) === "NEED_PASSWORD") {
+            needPassword = true;
+            void suggestReconnect(last, (name) => `要重新連線到「${name}」，需要輸入密碼。`, "輸入密碼");
+          }
+          return null;
+        })
+      : null;
     await setWorkspace(folder);
+    // 還沒輸入密碼不代表不用這個資料夾了：下次啟動仍然提示。
+    if (needPassword && last) storage.save("workspace", last);
   }
 
   for (const doc of docs) {
-    const path = doc === active ? (fileHandle?.path ?? doc.path) : doc.path;
+    const path = docPath(doc);
     if (!path) continue;
     try {
-      const file = fromDesktop(await d.reopenFile(path));
-      const draft = doc === active ? editor.text : (loadDraft(doc.id) ?? "");
-      const clean = hash(draft) === doc.baseline;
-      if (doc === active) fileHandle = file.handle;
-      doc.handle = file.handle;
-      if (clean && file.text !== draft) {
-        // 沒有未存檔的變更：直接採用磁碟上的最新內容。
-        saveDraft(doc.id, file.text);
-        doc.baseline = hash(file.text);
-        doc.state = null;
-        if (doc === active) {
-          editor.load(file.text, kind);
-          baseline = doc.baseline;
-          renderNow();
-        }
-      } else if (!clean && hash(file.text) !== doc.baseline) {
-        toast(`「${doc.name}」在上次關閉後被其他程式修改過，你也有未存檔的變更。`, {
-          duration: 12000,
-          action: { label: "比較差異", run: () => void compareDoc(doc).catch(reportError) },
-        });
-      }
+      await reloadDoc(doc, path);
     } catch {
-      doc.missing = true;
+      // 遠端檔案讀不到多半是還沒重新連線，不代表檔案不見了；連線後會再讀一次。
+      if (!isRemote(path)) doc.missing = true;
     }
   }
   persistSession();
@@ -2020,6 +2124,51 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
   renderNow();
 
   if (target?.kind === "file") openOpenedFile(fromDesktop(target));
+}
+
+function docPath(doc: Doc): string | null {
+  return doc === active ? (fileHandle?.path ?? doc.path) : doc.path;
+}
+
+/**
+ * 重新讀取分頁的檔案（啟動時、重新連線到 WebDAV 後）：沒有未存檔的變更就直接採用最新內容，
+ * 有的話提示比較差異。
+ */
+async function reloadDoc(doc: Doc, path: string): Promise<void> {
+  const file = fromDesktop(await desktop!.reopenFile(path));
+  const draft = doc === active ? editor.text : (loadDraft(doc.id) ?? "");
+  const clean = hash(draft) === doc.baseline;
+  if (doc === active) fileHandle = file.handle;
+  doc.handle = file.handle;
+  doc.missing = false;
+  if (clean && file.text !== draft) {
+    saveDraft(doc.id, file.text);
+    doc.baseline = hash(file.text);
+    doc.state = null;
+    if (doc === active) {
+      editor.load(file.text, kind);
+      baseline = doc.baseline;
+      renderNow();
+    }
+  } else if (!clean && hash(file.text) !== doc.baseline) {
+    toast(`「${doc.name}」在上次關閉後被${otherWriter(path)}修改過，你也有未存檔的變更。`, {
+      duration: 12000,
+      action: { label: "比較差異", run: () => void compareDoc(doc).catch(reportError) },
+    });
+  }
+}
+
+/** 重新連線到 WebDAV 後，重新讀取屬於這個連線的分頁（圖片也重新載入）。 */
+async function reloadRemoteDocs(root: string): Promise<void> {
+  for (const doc of docs) {
+    const path = docPath(doc);
+    if (!path?.startsWith(`${root}/`)) continue;
+    await reloadDoc(doc, path).catch(() => {});
+  }
+  persistSession();
+  renderTabs();
+  preview.clear();
+  renderNow();
 }
 
 /** 每個分頁上次提示「被其他程式修改」的時間。 */
@@ -2038,7 +2187,7 @@ async function onExternalChange(path: string): Promise<void> {
     const now = Date.now();
     if (now - (changeNoticeAt.get(doc.id) ?? 0) < 15_000) return;
     changeNoticeAt.set(doc.id, now);
-    toast(`「${doc.name}」被其他程式修改了，你也有未存檔的變更。`, {
+    toast(`「${doc.name}」被${otherWriter(path)}修改了，你也有未存檔的變更。`, {
       duration: 12000,
       action: { label: "比較差異", run: () => void compareDoc(doc).catch(reportError) },
     });
@@ -2062,7 +2211,7 @@ async function onExternalChange(path: string): Promise<void> {
       }
     } else if (file.text !== editor.text) {
       editor.replaceAll(file.text);
-      toast(`「${doc.name}」已被其他程式更新，已重新載入。`, {
+      toast(`「${doc.name}」已被${otherWriter(path)}更新，已重新載入。`, {
         action: { label: "復原", run: () => void undo(editor.view) },
       });
     }
@@ -2070,7 +2219,7 @@ async function onExternalChange(path: string): Promise<void> {
     doc.state = null;
     doc.dirty = false;
     if (markChanges && doc.externalOriginal === file.text) doc.externalOriginal = undefined;
-    toast(`「${doc.name}」已被其他程式更新${markChanges ? "，切換過去可以看到改了哪裡" : "，已重新載入"}。`);
+    toast(`「${doc.name}」已被${otherWriter(path)}更新${markChanges ? "，切換過去可以看到改了哪裡" : "，已重新載入"}。`);
   }
   persistSession();
   renderTabs();
@@ -2093,12 +2242,12 @@ function compareWithDisk(diskText: string): void {
   setBaseline(diskText, true);
   renderSaveState();
   const started = review.start(diskText, {
-    title: "與磁碟上的版本比較",
+    title: `與${storeName()}上的版本比較`,
     hint: "逐段選擇要採用哪個版本，處理完記得存檔。",
-    acceptLabel: "採用磁碟版本",
+    acceptLabel: `採用${storeName()}版本`,
     rejectLabel: "保留我的版本",
   });
-  if (!started) toast("目前內容和磁碟上的版本相同。");
+  if (!started) toast(`目前內容和${storeName()}上的版本相同。`);
 }
 
 // 關閉視窗或重新整理前，把還沒寫入的草稿存起來。

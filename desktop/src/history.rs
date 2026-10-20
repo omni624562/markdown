@@ -218,12 +218,16 @@ pub fn on_rename(app: &AppHandle, from: &Path, to: &Path) {
 
 /// 只能查看可以開啟的檔案的版本記錄（和重新開啟檔案的規則相同）。
 fn allowed(
+    app: &AppHandle,
     path: &Path,
     known: &KnownFiles,
     trust: &Trust,
     workspace: &Workspace,
 ) -> Result<(), String> {
-    if known.contains(path) || trust.allows(path) || workspace.contains(path) {
+    let remote = path.to_str().is_some_and(|p| {
+        p.starts_with(crate::dav::SCHEME) && app.state::<crate::dav::Dav>().allows(p)
+    });
+    if remote || known.contains(path) || trust.allows(path) || workspace.contains(path) {
         Ok(())
     } else {
         Err("無法查看這個檔案的版本記錄".into())
@@ -239,7 +243,7 @@ pub fn history_list(
     workspace: State<'_, Workspace>,
 ) -> Result<Vec<Version>, String> {
     let path = PathBuf::from(path);
-    allowed(&path, &known, &trust, &workspace)?;
+    allowed(&app, &path, &known, &trust, &workspace)?;
     Ok(root(&app).map(|r| list_at(&r, &path)).unwrap_or_default())
 }
 
@@ -253,7 +257,7 @@ pub fn history_read(
     workspace: State<'_, Workspace>,
 ) -> Result<String, String> {
     let path = PathBuf::from(path);
-    allowed(&path, &known, &trust, &workspace)?;
+    allowed(&app, &path, &known, &trust, &workspace)?;
     let root = root(&app).ok_or("找不到版本記錄資料夾")?;
     read_at(&root, &path, id).map_err(|e| format!("無法讀取版本：{e}"))
 }

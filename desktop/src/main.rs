@@ -11,6 +11,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai;
+mod dav;
 mod files;
 mod git;
 mod history;
@@ -112,6 +113,7 @@ fn main() {
         .manage(ai::term::Terminals::default())
         .manage(ai::mcp::Mcp::default())
         .manage(ai::run::Runs::default())
+        .manage(dav::Dav::default())
         .setup(|app| {
             app.manage(Trust::load(app.handle()));
             Ok(())
@@ -138,6 +140,21 @@ fn main() {
             workspace::search,
             images::save_image,
             history::history_list,
+            dav::dav_connections,
+            dav::dav_connect,
+            dav::dav_reconnect,
+            dav::dav_disconnect,
+            dav::dav_forget,
+            dav::dav_list,
+            dav::dav_list_files,
+            dav::dav_read,
+            dav::dav_write,
+            dav::dav_create,
+            dav::dav_rename,
+            dav::dav_delete,
+            dav::dav_save_image,
+            dav::dav_image,
+            dav::dav_probe,
             git::git_status,
             git::git_commit,
             git::git_pull,

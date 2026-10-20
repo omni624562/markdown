@@ -156,33 +156,146 @@ export type AiRunEvent =
   | { kind: "done"; id: number; text: string; costUsd: number | null; tokens: number | null }
   | { kind: "error"; id: number; message: string };
 
+/** WebDAV 遠端檔案的路徑開頭（`webdav://<連線代號>/路徑`）。 */
+export const REMOTE = "webdav://";
+
+export function isRemote(path: string | null | undefined): path is string {
+  return !!path && path.startsWith(REMOTE);
+}
+
+const davUrls = new Map<string, string>();
+
+/** 給人看的路徑：遠端檔案換成「伺服器網址/路徑」，不顯示內部的連線代號。 */
+export function displayPath(path: string): string {
+  if (!isRemote(path)) return path;
+  const [id, ...rest] = path.slice(REMOTE.length).split("/");
+  const base = davUrls.get(id);
+  if (!base) return path;
+  return [base.replace(/\/+$/, ""), ...rest].join("/");
+}
+
+/** 已儲存的 WebDAV 連線（密碼不會傳到前端）。 */
+export interface DavConnection {
+  id: string;
+  name: string;
+  url: string;
+  username: string;
+  hasPassword: boolean;
+}
+
 function bridge(core: TauriCore, event: TauriEvent) {
+  // 遠端（WebDAV）路徑改用 dav_* 指令；其他照舊。
+  const route = <T>(path: string | null | undefined, local: () => Promise<T>, remote: () => Promise<T>) =>
+    isRemote(path) ? remote() : local();
+  const davConnections = () =>
+    core.invoke<DavConnection[]>("dav_connections").then((list) => {
+      for (const c of list) {
+        let url = c.url;
+        try {
+          url = decodeURI(url);
+        } catch {
+          // 保留原樣
+        }
+        davUrls.set(c.id, url);
+      }
+      return list;
+    });
+  const unsupported = (what: string) => Promise.reject(new Error(`遠端（WebDAV）資料夾不支援${what}`));
   return {
     startupTarget: () => core.invoke<StartupTarget | null>("startup_target"),
     openFile: () => core.invoke<DesktopFile | null>("open_file"),
-    reopenFile: (path: string) => core.invoke<DesktopFile>("reopen_file", { path }),
-    saveFile: (req: SaveRequest) => core.invoke<DesktopSaveOutcome>("save_file", { ...req }),
+    reopenFile: (path: string) =>
+      route(
+        path,
+        () => core.invoke<DesktopFile>("reopen_file", { path }),
+        () => core.invoke<DesktopFile>("dav_read", { path }),
+      ),
+    saveFile: (req: SaveRequest) =>
+      route(
+        req.path,
+        () => core.invoke<DesktopSaveOutcome>("save_file", { ...req }),
+        () => core.invoke<DesktopSaveOutcome>("dav_write", { path: req.path, text: req.text, force: req.force ?? false }),
+      ),
     setTitle: (title: string) => core.invoke<void>("set_title", { title }),
     /** 檔案所在的資料夾現在連得到嗎（網路磁碟斷線後偵測恢復用）。 */
-    probePath: (path: string) => core.invoke<boolean>("probe_path", { path }),
+    probePath: (path: string) =>
+      route(
+        path,
+        () => core.invoke<boolean>("probe_path", { path }),
+        () => core.invoke<boolean>("dav_probe", { path }),
+      ),
     loadSettings: () => core.invoke<string | null>("load_settings"),
     saveSettings: (json: string) => core.invoke<void>("save_settings", { json }),
 
     openFolder: () => core.invoke<Folder | null>("open_folder"),
-    reopenFolder: (path: string) => core.invoke<Folder>("reopen_folder", { path }),
+    /** 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員。 */
+    reopenFolder: (path: string, password?: string, remember?: boolean) =>
+      route(
+        path,
+        () => core.invoke<Folder>("reopen_folder", { path }),
+        () =>
+          core.invoke<Folder>("dav_reconnect", {
+            id: path.slice(REMOTE.length).split("/")[0],
+            password,
+            remember: remember ?? false,
+          }),
+      ),
     currentFolder: () => core.invoke<Folder | null>("current_folder"),
     recent: () => core.invoke<Recent>("recent"),
-    listDir: (path: string) => core.invoke<Entry[]>("list_dir", { path }),
-    listFiles: () => core.invoke<FileItem[]>("list_files"),
+    listDir: (path: string) =>
+      route(
+        path,
+        () => core.invoke<Entry[]>("list_dir", { path }),
+        () => core.invoke<Entry[]>("dav_list", { path }),
+      ),
+    /** 工作區內所有文件；`root` 是目前開啟的資料夾。 */
+    listFiles: (root: string) =>
+      route(
+        root,
+        () => core.invoke<FileItem[]>("list_files"),
+        () => core.invoke<FileItem[]>("dav_list_files"),
+      ),
     createEntry: (parent: string, name: string, isDir: boolean) =>
-      core.invoke<string>("create_entry", { parent, name, isDir }),
-    renameEntry: (path: string, newName: string) => core.invoke<string>("rename_entry", { path, newName }),
-    trashEntry: (path: string) => core.invoke<void>("trash_entry", { path }),
-    revealEntry: (path: string) => core.invoke<void>("reveal_entry", { path }),
-    search: (query: string, caseSensitive: boolean, regex: boolean) =>
-      core.invoke<SearchResult>("search", { query, caseSensitive, regex }),
+      route(
+        parent,
+        () => core.invoke<string>("create_entry", { parent, name, isDir }),
+        () => core.invoke<string>("dav_create", { parent, name, isDir }),
+      ),
+    renameEntry: (path: string, newName: string) =>
+      route(
+        path,
+        () => core.invoke<string>("rename_entry", { path, newName }),
+        () => core.invoke<string>("dav_rename", { path, newName }),
+      ),
+    /** 本機移到資源回收筒；WebDAV 沒有資源回收筒，會直接刪除。 */
+    trashEntry: (path: string) =>
+      route(
+        path,
+        () => core.invoke<void>("trash_entry", { path }),
+        () => core.invoke<void>("dav_delete", { path }),
+      ),
+    revealEntry: (path: string) =>
+      route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported("在檔案總管中顯示")),
+    search: (query: string, caseSensitive: boolean, regex: boolean, root: string) =>
+      route(
+        root,
+        () => core.invoke<SearchResult>("search", { query, caseSensitive, regex }),
+        () => unsupported("全文搜尋"),
+      ),
     saveImage: (docPath: string, dataBase64: string, ext: string) =>
-      core.invoke<string>("save_image", { docPath, dataBase64, ext }),
+      route(
+        docPath,
+        () => core.invoke<string>("save_image", { docPath, dataBase64, ext }),
+        () => core.invoke<string>("dav_save_image", { docPath, dataBase64, ext }),
+      ),
+    davConnections,
+    davConnect: (url: string, username: string, password: string, remember: boolean, allowHttp: boolean) =>
+      core
+        .invoke<Folder>("dav_connect", { url, username, password, remember, allowHttp })
+        .then(async (f) => (await davConnections().catch(() => []), f)),
+    davForget: (id: string) => core.invoke<void>("dav_forget", { id }),
+    /** 遠端圖片（預覽用），回傳 data: 網址。 */
+    davImage: (path: string) => core.invoke<string>("dav_image", { path }),
 
     aiTools: () => core.invoke<{ claude: string | null; codex: string | null }>("ai_tools"),
     termOpen: (program: TermProgram, cols: number, rows: number) =>

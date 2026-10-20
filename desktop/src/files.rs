@@ -66,6 +66,31 @@ pub struct OpenedFile {
     pub encoding: &'static str,
 }
 
+impl OpenedFile {
+    pub fn new(path: String, name: String, text: String, encoding: &'static str) -> Self {
+        OpenedFile {
+            path,
+            name,
+            text,
+            encoding,
+        }
+    }
+}
+
+impl SaveOutcome {
+    pub fn saved(path: String, name: String) -> Self {
+        SaveOutcome::Saved { path, name }
+    }
+
+    pub fn conflict(path: String, name: String, disk_text: String) -> Self {
+        SaveOutcome::Conflict {
+            path,
+            name,
+            disk_text,
+        }
+    }
+}
+
 /// 存檔結果。
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]

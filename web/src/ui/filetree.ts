@@ -1,7 +1,7 @@
 /**
  * 工作區的檔案樹：延遲載入子資料夾、鍵盤操作（WAI-ARIA tree 模式）、右鍵選單、原地改名。
  */
-import type { Entry } from "../desktop.ts";
+import { displayPath, type Entry } from "../desktop.ts";
 import { dirname, isInside } from "../paths.ts";
 import { icon } from "./icons.ts";
 
@@ -239,7 +239,7 @@ export class FileTree {
     row.tabIndex = -1;
     row.dataset.path = entry.path;
     row.dataset.dir = entry.isDir ? "1" : "";
-    row.title = entry.path;
+    row.title = displayPath(entry.path);
     row.style.setProperty("--level", String(level));
     if (entry.isDir) {
       row.setAttribute("aria-expanded", String(this.#expanded.has(entry.path)));
