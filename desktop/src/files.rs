@@ -56,7 +56,7 @@ impl KnownFiles {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenedFile {
     pub path: String,

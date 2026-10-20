@@ -288,6 +288,15 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<string>("save_image", { docPath, dataBase64, ext }),
         () => core.invoke<string>("dav_save_image", { docPath, dataBase64, ext }),
       ),
+    /** 讀取工作區內另一份文件的內容（自動完成標題用，不影響存檔衝突判斷）。 */
+    peekText: (path: string) =>
+      route(
+        path,
+        () => core.invoke<string>("peek_text", { path }),
+        () => core.invoke<string>("dav_peek", { path }),
+      ),
+    /** 在預設瀏覽器開啟外部連結（http、https、mailto）。 */
+    openExternal: (url: string) => core.invoke<void>("open_external", { url }),
     davConnections,
     davConnect: (url: string, username: string, password: string, remember: boolean, allowHttp: boolean) =>
       core
@@ -328,6 +337,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     fileUrl: (path: string) => core.convertFileSrc(path),
     onFileChanged: (fn: (p: { path: string; text: string }) => void) =>
       event.listen<{ path: string; text: string }>("file-changed", (e) => fn(e.payload)),
+    /** 又開了一次 exe（例如在檔案總管雙擊另一個檔案）：在原本的視窗開啟。 */
+    onOpenTarget: (fn: (t: StartupTarget) => void) => event.listen<StartupTarget>("open-target", (e) => fn(e.payload)),
+    onOpenTargetFailed: (fn: (message: string) => void) =>
+      event.listen<string>("open-target-failed", (e) => fn(e.payload)),
     onFileRemoved: (fn: (p: { path: string }) => void) =>
       event.listen<{ path: string }>("file-removed", (e) => fn(e.payload)),
     onTreeChanged: (fn: (p: { dirs: string[] }) => void) =>

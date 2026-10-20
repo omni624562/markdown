@@ -1,4 +1,12 @@
 import {
+  AArrowDown,
+  AArrowUp,
+  ClipboardPaste,
+  Clock,
+  Focus,
+  GripVertical,
+  Printer,
+  TextCursor,
   ArrowDownToLine,
   ArrowUpFromLine,
   Bold,
@@ -60,6 +68,14 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  "a-arrow-down": AArrowDown,
+  "a-arrow-up": AArrowUp,
+  "clipboard-paste": ClipboardPaste,
+  clock: Clock,
+  focus: Focus,
+  "grip-vertical": GripVertical,
+  printer: Printer,
+  "text-cursor": TextCursor,
   "arrow-down-to-line": ArrowDownToLine,
   "arrow-up-from-line": ArrowUpFromLine,
   bold: Bold,

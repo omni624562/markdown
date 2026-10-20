@@ -188,7 +188,7 @@ fn list_children(dir: &Path) -> Vec<Entry> {
     entries
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct FolderInfo {
     path: String,
     name: String,
@@ -278,6 +278,30 @@ pub fn current_folder(workspace: State<'_, Workspace>) -> Option<FolderInfo> {
 #[tauri::command]
 pub fn recent(trust: State<'_, Trust>) -> crate::trust::Recent {
     trust.snapshot()
+}
+
+/// 自動完成連結時讀取另一份文件的標題用：只能讀工作區內的文件，不記錄任何狀態
+/// （不會影響該檔案的存檔衝突判斷）。
+pub const PEEK_LIMIT: u64 = 5 * 1024 * 1024;
+
+#[tauri::command]
+pub async fn peek_text(app: AppHandle, path: String) -> Result<String, String> {
+    crate::io::blocking(move || {
+        let root = app.state::<Workspace>().require_root()?;
+        let real = resolve_inside(&root, Path::new(&path))?;
+        if !is_doc(&real) {
+            return Err("只能讀取文件".into());
+        }
+        let size = fs::metadata(&real)
+            .map_err(|e| crate::io::describe(&e, "無法讀取"))?
+            .len();
+        if size > PEEK_LIMIT {
+            return Err("檔案太大".into());
+        }
+        let bytes = fs::read(&real).map_err(|e| crate::io::describe(&e, "無法讀取"))?;
+        Ok(crate::files::decode(&bytes).0)
+    })
+    .await
 }
 
 /// 列出資料夾的直接子項目（資料夾在前，只列出可開啟的文件）。
