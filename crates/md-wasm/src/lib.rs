@@ -145,3 +145,15 @@ pub fn format_json(text: &str) -> Result<String, JsError> {
         ))
     })
 }
+
+/// 依東亞字寬排版一個表格區塊（中日韓文字算兩格）；不是有效的表格時回傳 `undefined`。
+#[wasm_bindgen(js_name = formatTable)]
+pub fn format_table(block: &str) -> Option<String> {
+    md_core::format_table(block)
+}
+
+/// 排版文件中所有的表格，略過程式碼區塊。
+#[wasm_bindgen(js_name = formatAllTables)]
+pub fn format_all_tables(text: &str) -> String {
+    md_core::format_all_tables(text)
+}

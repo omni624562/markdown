@@ -30,7 +30,7 @@ body {
 
 .markdown-body {
   box-sizing: border-box;
-  max-width: 820px;
+  max-width: var(--preview-width, 820px);
   margin: 0 auto;
   padding: 40px 32px 96px;
   color: var(--md-fg);
@@ -184,4 +184,21 @@ body {
 @media print {
   .markdown-body { max-width: none; padding: 0; }
   .markdown-body .anchor { display: none; }
+}
+
+/* ---- 數學公式與流程圖 ---- */
+.markdown-body [data-math-style="display"] { display: block; overflow-x: auto; overflow-y: hidden; }
+.markdown-body .katex-display { margin: 0.8em 0; }
+.markdown-body math[display="block"] { margin: 0.8em 0; }
+.markdown-body .mermaid-diagram { margin: 0 0 1em; overflow-x: auto; text-align: center; }
+.markdown-body .mermaid-diagram svg { max-width: 100%; height: auto; }
+.markdown-body .mermaid-error {
+  padding: 0.75em 1em;
+  border-left: 0.25em solid var(--md-caution);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--md-caution) 8%, transparent);
+  color: var(--md-caution);
+  font-size: 0.875em;
+  text-align: left;
+  white-space: pre-wrap;
 }

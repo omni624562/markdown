@@ -1,7 +1,8 @@
 //! Markdown 編輯器桌面版。
 //!
 //! 介面直接沿用 `web/` 的網頁版（編譯時打包進執行檔），這裡只補上網頁做不到的事：
-//! 原生的開檔／存檔對話框、從命令列（或「開啟檔案」）帶入檔案、更新視窗標題。
+//! 原生的開檔／存檔對話框、從命令列（或「開啟檔案」）帶入檔案、更新視窗標題、
+//! 安全存檔（先寫暫存檔再取代，並偵測檔案是否被別的程式改過）與設定檔讀寫。
 //!
 //! 安全考量：前端只能讀寫「使用者在對話框選過」或「從命令列帶入」的檔案，
 //! 不提供任意路徑的檔案存取。
@@ -11,11 +12,13 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 /// 開啟檔案時記下的格式，存檔時照原樣寫回，避免 Windows 的 CRLF 或 BOM 被悄悄改掉。
 #[derive(Clone, Copy, Default)]
@@ -24,9 +27,17 @@ struct FileFormat {
     bom: bool,
 }
 
-/// 前端可以寫入的檔案（使用者選過或從命令列帶入的）及其格式。
+/// 已知檔案的狀態：原本的格式，以及最後一次讀取或寫入時內容的雜湊。
+#[derive(Clone, Copy, Default)]
+struct FileState {
+    format: FileFormat,
+    /// 用來判斷存檔前檔案是否被別的程式改過。
+    hash: Option<u64>,
+}
+
+/// 前端可以寫入的檔案（使用者選過或從命令列帶入的）及其狀態。
 #[derive(Default)]
-struct KnownFiles(Mutex<HashMap<PathBuf, FileFormat>>);
+struct KnownFiles(Mutex<HashMap<PathBuf, FileState>>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,10 +49,28 @@ struct OpenedFile {
     encoding: &'static str,
 }
 
+/// 存檔結果。
 #[derive(Serialize)]
-struct SavedFile {
-    path: String,
-    name: String,
+#[serde(tag = "status", rename_all = "camelCase")]
+enum SaveOutcome {
+    Saved {
+        path: String,
+        name: String,
+    },
+    /// 檔案在開啟後被別的程式改過；附上磁碟上的目前內容，讓使用者比較或決定覆蓋。
+    #[serde(rename_all = "camelCase")]
+    Conflict {
+        path: String,
+        name: String,
+        disk_text: String,
+    },
+    Cancelled,
+}
+
+fn hash_bytes(bytes: &[u8]) -> u64 {
+    let mut h = DefaultHasher::new();
+    bytes.hash(&mut h);
+    h.finish()
 }
 
 fn display_name(path: &Path) -> String {
@@ -95,13 +124,57 @@ fn read_file(path: PathBuf, known: &KnownFiles) -> Result<OpenedFile, String> {
         text,
         encoding,
     };
-    known.0.lock().unwrap().insert(path, format);
+    known.0.lock().unwrap().insert(
+        path,
+        FileState {
+            format,
+            hash: Some(hash_bytes(&bytes)),
+        },
+    );
     Ok(opened)
 }
 
-fn write_file(path: &Path, text: &str, format: FileFormat) -> Result<(), String> {
-    fs::write(path, encode(text, format))
-        .map_err(|e| format!("無法寫入「{}」：{e}", path.display()))
+/// 先寫到同一個資料夾的暫存檔、確實寫入磁碟後再取代原檔，
+/// 避免寫到一半斷電或磁碟滿時留下殘缺的檔案。
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let tmp = dir.join(format!(
+        ".{}.{}.tmp",
+        display_name(path),
+        std::process::id()
+    ));
+    let result = (|| {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+        // 有些情況無法取代（例如原檔正被其他程式以不允許刪除的方式開著），退回直接覆寫。
+        return fs::write(path, bytes);
+    }
+    result
+}
+
+/// 寫入檔案並更新已知狀態，回傳寫入內容的雜湊。
+fn write_file(path: &Path, text: &str, format: FileFormat) -> Result<u64, String> {
+    let bytes = encode(text, format);
+    write_atomic(path, &bytes).map_err(|e| format!("無法寫入「{}」：{e}", path.display()))?;
+    Ok(hash_bytes(&bytes))
+}
+
+/// 磁碟上的檔案和最後一次讀寫時是否不同。檔案不存在時不算衝突（直接重新建立）。
+fn changed_on_disk(stored: Option<u64>, disk: Option<&[u8]>) -> bool {
+    matches!((stored, disk), (Some(h), Some(bytes)) if hash_bytes(bytes) != h)
+}
+
+fn saved(path: &Path) -> SaveOutcome {
+    SaveOutcome::Saved {
+        name: display_name(path),
+        path: path.to_string_lossy().into_owned(),
+    }
 }
 
 /// 跳出開檔對話框並讀取選到的檔案；使用者取消時回傳 `None`。
@@ -139,8 +212,11 @@ fn initial_file(known: State<'_, KnownFiles>) -> Result<Option<OpenedFile>, Stri
 }
 
 /// 儲存文字檔。`path` 是先前開啟或存過的檔案時直接覆寫；否則跳出另存新檔對話框。
-/// 使用者取消時回傳 `None`。
+///
+/// 覆寫前會檢查檔案是否在開啟後被別的程式改過，有的話回傳 `Conflict`，
+/// 除非 `force` 為 true（使用者已確認要覆蓋）。
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn save_file(
     window: WebviewWindow,
     known: State<'_, KnownFiles>,
@@ -149,15 +225,31 @@ async fn save_file(
     text: String,
     filter_name: String,
     extensions: Vec<String>,
-) -> Result<Option<SavedFile>, String> {
+    force: Option<bool>,
+) -> Result<SaveOutcome, String> {
     if let Some(path) = path.map(PathBuf::from) {
-        let format = known.0.lock().unwrap().get(&path).copied();
-        if let Some(format) = format {
-            write_file(&path, &text, format)?;
-            return Ok(Some(SavedFile {
-                name: display_name(&path),
-                path: path.to_string_lossy().into_owned(),
-            }));
+        let state = known.0.lock().unwrap().get(&path).copied();
+        if let Some(state) = state {
+            if !force.unwrap_or(false) {
+                let disk = fs::read(&path).ok();
+                if changed_on_disk(state.hash, disk.as_deref()) {
+                    let (disk_text, _, _) = decode(&disk.unwrap_or_default());
+                    return Ok(SaveOutcome::Conflict {
+                        name: display_name(&path),
+                        path: path.to_string_lossy().into_owned(),
+                        disk_text,
+                    });
+                }
+            }
+            let hash = write_file(&path, &text, state.format)?;
+            known.0.lock().unwrap().insert(
+                path.clone(),
+                FileState {
+                    hash: Some(hash),
+                    ..state
+                },
+            );
+            return Ok(saved(&path));
         }
     }
 
@@ -173,23 +265,52 @@ async fn save_file(
         .save_file()
         .await;
     let Some(handle) = picked else {
-        return Ok(None);
+        return Ok(SaveOutcome::Cancelled);
     };
     let path = handle.path().to_path_buf();
-    // 覆寫既有檔案時沿用它原本的換行格式。
+    // 覆寫既有檔案時沿用它原本的換行格式（對話框已經問過使用者要不要取代）。
     let format = known
         .0
         .lock()
         .unwrap()
         .get(&path)
-        .copied()
+        .map(|s| s.format)
         .unwrap_or_default();
-    write_file(&path, &text, format)?;
-    known.0.lock().unwrap().insert(path.clone(), format);
-    Ok(Some(SavedFile {
-        name: display_name(&path),
-        path: path.to_string_lossy().into_owned(),
-    }))
+    let hash = write_file(&path, &text, format)?;
+    known.0.lock().unwrap().insert(
+        path.clone(),
+        FileState {
+            format,
+            hash: Some(hash),
+        },
+    );
+    Ok(saved(&path))
+}
+
+fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|d| d.join("settings.json"))
+        .map_err(|e| e.to_string())
+}
+
+/// 讀取設定檔；還沒有設定檔時回傳 `None`。
+#[tauri::command]
+fn load_settings(app: AppHandle) -> Result<Option<String>, String> {
+    match fs::read_to_string(settings_path(&app)?) {
+        Ok(s) => Ok(Some(s)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("無法讀取設定：{e}")),
+    }
+}
+
+#[tauri::command]
+fn save_settings(app: AppHandle, json: String) -> Result<(), String> {
+    let path = settings_path(&app)?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("無法建立設定資料夾：{e}"))?;
+    }
+    write_atomic(&path, json.as_bytes()).map_err(|e| format!("無法儲存設定：{e}"))
 }
 
 #[tauri::command]
@@ -204,7 +325,9 @@ fn main() {
             open_file,
             initial_file,
             save_file,
-            set_title
+            set_title,
+            load_settings,
+            save_settings
         ])
         .run(tauri::generate_context!())
         .expect("無法啟動應用程式");
@@ -227,6 +350,29 @@ mod tests {
     fn lf_files_stay_lf() {
         let (text, format, _) = decode(b"a\nb\n");
         assert_eq!(encode(&text, format), b"a\nb\n");
+    }
+
+    #[test]
+    fn atomic_write_replaces_and_cleans_up() {
+        let dir = std::env::temp_dir().join(format!("md-editor-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("筆記.md");
+        fs::write(&file, "舊內容").unwrap();
+        write_atomic(&file, "新內容".as_bytes()).unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), "新內容");
+        let leftovers: Vec<_> = fs::read_dir(&dir).unwrap().collect();
+        assert_eq!(leftovers.len(), 1, "暫存檔應該被移走");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn detects_external_changes() {
+        let h = hash_bytes(b"original");
+        assert!(!changed_on_disk(Some(h), Some(b"original")));
+        assert!(changed_on_disk(Some(h), Some(b"edited elsewhere")));
+        // 檔案被刪除，或是第一次存檔：不算衝突。
+        assert!(!changed_on_disk(Some(h), None));
+        assert!(!changed_on_disk(None, Some(b"anything")));
     }
 
     #[test]

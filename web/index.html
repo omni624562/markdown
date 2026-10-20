@@ -48,6 +48,7 @@
           <i data-icon="panel-left"></i>
         </button>
         <button type="button" id="theme-menu" class="btn icon-only" aria-label="主題"><span class="theme-icon"></span></button>
+        <button type="button" class="btn icon-only" data-command="settings"><i data-icon="settings"></i></button>
         <button type="button" class="btn palette-btn" data-command="palette">
           <i data-icon="command"></i><span class="label">指令</span><kbd id="palette-kbd"></kbd>
         </button>
@@ -63,6 +64,7 @@
 
       <section class="pane editor-pane" aria-label="編輯區">
         <div class="format-bar" id="format-bar" role="toolbar" aria-label="格式工具列" aria-controls="editor"></div>
+        <div class="review-bar" id="review-bar" role="status" hidden></div>
         <div class="editor-host" id="editor"></div>
       </section>
 

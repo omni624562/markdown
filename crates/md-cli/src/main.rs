@@ -64,12 +64,12 @@ enum Command {
         #[command(flatten)]
         input: Input,
     },
-    /// 把 JSON 重新排版（縮排兩格）
+    /// 重新排版：JSON 縮排兩格；Markdown 對齊所有表格
     Fmt {
-        /// 輸入檔；省略或為 `-` 時從標準輸入讀取
-        input: Option<PathBuf>,
+        #[command(flatten)]
+        input: Input,
         /// 直接覆寫輸入檔
-        #[arg(short, long, requires = "input")]
+        #[arg(short, long)]
         write: bool,
     },
 }
@@ -185,9 +185,19 @@ fn run(cli: Cli) -> io::Result<()> {
             Ok(())
         }
         Command::Fmt { input, write } => {
-            let text = read_input(input.as_ref())?;
-            let formatted = md_core::format_json(&text).map_err(parse_error)?;
-            match input {
+            if write && is_stdin(input.input.as_ref()) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "--write 需要指定輸入檔",
+                ));
+            }
+            let (text, kind) = input.read()?;
+            let formatted = match kind {
+                DocKind::Json => md_core::format_json(&text).map_err(parse_error)?,
+                DocKind::Markdown => md_core::format_all_tables(&text),
+                DocKind::Text => text,
+            };
+            match input.input {
                 Some(path) if write => fs::write(path, formatted),
                 _ => io::stdout().write_all(formatted.as_bytes()),
             }

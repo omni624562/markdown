@@ -1,4 +1,4 @@
-import { type DocKind, type RenderResult, render } from "../pkg/md_wasm.js";
+import { type DocKind, type RenderResult, render, renderDocument } from "../pkg/md_wasm.js";
 
 /**
  * 預覽外掛：在 Rust 產生 HTML 之後，對 DOM 做額外處理。
@@ -7,6 +7,8 @@ import { type DocKind, type RenderResult, render } from "../pkg/md_wasm.js";
 export interface PreviewPlugin {
   name: string;
   apply(root: HTMLElement): void | Promise<void>;
+  /** 匯出 HTML 時對文件內容做的處理（例如把公式換成 MathML、流程圖換成 SVG）。 */
+  exportTransform?(root: HTMLElement): void | Promise<void>;
 }
 
 export class Preview {
@@ -42,6 +44,23 @@ export class Preview {
       }
     }
     return result;
+  }
+
+  /** 產生可單獨開啟的完整 HTML，並讓外掛把公式、流程圖等轉成不需外部資源的形式。 */
+  async exportDocument(text: string, kind: DocKind, title: string): Promise<string> {
+    const html = renderDocument(text, { kind, title });
+    if (!this.#plugins.some((p) => p.exportTransform)) return html;
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const body = doc.querySelector<HTMLElement>("article.markdown-body");
+    if (!body) return html;
+    for (const plugin of this.#plugins) {
+      try {
+        await plugin.exportTransform?.(body);
+      } catch (e) {
+        console.error(`[${plugin.name}] 匯出失敗`, e);
+      }
+    }
+    return `<!doctype html>\n${doc.documentElement.outerHTML}\n`;
   }
 
   /** 換文件時清空，避免錯誤狀態下殘留上一份文件的畫面。 */

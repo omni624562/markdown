@@ -1,7 +1,9 @@
 name: Desktop
 
 # 編譯 Windows 免安裝執行檔（md-editor.exe）。
-# 每次 PR／推送到 main 都會產生可下載的 Artifact；推送 v* 標籤時另外建立 GitHub Release。
+# - 每次 PR 都會產生 Artifact（需登入 GitHub 才能下載），方便測試。
+# - 合併到 main 時，更新公開的「最新版」Release：不用登入就能下載。
+# - 推送 v* 標籤時，另外建立該版本的 Release。
 on:
   push:
     branches: [main]
@@ -54,6 +56,35 @@ jobs:
           name: md-editor-windows-x64
           path: desktop/target/release/md-editor.exe
           if-no-files-found: error
+
+  # 公開的「最新版」：標籤 latest 永遠指向 main 最新一次成功建置的版本。
+  # 固定下載連結：https://github.com/<owner>/<repo>/releases/download/latest/md-editor.exe
+  latest:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-latest
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: md-editor-windows-x64
+      - name: 更新「最新版」Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short="${GITHUB_SHA::7}"
+          today="$(TZ=Asia/Taipei date +%Y-%m-%d)"
+          notes="main 分支 ${short} 的自動建置（${today}）。
+
+          下載 md-editor.exe 後直接執行即可，不需要安裝。
+          第一次執行時若出現「Windows 已保護您的電腦」，請點「其他資訊」→「仍要執行」（這個執行檔沒有數位簽章）。"
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create latest md-editor.exe --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "最新版（${today}）" --notes "$notes" --latest
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

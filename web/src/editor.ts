@@ -5,7 +5,7 @@ import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } fr
 import { languages } from "@codemirror/language-data";
 import { type Diagnostic, forceLinting, linter } from "@codemirror/lint";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, type Extension, type StateCommand } from "@codemirror/state";
+import { Compartment, EditorState, type Extension, Prec, type StateCommand } from "@codemirror/state";
 import {
   EditorView,
   drawSelection,
@@ -17,7 +17,9 @@ import {
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import type { SourceError } from "../pkg/md_wasm.js";
+import { bracketPairing } from "./brackets.ts";
 import type { DocKind } from "./kinds.ts";
+import { type Formatter, newRow, nextCell, previousCell } from "./table.ts";
 
 /** 顏色全部走 CSS 變數，深淺色主題只要在 styles.css 切換變數即可。 */
 const syntaxColors = HighlightStyle.define([
@@ -39,7 +41,14 @@ const syntaxColors = HighlightStyle.define([
 const theme = EditorView.theme({
   "&": { height: "100%", color: "var(--fg)", backgroundColor: "var(--bg)" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "var(--editor-font-size)", lineHeight: "1.75" },
+  ".cm-scroller": {
+    fontFamily: "var(--font-mono)",
+    fontSize: "var(--editor-font-size)",
+    lineHeight: "1.75",
+    // 原始碼要顯示真正的字元，不要把 `|-`、`->` 之類合成連字。
+    fontVariantLigatures: "none",
+    fontFeatureSettings: '"liga" 0, "calt" 0',
+  },
   ".cm-content": { padding: "20px 0 40vh", caretColor: "var(--accent)" },
   ".cm-line": { padding: "0 20px" },
   ".cm-gutters": { backgroundColor: "var(--bg)", color: "var(--subtle)", border: "none" },
@@ -54,6 +63,15 @@ const theme = EditorView.theme({
   ".cm-tooltip": { backgroundColor: "var(--surface-raised)", color: "var(--fg)", border: "1px solid var(--border)", borderRadius: "8px" },
   ".cm-diagnostic-error": { borderLeftColor: "var(--danger)" },
 });
+
+export interface EditorOptions {
+  lineNumbers: boolean;
+  autoPairBrackets: boolean;
+  /** 表格排版器；不需要自動對齊時傳入原樣回傳的函式。 */
+  formatTable: Formatter;
+  /** 其他擴充（例如差異檢視）。 */
+  extra?: Extension[];
+}
 
 export interface EditorHandlers {
   onChange(doc: string): void;
@@ -72,16 +90,18 @@ const PLACEHOLDER: Record<DocKind, string> = {
 export class Editor {
   readonly view: EditorView;
   #language = new Compartment();
+  #gutter = new Compartment();
   #extensions: Extension[];
   #handlers: EditorHandlers;
   #kind: DocKind;
+  #options: EditorOptions;
 
-  constructor(parent: HTMLElement, doc: string, kind: DocKind, handlers: EditorHandlers) {
+  constructor(parent: HTMLElement, doc: string, kind: DocKind, handlers: EditorHandlers, options: EditorOptions) {
     this.#handlers = handlers;
     this.#kind = kind;
+    this.#options = options;
     this.#extensions = [
-      lineNumbers(),
-      highlightActiveLineGutter(),
+      this.#gutter.of(this.#gutterFor(options)),
       history(),
       drawSelection(),
       indentOnInput(),
@@ -94,6 +114,7 @@ export class Editor {
       syntaxHighlighting(syntaxColors),
       theme,
       this.#language.of(this.#languageFor(kind)),
+      ...(options.extra ?? []),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) handlers.onChange(u.state.doc.toString());
         if (u.docChanged || u.selectionSet) handlers.onSelection(u.view);
@@ -124,16 +145,47 @@ export class Editor {
     return EditorState.create({ doc, extensions: this.#extensions });
   }
 
+  #gutterFor(options: EditorOptions): Extension {
+    return options.lineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : [];
+  }
+
   #languageFor(kind: DocKind): Extension {
     const common = placeholder(PLACEHOLDER[kind]);
+    const brackets = this.#options.autoPairBrackets ? bracketPairing() : [];
     switch (kind) {
-      case "markdown":
-        return [common, markdown({ base: markdownLanguage, codeLanguages: languages })];
+      case "markdown": {
+        const fmt = (b: string) => this.#options.formatTable(b);
+        const composing = () => this.view.composing;
+        return [
+          common,
+          brackets,
+          // 表格按鍵優先於縮排與清單延續；不在表格中時會交給下一個處理者。
+          Prec.high(
+            keymap.of([
+              { key: "Tab", run: nextCell(fmt, composing) },
+              { key: "Shift-Tab", run: previousCell(fmt, composing) },
+              { key: "Enter", run: newRow(fmt, composing) },
+            ]),
+          ),
+          markdown({ base: markdownLanguage, codeLanguages: languages }),
+        ];
+      }
       case "json":
         return [common, json(), linter(() => this.#diagnostics(), { delay: 300 })];
       case "text":
-        return common;
+        return [common, brackets];
     }
+  }
+
+  /** 套用新的設定（行號、括號配對、表格排版）。 */
+  configure(options: Partial<EditorOptions>): void {
+    this.#options = { ...this.#options, ...options };
+    this.view.dispatch({
+      effects: [
+        this.#gutter.reconfigure(this.#gutterFor(this.#options)),
+        this.#language.reconfigure(this.#languageFor(this.#kind)),
+      ],
+    });
   }
 
   #diagnostics(): Diagnostic[] {
@@ -160,7 +212,13 @@ export class Editor {
   load(doc: string, kind: DocKind): void {
     this.#kind = kind;
     this.view.setState(this.#createState(doc));
-    this.view.dispatch({ effects: this.#language.reconfigure(this.#languageFor(kind)) });
+    // 新的 state 會用建立編輯器時的初始設定，所以要重新套用目前的設定。
+    this.view.dispatch({
+      effects: [
+        this.#gutter.reconfigure(this.#gutterFor(this.#options)),
+        this.#language.reconfigure(this.#languageFor(kind)),
+      ],
+    });
     this.view.scrollDOM.scrollTop = 0;
     this.#handlers.onSelection(this.view);
   }
