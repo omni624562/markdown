@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <title>Markdown 編輯器</title>
+    <script>
+      // 在畫面繪製前套用主題，避免深色模式使用者看到白色閃爍。
+      try {
+        const t = localStorage.getItem("md-editor:theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#editor">跳到編輯區</a>
+
+    <header class="appbar">
+      <div class="doc-id">
+        <span class="logo" aria-hidden="true"><i data-icon="file-text"></i></span>
+        <input id="file-name" class="file-name" aria-label="檔名（可直接修改）" spellcheck="false" autocomplete="off" />
+        <span id="dirty" class="dirty" role="img" aria-label="有變更尚未存檔" title="有變更尚未存檔" hidden></span>
+        <select id="doc-kind" class="kind-select" aria-label="文件類型">
+          <option value="markdown">Markdown</option>
+          <option value="text">純文字</option>
+          <option value="json">JSON</option>
+        </select>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="file-menu" class="btn">
+          <i data-icon="folder-open"></i><span class="label">檔案</span><i data-icon="chevron-down"></i>
+        </button>
+        <button type="button" class="btn" data-command="save">
+          <i data-icon="save"></i><span class="label">儲存</span>
+        </button>
+
+        <div class="segmented" role="radiogroup" aria-label="檢視模式">
+          <button type="button" role="radio" data-view="editor"><i data-icon="pencil"></i><span class="label">編輯</span></button>
+          <button type="button" role="radio" data-view="split" class="split-only"><i data-icon="columns-2"></i><span class="label">分割</span></button>
+          <button type="button" role="radio" data-view="preview"><i data-icon="eye"></i><span class="label">預覽</span></button>
+        </div>
+
+        <button type="button" class="btn icon-only" data-command="toggle-outline" aria-pressed="true">
+          <i data-icon="panel-left"></i>
+        </button>
+        <button type="button" id="theme-menu" class="btn icon-only" aria-label="主題"><span class="theme-icon"></span></button>
+        <button type="button" class="btn palette-btn" data-command="palette">
+          <i data-icon="command"></i><span class="label">指令</span><kbd id="palette-kbd"></kbd>
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace" data-view="split">
+      <nav class="outline" id="outline" aria-labelledby="outline-title">
+        <h2 id="outline-title">大綱</h2>
+        <ol id="outline-list"></ol>
+        <p id="outline-empty" class="outline-empty" hidden></p>
+      </nav>
+
+      <section class="pane editor-pane" aria-label="編輯區">
+        <div class="format-bar" id="format-bar" role="toolbar" aria-label="格式工具列" aria-controls="editor"></div>
+        <div class="editor-host" id="editor"></div>
+      </section>
+
+      <div class="splitter" id="splitter"></div>
+
+      <section class="pane preview-pane" id="preview-scroller" aria-label="預覽">
+        <div id="parse-error" class="parse-error" role="alert" hidden></div>
+        <article class="markdown-body" id="preview"></article>
+        <div id="empty-state" class="empty-state" hidden></div>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status-kind"></span>
+      <span id="status-cursor"></span>
+      <span id="status-stats"></span>
+      <span id="status-save" class="save-state"></span>
+    </footer>
+
+    <input type="file" id="file-input" accept=".md,.markdown,.txt,.text,.log,.json,text/markdown,text/plain,application/json" hidden />
+    <div class="drop-overlay" hidden>
+      <div>
+        <strong>放開以開啟檔案</strong>
+        <span>支援 .md、.txt、.json</span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

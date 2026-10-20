@@ -1,0 +1,187 @@
+/* 文件內容樣式：網頁預覽與匯出的 HTML 共用同一份。
+   顏色用 light-dark()，依 color-scheme（系統設定或 data-theme）自動切換。 */
+:root {
+  color-scheme: light dark;
+  --md-fg: light-dark(#1f2328, #e6edf3);
+  --md-muted: light-dark(#59636e, #9198a1);
+  --md-bg: light-dark(#ffffff, #0d1117);
+  --md-subtle: light-dark(#f6f8fa, #151b23);
+  --md-border: light-dark(#d1d9e0, #3d444d);
+  --md-link: light-dark(#0969da, #4493f8);
+  --md-code-bg: light-dark(rgba(129, 139, 152, 0.15), rgba(101, 108, 118, 0.25));
+  --md-note: light-dark(#0969da, #4493f8);
+  --md-tip: light-dark(#1a7f37, #3fb950);
+  --md-important: light-dark(#8250df, #ab7df8);
+  --md-warning: light-dark(#9a6700, #d29922);
+  --md-caution: light-dark(#cf222e, #f85149);
+  --md-json-key: light-dark(#953800, #ffa657);
+  --md-json-string: light-dark(#0a3069, #a5d6ff);
+  --md-json-number: light-dark(#0550ae, #79c0ff);
+  --md-json-literal: light-dark(#cf222e, #ff7b72);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background: var(--md-bg);
+  color: var(--md-fg);
+}
+
+.markdown-body {
+  box-sizing: border-box;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 40px 32px 96px;
+  color: var(--md-fg);
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.8;
+  overflow-wrap: break-word;
+  text-autospace: normal;
+  hanging-punctuation: allow-end;
+}
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  position: relative;
+  margin: 1.6em 0 0.6em;
+  font-weight: 650;
+  line-height: 1.35;
+  text-wrap: balance;
+  scroll-margin-top: 16px;
+}
+.markdown-body h1 { font-size: 2em; padding-bottom: 0.3em; border-bottom: 1px solid var(--md-border); }
+.markdown-body h2 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--md-border); }
+.markdown-body h3 { font-size: 1.25em; }
+.markdown-body h4 { font-size: 1em; }
+.markdown-body h5 { font-size: 0.875em; }
+.markdown-body h6 { font-size: 0.85em; color: var(--md-muted); }
+.markdown-body .anchor {
+  position: absolute;
+  left: -1em;
+  padding-right: 0.25em;
+  color: var(--md-muted);
+  text-decoration: none;
+  opacity: 0;
+}
+.markdown-body .anchor::before { content: "#"; }
+.markdown-body :is(h1, h2, h3, h4, h5, h6):hover .anchor,
+.markdown-body .anchor:focus-visible { opacity: 1; }
+
+.markdown-body p { text-wrap: pretty; }
+.markdown-body p, .markdown-body ul, .markdown-body ol, .markdown-body blockquote,
+.markdown-body pre, .markdown-body table, .markdown-body dl, .markdown-body .markdown-alert {
+  margin: 0 0 1em;
+}
+.markdown-body a { color: var(--md-link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
+.markdown-body a:hover { text-decoration-color: currentColor; }
+.markdown-body img { max-width: 100%; border-radius: 6px; }
+.markdown-body hr { height: 1px; margin: 2em 0; border: 0; background: var(--md-border); }
+.markdown-body ul, .markdown-body ol { padding-left: 2em; }
+.markdown-body li + li { margin-top: 0.25em; }
+.markdown-body .task-list-item { list-style: none; }
+.markdown-body .task-list-item input { margin: 0 0.4em 0 -1.5em; vertical-align: middle; accent-color: var(--md-link); }
+
+.markdown-body blockquote {
+  padding: 0 1em;
+  color: var(--md-muted);
+  border-left: 0.25em solid var(--md-border);
+}
+
+.markdown-body code, .markdown-body pre {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, "Noto Sans Mono CJK TC", monospace;
+  font-size: 0.875em;
+}
+.markdown-body code {
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  background: var(--md-code-bg);
+}
+.markdown-body pre {
+  overflow: auto;
+  padding: 1em 1.2em;
+  border-radius: 8px;
+  background: var(--md-subtle);
+  line-height: 1.6;
+}
+.markdown-body pre code { padding: 0; background: transparent; font-size: 1em; }
+
+.markdown-body table { display: block; width: max-content; max-width: 100%; overflow: auto; border-collapse: collapse; }
+.markdown-body th, .markdown-body td { padding: 6px 13px; border: 1px solid var(--md-border); }
+.markdown-body th { font-weight: 600; background: var(--md-subtle); }
+
+.markdown-body .footnotes { font-size: 0.875em; color: var(--md-muted); border-top: 1px solid var(--md-border); margin-top: 2em; }
+
+.markdown-body .markdown-alert { padding: 0.5em 1em; border-left: 0.25em solid var(--alert, var(--md-note)); border-radius: 0 6px 6px 0; background: color-mix(in srgb, var(--alert, var(--md-note)) 6%, transparent); }
+.markdown-body .markdown-alert > :last-child { margin-bottom: 0; }
+.markdown-body .markdown-alert-title { margin-bottom: 0.25em; font-weight: 600; color: var(--alert, var(--md-note)); }
+.markdown-body .markdown-alert-note { --alert: var(--md-note); }
+.markdown-body .markdown-alert-tip { --alert: var(--md-tip); }
+.markdown-body .markdown-alert-important { --alert: var(--md-important); }
+.markdown-body .markdown-alert-warning { --alert: var(--md-warning); }
+.markdown-body .markdown-alert-caution { --alert: var(--md-caution); }
+
+/* ---- 純文字 ---- */
+.markdown-body .plain-text {
+  margin: 0;
+  padding: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 1em;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---- JSON 樹狀檢視 ---- */
+.markdown-body .json-tree {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, "Noto Sans Mono CJK TC", monospace;
+  font-size: 0.875em;
+  line-height: 1.7;
+}
+.markdown-body .json-tree details > summary {
+  margin-left: -1.25em;
+  padding-left: 1.25em;
+  border-radius: 4px;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+}
+.markdown-body .json-tree details > summary::before {
+  content: "▸";
+  position: absolute;
+  left: 0.2em;
+  color: var(--md-muted);
+  transition: transform 0.15s;
+}
+.markdown-body .json-tree details[open] > summary::before { transform: rotate(90deg); }
+.markdown-body .json-tree details > summary::-webkit-details-marker { display: none; }
+.markdown-body .json-tree summary:hover { background: var(--md-subtle); }
+.markdown-body .json-children { padding-left: 1.5em; border-left: 1px solid var(--md-border); margin-left: 0.3em; }
+.markdown-body .json-tree { padding-left: 1.25em; }
+.markdown-body .json-key { color: var(--md-json-key); }
+.markdown-body .json-index { color: var(--md-muted); }
+.markdown-body .json-string { color: var(--md-json-string); word-break: break-word; }
+.markdown-body .json-number { color: var(--md-json-number); }
+.markdown-body .json-bool, .markdown-body .json-null { color: var(--md-json-literal); }
+.markdown-body .json-punct { color: var(--md-muted); }
+.markdown-body .json-meta {
+  margin-left: 0.6em;
+  padding: 0 0.5em;
+  border-radius: 999px;
+  background: var(--md-subtle);
+  color: var(--md-muted);
+  font-family: system-ui, sans-serif;
+  font-size: 0.85em;
+}
+.markdown-body details[open] > summary > .json-meta { display: none; }
+.markdown-body .json-more { color: var(--md-muted); font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body .json-tree details > summary::before { transition: none; }
+}
+@media print {
+  .markdown-body { max-width: none; padding: 0; }
+  .markdown-body .anchor { display: none; }
+}

@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/md-core", "crates/md-wasm", "crates/md-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
