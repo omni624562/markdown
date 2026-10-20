@@ -12,9 +12,10 @@ import init, {
   formatTable,
   kindFromFileName,
 } from "../pkg/md_wasm.js";
+import { AiController } from "./ai.ts";
 import { type Command, Commands, formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, cursorInfo } from "./editor.ts";
-import { type Entry, type FileItem, type Folder, desktop } from "./desktop.ts";
+import { type EditorSnapshot, type Entry, type FileItem, type Folder, desktop } from "./desktop.ts";
 import type { EditorState } from "@codemirror/state";
 import {
   type FileHandle,
@@ -37,7 +38,7 @@ import { mermaidPlugin } from "./plugins/mermaid.ts";
 import { Preview } from "./preview.ts";
 import sample from "./sample.md?raw";
 import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
-import { type Settings, SettingsStore } from "./settings.ts";
+import { type QuickAction, type Settings, SettingsStore } from "./settings.ts";
 import { type DocMeta, dropDraft, loadDraft, loadSession, newId, saveDraft, saveSession } from "./session.ts";
 import * as storage from "./storage.ts";
 import { editTable } from "./table.ts";
@@ -51,6 +52,8 @@ import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
+import { TerminalPanel } from "./ui/terminal-panel.ts";
+import { Updater, versionLabel } from "./updater.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { toast } from "./ui/toast.ts";
 
@@ -104,6 +107,8 @@ interface Doc extends DocMeta {
   dirty: boolean;
   /** 檔案已從磁碟刪除。 */
   missing?: boolean;
+  /** 在背景被外部修改時，修改前的內容；切換到這個分頁時逐段標示差異（A4）。 */
+  externalOriginal?: string;
 }
 
 function makeDoc(meta: Partial<DocMeta> & { name: string; kind: DocKind }): Doc {
@@ -167,13 +172,21 @@ const preview = new Preview(previewEl, [
 const tableFormatter = (block: string) => (settings.value.tableAutoFormat ? formatTable(block) : undefined);
 
 const review = new Review($("#review-bar"));
+/** AI 協作與終端機（桌面版才有，在下面的「AI 協作」段落建立）。 */
+let ai: AiController | null = null;
+let terminal: TerminalPanel | null = null;
+let updater: Updater | null = null;
 
 const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   onChange(doc) {
     scheduleRender();
     scheduleAutosave(doc);
+    ai?.scheduleSync();
   },
-  onSelection: updateCursor,
+  onSelection(v) {
+    updateCursor(v);
+    ai?.scheduleSync();
+  },
   onScroll(line) {
     editorTopLine = line;
     syncPreview();
@@ -193,6 +206,14 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
         if (!files.length || e.clipboardData?.getData("text/plain")) return false;
         e.preventDefault();
         void insertImages(files).catch(reportError);
+        return true;
+      },
+      contextmenu(e, v) {
+        // 有選取文字且開啟 AI 時，右鍵選單提供快捷動作。
+        const { from, to } = v.state.selection.main;
+        if (!ai?.enabled || from === to) return false;
+        e.preventDefault();
+        showAiMenu(e.clientX, e.clientY);
         return true;
       },
       drop(e, v) {
@@ -786,6 +807,12 @@ function activate(doc: Doc): void {
   persistSession();
   renderNow();
   renderTabs();
+  if (doc.externalOriginal !== undefined) {
+    const original = doc.externalOriginal;
+    doc.externalOriginal = undefined;
+    showExternalChanges(original, editor.text);
+  }
+  ai?.scheduleSync();
 }
 
 /** 新增一個分頁並切換過去（不會寫入內容，呼叫端負責）。 */
@@ -1157,6 +1184,198 @@ commands.register(
 );
 
 const palette = new Palette(commands);
+const TERMINAL_KEYS = new Set(["palette", "toggle-terminal"]);
+
+// ---- AI 協作與終端機（桌面版） ------------------------------------------------
+
+if (desktop) {
+  terminal = new TerminalPanel($("#terminal-panel"), desktop, () => editor.view.requestMeasure());
+  ai = new AiController(
+    desktop,
+    settings,
+    {
+      editor,
+      review,
+      snapshot: editorSnapshot,
+      async showDocument(path) {
+        if (path && path !== fileHandle?.path) await openPath(path);
+      },
+    },
+    $("#ai-bar"),
+  );
+  void refreshAiTools();
+  $("[data-command='toggle-terminal']").hidden = false;
+  updater = new Updater(desktop, settings, $("#status-update"), () => {
+    flushDraft();
+    persistSession();
+  });
+  settings.subscribe((_, changed) => {
+    if (changed.includes("aiEnabled")) void refreshAiTools();
+  });
+}
+
+/** 終端機只在開啟 AI 時顯示已安裝的 Claude Code／Codex 按鈕。 */
+async function refreshAiTools(): Promise<void> {
+  if (!desktop || !terminal) return;
+  const none = { claude: null, codex: null };
+  terminal.setAvailable(settings.value.aiEnabled ? await desktop.aiTools().catch(() => none) : none);
+}
+
+function editorSnapshot(): EditorSnapshot {
+  stash();
+  const { from, to } = editor.view.state.selection.main;
+  const doc = editor.view.state.doc;
+  return {
+    active: {
+      path: fileHandle?.path ?? null,
+      name: fileName,
+      text: editor.text,
+      dirty: active.dirty,
+      selection:
+        from === to
+          ? null
+          : { text: doc.sliceString(from, to), fromLine: doc.lineAt(from).number, toLine: doc.lineAt(to).number },
+    },
+    open: docs.map((d) => ({ path: d.path, name: d.name, dirty: d.dirty })),
+  };
+}
+
+const aiPicker = new Picker<QuickAction & { custom?: boolean }>({
+  label: "AI 快捷動作",
+  placeholder: "選擇動作，或直接輸入要 AI 怎麼處理選取的文字",
+  empty: "沒有符合的動作；按 Enter 會把輸入的文字當成指示",
+  query(q) {
+    const actions = settings.value.quickActions
+      .map((a) => ({ a, score: fuzzyScore(q, a.name) }))
+      .filter((x) => x.score > 0)
+      .sort((x, y) => y.score - x.score)
+      .map((x) => x.a);
+    const text = q.trim();
+    return text && !actions.some((a) => a.name === text)
+      ? [...actions, { name: `自訂：${text}`, prompt: text, custom: true }]
+      : actions;
+  },
+  render: (a) => ({ title: a.name, detail: a.custom ? "自訂指示" : undefined, icon: "sparkles" }),
+  pick: (a) => void ai?.runAction(a).catch(reportError),
+});
+
+const aiMenu = document.createElement("div");
+aiMenu.className = "menu";
+aiMenu.popover = "auto";
+aiMenu.role = "menu";
+document.body.append(aiMenu);
+aiMenu.addEventListener("keydown", (e) => {
+  const items = [...aiMenu.querySelectorAll<HTMLElement>("button")];
+  const i = items.indexOf(document.activeElement as HTMLElement);
+  if (e.key === "ArrowDown") items[(i + 1) % items.length]?.focus();
+  else if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length]?.focus();
+  else return;
+  e.preventDefault();
+});
+
+/** 選取文字時的右鍵選單：剪下、複製，以及 AI 快捷動作。 */
+function showAiMenu(x: number, y: number): void {
+  const item = (label: string, iconName: string, run: () => void) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.role = "menuitem";
+    b.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }));
+    b.addEventListener("click", () => {
+      aiMenu.hidePopover();
+      run();
+    });
+    return b;
+  };
+  const selected = () => {
+    const { from, to } = editor.view.state.selection.main;
+    return { from, to, text: editor.view.state.sliceDoc(from, to) };
+  };
+  const sep = () => Object.assign(document.createElement("div"), { className: "menu-sep" });
+  aiMenu.replaceChildren(
+    item("剪下", "copy", () => {
+      const { from, to, text } = selected();
+      void navigator.clipboard.writeText(text);
+      editor.view.dispatch({ changes: { from, to }, userEvent: "delete.cut" });
+      editor.view.focus();
+    }),
+    item("複製", "copy", () => void navigator.clipboard.writeText(selected().text)),
+    sep(),
+    ...settings.value.quickActions.map((a) => item(a.name, "sparkles", () => void ai?.runAction(a).catch(reportError))),
+    item("自訂指示…", "wand-sparkles", () => aiPicker.open()),
+  );
+  const show = () => {
+    aiMenu.style.left = `${Math.min(x, window.innerWidth - 240)}px`;
+    aiMenu.style.top = `${Math.min(y, window.innerHeight - aiMenu.childElementCount * 34 - 16)}px`;
+    aiMenu.style.right = "auto";
+    aiMenu.showPopover();
+    aiMenu.querySelector<HTMLElement>("button")?.focus();
+  };
+  // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
+  setTimeout(show);
+}
+
+/** 外部修改後，以修改前的版本為基準逐段標示（A4）。沒有差異時回傳 false。 */
+function showExternalChanges(original: string, current: string): boolean {
+  return review.start(current, {
+    original,
+    source: "external",
+    title: `「${fileName}」被外部程式修改了`,
+    hint: "逐段檢查改了哪裡；選「還原」後記得存檔",
+    acceptLabel: "保留",
+    rejectLabel: "還原",
+  });
+}
+
+commands.register(
+  {
+    id: "toggle-terminal",
+    title: "顯示／隱藏終端機",
+    group: "檢視",
+    icon: "square-terminal",
+    keys: "Mod-`",
+    when: () => !!terminal,
+    run: () => terminal?.toggle(),
+  },
+  {
+    id: "ai-actions",
+    title: "AI：處理選取的文字…",
+    group: "編輯",
+    icon: "sparkles",
+    keys: "Mod-j",
+    when: () => !!ai?.enabled && view !== "preview",
+    run() {
+      const { from, to } = editor.view.state.selection.main;
+      if (from === to) toast("請先選取要處理的文字。");
+      else aiPicker.open();
+    },
+  },
+  {
+    id: "check-update",
+    title: "檢查更新",
+    group: "說明",
+    icon: "refresh-cw",
+    when: () => !!updater,
+    run: () => updater?.check(),
+  },
+  {
+    id: "ai-cancel",
+    title: "AI：取消處理中的動作",
+    group: "編輯",
+    icon: "circle-stop",
+    when: () => !!ai?.running,
+    run: () => ai?.cancel(),
+  },
+  ...(["claude", "codex"] as const).map(
+    (tool): Command => ({
+      id: `start-${tool}`,
+      title: `AI：在終端機啟動 ${tool === "claude" ? "Claude Code" : "Codex"}`,
+      group: "檢視",
+      icon: "sparkles",
+      when: () => !!terminal && !!ai?.enabled,
+      run: () => terminal?.start(tool),
+    }),
+  ),
+);
 
 // 全域快速鍵：在捕獲階段處理，確保焦點在任何地方都一致。
 window.addEventListener(
@@ -1166,6 +1385,8 @@ window.addEventListener(
     const cmd = commands.match(e);
     if (!cmd) return;
     const target = e.target as HTMLElement;
+    // 終端機裡的按鍵大多要交給終端機（例如 Ctrl+W、Ctrl+P），只保留少數全域快速鍵。
+    if (target.closest(".terminal-panel") && !TERMINAL_KEYS.has(cmd.id)) return;
     const inField = target.matches("input, select, textarea") && !target.closest(".cm-editor");
     if (inField && cmd.group === "格式") return;
     e.preventDefault();
@@ -1333,10 +1554,12 @@ function setTheme(pref: ThemePref): void {
   themeButton.title = `主題：${{ system: "跟隨系統", light: "淺色", dark: "深色" }[pref]}`;
   // 流程圖的配色跟著主題，需要重畫。
   if (settings.value.mermaid) scheduleRender();
+  terminal?.applyTheme();
 }
 
 // 跟隨系統時，系統切換深淺色也要重畫流程圖。
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (themePref === "system") terminal?.applyTheme();
   if (themePref === "system" && settings.value.mermaid) scheduleRender();
 });
 
@@ -1360,7 +1583,14 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
 }
 
 settings.subscribe(applySettings);
-const settingsDialog = new SettingsDialog(settings, { get: () => themePref, set: setTheme });
+const settingsDialog = new SettingsDialog(
+  settings,
+  { get: () => themePref, set: setTheme },
+  desktop && ai ? { available: () => desktop!.aiTools(), registration: () => ai!.registration() } : null,
+  updater
+    ? { version: async () => versionLabel(await updater!.version()), check: () => void updater!.check() }
+    : null,
+);
 
 document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach((btn) => {
   const mode = btn.dataset.view as ViewMode;
@@ -1618,7 +1848,10 @@ async function onExternalChange(path: string): Promise<void> {
   const doc = tabForPath(path);
   if (!doc || !desktop) return;
   if (doc === active) stash();
-  if (doc.dirty) {
+  const markChanges = settings.value.aiEnabled && settings.value.markExternalChanges;
+  // 正在逐段檢視上一次的外部修改時，接著用同一個基準標示（AI 常會連續改好幾次）。
+  const continuing = markChanges && doc === active && review.current?.source === "external";
+  if (doc.dirty && !continuing) {
     // 同步軟體常會連續寫入好幾次，提示一次就好。
     const now = Date.now();
     if (now - (changeNoticeAt.get(doc.id) ?? 0) < 15_000) return;
@@ -1631,13 +1864,21 @@ async function onExternalChange(path: string): Promise<void> {
   }
   // 沒有未存檔的變更：直接重新載入。重新讀取也會更新原生端記錄的內容，之後存檔才不會誤判為衝突。
   const file = await desktop.reopenFile(path);
+  if (markChanges && doc !== active) doc.externalOriginal ??= loadDraft(doc.id) ?? "";
   saveDraft(doc.id, file.text);
   doc.baseline = hash(file.text);
   doc.missing = false;
   if (doc === active) {
     if (pendingDraft?.id === doc.id) pendingDraft = null;
     baseline = doc.baseline;
-    if (file.text !== editor.text) {
+    if (markChanges) {
+      const original = continuing ? review.current!.original : editor.text;
+      if (!showExternalChanges(original, file.text)) {
+        // 改回原本的內容了：結束標示，直接顯示目前的版本。
+        if (review.active) review.finish();
+        if (editor.text !== file.text) editor.replaceAll(file.text);
+      }
+    } else if (file.text !== editor.text) {
       editor.replaceAll(file.text);
       toast(`「${doc.name}」已被其他程式更新，已重新載入。`, {
         action: { label: "復原", run: () => void undo(editor.view) },
@@ -1646,7 +1887,8 @@ async function onExternalChange(path: string): Promise<void> {
   } else {
     doc.state = null;
     doc.dirty = false;
-    toast(`「${doc.name}」已被其他程式更新，已重新載入。`);
+    if (markChanges && doc.externalOriginal === file.text) doc.externalOriginal = undefined;
+    toast(`「${doc.name}」已被其他程式更新${markChanges ? "，切換過去可以看到改了哪裡" : "，已重新載入"}。`);
   }
   persistSession();
   renderTabs();

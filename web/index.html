@@ -94,6 +94,7 @@
       <section class="pane editor-pane" aria-label="編輯區">
         <div class="format-bar" id="format-bar" role="toolbar" aria-label="格式工具列" aria-controls="editor"></div>
         <div class="review-bar" id="review-bar" role="status" hidden></div>
+        <div class="ai-bar" id="ai-bar" role="status" aria-live="polite" hidden></div>
         <div class="editor-host" id="editor"></div>
       </section>
 
@@ -106,11 +107,15 @@
       </section>
     </main>
 
+    <section class="terminal-panel" id="terminal-panel" aria-label="終端機" hidden></section>
+
     <footer class="statusbar">
       <span id="status-kind"></span>
       <span id="status-cursor"></span>
       <span id="status-stats"></span>
       <span id="status-save" class="save-state"></span>
+      <span id="status-update" class="update-state" role="status" hidden></span>
+      <button type="button" class="status-btn" data-command="toggle-terminal" hidden><i data-icon="square-terminal"></i><span>終端機</span></button>
     </footer>
 
     <input type="file" id="file-input" accept=".md,.markdown,.txt,.text,.log,.json,text/markdown,text/plain,application/json" hidden />

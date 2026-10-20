@@ -6,6 +6,14 @@
 import { desktop } from "./desktop.ts";
 import * as storage from "./storage.ts";
 
+/** 選取段落後可以執行的 AI 快捷動作。 */
+export interface QuickAction {
+  name: string;
+  prompt: string;
+}
+
+export type AiTool = "claude" | "codex";
+
 export interface Settings {
   /** 編輯區字級（px）。 */
   editorFontSize: number;
@@ -20,7 +28,29 @@ export interface Settings {
   math: boolean;
   /** 顯示 ```mermaid 流程圖。 */
   mermaid: boolean;
+  /** AI 協作總開關（桌面版）。預設關閉；關閉時下面的 AI 選項都不會生效。 */
+  aiEnabled: boolean;
+  /** 快捷動作使用的命令列工具。 */
+  aiTool: AiTool;
+  /** 讓終端機裡的 Claude Code／Codex 讀取目前的文件並提出修改（編輯器 MCP 伺服器）。 */
+  mcpServer: boolean;
+  /** 檔案被外部程式修改時，逐段標示變更處，可以保留或還原。 */
+  markExternalChanges: boolean;
+  quickActions: QuickAction[];
+  /** 桌面版：每天檢查一次有沒有新版（下載前會先詢問）。 */
+  autoUpdate: boolean;
 }
+
+export const DEFAULT_QUICK_ACTIONS: readonly QuickAction[] = Object.freeze([
+  { name: "改寫得更精簡", prompt: "把這段文字改寫得更精簡、通順，保留原意與所有重要資訊。" },
+  { name: "修正錯字與語病", prompt: "修正這段文字的錯字、標點與語病，盡量不要改動原本的用字與語氣。" },
+  { name: "翻譯成英文", prompt: "把這段文字翻譯成自然流暢的英文。" },
+  { name: "翻譯成繁體中文", prompt: "把這段文字翻譯成自然流暢的繁體中文（台灣用語）。" },
+  { name: "摘要重點", prompt: "用條列式整理這段文字的重點，最多五點。" },
+]);
+
+/** 快捷動作的數量與長度上限。 */
+export const QUICK_ACTION_LIMITS = { count: 20, name: 40, prompt: 2000 } as const;
 
 export const DEFAULTS: Readonly<Settings> = Object.freeze({
   editorFontSize: 15,
@@ -30,6 +60,12 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   previewWidth: "medium",
   math: true,
   mermaid: true,
+  aiEnabled: false,
+  aiTool: "claude",
+  mcpServer: true,
+  markExternalChanges: true,
+  quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
+  autoUpdate: true,
 });
 
 export const FONT_SIZE_RANGE = { min: 12, max: 24 } as const;
@@ -37,9 +73,12 @@ export const FONT_SIZE_RANGE = { min: 12, max: 24 } as const;
 /** 驗證讀進來的設定：型別不對或超出範圍的欄位一律用預設值。 */
 export function sanitize(raw: unknown): { settings: Settings; problems: number } {
   const input = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const out: Settings = { ...DEFAULTS };
+  const out: Settings = { ...DEFAULTS, quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })) };
   let problems = raw && typeof raw === "object" ? 0 : 1;
-  const bool = (k: "lineNumbers" | "autoPairBrackets" | "tableAutoFormat" | "math" | "mermaid") => {
+  type BoolKey = {
+    [K in keyof Settings]: Settings[K] extends boolean ? K : never;
+  }[keyof Settings];
+  const bool = (k: BoolKey) => {
     if (!(k in input)) return;
     if (typeof input[k] === "boolean") out[k] = input[k] as boolean;
     else problems++;
@@ -49,6 +88,31 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("tableAutoFormat");
   bool("math");
   bool("mermaid");
+  bool("aiEnabled");
+  bool("mcpServer");
+  bool("markExternalChanges");
+  bool("autoUpdate");
+  if ("aiTool" in input) {
+    if (input.aiTool === "claude" || input.aiTool === "codex") out.aiTool = input.aiTool;
+    else problems++;
+  }
+  if ("quickActions" in input) {
+    const list = input.quickActions;
+    if (Array.isArray(list)) {
+      out.quickActions = list
+        .filter(
+          (a): a is QuickAction =>
+            !!a && typeof a === "object" && typeof a.name === "string" && typeof a.prompt === "string",
+        )
+        .map((a) => ({
+          name: a.name.trim().slice(0, QUICK_ACTION_LIMITS.name),
+          prompt: a.prompt.trim().slice(0, QUICK_ACTION_LIMITS.prompt),
+        }))
+        .filter((a) => a.name && a.prompt)
+        .slice(0, QUICK_ACTION_LIMITS.count);
+      if (out.quickActions.length !== list.length) problems++;
+    } else problems++;
+  }
   if ("editorFontSize" in input) {
     const n = input.editorFontSize;
     if (typeof n === "number" && Number.isFinite(n)) {
@@ -96,7 +160,9 @@ export class SettingsStore {
 
   update(patch: Partial<Settings>): void {
     const { settings } = sanitize({ ...this.#value, ...patch });
-    const changed = (Object.keys(settings) as (keyof Settings)[]).filter((k) => settings[k] !== this.#value[k]);
+    // 快捷動作是陣列，用內容比較。
+    const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+    const changed = (Object.keys(settings) as (keyof Settings)[]).filter((k) => !same(settings[k], this.#value[k]));
     if (!changed.length) return;
     this.#value = settings;
     this.#persist();
