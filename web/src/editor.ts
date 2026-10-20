@@ -75,6 +75,10 @@ export interface EditorOptions {
   focusMode?: boolean;
   /** 打字機模式：游標所在行保持在畫面中央。 */
   typewriterMode?: boolean;
+  /** 即時預覽（只用在 Markdown）。 */
+  livePreview?: boolean;
+  /** 即時預覽的擴充（由呼叫端建立，需要圖片網址、表格轉換等）。 */
+  live?: Extension;
   /** 其他擴充（例如差異檢視）。 */
   extra?: Extension[];
 }
@@ -155,7 +159,9 @@ export class Editor {
   }
 
   #gutterFor(options: EditorOptions): Extension {
-    return options.lineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : [];
+    // 即時預覽像在看文件，不顯示行號。
+    const live = options.livePreview && this.#kind === "markdown";
+    return options.lineNumbers && !live ? [lineNumbers(), highlightActiveLineGutter()] : [];
   }
 
   #writingFor(options: EditorOptions): Extension {
@@ -172,6 +178,7 @@ export class Editor {
         return [
           common,
           brackets,
+          this.#options.livePreview ? (this.#options.live ?? []) : [],
           // 表格按鍵優先於縮排與清單延續；不在表格中時會交給下一個處理者。
           Prec.high(
             keymap.of([
@@ -214,7 +221,12 @@ export class Editor {
   /** 切換文件類型（語法上色、提示等）。 */
   setKind(kind: DocKind): void {
     this.#kind = kind;
-    this.view.dispatch({ effects: this.#language.reconfigure(this.#languageFor(kind)) });
+    this.view.dispatch({
+      effects: [
+        this.#gutter.reconfigure(this.#gutterFor(this.#options)),
+        this.#language.reconfigure(this.#languageFor(kind)),
+      ],
+    });
   }
 
   /** 重新檢查錯誤（JSON 解析結果更新後呼叫）。 */
