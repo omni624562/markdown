@@ -183,6 +183,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .markdown-body .json-tree details > summary::before { transition: none; }
 }
+@page { margin: 18mm 16mm; }
 @media print {
   /* 一律用淺色列印，深色模式下印出來也不會是黑底。 */
   :root { color-scheme: light; }

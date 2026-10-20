@@ -366,6 +366,9 @@ function renderOutline(headings: Heading[]): void {
     kind === "markdown" ? "文件中還沒有標題。用 # 開頭的行會出現在這裡。" : "只有 Markdown 文件的標題會顯示在大綱中。";
   outlineHeadings = headings;
   const movable = kind === "markdown";
+  // 重新產生大綱時保留鍵盤焦點（例如用 Alt+↑／↓ 連續搬移章節）。
+  const focused = document.activeElement as HTMLElement | null;
+  const focusedIndex = focused && outlineList.contains(focused) ? Number(focused.dataset.index) : -1;
   outlineList.replaceChildren(
     ...headings.map((h, i) => {
       const li = document.createElement("li");
@@ -390,6 +393,7 @@ function renderOutline(headings: Heading[]): void {
       return li;
     }),
   );
+  if (focusedIndex >= 0) outlineList.querySelectorAll<HTMLElement>("a")[focusedIndex]?.focus({ preventScroll: true });
 }
 
 // ---- 連結：自動完成另一份文件的標題、點預覽中的連結（E9） ------------------------
