@@ -55,11 +55,40 @@
       </div>
     </header>
 
+    <div class="tab-bar" id="tab-bar" hidden></div>
+
     <main class="workspace" data-view="split">
-      <nav class="outline" id="outline" aria-labelledby="outline-title">
-        <h2 id="outline-title">大綱</h2>
-        <ol id="outline-list"></ol>
-        <p id="outline-empty" class="outline-empty" hidden></p>
+      <nav class="outline sidebar" id="outline" aria-label="側邊欄">
+        <div class="side-tabs" role="tablist" aria-label="側邊欄">
+          <button type="button" role="tab" id="side-tab-files" data-panel="files" aria-controls="panel-files">
+            <i data-icon="folder"></i><span>檔案</span>
+          </button>
+          <button type="button" role="tab" id="side-tab-outline" data-panel="outline" aria-controls="panel-outline">
+            <i data-icon="list-tree"></i><span>大綱</span>
+          </button>
+          <button type="button" role="tab" id="side-tab-search" data-panel="search" aria-controls="panel-search">
+            <i data-icon="search"></i><span>搜尋</span>
+          </button>
+        </div>
+
+        <section class="side-panel" id="panel-files" role="tabpanel" aria-labelledby="side-tab-files" hidden>
+          <div class="side-head" id="files-head" hidden>
+            <h2 id="folder-name"></h2>
+            <button type="button" class="btn icon-only" id="tree-new-file" title="新增檔案" aria-label="新增檔案"><i data-icon="file-plus"></i></button>
+            <button type="button" class="btn icon-only" id="tree-new-folder" title="新增資料夾" aria-label="新增資料夾"><i data-icon="folder-plus"></i></button>
+            <button type="button" class="btn icon-only" id="tree-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
+            <button type="button" class="btn icon-only" data-command="open-folder"><i data-icon="folder-open"></i></button>
+          </div>
+          <div class="tree" id="file-tree" aria-label="工作區檔案"></div>
+          <div class="side-empty" id="files-empty"></div>
+        </section>
+
+        <section class="side-panel" id="panel-outline" role="tabpanel" aria-labelledby="side-tab-outline">
+          <ol id="outline-list"></ol>
+          <p id="outline-empty" class="outline-empty" hidden></p>
+        </section>
+
+        <section class="side-panel" id="panel-search" role="tabpanel" aria-labelledby="side-tab-search" hidden></section>
       </nav>
 
       <section class="pane editor-pane" aria-label="編輯區">
@@ -88,7 +117,7 @@
     <div class="drop-overlay" hidden>
       <div>
         <strong>放開以開啟檔案</strong>
-        <span>支援 .md、.txt、.json</span>
+        <span>支援 .md、.txt、.json；圖片會插入到文件中</span>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

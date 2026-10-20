@@ -3,7 +3,7 @@
  * 支援 File System Access API 的瀏覽器（Chrome、Edge）可以直接寫回原檔；
  * 其他瀏覽器則退回「選擇檔案」與「下載」。
  */
-import { desktop } from "./desktop.ts";
+import { type DesktopFile, desktop } from "./desktop.ts";
 import { type DocKind, KINDS, OPEN_ACCEPT } from "./kinds.ts";
 
 export interface FileHandle {
@@ -52,7 +52,7 @@ export type SaveOutcome =
   | { status: "conflict"; name: string; diskText: string };
 
 /** 桌面版的檔案控制代碼：讀寫都交給原生程式處理。 */
-function desktopHandle(path: string, name: string): FileHandle {
+export function desktopHandle(path: string, name: string): FileHandle {
   return {
     name,
     path,
@@ -61,10 +61,9 @@ function desktopHandle(path: string, name: string): FileHandle {
   };
 }
 
-/** 桌面版：讀取啟動時從命令列帶入的檔案。 */
-export async function openInitialFile(): Promise<OpenedFile | null> {
-  const f = await desktop?.initialFile();
-  return f ? { name: f.name, text: f.text, handle: desktopHandle(f.path, f.name), encoding: f.encoding } : null;
+/** 把桌面版讀到的檔案轉成一般的 OpenedFile。 */
+export function fromDesktop(f: DesktopFile): OpenedFile {
+  return { name: f.name, text: f.text, handle: desktopHandle(f.path, f.name), encoding: f.encoding };
 }
 
 function isAbort(e: unknown): boolean {
@@ -75,7 +74,7 @@ function isAbort(e: unknown): boolean {
 export async function openFile(fallbackInput: HTMLInputElement): Promise<OpenedFile | null> {
   if (desktop) {
     const f = await desktop.openFile();
-    return f ? { name: f.name, text: f.text, handle: desktopHandle(f.path, f.name), encoding: f.encoding } : null;
+    return f ? fromDesktop(f) : null;
   }
   if (window.showOpenFilePicker) {
     try {

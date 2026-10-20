@@ -13,10 +13,20 @@ path = "src/main.rs"
 tauri-build = { version = "2.7.3", features = [] }
 
 [dependencies]
-tauri = { version = "2.12.4", features = [] }
+tauri = { version = "2.12.4", features = ["protocol-asset"] }
 rfd = "0.17.2"
 serde = { version = "1", features = ["derive"] }
 encoding_rs = "0.8"
+serde_json = "1"
+ignore = "0.4.33"
+grep-searcher = "0.1.17"
+grep-regex = "0.1.14"
+grep-matcher = "0.1.9"
+notify-debouncer-full = "0.7.0"
+trash = "5.2.9"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+dunce = "1.0.5"
 
 [features]
 # 預設把前端打包進執行檔；開發時用 `cargo run --no-default-features` 改連 Vite 開發伺服器。
