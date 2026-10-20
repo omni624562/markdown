@@ -30,7 +30,9 @@
   --syn-function: light-dark(#8250df, #d2a8ff);
 
   --font-ui: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, "Noto Sans Mono CJK TC", monospace;
+  /* 前兩個字型的中文字寬剛好是英文的兩倍，有安裝時表格在編輯區裡也會完全對齊。 */
+  --font-mono: "Sarasa Mono TC", "Noto Sans Mono CJK TC", ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code",
+    Menlo, Consolas, monospace;
   --editor-font-size: 15px;
   --outline-width: 232px;
   --splitter-width: 9px;
@@ -505,4 +507,121 @@ kbd {
   body { display: block; height: auto; }
   .workspace { display: block; }
   .preview-pane { overflow: visible; }
+}
+
+/* ---- 主要按鈕 ---- */
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--fg)); border-color: transparent; }
+.btn-danger { color: var(--danger); }
+
+/* ---- 差異檢視 ---- */
+.review-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--accent-soft);
+}
+.review-bar p { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin: 0; }
+.review-bar .icon { color: var(--accent); }
+.review-hint { color: var(--muted); font-size: 12px; }
+.review-actions { display: flex; gap: 6px; }
+.cm-editor .cm-changedLine, .cm-editor .cm-insertedLine { background: var(--diff-add-line) !important; }
+.cm-editor .cm-changedText { background: var(--diff-add-text) !important; text-decoration: none !important; }
+.cm-editor .cm-deletedChunk { background: var(--diff-del-line) !important; padding: 2px 0; }
+.cm-editor .cm-deletedChunk .cm-deletedText, .cm-editor .cm-deletedChunk del { background: var(--diff-del-text) !important; text-decoration: none; }
+.cm-editor .cm-changedLineGutter { background: var(--success) !important; }
+.cm-editor .cm-deletedLineGutter { background: var(--danger) !important; }
+.cm-editor .cm-chunkButtons { position: absolute; right: 12px; z-index: 2; display: flex; gap: 4px; }
+/* @codemirror/merge 自帶的按鈕樣式是白字，這裡用較高的優先順序換成主題色。 */
+.cm-editor .cm-chunkButtons button {
+  padding: 1px 8px !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 6px !important;
+  background: var(--surface-raised) !important;
+  color: var(--fg) !important;
+  font: 12px/1.6 var(--font-ui) !important;
+  cursor: pointer;
+}
+.cm-editor .cm-chunkButtons button.review-chunk-accept { border-color: var(--success) !important; color: var(--success) !important; }
+.cm-editor .cm-chunkButtons button.review-chunk-reject { border-color: var(--danger) !important; color: var(--danger) !important; }
+.cm-editor .cm-chunkButtons button:hover { background: var(--surface) !important; }
+:root {
+  --diff-add-line: light-dark(rgba(26, 127, 55, 0.08), rgba(63, 185, 80, 0.1));
+  --diff-add-text: light-dark(rgba(26, 127, 55, 0.22), rgba(63, 185, 80, 0.3));
+  --diff-del-line: light-dark(rgba(207, 34, 46, 0.07), rgba(248, 81, 73, 0.1));
+  --diff-del-text: light-dark(rgba(207, 34, 46, 0.2), rgba(248, 81, 73, 0.3));
+}
+
+/* ---- 對話框（選擇、設定） ---- */
+.choice, .settings {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+}
+.choice::backdrop, .settings::backdrop { background: rgba(0, 0, 0, 0.35); }
+.choice { width: min(460px, calc(100vw - 32px)); padding: 20px 22px 18px; }
+.choice h2 { margin: 0 0 8px; font-size: 17px; }
+.choice p { margin: 0 0 18px; color: var(--muted); line-height: 1.7; }
+.choice-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.choice-actions .btn { border-color: var(--border-strong); }
+
+.settings { width: min(560px, calc(100vw - 32px)); max-height: min(720px, 85dvh); }
+.settings[open] { display: flex; flex-direction: column; }
+.settings header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.settings h2 { margin: 0; font-size: 17px; }
+.settings-body { overflow: auto; padding: 4px 18px 18px; }
+.settings section { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.settings section:last-child { border-bottom: 0; }
+.settings h3 { margin: 6px 0 4px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.05em; }
+.settings-row { display: flex; gap: 16px; align-items: center; justify-content: space-between; min-height: 44px; padding: 4px 0; }
+.settings-row > div { display: flex; flex-direction: column; min-width: 0; }
+.settings-row small { color: var(--muted); font-size: 12px; }
+.settings-row select, .settings-row input[type="number"] {
+  min-height: var(--control-h);
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.settings-row input[type="number"] { width: 5.5em; }
+.settings-row .btn { border-color: var(--border-strong); }
+.settings-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.switch {
+  flex: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  appearance: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.15s;
+}
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(16px); }
+@media (forced-colors: active) {
+  .switch { appearance: auto; }
+  .switch::after { display: none; }
 }

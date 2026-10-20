@@ -27,15 +27,24 @@ export interface SaveRequest {
   text: string;
   filterName: string;
   extensions: string[];
+  /** 使用者已確認要覆蓋被別的程式改過的檔案。 */
+  force?: boolean;
 }
+
+export type DesktopSaveOutcome =
+  | { status: "saved"; path: string; name: string }
+  | { status: "conflict"; path: string; name: string; diskText: string }
+  | { status: "cancelled" };
 
 function bridge(core: TauriCore) {
   return {
     openFile: () => core.invoke<DesktopFile | null>("open_file"),
     initialFile: () => core.invoke<DesktopFile | null>("initial_file"),
-    saveFile: (req: SaveRequest) => core.invoke<{ path: string; name: string } | null>("save_file", { ...req }),
+    saveFile: (req: SaveRequest) => core.invoke<DesktopSaveOutcome>("save_file", { ...req }),
     setTitle: (title: string) => core.invoke<void>("set_title", { title }),
+    loadSettings: () => core.invoke<string | null>("load_settings"),
+    saveSettings: (json: string) => core.invoke<void>("save_settings", { json }),
   };
 }
 
-export const desktop = window.__TAURI__ ? bridge(window.__TAURI__.core) : null;
+export const desktop = typeof window !== "undefined" && window.__TAURI__ ? bridge(window.__TAURI__.core) : null;

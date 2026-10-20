@@ -8,10 +8,12 @@ mod html;
 mod json;
 mod markdown;
 mod stats;
+mod table;
 
 use html::escape_html;
 pub use json::format_json;
 pub use stats::{count_text, Stats};
+pub use table::{format_all_tables, format_table};
 
 /// 文件類型。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -271,6 +273,15 @@ mod tests {
         );
         assert!(doc.contains("<title>資料</title>"));
         assert!(doc.contains("json-tree"));
+    }
+
+    #[test]
+    fn renders_math_but_not_prices() {
+        let out = r("$E=mc^2$，價格 $5 與 $10");
+        assert!(out
+            .html
+            .contains(r#"<span data-math-style="inline">E=mc^2</span>"#));
+        assert!(out.html.contains("價格 $5 與 $10"));
     }
 
     #[test]

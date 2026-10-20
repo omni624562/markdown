@@ -18,6 +18,8 @@ fn comrak_options(opts: &RenderOptions) -> Options<'static> {
     ext.front_matter_delimiter = Some("---".into());
     // 讓 `**粗體**緊接中文` 這類寫法也能正確辨識強調。
     ext.cjk_friendly_emphasis = true;
+    // `$…$` 與 `$$…$$` 數學公式，輸出帶 `data-math-style` 的元素，由前端的 KaTeX 外掛渲染。
+    ext.math_dollars = true;
 
     o.render.sourcepos = opts.sourcepos;
     o.render.hardbreaks = opts.hardbreaks;

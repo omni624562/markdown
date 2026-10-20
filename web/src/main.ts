@@ -3,7 +3,14 @@ import "./styles.css";
 
 import { openSearchPanel } from "@codemirror/search";
 import type { EditorView } from "@codemirror/view";
-import init, { type Heading, type RenderResult, formatJson, kindFromFileName, renderDocument } from "../pkg/md_wasm.js";
+import init, {
+  type Heading,
+  type RenderResult,
+  formatAllTables,
+  formatJson,
+  formatTable,
+  kindFromFileName,
+} from "../pkg/md_wasm.js";
 import { type Command, Commands, formatKeys } from "./commands.ts";
 import { Editor, cursorInfo } from "./editor.ts";
 import { desktop } from "./desktop.ts";
@@ -11,13 +18,20 @@ import { type FileHandle, type OpenedFile, download, openFile, openInitialFile, 
 import { TABLE_TEMPLATE, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
 import { type DocKind, KINDS, isKind } from "./kinds.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
+import { mathPlugin } from "./plugins/math.ts";
+import { mermaidPlugin } from "./plugins/mermaid.ts";
 import { Preview } from "./preview.ts";
 import sample from "./sample.md?raw";
 import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
+import { type Settings, SettingsStore } from "./settings.ts";
 import * as storage from "./storage.ts";
+import { editTable } from "./table.ts";
+import { choose } from "./ui/choice.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { setupMenu } from "./ui/menu.ts";
 import { Palette } from "./ui/palette.ts";
+import { Review } from "./ui/review.ts";
+import { SettingsDialog } from "./ui/settings-dialog.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { toast } from "./ui/toast.ts";
 
@@ -46,6 +60,7 @@ const status = {
 
 hydrateIcons();
 await init();
+const { store: settings, recovered: settingsRecovered } = await SettingsStore.load();
 
 // ---- 狀態 ---------------------------------------------------------------
 
@@ -78,7 +93,16 @@ function hash(text: string): string {
 
 // ---- 編輯器與預覽 -------------------------------------------------------
 
-const preview = new Preview(previewEl, [highlightPlugin()]);
+const preview = new Preview(previewEl, [
+  highlightPlugin(),
+  mathPlugin(() => settings.value.math),
+  mermaidPlugin(() => settings.value.mermaid),
+]);
+
+/** 表格排版：關閉自動對齊時只移動游標，不重排。 */
+const tableFormatter = (block: string) => (settings.value.tableAutoFormat ? formatTable(block) : undefined);
+
+const review = new Review($("#review-bar"));
 
 const editor = new Editor($("#editor"), storage.load("doc") ?? sample, kind, {
   onChange(doc) {
@@ -92,7 +116,13 @@ const editor = new Editor($("#editor"), storage.load("doc") ?? sample, kind, {
     updateActiveHeading();
   },
   getError: () => preview.result?.error ?? null,
+}, {
+  lineNumbers: settings.value.lineNumbers,
+  autoPairBrackets: settings.value.autoPairBrackets,
+  formatTable: tableFormatter,
+  extra: [review.extension],
 });
+review.attach(editor.view);
 
 function updateCursor(v: EditorView): void {
   const { line, column, selected } = cursorInfo(v);
@@ -316,6 +346,7 @@ function openDocument(
   handle: FileHandle | null,
   { kind: docKind, fromFile = true }: { kind?: DocKind; fromFile?: boolean } = {},
 ): void {
+  if (review.active) review.finish();
   fileHandle = handle;
   kind = docKind ?? kindFromFileName(name);
   kindSelect.value = kind;
@@ -338,14 +369,55 @@ function openOpenedFile(file: OpenedFile): void {
   }
 }
 
-async function save(saveAs: boolean): Promise<void> {
+async function save(saveAs: boolean, force = false): Promise<void> {
+  if (review.active) review.finish();
   const text = editor.text;
-  const saved = await saveFile(text, fileName, kind, fileHandle, saveAs);
-  if (!saved) return;
-  fileHandle = saved.handle;
+  const out = await saveFile(text, fileName, kind, fileHandle, { saveAs, force });
+  if (!out) return;
+  if (out.status === "conflict") {
+    await resolveConflict(out.name, out.diskText);
+    return;
+  }
+  fileHandle = out.handle;
   setBaseline(text, true);
-  setFileName(saved.name);
-  toast(saved.handle ? `已儲存到「${saved.name}」` : `已下載「${saved.name}」`, { tone: "success" });
+  setFileName(out.name);
+  toast(out.handle ? `已儲存到「${out.name}」` : `已下載「${out.name}」`, { tone: "success" });
+}
+
+/** 檔案在開啟後被別的程式改過：讓使用者比較差異、覆蓋或另存。 */
+async function resolveConflict(name: string, diskText: string): Promise<void> {
+  const choice = await choose(
+    "檔案已被其他程式修改",
+    `「${name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？`,
+    [
+      { id: "compare", label: "比較差異", primary: true },
+      { id: "overwrite", label: "用我的版本覆蓋", danger: true },
+      { id: "save-as", label: "另存新檔" },
+      { id: "cancel", label: "取消" },
+    ],
+  );
+  if (choice === "overwrite") await save(false, true);
+  else if (choice === "save-as") await save(true);
+  else if (choice === "compare") {
+    const started = review.start(diskText, {
+      title: "與磁碟上的版本比較",
+      hint: "逐段選擇要採用哪個版本，全部處理完會自動存檔。",
+      acceptLabel: "採用磁碟版本",
+      rejectLabel: "保留我的版本",
+      onFinish: () => void save(false, true).catch(reportError),
+    });
+    if (!started) await save(false, true);
+  }
+}
+
+/** 對游標所在的表格執行操作；不在表格中時提示使用者。 */
+function runTableEdit(kind: Parameters<typeof editTable>[0]): void {
+  const ok = editTable(kind, (b) => formatTable(b))({
+    state: editor.view.state,
+    dispatch: (tr) => editor.view.dispatch(tr),
+  });
+  if (!ok) toast(kind === "delete-row" ? "標題列與分隔列不能刪除，或游標不在表格中。" : "請先把游標移到表格裡。");
+  editor.view.focus();
 }
 
 // ---- 指令 ---------------------------------------------------------------
@@ -403,7 +475,7 @@ commands.register(
     group: "檔案",
     icon: "download",
     async run() {
-      const html = renderDocument(editor.text, { kind, title: stem(fileName) });
+      const html = await preview.exportDocument(editor.text, kind, stem(fileName));
       const name = replaceExtension(fileName, ".html");
       if ((await download(name, html, "text/html")) && desktop) toast(`已匯出「${name}」`, { tone: "success" });
     },
@@ -469,6 +541,36 @@ commands.register(
   fmt("code-block", "程式碼區塊", "square-code", () => editor.exec(insertBlock("```\n程式碼\n```", "程式碼"))),
   fmt("table", "插入表格", "table", () => editor.exec(insertBlock(TABLE_TEMPLATE, "欄位 1"))),
   fmt("hr", "分隔線", "minus", () => editor.exec(insertBlock("---"))),
+  fmt("table-format", "表格：對齊目前的表格", "table", () => runTableEdit("format")),
+  fmt("table-insert-row", "表格：在下方插入一列", "table", () => runTableEdit("insert-row")),
+  fmt("table-insert-column", "表格：在右側插入一欄", "table", () => runTableEdit("insert-column")),
+  fmt("table-delete-row", "表格：刪除目前這一列", "table", () => runTableEdit("delete-row")),
+  fmt("table-delete-column", "表格：刪除目前這一欄", "table", () => runTableEdit("delete-column")),
+  {
+    id: "format-tables",
+    title: "對齊文件中所有表格",
+    group: "編輯",
+    icon: "wand-sparkles",
+    keys: "Shift-Alt-f",
+    when: () => kind === "markdown",
+    run() {
+      const formatted = formatAllTables(editor.text);
+      if (formatted === editor.text) {
+        toast("所有表格都已經對齊。");
+        return;
+      }
+      editor.replaceAll(formatted);
+      toast("已對齊所有表格（可用 Ctrl+Z 復原）", { tone: "success" });
+    },
+  },
+  {
+    id: "settings",
+    title: "設定",
+    group: "說明",
+    icon: "settings",
+    keys: "Mod-,",
+    run: () => settingsDialog.open(),
+  },
   ...(["editor", "split", "preview"] as const).map(
     (mode): Command => ({
       id: `view-${mode}`,
@@ -680,7 +782,36 @@ function setTheme(pref: ThemePref): void {
   const iconName = { system: "monitor", light: "sun", dark: "moon" }[pref];
   themeButton.querySelector(".theme-icon")!.replaceChildren(icon(iconName));
   themeButton.title = `主題：${{ system: "跟隨系統", light: "淺色", dark: "深色" }[pref]}`;
+  // 流程圖的配色跟著主題，需要重畫。
+  if (settings.value.mermaid) scheduleRender();
 }
+
+// 跟隨系統時，系統切換深淺色也要重畫流程圖。
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (themePref === "system" && settings.value.mermaid) scheduleRender();
+});
+
+// ---- 設定 ---------------------------------------------------------------
+
+const PREVIEW_WIDTH: Record<Settings["previewWidth"], string> = { narrow: "680px", medium: "820px", wide: "1080px" };
+
+function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): void {
+  const root = document.documentElement.style;
+  root.setProperty("--editor-font-size", `${s.editorFontSize}px`);
+  root.setProperty("--preview-width", PREVIEW_WIDTH[s.previewWidth]);
+  if (!changed) return;
+  if (changed.includes("lineNumbers") || changed.includes("autoPairBrackets")) {
+    editor.configure({ lineNumbers: s.lineNumbers, autoPairBrackets: s.autoPairBrackets });
+  }
+  if (changed.includes("editorFontSize")) editor.view.requestMeasure();
+  if (changed.includes("math") || changed.includes("mermaid")) {
+    preview.clear();
+    renderNow();
+  }
+}
+
+settings.subscribe(applySettings);
+const settingsDialog = new SettingsDialog(settings, { get: () => themePref, set: setTheme });
 
 document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach((btn) => {
   const mode = btn.dataset.view as ViewMode;
@@ -744,6 +875,8 @@ if (!baseline) setBaseline(editor.text, false);
 kindSelect.value = kind;
 fileNameInput.value = fileName;
 setTheme(themePref);
+applySettings(settings.value);
+if (settingsRecovered) toast("設定檔有無法讀取的內容，相關選項已恢復成預設值。", { tone: "error", duration: 8000 });
 buildFormatBar();
 // 手機上大綱是蓋在內容上的抽屜，一開始先收起來。
 if (narrowQuery.matches) outlineShown = false;

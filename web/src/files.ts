@@ -34,6 +34,23 @@ export interface OpenedFile {
   encoding?: string;
 }
 
+/**
+ * 網頁版（File System Access API）：記下每個檔案最後一次讀寫時的修改時間，
+ * 存檔前比對，就能知道檔案是否被別的程式改過。桌面版由 Rust 端以內容雜湊判斷。
+ */
+const lastModified = new WeakMap<FileHandle, number>();
+
+async function remember(handle: FileHandle): Promise<File> {
+  const file = await handle.getFile();
+  lastModified.set(handle, file.lastModified);
+  return file;
+}
+
+/** 存檔結果；使用者取消時為 `null`。 */
+export type SaveOutcome =
+  | { status: "saved"; name: string; handle: FileHandle | null }
+  | { status: "conflict"; name: string; diskText: string };
+
 /** 桌面版的檔案控制代碼：讀寫都交給原生程式處理。 */
 function desktopHandle(path: string, name: string): FileHandle {
   return {
@@ -63,7 +80,7 @@ export async function openFile(fallbackInput: HTMLInputElement): Promise<OpenedF
   if (window.showOpenFilePicker) {
     try {
       const [handle] = await window.showOpenFilePicker({ types: [OPEN_ACCEPT] });
-      const file = await handle.getFile();
+      const file = await remember(handle);
       return { name: file.name, text: await file.text(), handle };
     } catch (e) {
       if (isAbort(e)) return null;
@@ -84,25 +101,30 @@ export async function openFile(fallbackInput: HTMLInputElement): Promise<OpenedF
 /**
  * 儲存文件。有檔案控制代碼時直接覆寫；否則跳出另存新檔或改用下載。
  * `saveAs` 為 true 時一律重新選擇位置。
- * 回傳之後應沿用的控制代碼與檔名；使用者取消時回傳 `null`。
+ *
+ * 覆寫前會檢查檔案是否在開啟後被別的程式改過，有的話回傳 `conflict` 與磁碟上的內容；
+ * `force` 為 true 代表使用者已確認要覆蓋。
  */
 export async function saveFile(
   text: string,
   name: string,
   kind: DocKind,
   handle: FileHandle | null,
-  saveAs = false,
-): Promise<{ name: string; handle: FileHandle | null } | null> {
+  { saveAs = false, force = false } = {},
+): Promise<SaveOutcome | null> {
   const info = KINDS[kind];
   if (desktop) {
-    const saved = await desktop.saveFile({
+    const out = await desktop.saveFile({
       path: saveAs ? null : (handle?.path ?? null),
       suggestedName: name,
       text,
       filterName: info.label,
       extensions: Object.values(info.accept).flat(),
+      force,
     });
-    return saved && { name: saved.name, handle: desktopHandle(saved.path, saved.name) };
+    if (out.status === "cancelled") return null;
+    if (out.status === "conflict") return { status: "conflict", name: out.name, diskText: out.diskText };
+    return { status: "saved", name: out.name, handle: desktopHandle(out.path, out.name) };
   }
   try {
     if ((saveAs || !handle) && window.showSaveFilePicker) {
@@ -110,19 +132,25 @@ export async function saveFile(
         suggestedName: name,
         types: [{ description: info.label, accept: info.accept }],
       });
+    } else if (handle && !force && lastModified.has(handle)) {
+      const disk = await handle.getFile();
+      if (disk.lastModified !== lastModified.get(handle)) {
+        return { status: "conflict", name: handle.name, diskText: await disk.text() };
+      }
     }
     if (handle && !(saveAs && !window.showSaveFilePicker)) {
       const writable = await handle.createWritable();
       await writable.write(text);
       await writable.close();
-      return { name: handle.name, handle };
+      await remember(handle);
+      return { status: "saved", name: handle.name, handle };
     }
   } catch (e) {
     if (isAbort(e)) return null;
     throw e;
   }
   await download(name, text, info.mime);
-  return { name, handle: null };
+  return { status: "saved", name, handle: null };
 }
 
 /**
@@ -139,7 +167,7 @@ export async function download(filename: string, content: string, type: string):
       filterName: ext.slice(1).toUpperCase(),
       extensions: [ext],
     });
-    return saved !== null;
+    return saved.status === "saved";
   }
   const url = URL.createObjectURL(new Blob([content], { type: `${type};charset=utf-8` }));
   const a = document.createElement("a");
