@@ -117,6 +117,7 @@ impl Terminals {
         cmd.cwd(cwd);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        drop_invalid_env(&mut cmd);
 
         let pair = native_pty_system()
             .openpty(PtySize {
@@ -219,6 +220,28 @@ fn shorten(s: &str, max: usize) -> String {
 }
 
 /// 用預設的殼層執行一行指令（Windows 是 PowerShell）。
+/// 環境變數的名稱與值是否能放進 Windows 建立程式時的環境區塊。
+/// 名稱是空的（例如登錄檔「使用者環境變數」裡被設了值的「(預設值)」）、名稱中間有 `=`，
+/// 或含有 NUL 字元時，CreateProcessW 會回報「參數不正確」（os error 87），連終端機都開不了。
+/// 開頭的 `=` 是 Windows 自己用的隱藏變數（例如 `=C:`），要保留。
+fn valid_env(key: &str, value: &str) -> bool {
+    let name = key.strip_prefix('=').unwrap_or(key);
+    !name.is_empty() && !name.contains('=') && !key.contains('\0') && !value.contains('\0')
+}
+
+/// 拿掉不合法的環境變數。portable-pty 會把登錄檔中的使用者與系統環境變數原封不動加進來，
+/// 一筆不合法就會讓所有程式（PowerShell、Claude Code、Codex）都啟動失敗。
+fn drop_invalid_env(cmd: &mut CommandBuilder) {
+    let bad: Vec<String> = cmd
+        .iter_full_env_as_str()
+        .filter(|(k, v)| !valid_env(k, v))
+        .map(|(k, _)| k.to_string())
+        .collect();
+    for key in bad {
+        cmd.env_remove(key);
+    }
+}
+
 fn command_line(command: &str) -> CommandBuilder {
     if cfg!(windows) {
         let mut cmd = match which::which("pwsh") {
@@ -412,6 +435,68 @@ pub fn term_close(id: u32, terms: State<'_, Terminals>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_env_vars_that_break_create_process() {
+        assert!(valid_env("PATH", "C:\\Windows"));
+        assert!(
+            valid_env("=C:", "C:\\Users\\nan"),
+            "Windows 的隱藏變數要保留"
+        );
+        assert!(valid_env("EMPTY_VALUE", ""));
+        assert!(!valid_env("", "殘留的預設值"));
+        assert!(!valid_env("=", "x"));
+        assert!(!valid_env("A=B", "x"));
+        assert!(!valid_env("A", "x\0y"));
+
+        let mut cmd = CommandBuilder::new("claude");
+        cmd.env("", "殘留的預設值");
+        cmd.env("MCP_TOOL_TIMEOUT", "600000");
+        drop_invalid_env(&mut cmd);
+        assert_eq!(cmd.get_env(""), None);
+        assert_eq!(
+            cmd.get_env("MCP_TOOL_TIMEOUT"),
+            Some(std::ffi::OsStr::new("600000"))
+        );
+    }
+
+    /// 真的開一個虛擬終端執行程式。Windows 上同時確認：環境區塊裡有空名稱的變數時，
+    /// CreateProcessW 確實會失敗（使用者遇到的 os error 87），拿掉後就能啟動。
+    #[test]
+    fn spawns_after_dropping_invalid_env() {
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = if cfg!(windows) {
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.args(["/d", "/c", "echo ok"]);
+            c
+        } else {
+            let mut c = CommandBuilder::new("/bin/sh");
+            c.args(["-c", "echo ok"]);
+            c
+        };
+        cmd.env("", "殘留的預設值");
+        if cfg!(windows) {
+            let err = pair.slave.spawn_command(cmd.clone()).err();
+            assert!(
+                err.as_ref()
+                    .is_some_and(|e| e.to_string().contains("os error 87")),
+                "預期空名稱的環境變數會讓 CreateProcessW 失敗，實際：{err:?}"
+            );
+        }
+        drop_invalid_env(&mut cmd);
+        let mut child = pair
+            .slave
+            .spawn_command(cmd)
+            .expect("拿掉不合法的環境變數後要能啟動");
+        assert!(child.wait().unwrap().success());
+    }
 
     #[test]
     fn keeps_incomplete_utf8_for_next_read() {
