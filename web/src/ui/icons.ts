@@ -1,4 +1,6 @@
 import {
+  Sigma,
+  Workflow,
   BookOpenText,
   Ellipsis,
   Menu,
@@ -74,6 +76,8 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  sigma: Sigma,
+  workflow: Workflow,
   "book-open-text": BookOpenText,
   ellipsis: Ellipsis,
   menu: Menu,

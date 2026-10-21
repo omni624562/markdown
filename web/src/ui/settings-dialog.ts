@@ -52,7 +52,7 @@ interface Field {
 /** 「外觀」頁中，主題下面的選項。 */
 const LOOK_FIELDS: Field[] = [
   { key: "previewWidth", label: "預覽的文字欄寬" },
-  { key: "formatBar", label: "顯示格式工具列", hint: "編輯區上方的粗體、清單等按鈕；隱藏後仍可用快速鍵或指令面板" },
+  { key: "fixedToolbar", label: "固定顯示格式工具列", hint: "在編輯區上方一直顯示粗體、清單等按鈕；關閉時選取文字才會浮出格式按鈕" },
   { key: "math", label: "顯示數學公式", hint: "用 $…$ 或 $$…$$ 撰寫，使用 KaTeX" },
   { key: "mermaid", label: "顯示流程圖", hint: "```mermaid 程式碼區塊" },
 ];

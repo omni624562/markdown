@@ -7,6 +7,7 @@ import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
+import { editorFocused, focusChanged, focusTracking } from "./inline-tools.ts";
 
 export interface LivePreviewOptions {
   /** 圖片的網址（相對路徑換成可載入的網址）；回傳 null 表示無法顯示。 */
@@ -225,9 +226,9 @@ const lineClass = (cls: string) => Decoration.line({ class: cls });
 function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
   if (opts.enabled && !opts.enabled()) return Decoration.none;
   const doc = state.doc;
-  // 游標或選取範圍所在的行顯示原始碼。
+  // 游標或選取範圍所在的行顯示原始碼；編輯器沒有焦點時（例如在側邊欄操作）整份都顯示排版。
   const active = new Set<number>();
-  for (const r of state.selection.ranges) {
+  for (const r of editorFocused(state) ? state.selection.ranges : []) {
     for (let l = doc.lineAt(r.from).number; l <= doc.lineAt(r.to).number; l++) active.add(l);
   }
   const lineActive = (pos: number) => active.has(doc.lineAt(pos).number);
@@ -416,12 +417,13 @@ export function livePreview(opts: LivePreviewOptions): Extension {
     create: (state) => build(state, opts),
     update(value, tr) {
       const treeChanged = syntaxTree(tr.state) !== syntaxTree(tr.startState);
-      if (!tr.docChanged && !tr.selection && !treeChanged && !tr.reconfigured) return value;
+      if (!tr.docChanged && !tr.selection && !treeChanged && !tr.reconfigured && !focusChanged(tr)) return value;
       return build(tr.state, opts);
     },
     provide: (f) => EditorView.decorations.from(f),
   });
   return [
+    focusTracking,
     field,
     EditorView.editorAttributes.of({ class: "cm-lp" }),
     EditorView.domEventHandlers({

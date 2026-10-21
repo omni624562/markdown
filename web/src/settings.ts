@@ -24,8 +24,11 @@ export interface Settings {
   tableAutoFormat: boolean;
   /** 從網頁、Google 文件、Word 貼上時轉成 Markdown（Ctrl+Shift+V 一律貼純文字）。 */
   smartPaste: boolean;
-  /** 編輯區上方的格式工具列。 */
-  formatBar: boolean;
+  /**
+   * 編輯區上方固定的格式工具列（JSON 的「格式化」不受影響）。預設關閉：選取文字時才浮出格式按鈕。
+   * 舊版的 `formatBar`（預設開啟）不再讀取，讓簡約版面也套用到已經有設定檔的使用者。
+   */
+  fixedToolbar: boolean;
   /** 專注模式：淡化目前段落以外的文字。 */
   focusMode: boolean;
   /** 打字機模式：游標所在行保持在畫面中央。 */
@@ -69,7 +72,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   autoPairBrackets: true,
   tableAutoFormat: true,
   smartPaste: true,
-  formatBar: true,
+  fixedToolbar: false,
   focusMode: false,
   typewriterMode: false,
   previewWidth: "medium",
@@ -104,7 +107,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("autoPairBrackets");
   bool("tableAutoFormat");
   bool("smartPaste");
-  bool("formatBar");
+  bool("fixedToolbar");
   bool("focusMode");
   bool("typewriterMode");
   bool("math");

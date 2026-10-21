@@ -2,13 +2,14 @@
    顏色用 light-dark()，依 color-scheme（系統設定或 data-theme）自動切換。 */
 :root {
   color-scheme: light dark;
-  --md-fg: light-dark(#1f2328, #e6edf3);
-  --md-muted: light-dark(#59636e, #9198a1);
-  --md-bg: light-dark(#ffffff, #0d1117);
-  --md-subtle: light-dark(#f6f8fa, #151b23);
-  --md-border: light-dark(#d1d9e0, #3d444d);
-  --md-link: light-dark(#0969da, #4493f8);
-  --md-code-bg: light-dark(rgba(129, 139, 152, 0.15), rgba(101, 108, 118, 0.25));
+  /* 配色參考 MarkText：淺色是白底與柔和的灰，深色接近 One Dark。 */
+  --md-fg: light-dark(#2c2e33, #d7dae0);
+  --md-muted: light-dark(#666a71, #9da5b4);
+  --md-bg: light-dark(#ffffff, #282c34);
+  --md-subtle: light-dark(#f7f7f8, #21252b);
+  --md-border: light-dark(#e3e4e7, #3a404b);
+  --md-link: light-dark(#2f6fd6, #61afef);
+  --md-code-bg: light-dark(rgba(135, 140, 150, 0.14), rgba(140, 150, 165, 0.16));
   --md-note: light-dark(#0969da, #4493f8);
   --md-tip: light-dark(#1a7f37, #3fb950);
   --md-important: light-dark(#8250df, #ab7df8);
@@ -36,7 +37,9 @@ body {
   margin: 0 auto;
   padding: 40px 32px 96px;
   color: var(--md-fg);
-  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* 英文用系統字型，中文用台灣的字型。 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC",
+    "Microsoft JhengHei", sans-serif;
   font-size: 16px;
   line-height: 1.8;
   overflow-wrap: break-word;
@@ -48,13 +51,13 @@ body {
 .markdown-body h4, .markdown-body h5, .markdown-body h6 {
   position: relative;
   margin: 1.6em 0 0.6em;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   text-wrap: balance;
   scroll-margin-top: 16px;
 }
-.markdown-body h1 { font-size: 2em; padding-bottom: 0.3em; border-bottom: 1px solid var(--md-border); }
-.markdown-body h2 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--md-border); }
+.markdown-body h1 { font-size: 1.85em; }
+.markdown-body h2 { font-size: 1.5em; }
 .markdown-body h3 { font-size: 1.25em; }
 .markdown-body h4 { font-size: 1em; }
 .markdown-body h5 { font-size: 0.875em; }
