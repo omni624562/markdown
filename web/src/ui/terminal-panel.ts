@@ -207,8 +207,7 @@ export class TerminalPanel {
     host.className = "term-host";
     this.#body.append(host);
     const term = new Terminal({
-      fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() || "monospace",
-      fontSize: 13,
+      ...this.#font(),
       cursorBlink: true,
       allowProposedApi: false,
       scrollback: 5000,
@@ -273,6 +272,24 @@ export class TerminalPanel {
       else this.hide();
     }
     this.#renderTabs();
+  }
+
+  /** 字型跟著編輯區的字級（小一號），中文用台灣的字型。 */
+  #font(): { fontFamily: string; fontSize: number; lineHeight: number } {
+    const css = getComputedStyle(document.documentElement);
+    const editorSize = Number.parseFloat(css.getPropertyValue("--editor-font-size")) || 15;
+    return {
+      fontFamily: css.getPropertyValue("--font-term").trim() || "monospace",
+      fontSize: Math.max(12, editorSize - 1),
+      lineHeight: 1.2,
+    };
+  }
+
+  /** 編輯區字級改變後，終端機一起調整。 */
+  applyFont(): void {
+    const font = this.#font();
+    for (const s of this.#sessions) Object.assign(s.term.options, font);
+    this.#scheduleFit();
   }
 
   /** 主題切換後更新配色。 */
