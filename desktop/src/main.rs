@@ -154,6 +154,36 @@ fn set_title(window: WebviewWindow, title: String) -> Result<(), String> {
     window.set_title(&title).map_err(|e| e.to_string())
 }
 
+/// Windows 不用系統的標題列，改由網頁的頂端列兼當標題列（拖曳、最小化、最大化、關閉）。
+const CUSTOM_TITLE_BAR: bool = cfg!(windows);
+
+#[tauri::command]
+fn custom_title_bar() -> bool {
+    CUSTOM_TITLE_BAR
+}
+
+#[tauri::command]
+fn window_control(window: WebviewWindow, action: String) -> Result<bool, String> {
+    let r = match action.as_str() {
+        "minimize" => window.minimize(),
+        "toggle-maximize" => {
+            if window.is_maximized().map_err(|e| e.to_string())? {
+                window.unmaximize()
+            } else {
+                window.maximize()
+            }
+        }
+        "close" => window.close(),
+        // 在頂端列按住滑鼠拖曳視窗（和拖曳系統標題列一樣，可以拖到螢幕邊緣貼齊）。
+        "drag" => window.start_dragging(),
+        "state" => Ok(()),
+        _ => return Err(format!("未知的視窗動作：{action}")),
+    };
+    r.map_err(|e| e.to_string())?;
+    // 回傳是否最大化，按鈕圖示跟著切換。
+    window.is_maximized().map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         // 必須最先註冊，第二個執行個體才會在建立視窗前就結束。
@@ -171,6 +201,13 @@ fn main() {
         .manage(dav::Dav::default())
         .setup(|app| {
             app.manage(Trust::load(app.handle()));
+            if CUSTOM_TITLE_BAR {
+                if let Some(window) = app.get_webview_window("main") {
+                    // 拿掉標題列後仍保留視窗陰影與可拖曳調整大小的邊框。
+                    window.set_decorations(false)?;
+                    let _ = window.set_shadow(true);
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -178,6 +215,8 @@ fn main() {
             probe_path,
             open_external,
             set_title,
+            custom_title_bar,
+            window_control,
             files::open_file,
             files::reopen_file,
             files::save_file,
