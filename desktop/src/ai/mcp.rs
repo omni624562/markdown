@@ -398,7 +398,10 @@ impl EditorTools {
         Ok(format!(
             "{}｜{state}\n\n{}",
             log.label,
-            tail(&strip_ansi(&log.text), args.max_chars.unwrap_or(OUTPUT_CHARS).max(100))
+            tail(
+                &strip_ansi(&log.text),
+                args.max_chars.unwrap_or(OUTPUT_CHARS).max(100)
+            )
         ))
     }
 
@@ -458,7 +461,10 @@ impl EditorTools {
             Err(_) => {
                 self.pending.lock().unwrap().remove(&id);
                 let _ = self.app.emit("ai-command-expired", id);
-                Err("使用者沒有在時間內同意，指令沒有執行。需要的話可以請使用者準備好後再試一次。".into())
+                Err(
+                    "使用者沒有在時間內同意，指令沒有執行。需要的話可以請使用者準備好後再試一次。"
+                        .into(),
+                )
             }
         }
     }

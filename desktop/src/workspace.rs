@@ -409,7 +409,8 @@ pub async fn create_workflow(app: AppHandle, name: String, text: String) -> Resu
         if target.exists() {
             return Err(format!("「.github/workflows/{name}」已經存在，沒有覆蓋"));
         }
-        fs::create_dir_all(&dir).map_err(|e| crate::io::describe(&e, "無法建立 .github/workflows 資料夾"))?;
+        fs::create_dir_all(&dir)
+            .map_err(|e| crate::io::describe(&e, "無法建立 .github/workflows 資料夾"))?;
         crate::files::write_atomic(&target, text.as_bytes())
             .map_err(|e| crate::io::describe(&e, "無法寫入工作流程檔"))?;
         Ok(path_string(&target))

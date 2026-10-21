@@ -163,8 +163,12 @@ impl Terminals {
                         pending.extend_from_slice(&buf[..n]);
                         let data = take_utf8(&mut pending);
                         if !data.is_empty() {
-                            if let Some(log) =
-                                out_app.state::<Terminals>().logs.lock().unwrap().get_mut(&id)
+                            if let Some(log) = out_app
+                                .state::<Terminals>()
+                                .logs
+                                .lock()
+                                .unwrap()
+                                .get_mut(&id)
                             {
                                 log.push(&data);
                             }
@@ -224,7 +228,8 @@ fn command_line(command: &str) -> CommandBuilder {
         cmd.args(["-NoLogo", "-NoProfile", "-Command", command]);
         cmd
     } else {
-        let mut cmd = CommandBuilder::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into()));
+        let mut cmd =
+            CommandBuilder::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into()));
         cmd.args(["-c", command]);
         cmd
     }
