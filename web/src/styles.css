@@ -501,7 +501,7 @@ kbd {
   text-align: center;
 }
 .empty-state h2 { margin: 0 0 8px; color: var(--fg); font-size: 18px; }
-.empty-state p { max-width: 36ch; margin: 0 0 16px; line-height: 1.7; }
+.empty-state p { max-width: 46ch; margin: 0 0 16px; line-height: 1.7; }
 .empty-actions { display: flex; gap: 8px; }
 .empty-actions .btn { border-color: var(--border-strong); }
 .empty-tip { margin-top: 16px !important; font-size: 12px; }
@@ -975,6 +975,7 @@ kbd {
 .tab-close.dirty:hover::after { display: none; }
 .tab-new { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 4px; color: var(--muted); }
 .tab-new:hover { color: var(--fg); }
+.tab-bar.blank > * { visibility: hidden; }
 @media (pointer: coarse) {
   .tab-close { width: 32px; height: 32px; }
 }

@@ -428,10 +428,12 @@ function renderEmptyState(text: string): void {
   const empty = text.trim() === "";
   emptyStateEl.hidden = !empty;
   if (!empty) return;
+  // 只有預覽時旁邊沒有編輯區，提示改成切換到可以打字的檢視。
+  const previewOnly = view === "preview";
   const hints: Record<DocKind, string> = {
-    markdown: "在左邊開始寫，這裡會即時顯示排版結果。",
-    text: "在左邊輸入文字，這裡會顯示閱讀版面。",
-    json: "貼上 JSON，這裡會顯示可摺疊的樹狀檢視，並即時檢查語法。",
+    markdown: previewOnly ? "按「開始寫作」切換到即時預覽，直接在畫面上打字。" : "在左邊開始寫，這裡會即時顯示排版結果。",
+    text: previewOnly ? "按「開始寫作」切換到可以輸入的檢視。" : "在左邊輸入文字，這裡會顯示閱讀版面。",
+    json: previewOnly ? "按「開始寫作」切換到可以輸入的檢視。" : "貼上 JSON，這裡會顯示可摺疊的樹狀檢視，並即時檢查語法。",
   };
   emptyStateEl.innerHTML = `<h2>空白文件</h2><p></p><div class="empty-actions"></div><p class="empty-tip">也可以直接把 .md、.txt、.json 檔拖曳進來</p>`;
   emptyStateEl.querySelector("p")!.textContent = hints[kind];
@@ -444,8 +446,11 @@ function renderEmptyState(text: string): void {
     b.addEventListener("click", run);
     actions.append(b);
   };
+  if (previewOnly) mk("開始寫作", () => setView(kind === "markdown" ? "live" : "editor"));
   mk("開啟檔案", () => void commands.run("open"));
+  if (kind === "markdown") mk("從範本新增", () => void commands.run("new-from-template"));
   if (kind === "markdown") mk("載入範例文件", () => editor.replaceAll(sample));
+  actions.querySelector("button")?.classList.add("btn-primary");
 }
 
 function renderOutline(headings: Heading[]): void {
@@ -966,7 +971,10 @@ function renderSaveState(): void {
     active.dirty = dirty;
     renderTabs();
   }
-  const title = `${dirty ? "● " : ""}${fileName} - Markdown 編輯器`;
+  // 只有一份還沒存過的空白文件時，不需要「未命名.md」分頁與標題；開始打字才出現。
+  const blank = docs.length === 1 && !fileBacked && !fileHandle && text === "";
+  $("#tab-bar").classList.toggle("blank", blank);
+  const title = blank ? "Markdown 編輯器" : `${dirty ? "● " : ""}${fileName} - Markdown 編輯器`;
   if (document.title !== title) {
     document.title = title;
     desktop?.setTitle(title).catch(console.error);
@@ -3472,6 +3480,7 @@ function setView(mode: ViewMode): void {
   view = mode;
   storage.save("view", mode);
   applyLayout();
+  renderEmptyState(editor.text);
   syncPreview();
   updateActiveHeading();
   if (mode === "editor" || mode === "live") editor.view.focus();
