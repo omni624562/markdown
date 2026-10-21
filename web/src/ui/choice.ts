@@ -9,7 +9,21 @@ export interface ChoiceOption {
   danger?: boolean;
 }
 
-export function choose(title: string, message: string, options: ChoiceOption[]): Promise<string | null> {
+export interface ChoiceExtra {
+  /** 原樣顯示的文字（例如要執行的指令），用等寬字型、保留換行。 */
+  code?: string;
+  /** 從外部關閉對話框（例如等待逾時），結果視同取消。 */
+  signal?: AbortSignal;
+  /** 一開始聚焦的選項（預設是主要選項）。對話框可能在使用者打字時跳出來，危險的動作不要預設聚焦。 */
+  focus?: string;
+}
+
+export function choose(
+  title: string,
+  message: string,
+  options: ChoiceOption[],
+  extra: ChoiceExtra = {},
+): Promise<string | null> {
   const dialog = document.createElement("dialog");
   dialog.className = "choice";
   dialog.setAttribute("aria-labelledby", "choice-title");
@@ -20,7 +34,14 @@ export function choose(title: string, message: string, options: ChoiceOption[]):
   p.textContent = message;
   const actions = document.createElement("div");
   actions.className = "choice-actions";
-  dialog.append(h, p, actions);
+  dialog.append(h, p);
+  if (extra.code) {
+    const pre = document.createElement("pre");
+    pre.className = "choice-code";
+    pre.textContent = extra.code;
+    dialog.append(pre);
+  }
+  dialog.append(actions);
 
   return new Promise((resolve) => {
     let result: string | null = null;
@@ -42,8 +63,11 @@ export function choose(title: string, message: string, options: ChoiceOption[]):
       dialog.remove();
       resolve(result);
     });
+    extra.signal?.addEventListener("abort", () => dialog.close(), { once: true });
     document.body.append(dialog);
     dialog.showModal();
-    actions.querySelector<HTMLButtonElement>(".btn-primary")?.focus();
+    const index = extra.focus ? options.findIndex((o) => o.id === extra.focus) : -1;
+    const buttons = actions.querySelectorAll<HTMLButtonElement>("button");
+    (index >= 0 ? buttons[index] : actions.querySelector<HTMLButtonElement>(".btn-primary"))?.focus();
   });
 }

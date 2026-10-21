@@ -2,14 +2,16 @@
  * AI 協作（桌面版，預設關閉）：
  * - 編輯器 MCP 伺服器：同步目前的文件與選取範圍給 Claude Code／Codex，並處理它們提出的修改。
  * - 選取段落快捷動作：把選取的文字交給 `claude -p`／`codex exec` 處理，結果用差異檢視讓使用者決定。
+ * - AI 要求在終端機執行指令：每次都先請使用者同意（或在這次開啟期間一律允許）。
  *
  * AI 的修改一律經過差異檢視，不會直接寫入檔案；使用者接受後仍需自己存檔。
  */
 import { applyEdits, buildPrompt, cleanResult } from "./ai-text.ts";
-import type { AiProposal, AiRunEvent, Desktop, EditorSnapshot } from "./desktop.ts";
+import type { AiCommand, AiProposal, AiRunEvent, Desktop, EditorSnapshot } from "./desktop.ts";
 import type { Editor } from "./editor.ts";
 import type { QuickAction, Settings, SettingsStore } from "./settings.ts";
 import { icon } from "./ui/icons.ts";
+import { choose } from "./ui/choice.ts";
 import type { Review } from "./ui/review.ts";
 import { toast } from "./ui/toast.ts";
 
@@ -44,6 +46,10 @@ export class AiController {
   #handling = false;
   #run: Run | null = null;
   #nextRun = 1;
+  /** 使用者選了「這次開啟期間都直接執行」。重新開啟編輯器後恢復詢問。 */
+  #allowCommands = false;
+  /** 還在等使用者決定的指令（AI 不再等待時關閉對話框）。 */
+  #asking = new Map<number, AbortController>();
 
   constructor(d: Desktop, settings: SettingsStore, host: AiHost, bar: HTMLElement) {
     this.#d = d;
@@ -56,6 +62,8 @@ export class AiController {
       void this.#nextProposal();
     });
     void d.onAiRun((e) => this.#onRun(e));
+    void d.onAiCommand((c) => void this.#onCommand(c));
+    void d.onAiCommandExpired((id) => this.#asking.get(id)?.abort());
     settings.subscribe((s, changed) => {
       if (changed.some((k) => k === "aiEnabled" || k === "mcpServer")) void this.#applyMcp(s);
     });
@@ -163,6 +171,48 @@ export class AiController {
         resolve();
       }
     });
+  }
+
+  // ---- AI 要求在終端機執行的指令 ----------------------------------------------
+
+  async #onCommand(c: AiCommand): Promise<void> {
+    const reply = async (ok: boolean, message: string) => {
+      const waiting = await this.#d.mcpRespond(c.id, { ok, message }).catch(() => false);
+      if (ok && !waiting) toast("AI 已經不再等待這個指令，所以沒有執行。", { tone: "error" });
+    };
+    const s = this.#settings.value;
+    if (!s.aiEnabled || !s.aiTerminal) {
+      await reply(false, "使用者沒有開放讓 AI 在終端機執行指令（設定 → AI 協作 →「讓 AI 在終端機執行指令」）。");
+      return;
+    }
+    if (this.#allowCommands) {
+      await reply(true, "使用者已同意。");
+      return;
+    }
+    const ctl = new AbortController();
+    this.#asking.set(c.id, ctl);
+    const choice = await choose(
+      "AI 要在終端機執行指令",
+      `${c.reason ? `${c.reason}。` : ""}執行位置：${c.cwd}。執行過程會顯示在下方的終端機。`,
+      [
+        { id: "run", label: "執行", primary: true },
+        { id: "always", label: "這次開啟期間都直接執行" },
+        { id: "deny", label: "拒絕" },
+      ],
+      // 對話框可能在使用者打字時跳出來：預設聚焦「拒絕」，按 Enter 不會誤執行。
+      { code: c.command, signal: ctl.signal, focus: "deny" },
+    );
+    this.#asking.delete(c.id);
+    if (ctl.signal.aborted) {
+      toast("AI 等太久已經放棄，指令沒有執行。", { duration: 6000 });
+      return;
+    }
+    if (choice === "run" || choice === "always") {
+      if (choice === "always") this.#allowCommands = true;
+      await reply(true, "使用者已同意。");
+    } else {
+      await reply(false, "使用者拒絕執行這個指令。請不要再要求執行相同的指令，可以改問使用者想怎麼做。");
+    }
   }
 
   // ---- 選取段落快捷動作 ------------------------------------------------------

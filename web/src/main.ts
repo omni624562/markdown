@@ -81,6 +81,8 @@ import { sizeLabel, versionTitle } from "./history-label.ts";
 import type { FileVersion } from "./desktop.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
+import { fileReference } from "./ai-text.ts";
+import { CLAUDE_WORKFLOW } from "./ci-workflow.ts";
 import { toast } from "./ui/toast.ts";
 
 type ViewMode = "editor" | "live" | "split" | "preview";
@@ -1878,11 +1880,83 @@ if (desktop) {
   });
 }
 
-/** 終端機只在開啟 AI 時顯示已安裝的 Claude Code／Codex 按鈕。 */
+/** 已安裝的 Claude Code／Codex（找不到時是 null）。 */
+let aiFound: { claude: string | null; codex: string | null } = { claude: null, codex: null };
+
+/**
+ * 終端機只在開啟 AI 時顯示已安裝的 Claude Code／Codex 按鈕。
+ * 第一次偵測到有安裝、但還沒開啟 AI 協作時，提示一次可以開啟。
+ */
 async function refreshAiTools(): Promise<void> {
   if (!desktop || !terminal) return;
   const none = { claude: null, codex: null };
-  terminal.setAvailable(settings.value.aiEnabled ? await desktop.aiTools().catch(() => none) : none);
+  aiFound = await desktop.aiTools().catch(() => none);
+  terminal.setAvailable(settings.value.aiEnabled ? aiFound : none);
+  if (settings.value.aiEnabled || !(aiFound.claude || aiFound.codex) || storage.load("ai-hint")) return;
+  storage.save("ai-hint", "shown");
+  const tool = aiFound.claude ? "claude" : "codex";
+  toast(
+    `偵測到 ${tool === "claude" ? "Claude Code" : "Codex"}。開啟 AI 協作後，可以在下方的終端機使用它讀取、修改目前的文件。`,
+    { duration: 20000, action: { label: "開啟 AI 協作", run: () => settings.update({ aiEnabled: true, aiTool: tool }) } },
+  );
+}
+
+/** 有沒有可以使用的終端機 AI（已開啟 AI 協作，而且有安裝 Claude Code 或 Codex）。 */
+const terminalAiReady = () => !!terminal && !!ai?.enabled && !!(aiFound.claude || aiFound.codex);
+
+/** 把選取範圍（或整份文件）的參照 `@檔案#L行號` 貼到終端機中的 Claude Code／Codex。 */
+async function sendSelectionToAi(): Promise<void> {
+  if (!terminal) return;
+  const state = editor.view.state;
+  const { from, to } = state.selection.main;
+  let path = fileHandle?.path ?? null;
+  // WebDAV 上的檔案終端機讀不到，改成直接貼上文字。
+  if (path && isRemote(path)) path = null;
+  if (path && active.dirty) {
+    // AI 讀的是磁碟上的檔案，先存檔行號才會對。
+    await save(false);
+    if (active.dirty) return;
+  }
+  let text: string;
+  if (path) {
+    const root = workspaceRoot && !isRemote(workspaceRoot.path) ? workspaceRoot.path : null;
+    const first = state.doc.lineAt(from).number;
+    // 選取範圍結束在下一行的開頭時，不算那一行。
+    const end = to > from && state.doc.lineAt(to).from === to ? to - 1 : to;
+    text = `${fileReference(path, root, from === to ? null : [first, state.doc.lineAt(end).number])} `;
+  } else if (from !== to) {
+    text = `${state.sliceDoc(from, to)}\n\n`;
+  } else {
+    toast("請先存檔，或選取要傳送的文字。");
+    return;
+  }
+  const preferred = settings.value.aiTool === "codex" ? (aiFound.codex ? "codex" : "claude") : aiFound.claude ? "claude" : "codex";
+  await terminal.sendToAi(text, preferred);
+}
+
+/** 在工作區（Git 儲存庫）加入 Claude Code 的 GitHub Actions 工作流程。 */
+async function addClaudeWorkflow(): Promise<void> {
+  if (!desktop) return;
+  const ok = await choose(
+    "加入 Claude Code 自動校對",
+    "會在這個資料夾建立 .github/workflows/claude.yml。推送到 GitHub 之後：開 PR 修改文件時，Claude 會用台灣繁體中文校對並留言；在 issue 或 PR 留言寫「@claude 請幫我……」，Claude 會照著做。需要在 GitHub 設定一次權杖（建立後會說明）。",
+    [
+      { id: "create", label: "建立", primary: true },
+      { id: "cancel", label: "取消" },
+    ],
+  );
+  if (ok !== "create") return;
+  await desktop.createWorkflow("claude.yml", CLAUDE_WORKFLOW);
+  gitPanel?.refreshSoon(200);
+  const next = await choose(
+    "已建立 .github/workflows/claude.yml",
+    "接著：① 提交並推送；② 在 GitHub 儲存庫的 Settings → Secrets and variables → Actions 新增 CLAUDE_CODE_OAUTH_TOKEN（在終端機執行 claude setup-token 取得）。也可以在 Claude Code 裡執行 /install-github-app，它會自動設定。",
+    [
+      ...(terminal && aiFound.claude ? [{ id: "token", label: "在終端機執行 claude setup-token", primary: true }] : []),
+      { id: "done", label: "知道了" },
+    ],
+  );
+  if (next === "token") await terminal?.runInShell("claude setup-token");
 }
 
 function editorSnapshot(): EditorSnapshot {
@@ -2136,10 +2210,35 @@ commands.register(
       title: `AI：在終端機啟動 ${tool === "claude" ? "Claude Code" : "Codex"}`,
       group: "檢視",
       icon: "sparkles",
-      when: () => !!terminal && !!ai?.enabled,
-      run: () => terminal?.start(tool),
+      when: () => !!terminal && !!ai?.enabled && !!aiFound[tool],
+      run: () => void terminal?.start(tool),
     }),
   ),
+  {
+    id: "send-to-terminal-ai",
+    title: "AI：把選取範圍傳給終端機中的 Claude Code／Codex",
+    group: "編輯",
+    icon: "square-terminal",
+    keys: "Mod-Alt-j",
+    when: () => terminalAiReady() && view !== "preview",
+    run: () => sendSelectionToAi(),
+  },
+  {
+    id: "ai-settings",
+    title: "AI 協作設定…",
+    group: "說明",
+    icon: "sparkles",
+    when: () => !!desktop,
+    run: () => settingsDialog.open("AI 協作"),
+  },
+  {
+    id: "git-claude-workflow",
+    title: "Git：加入 Claude Code 自動校對（GitHub Actions）…",
+    group: "檔案",
+    icon: "git-branch",
+    when: () => !!gitPanel?.status?.repo && !!workspaceRoot && !isRemote(workspaceRoot.path),
+    run: () => addClaudeWorkflow(),
+  },
 );
 
 // 全域快速鍵：在捕獲階段處理，確保焦點在任何地方都一致。
@@ -2190,6 +2289,11 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "-",
   "export-html",
   "export-pdf",
+  "-",
+  "toggle-terminal",
+  "start-claude",
+  "start-codex",
+  "ai-settings",
   "-",
   "toggle-outline",
   "palette",
@@ -2261,7 +2365,8 @@ function formatBubble(): HTMLElement {
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "格式");
   bar.append(...["bold", "italic", "strike", "code", "link"].map((id) => commandButton(id)));
-  if (ai?.enabled) bar.append(separator("format-sep"), commandButton("ai-actions"));
+  const aiButtons = ["ai-actions", "send-to-terminal-ai"].filter((id) => commands.get(id)?.when?.() ?? false);
+  if (aiButtons.length) bar.append(separator("format-sep"), ...aiButtons.map((id) => commandButton(id)));
   return bar;
 }
 

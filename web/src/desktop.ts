@@ -101,6 +101,14 @@ export interface EditorSnapshot {
 }
 
 /** AI 透過 MCP 提出的修改。 */
+/** AI 要求在終端機執行的指令，等使用者同意。 */
+export interface AiCommand {
+  id: number;
+  command: string;
+  reason: string;
+  cwd: string;
+}
+
 export interface AiProposal {
   id: number;
   path: string | null;
@@ -315,8 +323,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     mcpStart: () => core.invoke<McpInfo>("mcp_start"),
     mcpStop: () => core.invoke<void>("mcp_stop"),
     mcpSync: (snapshot: EditorSnapshot) => core.invoke<void>("mcp_sync", { snapshot }),
+    /** 回傳 false 表示 AI 已經不在等這個決定（逾時）。 */
     mcpRespond: (id: number, decision: { ok: boolean; message: string }) =>
-      core.invoke<void>("mcp_respond", { id, decision }),
+      core.invoke<boolean>("mcp_respond", { id, decision }),
+    /** 在工作區的 .github/workflows/ 建立工作流程檔（不覆蓋）。 */
+    createWorkflow: (name: string, text: string) => core.invoke<string>("create_workflow", { name, text }),
     aiRun: (id: number, tool: AiTool, prompt: string) => core.invoke<void>("ai_run", { id, tool, prompt }),
     aiCancel: (id: number) => core.invoke<void>("ai_cancel", { id }),
 
@@ -350,6 +361,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     onTermExit: (fn: (p: { id: number; code: number | null }) => void) =>
       event.listen<{ id: number; code: number | null }>("term-exit", (e) => fn(e.payload)),
     onAiProposal: (fn: (p: AiProposal) => void) => event.listen<AiProposal>("ai-proposal", (e) => fn(e.payload)),
+    onAiCommand: (fn: (c: AiCommand) => void) => event.listen<AiCommand>("ai-command", (e) => fn(e.payload)),
+    onAiCommandExpired: (fn: (id: number) => void) => event.listen<number>("ai-command-expired", (e) => fn(e.payload)),
+    /** AI 執行的指令開了一個新的終端機（由 Rust 端建立，前端只要顯示）。 */
+    onTermAttached: (fn: (t: { id: number; label: string }) => void) =>
+      event.listen<{ id: number; label: string }>("term-attached", (e) => fn(e.payload)),
     onAiRun: (fn: (p: AiRunEvent) => void) => event.listen<AiRunEvent>("ai-run", (e) => fn(e.payload)),
   };
 }

@@ -45,6 +45,8 @@ export interface Settings {
   aiTool: AiTool;
   /** 讓終端機裡的 Claude Code／Codex 讀取目前的文件並提出修改（編輯器 MCP 伺服器）。 */
   mcpServer: boolean;
+  /** 讓 AI 透過編輯器在終端機執行指令（每次都會先詢問）。 */
+  aiTerminal: boolean;
   /** 檔案被外部程式修改時，逐段標示變更處，可以保留或還原。 */
   markExternalChanges: boolean;
   quickActions: QuickAction[];
@@ -81,6 +83,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   aiEnabled: false,
   aiTool: "claude",
   mcpServer: true,
+  aiTerminal: true,
   markExternalChanges: true,
   quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
   autoUpdate: true,
@@ -114,6 +117,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("mermaid");
   bool("aiEnabled");
   bool("mcpServer");
+  bool("aiTerminal");
   bool("markExternalChanges");
   bool("autoUpdate");
   bool("gitAutoSync");

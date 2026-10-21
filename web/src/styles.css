@@ -765,6 +765,19 @@ kbd {
 .choice { width: min(460px, calc(100vw - 32px)); padding: 20px 22px 18px; }
 .choice h2 { margin: 0 0 8px; font-size: 17px; }
 .choice p { margin: 0 0 18px; color: var(--muted); line-height: 1.7; }
+.choice-code {
+  max-height: 200px;
+  overflow: auto;
+  margin: -6px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg);
+  font: 13px/1.6 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .choice-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .choice-actions .btn { border-color: var(--border-strong); }
 

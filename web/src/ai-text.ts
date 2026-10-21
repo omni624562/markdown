@@ -37,3 +37,25 @@ export function buildPrompt(instruction: string, selection: string): string {
     selection,
   ].join("\n");
 }
+
+/**
+ * 給終端機中 Claude Code／Codex 的檔案參照：`@相對路徑#L10-20`。
+ * 檔案在工作區內時用相對於工作區（終端機的工作目錄）的路徑，否則用完整路徑；有空白時加引號。
+ */
+export function fileReference(path: string, root: string | null, lines: [number, number] | null): string {
+  const inside = root ? relativeInside(root, path) : null;
+  const p = inside ?? path;
+  let ref = `@${/\s/.test(p) ? `"${p}"` : p}`;
+  if (lines) ref += lines[0] === lines[1] ? `#L${lines[0]}` : `#L${lines[0]}-${lines[1]}`;
+  return ref;
+}
+
+/** `path` 在 `root` 底下時回傳相對路徑（用 /），否則 null。 */
+function relativeInside(root: string, path: string): string | null {
+  const windows = /^[a-zA-Z]:|^\\\\/.test(root) || root.includes("\\");
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const r = norm(root);
+  const p = norm(path);
+  const same = windows ? p.toLowerCase().startsWith(`${r.toLowerCase()}/`) : p.startsWith(`${r}/`);
+  return same ? p.slice(r.length + 1) : null;
+}

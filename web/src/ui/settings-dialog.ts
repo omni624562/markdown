@@ -41,7 +41,7 @@ export interface UpdateHooks {
 }
 
 /** AI 區中，總開關關閉時一起停用的選項。 */
-const AI_DEPENDENT: (keyof Settings)[] = ["aiTool", "mcpServer", "markExternalChanges"];
+const AI_DEPENDENT: (keyof Settings)[] = ["aiTool", "mcpServer", "aiTerminal", "markExternalChanges"];
 
 interface Field {
   key: keyof Settings;
@@ -201,10 +201,15 @@ export class SettingsDialog {
     store.subscribe(() => this.#sync());
   }
 
-  open(): void {
+  /** 開啟設定；`page` 是分類名稱（例如「AI 協作」）。 */
+  open(page?: string): void {
     this.#sync();
     this.#dialog.showModal();
     void this.#refreshTools();
+    if (page) {
+      const tab = [...this.#dialog.querySelectorAll<HTMLButtonElement>("[role=tab]")].find((t) => t.textContent === page);
+      tab?.click();
+    }
   }
 
   /** 每個 section 成為左邊的一個分類；方向鍵上下切換。 */
@@ -266,6 +271,12 @@ export class SettingsDialog {
         "讓 AI 讀取目前的文件",
         "終端機中的 Claude Code／Codex 可以讀取你正在看的文件與選取範圍，並提出修改。只接受本機連線。",
         () => this.#control("mcpServer"),
+      ),
+      this.#row(
+        "aiTerminal",
+        "讓 AI 在終端機執行指令",
+        "Claude Code／Codex 可以要求在下方的終端機執行指令（例如 git、轉檔），每次都會先問你，執行過程會顯示在終端機分頁。需要開啟「讓 AI 讀取目前的文件」。",
+        () => this.#control("aiTerminal"),
       ),
       this.#row(
         "markExternalChanges",
