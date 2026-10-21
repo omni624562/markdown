@@ -151,6 +151,26 @@ kbd {
 .nav-toggle:focus-visible { outline-offset: -6px; }
 .nav-toggle[aria-pressed="true"] { color: var(--fg); }
 .topbar-side { display: none; flex: none; width: var(--outline-width); }
+/* ---- Windows 桌面版的標題列按鈕 ---- */
+.window-controls { display: flex; flex: none; align-self: stretch; margin-left: 8px; }
+.window-btn {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  cursor: default;
+}
+.window-btn:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.window-btn:active { background: color-mix(in srgb, var(--fg) 15%, transparent); }
+.window-btn.window-close:hover { background: #c42b1c; color: #fff; }
+.window-btn.window-close:active { background: #b22a1b; color: #fff; }
+.custom-titlebar .top-actions { padding-right: 0; }
+/* 拿掉系統標題列後，視窗靠頂端列拖曳；頂端列稍微高一點，比較好抓。 */
+.custom-titlebar { --topbar-h: 42px; }
+.custom-titlebar .topbar { user-select: none; }
 .topbar.with-sidebar .nav-toggle { border-right: 1px solid var(--border); }
 .topbar.with-sidebar .topbar-side { display: block; border-right: 1px solid var(--border); }
 .workspace.outline-hidden .activity-bar { display: none; }

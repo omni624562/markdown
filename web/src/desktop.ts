@@ -247,6 +247,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<DesktopSaveOutcome>("dav_write", { path: req.path, text: req.text, force: req.force ?? false }),
       ),
     setTitle: (title: string) => core.invoke<void>("set_title", { title }),
+    /** Windows 版用網頁的頂端列當標題列。 */
+    customTitleBar: () => core.invoke<boolean>("custom_title_bar"),
+    windowControl: (action: "minimize" | "toggle-maximize" | "close" | "drag" | "state") =>
+      core.invoke<boolean>("window_control", { action }),
     /** 檔案所在的資料夾現在連得到嗎（網路磁碟斷線後偵測恢復用）。 */
     probePath: (path: string) =>
       route(

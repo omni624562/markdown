@@ -86,6 +86,7 @@ import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
 import { openLightbox } from "./ui/lightbox.ts";
+import { setupWindowControls } from "./ui/window-controls.ts";
 import { askPdfOptions } from "./ui/pdf-dialog.ts";
 import { PAPERS, PRINT_ROOT_CSS, type PdfOptions, coverHtml, pageCss, pageLayout, shadowCss } from "./pdf-print.ts";
 import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
@@ -2932,6 +2933,13 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "settings",
 ]);
 setupMenu($<HTMLButtonElement>("#files-more"), commands, ["open-folder", "connect-webdav", "open-recent"]);
+// Windows 桌面版：頂端列兼當標題列。
+void desktop
+  ?.customTitleBar()
+  .then((custom) => {
+    if (custom) setupWindowControls($(".topbar"), (action) => desktop!.windowControl(action));
+  })
+  .catch(console.error);
 status.save.addEventListener("click", () => void commands.run("save").catch(reportError));
 
 const themeButton = $<HTMLButtonElement>("#theme-menu");
