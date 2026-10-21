@@ -71,6 +71,11 @@ const SECTIONS: { title: string; fields: Field[] }[] = [
         hint: "保留標題、清單、粗體、連結和表格；按 Ctrl+Shift+V 一律貼純文字",
       },
       {
+        key: "autoSave",
+        label: "自動存檔",
+        hint: "桌面版：已經存過的檔案，停止打字一秒多後自動存回磁碟；檔案被其他程式改過時照樣先讓你比較差異",
+      },
+      {
         key: "autoSymbols",
         label: "打字自動轉符號",
         hint: "<= 變 ≤、>= 變 ≥、!= 變 ≠、-> 變 →、=> 變 ⇒、+- 變 ±；程式碼與公式裡不轉換，轉換後馬上按 Backspace 可以還原",

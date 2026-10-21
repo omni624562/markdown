@@ -1295,3 +1295,63 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .cm-lp-mark { border-radius: 2px; background: light-dark(#fff3a3, rgba(229, 192, 123, 0.35)); }
 .cm-lp-sup { vertical-align: super; font-size: 0.75em; }
 .cm-lp-sub { vertical-align: sub; font-size: 0.75em; }
+.choice-input {
+  width: 100%;
+  height: 36px;
+  margin: -6px 0 16px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px var(--font-ui);
+}
+.choice-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* 即時預覽：HTML 註解（例如目錄的 <!-- toc --> 標記）淡化 */
+.cm-editor.cm-lp .cm-line.cm-lp-comment { color: var(--subtle); font-size: 0.8em; }
+.search-toggle {
+  flex: none;
+  width: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 16px/1 var(--font-ui);
+  cursor: pointer;
+}
+.search-toggle:hover { color: var(--fg); }
+.replace-row { padding-left: 28px; }
+.replace-row input { flex: 1; min-width: 0; }
+.replace-all { flex: none; min-height: 28px; padding: 0 8px; font-size: 12.5px; }
+
+/* ---- 即時預覽：直接編輯表格 ---- */
+.cm-lp-table { position: relative; cursor: default; }
+.cm-lp-table:hover { outline: none; }
+.cm-lp-table td, .cm-lp-table th { cursor: text; }
+.cm-lp-table .cm-lp-cell-editing { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--bg); white-space: pre-wrap; }
+.cm-lp-table-tools {
+  position: absolute;
+  bottom: calc(100% - 4px);
+  left: var(--lp-pad, 20px);
+  z-index: 2;
+  display: none;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+.cm-lp-table:hover .cm-lp-table-tools, .cm-lp-table.editing .cm-lp-table-tools { display: flex; }
+.cm-lp-table-tools button {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 12px var(--font-ui);
+  cursor: pointer;
+}
+.cm-lp-table-tools button:hover { color: var(--fg); background: var(--active-line); }

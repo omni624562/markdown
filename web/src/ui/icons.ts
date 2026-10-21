@@ -1,4 +1,9 @@
 import {
+  ClipboardCopy,
+  ListTree as TocIcon,
+  FileType,
+  Replace,
+  LayoutTemplate,
   Underline,
   Highlighter,
   Superscript,
@@ -86,6 +91,11 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  "clipboard-copy": ClipboardCopy,
+  toc: TocIcon,
+  "file-type": FileType,
+  replace: Replace,
+  "layout-template": LayoutTemplate,
   "underline": Underline,
   "highlighter": Highlighter,
   "superscript": Superscript,

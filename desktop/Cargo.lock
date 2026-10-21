@@ -2426,6 +2426,7 @@ dependencies = [
  "notify-debouncer-full",
  "portable-pty",
  "quick-xml 0.42.0",
+ "regex",
  "rfd",
  "rmcp",
  "schemars 1.2.3",

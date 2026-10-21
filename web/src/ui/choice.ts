@@ -18,6 +18,37 @@ export interface ChoiceExtra {
   focus?: string;
 }
 
+/** 請使用者輸入一行文字（例如範本名稱）。取消時回傳 null。 */
+export function askText(title: string, message: string, value = "", okLabel = "確定"): Promise<string | null> {
+  const dialog = document.createElement("dialog");
+  dialog.className = "choice";
+  dialog.setAttribute("aria-labelledby", "ask-title");
+  dialog.innerHTML = `<h2 id="ask-title"></h2><p></p><form method="dialog"><input class="choice-input" type="text" />
+    <div class="choice-actions"><button type="button" class="btn" value="cancel">取消</button><button class="btn btn-primary" value="ok"></button></div></form>`;
+  dialog.querySelector("h2")!.textContent = title;
+  dialog.querySelector("p")!.textContent = message;
+  const input = dialog.querySelector("input")!;
+  input.value = value;
+  dialog.querySelector<HTMLButtonElement>(".btn-primary")!.textContent = okLabel;
+  return new Promise((resolve) => {
+    let result: string | null = null;
+    dialog.querySelector("form")!.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!input.value.trim()) return;
+      result = input.value.trim();
+      dialog.close();
+    });
+    dialog.querySelector<HTMLButtonElement>("[value=cancel]")!.addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => {
+      dialog.remove();
+      resolve(result);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    input.select();
+  });
+}
+
 export function choose(
   title: string,
   message: string,

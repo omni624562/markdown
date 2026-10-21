@@ -181,6 +181,31 @@ export async function download(filename: string, content: string, type: string):
   return true;
 }
 
+/** 位元組轉 Base64（分段處理，避免大檔案超過函式參數上限）。 */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/** 下載或另存二進位檔（例如 Word .docx）。桌面版回傳存檔路徑，取消時回傳 null；網頁版回傳檔名。 */
+export async function downloadBytes(filename: string, bytes: Uint8Array, type: string, filterName: string): Promise<string | null> {
+  if (desktop) {
+    const ext = filename.slice(filename.lastIndexOf("."));
+    return desktop.exportBinary(filename, bytesToBase64(bytes), filterName, [ext]);
+  }
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.hidden = true;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return filename;
+}
+
 /** 把副檔名換掉，例如 `筆記.md` → `筆記.html`。 */
 export function replaceExtension(name: string, ext: string): string {
   const dot = name.lastIndexOf(".");

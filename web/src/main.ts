@@ -34,6 +34,7 @@ import {
   type OpenedFile,
   desktopHandle,
   download,
+  downloadBytes,
   fromDesktop,
   openFile,
   replaceExtension,
@@ -86,6 +87,10 @@ import { setupSplitter } from "./ui/splitter.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
 import { fileReference } from "./ai-text.ts";
 import { CLAUDE_WORKFLOW } from "./ci-workflow.ts";
+import { fileUrl as localFileUrl, richHtml } from "./rich-copy.ts";
+import { TOC_START, tocBlock, updateToc } from "./toc.ts";
+import { BUILTIN_TEMPLATES, TEMPLATE_LIMITS, type Template, fillTemplate, templateFileName } from "./templates.ts";
+import { askText } from "./ui/choice.ts";
 import { toast } from "./ui/toast.ts";
 
 type ViewMode = "editor" | "live" | "split" | "preview";
@@ -220,6 +225,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   onChange(doc) {
     scheduleRender();
     scheduleAutosave(doc);
+    scheduleDiskSave();
     ai?.scheduleSync();
   },
   onSelection(v) {
@@ -248,6 +254,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
       return isRemote(path) ? desktop.davImage(path) : desktop.fileUrl(path);
     },
     renderTable: (markdown) => renderMarkdown(markdown, { kind: "markdown" }).html,
+    formatTable: (markdown) => tableFormatter(markdown),
     renderMath: renderTex,
     mathEnabled: () => settings.value.math,
     openLink: (href) => void followLink(href).catch(reportError),
@@ -755,6 +762,78 @@ function scheduleAutosave(doc: string): void {
   saveTimer = window.setTimeout(flushDraft, 400);
 }
 
+// ---- 自動存檔（桌面版、已經存過的檔案） ---------------------------------------
+
+const DISK_SAVE_DELAY = 1500;
+let diskSaveTimer = 0;
+let saving = false;
+/** 自動存檔遇到衝突或錯誤的檔案：使用者手動存檔（Ctrl+S）之前不再自動存。 */
+let diskSaveBlocked: string | null = null;
+
+function scheduleDiskSave(): void {
+  clearTimeout(diskSaveTimer);
+  if (!settings.value.autoSave || !desktop || !fileHandle?.path) return;
+  diskSaveTimer = window.setTimeout(() => void autoSaveNow(), DISK_SAVE_DELAY);
+}
+
+/**
+ * 自動存檔：安靜地存，遇到衝突或錯誤就停下來交給使用者，不打斷打字。
+ * 開始時就記下是哪個分頁、哪些內容，存檔期間切換分頁也會存到正確的檔案。
+ */
+async function autoSaveNow(): Promise<void> {
+  clearTimeout(diskSaveTimer);
+  diskSaveTimer = 0;
+  const doc = active;
+  const handle = fileHandle;
+  const path = handle?.path;
+  if (path && !editor.view.composing) refreshToc();
+  const text = editor.text;
+  if (!path || !settings.value.autoSave || saving || diskSaveBlocked === path) return;
+  if (hash(text) === baseline || doc.missing || review.active || offline?.path === path) return;
+  // 注音、倉頡選字中先不存，等組字結束。
+  if (editor.view.composing) {
+    scheduleDiskSave();
+    return;
+  }
+  saving = true;
+  try {
+    const out = await saveFile(text, fileName, kind, handle, { saveAs: false, force: false });
+    if (!out) return;
+    if (out.status === "conflict") {
+      diskSaveBlocked = path;
+      toast(`「${out.name}」被${otherWriter(path)}改過，已暫停自動存檔。按 Ctrl+S 比較差異後再存。`, {
+        tone: "error",
+        duration: 12000,
+      });
+      return;
+    }
+    gitPanel?.refreshSoon(300);
+    if (doc === active) {
+      fileHandle = out.handle;
+      setBaseline(text, true);
+      renderSaveState();
+      renderTabs(); // setBaseline 已經更新了 active.dirty，renderSaveState 不會重畫分頁
+      // 存檔期間又打了字：再排一次。
+      if (editor.text !== text) scheduleDiskSave();
+    } else {
+      doc.handle = out.handle;
+      doc.baseline = hash(text);
+      doc.fileBacked = true;
+      doc.dirty = hash(doc.state?.doc.toString() ?? loadDraft(doc.id) ?? "") !== doc.baseline;
+      persistSession();
+      renderTabs();
+    }
+  } catch (e) {
+    if (isOffline(e)) showOffline(path);
+    else {
+      diskSaveBlocked = path;
+      toast(`自動存檔失敗，已暫停：${e instanceof Error ? e.message : e}`, { tone: "error", duration: 12000 });
+    }
+  } finally {
+    saving = false;
+  }
+}
+
 /** 立刻寫入尚未儲存的草稿（切換、關閉分頁前呼叫）。 */
 function flushDraft(): void {
   clearTimeout(saveTimer);
@@ -877,6 +956,16 @@ const searchPanel = desktop
           ? desktop!.search(query, caseSensitive, regex, workspaceRoot.path)
           : Promise.reject(new Error("還沒有開啟資料夾")),
       open: (path, line, column) => void openPath(path, line, column).catch(reportError),
+      async replace(query, replacement, caseSensitive, regex) {
+        if (!workspaceRoot) throw new Error("還沒有開啟資料夾");
+        stash();
+        // 有未存檔變更的分頁不碰，避免蓋掉使用者還沒存的內容。
+        const skip = docs.filter((d) => (d === active ? baseline !== hash(editor.text) : d.dirty)).flatMap((d) => docPath(d) ?? []);
+        const r = await desktop!.replaceInFolder(query, replacement, caseSensitive, regex, skip, workspaceRoot.path);
+        fileListCache = null;
+        gitPanel?.refreshSoon(300);
+        return r;
+      },
     })
   : null;
 
@@ -1245,6 +1334,8 @@ function renderTabs(): void {
 function activate(doc: Doc): void {
   if (doc === active) return;
   flushDraft();
+  // 切換前先把這個分頁還沒自動存的內容存起來（autoSaveNow 一開始就記下了分頁與內容）。
+  if (diskSaveTimer) void autoSaveNow();
   if (review.active) review.finish();
   if (docs.includes(active)) stash();
   active = doc;
@@ -1363,6 +1454,10 @@ function openOpenedFile(file: OpenedFile): void {
 
 async function save(saveAs: boolean, force = false): Promise<void> {
   if (review.active) review.finish();
+  refreshToc();
+  clearTimeout(diskSaveTimer);
+  // 手動存檔後恢復自動存檔。
+  diskSaveBlocked = null;
   const text = editor.text;
   let out: Awaited<ReturnType<typeof saveFile>>;
   try {
@@ -1533,6 +1628,29 @@ commands.register(
       editor.view.focus();
     },
   },
+  {
+    id: "new-from-template",
+    title: "從範本新增…",
+    group: "檔案",
+    icon: "layout-template",
+    run: () => templatePicker.open(),
+  },
+  {
+    id: "save-as-template",
+    title: "把目前文件存成範本…",
+    group: "檔案",
+    icon: "layout-template",
+    when: () => kind === "markdown",
+    run: () => saveAsTemplate(),
+  },
+  {
+    id: "delete-template",
+    title: "刪除自訂範本…",
+    group: "檔案",
+    icon: "x",
+    when: () => settings.value.templates.length > 0,
+    run: () => deleteTemplatePicker.open(),
+  },
   { id: "tab-next", title: "下一個分頁", group: "檢視", keys: "Ctrl-Tab", when: () => docs.length > 1, run: () => cycleTab(1) },
   {
     id: "tab-prev",
@@ -1603,6 +1721,17 @@ commands.register(
       searchPanel?.focus(selected && !selected.includes("\n") ? selected : undefined);
     },
   },
+  {
+    id: "replace-in-folder",
+    title: "在資料夾中取代…",
+    group: "檔案",
+    icon: "replace",
+    when: () => !!searchPanel && !!workspaceRoot && !isRemote(workspaceRoot.path),
+    run() {
+      showPanel("search");
+      searchPanel?.showReplace();
+    },
+  },
   { id: "show-files", title: "顯示檔案", group: "檢視", icon: "folder", keys: "Mod-Shift-e", run: () => showPanel("files") },
   { id: "show-outline", title: "顯示大綱", group: "檢視", icon: "list-tree", run: () => showPanel("outline") },
   { id: "save", title: "儲存", group: "檔案", icon: "save", keys: "Mod-s", run: () => save(false) },
@@ -1640,6 +1769,23 @@ commands.register(
       await navigator.clipboard.writeText(result.html.replace(/ data-sourcepos="[^"]*"/g, ""));
       toast("已複製 HTML 到剪貼簿", { tone: "success" });
     },
+  },
+  {
+    id: "export-docx",
+    title: "匯出成 Word 檔（.docx）",
+    group: "檔案",
+    icon: "file-type",
+    when: () => kind === "markdown",
+    run: () => exportDocx(),
+  },
+  {
+    id: "copy-rich",
+    title: "複製為格式文字（貼到 Word、Outlook、Teams）",
+    group: "檔案",
+    icon: "clipboard-copy",
+    keys: "Mod-Alt-c",
+    when: () => kind === "markdown",
+    run: () => copyRich(),
   },
   { id: "palette", title: "開啟指令面板", group: "說明", icon: "command", keys: "Mod-Shift-p", run: () => palette.open() },
   {
@@ -1715,6 +1861,7 @@ commands.register(
   fmt("code-block", "程式碼區塊", "square-code", () => editor.exec(insertBlock("```\n程式碼\n```", "程式碼"))),
   fmt("table", "插入表格", "table", () => editor.exec(insertBlock(TABLE_TEMPLATE, "欄位 1"))),
   fmt("hr", "分隔線", "minus", () => editor.exec(insertBlock("---"))),
+  fmt("insert-toc", "插入或更新目錄", "toc", () => insertToc()),
   fmt("math-block", "數學公式區塊", "sigma", () => editor.exec(insertBlock("$$\n公式\n$$", "公式"))),
   fmt("mermaid-block", "流程圖", "workflow", () =>
     editor.exec(insertBlock("```mermaid\nflowchart LR\n  A[開始] --> B[結束]\n```", "A[開始] --> B[結束]")),
@@ -2250,7 +2397,8 @@ window.addEventListener(
     const target = e.target as HTMLElement;
     // 終端機裡的按鍵大多要交給終端機（例如 Ctrl+W、Ctrl+P），只保留少數全域快速鍵。
     if (target.closest(".terminal-panel") && !TERMINAL_KEYS.has(cmd.id)) return;
-    const inField = target.matches("input, select, textarea") && !target.closest(".cm-editor");
+    const inField =
+      (target.matches("input, select, textarea") && !target.closest(".cm-editor")) || target.isContentEditable && !!target.closest(".cm-lp-table");
     if (inField && cmd.group === "格式") return;
     e.preventDefault();
     e.stopPropagation();
@@ -2278,6 +2426,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
 });
 setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "new",
+  "new-from-template",
   "open",
   "open-folder",
   "open-recent",
@@ -2287,7 +2436,9 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "history",
   "-",
   "export-html",
+  "export-docx",
   "export-pdf",
+  "copy-rich",
   "-",
   "toggle-terminal",
   "start-claude",
@@ -2424,6 +2575,7 @@ const insertMenuUi = floatingMenu("insert-anchor", [
   "mermaid-block",
   "insert-image",
   "hr",
+  "insert-toc",
   "-",
   "insert-symbol",
 ]);
@@ -2435,6 +2587,7 @@ const moreFormatMenu = floatingMenu("format-more-anchor", ["superscript", "subsc
 const contextMenu = floatingMenu("context-anchor", [
   "cut",
   "copy",
+  "copy-rich",
   "paste",
   "paste-plain",
   "select-all",
@@ -2462,6 +2615,143 @@ const symbolPicker = new SymbolPicker((text) => {
   editor.view.dispatch(editor.view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.symbol" });
   editor.view.focus();
 });
+
+/** 匯出 Word：圖片從本機、WebDAV 或網址讀取，讀不到的改成文字說明。 */
+async function exportDocx(): Promise<void> {
+  refreshToc();
+  const docDir = fileHandle?.path ? dirname(fileHandle.path) : null;
+  const { htmlToDocx, loadImage } = await import("./docx-export.ts");
+  const blob = await htmlToDocx(renderMarkdown(editor.text, { kind: "markdown" }).html, {
+    title: stem(fileName),
+    async image(src) {
+      let url: string | null = null;
+      if (/^(https?:|data:image\/)/i.test(src)) url = src;
+      else if (desktop && docDir) {
+        const path = localImagePath(src, docDir);
+        if (path) url = isRemote(path) ? await desktop.davImage(path) : desktop.fileUrl(path);
+      }
+      return url ? loadImage(url) : null;
+    },
+  });
+  const name = replaceExtension(fileName, ".docx");
+  const saved = await downloadBytes(
+    name,
+    new Uint8Array(await blob.arrayBuffer()),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "Word 文件",
+  );
+  if (saved && desktop) toast(`已匯出「${basename(saved)}」`, { tone: "success" });
+}
+
+/** 文件有目錄區塊（<!-- toc -->）時，依目前的標題更新（存檔前呼叫）。 */
+function refreshToc(): void {
+  if (kind !== "markdown") return;
+  const text = editor.text;
+  if (!text.includes(TOC_START)) return;
+  const next = updateToc(text, renderMarkdown(text, { kind: "markdown" }).headings);
+  if (next !== null) editor.replaceAll(next, { userEvent: "input.toc" });
+}
+
+/** 插入目錄；已經有目錄時改成更新。 */
+function insertToc(): void {
+  const text = editor.text;
+  const headings = renderMarkdown(text, { kind: "markdown" }).headings;
+  if (text.includes(TOC_START)) {
+    const next = updateToc(text, headings);
+    if (next !== null) editor.replaceAll(next, { userEvent: "input.toc", isolate: true });
+    toast(next === null ? "目錄已經是最新的。" : "已更新目錄。");
+    return;
+  }
+  editor.exec(insertBlock(tocBlock(headings)));
+  toast("已插入目錄，存檔時會自動更新。");
+}
+
+type TemplateItem = Template & { custom: boolean };
+
+const templatePicker = new Picker<TemplateItem>({
+  label: "從範本新增文件",
+  placeholder: "選擇範本",
+  empty: "沒有符合的範本。",
+  query(q) {
+    const all: TemplateItem[] = [
+      ...settings.value.templates.map((t) => ({ ...t, custom: true })),
+      ...BUILTIN_TEMPLATES.map((t) => ({ ...t, custom: false })),
+    ];
+    const needle = q.trim().toLowerCase();
+    return needle ? all.filter((t) => t.name.toLowerCase().includes(needle)) : all;
+  },
+  render: (t) => ({ title: t.name, detail: t.custom ? "自訂範本" : "內建範本", icon: "layout-template" }),
+  pick(t) {
+    const body = fillTemplate(t.body);
+    const doc = makeDoc({ name: templateFileName(t.name), kind: "markdown", baseline: hash(body) });
+    saveDraft(doc.id, body);
+    addTab(doc);
+    editor.view.focus();
+  },
+});
+
+const deleteTemplatePicker = new Picker<Template>({
+  label: "刪除自訂範本",
+  placeholder: "選擇要刪除的範本",
+  empty: "還沒有自訂範本。",
+  query: (q) => settings.value.templates.filter((t) => t.name.includes(q.trim())),
+  render: (t) => ({ title: t.name, icon: "x" }),
+  async pick(t) {
+    const ok = await choose("刪除範本？", `要刪除自訂範本「${t.name}」嗎？`, [
+      { id: "delete", label: "刪除", danger: true },
+      { id: "cancel", label: "取消", primary: true },
+    ]);
+    if (ok !== "delete") return;
+    settings.update({ templates: settings.value.templates.filter((x) => x.name !== t.name) });
+    toast(`已刪除範本「${t.name}」`);
+  },
+});
+
+/** 把目前的文件存成自訂範本（同名時取代）。 */
+async function saveAsTemplate(): Promise<void> {
+  const name = await askText("存成範本", "範本名稱（可以在內容中使用 {{日期}}、{{週次}} 等變數）：", stem(fileName));
+  if (!name) return;
+  const body = editor.text;
+  if (body.length > TEMPLATE_LIMITS.body) {
+    toast("文件太長，無法存成範本。", { tone: "error" });
+    return;
+  }
+  const others = settings.value.templates.filter((t) => t.name !== name);
+  if (others.length >= TEMPLATE_LIMITS.count) {
+    toast(`自訂範本最多 ${TEMPLATE_LIMITS.count} 個，請先刪除一些。`, { tone: "error" });
+    return;
+  }
+  settings.update({ templates: [{ name, body }, ...others] });
+  toast(`已存成範本「${name}」，可以從「⋯」→「從範本新增…」使用`, { tone: "success" });
+}
+
+/**
+ * 複製為格式文字：選取範圍（沒有選取時是整份文件）渲染成 HTML 並加上行內樣式，
+ * 同時放一份 Markdown 純文字，貼到純文字的地方時用。
+ */
+async function copyRich(): Promise<void> {
+  const selected = selectedText();
+  const markdown = selected || editor.text;
+  const docDir = fileHandle?.path && !isRemote(fileHandle.path) ? dirname(fileHandle.path) : null;
+  const html = richHtml(renderMarkdown(markdown, { kind: "markdown" }).html, (src) => {
+    if (/^(https?:|data:)/i.test(src) || !docDir) return null;
+    const path = localImagePath(src, docDir);
+    return path ? localFileUrl(path) : null;
+  });
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([markdown], { type: "text/plain" }),
+      }),
+    ]);
+  } catch {
+    toast("無法寫入剪貼簿。", { tone: "error" });
+    return;
+  }
+  toast(`已複製${selected ? "選取範圍" : "整份文件"}的格式文字，可以貼到 Word、Outlook、Teams`, { tone: "success" });
+  editor.view.focus();
+}
 
 /** 選取範圍的文字（多重選取用換行連接）。 */
 function selectedText(): string {

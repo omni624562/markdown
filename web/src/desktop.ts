@@ -101,6 +101,13 @@ export interface EditorSnapshot {
 }
 
 /** AI 透過 MCP 提出的修改。 */
+export interface ReplaceResult {
+  files: number;
+  replacements: number;
+  skipped: string[];
+  failed: string[];
+}
+
 /** AI 要求在終端機執行的指令，等使用者同意。 */
 export interface AiCommand {
   id: number;
@@ -284,6 +291,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
       ),
     revealEntry: (path: string) =>
       route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported("在檔案總管中顯示")),
+    /** 資料夾全文取代；`skip` 是有未存檔變更的已開啟檔案。 */
+    replaceInFolder: (query: string, replacement: string, caseSensitive: boolean, regex: boolean, skip: string[], root: string) =>
+      route(
+        root,
+        () => core.invoke<ReplaceResult>("replace_in_folder", { query, replacement, caseSensitive, regex, skip }),
+        () => unsupported("全文取代"),
+      ),
     search: (query: string, caseSensitive: boolean, regex: boolean, root: string) =>
       route(
         root,
@@ -326,6 +340,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 回傳 false 表示 AI 已經不在等這個決定（逾時）。 */
     mcpRespond: (id: number, decision: { ok: boolean; message: string }) =>
       core.invoke<boolean>("mcp_respond", { id, decision }),
+    /** 匯出二進位檔（例如 .docx）：顯示另存對話框後寫入，取消時回傳 null。 */
+    exportBinary: (suggestedName: string, dataBase64: string, filterName: string, extensions: string[]) =>
+      core.invoke<string | null>("export_binary", { suggestedName, dataBase64, filterName, extensions }),
     /** 在工作區的 .github/workflows/ 建立工作流程檔（不覆蓋）。 */
     createWorkflow: (name: string, text: string) => core.invoke<string>("create_workflow", { name, text }),
     aiRun: (id: number, tool: AiTool, prompt: string) => core.invoke<void>("ai_run", { id, tool, prompt }),
