@@ -1,35 +1,40 @@
 /* 介面樣式。顏色用 light-dark() 一次定義兩種主題；
    跟隨系統時由 color-scheme 決定，手動切換時由 data-theme 覆寫（見 document.css）。 */
 :root {
-  --bg: light-dark(#ffffff, #0d1117);
-  --surface: light-dark(#f6f8fa, #151b23);
-  --surface-raised: light-dark(#ffffff, #1c232c);
-  --fg: light-dark(#1f2328, #e6edf3);
-  --muted: light-dark(#59636e, #9198a1);
-  --subtle: light-dark(#8c959f, #6e7681);
-  --border: light-dark(#d1d9e0, #30363d);
-  --border-strong: light-dark(#afb8c1, #484f58);
-  --accent: light-dark(#0969da, #4493f8);
-  --accent-soft: light-dark(rgba(9, 105, 218, 0.1), rgba(68, 147, 248, 0.16));
-  --accent-fg: light-dark(#ffffff, #0d1117);
-  --danger: light-dark(#cf222e, #f85149);
-  --danger-soft: light-dark(#ffebe9, rgba(248, 81, 73, 0.12));
-  --success: light-dark(#1a7f37, #3fb950);
-  --active-line: light-dark(rgba(9, 105, 218, 0.05), rgba(68, 147, 248, 0.07));
-  --selection: light-dark(rgba(9, 105, 218, 0.2), rgba(68, 147, 248, 0.3));
-  --shadow: light-dark(0 8px 24px rgba(31, 35, 40, 0.12), 0 8px 24px rgba(0, 0, 0, 0.5));
+  /* 配色參考 MarkText：淺色是乾淨的白底與柔和的灰，深色接近 One Dark。 */
+  --bg: light-dark(#ffffff, #282c34);
+  --surface: light-dark(#f7f7f8, #21252b);
+  --surface-raised: light-dark(#ffffff, #2f343e);
+  --fg: light-dark(#2c2e33, #d7dae0);
+  --muted: light-dark(#666a71, #9da5b4);
+  --subtle: light-dark(#989ca3, #6f7683);
+  --border: light-dark(#e3e4e7, #3a404b);
+  --border-soft: light-dark(#eeeff1, #31353d);
+  --border-strong: light-dark(#c6c8cd, #4b5263);
+  --accent: light-dark(#2f6fd6, #61afef);
+  --accent-soft: light-dark(rgba(47, 111, 214, 0.1), rgba(97, 175, 239, 0.15));
+  --accent-fg: light-dark(#ffffff, #1d2026);
+  --danger: light-dark(#cf2f3a, #e06c75);
+  --danger-soft: light-dark(#fdecee, rgba(224, 108, 117, 0.14));
+  --success: light-dark(#2f8a46, #98c379);
+  --active-line: light-dark(rgba(0, 0, 0, 0.028), rgba(255, 255, 255, 0.035));
+  --selection: light-dark(rgba(47, 111, 214, 0.18), rgba(97, 175, 239, 0.25));
+  --shadow: light-dark(0 6px 24px rgba(30, 32, 36, 0.12), 0 8px 24px rgba(0, 0, 0, 0.45));
 
-  --syn-heading: light-dark(#0550ae, #79c0ff);
-  --syn-link: light-dark(#0969da, #4493f8);
-  --syn-code: light-dark(#953800, #ffa657);
-  --syn-meta: light-dark(#6e7781, #8b949e);
-  --syn-keyword: light-dark(#cf222e, #ff7b72);
-  --syn-string: light-dark(#0a3069, #a5d6ff);
-  --syn-number: light-dark(#0550ae, #79c0ff);
-  --syn-comment: light-dark(#6e7781, #8b949e);
-  --syn-function: light-dark(#8250df, #d2a8ff);
+  --syn-heading: light-dark(#2c2e33, #e5c07b);
+  --syn-link: light-dark(#2f6fd6, #61afef);
+  --syn-code: light-dark(#b0451e, #d19a66);
+  --syn-meta: light-dark(#989ca3, #7f848e);
+  --syn-keyword: light-dark(#a626a4, #c678dd);
+  --syn-string: light-dark(#50a14f, #98c379);
+  --syn-number: light-dark(#986801, #d19a66);
+  --syn-comment: light-dark(#a0a1a7, #7f848e);
+  --syn-function: light-dark(#4078f2, #61afef);
 
   --font-ui: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  /* 文件內文（即時預覽）：英文用系統字型，中文用台灣的字型；和預覽、匯出（document.css）一致。 */
+  --font-doc: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC",
+    "Microsoft JhengHei", sans-serif;
   /* 前兩個字型的中文字寬剛好是英文的兩倍，有安裝時表格在編輯區裡也會完全對齊。 */
   --font-mono: "Sarasa Mono TC", "Noto Sans Mono CJK TC", ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code",
     Menlo, Consolas, monospace;
@@ -120,10 +125,13 @@ kbd {
   min-width: 0;
   height: var(--topbar-h);
   padding-top: env(safe-area-inset-top);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg);
 }
-.nav-toggle { display: none; align-self: center; margin-left: 4px; }
+/* 側邊欄（含圖示列）預設收起，用左上角的按鈕叫出來。 */
+.nav-toggle { display: inline-flex; align-self: center; margin-left: 6px; color: var(--muted); }
+.nav-toggle:hover { color: var(--fg); }
+.workspace.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; align-items: center; padding: 0 8px 0 12px; }
 .top-actions .btn.icon-only { color: var(--muted); }
 .top-actions .btn.icon-only:hover { color: var(--fg); }
@@ -132,18 +140,20 @@ kbd {
   gap: 2px;
   padding: 2px;
   border-radius: calc(var(--radius) + 2px);
-  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
+/* 檢視切換只顯示圖示，名稱在滑鼠提示中。 */
+.segmented .label { display: none; }
 .segmented button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 26px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--muted);
+  color: var(--subtle);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -479,12 +489,12 @@ kbd {
   display: flex;
   gap: 16px;
   align-items: center;
-  min-height: 28px;
-  padding: 0 12px;
+  justify-content: flex-end;
+  min-height: 26px;
+  padding: 0 14px;
   padding-bottom: env(safe-area-inset-bottom);
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
+  background: var(--bg);
+  color: var(--subtle);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -498,12 +508,12 @@ kbd {
   border-radius: 5px;
   background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238c959f' stroke-width='1.5'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 6px center;
   appearance: none;
-  color: var(--fg);
-  font: 500 12px var(--font-ui);
+  color: inherit;
+  font: 12px var(--font-ui);
   cursor: pointer;
 }
-.status-select:hover { background: var(--active-line); }
-.save-state { margin-left: auto; }
+.status-select:hover { background: var(--active-line); color: var(--fg); }
+#doc-kind { order: -1; margin-right: auto; }
 .save-state[data-state="saved"] { color: var(--success); }
 .save-state:disabled { cursor: default; background: transparent; }
 .save-state[data-state="dirty"] { color: var(--fg); }
@@ -605,8 +615,8 @@ kbd {
   max-width: min(480px, calc(100vw - 32px));
   padding: 10px 14px;
   border-radius: 10px;
-  background: light-dark(#1f2328, #e6edf3);
-  color: light-dark(#ffffff, #0d1117);
+  background: light-dark(#2c2e33, #d7dae0);
+  color: light-dark(#ffffff, #282c34);
   box-shadow: var(--shadow);
   pointer-events: auto;
   animation: toast-in 0.18s ease-out;
@@ -655,21 +665,14 @@ kbd {
 .hljs-meta, .hljs-symbol { color: var(--syn-code); }
 
 /* ---- 響應式 ---- */
-@media (max-width: 1100px) {
-  .segmented .label { display: none; }
-  .segmented button { padding: 0 8px; }
-}
 @media (max-width: 720px) {
   :root { --editor-font-size: 16px; } /* iOS 字級低於 16px 會在聚焦時自動放大 */
-  .nav-toggle { display: inline-flex; }
   .split-only { display: none !important; }
-  .top-actions [data-command="palette"] { display: none; } /* 指令面板以鍵盤操作為主 */
   .top-actions { padding: 0 6px; }
   /* 活動列和側邊欄變成從左邊滑出的抽屜，點外面關閉。 */
   .activity-bar, .sidebar { position: absolute; top: 0; bottom: 0; z-index: 20; }
   .activity-bar { left: 0; width: var(--activity-width); }
   .sidebar { left: var(--activity-width); width: min(280px, calc(85vw - var(--activity-width))); box-shadow: var(--shadow); }
-  .workspace.outline-hidden .activity-bar { display: none; }
   .workspace:not(.outline-hidden)::after {
     content: "";
     position: absolute;
@@ -854,14 +857,13 @@ kbd {
   max-width: 220px;
   padding: 0 6px 0 14px;
   height: 100%;
-  border-right: 1px solid var(--border);
   color: var(--muted);
   font-size: 13px;
   cursor: pointer;
   user-select: none;
 }
-.tab:hover { color: var(--fg); background: color-mix(in srgb, var(--bg) 50%, transparent); }
-.tab[aria-selected="true"] { background: var(--bg); color: var(--fg); box-shadow: inset 0 2px 0 var(--accent); margin-bottom: -1px; }
+.tab:hover { color: var(--fg); background: var(--active-line); }
+.tab[aria-selected="true"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
 .tab-rename {
   width: 14em;
   min-width: 0;
@@ -896,6 +898,15 @@ kbd {
 .tab-close.dirty::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .tab-close.dirty:hover .icon { display: block; }
 .tab-close.dirty:hover::after { display: none; }
+/* 只開一個檔案：分頁列看起來就是置中的標題。 */
+.tab-bar.single { justify-content: center; }
+.tab-bar.single .tab { border-right: 0; background: transparent; box-shadow: none; color: var(--muted); font-weight: 500; }
+.tab-bar.single .tab:hover { color: var(--fg); }
+.tab-bar.single .tab-close:not(.dirty) { visibility: hidden; }
+.tab-bar.single .tab:hover .tab-close { visibility: visible; }
+/* 新分頁按鈕平常隱藏，滑鼠移到頂端列或用鍵盤操作時才出現。 */
+.tab-bar.single .tab-new { opacity: 0; transition: opacity 0.12s; }
+.topbar:hover .tab-bar.single .tab-new, .tab-bar.single .tab-new:focus-visible { opacity: 1; }
 .tab-new { flex: none; align-self: center; width: 30px !important; min-height: 30px; margin-left: 4px; color: var(--muted); }
 @media (pointer: coarse) {
   .tab-close { width: 32px; height: 32px; }
@@ -1124,9 +1135,13 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .print-frame { position: fixed; top: 0; left: -10000px; width: 900px; height: 600px; border: 0; }
 
 /* ---- 即時預覽：在編輯區直接顯示排版 ---- */
-.cm-editor.cm-lp .cm-scroller { font-family: var(--font-ui); }
-.cm-editor.cm-lp .cm-content { width: 100%; max-width: calc(var(--preview-width, 820px) + 40px); margin: 0 auto; }
-.cm-editor.cm-lp .cm-lp-h { color: var(--fg); font-weight: 700; line-height: 1.45; }
+.cm-editor.cm-lp { --lp-pad: 32px; }
+.cm-editor.cm-lp .cm-scroller { font-family: var(--font-doc); line-height: 1.8; }
+.cm-editor.cm-lp .cm-content { width: 100%; max-width: calc(var(--preview-width, 820px) + var(--lp-pad) * 2); margin: 0 auto; padding-top: 48px; }
+.cm-editor.cm-lp .cm-line { padding: 0 var(--lp-pad); }
+/* 像在看文件：不標示目前這一行。 */
+.cm-editor.cm-lp .cm-activeLine { background: transparent; }
+.cm-editor.cm-lp .cm-lp-h { color: var(--fg); font-weight: 600; line-height: 1.45; }
 .cm-editor.cm-lp .cm-lp-h * { color: inherit; }
 .cm-editor.cm-lp .cm-lp-h1 { font-size: 1.85em; padding-top: 0.4em; }
 .cm-editor.cm-lp .cm-lp-h2 { font-size: 1.5em; padding-top: 0.35em; }
@@ -1140,7 +1155,7 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .cm-lp-bullet { display: inline-block; min-width: 0.9em; color: var(--muted); }
 .cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.4em 0 0; vertical-align: -0.12em; accent-color: var(--accent); cursor: pointer; }
 .cm-lp-done { color: var(--muted); text-decoration: line-through; }
-.cm-editor.cm-lp .cm-line.cm-lp-quote { padding-left: 36px; background: linear-gradient(var(--border-strong), var(--border-strong)) 20px 0 / 3px 100% no-repeat; color: var(--muted); }
+.cm-editor.cm-lp .cm-line.cm-lp-quote { padding-left: calc(var(--lp-pad) + 16px); background: linear-gradient(var(--border), var(--border)) var(--lp-pad) 0 / 4px 100% no-repeat; color: var(--muted); }
 .cm-lp-hr { display: inline-block; width: 100%; height: 0; border-top: 2px solid var(--border); vertical-align: middle; }
 .cm-editor.cm-lp .cm-line.cm-lp-codeblock { background: color-mix(in srgb, var(--fg) 5%, transparent); font-family: var(--font-mono); font-size: 0.9em; }
 .cm-editor.cm-lp .cm-line.cm-lp-codeblock-first { border-radius: 6px 6px 0 0; }
@@ -1148,8 +1163,47 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .cm-editor.cm-lp .cm-line.cm-lp-fence { color: var(--subtle); font-size: 0.75em; }
 .cm-lp-image img { display: inline-block; max-width: 100%; max-height: 480px; border-radius: 6px; vertical-align: bottom; cursor: pointer; }
 .cm-lp-image-missing { color: var(--muted); cursor: pointer; }
-.cm-lp-block { white-space: normal; margin: 0 !important; padding: 6px 20px 10px !important; max-width: none !important; background: transparent !important; font-size: 1em !important; cursor: pointer; }
+.cm-lp-block { white-space: normal; margin: 0 !important; padding: 6px var(--lp-pad) 10px !important; max-width: none !important; background: transparent !important; font-size: 1em !important; cursor: pointer; }
 .cm-lp-block:hover { outline: 1px dashed var(--border-strong); outline-offset: 2px; border-radius: 6px; }
 .cm-lp-table table { margin: 0; }
 .cm-lp-math-block { text-align: center; }
 .cm-lp-math { cursor: pointer; }
+
+/* ---- 選取文字時浮出的格式按鈕 ---- */
+.cm-tooltip.cm-format-bubble {
+  display: flex;
+  gap: 1px;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+.cm-format-bubble .btn { width: 30px; min-height: 30px; color: var(--muted); }
+.cm-format-bubble .btn .icon { width: 16px; height: 16px; }
+.cm-format-bubble .btn:hover { color: var(--fg); border-color: transparent; background: var(--active-line); }
+.cm-format-bubble .format-sep { height: 16px; margin: 0 3px; }
+
+/* ---- 空白行左邊的「＋」 ---- */
+.cm-insert-handle { position: relative; display: inline-block; width: 0; height: 1em; vertical-align: text-bottom; }
+.cm-insert-handle button {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--subtle);
+  font: 400 18px/1 var(--font-ui);
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+.cm-insert-handle button:hover { border-color: var(--border); background: var(--surface); color: var(--fg); }
+/* 插入選單的定位點：不顯示，只用來決定選單出現的位置。 */
+.insert-anchor { position: fixed; z-index: -1; padding: 0; border: 0; background: none; opacity: 0; pointer-events: none; }

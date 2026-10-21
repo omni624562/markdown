@@ -80,6 +80,7 @@ import { Updater, versionLabel } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
 import type { FileVersion } from "./desktop.ts";
 import { setupSplitter } from "./ui/splitter.ts";
+import { insertHandle, selectionToolbar } from "./inline-tools.ts";
 import { toast } from "./ui/toast.ts";
 
 type ViewMode = "editor" | "live" | "split" | "preview";
@@ -173,7 +174,15 @@ let baseline = active.baseline;
 let fileBacked = active.fileBacked;
 let draftSaved = false;
 let view: ViewMode = "split";
+// 簡約版面（MarkText 式）成為預設：舊版的使用者也換一次，之後就照自己的選擇。
+if (storage.load("layout") !== "minimal") {
+  storage.save("layout", "minimal");
+  storage.save("outline", "hidden");
+  if (storage.load("view") !== "preview") storage.save("view", "live");
+}
 let outlineShown = storage.load("outline") !== "hidden";
+/** 編輯器目前是否套用了即時預覽（Markdown 且檢視為「即時預覽」）。 */
+let liveApplied = false;
 let splitRatio = Number(storage.load("split")) || 0.5;
 let themePref: ThemePref = (storage.load("theme") as ThemePref | null) ?? "system";
 let blocks: Block[] | null = null;
@@ -239,6 +248,16 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     openLink: (href) => void followLink(href).catch(reportError),
     enabled: () => !review.active,
   }),
+  markdownTools: [
+    selectionToolbar({
+      enabled: () => view !== "preview" && !settings.value.fixedToolbar && !review.active,
+      render: formatBubble,
+    }),
+    insertHandle({
+      enabled: () => liveApplied && !review.active && !narrowQuery.matches,
+      open: (anchor) => openInsertMenu(anchor.getBoundingClientRect()),
+    }),
+  ],
   extra: [
     review.extension,
     linkCompletion({
@@ -304,6 +323,8 @@ review.attach(editor.view);
 function updateCursor(v: EditorView): void {
   const { line, column, selected } = cursorInfo(v);
   status.cursor.textContent = `第 ${line} 行，第 ${column} 欄` + (selected ? `（已選取 ${selected} 字）` : "");
+  // 即時預覽像在看文件，只有選取文字時才顯示（選取字數）。
+  status.cursor.hidden = liveApplied && !selected;
 }
 
 let renderQueued = false;
@@ -656,11 +677,13 @@ function updateActiveHeading(): void {
 function renderStats({ stats }: RenderResult): void {
   if (kind === "json") {
     status.stats.textContent = `${editor.view.state.doc.lines.toLocaleString()} 行 · ${editor.text.length.toLocaleString()} 字元`;
+    status.stats.title = "";
     return;
   }
-  status.stats.textContent =
+  status.stats.textContent = `${stats.words.toLocaleString()} 字`;
+  status.stats.title =
     `${stats.words.toLocaleString()} 字 · ${stats.chars.toLocaleString()} 字元` +
-    (stats.readingMinutes ? ` · 約 ${stats.readingMinutes} 分鐘` : "");
+    (stats.readingMinutes ? ` · 約 ${stats.readingMinutes} 分鐘讀完` : "");
 }
 
 function renderSaveState(): void {
@@ -678,7 +701,8 @@ function renderSaveState(): void {
   status.save.dataset.state = dirty ? "dirty" : "saved";
   if (!dirty) status.save.textContent = fileBacked ? "已儲存" : "";
   else status.save.textContent = (fileBacked ? "尚未存檔" : "尚未存成檔案") + (draftSaved ? " · 草稿已自動保存" : "");
-  status.save.hidden = !status.save.textContent;
+  // 已儲存時不佔位置；只有需要注意時才顯示。
+  status.save.hidden = !dirty;
   status.save.title = dirty ? "按一下存檔（Ctrl+S）" : "";
   (status.save as HTMLButtonElement).disabled = !dirty;
 }
@@ -1188,6 +1212,8 @@ function persistSession(): void {
 }
 
 function renderTabs(): void {
+  // 只開一個檔案時，分頁列看起來就像標題。
+  $("#tab-bar").classList.toggle("single", docs.length === 1);
   tabBar.render(
     docs.map((d) => ({
       id: d.id,
@@ -1615,10 +1641,10 @@ commands.register(
   },
   {
     id: "toggle-format-bar",
-    title: "顯示／隱藏格式工具列",
+    title: "固定顯示／隱藏格式工具列",
     group: "檢視",
     icon: "bold",
-    run: () => settings.update({ formatBar: !settings.value.formatBar }),
+    run: () => settings.update({ fixedToolbar: !settings.value.fixedToolbar }),
   },
   {
     id: "find",
@@ -1664,6 +1690,16 @@ commands.register(
   fmt("code-block", "程式碼區塊", "square-code", () => editor.exec(insertBlock("```\n程式碼\n```", "程式碼"))),
   fmt("table", "插入表格", "table", () => editor.exec(insertBlock(TABLE_TEMPLATE, "欄位 1"))),
   fmt("hr", "分隔線", "minus", () => editor.exec(insertBlock("---"))),
+  fmt("math-block", "數學公式區塊", "sigma", () => editor.exec(insertBlock("$$\n公式\n$$", "公式"))),
+  fmt("mermaid-block", "流程圖", "workflow", () =>
+    editor.exec(insertBlock("```mermaid\nflowchart LR\n  A[開始] --> B[結束]\n```", "A[開始] --> B[結束]")),
+  ),
+  fmt("insert-image", "圖片…", "image", () => imageInput.click()),
+  fmt("insert-menu", "插入…", "plus", () => {
+    const pos = editor.view.state.selection.main.head;
+    const at = editor.view.coordsAtPos(pos);
+    if (at) openInsertMenu(new DOMRect(at.left, at.top, 0, at.bottom - at.top));
+  }, "Mod-Shift-Enter"),
   fmt("table-format", "表格：對齊目前的表格", "table", () => runTableEdit("format")),
   fmt("table-insert-row", "表格：在下方插入一列", "table", () => runTableEdit("insert-row")),
   fmt("table-insert-column", "表格：在右側插入一欄", "table", () => runTableEdit("insert-column")),
@@ -2154,6 +2190,10 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "-",
   "export-html",
   "export-pdf",
+  "-",
+  "toggle-outline",
+  "palette",
+  "settings",
 ]);
 setupMenu($<HTMLButtonElement>("#files-more"), commands, ["open-folder", "connect-webdav", "open-recent"]);
 status.save.addEventListener("click", () => void commands.run("save").catch(reportError));
@@ -2183,7 +2223,95 @@ function formatMenuButton(id: string, label: string, iconName: string, entries: 
   return b;
 }
 const headingMenu = formatMenuButton("fmt-heading", "標題", "heading", ["h1", "h2", "h3"]);
-const insertMenu = formatMenuButton("fmt-insert", "插入", "plus", ["table", "code-block", "hr"]);
+const insertMenu = formatMenuButton("fmt-insert", "插入", "plus", [
+  "table",
+  "code-block",
+  "math-block",
+  "mermaid-block",
+  "insert-image",
+  "hr",
+]);
+
+/** 執行指令的按鈕（格式工具列、選取時浮出的按鈕共用）。 */
+function commandButton(id: string, withLabel = false): HTMLButtonElement {
+  const cmd = commands.get(id)!;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = withLabel ? "btn" : "btn icon-only";
+  b.title = withKeys(cmd.title, cmd.keys);
+  b.setAttribute("aria-label", cmd.title);
+  b.append(icon(cmd.icon!));
+  if (withLabel) b.append(Object.assign(document.createElement("span"), { textContent: cmd.title }));
+  // 用 mousedown 阻止預設行為，按下按鈕時編輯器才不會失去選取範圍。
+  b.addEventListener("mousedown", (e) => e.preventDefault());
+  b.addEventListener("click", () => commands.run(id).catch(reportError));
+  return b;
+}
+
+function separator(className: string): HTMLElement {
+  const sep = document.createElement("span");
+  sep.className = className;
+  sep.setAttribute("aria-hidden", "true");
+  return sep;
+}
+
+/** 選取文字時浮出的格式按鈕。 */
+function formatBubble(): HTMLElement {
+  const bar = document.createElement("div");
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", "格式");
+  bar.append(...["bold", "italic", "strike", "code", "link"].map((id) => commandButton(id)));
+  if (ai?.enabled) bar.append(separator("format-sep"), commandButton("ai-actions"));
+  return bar;
+}
+
+/** 插入選單：空白行左邊的「＋」或 Ctrl+Shift+Enter 開啟，位置跟著按鈕或游標。 */
+const insertAnchor = document.createElement("button");
+insertAnchor.type = "button";
+insertAnchor.id = "insert-anchor";
+insertAnchor.className = "insert-anchor";
+insertAnchor.tabIndex = -1;
+document.body.append(insertAnchor);
+const insertMenuEl = setupMenu(insertAnchor, commands, [
+  "h1",
+  "h2",
+  "h3",
+  "-",
+  "bullet",
+  "ordered",
+  "task",
+  "quote",
+  "-",
+  "table",
+  "code-block",
+  "math-block",
+  "mermaid-block",
+  "insert-image",
+  "hr",
+]);
+// 按 Esc 或點外面關閉時，焦點回到編輯器。
+insertMenuEl.addEventListener("toggle", (e) => {
+  const closed = (e as ToggleEvent).newState === "closed";
+  if (closed && (document.activeElement === insertAnchor || document.activeElement === document.body)) editor.view.focus();
+});
+
+function openInsertMenu(at: DOMRect): void {
+  Object.assign(insertAnchor.style, {
+    left: `${at.left}px`,
+    top: `${at.top}px`,
+    width: `${at.width}px`,
+    height: `${at.height}px`,
+  });
+  if (!insertMenuEl.matches(":popover-open")) insertAnchor.click();
+}
+
+const imageInput = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", multiple: true, hidden: true });
+document.body.append(imageInput);
+imageInput.addEventListener("change", () => {
+  const files = imageFiles(imageInput.files);
+  imageInput.value = "";
+  if (files.length) void insertImages(files).catch(reportError);
+});
 
 /**
  * 格式工具列依文件類型切換：Markdown 顯示常用格式（標題與插入收在下拉選單裡），
@@ -2196,29 +2324,12 @@ function buildFormatBar(): void {
       : kind === "json"
         ? [["format-json"]]
         : [];
-  formatBar.hidden = groups.length === 0 || !settings.value.formatBar;
+  // Markdown 的固定工具列預設不顯示（選取時才浮出）；JSON 的「格式化」只有一個按鈕，一直顯示。
+  formatBar.hidden = groups.length === 0 || (kind === "markdown" && !settings.value.fixedToolbar);
   formatBar.replaceChildren(
     ...groups.flatMap((items, gi) => {
-      const buttons = items.map((item) => {
-        if (typeof item !== "string") return item;
-        const cmd = commands.get(item)!;
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = kind === "json" ? "btn" : "btn icon-only";
-        b.title = withKeys(cmd.title, cmd.keys);
-        b.setAttribute("aria-label", cmd.title);
-        b.append(icon(cmd.icon!));
-        if (kind === "json") b.append(Object.assign(document.createElement("span"), { textContent: cmd.title }));
-        // 用 mousedown 阻止預設行為，按下按鈕時編輯器才不會失去選取範圍。
-        b.addEventListener("mousedown", (e) => e.preventDefault());
-        b.addEventListener("click", () => commands.run(item).catch(reportError));
-        return b;
-      });
-      if (gi === 0) return buttons;
-      const sep = document.createElement("span");
-      sep.className = "format-sep";
-      sep.setAttribute("aria-hidden", "true");
-      return [sep, ...buttons];
+      const buttons = items.map((item) => (typeof item === "string" ? commandButton(item, kind === "json") : item));
+      return gi === 0 ? buttons : [separator("format-sep"), ...buttons];
     }),
   );
 }
@@ -2242,8 +2353,6 @@ function previewVisible(): boolean {
   return view === "preview" || (view === "split" && !narrowQuery.matches);
 }
 
-let liveApplied = false;
-
 function applyLayout(): void {
   const narrow = narrowQuery.matches;
   // 手機寬度放不下並排，分割模式改為只顯示編輯區（可用分頁切換到預覽）。
@@ -2259,7 +2368,7 @@ function applyLayout(): void {
   workspace.classList.toggle("outline-hidden", !outlineShown);
   workspace.classList.toggle("narrow", narrow);
   const cols = [
-    narrow ? "0px" : "var(--activity-width)",
+    narrow || !outlineShown ? "0px" : "var(--activity-width)",
     outlineShown && !narrow ? "var(--outline-width)" : "0px",
     layout === "preview" ? "0px" : layout === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
     layout === "split" ? "var(--splitter-width)" : "0px",
@@ -2280,7 +2389,7 @@ function setView(mode: ViewMode): void {
   applyLayout();
   syncPreview();
   updateActiveHeading();
-  if (mode === "editor") editor.view.focus();
+  if (mode === "editor" || mode === "live") editor.view.focus();
 }
 
 function setOutline(shown: boolean): void {
@@ -2343,7 +2452,7 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
     });
   }
   if (changed.includes("editorFontSize")) editor.view.requestMeasure();
-  if (changed.includes("formatBar")) {
+  if (changed.includes("fixedToolbar")) {
     buildFormatBar();
     editor.view.requestMeasure();
   }

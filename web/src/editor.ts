@@ -79,6 +79,8 @@ export interface EditorOptions {
   livePreview?: boolean;
   /** 即時預覽的擴充（由呼叫端建立，需要圖片網址、表格轉換等）。 */
   live?: Extension;
+  /** Markdown 專用的擴充（例如選取文字時浮出的格式按鈕）。 */
+  markdownTools?: Extension;
   /** 其他擴充（例如差異檢視）。 */
   extra?: Extension[];
 }
@@ -179,6 +181,7 @@ export class Editor {
           common,
           brackets,
           this.#options.livePreview ? (this.#options.live ?? []) : [],
+          this.#options.markdownTools ?? [],
           // 表格按鍵優先於縮排與清單延續；不在表格中時會交給下一個處理者。
           Prec.high(
             keymap.of([

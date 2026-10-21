@@ -7,7 +7,7 @@ export type MenuEntry = string | "-" | { label: string; icon?: string; checked: 
  * 下拉選單：用原生 Popover API（點外面、按 Esc 自動關閉），
  * 項目直接取自指令中心，名稱與快速鍵和指令面板一致。
  */
-export function setupMenu(button: HTMLButtonElement, commands: Commands, entries: MenuEntry[]): void {
+export function setupMenu(button: HTMLButtonElement, commands: Commands, entries: MenuEntry[]): HTMLDivElement {
   const menu = document.createElement("div");
   menu.className = "menu";
   menu.popover = "auto";
@@ -88,4 +88,5 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
     else return;
     e.preventDefault();
   });
+  return menu;
 }
