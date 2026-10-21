@@ -532,11 +532,13 @@ kbd {
   gap: 16px;
   align-items: center;
   justify-content: flex-end;
-  min-height: 26px;
+  min-height: 28px;
   padding: 0 14px;
   padding-bottom: env(safe-area-inset-bottom);
-  background: var(--bg);
-  color: var(--subtle);
+  /* 和頂端列一樣是淺灰底，上緣一條分隔線，和內文清楚分開。 */
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -554,7 +556,7 @@ kbd {
   font: 12px var(--font-ui);
   cursor: pointer;
 }
-.status-select:hover { background: var(--active-line); color: var(--fg); }
+.status-select:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 #doc-kind { order: -1; margin-right: auto; }
 .save-state[data-state="saved"] { color: var(--success); }
 .save-state:disabled { cursor: default; background: transparent; }
@@ -1015,7 +1017,7 @@ kbd {
   cursor: pointer;
 }
 .status-btn .icon { width: 14px; height: 14px; }
-.status-btn:hover, .status-btn[aria-pressed="true"] { background: var(--active-line); color: var(--fg); }
+.status-btn:hover, .status-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 
 /* ---- 終端機面板 ---- */
 body.resizing-rows { cursor: row-resize; user-select: none; }
