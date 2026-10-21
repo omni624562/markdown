@@ -188,6 +188,7 @@ fn main() {
             workspace::list_dir,
             workspace::list_files,
             workspace::create_entry,
+            workspace::create_workflow,
             workspace::rename_entry,
             workspace::trash_entry,
             workspace::reveal_entry,

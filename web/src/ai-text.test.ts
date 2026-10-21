@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyEdits, buildPrompt, cleanResult } from "./ai-text.ts";
+import { applyEdits, buildPrompt, cleanResult, fileReference } from "./ai-text.ts";
 
 test("applyEdits 依原文逐一取代", () => {
   const text = "# 週報\n\n本週完成檔案樹。\n下週做 AI。\n";
@@ -32,4 +32,12 @@ test("buildPrompt 包含指示與原文", () => {
   const p = buildPrompt("翻譯成英文", "你好");
   assert.match(p, /指示：翻譯成英文/);
   assert.ok(p.endsWith("原文：\n你好"));
+});
+
+test("給終端機 AI 的檔案參照", () => {
+  assert.equal(fileReference("C:\\筆記\\週報\\十月.md", "C:\\筆記", [3, 8]), "@週報/十月.md#L3-8");
+  assert.equal(fileReference("c:\\筆記\\a.md", "C:\\筆記\\", [5, 5]), "@a.md#L5");
+  assert.equal(fileReference("/home/me/notes/a.md", "/home/me/notes", null), "@a.md");
+  assert.equal(fileReference("D:\\其他\\b.md", "C:\\筆記", null), "@D:\\其他\\b.md");
+  assert.equal(fileReference("/home/me/my notes/a b.md", "/home/me/my notes", [1, 2]), '@"a b.md"#L1-2');
 });

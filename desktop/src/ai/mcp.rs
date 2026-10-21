@@ -1,5 +1,6 @@
 //! 編輯器的 MCP 伺服器：讓 Claude Code、Codex 知道使用者正在看哪份文件、選了哪一段，
 //! 並能「提出」修改。修改不會直接寫入檔案，而是在編輯器中以差異檢視呈現，由使用者決定。
+//! AI 也能要求在編輯器的終端機執行指令；每次都要使用者同意，執行過程顯示在終端機分頁。
 //!
 //! 只綁定 127.0.0.1，每個請求都要帶 `Authorization: Bearer <權杖>`。
 //! 權杖存在 app 設定資料夾，優先使用固定的連接埠，這樣手動註冊過的設定下次啟動仍然有效。
@@ -24,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::oneshot;
 
+use super::term::{strip_ansi, Terminals};
 use crate::workspace::{is_doc, resolve_inside, Workspace};
 
 /// Codex 從這個環境變數讀取權杖。
@@ -97,6 +99,29 @@ impl Mcp {
     }
 }
 
+/// AI 要求執行的指令（等使用者同意）。
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CommandEvent {
+    id: u64,
+    command: String,
+    reason: String,
+    cwd: String,
+}
+
+/// 指令執行結果最多回傳的字元數。
+const OUTPUT_CHARS: usize = 12_000;
+
+/// 只留最後 `max` 個字元（AI 通常只需要結尾的錯誤訊息）。
+fn tail(text: &str, max: usize) -> String {
+    let count = text.chars().count();
+    if count <= max {
+        return text.to_string();
+    }
+    let skip: String = text.chars().skip(count - max).collect();
+    format!("…（前面省略 {} 個字元）\n{skip}", count - max)
+}
+
 /// 使用者對提議的決定（由前端回報）。
 #[derive(Deserialize)]
 pub struct Decision {
@@ -146,6 +171,24 @@ struct ReplaceSelectionArgs {
     replacement: String,
     /// 用一句話向使用者說明這次修改的目的。
     summary: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct RunArgs {
+    /// 要執行的指令。Windows 上用 PowerShell 執行，其他系統用預設的 shell；工作目錄是使用者開啟的資料夾。
+    command: String,
+    /// 用一句話說明為什麼要執行（會顯示給使用者，幫助他決定要不要同意）。
+    reason: Option<String>,
+    /// 最多等幾秒（預設 40，上限 300）。時間到了指令會繼續執行，之後可以用 read_terminal_output 查看。
+    wait_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ReadTerminalArgs {
+    /// 終端機編號（可以從 list_terminals 或 run_command 的結果取得）。
+    id: u32,
+    /// 最多回傳最後幾個字元（預設 12000）。
+    max_chars: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -262,6 +305,107 @@ impl EditorTools {
     }
 
     #[tool(
+        description = "在使用者的編輯器內嵌終端機執行一個指令，並回傳結束代碼與輸出。每次執行前編輯器都會請使用者同意；使用者會在終端機分頁看到執行過程。適合跑 git、建置、轉檔等需要讓使用者看到的指令。"
+    )]
+    async fn run_command(&self, Parameters(args): Parameters<RunArgs>) -> Result<String, String> {
+        let command = args.command.trim().to_string();
+        if command.is_empty() {
+            return Err("command 不能是空的".into());
+        }
+        let cwd = self
+            .app
+            .state::<Workspace>()
+            .root()
+            .or_else(|| self.app.path().home_dir().ok())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
+        let decision = self
+            .ask(
+                id,
+                "ai-command",
+                CommandEvent {
+                    id,
+                    command: command.clone(),
+                    reason: args.reason.unwrap_or_default(),
+                    cwd,
+                },
+            )
+            .await?;
+        if !decision.ok {
+            return Err(decision.message);
+        }
+        let terms = self.app.state::<Terminals>();
+        let term = terms.run_command(&self.app, &command)?;
+        let wait = Duration::from_secs(args.wait_seconds.unwrap_or(40).clamp(1, 300));
+        let started = tokio::time::Instant::now();
+        loop {
+            let log = terms.log(term).ok_or("終端機已被使用者關閉")?;
+            if let Some(code) = log.exit {
+                let code = code.map_or("未知".to_string(), |c| c.to_string());
+                return Ok(format!(
+                    "終端機編號：{term}\n結束代碼：{code}\n\n輸出：\n{}",
+                    tail(&strip_ansi(&log.text), OUTPUT_CHARS)
+                ));
+            }
+            if started.elapsed() >= wait {
+                return Ok(format!(
+                    "終端機編號：{term}\n指令還在執行中（已等 {} 秒）。之後可以用 read_terminal_output 查看。\n\n目前的輸出：\n{}",
+                    wait.as_secs(),
+                    tail(&strip_ansi(&log.text), OUTPUT_CHARS)
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
+    #[tool(description = "列出編輯器中的終端機分頁（編號、名稱、是否還在執行）。")]
+    fn list_terminals(&self) -> String {
+        let list = self.app.state::<Terminals>().list();
+        if list.is_empty() {
+            return "目前沒有開啟的終端機。".into();
+        }
+        list.iter()
+            .map(|(id, log)| {
+                let state = match log.exit {
+                    None => "執行中".to_string(),
+                    Some(Some(c)) => format!("已結束（代碼 {c}）"),
+                    Some(None) => "已結束".to_string(),
+                };
+                format!("- {id}：{}｜{state}", log.label)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[tool(
+        description = "讀取編輯器中某個終端機分頁最近的輸出（已去掉顏色等控制碼）。可以用來查看使用者在終端機看到的錯誤訊息，或 run_command 還沒跑完的指令。"
+    )]
+    fn read_terminal_output(
+        &self,
+        Parameters(args): Parameters<ReadTerminalArgs>,
+    ) -> Result<String, String> {
+        let log = self
+            .app
+            .state::<Terminals>()
+            .log(args.id)
+            .ok_or("沒有這個終端機（可能已被關閉），可以用 list_terminals 查看")?;
+        let state = match log.exit {
+            None => "執行中".to_string(),
+            Some(Some(c)) => format!("已結束（代碼 {c}）"),
+            Some(None) => "已結束".to_string(),
+        };
+        Ok(format!(
+            "{}｜{state}\n\n{}",
+            log.label,
+            tail(
+                &strip_ansi(&log.text),
+                args.max_chars.unwrap_or(OUTPUT_CHARS).max(100)
+            )
+        ))
+    }
+
+    #[tool(
         description = "向使用者提出用新文字取代目前的選取範圍。編輯器會標示差異，由使用者決定是否套用，結果會回覆給你。"
     )]
     async fn propose_replace_selection(
@@ -306,6 +450,25 @@ impl EditorTools {
         Ok(p)
     }
 
+    /// 請使用者同意執行指令。等太久就取消，避免使用者稍後按下同意時 AI 已經不在等結果。
+    async fn ask(&self, id: u64, event: &str, payload: CommandEvent) -> Result<Decision, String> {
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().unwrap().insert(id, tx);
+        self.app.emit(event, payload).map_err(|e| e.to_string())?;
+        match tokio::time::timeout(DECISION_WAIT, rx).await {
+            Ok(Ok(d)) => Ok(d),
+            Ok(Err(_)) => Err("編輯器已取消這個要求".into()),
+            Err(_) => {
+                self.pending.lock().unwrap().remove(&id);
+                let _ = self.app.emit("ai-command-expired", id);
+                Err(
+                    "使用者沒有在時間內同意，指令沒有執行。需要的話可以請使用者準備好後再試一次。"
+                        .into(),
+                )
+            }
+        }
+    }
+
     async fn propose(&self, mut event: ProposalEvent) -> Result<String, String> {
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         event.id = id;
@@ -332,7 +495,7 @@ impl ServerHandler for EditorTools {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
             .with_instructions(
-            "Markdown 編輯器：可以讀取使用者正在編輯的文件與選取範圍。要修改文件時請使用 propose_edit 或 propose_replace_selection，由使用者在編輯器中確認，不要直接寫入檔案。",
+            "Markdown 編輯器：可以讀取使用者正在編輯的文件與選取範圍。要修改文件時請使用 propose_edit 或 propose_replace_selection，由使用者在編輯器中確認，不要直接寫入檔案。需要讓使用者看到執行過程的指令可以用 run_command（每次都會請使用者同意），用 read_terminal_output 讀取終端機的輸出。",
         )
     }
 }
@@ -484,17 +647,26 @@ pub fn mcp_sync(snapshot: Snapshot, mcp: State<'_, Mcp>) {
     *mcp.snapshot.write().unwrap() = snapshot;
 }
 
-/// 使用者對提議的決定。
+/// 使用者對提議或指令的決定。回傳 false 表示 AI 已經不在等了（逾時或伺服器已停止）。
 #[tauri::command]
-pub fn mcp_respond(id: u64, decision: Decision, mcp: State<'_, Mcp>) {
-    if let Some(tx) = mcp.pending.lock().unwrap().remove(&id) {
-        let _ = tx.send(decision);
+pub fn mcp_respond(id: u64, decision: Decision, mcp: State<'_, Mcp>) -> bool {
+    match mcp.pending.lock().unwrap().remove(&id) {
+        Some(tx) => tx.send(decision).is_ok(),
+        None => false,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keeps_the_end_of_long_output() {
+        assert_eq!(tail("短", 10), "短");
+        let t = tail("一二三四五", 2);
+        assert!(t.ends_with("\n四五"));
+        assert!(t.contains("省略 3 個字元"));
+    }
 
     #[test]
     fn token_comparison() {

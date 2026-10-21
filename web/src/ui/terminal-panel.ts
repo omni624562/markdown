@@ -1,5 +1,6 @@
 /**
  * 下方的終端機面板（桌面版）：可以開好幾個分頁，執行殼層、Claude Code 或 Codex。
+ * AI 透過 MCP 執行的指令也會開一個分頁（由 Rust 端建立）。
  * xterm.js 只在第一次打開面板時才載入。
  */
 import type { Terminal } from "@xterm/xterm";
@@ -14,7 +15,11 @@ const HEIGHT = { min: 120, default: 280 };
 
 interface Session {
   id: number;
+  /** `run`：AI 要求執行的單一指令。 */
+  program: TermProgram | "run";
   label: string;
+  /** 最後一次收到輸出的時間（判斷程式是否已經啟動完成）。 */
+  lastOutput: number;
   term: Terminal;
   fit: FitAddon;
   host: HTMLElement;
@@ -43,6 +48,8 @@ export class TerminalPanel {
   #active: Session | null = null;
   /** 還沒對應到分頁的輸出（程式啟動得比前端登記分頁還快）。 */
   #early = new Map<number, string[]>();
+  /** 還沒對應到分頁就結束的程式（編號 → 結束代碼）。 */
+  #exitedEarly = new Map<number, number | null>();
   #resizeTimer = 0;
   #onLayout: () => void;
 
@@ -83,15 +90,16 @@ export class TerminalPanel {
 
     void d.onTermOutput(({ id, data }) => {
       const s = this.#sessions.find((x) => x.id === id);
-      if (s) s.term.write(data);
-      else this.#early.set(id, [...(this.#early.get(id) ?? []), data]);
+      if (s) {
+        s.term.write(data);
+        s.lastOutput = Date.now();
+      } else this.#early.set(id, [...(this.#early.get(id) ?? []), data]);
     });
+    void d.onTermAttached(({ id, label }) => void this.#attach(id, label));
     void d.onTermExit(({ id, code }) => {
       const s = this.#sessions.find((x) => x.id === id);
-      if (!s) return;
-      s.exited = true;
-      s.term.write(`\r\n\x1b[2m[程序已結束${code ? `（代碼 ${code}）` : ""}，按任意鍵關閉這個分頁]\x1b[0m\r\n`);
-      this.#renderTabs();
+      if (s) this.#markExited(s, code);
+      else this.#exitedEarly.set(id, code);
     });
   }
 
@@ -125,7 +133,73 @@ export class TerminalPanel {
   }
 
   /** 開一個新分頁執行指定的程式。 */
-  async start(program: TermProgram): Promise<void> {
+  async start(program: TermProgram): Promise<Session | null> {
+    const view = await this.#createView();
+    let id: number;
+    try {
+      id = await this.#d.termOpen(program, view.term.cols, view.term.rows);
+    } catch (e) {
+      view.term.dispose();
+      view.host.remove();
+      toast(e instanceof Error ? e.message : String(e), { tone: "error", duration: 10000 });
+      if (!this.#sessions.length) this.hide();
+      return null;
+    }
+    const count = this.#sessions.filter((s) => s.program === program).length;
+    return this.#register(id, program, count ? `${LABELS[program]} ${count + 1}` : LABELS[program], view);
+  }
+
+  /** 顯示 Rust 端已經啟動的終端機（AI 執行的指令）。焦點留在編輯器，不打斷使用者。 */
+  async #attach(id: number, label: string): Promise<void> {
+    const view = await this.#createView();
+    this.#register(id, "run", label, view, false);
+    // 程式可能在前端建立分頁前就結束了。
+    if (this.#exitedEarly.has(id)) {
+      this.#markExited(this.#sessions.find((s) => s.id === id)!, this.#exitedEarly.get(id) ?? null);
+      this.#exitedEarly.delete(id);
+    }
+  }
+
+  /**
+   * 把文字送到終端機中的 Claude Code／Codex 輸入列（用括號貼上模式，不會被當成按鍵指令）。
+   * 沒有正在執行的 AI 時，先啟動 `preferred`，等它準備好再送出。
+   */
+  async sendToAi(text: string, preferred: TermProgram): Promise<boolean> {
+    const isAi = (s: Session) => (s.program === "claude" || s.program === "codex") && !s.exited;
+    let target = this.#active && isAi(this.#active) ? this.#active : [...this.#sessions].reverse().find(isAi);
+    if (!target) {
+      const started = await this.start(preferred);
+      if (!started) return false;
+      target = started;
+      await this.#settled(target);
+    } else {
+      this.#el.hidden = false;
+      this.#onLayout();
+      this.#activate(target);
+    }
+    await this.#d.termWrite(target.id, `\x1b[200~${text}\x1b[201~`);
+    target.term.focus();
+    return true;
+  }
+
+  /** 開一個新的終端機執行一行指令；使用者看得到過程，也可以接著操作。 */
+  async runInShell(command: string): Promise<void> {
+    const s = await this.start("shell");
+    if (!s) return;
+    await this.#settled(s);
+    await this.#d.termWrite(s.id, `${command}\r`);
+  }
+
+  /** 等程式開始輸出，而且安靜一小段時間（啟動畫面畫完），最多等 20 秒。 */
+  async #settled(s: Session): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < 20_000 && !s.exited) {
+      if (s.lastOutput && Date.now() - s.lastOutput > 1200) return;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  async #createView(): Promise<{ term: Terminal; fit: FitAddon; host: HTMLElement }> {
     this.#el.hidden = false;
     this.#onLayout();
     const { Terminal, FitAddon } = await loadXterm();
@@ -157,33 +231,33 @@ export class TerminalPanel {
       return true;
     });
 
-    let id: number;
-    try {
-      id = await this.#d.termOpen(program, term.cols, term.rows);
-    } catch (e) {
-      term.dispose();
-      host.remove();
-      toast(e instanceof Error ? e.message : String(e), { tone: "error", duration: 10000 });
-      if (!this.#sessions.length) this.hide();
-      return;
-    }
-    const count = this.#sessions.filter((s) => s.label.startsWith(LABELS[program])).length;
-    const session: Session = {
-      id,
-      label: count ? `${LABELS[program]} ${count + 1}` : LABELS[program],
-      term,
-      fit,
-      host,
-      exited: false,
-    };
+    return { term, fit, host };
+  }
+
+  #register(
+    id: number,
+    program: Session["program"],
+    label: string,
+    view: { term: Terminal; fit: FitAddon; host: HTMLElement },
+    focus = true,
+  ): Session {
+    const early = this.#early.get(id) ?? [];
+    const session: Session = { id, program, label, lastOutput: early.length ? Date.now() : 0, ...view, exited: false };
     this.#sessions.push(session);
-    for (const data of this.#early.get(id) ?? []) term.write(data);
+    for (const data of early) view.term.write(data);
     this.#early.delete(id);
-    term.onData((data) => {
+    view.term.onData((data) => {
       if (session.exited) this.close(session);
       else void this.#d.termWrite(id, data).catch(() => {});
     });
-    this.#activate(session);
+    this.#activate(session, focus);
+    return session;
+  }
+
+  #markExited(s: Session, code: number | null): void {
+    s.exited = true;
+    s.term.write(`\r\n\x1b[2m[程式已結束${code ? `（代碼 ${code}）` : ""}，按任意鍵關閉這個分頁]\x1b[0m\r\n`);
+    this.#renderTabs();
   }
 
   close(session: Session): void {
@@ -211,14 +285,19 @@ export class TerminalPanel {
     this.#active?.term.focus();
   }
 
-  #activate(session: Session): void {
+  #activate(session: Session, focus = true): void {
     this.#active = session;
     for (const s of this.#sessions) s.host.hidden = s !== session;
     this.#renderTabs();
     requestAnimationFrame(() => {
       this.#fit(session);
-      session.term.focus();
+      if (focus) session.term.focus();
     });
+  }
+
+  /** 有沒有正在執行的 Claude Code／Codex 分頁。 */
+  get hasAiSession(): boolean {
+    return this.#sessions.some((s) => (s.program === "claude" || s.program === "codex") && !s.exited);
   }
 
   #renderTabs(): void {

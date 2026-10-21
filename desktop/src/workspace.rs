@@ -395,6 +395,29 @@ fn create_entry_now(
     Ok(path_string(&target))
 }
 
+/// 在工作區的 `.github/workflows/` 建立一個 GitHub Actions 工作流程檔。已經存在時不覆蓋。
+#[tauri::command]
+pub async fn create_workflow(app: AppHandle, name: String, text: String) -> Result<String, String> {
+    crate::io::blocking(move || {
+        let root = app.state::<Workspace>().require_root()?;
+        let name = validate_name(&name)?;
+        if !name.ends_with(".yml") {
+            return Err("工作流程檔名必須是 .yml".into());
+        }
+        let dir = root.join(".github").join("workflows");
+        let target = dir.join(name);
+        if target.exists() {
+            return Err(format!("「.github/workflows/{name}」已經存在，沒有覆蓋"));
+        }
+        fs::create_dir_all(&dir)
+            .map_err(|e| crate::io::describe(&e, "無法建立 .github/workflows 資料夾"))?;
+        crate::files::write_atomic(&target, text.as_bytes())
+            .map_err(|e| crate::io::describe(&e, "無法寫入工作流程檔"))?;
+        Ok(path_string(&target))
+    })
+    .await
+}
+
 /// 重新命名（同一個資料夾內）。已開啟的檔案會沿用原本的狀態。
 #[tauri::command]
 pub async fn rename_entry(

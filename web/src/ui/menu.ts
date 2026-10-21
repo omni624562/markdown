@@ -20,8 +20,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
   button.popoverTargetElement = menu;
 
   const build = () => {
-    menu.replaceChildren(
-      ...entries.flatMap((entry): HTMLElement[] => {
+    const items = entries.flatMap((entry): HTMLElement[] => {
         if (entry === "-") {
           const hr = document.createElement("div");
           hr.className = "menu-sep";
@@ -52,8 +51,16 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
           run();
         });
         return [item];
-      }),
-    );
+      });
+    // 隱藏的項目可能讓分隔線相鄰或出現在頭尾，一併拿掉。
+    const isSep = (el: HTMLElement) => el.classList.contains("menu-sep");
+    const shown: HTMLElement[] = [];
+    for (const el of items) {
+      if (isSep(el) && (!shown.length || isSep(shown[shown.length - 1]))) continue;
+      shown.push(el);
+    }
+    if (shown.length && isSep(shown[shown.length - 1])) shown.pop();
+    menu.replaceChildren(...shown);
   };
 
   menu.addEventListener("beforetoggle", (e) => {

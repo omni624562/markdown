@@ -2,6 +2,9 @@
 //! 輸出以事件傳給前端的 xterm.js。
 //!
 //! 前端只能選擇「殼層／claude／codex」三種程式，參數由這裡決定，不能執行任意命令。
+//! AI 透過 MCP 要求執行的指令（`run_command`）一律先經過使用者在編輯器中同意。
+//!
+//! 每個終端機的輸出會保留最後一段（去掉控制碼），讓 AI 可以讀取執行結果。
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -31,10 +34,36 @@ struct Session {
     killer: Box<dyn ChildKiller + Send + Sync>,
 }
 
+/// 每個終端機最多保留的輸出（位元組）。
+const LOG_LIMIT: usize = 256 * 1024;
+
+/// 終端機的輸出紀錄（程式結束後保留到使用者關閉分頁）。
+#[derive(Clone, Default)]
+pub struct Log {
+    pub label: String,
+    pub text: String,
+    /// `Some` 表示程式已結束（內層是結束代碼）。
+    pub exit: Option<Option<u32>>,
+}
+
+impl Log {
+    fn push(&mut self, data: &str) {
+        self.text.push_str(data);
+        if self.text.len() > LOG_LIMIT {
+            let mut cut = self.text.len() - LOG_LIMIT / 2;
+            while !self.text.is_char_boundary(cut) {
+                cut += 1;
+            }
+            self.text.drain(..cut);
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Terminals {
     next: AtomicU32,
     sessions: Mutex<HashMap<u32, Session>>,
+    logs: Mutex<HashMap<u32, Log>>,
 }
 
 impl Terminals {
@@ -44,6 +73,208 @@ impl Terminals {
             let _ = s.killer.kill();
         }
     }
+
+    /// 一個終端機的輸出紀錄。
+    pub fn log(&self, id: u32) -> Option<Log> {
+        self.logs.lock().unwrap().get(&id).cloned()
+    }
+
+    /// 所有終端機（編號、名稱、是否已結束），依編號排序。
+    pub fn list(&self) -> Vec<(u32, Log)> {
+        let mut all: Vec<(u32, Log)> = self
+            .logs
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, l)| {
+                (
+                    *id,
+                    Log {
+                        text: String::new(),
+                        ..l.clone()
+                    },
+                )
+            })
+            .collect();
+        all.sort_by_key(|(id, _)| *id);
+        all
+    }
+
+    /// 在虛擬終端中啟動程式，輸出以事件傳給前端，並記錄在紀錄中。
+    pub fn spawn(
+        &self,
+        app: &AppHandle,
+        mut cmd: CommandBuilder,
+        cols: u16,
+        rows: u16,
+        label: String,
+    ) -> Result<u32, String> {
+        let workspace = app.state::<Workspace>();
+        let cwd = workspace
+            .root()
+            .or_else(|| app.path().home_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("."));
+        cmd.cwd(cwd);
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: rows.max(2),
+                cols: cols.max(10),
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("無法建立終端機：{e}"))?;
+        let mut child = pair
+            .slave
+            .spawn_command(cmd)
+            .map_err(|e| format!("無法啟動程式：{e}"))?;
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+        let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+        let killer = child.clone_killer();
+
+        let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
+        self.sessions.lock().unwrap().insert(
+            id,
+            Session {
+                master: pair.master,
+                writer,
+                killer,
+            },
+        );
+        self.logs.lock().unwrap().insert(
+            id,
+            Log {
+                label,
+                ..Default::default()
+            },
+        );
+
+        let out_app = app.clone();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 16 * 1024];
+            let mut pending = Vec::new();
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        pending.extend_from_slice(&buf[..n]);
+                        let data = take_utf8(&mut pending);
+                        if !data.is_empty() {
+                            if let Some(log) = out_app
+                                .state::<Terminals>()
+                                .logs
+                                .lock()
+                                .unwrap()
+                                .get_mut(&id)
+                            {
+                                log.push(&data);
+                            }
+                            let _ = out_app.emit("term-output", Output { id, data });
+                        }
+                    }
+                }
+            }
+        });
+
+        // 等子程序結束。Windows 的 ConPTY 在子程序結束後不會自動讓讀取結束，
+        // 所以由這裡移除工作階段（釋放虛擬終端），讀取的執行緒才會停下來。
+        let exit_app = app.clone();
+        std::thread::spawn(move || {
+            let code = child.wait().ok().map(|s| s.exit_code());
+            let terms = exit_app.state::<Terminals>();
+            terms.sessions.lock().unwrap().remove(&id);
+            if let Some(log) = terms.logs.lock().unwrap().get_mut(&id) {
+                log.exit = Some(code);
+            }
+            let _ = exit_app.emit("term-exit", Exit { id, code });
+        });
+        Ok(id)
+    }
+
+    /// 執行 AI 要求、使用者同意過的指令：開一個新的終端機分頁讓使用者看到過程。
+    pub fn run_command(&self, app: &AppHandle, command: &str) -> Result<u32, String> {
+        let label = format!("AI：{}", shorten(command, 24));
+        let id = self.spawn(app, command_line(command), 120, 30, label.clone())?;
+        let _ = app.emit("term-attached", Attached { id, label });
+        Ok(id)
+    }
+}
+
+#[derive(Serialize, Clone)]
+struct Attached {
+    id: u32,
+    label: String,
+}
+
+fn shorten(s: &str, max: usize) -> String {
+    let line = s.lines().next().unwrap_or("").trim();
+    if line.chars().count() > max || s.trim().contains('\n') {
+        format!("{}…", line.chars().take(max).collect::<String>())
+    } else {
+        line.to_string()
+    }
+}
+
+/// 用預設的殼層執行一行指令（Windows 是 PowerShell）。
+fn command_line(command: &str) -> CommandBuilder {
+    if cfg!(windows) {
+        let mut cmd = match which::which("pwsh") {
+            Ok(p) => CommandBuilder::new(p),
+            Err(_) => CommandBuilder::new("powershell.exe"),
+        };
+        cmd.args(["-NoLogo", "-NoProfile", "-Command", command]);
+        cmd
+    } else {
+        let mut cmd =
+            CommandBuilder::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into()));
+        cmd.args(["-c", command]);
+        cmd
+    }
+}
+
+/// 去掉終端機的控制碼（顏色、游標移動、視窗標題等），給 AI 讀取用。
+pub fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\u{1b}' => match chars.next() {
+                // CSI：ESC [ 參數 … 結尾字元（0x40–0x7E）
+                Some('[') => {
+                    for c in chars.by_ref() {
+                        if ('\u{40}'..='\u{7e}').contains(&c) {
+                            break;
+                        }
+                    }
+                }
+                // OSC：ESC ] … BEL 或 ESC \\
+                Some(']') => {
+                    while let Some(c) = chars.next() {
+                        if c == '\u{7}' {
+                            break;
+                        }
+                        if c == '\u{1b}' && chars.peek() == Some(&'\\') {
+                            chars.next();
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            },
+            '\r' => {
+                // \r\n 當成換行；單獨的 \r 是覆寫同一行（例如進度列），只留最後的內容。
+                if chars.peek() != Some(&'\n') {
+                    out.truncate(out.rfind('\n').map_or(0, |i| i + 1));
+                }
+            }
+            c if c.is_control() && c != '\n' && c != '\t' => {}
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 #[derive(Serialize, Clone)]
@@ -132,78 +363,13 @@ pub fn term_open(
     cols: u16,
     rows: u16,
     terms: State<'_, Terminals>,
-    workspace: State<'_, Workspace>,
 ) -> Result<u32, String> {
-    let mut cmd = match program {
-        Program::Shell => default_shell(),
-        Program::Claude => tool_command(&app, Tool::Claude)?,
-        Program::Codex => tool_command(&app, Tool::Codex)?,
+    let (cmd, label) = match program {
+        Program::Shell => (default_shell(), "終端機"),
+        Program::Claude => (tool_command(&app, Tool::Claude)?, "Claude Code"),
+        Program::Codex => (tool_command(&app, Tool::Codex)?, "Codex"),
     };
-    let cwd = workspace
-        .root()
-        .or_else(|| app.path().home_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."));
-    cmd.cwd(cwd);
-    cmd.env("TERM", "xterm-256color");
-    cmd.env("COLORTERM", "truecolor");
-
-    let pair = native_pty_system()
-        .openpty(PtySize {
-            rows: rows.max(2),
-            cols: cols.max(10),
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|e| format!("無法建立終端機：{e}"))?;
-    let mut child = pair
-        .slave
-        .spawn_command(cmd)
-        .map_err(|e| format!("無法啟動程式：{e}"))?;
-    drop(pair.slave);
-    let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
-    let killer = child.clone_killer();
-
-    let id = terms.next.fetch_add(1, Ordering::Relaxed) + 1;
-    terms.sessions.lock().unwrap().insert(
-        id,
-        Session {
-            master: pair.master,
-            writer,
-            killer,
-        },
-    );
-
-    let out_app = app.clone();
-    std::thread::spawn(move || {
-        let mut buf = [0u8; 16 * 1024];
-        let mut pending = Vec::new();
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    pending.extend_from_slice(&buf[..n]);
-                    let data = take_utf8(&mut pending);
-                    if !data.is_empty() {
-                        let _ = out_app.emit("term-output", Output { id, data });
-                    }
-                }
-            }
-        }
-    });
-
-    // 等子程序結束。Windows 的 ConPTY 在子程序結束後不會自動讓讀取結束，
-    // 所以由這裡移除工作階段（釋放虛擬終端），讀取的執行緒才會停下來。
-    std::thread::spawn(move || {
-        let code = child.wait().ok().map(|s| s.exit_code());
-        app.state::<Terminals>()
-            .sessions
-            .lock()
-            .unwrap()
-            .remove(&id);
-        let _ = app.emit("term-exit", Exit { id, code });
-    });
-    Ok(id)
+    terms.spawn(&app, cmd, cols, rows, label.into())
 }
 
 #[tauri::command]
@@ -240,6 +406,7 @@ pub fn term_close(id: u32, terms: State<'_, Terminals>) {
     if let Some(mut s) = terms.sessions.lock().unwrap().remove(&id) {
         let _ = s.killer.kill();
     }
+    terms.logs.lock().unwrap().remove(&id);
 }
 
 #[cfg(test)]
@@ -255,6 +422,28 @@ mod tests {
         buf.extend_from_slice(&bytes[4..]);
         assert_eq!(take_utf8(&mut buf), "文");
         assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn strips_terminal_control_codes() {
+        let raw = "\u{1b}]0;標題\u{7}\u{1b}[1;32m成功\u{1b}[0m\r\n下載 10%\r下載 100%\r\n";
+        assert_eq!(strip_ansi(raw), "成功\n下載 100%\n");
+        assert_eq!(strip_ansi("a\u{1b}]8;;http://x\u{1b}\\b"), "ab");
+    }
+
+    #[test]
+    fn log_keeps_the_latest_output() {
+        let mut log = Log::default();
+        log.push(&"中".repeat(LOG_LIMIT));
+        assert!(log.text.len() <= LOG_LIMIT);
+        log.push("結尾");
+        assert!(log.text.ends_with("結尾"));
+    }
+
+    #[test]
+    fn shortens_labels() {
+        assert_eq!(shorten("git status", 24), "git status");
+        assert_eq!(shorten("echo 一\necho 二", 24), "echo 一…");
     }
 
     #[test]
