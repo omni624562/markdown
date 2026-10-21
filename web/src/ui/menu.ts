@@ -36,7 +36,8 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
           item.role = "menuitem";
           if (cmd.icon) item.append(icon(cmd.icon));
           item.append(Object.assign(document.createElement("span"), { textContent: cmd.title }));
-          if (cmd.keys) item.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys(cmd.keys) }));
+          const keys = cmd.keys ?? cmd.shownKeys;
+          if (keys) item.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys(keys) }));
           run = () => void commands.run(cmd.id);
         } else {
           item.role = "menuitemradio";

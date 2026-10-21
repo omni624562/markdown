@@ -40,7 +40,10 @@ import {
   saveFile,
   stem,
 } from "./files.ts";
-import { TABLE_TEMPLATE, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
+import { TABLE_TEMPLATE, clearInlineFormat, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
+import { indentLess, indentMore, selectAll } from "@codemirror/commands";
+import { autoSymbols } from "./auto-symbols.ts";
+import { SymbolPicker } from "./ui/symbol-picker.ts";
 import { type DocKind, KINDS } from "./kinds.ts";
 import { basename, dirname, isInside, localImagePath, markdownUrl, rebase, resolvePath } from "./paths.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
@@ -67,7 +70,7 @@ import { editTable } from "./table.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree, type TreeAction } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
-import { setupMenu } from "./ui/menu.ts";
+import { type MenuEntry, setupMenu } from "./ui/menu.ts";
 import { Palette } from "./ui/palette.ts";
 import { Picker } from "./ui/picker.ts";
 import { Review } from "./ui/review.ts";
@@ -262,6 +265,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   ],
   extra: [
     review.extension,
+    autoSymbols(() => kind !== "json" && settings.value.autoSymbols),
     linkCompletion({
       enabled: () => kind === "markdown",
       docPath: () => fileHandle?.path ?? null,
@@ -302,11 +306,15 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
         return true;
       },
       contextmenu(e, v) {
-        // 有選取文字且開啟 AI 時，右鍵選單提供快捷動作。
+        // 右鍵選單：剪下、複製、貼上、格式、插入符號、縮排，以及 AI。
+        // 點在選取範圍外時，先把游標移到點的位置（和一般編輯器一樣）。
+        const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
         const { from, to } = v.state.selection.main;
-        if (!ai?.enabled || from === to) return false;
+        if (pos !== null && (pos < from || pos > to)) v.dispatch({ selection: { anchor: pos } });
         e.preventDefault();
-        showAiMenu(e.clientX, e.clientY);
+        // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
+        const at = new DOMRect(e.clientX, e.clientY, 0, 0);
+        setTimeout(() => contextMenu.open(at));
         return true;
       },
       drop(e, v) {
@@ -1682,6 +1690,21 @@ commands.register(
   fmt("strike", "刪除線", "strikethrough", () => editor.exec(toggleWrap("~~")), "Mod-Shift-x"),
   fmt("code", "行內程式碼", "code", () => editor.exec(toggleWrap("`")), "Mod-e"),
   fmt("link", "插入連結", "link", () => editor.exec(insertLink), "Mod-k"),
+  fmt("underline", "底線", "underline", () => editor.exec(toggleWrap("<u>", "</u>")), "Mod-u"),
+  fmt("highlight", "螢光標記", "highlighter", () => editor.exec(toggleWrap("<mark>", "</mark>")), "Mod-Shift-h"),
+  fmt("superscript", "上標（例如 m²）", "superscript", () => editor.exec(toggleWrap("<sup>", "</sup>"))),
+  fmt("subscript", "下標（例如 H₂O）", "subscript", () => editor.exec(toggleWrap("<sub>", "</sub>"))),
+  fmt(
+    "clear-format",
+    "清除格式",
+    "remove-formatting",
+    () => {
+      const ok = clearInlineFormat({ state: editor.view.state, dispatch: (tr) => editor.view.dispatch(tr) });
+      if (!ok) toast("請先選取要清除格式的文字。");
+      editor.view.focus();
+    },
+    "Mod-\\",
+  ),
   fmt("h1", "標題 1", "heading-1", () => editor.exec(toggleLineStyle("h1")), "Mod-Alt-1"),
   fmt("h2", "標題 2", "heading-2", () => editor.exec(toggleLineStyle("h2")), "Mod-Alt-2"),
   fmt("h3", "標題 3", "heading-3", () => editor.exec(toggleLineStyle("h3")), "Mod-Alt-3"),
@@ -1997,61 +2020,6 @@ const aiPicker = new Picker<QuickAction & { custom?: boolean }>({
   pick: (a) => void ai?.runAction(a).catch(reportError),
 });
 
-const aiMenu = document.createElement("div");
-aiMenu.className = "menu";
-aiMenu.popover = "auto";
-aiMenu.role = "menu";
-document.body.append(aiMenu);
-aiMenu.addEventListener("keydown", (e) => {
-  const items = [...aiMenu.querySelectorAll<HTMLElement>("button")];
-  const i = items.indexOf(document.activeElement as HTMLElement);
-  if (e.key === "ArrowDown") items[(i + 1) % items.length]?.focus();
-  else if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length]?.focus();
-  else return;
-  e.preventDefault();
-});
-
-/** 選取文字時的右鍵選單：剪下、複製，以及 AI 快捷動作。 */
-function showAiMenu(x: number, y: number): void {
-  const item = (label: string, iconName: string, run: () => void) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.role = "menuitem";
-    b.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }));
-    b.addEventListener("click", () => {
-      aiMenu.hidePopover();
-      run();
-    });
-    return b;
-  };
-  const selected = () => {
-    const { from, to } = editor.view.state.selection.main;
-    return { from, to, text: editor.view.state.sliceDoc(from, to) };
-  };
-  const sep = () => Object.assign(document.createElement("div"), { className: "menu-sep" });
-  aiMenu.replaceChildren(
-    item("剪下", "copy", () => {
-      const { from, to, text } = selected();
-      void navigator.clipboard.writeText(text);
-      editor.view.dispatch({ changes: { from, to }, userEvent: "delete.cut" });
-      editor.view.focus();
-    }),
-    item("複製", "copy", () => void navigator.clipboard.writeText(selected().text)),
-    sep(),
-    ...settings.value.quickActions.map((a) => item(a.name, "sparkles", () => void ai?.runAction(a).catch(reportError))),
-    item("自訂指示…", "wand-sparkles", () => aiPicker.open()),
-  );
-  const show = () => {
-    aiMenu.style.left = `${Math.min(x, window.innerWidth - 240)}px`;
-    aiMenu.style.top = `${Math.min(y, window.innerHeight - aiMenu.childElementCount * 34 - 16)}px`;
-    aiMenu.style.right = "auto";
-    aiMenu.showPopover();
-    aiMenu.querySelector<HTMLElement>("button")?.focus();
-  };
-  // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
-  setTimeout(show);
-}
-
 // ---- 最近開啟（W8） ------------------------------------------------------------
 
 const RECENT_LIMITS = { files: 10, folders: 5 } as const;
@@ -2215,6 +2183,37 @@ commands.register(
     }),
   ),
   {
+    id: "insert-symbol",
+    title: "插入符號…",
+    group: "編輯",
+    icon: "omega",
+    keys: "Mod-Alt-s",
+    when: () => view !== "preview",
+    run: () => symbolPicker.open(),
+  },
+  ...(
+    [
+      ["cut", "剪下", "scissors", "Mod-x", () => copySelection(true)],
+      ["copy", "複製", "copy", "Mod-c", () => copySelection(false)],
+      ["paste", "貼上", "clipboard-paste", "Mod-v", () => pasteFromClipboard(false)],
+      ["paste-plain", "貼上純文字", "clipboard-type", "Mod-Shift-v", () => pasteFromClipboard(true)],
+      ["select-all", "全選", "text-cursor", "Mod-a", () => editor.exec(selectAll)],
+      ["indent-more", "增加縮排", "list-indent-increase", "Tab", () => editor.exec(indentMore)],
+      ["indent-less", "減少縮排", "list-indent-decrease", "Shift-Tab", () => editor.exec(indentLess)],
+    ] as const
+  ).map(
+    ([id, title, iconName, shownKeys, run]): Command => ({
+      id,
+      title,
+      group: "編輯",
+      icon: iconName,
+      shownKeys,
+      when: () =>
+        view !== "preview" && ((id !== "cut" && id !== "copy") || !editor.view.state.selection.main.empty),
+      run: () => void run(),
+    }),
+  ),
+  {
     id: "send-to-terminal-ai",
     title: "AI：把選取範圍傳給終端機中的 Claude Code／Codex",
     group: "編輯",
@@ -2364,20 +2363,52 @@ function formatBubble(): HTMLElement {
   const bar = document.createElement("div");
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "格式");
-  bar.append(...["bold", "italic", "strike", "code", "link"].map((id) => commandButton(id)));
+  bar.append(...["bold", "italic", "underline", "strike", "highlight", "code", "link"].map((id) => commandButton(id)));
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "btn icon-only";
+  more.title = "更多格式（上標、下標、清除格式、符號）";
+  more.setAttribute("aria-label", "更多格式");
+  more.append(icon("ellipsis"));
+  more.addEventListener("mousedown", (e) => e.preventDefault());
+  more.addEventListener("click", () => moreFormatMenu.open(more.getBoundingClientRect()));
+  bar.append(more);
   const aiButtons = ["ai-actions", "send-to-terminal-ai"].filter((id) => commands.get(id)?.when?.() ?? false);
   if (aiButtons.length) bar.append(separator("format-sep"), ...aiButtons.map((id) => commandButton(id)));
   return bar;
 }
 
+/**
+ * 浮動選單（插入選單、更多格式、右鍵選單）：用一個看不見的定位按鈕決定選單出現的位置。
+ * 按 Esc 或點外面關閉時，焦點回到編輯器。
+ */
+function floatingMenu(id: string, entries: MenuEntry[]): { open(at: DOMRect): void } {
+  const anchor = document.createElement("button");
+  anchor.type = "button";
+  anchor.id = id;
+  anchor.className = "insert-anchor";
+  anchor.tabIndex = -1;
+  document.body.append(anchor);
+  const menu = setupMenu(anchor, commands, entries);
+  menu.addEventListener("toggle", (e) => {
+    const closed = (e as ToggleEvent).newState === "closed";
+    if (closed && (document.activeElement === anchor || document.activeElement === document.body)) editor.view.focus();
+  });
+  return {
+    open(at) {
+      Object.assign(anchor.style, {
+        left: `${at.left}px`,
+        top: `${at.top}px`,
+        width: `${at.width}px`,
+        height: `${at.height}px`,
+      });
+      if (!menu.matches(":popover-open")) anchor.click();
+    },
+  };
+}
+
 /** 插入選單：空白行左邊的「＋」或 Ctrl+Shift+Enter 開啟，位置跟著按鈕或游標。 */
-const insertAnchor = document.createElement("button");
-insertAnchor.type = "button";
-insertAnchor.id = "insert-anchor";
-insertAnchor.className = "insert-anchor";
-insertAnchor.tabIndex = -1;
-document.body.append(insertAnchor);
-const insertMenuEl = setupMenu(insertAnchor, commands, [
+const insertMenuUi = floatingMenu("insert-anchor", [
   "h1",
   "h2",
   "h3",
@@ -2393,21 +2424,89 @@ const insertMenuEl = setupMenu(insertAnchor, commands, [
   "mermaid-block",
   "insert-image",
   "hr",
+  "-",
+  "insert-symbol",
 ]);
-// 按 Esc 或點外面關閉時，焦點回到編輯器。
-insertMenuEl.addEventListener("toggle", (e) => {
-  const closed = (e as ToggleEvent).newState === "closed";
-  if (closed && (document.activeElement === insertAnchor || document.activeElement === document.body)) editor.view.focus();
+const openInsertMenu = (at: DOMRect) => insertMenuUi.open(at);
+
+/** 浮出格式按鈕的「更多」：上標、下標、清除格式、符號。 */
+const moreFormatMenu = floatingMenu("format-more-anchor", ["superscript", "subscript", "-", "clear-format", "insert-symbol"]);
+
+const contextMenu = floatingMenu("context-anchor", [
+  "cut",
+  "copy",
+  "paste",
+  "paste-plain",
+  "select-all",
+  "-",
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "highlight",
+  "code",
+  "superscript",
+  "subscript",
+  "clear-format",
+  "-",
+  "link",
+  "insert-symbol",
+  "indent-more",
+  "indent-less",
+  "-",
+  "ai-actions",
+  "send-to-terminal-ai",
+]);
+
+const symbolPicker = new SymbolPicker((text) => {
+  editor.view.dispatch(editor.view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.symbol" });
+  editor.view.focus();
 });
 
-function openInsertMenu(at: DOMRect): void {
-  Object.assign(insertAnchor.style, {
-    left: `${at.left}px`,
-    top: `${at.top}px`,
-    width: `${at.width}px`,
-    height: `${at.height}px`,
-  });
-  if (!insertMenuEl.matches(":popover-open")) insertAnchor.click();
+/** 選取範圍的文字（多重選取用換行連接）。 */
+function selectedText(): string {
+  const state = editor.view.state;
+  return state.selection.ranges
+    .filter((r) => !r.empty)
+    .map((r) => state.sliceDoc(r.from, r.to))
+    .join("\n");
+}
+
+async function copySelection(cut: boolean): Promise<void> {
+  const text = selectedText();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    toast(`無法寫入剪貼簿，請按 Ctrl+${cut ? "X" : "C"}。`);
+    return;
+  }
+  if (cut) editor.view.dispatch(editor.view.state.replaceSelection(""), { userEvent: "delete.cut" });
+  editor.view.focus();
+}
+
+/**
+ * 從選單貼上：讀取剪貼簿後當成一般的貼上事件交給編輯器，所以智慧貼上（HTML 轉 Markdown）照樣有效。
+ * 瀏覽器不允許讀取剪貼簿時，請使用者改按 Ctrl+V。
+ */
+async function pasteFromClipboard(plain: boolean): Promise<void> {
+  const data = new DataTransfer();
+  try {
+    if (!plain && navigator.clipboard.read) {
+      for (const item of await navigator.clipboard.read()) {
+        for (const type of item.types) {
+          if (type === "text/plain" || type === "text/html") data.setData(type, await (await item.getType(type)).text());
+        }
+      }
+    }
+    if (!data.getData("text/plain")) data.setData("text/plain", await navigator.clipboard.readText());
+  } catch {
+    toast(`無法從選單讀取剪貼簿，請按 ${plain ? "Ctrl+Shift+V" : "Ctrl+V"} 貼上。`);
+    return;
+  }
+  if (plain) plainPasteUntil = Date.now() + 1000;
+  editor.view.focus();
+  editor.view.contentDOM.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
 }
 
 const imageInput = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", multiple: true, hidden: true });

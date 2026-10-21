@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EditorSelection, EditorState, type StateCommand } from "@codemirror/state";
-import { insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
+import { clearInlineFormat, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
 
 /** 在 `doc` 上執行指令；`doc` 中的 `|` 代表游標，`«` `»` 代表選取範圍。 */
 function run(cmd: StateCommand, doc: string): string {
@@ -47,4 +47,18 @@ test("insertBlock 前後補空行並選取預留文字", () => {
 test("insertLink 依選取內容決定要選取標籤或網址", () => {
   assert.equal(run(insertLink, "看«這裡»"), "看[這裡](«https://»)");
   assert.equal(run(insertLink, "«https://a.tw»"), "[«連結文字»](https://a.tw)");
+});
+
+test("toggleWrap 支援不對稱的 HTML 標籤（底線、螢光、上下標）", () => {
+  assert.equal(run(toggleWrap("<u>", "</u>"), "這是«重點»文字"), "這是<u>«重點»</u>文字");
+  assert.equal(run(toggleWrap("<u>", "</u>"), "這是<u>«重點»</u>文字"), "這是«重點»文字");
+  assert.equal(run(toggleWrap("<sup>", "</sup>"), "m«2»"), "m<sup>«2»</sup>");
+});
+
+test("清除格式", () => {
+  assert.equal(run(clearInlineFormat, "«**粗** *斜* ~~刪~~ `碼` <u>底</u> <mark>亮</mark>»"), "«粗 斜 刪 碼 底 亮»");
+  // 選取範圍被標記包住時，外面的標記也拿掉
+  assert.equal(run(clearInlineFormat, "這是**<u>«重點»</u>**文字"), "這是«重點»文字");
+  // 清單符號、乘法的星號不受影響
+  assert.equal(run(clearInlineFormat, "«3 * 4 = 12»"), "«3 * 4 = 12»");
 });

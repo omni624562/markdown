@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { blockMath, inlineMath } from "./live-preview.ts";
+import { type InlineTag, blockMath, inlineMath, pairTags, parseTag } from "./live-preview.ts";
 
 test("行內公式的規則和 md-core 一致", () => {
   assert.deepEqual(inlineMath("能量 $E=mc^2$ 守恆"), [{ from: 3, to: 11, tex: "E=mc^2" }]);
@@ -16,4 +16,32 @@ test("行內公式的規則和 md-core 一致", () => {
 test("區塊公式", () => {
   assert.equal(blockMath("$$\nE=mc^2\n$$"), "\nE=mc^2\n");
   assert.equal(blockMath("文字 $$x$$"), null);
+});
+
+test("格式標籤：只認不帶屬性的 u／mark／sup／sub", () => {
+  assert.deepEqual(parseTag("<u>"), { name: "u", closing: false });
+  assert.deepEqual(parseTag("</MARK>"), { name: "mark", closing: true });
+  assert.equal(parseTag('<u style="x">'), null);
+  assert.equal(parseTag("<span>"), null);
+});
+
+test("格式標籤配對：同層、同名、正確巢狀", () => {
+  const t = (name: InlineTag["name"], closing: boolean, at: number, parent = 0): InlineTag => ({
+    name,
+    closing,
+    from: at,
+    to: at + 1,
+    parent,
+  });
+  const names = (pairs: [InlineTag, InlineTag][]) => pairs.map(([a, b]) => `${a.name}${a.from}-${b.from}`);
+  assert.deepEqual(names(pairTags([t("mark", false, 0), t("sup", false, 2), t("sup", true, 4), t("mark", true, 6)])), [
+    "sup2-4",
+    "mark0-6",
+  ]);
+  // 交錯時，結尾對不上最近開頭的標籤不算（和 Rust 核心相同）；沒有結尾的開頭不配
+  assert.deepEqual(names(pairTags([t("u", false, 0), t("mark", false, 2), t("u", true, 4), t("mark", true, 6)])), [
+    "mark2-6",
+  ]);
+  // 不同層不配對
+  assert.deepEqual(names(pairTags([t("u", false, 0, 0), t("u", true, 4, 9)])), []);
 });

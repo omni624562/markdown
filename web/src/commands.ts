@@ -11,6 +11,8 @@ export interface Command {
   icon?: string;
   /** 快速鍵，例如 `Mod-Shift-p`；`Mod` 在 macOS 是 ⌘，其他平台是 Ctrl。 */
   keys?: string;
+  /** 只顯示、不綁定的快速鍵（例如 Ctrl+C 由瀏覽器原生處理）。 */
+  shownKeys?: string;
   /** 回傳 false 時不顯示於指令面板、快速鍵也不觸發。 */
   when?: () => boolean;
   run(): void | Promise<void>;

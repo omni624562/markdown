@@ -8,18 +8,22 @@ function apply(state: EditorState, dispatch: Parameters<StateCommand>[0]["dispat
   return true;
 }
 
-/** 用 `marker` 包住選取範圍；已經包住時則移除。沒有選取時插入成對符號並把游標放中間。 */
-export function toggleWrap(marker: string): StateCommand {
+/**
+ * 用 `marker` 包住選取範圍（`close` 是結尾，預設和開頭相同，例如 `<u>`…`</u>`）；已經包住時則移除。
+ * 沒有選取時插入成對符號並把游標放中間。
+ */
+export function toggleWrap(marker: string, close = marker): StateCommand {
   return ({ state, dispatch }) => {
     const n = marker.length;
+    const m = close.length;
     const tr = state.changeByRange((range) => {
       const before = state.sliceDoc(range.from - n, range.from);
-      const after = state.sliceDoc(range.to, range.to + n);
-      if (before === marker && after === marker) {
+      const after = state.sliceDoc(range.to, range.to + m);
+      if (before === marker && after === close) {
         return {
           changes: [
             { from: range.from - n, to: range.from },
-            { from: range.to, to: range.to + n },
+            { from: range.to, to: range.to + m },
           ],
           range: EditorSelection.range(range.from - n, range.to - n),
         };
@@ -27,7 +31,7 @@ export function toggleWrap(marker: string): StateCommand {
       return {
         changes: [
           { from: range.from, insert: marker },
-          { from: range.to, insert: marker },
+          { from: range.to, insert: close },
         ],
         range: EditorSelection.range(range.from + n, range.to + n),
       };
@@ -139,3 +143,51 @@ export const insertLink: StateCommand = ({ state, dispatch }) => {
 };
 
 export const TABLE_TEMPLATE = "| 欄位 1 | 欄位 2 |\n| --- | --- |\n| 內容 | 內容 |";
+
+/** 清除格式時會拿掉的成對標記（由長到短比對）。 */
+const INLINE_MARKERS: [string, string][] = [
+  ["<mark>", "</mark>"],
+  ["<sup>", "</sup>"],
+  ["<sub>", "</sub>"],
+  ["<ins>", "</ins>"],
+  ["<u>", "</u>"],
+  ["**", "**"],
+  ["__", "__"],
+  ["~~", "~~"],
+  ["*", "*"],
+  ["_", "_"],
+  ["`", "`"],
+];
+
+/** 選取範圍裡的行內格式標記（粗體、斜體、刪除線、程式碼、底線、螢光、上下標）。 */
+const INLINE_MARK_RE = /<\/?(?:u|mark|sup|sub|ins)>|\*\*|__|~~|(?<![\w*])\*(?=\S)|(?<=\S)\*(?![\w*])|`/gi;
+
+/**
+ * 清除格式：拿掉選取範圍裡的行內格式標記；選取範圍剛好被標記包住時（例如選了 **重點** 裡的「重點」），
+ * 外面的標記也一起拿掉。連結、標題、清單等不受影響。
+ */
+export const clearInlineFormat: StateCommand = ({ state, dispatch }) => {
+  if (state.selection.ranges.every((r) => r.empty)) return false;
+  const tr = state.changeByRange((range) => {
+    let from = range.from;
+    let to = range.to;
+    // 由外往內剝掉包住選取範圍的標記。
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const [open, close] of INLINE_MARKERS) {
+        if (state.sliceDoc(from - open.length, from) === open && state.sliceDoc(to, to + close.length) === close) {
+          from -= open.length;
+          to += close.length;
+          changed = true;
+          break;
+        }
+      }
+    }
+    const inner = state.sliceDoc(range.from, range.to).replace(INLINE_MARK_RE, "");
+    return {
+      changes: { from, to, insert: inner },
+      range: EditorSelection.range(from, from + inner.length),
+    };
+  });
+  return apply(state, dispatch, tr);
+};

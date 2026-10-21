@@ -81,6 +81,8 @@ body {
 }
 .markdown-body a { color: var(--md-link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
 .markdown-body a:hover { text-decoration-color: currentColor; }
+.markdown-body mark { padding: 0 0.1em; border-radius: 2px; background: light-dark(#fff3a3, rgba(229, 192, 123, 0.35)); color: inherit; }
+.markdown-body u { text-underline-offset: 0.18em; }
 .markdown-body img { max-width: 100%; border-radius: 6px; }
 .markdown-body hr { height: 1px; margin: 2em 0; border: 0; background: var(--md-border); }
 .markdown-body ul, .markdown-body ol { padding-left: 2em; }

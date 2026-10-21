@@ -245,6 +245,7 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
   /** 標記後面如果緊接一個空白，一起隱藏。 */
   const withSpace = (to: number) => (doc.sliceString(to, to + 1) === " " ? to + 1 : to);
   const mathOn = !!opts.renderMath && (opts.mathEnabled?.() ?? true);
+  const htmlTags: InlineTag[] = [];
 
   syntaxTree(state).iterate({
     enter: (ref) => {
@@ -372,6 +373,11 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
         case "HTMLBlock":
         case "CommentBlock":
           return false;
+        case "HTMLTag": {
+          const tag = parseTag(doc.sliceString(from, to));
+          if (tag) htmlTags.push({ ...tag, from, to, parent: node.parent?.from ?? -1 });
+          return;
+        }
         case "Paragraph": {
           if (!mathOn) return;
           const text = doc.sliceString(from, to);
@@ -398,7 +404,50 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
       }
     },
   });
+  // 成對的 <u>、<mark>、<sup>、<sub>：隱藏標籤，中間套上格式（和預覽一樣，只認同一層裡成對的標籤）。
+  for (const [open, close] of pairTags(htmlTags)) {
+    if (rangeActive(open.from, close.to)) continue;
+    hide(open.from, open.to);
+    hide(close.from, close.to);
+    if (close.from > open.to) decos.push(tagMarks[open.name].range(open.to, close.from));
+  }
   return Decoration.set(decos, true);
+}
+
+const FORMAT_TAGS = ["u", "mark", "sup", "sub", "ins"] as const;
+type FormatTag = (typeof FORMAT_TAGS)[number];
+const tagMarks = Object.fromEntries(FORMAT_TAGS.map((t) => [t, Decoration.mark({ class: `cm-lp-${t}` })])) as Record<
+  FormatTag,
+  Decoration
+>;
+
+export interface InlineTag {
+  name: FormatTag;
+  closing: boolean;
+  from: number;
+  to: number;
+  /** 所在的上層節點（只配對同一層的標籤）。 */
+  parent: number;
+}
+
+/** `<u>`、`</mark>` 這種不帶屬性的格式標籤。 */
+export function parseTag(text: string): Pick<InlineTag, "name" | "closing"> | null {
+  const m = /^<(\/?)([a-z]+)\s*>$/i.exec(text);
+  const name = m?.[2].toLowerCase() as FormatTag | undefined;
+  return name && FORMAT_TAGS.includes(name) ? { name, closing: m![1] === "/" } : null;
+}
+
+/** 依文件順序配對：同一層、同名、正確巢狀的開頭與結尾標籤。 */
+export function pairTags(tags: InlineTag[]): [InlineTag, InlineTag][] {
+  const pairs: [InlineTag, InlineTag][] = [];
+  const stacks = new Map<number, InlineTag[]>();
+  for (const tag of tags) {
+    const stack = stacks.get(tag.parent) ?? [];
+    stacks.set(tag.parent, stack);
+    if (!tag.closing) stack.push(tag);
+    else if (stack.at(-1)?.name === tag.name) pairs.push([stack.pop()!, tag]);
+  }
+  return pairs;
 }
 
 function taskMarker(item: SyntaxNode | null): SyntaxNode | null {
