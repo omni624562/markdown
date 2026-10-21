@@ -953,7 +953,7 @@ kbd {
   z-index: 1;
   background: var(--bg);
   color: var(--fg);
-  box-shadow: inset 0 2px 0 var(--accent);
+  box-shadow: inset 0 3px 0 var(--accent);
 }
 .tab[aria-selected="true"]::before { opacity: 0.8; color: var(--accent); }
 .tab-rename {
