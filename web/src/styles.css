@@ -35,9 +35,14 @@
   /* 文件內文（即時預覽）：英文用系統字型，中文用台灣的字型；和預覽、匯出（document.css）一致。 */
   --font-doc: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC",
     "Microsoft JhengHei", sans-serif;
-  /* 前兩個字型的中文字寬剛好是英文的兩倍，有安裝時表格在編輯區裡也會完全對齊。 */
-  --font-mono: "Sarasa Mono TC", "Noto Sans Mono CJK TC", ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code",
-    Menlo, Consolas, monospace;
+  /* 前兩個字型的中文字寬剛好是英文的兩倍，有安裝時表格在編輯區裡也會完全對齊。
+     沒有安裝時，英文用系統內建的等寬字型，中文明確指定台灣的字型，避免瀏覽器挑到簡體或點陣字型。 */
+  --font-mono: "Sarasa Mono TC", "Noto Sans Mono CJK TC", ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono",
+    "Cascadia Code", Menlo, Consolas, "Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC",
+    monospace;
+  /* 終端機：英文優先用 Windows 終端機的 Cascadia Mono（沒有連字，不會把 -> 合成箭頭）。 */
+  --font-term: "Sarasa Mono TC", "Cascadia Mono", Consolas, "SF Mono", Menlo, "Noto Sans Mono CJK TC",
+    "Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", monospace;
   --editor-font-size: 15px;
   --outline-width: 248px;
   --activity-width: 48px;

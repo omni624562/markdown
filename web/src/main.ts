@@ -2556,7 +2556,10 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
       typewriterMode: s.typewriterMode,
     });
   }
-  if (changed.includes("editorFontSize")) editor.view.requestMeasure();
+  if (changed.includes("editorFontSize")) {
+    editor.view.requestMeasure();
+    terminal?.applyFont();
+  }
   if (changed.includes("fixedToolbar")) {
     buildFormatBar();
     editor.view.requestMeasure();
