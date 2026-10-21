@@ -848,7 +848,7 @@ mod tests {
     #[test]
     fn replaces_across_the_folder() {
         let dir = temp_ws("replace");
-        let skipped = dir.join("第2章/筆記.md");
+        let skipped = dir.join("第2章").join("筆記.md");
         let r = replace_dir(
             &dir,
             "季度報告",
