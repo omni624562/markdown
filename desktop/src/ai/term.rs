@@ -495,11 +495,22 @@ mod tests {
             .slave
             .spawn_command(cmd)
             .expect("拿掉不合法的環境變數後要能啟動");
-        // Windows 的虛擬終端要有人讀走輸出，程式才會結束；讀取的執行緒不等它（終端關閉前不會讀到結尾）。
+        // Windows 的虛擬終端一開始會詢問游標位置（ESC [6n），要回答之後程式才會執行；
+        // 輸出也要有人讀走。介面上由 xterm.js 回答，這裡自己回答。
+        // 讀取的執行緒不等它（終端關閉前不會讀到結尾）。
         let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
-            while matches!(reader.read(&mut buf), Ok(n) if n > 0) {}
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                if buf[..n].windows(4).any(|w| w == b"\x1b[6n") {
+                    let _ = writer.write_all(b"\x1b[1;1R");
+                    let _ = writer.flush();
+                }
+            }
         });
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         let status = loop {
