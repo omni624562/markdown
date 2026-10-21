@@ -1225,3 +1225,73 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .cm-insert-handle button:hover { border-color: var(--border); background: var(--surface); color: var(--fg); }
 /* 插入選單的定位點：不顯示，只用來決定選單出現的位置。 */
 .insert-anchor { position: fixed; z-index: -1; padding: 0; border: 0; background: none; opacity: 0; pointer-events: none; }
+
+/* ---- 符號面板 ---- */
+.symbol-picker {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(520px, 80dvh);
+  margin: 12dvh auto auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+}
+.symbol-picker[open] { display: flex; flex-direction: column; }
+.symbol-picker::backdrop { background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(2px); }
+.symbol-picker input {
+  flex: none;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  font: 15px var(--font-ui);
+  outline: none;
+}
+.symbol-tabs { display: flex; flex: none; gap: 2px; padding: 8px 10px 0; overflow-x: auto; scrollbar-width: none; }
+.symbol-tabs button {
+  flex: none;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 13px var(--font-ui);
+  cursor: pointer;
+}
+.symbol-tabs button:hover { color: var(--fg); background: var(--active-line); }
+.symbol-tabs button[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); }
+.symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 10px;
+  overflow: auto;
+}
+.symbol-grid button {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font: 20px/1 var(--font-doc);
+  cursor: pointer;
+}
+.symbol-grid button.wide { font-size: 13px; }
+.symbol-grid button:hover, .symbol-grid button:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+.symbol-hint { flex: none; min-height: 34px; margin: 0; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+
+/* ---- 即時預覽：底線、螢光、上下標 ---- */
+.cm-lp-u { text-decoration: underline; text-underline-offset: 0.18em; }
+.cm-lp-ins { text-decoration: underline; text-decoration-style: double; }
+.cm-lp-mark { border-radius: 2px; background: light-dark(#fff3a3, rgba(229, 192, 123, 0.35)); }
+.cm-lp-sup { vertical-align: super; font-size: 0.75em; }
+.cm-lp-sub { vertical-align: sub; font-size: 0.75em; }

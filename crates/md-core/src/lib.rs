@@ -1,8 +1,8 @@
 //! 文件渲染核心：Markdown、純文字與 JSON 轉成 HTML，並擷取大綱與字數統計。
 //!
 //! 這個 crate 不依賴任何平台 API，同時供 WebAssembly 前端與 CLI 使用。
-//! 原始 HTML 一律不輸出、危險的 URL（如 `javascript:`）也會被過濾，
-//! 因此渲染結果可以直接放進頁面。
+//! 原始 HTML 一律不輸出（只有成對、不帶屬性的 `<u>`、`<mark>`、`<sup>`、`<sub>`、`<ins>` 與 `<br>`
+//! 會換成對應的格式），危險的 URL（如 `javascript:`）也會被過濾，因此渲染結果可以直接放進頁面。
 
 mod html;
 mod json;
@@ -190,6 +190,55 @@ mod tests {
         let out = r("<script>alert(1)</script>\n\n[x](javascript:alert(1))");
         assert!(!out.html.contains("<script>"));
         assert!(!out.html.contains("javascript:"));
+    }
+
+    #[test]
+    fn formatting_tags_are_allowed_without_raw_html() {
+        let out =
+            r("<u>底線</u>、<mark>重點</mark>、m<sup>2</sup>、H<sub>2</sub>O、第一行<br>第二行");
+        assert!(out.html.contains("<u>底線</u>"), "{}", out.html);
+        assert!(out.html.contains("<mark>重點</mark>"));
+        assert!(out.html.contains("m<sup>2</sup>"));
+        assert!(out.html.contains("H<sub>2</sub>O"));
+        assert!(out.html.contains("第一行<br />"));
+        assert!(!out.html.contains("raw HTML omitted"));
+        // 巢狀與格式混用
+        let out = r("**<u>粗體底線</u>** <mark>外<sup>內</sup>層</mark>");
+        assert!(out.html.contains("<strong><u>粗體底線</u></strong>"));
+        assert!(out.html.contains("<mark>外<sup>內</sup>層</mark>"));
+    }
+
+    #[test]
+    fn unsafe_or_unbalanced_tags_stay_hidden() {
+        for src in [
+            "<u style=\"color:red\">x</u>",
+            "<u onclick=alert(1)>x</u>",
+            "<span>x</span>",
+            "<u>沒有結尾",
+            "<u>交錯<mark></u></mark>",
+        ] {
+            let out = r(src);
+            assert!(!out.html.contains("style="), "{src}: {}", out.html);
+            assert!(!out.html.contains("onclick"), "{src}: {}", out.html);
+            assert!(!out.html.contains("<span"), "{src}: {}", out.html);
+            assert_eq!(
+                out.html.matches("<u>").count(),
+                out.html.matches("</u>").count(),
+                "{src}: {}",
+                out.html
+            );
+            assert_eq!(
+                out.html.matches("<mark>").count(),
+                out.html.matches("</mark>").count(),
+                "{src}: {}",
+                out.html
+            );
+        }
+        // 開頭標籤沒有結尾時，不能影響後面的段落
+        let out = r("<u>第一段\n\n第二段");
+        assert!(!out.html.contains("<u>"));
+        // 區塊層級的 HTML 仍然不輸出
+        assert!(!r("<div>\n<u>x</u>\n</div>").html.contains("<div"));
     }
 
     #[test]

@@ -29,6 +29,8 @@ export interface Settings {
    * 舊版的 `formatBar`（預設開啟）不再讀取，讓簡約版面也套用到已經有設定檔的使用者。
    */
   fixedToolbar: boolean;
+  /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
+  autoSymbols: boolean;
   /** 專注模式：淡化目前段落以外的文字。 */
   focusMode: boolean;
   /** 打字機模式：游標所在行保持在畫面中央。 */
@@ -75,6 +77,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   tableAutoFormat: true,
   smartPaste: true,
   fixedToolbar: false,
+  autoSymbols: true,
   focusMode: false,
   typewriterMode: false,
   previewWidth: "medium",
@@ -111,6 +114,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("tableAutoFormat");
   bool("smartPaste");
   bool("fixedToolbar");
+  bool("autoSymbols");
   bool("focusMode");
   bool("typewriterMode");
   bool("math");

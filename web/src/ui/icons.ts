@@ -1,4 +1,14 @@
 import {
+  Underline,
+  Highlighter,
+  Superscript,
+  Subscript,
+  RemoveFormatting,
+  Omega,
+  Scissors,
+  ClipboardType,
+  ListIndentIncrease,
+  ListIndentDecrease,
   Sigma,
   Workflow,
   BookOpenText,
@@ -76,6 +86,16 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  "underline": Underline,
+  "highlighter": Highlighter,
+  "superscript": Superscript,
+  "subscript": Subscript,
+  "remove-formatting": RemoveFormatting,
+  "omega": Omega,
+  "scissors": Scissors,
+  "clipboard-type": ClipboardType,
+  "list-indent-increase": ListIndentIncrease,
+  "list-indent-decrease": ListIndentDecrease,
   sigma: Sigma,
   workflow: Workflow,
   "book-open-text": BookOpenText,

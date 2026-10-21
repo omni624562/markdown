@@ -70,6 +70,11 @@ const SECTIONS: { title: string; fields: Field[] }[] = [
         label: "貼上網頁、Google 文件、Word 時轉成 Markdown",
         hint: "保留標題、清單、粗體、連結和表格；按 Ctrl+Shift+V 一律貼純文字",
       },
+      {
+        key: "autoSymbols",
+        label: "打字自動轉符號",
+        hint: "<= 變 ≤、>= 變 ≥、!= 變 ≠、-> 變 →、=> 變 ⇒、+- 變 ±；程式碼與公式裡不轉換，轉換後馬上按 Backspace 可以還原",
+      },
       { key: "focusMode", label: "專注模式", hint: "淡化目前段落以外的文字" },
       { key: "typewriterMode", label: "打字機模式", hint: "游標所在的行保持在畫面中央" },
     ],

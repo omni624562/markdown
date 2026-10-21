@@ -20,7 +20,7 @@ export class Palette {
           .filter((x) => x.score > 0)
           .sort((a, b) => b.score - a.score)
           .map((x) => x.c),
-      render: (c) => ({ title: c.title, detail: c.group, icon: c.icon, keys: c.keys && formatKeys(c.keys) }),
+      render: (c) => ({ title: c.title, detail: c.group, icon: c.icon, keys: (c.keys ?? c.shownKeys) && formatKeys((c.keys ?? c.shownKeys)!) }),
       pick: (c) => void commands.run(c.id),
     });
   }
