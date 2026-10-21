@@ -49,6 +49,14 @@ self-replace = "1.5.0"
 # Windows 認證管理員（WebDAV 密碼）。其他平台不保存密碼，只在這次開啟期間記在記憶體裡。
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1.1.0"
+# 直接匯出 PDF（WebView2 的 PrintToPdf）；版本和 Tauri 使用的一致。
+webview2-com = "0.39.1"
+windows-core = "0.62.2"
+
+# 直接匯出 PDF（WebKitGTK 的列印到檔案）；版本和 Tauri 使用的一致。
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0.2"
+gtk = "0.18.2"
 
 [features]
 # 預設把前端打包進執行檔；開發時用 `cargo run --no-default-features` 改連 Vite 開發伺服器。

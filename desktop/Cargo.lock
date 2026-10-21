@@ -2421,6 +2421,7 @@ dependencies = [
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
+ "gtk",
  "ignore",
  "keyring-core",
  "notify-debouncer-full",
@@ -2441,7 +2442,10 @@ dependencies = [
  "tokio",
  "trash",
  "ureq",
+ "webkit2gtk",
+ "webview2-com",
  "which",
+ "windows-core",
  "windows-native-keyring-store",
 ]
 

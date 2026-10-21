@@ -20,6 +20,8 @@ pub(crate) fn comrak_options(opts: &RenderOptions) -> Options<'static> {
     ext.cjk_friendly_emphasis = true;
     // `$…$` 與 `$$…$$` 數學公式，輸出帶 `data-math-style` 的元素，由前端的 KaTeX 外掛渲染。
     ext.math_dollars = true;
+    // `[[文件]]`、`[[文件#標題|顯示文字]]` 連到資料夾中的其他文件（Obsidian 的寫法），由前端找出對應的檔案。
+    ext.wikilinks_title_after_pipe = true;
 
     o.render.sourcepos = opts.sourcepos;
     o.render.hardbreaks = opts.hardbreaks;

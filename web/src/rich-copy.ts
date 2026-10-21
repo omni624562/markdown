@@ -2,6 +2,7 @@
  * 複製成格式文字：把渲染後的 HTML 加上行內樣式，貼到 Word、Outlook、Teams 時保留標題、粗體、表格框線、
  * 程式碼與引言的外觀（這些程式不讀外部 CSS）。
  */
+import { sizeImages } from "./plugins/doc-links.ts";
 
 const FONT = "'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif";
 const MONO = "Consolas,'Cascadia Mono','Courier New',monospace";
@@ -23,6 +24,7 @@ const STYLES: Record<string, string> = {
 export function richHtml(html: string, imageUrl: (src: string) => string | null = () => null): string {
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
   const root = doc.body.firstElementChild as HTMLElement;
+  sizeImages(root);
   for (const el of root.querySelectorAll<HTMLElement>("[data-sourcepos]")) el.removeAttribute("data-sourcepos");
   for (const [tag, style] of Object.entries(STYLES)) {
     for (const el of root.querySelectorAll<HTMLElement>(tag)) el.setAttribute("style", style);

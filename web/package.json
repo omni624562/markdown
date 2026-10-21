@@ -32,6 +32,7 @@
     "highlight.js": "^11.11.1",
     "katex": "^0.19.0",
     "lucide": "^1.59.0",
+    "mammoth": "1.12.3",
     "mermaid": "^12.2.0",
     "turndown": "^7.2.4"
   },

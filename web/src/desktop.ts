@@ -52,6 +52,21 @@ export interface Entry {
   isDir: boolean;
 }
 
+/** 匯入 Word：選到的檔案與要轉存的 Markdown 檔位置。 */
+export interface DocxImport {
+  name: string;
+  mdPath: string;
+  dataBase64: string;
+}
+
+/** 資料夾中一份 Markdown 文件的內容（`text` 省略代表和上次讀到的一樣）。 */
+export interface DocText {
+  path: string;
+  rel: string;
+  mtime: number;
+  text?: string | null;
+}
+
 export interface FileItem {
   path: string;
   /** 相對於工作區、以 / 分隔的路徑。 */
@@ -291,6 +306,29 @@ function bridge(core: TauriCore, event: TauriEvent) {
       ),
     revealEntry: (path: string) =>
       route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported("在檔案總管中顯示")),
+    /** 選擇 PDF 的存檔位置；取消時回傳 null。 */
+    pickPdfPath: (suggestedName: string) => core.invoke<string | null>("pick_pdf_path", { suggestedName }),
+    /** 把主視窗目前的內容（列印樣式）直接存成 PDF。 */
+    printToPdf: (
+      path: string,
+      layout: { widthMm: number; heightMm: number; marginTopMm: number; marginBottomMm: number; marginSideMm: number },
+    ) => core.invoke<void>("print_to_pdf", { path, layout }),
+    /** 選擇 Word 檔並讀取；取消時回傳 null。 */
+    importDocx: () => core.invoke<DocxImport | null>("import_docx"),
+    /** 讀取資料夾中的 Markdown 文件（`known` 是上次讀到的修改時間，沒變的不重讀）。 */
+    scanDocs: (known: Record<string, number>, root: string) =>
+      route(
+        root,
+        () => core.invoke<DocText[]>("scan_docs", { known }),
+        () => unsupported("待辦總覽、標籤與反向連結"),
+      ),
+    /** 改寫一份沒有開啟的文件；磁碟上的內容和 `expected` 不同時拒絕。 */
+    updateDoc: (path: string, expected: string, text: string) =>
+      route(
+        path,
+        () => core.invoke<void>("update_doc", { path, expected, text }),
+        () => unsupported("直接修改沒有開啟的檔案"),
+      ),
     /** 資料夾全文取代；`skip` 是有未存檔變更的已開啟檔案。 */
     replaceInFolder: (query: string, replacement: string, caseSensitive: boolean, regex: boolean, skip: string[], root: string) =>
       route(

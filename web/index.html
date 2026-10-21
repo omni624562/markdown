@@ -46,6 +46,12 @@
           <button type="button" role="tab" id="side-tab-search" data-panel="search" aria-controls="panel-search" aria-label="搜尋">
             <i data-icon="search"></i>
           </button>
+          <button type="button" role="tab" id="side-tab-tasks" data-panel="tasks" aria-controls="panel-tasks" aria-label="待辦總覽">
+            <i data-icon="list-checks"></i>
+          </button>
+          <button type="button" role="tab" id="side-tab-tags" data-panel="tags" aria-controls="panel-tags" aria-label="標籤">
+            <i data-icon="tags"></i>
+          </button>
           <button type="button" role="tab" id="side-tab-git" data-panel="git" aria-controls="panel-git" aria-label="原始碼控制（Git）" hidden>
             <i data-icon="git-branch"></i><span class="activity-badge" id="git-badge" hidden></span>
           </button>
@@ -78,12 +84,33 @@
           <div class="side-body">
             <ol id="outline-list"></ol>
             <p id="outline-empty" class="outline-empty" hidden></p>
+            <section class="backlinks" id="backlinks" aria-label="反向連結" hidden></section>
           </div>
         </section>
 
         <section class="side-panel" id="panel-search" role="tabpanel" aria-labelledby="side-tab-search" hidden>
           <div class="side-head"><h2>搜尋</h2></div>
           <div class="side-body" id="search-host"></div>
+        </section>
+
+        <section class="side-panel" id="panel-tasks" role="tabpanel" aria-labelledby="side-tab-tasks" hidden>
+          <div class="side-head">
+            <h2>待辦總覽</h2>
+            <div class="side-actions">
+              <button type="button" class="btn icon-only" id="tasks-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
+            </div>
+          </div>
+          <div class="side-body" id="tasks-host"></div>
+        </section>
+
+        <section class="side-panel" id="panel-tags" role="tabpanel" aria-labelledby="side-tab-tags" hidden>
+          <div class="side-head">
+            <h2>標籤</h2>
+            <div class="side-actions">
+              <button type="button" class="btn icon-only" id="tags-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
+            </div>
+          </div>
+          <div class="side-body" id="tags-host"></div>
         </section>
 
         <section class="side-panel" id="panel-git" role="tabpanel" aria-labelledby="side-tab-git" hidden>

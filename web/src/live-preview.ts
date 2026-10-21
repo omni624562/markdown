@@ -4,9 +4,10 @@
  * 圖片、表格、公式、待辦勾選框直接畫出來。文件內容永遠是原始碼，只改變顯示方式。
  */
 import { syntaxTree } from "@codemirror/language";
-import { type EditorState, type Extension, type Range, StateField } from "@codemirror/state";
+import { type EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
+import { TAG } from "./doc-index.ts";
 import { editorFocused, focusChanged, focusTracking } from "./inline-tools.ts";
 import { EditableTableWidget } from "./table-widget.ts";
 
@@ -24,7 +25,26 @@ export interface LivePreviewOptions {
   openLink(href: string): void;
   /** 暫停顯示（例如正在逐段比較差異時，一律顯示原始碼）。 */
   enabled?(): boolean;
+  /** Ctrl（⌘）＋點 `[[文件]]`（`target` 可能帶 `#標題`）。 */
+  openWiki?(target: string): void;
+  /** `[[文件]]` 找不找得到對應的檔案；不知道時回傳 null（不標示）。 */
+  wikiExists?(target: string): boolean | null;
+  /** Ctrl（⌘）＋點 `#標籤`。 */
+  openTag?(tag: string): void;
+  /** 點圖片放大檢視；`editSource` 把游標移進圖片的原始碼。 */
+  openImage?(url: string, alt: string, editSource: () => void): void;
 }
+
+/** 圖片說明文字結尾的 `|400`（或 `|400x300`）是顯示寬度（Obsidian 的寫法）。 */
+export function imageSize(alt: string): { alt: string; width: number | null; height: number | null } {
+  const m = /^(.*?)\s*\|\s*(\d{1,4})(?:\s*x\s*(\d{1,4}))?$/.exec(alt);
+  return m ? { alt: m[1], width: Number(m[2]), height: m[3] ? Number(m[3]) : null } : { alt, width: null, height: null };
+}
+
+/** `[[目標#標題|顯示文字]]`：目標、`#標題`、`|顯示文字` 分開。 */
+const WIKI_LINK = /\[\[([^[\]|#\n]+)(#[^[\]|\n]*)?(\|[^[\]\n]*)?\]\]/g;
+/** 這些語法節點裡不找 `[[ ]]` 與標籤。 */
+const NO_INLINE = /^(InlineCode|FencedCode|CodeBlock|CommentBlock|HTMLBlock|HTMLTag|URL|Link|Image|Autolink|Comment)$/;
 
 // ---- 小工具：找出行內數學公式 ------------------------------------------------
 
@@ -116,12 +136,12 @@ function revealOnClick(view: EditorView, dom: HTMLElement): void {
 class ImageWidget extends WidgetType {
   readonly src: string;
   readonly alt: string;
-  readonly resolve: LivePreviewOptions["imageUrl"];
-  constructor(src: string, alt: string, resolve: LivePreviewOptions["imageUrl"]) {
+  readonly opts: LivePreviewOptions;
+  constructor(src: string, alt: string, opts: LivePreviewOptions) {
     super();
     this.src = src;
     this.alt = alt;
-    this.resolve = resolve;
+    this.opts = opts;
   }
   eq(other: ImageWidget): boolean {
     return other.src === this.src && other.alt === this.alt;
@@ -129,28 +149,80 @@ class ImageWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement("span");
     wrap.className = "cm-lp-image";
+    const size = imageSize(this.alt);
+    /** 把游標移進圖片的原始碼。 */
+    const editSource = () => {
+      const pos = view.posAtDOM(wrap);
+      view.dispatch({ selection: { anchor: pos }, scrollIntoView: false, userEvent: "select.pointer" });
+      view.focus();
+    };
     const show = (url: string | null) => {
       if (!url) {
-        wrap.textContent = `🖼 ${this.alt || this.src}`;
+        wrap.textContent = `🖼 ${size.alt || this.src}`;
         wrap.classList.add("cm-lp-image-missing");
+        revealOnClick(view, wrap);
         return;
       }
       const img = document.createElement("img");
-      img.alt = this.alt;
+      img.alt = size.alt;
       img.src = url;
+      if (size.width) img.style.width = `${size.width}px`;
       img.addEventListener("error", () => show(null), { once: true });
       img.addEventListener("load", () => view.requestMeasure(), { once: true });
-      wrap.replaceChildren(img);
+      img.title = "按一下放大；拖曳右下角調整大小";
+      img.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        if (this.opts.openImage) this.opts.openImage(url, size.alt, editSource);
+        else editSource();
+      });
+      const handle = document.createElement("span");
+      handle.className = "cm-lp-image-handle";
+      handle.title = "拖曳調整大小";
+      handle.addEventListener("pointerdown", (e) => this.#resize(e, view, wrap, img));
+      wrap.replaceChildren(img, handle);
     };
     try {
-      const url = this.resolve(this.src);
+      const url = this.opts.imageUrl(this.src);
       if (url instanceof Promise) url.then(show, () => show(null));
       else show(url);
     } catch {
       show(null);
     }
-    revealOnClick(view, wrap);
     return wrap;
+  }
+
+  /** 拖曳右下角調整寬度，放開後把寬度寫進說明文字（`![說明|400](…)`）。 */
+  #resize(e: PointerEvent, view: EditorView, wrap: HTMLElement, img: HTMLImageElement): void {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startWidth = img.getBoundingClientRect().width;
+    const max = view.contentDOM.clientWidth;
+    let width = startWidth;
+    wrap.classList.add("resizing");
+    const move = (ev: PointerEvent) => {
+      width = Math.max(40, Math.min(max, startWidth + ev.clientX - startX));
+      img.style.width = `${Math.round(width)}px`;
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      wrap.classList.remove("resizing");
+      if (Math.abs(width - startWidth) < 3) return;
+      const pos = view.posAtDOM(wrap);
+      const m = /^!\[([^\]\n]*)\]/.exec(view.state.doc.sliceString(pos, pos + 1000));
+      if (!m) return;
+      const alt = `${imageSize(m[1]).alt}|${Math.round(width / 10) * 10}`;
+      view.dispatch({ changes: { from: pos + 2, to: pos + 2 + m[1].length, insert: alt }, userEvent: "input.image" });
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
   }
   ignoreEvent(): boolean {
     return true;
@@ -225,11 +297,14 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
   const withSpace = (to: number) => (doc.sliceString(to, to + 1) === " " ? to + 1 : to);
   const mathOn = !!opts.renderMath && (opts.mathEnabled?.() ?? true);
   const htmlTags: InlineTag[] = [];
+  const noInline: [number, number][] = [];
 
   syntaxTree(state).iterate({
     enter: (ref) => {
       const { name, from, to } = ref;
       const node = ref.node;
+      // `[[週報]]` 裡的 `[週報]` 會被當成沒有網址的連結，那種不算。
+      if (NO_INLINE.test(name) && (name !== "Link" || node.getChild("URL"))) noInline.push([from, to]);
       const heading = /^ATXHeading(\d)$/.exec(name) ?? /^SetextHeading(\d)$/.exec(name);
       if (heading) {
         decos.push(lineClass(`cm-lp-h cm-lp-h${heading[1]}`).range(doc.lineAt(from).from));
@@ -291,7 +366,7 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
           if (!url) return false;
           const alt = doc.sliceString(from + 2, Math.max(from + 2, (node.getChildren("LinkMark")[1]?.from ?? from + 2)));
           decos.push(
-            Decoration.replace({ widget: new ImageWidget(doc.sliceString(url.from, url.to), alt, opts.imageUrl) }).range(
+            Decoration.replace({ widget: new ImageWidget(doc.sliceString(url.from, url.to), alt, opts) }).range(
               from,
               to,
             ),
@@ -391,6 +466,47 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
       }
     },
   });
+  // [[文件]] 與 #標籤
+  const blocked = (a: number, b: number) => noInline.some(([x, y]) => a < y && b > x);
+  for (let l = 1; l <= doc.lines; l++) {
+    const line = doc.line(l);
+    if (!line.text.includes("[[") && !line.text.includes("#")) continue;
+    for (const m of line.text.matchAll(WIKI_LINK)) {
+      const from = line.from + m.index;
+      const to = from + m[0].length;
+      if (blocked(from, to)) continue;
+      const target = m[1].trim();
+      const exists = opts.wikiExists?.(target) ?? null;
+      const mark = Decoration.mark({
+        class: `cm-lp-link cm-lp-wiki${exists === false ? " cm-lp-wiki-missing" : ""}`,
+        attributes: {
+          "data-wiki": target + (m[2] ?? ""),
+          title: `${target}${exists === false ? "（還沒有這份文件，Ctrl＋點一下建立）" : "\n（Ctrl＋點一下開啟）"}`,
+        },
+      });
+      if (active.has(l)) {
+        decos.push(mark.range(from, to));
+        continue;
+      }
+      // 有顯示文字時只留顯示文字，否則留「目標#標題」。
+      const textFrom = m[3] ? to - 2 - (m[3].length - 1) : from + 2;
+      hide(from, textFrom);
+      hide(to - 2, to);
+      if (to - 2 > textFrom) decos.push(mark.range(textFrom, to - 2));
+    }
+    for (const m of line.text.matchAll(TAG)) {
+      const from = line.from + m.index;
+      const to = from + m[0].length;
+      if (blocked(from, to) || /^\d+$/.test(m[1])) continue;
+      const tag = m[1].replace(/[/-]+$/, "");
+      decos.push(
+        Decoration.mark({
+          class: "cm-lp-tag",
+          attributes: { "data-tag": tag, title: `標籤「${tag}」（Ctrl＋點一下列出同標籤的文件）` },
+        }).range(from, from + 1 + tag.length),
+      );
+    }
+  }
   // 成對的 <u>、<mark>、<sup>、<sub>：隱藏標籤，中間套上格式（和預覽一樣，只認同一層裡成對的標籤）。
   for (const [open, close] of pairTags(htmlTags)) {
     if (rangeActive(open.from, close.to)) continue;
@@ -448,12 +564,20 @@ function linkMark(href: string): Decoration {
   });
 }
 
+const rebuild = StateEffect.define<null>();
+
+/** 外部資料變了（例如資料夾的檔案清單）：重新計算即時預覽（`[[文件]]` 找不找得到檔案）。 */
+export function refreshLivePreview(view: EditorView): void {
+  view.dispatch({ effects: rebuild.of(null) });
+}
+
 export function livePreview(opts: LivePreviewOptions): Extension {
   const field = StateField.define<DecorationSet>({
     create: (state) => build(state, opts),
     update(value, tr) {
       const treeChanged = syntaxTree(tr.state) !== syntaxTree(tr.startState);
-      if (!tr.docChanged && !tr.selection && !treeChanged && !tr.reconfigured && !focusChanged(tr)) return value;
+      const forced = tr.effects.some((e) => e.is(rebuild));
+      if (!tr.docChanged && !tr.selection && !treeChanged && !tr.reconfigured && !focusChanged(tr) && !forced) return value;
       return build(tr.state, opts);
     },
     provide: (f) => EditorView.decorations.from(f),
@@ -464,10 +588,16 @@ export function livePreview(opts: LivePreviewOptions): Extension {
     EditorView.editorAttributes.of({ class: "cm-lp" }),
     EditorView.domEventHandlers({
       mousedown(e) {
-        const link = (e.target as HTMLElement).closest<HTMLElement>(".cm-lp-link");
-        if (!link || !(e.ctrlKey || e.metaKey) || e.button !== 0) return false;
+        if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return false;
+        const target = e.target as HTMLElement;
+        const wiki = target.closest<HTMLElement>(".cm-lp-wiki");
+        const tag = target.closest<HTMLElement>(".cm-lp-tag");
+        const link = target.closest<HTMLElement>(".cm-lp-link");
+        if (wiki && opts.openWiki) opts.openWiki(wiki.dataset.wiki ?? "");
+        else if (tag && opts.openTag) opts.openTag(tag.dataset.tag ?? "");
+        else if (link) opts.openLink(link.dataset.href ?? "");
+        else return false;
         e.preventDefault();
-        opts.openLink(link.dataset.href ?? "");
         return true;
       },
     }),
