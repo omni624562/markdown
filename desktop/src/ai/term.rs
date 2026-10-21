@@ -495,7 +495,24 @@ mod tests {
             .slave
             .spawn_command(cmd)
             .expect("拿掉不合法的環境變數後要能啟動");
-        assert!(child.wait().unwrap().success());
+        // Windows 的虛擬終端要有人讀走輸出，程式才會結束；讀取的執行緒不等它（終端關閉前不會讀到結尾）。
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            while matches!(reader.read(&mut buf), Ok(n) if n > 0) {}
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                panic!("程式啟動後 30 秒內沒有結束");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        assert!(status.success());
     }
 
     #[test]
