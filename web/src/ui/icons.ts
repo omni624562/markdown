@@ -1,4 +1,12 @@
 import {
+  SpellCheck,
+  Presentation,
+  Tag,
+  Tags,
+  Link2,
+  FileInput,
+  FileDown,
+  Maximize2,
   ClipboardCopy,
   ListTree as TocIcon,
   FileType,
@@ -91,6 +99,14 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  "spell-check": SpellCheck,
+  presentation: Presentation,
+  tag: Tag,
+  tags: Tags,
+  "link-2": Link2,
+  "file-input": FileInput,
+  "file-down": FileDown,
+  "maximize-2": Maximize2,
   "clipboard-copy": ClipboardCopy,
   toc: TocIcon,
   "file-type": FileType,

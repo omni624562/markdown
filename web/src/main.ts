@@ -34,6 +34,7 @@ import {
   type OpenedFile,
   desktopHandle,
   download,
+  bytesToBase64,
   downloadBytes,
   fromDesktop,
   openFile,
@@ -44,6 +45,9 @@ import {
 import { TABLE_TEMPLATE, clearInlineFormat, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
 import { indentLess, indentMore, selectAll } from "@codemirror/commands";
 import { autoSymbols } from "./auto-symbols.ts";
+import { refreshLivePreview } from "./live-preview.ts";
+import { proofread, recheckTerms, scanDocument } from "./proofread.ts";
+import { sureFixes } from "./terms.ts";
 import { SymbolPicker } from "./ui/symbol-picker.ts";
 import { type DocKind, KINDS } from "./kinds.ts";
 import { basename, dirname, isInside, localImagePath, markdownUrl, rebase, resolvePath } from "./paths.ts";
@@ -58,13 +62,14 @@ import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
 import {
   DEFAULTS as DEFAULT_SETTINGS,
   FONT_SIZE_RANGE,
+  TERM_IGNORE_LIMIT,
   type QuickAction,
   type Settings,
   SettingsStore,
 } from "./settings.ts";
 import { pasteAsMarkdown } from "./html-paste.ts";
 import { moveSection, sectionRange, swapSection } from "./sections.ts";
-import { type HeadingRef, linkCompletion } from "./link-complete.ts";
+import { type HeadingRef, encodeLinkPath, linkCompletion } from "./link-complete.ts";
 import { type DocMeta, dropDraft, loadDraft, loadSession, newId, saveDraft, saveSession } from "./session.ts";
 import * as storage from "./storage.ts";
 import { editTable } from "./table.ts";
@@ -76,6 +81,17 @@ import { Palette } from "./ui/palette.ts";
 import { Picker } from "./ui/picker.ts";
 import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
+import { TasksPanel } from "./ui/tasks-panel.ts";
+import { TagsPanel } from "./ui/tags-panel.ts";
+import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
+import { compressImage, formatBytes } from "./image-compress.ts";
+import { openLightbox } from "./ui/lightbox.ts";
+import { askPdfOptions } from "./ui/pdf-dialog.ts";
+import { PAPERS, PRINT_ROOT_CSS, type PdfOptions, coverHtml, pageCss, pageLayout, shadowCss } from "./pdf-print.ts";
+import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
+import { type FileRef, backlinks, renameLinks, resolveWiki } from "./links.ts";
+import { type IndexedDoc, type OpenDoc, WorkspaceIndex } from "./workspace-index.ts";
+import { isoDate, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
 import { SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
 import { TerminalPanel } from "./ui/terminal-panel.ts";
@@ -191,6 +207,8 @@ if (storage.load("layout") !== "minimal") {
   if (storage.load("view") !== "preview") storage.save("view", "live");
 }
 let outlineShown = storage.load("outline") !== "hidden";
+/** 資料夾內容可能變了，下次用到索引時重新讀取。 */
+let indexStale = true;
 /** 編輯器目前是否套用了即時預覽（Markdown 且檢視為「即時預覽」）。 */
 let liveApplied = false;
 let splitRatio = Number(storage.load("split")) || 0.5;
@@ -204,6 +222,7 @@ const preview = new Preview(previewEl, [
   highlightPlugin(),
   mathPlugin(() => settings.value.math),
   mermaidPlugin(() => settings.value.mermaid),
+  docLinksPlugin({ wikiExists: (target) => wikiExists(target) }),
   ...(desktop
     ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, desktop.davImage)]
     : []),
@@ -227,6 +246,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     scheduleAutosave(doc);
     scheduleDiskSave();
     ai?.scheduleSync();
+    refreshIndexPanels(800);
   },
   onSelection(v) {
     updateCursor(v);
@@ -259,6 +279,10 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     mathEnabled: () => settings.value.math,
     openLink: (href) => void followLink(href).catch(reportError),
     enabled: () => !review.active,
+    openWiki: (target) => void openWiki(target).catch(reportError),
+    wikiExists: (target) => wikiExists(target),
+    openTag: (tag) => openTag(tag),
+    openImage: (url, alt, editSource) => openLightbox(url, alt, editSource),
   }),
   markdownTools: [
     selectionToolbar({
@@ -273,6 +297,14 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   extra: [
     review.extension,
     autoSymbols(() => kind !== "json" && settings.value.autoSymbols),
+    proofread({
+      enabled: () => kind !== "json" && settings.value.termCheck,
+      ignored: () => new Set(settings.value.termIgnore),
+      ignore: (word) => {
+        settings.update({ termIgnore: [...settings.value.termIgnore, word].slice(-TERM_IGNORE_LIMIT) });
+        toast(`不再提示「${word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。`);
+      },
+    }),
     linkCompletion({
       enabled: () => kind === "markdown",
       docPath: () => fileHandle?.path ?? null,
@@ -283,6 +315,11 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
       },
       headings: () => preview.result?.headings ?? [],
       fileHeadings: headingsOfFile,
+      wikiPath: async (target) => {
+        if (!desktop || !workspaceRoot) return null;
+        fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
+        return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
+      },
     }),
     EditorView.domEventHandlers({
       keydown(e) {
@@ -516,12 +553,165 @@ async function followLink(href: string): Promise<void> {
 }
 
 previewEl.addEventListener("click", (e) => {
+  const image = e.target as HTMLElement;
+  if (image instanceof HTMLImageElement && !image.closest("a[href]")) {
+    openLightbox(image.currentSrc || image.src, image.alt);
+    return;
+  }
+  const tag = (e.target as HTMLElement).closest?.<HTMLElement>(".tag[data-tag]");
+  if (tag) {
+    openTag(tag.dataset.tag!);
+    return;
+  }
   const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[href]");
   if (!link || e.defaultPrevented) return;
+  if (link.hasAttribute("data-wikilink")) {
+    e.preventDefault();
+    void openWiki(wikiTarget(link)).catch(reportError);
+    return;
+  }
   // 不讓整個編輯器視窗被導到別的網頁。
   e.preventDefault();
   void followLink(link.getAttribute("href") ?? "").catch(reportError);
 });
+
+// ---- 文件互連：[[文件]] -----------------------------------------------------------
+
+/** 資料夾中的 Markdown 文件。 */
+function markdownFiles(list: readonly FileItem[]): FileRef[] {
+  return list.filter((f) => /\.(md|markdown)$/i.test(f.path));
+}
+
+let fileListLoading: Promise<void> | null = null;
+
+/** `[[文件]]` 找不找得到對應的檔案；檔案清單還沒讀到時先回傳 null，讀到後重畫。 */
+function wikiExists(target: string): boolean | null {
+  if (!desktop || !workspaceRoot) return null;
+  if (!fileListCache) {
+    const root = workspaceRoot.path;
+    fileListLoading ??= desktop
+      .listFiles(root)
+      .then((list) => {
+        if (workspaceRoot?.path === root) fileListCache ??= list;
+      })
+      .catch(() => {})
+      .finally(() => {
+        fileListLoading = null;
+        if (!fileListCache) return;
+        refreshLivePreview(editor.view);
+        preview.clear();
+        renderNow();
+      });
+    return null;
+  }
+  return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null) !== null;
+}
+
+/** 開啟 `[[文件#標題]]`；資料夾中還沒有這份文件時詢問要不要建立。 */
+async function openWiki(full: string): Promise<void> {
+  const hashAt = full.indexOf("#");
+  const target = (hashAt >= 0 ? full.slice(0, hashAt) : full).trim();
+  const anchor = hashAt >= 0 ? full.slice(hashAt + 1).trim() : "";
+  if (!target) {
+    if (anchor) scrollToHeading(anchor);
+    return;
+  }
+  if (!desktop || !workspaceRoot) {
+    toast(desktop ? "開啟資料夾後，才能用 [[文件]] 連到資料夾中的其他文件。" : "網頁版無法開啟其他檔案，請改用桌面版。");
+    return;
+  }
+  const root = workspaceRoot.path;
+  fileListCache ??= await desktop.listFiles(root).catch(() => []);
+  const here = fileHandle?.path ? dirname(fileHandle.path) : null;
+  const path = resolveWiki(target, markdownFiles(fileListCache), here);
+  if (path) {
+    await openPath(path);
+    if (anchor) {
+      renderNow();
+      scrollToHeading(anchor);
+    }
+    return;
+  }
+  const name = basename(target.replace(/\\/g, "/")).replace(/\.(md|markdown)$/i, "");
+  const parent = here && isInside(here, root) ? here : root;
+  const choice = await choose(`建立「${name}.md」？`, `資料夾中還沒有「${target}」這份文件。要在「${basename(parent) || parent}」資料夾建立嗎？`, [
+    { id: "create", label: "建立", primary: true },
+    { id: "cancel", label: "取消" },
+  ]);
+  if (choice !== "create") return;
+  const created = await desktop.createEntry(parent, `${name}.md`, false);
+  fileListCache = null;
+  indexStale = true;
+  await fileTree?.refresh([parent]);
+  await openPath(created);
+  if (!editor.text) editor.replaceAll(`# ${name}\n\n`);
+  refreshLivePreview(editor.view);
+}
+
+/** 捲到標題：`[[文件#標題]]` 的標題可能是文字（例如「一、背景」）或錨點 id。 */
+function scrollToHeading(anchor: string): void {
+  const headings = preview.result?.headings ?? [];
+  const h = headings.find((x) => x.id === anchor) ?? headings.find((x) => x.text.trim() === anchor);
+  scrollToAnchor(h?.id ?? anchor);
+}
+
+/** 檔案或資料夾改名後，更新其他文件中指向它（或它底下檔案）的連結。 */
+async function updateLinksAfterRename(from: string, to: string, docsBefore: IndexedDoc[], files: FileRef[]): Promise<void> {
+  const moved = (p: string) => rebase(p, from, to);
+  const changes: { doc: IndexedDoc; path: string; text: string }[] = [];
+  for (const doc of docsBefore) {
+    if (!doc.path) continue;
+    const next = renameLinks(doc.text, doc.path, files, moved);
+    if (next !== null) changes.push({ doc, path: moved(doc.path) ?? doc.path, text: next });
+  }
+  if (!changes.length) return;
+  const choice = await choose(
+    "更新連結？",
+    `有 ${changes.length} 份文件連到「${basename(from)}」，要一起把連結改成「${basename(to)}」嗎？更新前的內容會記在版本記錄中。`,
+    [
+      { id: "update", label: "更新連結", primary: true },
+      { id: "skip", label: "不用" },
+    ],
+  );
+  if (choice !== "update") return;
+  let done = 0;
+  const failed: string[] = [];
+  for (const c of changes) {
+    try {
+      await replaceDocText(c.path, c.doc.text, c.text);
+      done++;
+    } catch (e) {
+      failed.push(`${basename(c.path)}（${e instanceof Error ? e.message : e}）`);
+    }
+  }
+  indexStale = true;
+  refreshIndexPanels();
+  if (failed.length) toast(`已更新 ${done} 份文件的連結；無法更新：${failed.join("、")}`, { tone: "error", duration: 10000 });
+  else toast(`已更新 ${done} 份文件的連結。`, { tone: "success" });
+}
+
+/**
+ * 把一份文件的內容換成 `text`（`expected` 是改之前的內容）：
+ * 目前的分頁直接改編輯器（可以復原）；背景分頁沒有未存檔的變更時一起寫入檔案；沒開啟的檔案直接改寫。
+ */
+async function replaceDocText(path: string, expected: string, text: string): Promise<void> {
+  const tab = tabForPath(path);
+  if (tab === active) {
+    editor.replaceAll(text, { isolate: true });
+    return;
+  }
+  if (tab) {
+    const clean = !tab.dirty;
+    if (clean) await desktop!.updateDoc(path, expected, text);
+    tab.state = tab.state ? tab.state.update({ changes: { from: 0, to: tab.state.doc.length, insert: text } }).state : null;
+    saveDraft(tab.id, text);
+    if (clean) tab.baseline = hash(text);
+    persistSession();
+    renderTabs();
+    return;
+  }
+  await desktop!.updateDoc(path, expected, text);
+}
 
 // ---- 列印／匯出 PDF（E11） ------------------------------------------------------
 
@@ -529,26 +719,90 @@ previewEl.addEventListener("click", (e) => {
  * 用和「匯出 HTML」相同的內容（公式、流程圖都已轉好）建立一個看不見的 iframe 來列印，
  * 在列印對話框中選「另存為 PDF」就能存成 PDF。一律用淺色主題列印。
  */
-async function printDocument(): Promise<void> {
+const PDF_DEFAULTS: Omit<PdfOptions, "header"> = { pageNumbers: true, cover: false, subtitle: "", paper: "A4" };
+
+/** 上次匯出 PDF 的選項（頁首文字每份文件不同，不記）。 */
+function savedPdfOptions(): Omit<PdfOptions, "header"> {
+  try {
+    const raw = JSON.parse(storage.load("pdf-options") ?? "{}") as Partial<PdfOptions>;
+    return {
+      pageNumbers: typeof raw.pageNumbers === "boolean" ? raw.pageNumbers : PDF_DEFAULTS.pageNumbers,
+      cover: typeof raw.cover === "boolean" ? raw.cover : PDF_DEFAULTS.cover,
+      subtitle: typeof raw.subtitle === "string" ? raw.subtitle.slice(0, 200) : "",
+      paper: raw.paper && raw.paper in PAPERS ? raw.paper : PDF_DEFAULTS.paper,
+    };
+  } catch {
+    return { ...PDF_DEFAULTS };
+  }
+}
+
+/** 文件標題：第一個一級標題，沒有的話用檔名。 */
+function documentTitle(): string {
+  return preview.result?.headings.find((h) => h.level === 1)?.text.trim() || stem(fileName);
+}
+
+/**
+ * 匯出 PDF：桌面版選好位置後直接存成 PDF（不經過列印對話框），網頁版開啟列印對話框。
+ * `printer` 為 true 時（桌面版的「列印…」）一律開列印對話框。
+ */
+async function exportPdf(printer = false): Promise<void> {
   if (preview.result?.error) {
     toast("文件有格式錯誤，修正後才能列印。", { tone: "error" });
     return;
   }
-  const html = await preview.exportDocument(editor.text, kind, stem(fileName));
+  const title = documentTitle();
+  const direct = !!desktop && !printer;
+  const opts = await askPdfOptions({ header: title, ...savedPdfOptions() }, direct);
+  if (!opts) return;
+  const { header: _header, ...remember } = opts;
+  storage.save("pdf-options", JSON.stringify(remember));
+  if (direct) {
+    const path = await desktop!.pickPdfPath(`${stem(fileName)}.pdf`);
+    if (!path) return;
+    const cleanup = await preparePrint(opts, title);
+    try {
+      await desktop!.printToPdf(path, pageLayout(opts));
+      toast(`已匯出「${basename(path)}」`, { tone: "success" });
+      return;
+    } catch (e) {
+      // 不支援直接匯出或匯出失敗：改用列印對話框（選「另存為 PDF」）。
+      toast(`無法直接匯出 PDF（${e instanceof Error ? e.message : e}），改用列印對話框，請選「另存為 PDF」。`, {
+        tone: "error",
+        duration: 10000,
+      });
+    } finally {
+      cleanup();
+    }
+  }
+  const cleanup = await preparePrint(opts, title);
+  window.addEventListener("afterprint", () => setTimeout(cleanup, 0), { once: true });
+  window.print();
+}
+
+/**
+ * 把要列印的內容（和「匯出 HTML」相同，公式與流程圖都已轉好）放進主視窗的列印區：
+ * Shadow DOM 隔開介面的樣式，畫面上看不到，只在列印時顯示。回傳清除列印區的函式。
+ */
+async function preparePrint(opts: PdfOptions, title: string): Promise<() => void> {
+  const html = await preview.exportDocument(editor.text, kind, title);
   const doc = new DOMParser().parseFromString(html, "text/html");
-  doc.documentElement.dataset.theme = "light";
   await resolvePrintImages(doc);
-  document.querySelector("iframe.print-frame")?.remove();
-  const frame = document.createElement("iframe");
-  frame.className = "print-frame";
-  frame.setAttribute("aria-hidden", "true");
-  frame.tabIndex = -1;
-  const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
-  frame.srcdoc = `<!doctype html>\n${doc.documentElement.outerHTML}`;
-  document.body.append(frame);
-  await loaded;
-  const win = frame.contentWindow!;
-  const images = [...frame.contentDocument!.images].filter((img) => !img.complete);
+  document.getElementById("print-root")?.remove();
+  document.getElementById("print-page")?.remove();
+  const host = document.createElement("div");
+  host.id = "print-root";
+  const shadow = host.attachShadow({ mode: "open" });
+  const css = [...doc.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n");
+  shadow.innerHTML = `<style>${shadowCss(css)}\n${PRINT_ROOT_CSS}</style>${opts.cover ? coverHtml(opts, title, isoDate(new Date())) : ""}`;
+  const article = doc.querySelector("article.markdown-body");
+  if (article) shadow.append(document.importNode(article, true));
+  const page = document.createElement("style");
+  page.id = "print-page";
+  page.textContent = `@media print { ${pageCss(opts)} }`;
+  document.head.append(page);
+  document.body.append(host);
+  document.documentElement.classList.add("printing");
+  const images = [...shadow.querySelectorAll("img")].filter((img) => !img.complete);
   await Promise.all(
     images.map(
       (img) =>
@@ -558,13 +812,15 @@ async function printDocument(): Promise<void> {
         }),
     ),
   );
-  await frame.contentDocument!.fonts?.ready;
-  win.addEventListener("afterprint", () => setTimeout(() => frame.remove(), 0), { once: true });
-  win.focus();
-  win.print();
+  await document.fonts?.ready;
+  return () => {
+    host.remove();
+    page.remove();
+    document.documentElement.classList.remove("printing");
+  };
 }
 
-/** 文件中以相對路徑引用的圖片，換成列印用的 iframe 能載入的網址。 */
+/** 文件中以相對路徑引用的圖片，換成列印區能載入的網址。 */
 async function resolvePrintImages(doc: Document): Promise<void> {
   const docPath = fileHandle?.path;
   if (!desktop || !docPath) return;
@@ -910,8 +1166,8 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-type SidePanel = "files" | "outline" | "search" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "git"];
+type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
 let sidePanel: SidePanel = SIDE_PANELS.find((p) => p === storage.load("side-panel")) ?? "outline";
 /** 目前開啟的資料夾（工作區）。 */
@@ -969,6 +1225,170 @@ const searchPanel = desktop
     })
   : null;
 
+// ---- 資料夾文件索引：待辦總覽、標籤、反向連結 ----------------------------------
+
+// 從其他程式切回來時，資料夾中的檔案可能改過了。
+window.addEventListener("focus", () => {
+  indexStale = true;
+  refreshIndexPanels(200);
+});
+
+const docIndex = new WorkspaceIndex((known, root) => desktop!.scanDocs(known, root));
+
+/** 已開啟的 Markdown 分頁（以編輯器中的內容為準）。 */
+function openDocsForIndex(): OpenDoc[] {
+  return docs
+    .filter((d) => (d === active ? kind : d.kind) === "markdown")
+    .map((d) => ({
+      id: d.id,
+      path: docPath(d),
+      name: d === active ? fileName : d.name,
+      text: d === active ? editor.text : (d.state?.doc.toString() ?? loadDraft(d.id) ?? ""),
+    }));
+}
+
+/** 資料夾（本機）中的所有文件加上已開啟的分頁；網頁版與 WebDAV 只有已開啟的分頁。 */
+async function indexedDocs(): Promise<IndexedDoc[]> {
+  const root = desktop && workspaceRoot && !isRemote(workspaceRoot.path) ? workspaceRoot.path : null;
+  if (indexStale || !root) {
+    indexStale = false;
+    await docIndex.refresh(root).catch((e) => {
+      indexStale = true;
+      throw e;
+    });
+  }
+  return docIndex.docs(openDocsForIndex());
+}
+
+function indexScope(): string {
+  if (desktop && workspaceRoot && !isRemote(workspaceRoot.path)) return "folder";
+  return "tabs";
+}
+
+const tasksPanel = new TasksPanel($("#tasks-host"), {
+  docs: indexedDocs,
+  open: (doc, line) => openIndexed(doc, line),
+  async toggle(item, done) {
+    const tab = tabOfIndexed(item.doc);
+    if (tab) {
+      if (tab !== active) activate(tab);
+      const doc = editor.view.state.doc;
+      if (item.line > doc.lines) throw new Error("這一行已經不是待辦了，請重新整理");
+      const line = doc.line(item.line);
+      const next = setTaskLine(line.text, done);
+      if (next === null) throw new Error("這一行已經不是待辦了，請重新整理");
+      editor.view.dispatch({ changes: { from: line.from, to: line.to, insert: next }, userEvent: "input.task" });
+      return;
+    }
+    const path = item.doc.path!;
+    const next = setTaskDone(item.doc.text, item.line, done);
+    if (next === null) throw new Error("這一行已經不是待辦了，請重新整理");
+    await desktop!.updateDoc(path, item.doc.text, next);
+    docIndex.remember(path, next);
+  },
+  emptyHint: () =>
+    indexScope() === "folder"
+      ? "資料夾中沒有待辦事項。在文件中寫「- [ ] 要做的事」就會列在這裡，可以加上 @負責人 與截止日（例如 10/25）。"
+      : desktop && !workspaceRoot
+        ? "開啟資料夾後，這裡會列出資料夾中所有文件的待辦；目前只看已開啟的分頁。"
+        : "這裡會列出已開啟分頁中的待辦。在文件中寫「- [ ] 要做的事」就會列在這裡，可以加上 @負責人 與截止日（例如 10/25）。",
+});
+$("#tasks-refresh").addEventListener("click", () => {
+  indexStale = true;
+  void tasksPanel.refresh();
+});
+
+const tagsPanel = new TagsPanel($("#tags-host"), {
+  docs: indexedDocs,
+  open: (doc, line) => openIndexed(doc, line),
+  emptyHint: () =>
+    indexScope() === "folder"
+      ? "資料夾中還沒有標籤。在文件中寫 #專案A、#KR2 這樣的標籤，就能在這裡依標籤找文件。"
+      : "這裡會列出已開啟分頁中的標籤；開啟資料夾後會列出資料夾中所有文件的標籤。",
+});
+$("#tags-refresh").addEventListener("click", () => {
+  indexStale = true;
+  void tagsPanel.refresh();
+});
+
+/** 列出有這個標籤的文件。 */
+function openTag(tag: string): void {
+  showPanel("tags");
+  void tagsPanel.select(tag);
+}
+
+let backlinksSeq = 0;
+/** 大綱面板下方的反向連結：哪些文件連到目前的文件。 */
+async function renderBacklinks(): Promise<void> {
+  const el = $("#backlinks");
+  const path = fileHandle?.path;
+  const seq = ++backlinksSeq;
+  if (!path || kind !== "markdown" || indexScope() !== "folder") {
+    el.hidden = true;
+    return;
+  }
+  const docsNow = await indexedDocs().catch(() => null);
+  if (!docsNow || seq !== backlinksSeq) return;
+  fileListCache ??= await desktop!.listFiles(workspaceRoot!.path).catch(() => []);
+  const list = backlinks(path, docsNow, markdownFiles(fileListCache));
+  el.hidden = false;
+  el.replaceChildren();
+  const h = document.createElement("h3");
+  h.textContent = list.length ? `反向連結（${list.length}）` : "反向連結";
+  el.append(h);
+  if (!list.length) {
+    const p = document.createElement("p");
+    p.className = "outline-empty";
+    p.textContent = "還沒有其他文件連到這裡。在別的文件中輸入 [[ 就能連過來。";
+    el.append(p);
+    return;
+  }
+  const ul = document.createElement("ul");
+  for (const b of list) {
+    for (const line of b.lines.slice(0, 3)) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const name = document.createElement("strong");
+      name.textContent = b.doc.rel.replace(/\.(md|markdown)$/i, "");
+      const snippet = document.createElement("span");
+      snippet.textContent = plainTaskText(b.doc.text.split("\n")[line - 1] ?? "").replace(/^[-*+>#\s]+|^\d+[.)]\s+/g, "");
+      btn.append(name, snippet);
+      btn.title = `${b.doc.rel}：第 ${line} 行`;
+      btn.addEventListener("click", () => openIndexed(b.doc, line));
+      li.append(btn);
+      ul.append(li);
+    }
+  }
+  el.append(ul);
+}
+
+/** 索引中的文件對應的分頁（面板列出後才開啟的也算）。 */
+function tabOfIndexed(doc: IndexedDoc): Doc | undefined {
+  return (doc.tabId ? docs.find((d) => d.id === doc.tabId) : undefined) ?? (doc.path ? tabForPath(doc.path) : undefined);
+}
+
+/** 打開索引中的文件並跳到某一行。 */
+function openIndexed(doc: IndexedDoc, line: number): void {
+  const tab = tabOfIndexed(doc);
+  if (tab) {
+    if (tab !== active) activate(tab);
+    editor.reveal(line);
+  } else if (doc.path) void openPath(doc.path, line).catch(reportError);
+}
+
+let indexPanelsTimer = 0;
+/** 待辦、標籤、反向連結面板顯示中時重新整理（編輯中延遲一下）。 */
+function refreshIndexPanels(delay = 0): void {
+  clearTimeout(indexPanelsTimer);
+  indexPanelsTimer = window.setTimeout(() => {
+    if (!outlineShown) return;
+    if (sidePanel === "tasks") void tasksPanel.refresh();
+    if (sidePanel === "tags") void tagsPanel.refresh();
+    if (sidePanel === "outline") void renderBacklinks();
+  }, delay);
+}
+
 function showPanel(panel: SidePanel, reveal = true): void {
   if (panel === "git" && $("#side-tab-git").hidden) panel = "files";
   sidePanel = panel;
@@ -981,6 +1401,7 @@ function showPanel(panel: SidePanel, reveal = true): void {
   }
   if (reveal && !outlineShown) setOutline(true);
   if (panel === "outline") updateActiveHeading();
+  refreshIndexPanels();
 }
 
 for (const tab of sideTabs) {
@@ -1160,6 +1581,11 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
       const parent = dirname(entry.path);
       const name = await fileTree.promptName(parent, entry.name, "rename", entry.path);
       if (!name || name === entry.name) return;
+      // 改名前記下各文件的連結，改名後才知道哪些要更新。
+      const local = !isRemote(entry.path) && !!workspaceRoot;
+      const before = local ? await indexedDocs().catch(() => []) : [];
+      fileListCache ??= local && workspaceRoot ? await d.listFiles(workspaceRoot.path).catch(() => []) : fileListCache;
+      const filesBefore = markdownFiles(fileListCache ?? []);
       const to = await d.renameEntry(entry.path, name);
       // 已開啟的分頁（含改名資料夾底下的檔案）改用新路徑。
       stash();
@@ -1176,6 +1602,7 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
       renderSaveState();
       renderTabs();
       await fileTree.refresh([parent]);
+      if (local && (entry.isDir || /\.(md|markdown)$/i.test(entry.path))) await updateLinksAfterRename(entry.path, to, before, filesBefore);
       break;
     }
     case "trash": {
@@ -1357,6 +1784,7 @@ function activate(doc: Doc): void {
     showExternalChanges(original, editor.text);
   }
   ai?.scheduleSync();
+  refreshIndexPanels(100);
 }
 
 /** 新增一個分頁並切換過去（不會寫入內容，呼叫端負責）。 */
@@ -1749,10 +2177,18 @@ commands.register(
   },
   {
     id: "export-pdf",
-    title: "列印／匯出 PDF…",
+    title: desktop ? "匯出 PDF…" : "列印／匯出 PDF…",
+    group: "檔案",
+    icon: desktop ? "file-down" : "printer",
+    run: () => exportPdf(),
+  },
+  {
+    id: "print",
+    title: "列印…",
     group: "檔案",
     icon: "printer",
-    run: () => printDocument(),
+    when: () => !!desktop,
+    run: () => exportPdf(true),
   },
   {
     id: "copy-html",
@@ -1779,6 +2215,31 @@ commands.register(
     run: () => exportDocx(),
   },
   {
+    id: "slideshow",
+    title: "簡報模式：從頭播放",
+    group: "檢視",
+    icon: "presentation",
+    keys: "F5",
+    when: () => kind === "markdown",
+    run: () => startSlideshow(false),
+  },
+  {
+    id: "slideshow-here",
+    title: "簡報模式：從目前這一頁播放",
+    group: "檢視",
+    icon: "presentation",
+    keys: "Shift-F5",
+    when: () => kind === "markdown",
+    run: () => startSlideshow(true),
+  },
+  {
+    id: "import-docx",
+    title: "匯入 Word 文件（.docx）…",
+    group: "檔案",
+    icon: "file-input",
+    run: () => importDocx(),
+  },
+  {
     id: "copy-rich",
     title: "複製為格式文字（貼到 Word、Outlook、Teams）",
     group: "檔案",
@@ -1786,6 +2247,26 @@ commands.register(
     keys: "Mod-Alt-c",
     when: () => kind === "markdown",
     run: () => copyRich(),
+  },
+  {
+    id: "fix-terms",
+    title: "修正兩國用語與錯字（整份文件）",
+    group: "編輯",
+    icon: "spell-check",
+    when: () => kind !== "json" && view !== "preview",
+    run: () => fixTerms(),
+  },
+  {
+    id: "clear-term-ignore",
+    title: "兩國用語檢查：清除「不再提示」的詞",
+    group: "編輯",
+    icon: "spell-check",
+    when: () => settings.value.termIgnore.length > 0,
+    run: () => {
+      const n = settings.value.termIgnore.length;
+      settings.update({ termIgnore: [] });
+      toast(`已清除 ${n} 個不再提示的詞。`, { tone: "success" });
+    },
   },
   { id: "palette", title: "開啟指令面板", group: "說明", icon: "command", keys: "Mod-Shift-p", run: () => palette.open() },
   {
@@ -2428,6 +2909,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "new",
   "new-from-template",
   "open",
+  "import-docx",
   "open-folder",
   "open-recent",
   "-",
@@ -2438,7 +2920,11 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "export-html",
   "export-docx",
   "export-pdf",
+  "print",
   "copy-rich",
+  "-",
+  "fix-terms",
+  "slideshow",
   "-",
   "toggle-terminal",
   "start-claude",
@@ -2615,6 +3101,117 @@ const symbolPicker = new SymbolPicker((text) => {
   editor.view.dispatch(editor.view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.symbol" });
   editor.view.focus();
 });
+
+let slideshow: Slideshow | null = null;
+
+/** 簡報模式：用預覽的內容（公式、流程圖都畫好了）切成一頁一頁播放。 */
+async function startSlideshow(fromCursor: boolean): Promise<void> {
+  renderNow();
+  // 等流程圖等非同步的外掛畫完。
+  await new Promise((r) => setTimeout(r, 120));
+  const slides = splitSlides(previewEl);
+  if (!slides.length) {
+    toast("文件是空的，沒有可以播放的內容。");
+    return;
+  }
+  slideshow ??= new Slideshow();
+  const line = editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number;
+  slideshow.open(slides, fromCursor ? slideAtLine(slides, line) : 0, () => editor.view.focus());
+  if (slides.length === 1 && !editor.text.includes("\n---")) {
+    toast("用一行 --- 把內容分成多頁；沒有分隔線時，每個一級、二級標題各一頁。", { duration: 6000 });
+  }
+}
+
+/** 讓使用者選一個檔案（網頁版）。 */
+function pickFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.hidden = true;
+    const done = (file: File | null) => {
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener("change", () => done(input.files?.[0] ?? null), { once: true });
+    input.addEventListener("cancel", () => done(null), { once: true });
+    document.body.append(input);
+    input.click();
+  });
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/**
+ * 匯入 Word：桌面版在 Word 檔旁邊存成同名的 .md（圖片存到旁邊的 assets 資料夾）並開啟；
+ * 網頁版開成新分頁，圖片內嵌在文件裡。
+ */
+async function importDocx(): Promise<void> {
+  if (desktop) {
+    const picked = await desktop.importDocx();
+    if (picked) await importDocxData(picked.name, base64ToBytes(picked.dataBase64).buffer as ArrayBuffer, picked.mdPath);
+    return;
+  }
+  let file: File | null = null;
+  if (window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({ types: [{ description: "Word 文件", accept: { [DOCX_TYPE]: [".docx"] } }] });
+      file = await handle.getFile();
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      throw e;
+    }
+  } else file = await pickFile(`.docx,${DOCX_TYPE}`);
+  if (file) await importDocxData(file.name, await file.arrayBuffer(), null);
+}
+
+const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** 轉換 Word 檔：`mdPath` 是要存成的 Markdown 檔（桌面版選檔匯入），null 時開成未存檔的新分頁、圖片內嵌。 */
+async function importDocxData(name: string, data: ArrayBuffer, mdPath: string | null): Promise<void> {
+  toast(`正在轉換「${name}」…`);
+  const { docxToMarkdown, imageExtension } = await import("./docx-import.ts");
+  let skipped = 0;
+  const result = await docxToMarkdown(data, async (bytes, type) => {
+    let ext = imageExtension(type);
+    if (!ext) {
+      skipped++;
+      return "";
+    }
+    if (settings.value.imageCompress) {
+      const c = await compressImage(new File([bytes as BlobPart], `image.${ext}`, { type }));
+      if (c.changed) {
+        bytes = new Uint8Array(await c.file.arrayBuffer());
+        type = c.file.type;
+        ext = imageExtension(type) ?? ext;
+      }
+    }
+    // 檔名可能有空白或括號（「週報 (2)-….png」），連結中要編碼。
+    if (mdPath) return encodeLinkPath(await desktop!.saveImage(mdPath, bytesToBase64(bytes), ext));
+    return `data:${type};base64,${bytesToBase64(bytes)}`;
+  });
+  const notes = [
+    skipped ? `${skipped} 張圖片的格式不支援（例如 EMF 向量圖），沒有匯入` : "",
+    result.warnings.length ? `有 ${result.warnings.length} 處格式沒辦法完整轉換` : "",
+  ].filter(Boolean);
+  if (mdPath) {
+    const out = await saveFile(result.markdown, basename(mdPath), "markdown", desktopHandle(mdPath, basename(mdPath)));
+    if (!out || out.status !== "saved") return;
+    fileListCache = null;
+    indexStale = true;
+    await openPath(mdPath);
+    void fileTree?.refresh([dirname(mdPath)]);
+    toast(`已匯入「${name}」，存成「${basename(mdPath)}」。${notes.join("；")}`, { tone: "success", duration: notes.length ? 10000 : undefined });
+  } else {
+    openDocument(replaceExtension(name, ".md"), result.markdown, null, { kind: "markdown", fromFile: false });
+    toast(`已匯入「${name}」，存檔時再選擇位置。${notes.join("；")}`, { tone: "success", duration: notes.length ? 10000 : undefined });
+  }
+}
 
 /** 匯出 Word：圖片從本機、WebDAV 或網址讀取，讀不到的改成文字說明。 */
 async function exportDocx(): Promise<void> {
@@ -2957,6 +3554,27 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
     preview.clear();
     renderNow();
   }
+  if (changed.includes("termCheck") || changed.includes("termIgnore")) recheckTerms(editor.view);
+}
+
+/** 整份文件的兩國用語與錯字：不需要判斷文意的直接換掉，其他的留著波浪底線。 */
+function fixTerms(): void {
+  const matches = scanDocument(editor.view.state, new Set(settings.value.termIgnore));
+  const fixes = sureFixes(matches);
+  const left = matches.length - fixes.length;
+  if (fixes.length) editor.view.dispatch({ changes: fixes, userEvent: "input.proofread" });
+  if (!matches.length) toast("沒有找到中國用語或常見錯字。", { tone: "success" });
+  else {
+    toast(
+      (fixes.length ? `已修正 ${fixes.length} 處（可以按 Ctrl+Z 復原）。` : "") +
+        (left
+          ? settings.value.termCheck
+            ? `另有 ${left} 處要依文意判斷，已畫上波浪底線，滑鼠移上去可以選擇。`
+            : `另有 ${left} 處要依文意判斷；打開設定的「檢查兩國用語與錯字」就會標示出來。`
+          : ""),
+      { tone: fixes.length ? "success" : "info", duration: left ? 8000 : undefined },
+    );
+  }
 }
 
 settings.subscribe(applySettings);
@@ -3042,10 +3660,23 @@ function insertAtCursor(text: string): void {
  * 插入圖片。桌面版把圖片存到文件旁邊的 assets 資料夾並插入相對路徑；
  * 網頁版無法寫入檔案，詢問後改用內嵌的 data: 網址。
  */
-async function insertImages(files: File[]): Promise<void> {
+async function insertImages(original: File[]): Promise<void> {
   if (kind !== "markdown") {
     toast("只有 Markdown 文件可以插入圖片。");
     return;
+  }
+  let files = original;
+  if (settings.value.imageCompress) {
+    const out = await Promise.all(original.map(compressImage));
+    files = out.map((c) => c.file);
+    const changed = out.filter((c) => c.changed);
+    if (changed.length) {
+      const before = changed.reduce((n, c) => n + c.before, 0);
+      const after = changed.reduce((n, c) => n + c.file.size, 0);
+      toast(`已自動縮小圖片（${formatBytes(before)} → ${formatBytes(after)}）。不想壓縮可以在設定的「編輯」關閉。`, {
+        duration: 6000,
+      });
+    }
   }
   if (!desktop) {
     if (files.reduce((n, f) => n + f.size, 0) > EMBED_LIMIT) {
@@ -3120,6 +3751,10 @@ window.addEventListener("drop", async (e) => {
   }
   const file = files.find((f) => !images.includes(f));
   if (!file) return;
+  if (/\.docx$/i.test(file.name)) {
+    await importDocxData(file.name, await file.arrayBuffer(), null).catch(reportError);
+    return;
+  }
   if (file.size > 20 * 1024 * 1024) {
     toast("檔案超過 20 MB，可能不是文字檔。", { tone: "error" });
     return;
@@ -3165,6 +3800,8 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
     }),
     d.onTreeChanged(({ dirs }) => {
       fileListCache = null;
+      indexStale = true;
+      refreshIndexPanels(300);
       void fileTree?.refresh(dirs).then(() => gitPanel?.refreshSoon());
       searchPanel?.rerun();
     }),

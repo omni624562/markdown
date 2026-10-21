@@ -193,6 +193,22 @@ mod tests {
     }
 
     #[test]
+    fn renders_wikilinks_safely() {
+        let out = r("見 [[會議記錄]] 與 [[週報#進度|本週]]，[[javascript:alert(1)]]");
+        assert!(
+            out.html.contains("data-wikilink=\"true\">會議記錄</a>"),
+            "{}",
+            out.html
+        );
+        assert!(out.html.contains(">本週</a>"), "{}", out.html);
+        assert!(
+            out.html.contains("<a href=\"\" data-wikilink"),
+            "{}",
+            out.html
+        );
+    }
+
+    #[test]
     fn formatting_tags_are_allowed_without_raw_html() {
         let out =
             r("<u>底線</u>、<mark>重點</mark>、m<sup>2</sup>、H<sub>2</sub>O、第一行<br>第二行");

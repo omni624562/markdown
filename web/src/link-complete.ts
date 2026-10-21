@@ -1,6 +1,7 @@
 /**
  * 連結自動完成（E9）：在 `](` 後面列出工作區的檔案（自動轉成相對路徑），
  * 在 `](#` 後面列出目前文件的標題，在 `](檔案.md#` 後面列出那份文件的標題。
+ * 輸入 `[[` 時列出資料夾中的文件名稱，`[[文件#` 列出那份文件的標題。
  * 標題錨點直接用 md-core 產生的 id，和預覽中的一致。
  */
 import { autocompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
@@ -24,6 +25,51 @@ export interface LinkSources {
   headings(): HeadingRef[];
   /** 另一份文件的標題。 */
   fileHeadings(path: string): Promise<HeadingRef[]>;
+  /** `[[文件]]` 對應的檔案路徑。 */
+  wikiPath?(target: string): Promise<string | null>;
+}
+
+/** 正在輸入的 `[[文件`：回傳已經打的文字（還沒打 `|` 或 `]]`）。 */
+export function wikiDestination(before: string): string | null {
+  const m = /\[\[([^[\]|\n]*)$/.exec(before);
+  return m ? m[1] : null;
+}
+
+const MD = /\.(md|markdown)$/i;
+const fileName = (path: string) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+
+async function completeWiki(ctx: CompletionContext, src: LinkSources, typed: string): Promise<CompletionResult | null> {
+  const hash = typed.indexOf("#");
+  if (hash >= 0) {
+    const path = await src.wikiPath?.(typed.slice(0, hash)).catch(() => null);
+    if (!path || ctx.aborted) return null;
+    const headings = await src.fileHeadings(path).catch(() => []);
+    if (ctx.aborted) return null;
+    return {
+      from: ctx.pos - (typed.length - hash - 1),
+      options: headingOptions(headings).map((o) => ({ ...o, label: o.displayLabel ?? o.label })),
+      validFor: /^[^\]|#\n]*$/,
+    };
+  }
+  const files = (await src.files().catch(() => [])).filter((p) => MD.test(p) && p !== src.docPath());
+  if (ctx.aborted || !files.length) return null;
+  const count = new Map<string, number>();
+  for (const p of files) count.set(fileName(p).replace(MD, ""), (count.get(fileName(p).replace(MD, "")) ?? 0) + 1);
+  const doc = src.docPath();
+  const closing = ctx.state.sliceDoc(ctx.pos, ctx.pos + 2) === "]]";
+  const options: Completion[] = files.map((p) => {
+    const name = fileName(p).replace(MD, "");
+    const rel = doc ? relativePath(dirname(doc), p) : null;
+    // 同名的檔案寫上資料夾，才分得出來。
+    const label = (count.get(name) ?? 0) > 1 && rel ? rel.replace(MD, "") : name;
+    return {
+      label,
+      detail: rel && rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : undefined,
+      type: "text",
+      apply: closing ? label : `${label}]]`,
+    };
+  });
+  return { from: ctx.pos - typed.length, options, validFor: /^[^[\]|#\n]*$/ };
 }
 
 /** 正在輸入的連結網址：`](` 之後、還沒遇到空白或右括號的部分。圖片 `![…](` 不處理。 */
@@ -65,6 +111,8 @@ function headingOptions(headings: HeadingRef[]): Completion[] {
 async function complete(ctx: CompletionContext, src: LinkSources): Promise<CompletionResult | null> {
   if (!src.enabled()) return null;
   const line = ctx.state.doc.lineAt(ctx.pos);
+  const wiki = wikiDestination(line.text.slice(0, ctx.pos - line.from));
+  if (wiki !== null) return completeWiki(ctx, src, wiki);
   const dest = linkDestination(line.text.slice(0, ctx.pos - line.from));
   if (dest === null) return null;
 

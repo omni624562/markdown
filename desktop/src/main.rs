@@ -12,11 +12,13 @@
 
 mod ai;
 mod dav;
+mod doc_index;
 mod files;
 mod git;
 mod history;
 mod images;
 mod io;
+mod pdf;
 mod settings;
 mod trust;
 mod update;
@@ -180,6 +182,9 @@ fn main() {
             files::reopen_file,
             files::save_file,
             files::export_binary,
+            files::import_docx,
+            pdf::pick_pdf_path,
+            pdf::print_to_pdf,
             settings::load_settings,
             settings::save_settings,
             workspace::open_folder,
@@ -195,6 +200,8 @@ fn main() {
             workspace::reveal_entry,
             workspace::search,
             workspace::replace_in_folder,
+            doc_index::scan_docs,
+            doc_index::update_doc,
             workspace::peek_text,
             images::save_image,
             history::history_list,

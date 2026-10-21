@@ -34,6 +34,12 @@ export interface Settings {
   autoSave: boolean;
   /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
   autoSymbols: boolean;
+  /** 標示中國用語與常見錯字（波浪底線），滑鼠移上去可以替換。 */
+  termCheck: boolean;
+  /** 選擇「不再提示」的詞。 */
+  termIgnore: string[];
+  /** 貼上或拖進很大的圖片時，自動縮小並壓縮。 */
+  imageCompress: boolean;
   /** 專注模式：淡化目前段落以外的文字。 */
   focusMode: boolean;
   /** 打字機模式：游標所在行保持在畫面中央。 */
@@ -84,6 +90,9 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   fixedToolbar: false,
   autoSymbols: true,
   autoSave: true,
+  termCheck: true,
+  termIgnore: [],
+  imageCompress: true,
   focusMode: false,
   typewriterMode: false,
   previewWidth: "medium",
@@ -101,12 +110,20 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   gitSyncMinutes: 10,
 });
 
+/** 「不再提示」的詞最多記幾個。 */
+export const TERM_IGNORE_LIMIT = 500;
+
 export const FONT_SIZE_RANGE = { min: 12, max: 24 } as const;
 
 /** 驗證讀進來的設定：型別不對或超出範圍的欄位一律用預設值。 */
 export function sanitize(raw: unknown): { settings: Settings; problems: number } {
   const input = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const out: Settings = { ...DEFAULTS, quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })), templates: [] };
+  const out: Settings = {
+    ...DEFAULTS,
+    quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })),
+    templates: [],
+    termIgnore: [],
+  };
   let problems = raw && typeof raw === "object" ? 0 : 1;
   type BoolKey = {
     [K in keyof Settings]: Settings[K] extends boolean ? K : never;
@@ -123,6 +140,8 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("fixedToolbar");
   bool("autoSymbols");
   bool("autoSave");
+  bool("termCheck");
+  bool("imageCompress");
   bool("focusMode");
   bool("typewriterMode");
   bool("math");
@@ -168,6 +187,16 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
         .filter((t) => t.name)
         .slice(0, TEMPLATE_LIMITS.count);
       if (out.templates.length !== list.length) problems++;
+    } else problems++;
+  }
+  if ("termIgnore" in input) {
+    const list = input.termIgnore;
+    if (Array.isArray(list)) {
+      out.termIgnore = [...new Set(list.filter((w): w is string => typeof w === "string" && w.length > 0 && w.length <= 20))].slice(
+        0,
+        TERM_IGNORE_LIMIT,
+      );
+      if (out.termIgnore.length !== list.length) problems++;
     } else problems++;
   }
   if ("editorFontSize" in input) {

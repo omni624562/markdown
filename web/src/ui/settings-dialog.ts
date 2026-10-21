@@ -80,6 +80,16 @@ const SECTIONS: { title: string; fields: Field[] }[] = [
         label: "打字自動轉符號",
         hint: "<= 變 ≤、>= 變 ≥、!= 變 ≠、-> 變 →、=> 變 ⇒、+- 變 ±；程式碼與公式裡不轉換，轉換後馬上按 Backspace 可以還原",
       },
+      {
+        key: "termCheck",
+        label: "檢查兩國用語與錯字",
+        hint: "中國用語（視頻、默認、軟件…）與常見錯字畫上波浪底線，滑鼠移上去可以換成台灣的說法；「⋯」→「修正兩國用語與錯字」一次修正整份文件；選過「不再提示」的詞可以在指令面板清除",
+      },
+      {
+        key: "imageCompress",
+        label: "貼上大圖片時自動壓縮",
+        hint: "寬或高超過 2000 像素的圖片縮小到 2000 像素，很大的照片改存成 JPEG，NAS 上的檔案不會越來越大",
+      },
       { key: "focusMode", label: "專注模式", hint: "淡化目前段落以外的文字" },
       { key: "typewriterMode", label: "打字機模式", hint: "游標所在的行保持在畫面中央" },
     ],

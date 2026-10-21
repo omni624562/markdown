@@ -42,7 +42,7 @@ impl Workspace {
             .is_some_and(|root| resolve_inside(&root, path).is_ok())
     }
 
-    fn require_root(&self) -> Result<PathBuf, String> {
+    pub(crate) fn require_root(&self) -> Result<PathBuf, String> {
         self.root().ok_or_else(|| "還沒有開啟資料夾".to_string())
     }
 }
@@ -154,7 +154,7 @@ impl Entry {
 }
 
 /// 依 .gitignore 規則、略過隱藏檔的走訪器。
-fn walker(dir: &Path) -> WalkBuilder {
+pub(crate) fn walker(dir: &Path) -> WalkBuilder {
     let mut b = WalkBuilder::new(dir);
     b.hidden(true)
         .git_ignore(true)
@@ -330,7 +330,7 @@ impl FileItem {
     }
 }
 
-fn rel_path(root: &Path, path: &Path) -> String {
+pub(crate) fn rel_path(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
         .components()

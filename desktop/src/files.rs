@@ -22,7 +22,7 @@ pub struct FileFormat {
 /// 已知檔案的狀態：原本的格式，以及最後一次和編輯器同步時內容的雜湊。
 #[derive(Clone, Copy, Default)]
 pub struct FileState {
-    format: FileFormat,
+    pub format: FileFormat,
     /// 用來判斷檔案是否被別的程式改過。
     pub hash: Option<u64>,
 }
@@ -282,10 +282,6 @@ pub async fn read_in_background(app: &AppHandle, path: PathBuf) -> Result<Opened
     crate::io::blocking(move || read_file(&app, path, &app.state::<KnownFiles>())).await
 }
 
-/// 儲存文字檔。`path` 是先前開啟或存過的檔案時直接覆寫；否則跳出另存新檔對話框。
-///
-/// 覆寫前會檢查檔案是否在開啟後被別的程式改過，有的話回傳 `Conflict`，
-/// 除非 `force` 為 true（使用者已確認要覆蓋）。
 /// 匯出二進位檔（例如 Word .docx）：讓使用者選位置後寫入。取消時回傳 None。
 #[tauri::command]
 pub async fn export_binary(
@@ -322,6 +318,82 @@ pub async fn export_binary(
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// 匯入 Word 時選到的檔案，以及要轉存的 Markdown 檔位置。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocxImport {
+    pub name: String,
+    pub md_path: String,
+    pub data_base64: String,
+}
+
+/// Word 檔最大多大（含圖片）。
+const MAX_DOCX_BYTES: u64 = 100 * 1024 * 1024;
+
+/// 和 `path` 同一個資料夾、還沒有人用的 `名稱.md`（已經有了就用「名稱 (2).md」）。
+pub fn unique_md_path(path: &Path) -> PathBuf {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "匯入".into());
+    let mut candidate = dir.join(format!("{stem}.md"));
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = dir.join(format!("{stem} ({n}).md"));
+        n += 1;
+    }
+    candidate
+}
+
+/// 匯入 Word：選擇 .docx，讀出內容，並把旁邊的 `名稱.md` 登記為可以寫入的檔案
+/// （前端轉換時把圖片存到旁邊的 assets，再寫入這個檔案）。取消時回傳 None。
+#[tauri::command]
+pub async fn import_docx(
+    app: AppHandle,
+    window: WebviewWindow,
+    known: State<'_, KnownFiles>,
+    trust: State<'_, Trust>,
+) -> Result<Option<DocxImport>, String> {
+    use base64::Engine;
+    let picked = rfd::AsyncFileDialog::new()
+        .set_parent(&window)
+        .set_title("匯入 Word 文件")
+        .add_filter("Word 文件", &["docx"])
+        .pick_file()
+        .await;
+    let Some(handle) = picked else {
+        return Ok(None);
+    };
+    let path = handle.path().to_path_buf();
+    let p = path.clone();
+    let bytes = crate::io::blocking(move || {
+        let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+        if size > MAX_DOCX_BYTES {
+            return Err(format!("「{}」超過 100 MB，無法匯入", display_name(&p)));
+        }
+        fs::read(&p)
+            .map_err(|e| crate::io::describe(&e, &format!("無法讀取「{}」", display_name(&p))))
+    })
+    .await?;
+    let md = unique_md_path(&path);
+    known
+        .0
+        .lock()
+        .unwrap()
+        .insert(md.clone(), FileState::default());
+    trust.add_file(&app, &md);
+    Ok(Some(DocxImport {
+        name: display_name(&path),
+        md_path: path_string(&md),
+        data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+    }))
+}
+
+/// 儲存文字檔。`path` 是先前開啟或存過的檔案時直接覆寫；否則跳出另存新檔對話框。
+///
+/// 覆寫前會檢查檔案是否在開啟後被別的程式改過，有的話回傳 `Conflict`，
+/// 除非 `force` 為 true（使用者已確認要覆蓋）。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn save_file(
@@ -444,6 +516,18 @@ mod tests {
         let (text, _, enc) = decode(b"\xA4\xA4\xA4\xE5");
         assert_eq!(text, "中文");
         assert_eq!(enc, "big5");
+    }
+
+    #[test]
+    fn imported_markdown_does_not_overwrite() {
+        let dir = std::env::temp_dir().join(format!("md-import-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let docx = dir.join("週報.docx");
+        assert_eq!(unique_md_path(&docx), dir.join("週報.md"));
+        fs::write(dir.join("週報.md"), "已經有了").unwrap();
+        assert_eq!(unique_md_path(&docx), dir.join("週報 (2).md"));
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

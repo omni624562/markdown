@@ -3,6 +3,7 @@
  * 中文用微軟正黑體、英文用 Calibri；文件內的 #錨點 連結（例如目錄）轉成 Word 的書籤連結。
  * 這個模組只在匯出時才載入（docx 套件不小）。
  */
+import { sizeImages } from "./plugins/doc-links.ts";
 import {
   AlignmentType,
   Bookmark,
@@ -82,7 +83,8 @@ export function fitImage(width: number, height: number, max = MAX_IMAGE_WIDTH): 
 }
 
 export async function htmlToDocx(html: string, opts: DocxOptions): Promise<Blob> {
-  const root = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html").body.firstElementChild!;
+  const root = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html").body.firstElementChild! as HTMLElement;
+  sizeImages(root);
 
   // 標題的錨點 → Word 書籤名稱（書籤名稱要以英文字母開頭，所以另外編號）。
   const anchors = new Map<string, string>();
@@ -167,7 +169,10 @@ export async function htmlToDocx(html: string, opts: DocxOptions): Promise<Blob>
         const src = node.getAttribute("src") ?? "";
         const img = images.get(src);
         if (!img) return [run(`［圖片：${node.getAttribute("alt") || src}］`, { ...s, italics: true })];
-        return [new ImageRun({ type: img.type, data: img.data, transformation: fitImage(img.width, img.height) })];
+        // `![說明|400](…)` 指定的寬度（高度依比例）。
+        const width = Number(node.getAttribute("width")) || img.width;
+        const height = Number(node.getAttribute("height")) || Math.round((img.height * width) / img.width);
+        return [new ImageRun({ type: img.type, data: img.data, transformation: fitImage(width, height) })];
       }
       default:
         // 數學公式：保留 TeX 原文（Word 的方程式格式不同）。

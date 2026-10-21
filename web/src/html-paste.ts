@@ -53,7 +53,11 @@ function cell(content: string): string {
   return content.trim().replace(/\s*\n+\s*/g, " ").replace(/\|/g, "\\|");
 }
 
-function createService(): TurndownService {
+/**
+ * `keepImages`：保留相對路徑與 data: 圖片（匯入 Word 時圖片已經存好或內嵌）；
+ * 貼上時只保留網路圖片。
+ */
+function createService(keepImages = false): TurndownService {
   const td = new TurndownService({
     headingStyle: "atx",
     bulletListMarker: "-",
@@ -113,6 +117,15 @@ function createService(): TurndownService {
       return prefix + body + (node.nextSibling && !body.endsWith("\n") ? "\n" : "");
     },
   });
+  // 底線、螢光、上標、下標：核心看得懂這幾個不帶屬性的標籤。
+  td.addRule("format-tags", {
+    filter: ["u", "ins", "mark", "sup", "sub"] as TurndownService.Filter,
+    replacement: (content, node) => {
+      if (!content.trim()) return content;
+      const tag = node.nodeName.toLowerCase();
+      return `<${tag}>${content}</${tag}>`;
+    },
+  });
   td.addRule("strikethrough", {
     filter: ["del", "s", "strike"] as TurndownService.Filter,
     replacement: (content) => (content.trim() ? `~~${content}~~` : content),
@@ -124,7 +137,12 @@ function createService(): TurndownService {
   });
   // data:、file: 等圖片（例如 Word 的本機暫存圖）沒辦法帶過來，只留替代文字。
   td.addRule("unsafe-image", {
-    filter: (node) => node.nodeName === "IMG" && !SAFE_IMAGE.test(((node as El).getAttribute("src") ?? "").trim()),
+    filter: (node) => {
+      if (node.nodeName !== "IMG") return false;
+      const src = ((node as El).getAttribute("src") ?? "").trim();
+      if (keepImages && (/^data:image\/(png|jpe?g|gif|webp|bmp);base64,/i.test(src) || /^(?![a-z][a-z0-9+.-]*:)[^/\\]/i.test(src))) return false;
+      return !SAFE_IMAGE.test(src);
+    },
     replacement: (_content, node) => (node as El).getAttribute?.("alt") ?? "",
   });
   // GitHub 等網站的 <pre> 裡沒有 <code>，turndown 預設會把它當一般段落。
@@ -174,11 +192,12 @@ function createService(): TurndownService {
 }
 
 let service: TurndownService | null = null;
+let importService: TurndownService | null = null;
 
-/** 把 HTML 轉成 Markdown（已移除不安全的內容）。 */
-export function htmlToMarkdown(html: string): string {
-  service ??= createService();
-  return service
+/** 把 HTML 轉成 Markdown（已移除不安全的內容）。`keepImages` 見 createService。 */
+export function htmlToMarkdown(html: string, { keepImages = false } = {}): string {
+  const td = keepImages ? (importService ??= createService(true)) : (service ??= createService());
+  return td
     .turndown(html)
     .replace(/ /g, " ")
     .replace(/\n{3,}/g, "\n\n")
