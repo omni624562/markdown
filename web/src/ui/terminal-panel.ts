@@ -5,6 +5,7 @@
  */
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
+import type { WebLinksAddon } from "@xterm/addon-web-links";
 import type { Desktop, TermProgram } from "../desktop.ts";
 import * as storage from "../storage.ts";
 import { icon } from "./icons.ts";
@@ -26,15 +27,16 @@ interface Session {
   exited: boolean;
 }
 
-type Xterm = { Terminal: typeof Terminal; FitAddon: typeof FitAddon };
+type Xterm = { Terminal: typeof Terminal; FitAddon: typeof FitAddon; WebLinksAddon: typeof WebLinksAddon };
 let xterm: Promise<Xterm> | null = null;
 
 function loadXterm(): Promise<Xterm> {
   xterm ??= Promise.all([
     import("@xterm/xterm"),
     import("@xterm/addon-fit"),
+    import("@xterm/addon-web-links"),
     import("@xterm/xterm/css/xterm.css"),
-  ]).then(([x, f]) => ({ Terminal: x.Terminal, FitAddon: f.FitAddon }));
+  ]).then(([x, f, l]) => ({ Terminal: x.Terminal, FitAddon: f.FitAddon, WebLinksAddon: l.WebLinksAddon }));
   return xterm;
 }
 
@@ -202,7 +204,7 @@ export class TerminalPanel {
   async #createView(): Promise<{ term: Terminal; fit: FitAddon; host: HTMLElement }> {
     this.#el.hidden = false;
     this.#onLayout();
-    const { Terminal, FitAddon } = await loadXterm();
+    const { Terminal, FitAddon, WebLinksAddon } = await loadXterm();
     const host = document.createElement("div");
     host.className = "term-host";
     this.#body.append(host);
@@ -215,6 +217,12 @@ export class TerminalPanel {
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    // 網址：Ctrl（⌘）＋點用預設瀏覽器開啟（例如 Claude Code 登入、錯誤訊息裡的連結）。
+    term.loadAddon(
+      new WebLinksAddon((e, uri) => {
+        if (e.ctrlKey || e.metaKey) void this.#d.openExternal(uri).catch(() => toast("無法開啟這個網址。"));
+      }),
+    );
     term.open(host);
     fit.fit();
     // 有選取文字時 Ctrl+C 是複製，否則照常送出中斷；Ctrl+V 交給瀏覽器貼上。

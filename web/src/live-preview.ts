@@ -8,12 +8,15 @@ import { type EditorState, type Extension, type Range, StateField } from "@codem
 import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { editorFocused, focusChanged, focusTracking } from "./inline-tools.ts";
+import { EditableTableWidget } from "./table-widget.ts";
 
 export interface LivePreviewOptions {
   /** 圖片的網址（相對路徑換成可載入的網址）；回傳 null 表示無法顯示。 */
   imageUrl(src: string): string | null | Promise<string | null>;
   /** 表格的 Markdown 轉成 HTML（由 Rust 核心產生，已移除危險內容）。 */
   renderTable(markdown: string): string;
+  /** 直接編輯表格後重新對齊（依中文字寬）；回傳 undefined 時照原樣。 */
+  formatTable?(markdown: string): string | undefined;
   /** 數學公式；沒有提供或關閉公式時顯示原始碼。 */
   renderMath?(tex: string, display: boolean): Promise<string>;
   mathEnabled?(): boolean;
@@ -148,30 +151,6 @@ class ImageWidget extends WidgetType {
     }
     revealOnClick(view, wrap);
     return wrap;
-  }
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
-class TableWidget extends WidgetType {
-  readonly markdown: string;
-  readonly render: LivePreviewOptions["renderTable"];
-  constructor(markdown: string, render: LivePreviewOptions["renderTable"]) {
-    super();
-    this.markdown = markdown;
-    this.render = render;
-  }
-  eq(other: TableWidget): boolean {
-    return other.markdown === this.markdown;
-  }
-  toDOM(view: EditorView): HTMLElement {
-    const div = document.createElement("div");
-    div.className = "cm-lp-block cm-lp-table markdown-body";
-    div.innerHTML = this.render(this.markdown);
-    div.title = "按一下編輯表格";
-    revealOnClick(view, div);
-    return div;
   }
   ignoreEvent(): boolean {
     return true;
@@ -363,15 +342,23 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
         case "Table":
           if (!rangeActive(from, to) && wholeLines(from, to)) {
             decos.push(
-              Decoration.replace({ widget: new TableWidget(doc.sliceString(from, to), opts.renderTable), block: true }).range(
+              Decoration.replace({
+                widget: new EditableTableWidget(doc.sliceString(from, to), opts.renderTable, opts.formatTable ?? (() => undefined)),
+                block: true,
+              }).range(
                 from,
                 to,
               ),
             );
           }
           return false;
-        case "HTMLBlock":
         case "CommentBlock":
+          // HTML 註解（例如目錄的 <!-- toc --> 標記）在預覽中看不到，這裡淡化顯示。
+          for (let l = doc.lineAt(from).number; l <= doc.lineAt(to).number; l++) {
+            decos.push(lineClass("cm-lp-comment").range(doc.line(l).from));
+          }
+          return false;
+        case "HTMLBlock":
           return false;
         case "HTMLTag": {
           const tag = parseTag(doc.sliceString(from, to));

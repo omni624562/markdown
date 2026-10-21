@@ -646,6 +646,121 @@ pub async fn search(
         .map_err(|e| e.to_string())?
 }
 
+#[derive(Serialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceResult {
+    /// 改了幾個檔案、幾處。
+    files: usize,
+    replacements: usize,
+    /// 有未存檔變更而略過的檔案。
+    skipped: Vec<String>,
+    /// 無法處理的檔案（不是 UTF-8、寫入失敗等）與原因。
+    failed: Vec<String>,
+}
+
+/// 在工作區的所有文件中取代文字。和搜尋用同樣的檔案範圍與條件；正規表示式模式下可以用 `$1` 引用群組。
+/// `skip` 是編輯器中有未存檔變更的檔案，不碰它們。`on_write` 在每個檔案寫入前呼叫（記錄版本用）。
+pub fn replace_dir(
+    root: &Path,
+    query: &str,
+    replacement: &str,
+    case_sensitive: bool,
+    regex: bool,
+    skip: &[PathBuf],
+    mut on_write: impl FnMut(&Path, &[u8], &str),
+) -> Result<ReplaceResult, String> {
+    if query.is_empty() {
+        return Err("請輸入要取代的文字".into());
+    }
+    let pattern = if regex {
+        query.to_string()
+    } else {
+        regex::escape(query)
+    };
+    let re = regex::RegexBuilder::new(&pattern)
+        .case_insensitive(!case_sensitive)
+        .multi_line(true)
+        .build()
+        .map_err(|e| format!("搜尋條件無效：{e}"))?;
+    let mut result = ReplaceResult::default();
+    for entry in walker(root).build().filter_map(Result::ok) {
+        let path = entry.path();
+        if !entry.file_type().is_some_and(|t| t.is_file()) || !is_doc(path) {
+            continue;
+        }
+        let Ok(bytes) = fs::read(path) else {
+            result
+                .failed
+                .push(format!("{}：無法讀取", display_name(path)));
+            continue;
+        };
+        let Ok(text) = std::str::from_utf8(&bytes) else {
+            if re.is_match(&String::from_utf8_lossy(&bytes)) {
+                result.failed.push(format!(
+                    "{}：不是 UTF-8 編碼，請先開啟並存檔",
+                    display_name(path)
+                ));
+            }
+            continue;
+        };
+        let count = re.find_iter(text).count();
+        if count == 0 {
+            continue;
+        }
+        if skip.iter().any(|s| s == path) {
+            result.skipped.push(path_string(path));
+            continue;
+        }
+        let next = if regex {
+            re.replace_all(text, replacement)
+        } else {
+            re.replace_all(text, regex::NoExpand(replacement))
+        };
+        on_write(path, &bytes, &next);
+        match crate::files::write_atomic(path, next.as_bytes()) {
+            Ok(()) => {
+                result.files += 1;
+                result.replacements += count;
+            }
+            Err(e) => result.failed.push(format!(
+                "{}：{}",
+                display_name(path),
+                crate::io::describe(&e, "無法寫入")
+            )),
+        }
+    }
+    Ok(result)
+}
+
+/// 資料夾全文取代。寫入前把原本的內容記到版本記錄，可以從「版本記錄」還原。
+#[tauri::command]
+pub async fn replace_in_folder(
+    app: AppHandle,
+    query: String,
+    replacement: String,
+    case_sensitive: bool,
+    regex: bool,
+    skip: Vec<String>,
+) -> Result<ReplaceResult, String> {
+    let root = app.state::<Workspace>().require_root()?;
+    let skip: Vec<PathBuf> = skip.into_iter().map(PathBuf::from).collect();
+    tauri::async_runtime::spawn_blocking(move || {
+        replace_dir(
+            &root,
+            &query,
+            &replacement,
+            case_sensitive,
+            regex,
+            &skip,
+            |path, before, after| {
+                crate::history::on_save(&app, path, Some(before), after);
+            },
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -728,5 +843,42 @@ mod tests {
         let mut v = vec!["第10章", "第2章", "a10", "A2", "第1章"];
         v.sort_by(|a, b| natural_cmp(a, b));
         assert_eq!(v, ["A2", "a10", "第1章", "第2章", "第10章"]);
+    }
+
+    #[test]
+    fn replaces_across_the_folder() {
+        let dir = temp_ws("replace");
+        let skipped = dir.join("第2章").join("筆記.md");
+        let r = replace_dir(
+            &dir,
+            "季度報告",
+            "季報",
+            true,
+            false,
+            std::slice::from_ref(&skipped),
+            |_, _, _| {},
+        )
+        .unwrap();
+        assert_eq!((r.files, r.replacements), (1, 1));
+        assert_eq!(r.skipped, [path_string(&skipped)]);
+        assert_eq!(
+            fs::read_to_string(dir.join("README.md")).unwrap(),
+            "# 標題\n\n季報的內容\n"
+        );
+        // 略過 .gitignore 與 node_modules 的檔案
+        assert_eq!(fs::read_to_string(dir.join("略過.md")).unwrap(), "季度報告");
+        assert_eq!(
+            fs::read_to_string(dir.join("node_modules/x.md")).unwrap(),
+            "季度報告"
+        );
+        // 正規表示式與群組；非正規表示式時 $1 照字面
+        let r = replace_dir(&dir, r"(季)報", "$1度報告", true, true, &[], |_, _, _| {}).unwrap();
+        assert_eq!(r.replacements, 1);
+        replace_dir(&dir, "標題", "$1", true, false, &[], |_, _, _| {}).unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("README.md")).unwrap(),
+            "# $1\n\n季度報告的內容\n"
+        );
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

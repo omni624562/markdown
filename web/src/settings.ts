@@ -5,6 +5,7 @@
  */
 import { desktop } from "./desktop.ts";
 import * as storage from "./storage.ts";
+import { TEMPLATE_LIMITS, type Template } from "./templates.ts";
 
 /** 選取段落後可以執行的 AI 快捷動作。 */
 export interface QuickAction {
@@ -29,6 +30,8 @@ export interface Settings {
    * 舊版的 `formatBar`（預設開啟）不再讀取，讓簡約版面也套用到已經有設定檔的使用者。
    */
   fixedToolbar: boolean;
+  /** 桌面版：已經存過的檔案，停止打字一下子後自動存回磁碟。 */
+  autoSave: boolean;
   /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
   autoSymbols: boolean;
   /** 專注模式：淡化目前段落以外的文字。 */
@@ -52,6 +55,8 @@ export interface Settings {
   /** 檔案被外部程式修改時，逐段標示變更處，可以保留或還原。 */
   markExternalChanges: boolean;
   quickActions: QuickAction[];
+  /** 自訂的文件範本（內建範本不在這裡）。 */
+  templates: Template[];
   /** 桌面版：每天檢查一次有沒有新版（下載前會先詢問）。 */
   autoUpdate: boolean;
   /** 開啟的資料夾是 Git 儲存庫時，定時提交、拉取、推送。預設關閉。 */
@@ -78,6 +83,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   smartPaste: true,
   fixedToolbar: false,
   autoSymbols: true,
+  autoSave: true,
   focusMode: false,
   typewriterMode: false,
   previewWidth: "medium",
@@ -89,6 +95,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   aiTerminal: true,
   markExternalChanges: true,
   quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
+  templates: [],
   autoUpdate: true,
   gitAutoSync: false,
   gitSyncMinutes: 10,
@@ -99,7 +106,7 @@ export const FONT_SIZE_RANGE = { min: 12, max: 24 } as const;
 /** 驗證讀進來的設定：型別不對或超出範圍的欄位一律用預設值。 */
 export function sanitize(raw: unknown): { settings: Settings; problems: number } {
   const input = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const out: Settings = { ...DEFAULTS, quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })) };
+  const out: Settings = { ...DEFAULTS, quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })), templates: [] };
   let problems = raw && typeof raw === "object" ? 0 : 1;
   type BoolKey = {
     [K in keyof Settings]: Settings[K] extends boolean ? K : never;
@@ -115,6 +122,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("smartPaste");
   bool("fixedToolbar");
   bool("autoSymbols");
+  bool("autoSave");
   bool("focusMode");
   bool("typewriterMode");
   bool("math");
@@ -149,6 +157,17 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
         .filter((a) => a.name && a.prompt)
         .slice(0, QUICK_ACTION_LIMITS.count);
       if (out.quickActions.length !== list.length) problems++;
+    } else problems++;
+  }
+  if ("templates" in input) {
+    const list = input.templates;
+    if (Array.isArray(list)) {
+      out.templates = list
+        .filter((t): t is Template => !!t && typeof t === "object" && typeof t.name === "string" && typeof t.body === "string")
+        .map((t) => ({ name: t.name.trim().slice(0, TEMPLATE_LIMITS.name), body: t.body.slice(0, TEMPLATE_LIMITS.body) }))
+        .filter((t) => t.name)
+        .slice(0, TEMPLATE_LIMITS.count);
+      if (out.templates.length !== list.length) problems++;
     } else problems++;
   }
   if ("editorFontSize" in input) {

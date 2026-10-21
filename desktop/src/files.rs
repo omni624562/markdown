@@ -286,6 +286,42 @@ pub async fn read_in_background(app: &AppHandle, path: PathBuf) -> Result<Opened
 ///
 /// 覆寫前會檢查檔案是否在開啟後被別的程式改過，有的話回傳 `Conflict`，
 /// 除非 `force` 為 true（使用者已確認要覆蓋）。
+/// 匯出二進位檔（例如 Word .docx）：讓使用者選位置後寫入。取消時回傳 None。
+#[tauri::command]
+pub async fn export_binary(
+    window: WebviewWindow,
+    suggested_name: String,
+    data_base64: String,
+    filter_name: String,
+    extensions: Vec<String>,
+) -> Result<Option<String>, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("匯出的資料無效：{e}"))?;
+    let exts: Vec<&str> = extensions
+        .iter()
+        .map(|e| e.trim_start_matches('.'))
+        .collect();
+    let picked = rfd::AsyncFileDialog::new()
+        .set_parent(&window)
+        .set_title("匯出")
+        .set_file_name(&suggested_name)
+        .add_filter(&filter_name, &exts)
+        .save_file()
+        .await;
+    let Some(handle) = picked else {
+        return Ok(None);
+    };
+    let path = handle.path().to_path_buf();
+    let p = path.clone();
+    crate::io::blocking(move || {
+        write_atomic(&p, &bytes).map_err(|e| crate::io::describe(&e, "無法寫入檔案"))
+    })
+    .await?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn save_file(
