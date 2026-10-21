@@ -43,6 +43,17 @@ export class TabBar {
     add.append(icon("plus"));
     add.addEventListener("click", () => handlers.create());
     el.replaceChildren(this.#list, add);
+    // 分頁很多時用滑鼠滾輪左右捲動（捲軸隱藏起來比較乾淨）。
+    this.#list.addEventListener(
+      "wheel",
+      (e) => {
+        if (e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        if (this.#list.scrollWidth <= this.#list.clientWidth) return;
+        e.preventDefault();
+        this.#list.scrollLeft += e.deltaY;
+      },
+      { passive: false },
+    );
 
     this.#list.addEventListener("keydown", (e) => {
       const tabs = [...this.#list.querySelectorAll<HTMLElement>("[role=tab]")];
