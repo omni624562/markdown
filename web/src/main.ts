@@ -1738,8 +1738,6 @@ function persistSession(): void {
 }
 
 function renderTabs(): void {
-  // 只開一個檔案時，分頁列看起來就像標題。
-  $("#tab-bar").classList.toggle("single", docs.length === 1);
   tabBar.render(
     docs.map((d) => ({
       id: d.id,
@@ -2917,21 +2915,11 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "save-as",
   "history",
   "-",
-  "export-html",
-  "export-docx",
-  "export-pdf",
-  "print",
-  "copy-rich",
-  "-",
+  { label: "匯出", icon: "download", items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich"] },
   "fix-terms",
   "slideshow",
   "-",
-  "toggle-terminal",
-  "start-claude",
-  "start-codex",
-  "ai-settings",
-  "-",
-  "toggle-outline",
+  { label: "AI 與終端機", icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
   "palette",
   "settings",
 ]);
@@ -3469,7 +3457,13 @@ function applyLayout(): void {
   document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((b) => {
     b.setAttribute("aria-checked", String(b.dataset.view === effective));
   });
-  $("[data-command='toggle-outline']").setAttribute("aria-pressed", String(outlineShown));
+  // 側邊欄打開時，分頁從編輯區的左緣開始，和下面的欄位對齊。
+  $(".topbar").classList.toggle("with-sidebar", outlineShown && !narrow);
+  const navToggle = $("[data-command='toggle-outline']");
+  if (navToggle.getAttribute("aria-pressed") !== String(outlineShown)) {
+    navToggle.setAttribute("aria-pressed", String(outlineShown));
+    navToggle.replaceChildren(icon(outlineShown ? "panel-left-close" : "panel-left"));
+  }
   blocks = null;
   if (effective !== "preview") editor.view.requestMeasure();
 }

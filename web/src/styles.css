@@ -125,17 +125,34 @@ kbd {
 
 /* ---- 頂端列：分頁＋檢視切換＋選單 ---- */
 .topbar {
+  position: relative;
   display: flex;
   align-items: stretch;
   min-width: 0;
   height: var(--topbar-h);
   padding-top: env(safe-area-inset-top);
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
-/* 側邊欄（含圖示列）預設收起，用左上角的按鈕叫出來。 */
-.nav-toggle { display: inline-flex; align-self: center; margin-left: 6px; color: var(--muted); }
-.nav-toggle:hover { color: var(--fg); }
+/* 側邊欄（含圖示列）預設收起，用左上角的按鈕叫出來；寬度和下面的圖示列對齊。 */
+.nav-toggle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--activity-width);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.nav-toggle .icon { padding: 5px; box-sizing: content-box; border-radius: 6px; transition: background 0.12s, color 0.12s; }
+.nav-toggle:hover .icon { background: var(--active-line); color: var(--fg); }
+.nav-toggle:focus-visible { outline-offset: -6px; }
+.nav-toggle[aria-pressed="true"] { color: var(--fg); }
+.topbar-side { display: none; flex: none; width: var(--outline-width); }
+.topbar.with-sidebar .nav-toggle { border-right: 1px solid var(--border); }
+.topbar.with-sidebar .topbar-side { display: block; border-right: 1px solid var(--border); }
 .workspace.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; align-items: center; padding: 0 8px 0 12px; }
 .top-actions .btn.icon-only { color: var(--muted); }
@@ -528,8 +545,11 @@ kbd {
   position: fixed;
   inset: auto;
   min-width: 220px;
+  max-width: min(360px, calc(100vw - 16px));
   margin: 0;
   padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) + 2px);
   background: var(--surface-raised);
@@ -556,6 +576,10 @@ kbd {
 .menu button .icon { color: var(--muted); }
 .menu button[aria-checked="true"] .icon:last-child { color: var(--accent); }
 .menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.menu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu button.has-submenu .icon:last-child { width: 15px; height: 15px; margin-right: -2px; }
+.menu button.has-submenu.open { background: var(--accent-soft); }
+.menu kbd { flex: none; margin-left: 12px; }
 
 /* ---- 指令面板 ---- */
 .palette {
@@ -674,6 +698,11 @@ kbd {
   :root { --editor-font-size: 16px; } /* iOS 字級低於 16px 會在聚焦時自動放大 */
   .split-only { display: none !important; }
   .top-actions { padding: 0 6px; }
+  .nav-toggle { width: 44px; }
+  /* 手機只顯示目前的分頁（用側邊抽屜或 Ctrl+P 切換其他文件）。 */
+  .tab-bar .tabs { flex: 1 1 auto; }
+  .tab-bar .tab:not([aria-selected="true"]) { display: none; }
+  .tab-bar .tab[aria-selected="true"] { flex: 1 1 auto; min-width: 0; max-width: none; border-right: 0; background: transparent; box-shadow: none; }
   /* 活動列和側邊欄變成從左邊滑出的抽屜，點外面關閉。 */
   .activity-bar, .sidebar { position: absolute; top: 0; bottom: 0; z-index: 20; }
   .activity-bar { left: 0; width: var(--activity-width); }
@@ -860,28 +889,53 @@ kbd {
 }
 
 /* ---- 分頁列 ---- */
+/* 頂端列是淺灰色，目前的分頁是白色並蓋住下面的分隔線，和編輯區連成一塊。 */
 .tab-bar {
   display: flex;
   flex: 1;
   align-items: stretch;
   min-width: 0;
+  margin-bottom: -1px;
 }
-.tabs { display: flex; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.tabs { display: flex; flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
+  position: relative;
   display: flex;
   flex: none;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
-  max-width: 220px;
-  padding: 0 6px 0 14px;
+  min-width: 96px;
+  max-width: 260px;
   height: 100%;
+  padding: 0 6px 0 12px;
+  border-right: 1px solid var(--border-soft);
   color: var(--muted);
   font-size: 13px;
   cursor: pointer;
   user-select: none;
 }
-.tab:hover { color: var(--fg); background: var(--active-line); }
-.tab[aria-selected="true"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab::before {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  opacity: 0.55;
+  -webkit-mask: var(--tab-icon) center / contain no-repeat;
+  mask: var(--tab-icon) center / contain no-repeat;
+}
+.tab {
+  --tab-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8M16 13H8M16 17H8'/%3E%3C/svg%3E");
+}
+.tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.tab[aria-selected="true"] {
+  z-index: 1;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.tab[aria-selected="true"]::before { opacity: 0.8; color: var(--accent); }
 .tab-rename {
   width: 14em;
   min-width: 0;
@@ -896,9 +950,10 @@ kbd {
 }
 .tab:focus-visible { outline-offset: -2px; }
 .tab.missing .tab-name { text-decoration: line-through; color: var(--danger); }
-.tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-close {
   display: grid;
+  flex: none;
   place-items: center;
   width: 22px;
   height: 22px;
@@ -911,21 +966,15 @@ kbd {
 }
 .tab-close .icon { width: 14px; height: 14px; }
 .tab-close:hover { background: var(--active-line); }
+/* 關閉按鈕只在目前的分頁與滑鼠移上去時出現。 */
+.tab:not([aria-selected="true"]):not(:hover) .tab-close:not(.dirty) { visibility: hidden; }
 /* 有未存檔變更時顯示圓點，滑鼠移上去才變回關閉按鈕。 */
 .tab-close.dirty .icon { display: none; }
 .tab-close.dirty::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .tab-close.dirty:hover .icon { display: block; }
 .tab-close.dirty:hover::after { display: none; }
-/* 只開一個檔案：分頁列看起來就是置中的標題。 */
-.tab-bar.single { justify-content: center; }
-.tab-bar.single .tab { border-right: 0; background: transparent; box-shadow: none; color: var(--muted); font-weight: 500; }
-.tab-bar.single .tab:hover { color: var(--fg); }
-.tab-bar.single .tab-close:not(.dirty) { visibility: hidden; }
-.tab-bar.single .tab:hover .tab-close { visibility: visible; }
-/* 新分頁按鈕平常隱藏，滑鼠移到頂端列或用鍵盤操作時才出現。 */
-.tab-bar.single .tab-new { opacity: 0; transition: opacity 0.12s; }
-.topbar:hover .tab-bar.single .tab-new, .tab-bar.single .tab-new:focus-visible { opacity: 1; }
-.tab-new { flex: none; align-self: center; width: 30px !important; min-height: 30px; margin-left: 4px; color: var(--muted); }
+.tab-new { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 4px; color: var(--muted); }
+.tab-new:hover { color: var(--fg); }
 @media (pointer: coarse) {
   .tab-close { width: 32px; height: 32px; }
 }
