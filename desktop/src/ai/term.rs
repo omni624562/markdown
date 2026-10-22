@@ -335,12 +335,25 @@ fn take_utf8(buf: &mut Vec<u8>) -> String {
 
 fn default_shell() -> CommandBuilder {
     if cfg!(windows) {
-        let mut cmd = match which::which("pwsh") {
-            Ok(p) => CommandBuilder::new(p),
-            Err(_) => CommandBuilder::new("powershell.exe"),
-        };
-        cmd.arg("-NoLogo");
-        cmd
+        match which::which("pwsh") {
+            Ok(p) => {
+                let mut cmd = CommandBuilder::new(p);
+                // PowerShell 7 預設把資料夾名稱畫成整塊藍底，在編輯器裡太刺眼；
+                // 還是預設值時改成藍色粗體字（使用者自己設定過就不動）。
+                cmd.args([
+                    "-NoLogo",
+                    "-NoExit",
+                    "-Command",
+                    "if ($PSStyle.FileInfo.Directory -eq \"`e[44;1m\") { $PSStyle.FileInfo.Directory = \"`e[34;1m\" }",
+                ]);
+                cmd
+            }
+            Err(_) => {
+                let mut cmd = CommandBuilder::new("powershell.exe");
+                cmd.arg("-NoLogo");
+                cmd
+            }
+        }
     } else {
         CommandBuilder::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into()))
     }
