@@ -1481,6 +1481,9 @@ const gitPanel =
     ? new GitPanel($("#git-host"), desktop, settings, fileTree, github, {
         root: () => workspaceRoot?.path ?? null,
         open: (path) => void openPath(path).catch(reportError),
+        resolve: (path, theirs) => void resolveMergeConflict(path, theirs).catch(reportError),
+        switchBranch: () => void switchBranch().catch(reportError),
+        createPr: () => void createPullRequest().catch(reportError),
         changed: (status) => {
           // Git 內建在程式裡：圖示一直顯示，還沒同步的資料夾點進去會引導上傳到 GitHub。
           const tab = $("#side-tab-git");
@@ -3239,6 +3242,181 @@ async function copyWebLink(): Promise<void> {
   toast(url.includes("#L") || url.includes("&line=") ? "已複製連結（含選取的行號）" : "已複製連結");
 }
 
+// ---- Git：合併衝突、分支、Pull Request；GitHub Pages、Gist ---------------------
+
+/** 開啟衝突的檔案（磁碟上是都採用本機的內容），逐段和「都採用遠端」比較。 */
+async function resolveMergeConflict(path: string, theirs: string): Promise<void> {
+  const existing = tabForPath(path);
+  if (existing) {
+    activate(existing);
+    await reloadDoc(existing, path);
+  } else {
+    await openPath(path);
+  }
+  if (fileHandle?.path !== path) return;
+  if (review.active) review.finish();
+  const started = review.start(theirs, {
+    title: `合併衝突：「${basename(path)}」`,
+    hint: "每一段選「採用遠端」或「保留本機」，處理完存檔，再到原始碼控制按「完成合併」",
+    acceptLabel: "採用遠端",
+    rejectLabel: "保留本機",
+  });
+  if (!started) toast("這個檔案已經處理好了，存檔後按「完成合併」。");
+  showPanel("git", false);
+}
+
+type BranchChoice = { name: string; kind: "local" | "remote" | "new" };
+
+async function switchBranch(): Promise<void> {
+  if (!desktop) return;
+  const b = await desktop.gitBranches();
+  const items: BranchChoice[] = [
+    { name: "", kind: "new" },
+    ...b.local.map((name) => ({ name, kind: "local" as const })),
+    ...b.remote.map((name) => ({ name, kind: "remote" as const })),
+  ];
+  new Picker<BranchChoice>({
+    label: "切換分支",
+    placeholder: `目前在「${b.current ?? "（未知）"}」，選要切換的分支`,
+    empty: "找不到符合的分支",
+    query: (q) => {
+      const needle = q.trim().toLowerCase();
+      return items.filter((i) => i.kind === "new" || !needle || i.name.toLowerCase().includes(needle));
+    },
+    render: (i) =>
+      i.kind === "new"
+        ? { title: "建立新分支…", detail: "從目前的提交建立，並切換過去", icon: "plus" }
+        : {
+            title: i.name,
+            detail: i.name === b.current ? "目前的分支" : i.kind === "remote" ? "遠端的分支（會在本機建立）" : "",
+            icon: "git-branch",
+          },
+    pick: (i) => void (i.kind === "new" ? createBranch() : checkoutBranch(i.name)).catch(reportError),
+  }).open();
+}
+
+async function checkoutBranch(name: string): Promise<void> {
+  if (!desktop) return;
+  if (docs.some((d) => d.dirty)) {
+    toast("有分頁還沒存檔，請先存檔再切換分支。", { tone: "error" });
+    return;
+  }
+  toast(await desktop.gitCheckout(name), { tone: "success" });
+  await gitPanel?.refresh();
+  await fileTree?.refresh();
+}
+
+async function createBranch(): Promise<string | null> {
+  if (!desktop) return null;
+  const name = await askText("建立新分支", "分支名稱（例如 draft、fix-typo，不能有空白）：", "", "建立");
+  if (!name?.trim()) return null;
+  toast(await desktop.gitCreateBranch(name.trim()), { tone: "success" });
+  await gitPanel?.refresh();
+  return name.trim();
+}
+
+/** 建立 Pull Request：在預設分支上時先建立新分支，推送後在 GitHub 或 Azure DevOps 建立。 */
+async function createPullRequest(): Promise<void> {
+  const status = gitPanel?.status;
+  if (!desktop || !status?.repo) return;
+  if (status.changes.length) {
+    toast("還有未提交的變更，請先提交再建立 Pull Request。");
+    showPanel("git");
+    return;
+  }
+  const branch = status.branch?.name ?? "";
+  let newBranch: string | null = null;
+  if (/^(main|master|develop|trunk)$/i.test(branch)) {
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    newBranch = await askText(
+      "建立 Pull Request",
+      `目前在「${branch}」。Pull Request 需要另一個分支，會用這個名稱建立新分支並推送：`,
+      `update-${stamp}`,
+      "下一步",
+    );
+    if (!newBranch?.trim()) return;
+  }
+  const title = await askText("建立 Pull Request", "標題：", "", "建立");
+  if (!title?.trim()) return;
+  const wait = toast("正在推送並建立 Pull Request…", { duration: 600000 });
+  try {
+    const url = await desktop.gitCreatePr(title.trim(), "由 oMarker 建立", newBranch?.trim() || null);
+    wait.dismiss();
+    toast("已建立 Pull Request", {
+      tone: "success",
+      duration: 15000,
+      action: { label: "在瀏覽器開啟", run: () => void desktop!.openExternal(url) },
+    });
+  } catch (e) {
+    wait.dismiss();
+    reportError(e);
+  } finally {
+    await gitPanel?.refresh();
+  }
+}
+
+/** 用 GitHub Pages 把資料夾發佈成網站。 */
+async function publishPages(): Promise<void> {
+  if (!desktop) return;
+  const ok = await choose(
+    "發佈成網站（GitHub Pages）",
+    "會把這個儲存庫預設分支的內容發佈成網站，所有人都看得到（就算儲存庫是私人的）。Markdown 會自動轉成網頁，README.md 或 index.md 是首頁。第一次發佈大約要一兩分鐘才看得到。",
+    [
+      { id: "cancel", label: "取消" },
+      { id: "go", label: "發佈", primary: true },
+    ],
+  );
+  if (ok !== "go") return;
+  const wait = toast("正在設定 GitHub Pages…", { duration: 60000 });
+  try {
+    const url = await desktop.githubPages();
+    wait.dismiss();
+    toast(`網站網址：${url.replace(/^https:\/\//, "")}（之後推送就會自動更新）`, {
+      tone: "success",
+      duration: 20000,
+      action: { label: "開啟網站", run: () => void desktop!.openExternal(url) },
+    });
+  } catch (e) {
+    wait.dismiss();
+    reportError(e);
+  }
+}
+
+/** 把選取的內容（沒有選取時是整份文件）分享成 Gist。 */
+async function shareGist(): Promise<void> {
+  if (!desktop) return;
+  const sel = editor.view.state.selection.main;
+  const content = sel.empty ? editor.text : editor.view.state.sliceDoc(sel.from, sel.to);
+  if (!content.trim()) {
+    toast("沒有內容可以分享。");
+    return;
+  }
+  const visibility = await choose(
+    "分享成 Gist",
+    `會把${sel.empty ? `整份「${fileName}」` : "選取的內容"}上傳到你的 GitHub Gist，產生一個可以分享的網址。`,
+    [
+      { id: "cancel", label: "取消" },
+      { id: "public", label: "公開（所有人都找得到）" },
+      { id: "secret", label: "秘密（知道網址的人才看得到）", primary: true },
+    ],
+  );
+  if (visibility !== "public" && visibility !== "secret") return;
+  const wait = toast("正在上傳…", { duration: 60000 });
+  try {
+    const url = await desktop.githubGist(fileName, content, stem(fileName), visibility === "public");
+    wait.dismiss();
+    await navigator.clipboard.writeText(url).catch(() => {});
+    toast("已分享成 Gist，網址已複製", {
+      tone: "success",
+      duration: 15000,
+      action: { label: "在瀏覽器開啟", run: () => void desktop!.openExternal(url) },
+    });
+  } catch (e) {
+    wait.dismiss();
+    reportError(e);
+  }
+}
+
 /** 外部修改後，以修改前的版本為基準逐段標示（A4）。沒有差異時回傳 false。 */
 function showExternalChanges(original: string, current: string): boolean {
   return review.start(current, {
@@ -3304,6 +3482,11 @@ commands.register(
       ["github-publish", "GitHub：把這個資料夾上傳到 GitHub…", "arrow-up-from-line", () => github?.publish(), () => !!workspaceRoot && !isRemote(workspaceRoot.path)],
       ["github-login", "GitHub：登入", "shield-check", () => github?.login(), () => !github?.account],
       ["github-logout", "GitHub：登出", "x", () => github?.logout(), () => !!github?.account],
+      ["git-branch-switch", "Git：切換或建立分支…", "git-branch", () => void switchBranch().catch(reportError), () => !!gitPanel?.status?.repo && !gitPanel.status.merging],
+      ["git-create-pr", "Git：建立 Pull Request…", "git-pull-request", () => void createPullRequest().catch(reportError), () => !!gitPanel?.status?.remote],
+      ["git-merge-finish", "Git：完成合併", "git-merge", () => void gitPanel?.finishMerge(), () => !!gitPanel?.status?.merging],
+      ["github-pages", "GitHub：發佈成網站（GitHub Pages）…", "globe", () => void publishPages(), () => !!github?.account && !!issuesRepo],
+      ["github-gist", "GitHub：分享成 Gist…", "share-2", () => void shareGist(), () => !!github?.account],
       ["ado-open", "Azure DevOps：開啟儲存庫或 Wiki…", "server", () => ado?.openRepo(), () => !!ado],
       ["ado-items", "Azure DevOps：工作項目", "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
       ["ado-connect", "Azure DevOps：連線設定…", "shield-check", () => settingsDialog.open("Git"), () => !!ado],

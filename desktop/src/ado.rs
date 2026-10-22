@@ -173,6 +173,7 @@ fn read(
         Err(ureq::Error::StatusCode(403)) => Err(format!("{what}失敗：沒有權限")),
         Err(ureq::Error::StatusCode(404)) => Err(format!("{what}失敗：找不到（404），請確認網址")),
         Err(ureq::Error::StatusCode(code)) => Err(format!("{what}失敗：伺服器回應 {code}")),
+        // 409（例如 PR 已經存在）由呼叫端說明。
         Err(e) => Err(format!("{what}失敗：無法連線到 Azure DevOps（{e}）")),
     }
 }
@@ -430,6 +431,88 @@ pub fn starts_with_base(url: &str, base: &str) -> bool {
     url == base || url.starts_with(&format!("{base}/"))
 }
 
+// ---- Pull Request -------------------------------------------------------------
+
+/// 儲存庫網址（…/專案/_git/儲存庫）裡的專案與儲存庫兩段（保持原本的編碼）。
+fn project_and_repo(remote: &str, base: &str) -> Option<(String, String)> {
+    let clean = remote.trim().trim_end_matches('/');
+    // 去掉網址裡的帳號（https://帳號@主機/…）。
+    let clean = match clean.split_once("://") {
+        Some((scheme, rest)) => {
+            let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+            format!(
+                "{scheme}://{}/{path}",
+                host.rsplit('@').next().unwrap_or(host)
+            )
+        }
+        None => clean.to_string(),
+    };
+    if !starts_with_base(&clean, base) {
+        return None;
+    }
+    let rest = &clean[base.trim_end_matches('/').len()..];
+    let (project, repo) = rest.trim_start_matches('/').split_once("/_git/")?;
+    let repo = repo.split('/').next()?;
+    (!project.is_empty() && !repo.is_empty()).then(|| (project.to_string(), repo.to_string()))
+}
+
+/// 建立 PR：從 `branch` 合併到儲存庫的預設分支，回傳 PR 的網頁網址。
+pub fn create_pull(
+    app: &AppHandle,
+    remote: &str,
+    branch: &str,
+    title: &str,
+    body: &str,
+) -> Result<String, String> {
+    let (a, pat) = require(app)?;
+    let base = a.url;
+    let (project, repo) =
+        project_and_repo(remote, &base).ok_or("這個儲存庫不在目前連線的 Azure DevOps 上")?;
+    let what = "建立 Pull Request";
+    let info = get(
+        &base,
+        &pat,
+        &format!("/{project}/_apis/git/repositories/{repo}"),
+        what,
+    )?;
+    let id = str_of(&info, "id").ok_or("讀取儲存庫失敗")?.to_string();
+    let target = str_of(&info, "defaultBranch")
+        .unwrap_or("refs/heads/main")
+        .to_string();
+    if target == format!("refs/heads/{branch}") {
+        return Err(format!(
+            "目前在預設分支「{branch}」上，請先建立新分支再建立 Pull Request"
+        ));
+    }
+    let web = str_of(&info, "webUrl")
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{base}/{project}/_git/{repo}"));
+    let res = post(
+        &base,
+        &pat,
+        &format!("/{project}/_apis/git/repositories/{id}/pullrequests"),
+        &serde_json::json!({
+            "sourceRefName": format!("refs/heads/{branch}"),
+            "targetRefName": target,
+            "title": title,
+            "description": body,
+        }),
+        what,
+    )
+    .map_err(|e| {
+        if e.contains("409") {
+            format!("{what}失敗：這個分支已經有一個開著的 Pull Request")
+        } else {
+            e
+        }
+    })?;
+    let number = res
+        .get("pullRequestId")
+        .and_then(Value::as_u64)
+        .ok_or("建立 Pull Request 失敗：回應的格式不正確")?;
+    Ok(format!("{web}/pullrequest/{number}"))
+}
+
 // ---- 工作項目 ---------------------------------------------------------------
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -676,6 +759,26 @@ mod tests {
             "https://evil.com/tfs/DefaultCollection",
             base
         ));
+    }
+
+    #[test]
+    fn finds_project_and_repo_in_remote() {
+        let base = "https://tfs.corp.com/tfs/DC";
+        assert_eq!(
+            project_and_repo(
+                "https://ming@tfs.corp.com/tfs/DC/%E7%94%A2%E5%93%81/_git/web",
+                base
+            ),
+            Some(("%E7%94%A2%E5%93%81".into(), "web".into()))
+        );
+        assert_eq!(
+            project_and_repo("https://other.com/tfs/DC/P/_git/r", base),
+            None
+        );
+        assert_eq!(
+            project_and_repo("https://tfs.corp.com/tfs/DC/P", base),
+            None
+        );
     }
 
     #[test]

@@ -68,6 +68,8 @@ pub struct Status {
     changes: Vec<Change>,
     /// 遠端（origin）的網址，例如 https://github.com/使用者/儲存庫.git。
     remote: Option<String>,
+    /// 正在逐段處理合併衝突（還沒按「完成合併」）。
+    pub(crate) merging: bool,
 }
 
 /// 提交時的名字與 Email（沒有設定 Git 時用 GitHub 帳號）。
@@ -103,7 +105,7 @@ pub fn auth(app: &AppHandle) -> Auth {
 }
 
 /// 提交時的名字與 Email：遠端在 Azure DevOps 上就用 ADO 的帳號，否則用 GitHub 的。
-fn identity_for(app: &AppHandle, dir: &Path) -> Option<Identity> {
+pub(crate) fn identity_for(app: &AppHandle, dir: &Path) -> Option<Identity> {
     let on_ado = crate::ado::cred(app).is_some_and(|c| {
         Repository::discover(dir)
             .ok()
@@ -189,18 +191,18 @@ fn classify(s: git2::Status) -> Option<FileStatus> {
     }
 }
 
-fn open(dir: &Path) -> Result<Repository, String> {
+pub(crate) fn open(dir: &Path) -> Result<Repository, String> {
     Repository::discover(dir).map_err(|_| "這個資料夾不是 Git 儲存庫".to_string())
 }
 
-fn workdir(repo: &Repository) -> Result<PathBuf, String> {
+pub(crate) fn workdir(repo: &Repository) -> Result<PathBuf, String> {
     let dir = repo
         .workdir()
         .ok_or_else(|| "這個儲存庫沒有工作目錄（bare）".to_string())?;
     Ok(dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()))
 }
 
-fn err(e: git2::Error) -> String {
+pub(crate) fn err(e: git2::Error) -> String {
     e.message().to_string()
 }
 
@@ -235,7 +237,7 @@ fn changes_of(repo: &Repository, root: &Path) -> Result<Vec<Change>, git2::Error
         .collect())
 }
 
-fn has_changes(repo: &Repository) -> Result<bool, String> {
+pub(crate) fn has_changes(repo: &Repository) -> Result<bool, String> {
     let mut opts = StatusOptions::new();
     opts.include_untracked(true).include_ignored(false);
     Ok(!repo.statuses(Some(&mut opts)).map_err(err)?.is_empty())
@@ -295,6 +297,7 @@ pub fn status_at(dir: &Path) -> Status {
         branch: None,
         changes: vec![],
         remote: None,
+        merging: false,
     };
     let Ok(repo) = open(dir) else {
         return empty(false);
@@ -310,20 +313,27 @@ pub fn status_at(dir: &Path) -> Status {
             branch: Some(branch_of(&repo)),
             changes,
             remote: origin_url(&repo),
+            merging: repo.state() == RepositoryState::Merge,
         },
         Err(_) => empty(true),
     }
 }
 
-fn require_clean_state(repo: &Repository) -> Result<(), String> {
+pub(crate) fn require_clean_state(repo: &Repository) -> Result<(), String> {
     if repo.state() == RepositoryState::Clean {
         Ok(())
     } else {
-        Err("這個儲存庫正在進行合併或 rebase，請先用其他 Git 工具完成或取消".into())
+        Err(
+            "這個儲存庫正在合併：請先在原始碼控制面板處理完衝突並按「完成合併」，或按「放棄合併」"
+                .into(),
+        )
     }
 }
 
-fn signature(repo: &Repository, who: Option<&Identity>) -> Result<Signature<'static>, String> {
+pub(crate) fn signature(
+    repo: &Repository,
+    who: Option<&Identity>,
+) -> Result<Signature<'static>, String> {
     if let Ok(sig) = repo.signature() {
         return Ok(sig.to_owned());
     }
@@ -487,7 +497,7 @@ fn proxy() -> ProxyOptions<'static> {
 }
 
 /// 分支名稱、遠端名稱，以及遠端那邊的分支（`refs/heads/…`）。
-fn tracking(repo: &Repository) -> Result<(String, String, String), String> {
+pub(crate) fn tracking(repo: &Repository) -> Result<(String, String, String), String> {
     let head = repo.head().ok();
     let branch = match &head {
         Some(h) if h.is_branch() => h.shorthand().unwrap_or("main").to_string(),
@@ -533,6 +543,10 @@ fn count_between(repo: &Repository, from: Option<Oid>, to: Oid) -> usize {
     }
     walk.count()
 }
+
+/// 拉取遇到衝突時的訊息（前端看到這段文字會提供「逐段處理」）。
+pub const CONFLICT_MESSAGE: &str =
+    "遠端和本機改到了同樣的地方。已經取消拉取，檔案都維持原樣；可以按「逐段處理」決定每一段要用哪一邊。";
 
 /// 拉取遠端的新提交。有未提交的變更時不做；遇到衝突時放棄，不動任何檔案。
 pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String, String> {
@@ -588,7 +602,7 @@ pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String
         .merge_commits(&ours, &theirs_commit, None)
         .map_err(err)?;
     if merged.has_conflicts() {
-        return Err("遠端和本機改到了同樣的地方，發生衝突。已經取消拉取，檔案都維持原樣；請用其他 Git 工具處理衝突。".into());
+        return Err(CONFLICT_MESSAGE.into());
     }
     let tree_id = merged.write_tree_to(&repo).map_err(err)?;
     let tree = repo.find_tree(tree_id).map_err(err)?;
@@ -932,9 +946,10 @@ mod tests {
         fs::write(a.join("週報.md"), "# 週報\n\na 也改了\n").unwrap();
         commit_at(&a, "a 的修改", Some(&me())).unwrap();
         assert!(push_at(&a, &none).unwrap_err().contains("先拉取"));
-        assert!(pull_at(&a, &none, Some(&me()))
-            .unwrap_err()
-            .contains("衝突"));
+        assert_eq!(
+            pull_at(&a, &none, Some(&me())).unwrap_err(),
+            CONFLICT_MESSAGE
+        );
         assert_eq!(read(a.join("週報.md")).unwrap(), "# 週報\n\na 也改了\n");
         assert!(status_at(&a).changes.is_empty());
 

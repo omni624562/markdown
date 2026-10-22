@@ -18,6 +18,7 @@ mod files;
 mod fonts;
 mod git;
 mod git_files;
+mod git_flow;
 mod github;
 mod history;
 mod image_protocol;
@@ -254,6 +255,16 @@ fn main() {
             git_files::git_file_history,
             git_files::git_file_at,
             git_files::git_web_url,
+            git_flow::git_branches,
+            git_flow::git_checkout,
+            git_flow::git_create_branch,
+            git_flow::git_merge_start,
+            git_flow::git_merge_conflicts,
+            git_flow::git_merge_finish,
+            git_flow::git_merge_abort,
+            git_flow::git_create_pr,
+            github::github_pages,
+            github::github_gist,
             github::github_issues,
             github::github_issue,
             github::github_workspace_repo,
