@@ -661,6 +661,11 @@ mod tests {
         Repository::init_opts(dir, &opts).unwrap();
     }
 
+    /// Windows 的 Git 預設 core.autocrlf=true，取出的檔案是 CRLF：比對內容時統一成 LF。
+    fn read(path: PathBuf) -> std::io::Result<String> {
+        fs::read_to_string(path).map(|s| s.replace("\r\n", "\n"))
+    }
+
     fn clone(remote: &Path, dir: &Path) {
         clone_to(remote.to_str().unwrap(), dir, &Auth::default()).unwrap();
     }
@@ -757,10 +762,7 @@ mod tests {
             pull_at(&a, &none, Some(&me())).unwrap(),
             "已拉取 1 個新的提交"
         );
-        assert_eq!(
-            fs::read_to_string(a.join("週報.md")).unwrap(),
-            "# 週報\n\nb 的修改\n"
-        );
+        assert_eq!(read(a.join("週報.md")).unwrap(), "# 週報\n\nb 的修改\n");
         assert_eq!(pull_at(&a, &none, Some(&me())).unwrap(), "已經是最新的");
 
         // 有未提交的變更時不拉取。
@@ -780,10 +782,7 @@ mod tests {
         assert!(pull_at(&a, &none, Some(&me()))
             .unwrap_err()
             .contains("衝突"));
-        assert_eq!(
-            fs::read_to_string(a.join("週報.md")).unwrap(),
-            "# 週報\n\na 也改了\n"
-        );
+        assert_eq!(read(a.join("週報.md")).unwrap(), "# 週報\n\na 也改了\n");
         assert!(status_at(&a).changes.is_empty());
 
         // 改不同檔案：合併後推送。
@@ -797,10 +796,7 @@ mod tests {
         push_at(&b, &none).unwrap();
         assert!(pull_at(&c, &none, Some(&me())).unwrap().contains("合併"));
         assert_eq!(push_at(&c, &none).unwrap(), "已推送");
-        assert_eq!(
-            fs::read_to_string(c.join("週報.md")).unwrap(),
-            "# 週報\n\nb 第三次\n"
-        );
+        assert_eq!(read(c.join("週報.md")).unwrap(), "# 週報\n\nb 第三次\n");
         assert!(c.join("另一份.md").exists());
 
         for d in [remote, a, b, c] {
