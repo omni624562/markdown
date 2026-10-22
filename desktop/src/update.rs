@@ -279,7 +279,7 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
         let tmp = dir.join(".md-editor.update.tmp");
         let no_permission = || {
             format!(
-                "沒有權限更新「{}」裡的執行檔。請把 md-editor.exe 放到自己的資料夾（例如桌面或文件），或改為手動下載新版。",
+                "沒有權限更新「{}」裡的執行檔。請把 oMarker 的執行檔放到自己的資料夾（例如桌面或文件），或改為手動下載新版。",
                 dir.display()
             )
         };
@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn rejects_foreign_urls_and_bad_checksums() {
         let mut m = manifest();
-        m.url = "https://evil.example.com/md-editor.exe".into();
+        m.url = "https://evil.example.com/omarker.exe".into();
         assert!(m.check_fields().is_err());
         let mut m = manifest();
         m.sha256 = "xyz".into();
@@ -360,7 +360,7 @@ mod tests {
     /// 在本機開一個只回應一次的 HTTP 伺服器，回傳網址。
     fn serve_once(body: Vec<u8>) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/md-editor.exe", listener.local_addr().unwrap());
+        let url = format!("http://{}/omarker.exe", listener.local_addr().unwrap());
         std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut req = [0u8; 1024];
