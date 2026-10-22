@@ -10,6 +10,7 @@
 // 正式版不要跳出命令提示字元視窗。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ado;
 mod ai;
 mod dav;
 mod doc_index;
@@ -249,6 +250,13 @@ fn main() {
             files::export_binary,
             files::import_docx,
             fonts::list_fonts,
+            ado::ado_account,
+            ado::ado_connect,
+            ado::ado_disconnect,
+            ado::ado_repos,
+            ado::ado_clone,
+            ado::ado_work_items,
+            ado::ado_work_item,
             pdf::pick_pdf_path,
             pdf::print_to_pdf,
             settings::load_settings,

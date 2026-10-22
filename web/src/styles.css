@@ -988,6 +988,7 @@ kbd {
 .settings-row select:focus-visible, .settings-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .settings-row input[type="number"] { width: 84px; min-width: 0; padding: 0 8px 0 12px; background-image: none; cursor: text; }
 .settings-row .font-input { width: 200px; min-width: 0; padding: 0 12px; background-image: none; cursor: text; }
+.settings-row .ado-input { width: 260px; }
 .settings-row .btn { height: 32px; border-color: var(--border-strong); white-space: nowrap; }
 .btn.btn-small { min-height: 30px; padding: 0 12px; font-size: 13px; }
 /* 設定裡的次要按鈕要看得出是按鈕：白底加框。 */
@@ -1671,6 +1672,21 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .cm-tooltip-lint .cm-diagnosticSource { order: 10; flex: 1 1 100%; color: var(--subtle); font-size: 12px; }
 
 /* ---- 待辦總覽 ---- */
+/* 工作項目（Azure DevOps） */
+.workitems-search { width: 100%; height: 30px; margin: 2px 0 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
+.workitems-search:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
+.workitems-list { margin: 0; padding: 0; list-style: none; }
+.workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }
+.workitem:hover, .workitem:focus-visible { background: var(--active-line); }
+.workitem-meta { margin: 0; color: var(--muted); font-size: 11.5px; }
+.workitem-title { overflow-wrap: anywhere; }
+.workitems-detail h3 { margin: 10px 4px 2px; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.workitems-detail .workitem-meta { margin: 0 4px 8px; }
+.workitems-detail h4 { margin: 12px 4px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.workitems-back { margin-top: 2px; }
+.workitems-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 4px; }
+.workitem-text { margin: 0 4px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tasks-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
 .tasks-filters .segmented button[aria-pressed="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
 .tasks-filters select { height: 28px; max-width: 110px; padding: 0 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 12px var(--font-ui); }

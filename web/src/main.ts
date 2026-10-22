@@ -18,6 +18,8 @@ import init, {
 import { AiController } from "./ai.ts";
 import { GitPanel } from "./git-ui.ts";
 import { GitHub } from "./github-ui.ts";
+import { Ado } from "./ado-ui.ts";
+import { workItemLink } from "./ado-text.ts";
 import { type Command, Commands, formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, cursorInfo } from "./editor.ts";
 import {
@@ -89,6 +91,7 @@ import { Picker } from "./ui/picker.ts";
 import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
+import { WorkItemsPanel } from "./ui/workitems-panel.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
@@ -1315,8 +1318,8 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "git"];
+type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "workitems" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "workitems", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
 let sidePanel: SidePanel = SIDE_PANELS.find((p) => p === storage.load("side-panel")) ?? "outline";
 /** 目前開啟的資料夾（工作區）。 */
@@ -1349,6 +1352,44 @@ const github = desktop
       },
     })
   : null;
+
+/** Azure DevOps（桌面版）：用個人存取權杖連線、從 ADO 開啟儲存庫或 Wiki、查看工作項目。 */
+const ado = desktop
+  ? new Ado(desktop, {
+      openFolder: async (folder) => {
+        await setWorkspace(folder);
+        showPanel("files");
+      },
+      changed: () => {
+        renderAdoTab();
+        workItemsPanel?.reset();
+        if (sidePanel === "workitems") showPanel("workitems", false);
+        settingsDialog.refresh();
+        void gitPanel?.refresh();
+      },
+      openSettings: () => settingsDialog.open("Git"),
+    })
+  : null;
+
+const workItemsPanel = desktop
+  ? new WorkItemsPanel($("#workitems-host"), {
+      list: (search) => desktop!.adoWorkItems(search),
+      detail: (id) => desktop!.adoWorkItem(id),
+      insert: (item) => {
+        insertAtCursor(workItemLink(item));
+        toast(`已插入「#${item.id}」的連結`);
+      },
+      open: (url) => void desktop!.openExternal(url).catch(reportError),
+    })
+  : null;
+
+/** 連線到 Azure DevOps 後才顯示「工作項目」圖示。 */
+function renderAdoTab(): void {
+  const tab = $("#side-tab-workitems");
+  tab.hidden = !ado?.account;
+  if (tab.hidden && sidePanel === "workitems") showPanel("files", false);
+}
+$("#workitems-refresh").addEventListener("click", () => void workItemsPanel?.refresh());
 
 const gitPanel =
   desktop && fileTree && github
@@ -1582,6 +1623,7 @@ function placeOutline(): void {
 
 function showPanel(panel: SidePanel, reveal = true): void {
   if (panel === "git" && $("#side-tab-git").hidden) panel = "files";
+  if (panel === "workitems" && $("#side-tab-workitems").hidden) panel = "files";
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
   if (panel === "outline" && outlineOnRight()) {
     updateActiveHeading();
@@ -1598,6 +1640,7 @@ function showPanel(panel: SidePanel, reveal = true): void {
   }
   if (reveal && !outlineShown) setOutline(true);
   if (panel === "outline") updateActiveHeading();
+  if (panel === "workitems") workItemsPanel?.shown();
   if (panel === "search" && searchStale) {
     searchStale = false;
     searchPanel?.rerun();
@@ -3110,6 +3153,9 @@ commands.register(
       ["github-publish", "GitHub：把這個資料夾上傳到 GitHub…", "arrow-up-from-line", () => github?.publish(), () => !!workspaceRoot && !isRemote(workspaceRoot.path)],
       ["github-login", "GitHub：登入", "shield-check", () => github?.login(), () => !github?.account],
       ["github-logout", "GitHub：登出", "x", () => github?.logout(), () => !!github?.account],
+      ["ado-open", "Azure DevOps：開啟儲存庫或 Wiki…", "server", () => ado?.openRepo(), () => !!ado],
+      ["ado-items", "Azure DevOps：工作項目", "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
+      ["ado-connect", "Azure DevOps：連線設定…", "shield-check", () => settingsDialog.open("Git"), () => !!ado],
     ] as const
   ).map(
     ([id, title, iconName, run, when]): Command => ({
@@ -4126,7 +4172,20 @@ const settingsDialog = new SettingsDialog(
         publish: () => void github!.publish(),
       }
     : null,
+  ado
+    ? {
+        account: () => ado!.account,
+        connect: (url, pat) => ado!.connect(url, pat),
+        disconnect: () => void ado!.disconnect(),
+        openRepo: () => void ado!.openRepo(),
+        workItems: () => showPanel("workitems"),
+      }
+    : null,
 );
+void ado?.ready().then(() => {
+  renderAdoTab();
+  settingsDialog.refresh();
+});
 // 讀到 GitHub 登入狀態後更新設定頁與原始碼控制面板。
 void github?.ready().then(() => {
   settingsDialog.refresh();

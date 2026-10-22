@@ -205,6 +205,43 @@ export interface GitHubRepo {
   cloneUrl: string;
 }
 
+/** Azure DevOps 的連線（雲端版或公司自架的 Azure DevOps Server）。 */
+export interface AdoAccount {
+  /** 集合或組織的網址。 */
+  url: string;
+  /** 登入者的顯示名稱。 */
+  name: string;
+  account?: string | null;
+}
+
+export interface AdoRepo {
+  name: string;
+  project: string;
+  cloneUrl: string;
+  webUrl: string | null;
+  /** 專案 Wiki。 */
+  wiki: boolean;
+}
+
+export interface AdoWorkItem {
+  id: number;
+  title: string;
+  state: string;
+  /** 類型，例如 Bug、Task、User Story。 */
+  kind: string;
+  project: string;
+  changed: string | null;
+  webUrl: string;
+}
+
+export interface AdoWorkItemDetail extends AdoWorkItem {
+  assignedTo: string | null;
+  /** 說明（HTML）。 */
+  description: string | null;
+  /** 驗收條件或重現步驟（HTML）。 */
+  details: string | null;
+}
+
 export interface FileVersion {
   /** 保存時間（Unix 毫秒）。 */
   id: number;
@@ -435,6 +472,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
     githubClone: (fullName: string) => core.invoke<Folder | null>("github_clone", { fullName }),
     /** 把開啟的資料夾上傳成新的儲存庫，回傳儲存庫網址。 */
     githubPublish: (name: string, isPrivate: boolean) => core.invoke<string>("github_publish", { name, private: isPrivate }),
+    adoAccount: () => core.invoke<AdoAccount | null>("ado_account"),
+    adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
+    adoDisconnect: () => core.invoke<void>("ado_disconnect"),
+    adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
+    adoClone: (cloneUrl: string, name: string) => core.invoke<Folder | null>("ado_clone", { cloneUrl, name }),
+    adoWorkItems: (search: string) => core.invoke<AdoWorkItem[]>("ado_work_items", { search }),
+    adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
     gitPull: () => core.invoke<string>("git_pull"),
     gitPush: () => core.invoke<string>("git_push"),

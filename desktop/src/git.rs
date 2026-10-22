@@ -6,8 +6,9 @@
 //!   打開別人給的資料夾也不會被執行程式，所以不需要先「信任」資料夾。
 //! - 拉取時有未提交的變更就不做；能快轉就快轉，否則在記憶體裡合併，有衝突就放棄，
 //!   磁碟上的檔案完全不會被動到。
-//! - 遠端認證：github.com 用「登入 GitHub」取得的權杖；其他 HTTPS 遠端用使用者
-//!   全域 Git 設定裡的認證小幫手（credential helper）。不支援 SSH 遠端。
+//! - 遠端認證：github.com 用「登入 GitHub」取得的權杖；連線的 Azure DevOps 伺服器用
+//!   個人存取權杖，不行時改用目前登入 Windows 的帳號（只送到那台伺服器）；
+//!   其他 HTTPS 遠端用使用者全域 Git 設定裡的認證小幫手（credential helper）。不支援 SSH 遠端。
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf, MAIN_SEPARATOR_STR};
@@ -81,6 +82,92 @@ pub struct Identity {
 pub struct Auth {
     /// 登入 GitHub 取得的權杖（只用在 github.com）。
     pub github_token: Option<String>,
+    /// 連線的 Azure DevOps 伺服器（只用在這個網址底下的儲存庫）。
+    pub ado: Option<AdoCred>,
+}
+
+#[derive(Clone)]
+pub struct AdoCred {
+    /// 集合或組織的網址。
+    pub base: String,
+    /// 個人存取權杖。
+    pub pat: Option<String>,
+}
+
+/// 推送、拉取時用的認證：GitHub 與 Azure DevOps 都帶上。
+pub fn auth(app: &AppHandle) -> Auth {
+    Auth {
+        github_token: crate::github::auth(app).github_token,
+        ado: crate::ado::cred(app),
+    }
+}
+
+/// 提交時的名字與 Email：遠端在 Azure DevOps 上就用 ADO 的帳號，否則用 GitHub 的。
+fn identity_for(app: &AppHandle, dir: &Path) -> Option<Identity> {
+    let on_ado = crate::ado::cred(app).is_some_and(|c| {
+        Repository::discover(dir)
+            .ok()
+            .and_then(|r| {
+                let remote = r.find_remote("origin").ok()?;
+                remote.url().ok().map(str::to_string)
+            })
+            .is_some_and(|url| crate::ado::starts_with_base(&url, &c.base))
+    });
+    if on_ado {
+        crate::ado::identity(app).or_else(|| crate::github::identity(app))
+    } else {
+        crate::github::identity(app).or_else(|| crate::ado::identity(app))
+    }
+}
+
+/// 連線時依序嘗試的認證方式。
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Plan {
+    GitHubToken,
+    AdoToken,
+    /// Windows 整合式驗證（NTLM／Kerberos），用目前登入 Windows 的帳號。
+    WindowsLogin,
+    /// 使用者全域 Git 設定裡的認證小幫手。
+    Helper,
+}
+
+fn plans(auth: &Auth, url: &str, allowed: CredentialType) -> Vec<Plan> {
+    let user_pass = allowed.contains(CredentialType::USER_PASS_PLAINTEXT);
+    let windows = allowed.contains(CredentialType::DEFAULT);
+    let mut out = Vec::new();
+    if is_github(url) {
+        if user_pass && auth.github_token.is_some() {
+            out.push(Plan::GitHubToken);
+        }
+    } else if let Some(ado) = auth
+        .ado
+        .as_ref()
+        .filter(|a| crate::ado::starts_with_base(url, &a.base))
+    {
+        if user_pass && ado.pat.is_some() {
+            out.push(Plan::AdoToken);
+        }
+    }
+    // Windows 帳號只交給連線的 Azure DevOps 伺服器：別人給的儲存庫若把遠端指到其他網站，
+    // 不會把 Windows 的登入資訊送過去。
+    if windows
+        && auth
+            .ado
+            .as_ref()
+            .is_some_and(|a| crate::ado::same_server(url, &a.base))
+    {
+        out.push(Plan::WindowsLogin);
+    }
+    if user_pass {
+        out.push(Plan::Helper);
+    }
+    out
+}
+
+fn is_ado(auth: &Auth, url: &str) -> bool {
+    auth.ado
+        .as_ref()
+        .is_some_and(|a| crate::ado::starts_with_base(url, &a.base))
 }
 
 fn classify(s: git2::Status) -> Option<FileStatus> {
@@ -242,7 +329,10 @@ fn signature(repo: &Repository, who: Option<&Identity>) -> Result<Signature<'sta
     }
     match who {
         Some(id) => Signature::now(&id.name, &id.email).map_err(err),
-        None => Err("提交需要你的名字與 Email：請先到設定的 Git 頁「用 GitHub 登入」".into()),
+        None => Err(
+            "提交需要你的名字與 Email：請先到設定的 Git 頁「用 GitHub 登入」或連線到 Azure DevOps"
+                .into(),
+        ),
     }
 }
 
@@ -322,19 +412,30 @@ impl<'a> Session<'a> {
     fn callbacks(&self) -> RemoteCallbacks<'_> {
         let mut cb = RemoteCallbacks::new();
         cb.credentials(move |url, username, allowed| {
-            // 帳號密碼錯誤時 libgit2 會一直重問，只試一次。
-            self.tries.set(self.tries.get() + 1);
-            if self.tries.get() > 1 || !allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
-                self.refused.set(true);
-                return Err(git2::Error::from_str("需要登入"));
-            }
-            if let (true, Some(token)) = (is_github(url), &self.auth.github_token) {
-                return Cred::userpass_plaintext("x-access-token", token);
-            }
-            // 沒有登入 GitHub，或是其他網站：沿用電腦上 Git 已經存好的帳號（例如 Git Credential Manager）。
-            // 只讀使用者自己的全域設定，不讀儲存庫裡的（避免執行來路不明的程式）。
-            if let Ok(cfg) = git2::Config::open_default() {
-                if let Ok(cred) = Cred::credential_helper(&cfg, url, username) {
+            // 認證被拒絕時 libgit2 會一直重問：每一種方式只試一次，依序換下一種。
+            let list = plans(self.auth, url, allowed);
+            while let Some(&plan) = list.get(self.tries.get() as usize) {
+                self.tries.set(self.tries.get() + 1);
+                let cred = match plan {
+                    Plan::GitHubToken => self
+                        .auth
+                        .github_token
+                        .as_deref()
+                        .map(|t| Cred::userpass_plaintext("x-access-token", t)),
+                    Plan::AdoToken => self
+                        .auth
+                        .ado
+                        .as_ref()
+                        .and_then(|a| a.pat.as_deref())
+                        .map(|t| Cred::userpass_plaintext("omarker", t)),
+                    Plan::WindowsLogin => Some(Cred::default()),
+                    // 沿用電腦上 Git 已經存好的帳號（例如 Git Credential Manager）。
+                    // 只讀使用者自己的全域設定，不讀儲存庫裡的（避免執行來路不明的程式）。
+                    Plan::Helper => git2::Config::open_default()
+                        .ok()
+                        .map(|cfg| Cred::credential_helper(&cfg, url, username)),
+                };
+                if let Some(Ok(cred)) = cred {
                     return Ok(cred);
                 }
             }
@@ -354,7 +455,14 @@ impl<'a> Session<'a> {
     /// 連線失敗時給使用者看的說明。
     fn describe(&self, e: &git2::Error, url: &str, what: &str) -> String {
         if self.refused.get() || e.code() == ErrorCode::Auth {
-            if is_github(url) && self.auth.github_token.is_none() {
+            if is_ado(self.auth, url) {
+                let has_token = self.auth.ado.as_ref().is_some_and(|a| a.pat.is_some());
+                if has_token {
+                    format!("{what}失敗：Azure DevOps 拒絕存取。可能沒有這個儲存庫的權限，或個人存取權杖已過期，請到設定的 Git 頁重新連線。")
+                } else {
+                    format!("{what}失敗：需要登入 Azure DevOps。請到設定的 Git 頁輸入個人存取權杖並連線。")
+                }
+            } else if is_github(url) && self.auth.github_token.is_none() {
                 format!("{what}失敗：需要登入 GitHub。請到設定的 Git 頁按「用 GitHub 登入」。")
             } else if is_github(url) {
                 format!("{what}失敗：GitHub 拒絕存取。可能沒有這個儲存庫的權限，或登入已過期，請重新登入 GitHub。")
@@ -617,22 +725,22 @@ pub async fn git_status(app: AppHandle) -> Result<Status, String> {
 #[tauri::command]
 pub async fn git_commit(app: AppHandle, message: String) -> Result<String, String> {
     let dir = workspace_root(&app)?;
-    let who = crate::github::identity(&app);
+    let who = identity_for(&app, &dir);
     crate::io::blocking(move || commit_at(&dir, &message, who.as_ref())).await
 }
 
 #[tauri::command]
 pub async fn git_pull(app: AppHandle) -> Result<String, String> {
     let dir = workspace_root(&app)?;
-    let auth = crate::github::auth(&app);
-    let who = crate::github::identity(&app);
+    let auth = auth(&app);
+    let who = identity_for(&app, &dir);
     crate::io::blocking_for(NETWORK_TIMEOUT, move || pull_at(&dir, &auth, who.as_ref())).await
 }
 
 #[tauri::command]
 pub async fn git_push(app: AppHandle) -> Result<String, String> {
     let dir = workspace_root(&app)?;
-    let auth = crate::github::auth(&app);
+    let auth = auth(&app);
     crate::io::blocking_for(NETWORK_TIMEOUT, move || push_at(&dir, &auth)).await
 }
 
@@ -646,6 +754,51 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dunce::canonicalize(&dir).unwrap()
+    }
+
+    #[test]
+    fn tries_ado_token_then_windows_login() {
+        let auth = Auth {
+            github_token: Some("gh".into()),
+            ado: Some(AdoCred {
+                base: "https://tfs.corp.com/tfs/DC".into(),
+                pat: Some("pat".into()),
+            }),
+        };
+        let both = CredentialType::USER_PASS_PLAINTEXT | CredentialType::DEFAULT;
+        assert_eq!(
+            plans(&auth, "https://tfs.corp.com/tfs/DC/P/_git/r", both),
+            [Plan::AdoToken, Plan::WindowsLogin, Plan::Helper]
+        );
+        // 權杖只送給 GitHub 與連線的 ADO 伺服器，其他網站不會拿到。
+        assert_eq!(
+            plans(&auth, "https://other.com/x.git", both),
+            [Plan::Helper]
+        );
+        // 同一台伺服器的其他集合：權杖不送，但可以用 Windows 帳號。
+        assert_eq!(
+            plans(&auth, "https://tfs.corp.com/tfs/Other/P/_git/r", both),
+            [Plan::WindowsLogin, Plan::Helper]
+        );
+        assert_eq!(
+            plans(&auth, "https://github.com/a/b.git", both),
+            [Plan::GitHubToken, Plan::Helper]
+        );
+        let no_pat = Auth {
+            ado: Some(AdoCred {
+                base: "https://tfs.corp.com/tfs/DC".into(),
+                pat: None,
+            }),
+            ..Auth::default()
+        };
+        assert_eq!(
+            plans(
+                &no_pat,
+                "https://tfs.corp.com/tfs/DC/P/_git/r",
+                CredentialType::DEFAULT
+            ),
+            [Plan::WindowsLogin]
+        );
     }
 
     fn me() -> Identity {
