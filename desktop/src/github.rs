@@ -61,6 +61,7 @@ fn account(app: &AppHandle) -> Option<Account> {
 pub fn auth(app: &AppHandle) -> Auth {
     Auth {
         github_token: token(app),
+        ..Auth::default()
     }
 }
 
@@ -306,6 +307,7 @@ pub async fn github_clone(
 ) -> Result<Option<FolderInfo>, String> {
     let auth = Auth {
         github_token: Some(require_token(&app)?),
+        ..Auth::default()
     };
     let name = full_name
         .rsplit('/')
@@ -316,8 +318,29 @@ pub async fn github_clone(
     if full_name.split('/').count() != 2 {
         return Err("儲存庫名稱不正確".into());
     }
+    let Some(dest) = pick_clone_dest(&app, &window, &name).await? else {
+        return Ok(None);
+    };
+    let url = format!("https://github.com/{full_name}.git");
+    let target = dest.clone();
+    crate::io::blocking_for(crate::git::NETWORK_TIMEOUT, move || {
+        crate::git::clone_to(&url, &target, &auth)
+    })
+    .await?;
+    Ok(Some(crate::workspace::open_folder_from_cli(&app, dest)))
+}
+
+/// 選擇下載到哪個資料夾：回傳「選的資料夾／名稱」；使用者取消時回傳 None。
+pub(crate) async fn pick_clone_dest(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    name: &str,
+) -> Result<Option<PathBuf>, String> {
+    if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', ':']) {
+        return Err("儲存庫名稱不正確".into());
+    }
     let mut dialog = rfd::AsyncFileDialog::new()
-        .set_parent(&window)
+        .set_parent(window)
         .set_title(format!("選擇要把「{name}」放在哪個資料夾"));
     if let Ok(docs) = app.path().document_dir() {
         dialog = dialog.set_directory(docs);
@@ -325,7 +348,7 @@ pub async fn github_clone(
     let Some(parent) = dialog.pick_folder().await else {
         return Ok(None);
     };
-    let dest = parent.path().join(&name);
+    let dest = parent.path().join(name);
     if dest.exists()
         && fs::read_dir(&dest)
             .map(|mut d| d.next().is_some())
@@ -336,13 +359,7 @@ pub async fn github_clone(
             path_string(&dest)
         ));
     }
-    let url = format!("https://github.com/{full_name}.git");
-    let target = dest.clone();
-    crate::io::blocking_for(crate::git::NETWORK_TIMEOUT, move || {
-        crate::git::clone_to(&url, &target, &auth)
-    })
-    .await?;
-    Ok(Some(crate::workspace::open_folder_from_cli(&app, dest)))
+    Ok(Some(dest))
 }
 
 #[derive(Deserialize)]
@@ -381,6 +398,7 @@ pub async fn github_publish(
             serde_json::from_str(&text).map_err(|e| format!("建立儲存庫失敗：{e}"))?;
         let auth = Auth {
             github_token: Some(token),
+            ..Auth::default()
         };
         crate::git::publish_at(&dir, &created.clone_url, &auth, who.as_ref())?;
         Ok(created.html_url)

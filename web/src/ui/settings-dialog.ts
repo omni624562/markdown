@@ -59,6 +59,15 @@ export interface GitHubHooks {
   publish(): void;
 }
 
+/** 設定的 Git 頁：Azure DevOps 連線（桌面版）。 */
+export interface AdoSettingsHooks {
+  account(): { name: string; url: string } | null;
+  connect(url: string, pat: string): Promise<boolean>;
+  disconnect(): void;
+  openRepo(): void;
+  workItems(): void;
+}
+
 export interface UpdateHooks {
   /** `label` 是版本號，`detail` 顯示在下面（例如發佈日期），`title` 是滑鼠停留時的技術資訊。 */
   version(): Promise<{ label: string; detail: string; title: string }>;
@@ -170,6 +179,7 @@ export class SettingsDialog {
     ai: AiHooks | null = null,
     update: UpdateHooks | null = null,
     github: GitHubHooks | null = null,
+    ado: AdoSettingsHooks | null = null,
   ) {
     this.#ai = ai;
     this.#store = store;
@@ -228,7 +238,7 @@ export class SettingsDialog {
 
     body.append(this.#aiSection());
     if (github) {
-      const git = this.#section("Git", "git-branch", "用 GitHub 帳號同步資料夾；Git 已經內建，不需要另外安裝");
+      const git = this.#section("Git", "git-branch", "用 GitHub 或 Azure DevOps 同步資料夾；Git 已經內建，不需要另外安裝");
       const accountBtn = document.createElement("button");
       accountBtn.type = "button";
       accountBtn.id = "setting-github";
@@ -248,7 +258,9 @@ export class SettingsDialog {
         return b;
       };
       const publishBtn = action("github-publish", "上傳…", () => github.publish());
+      const adoRows = ado ? this.#adoRows(ado, action) : null;
       this.#refreshGit = () => {
+        adoRows?.refresh();
         const a = github.account();
         accountHint.textContent = a ? `已登入：${a.login}` : "登入後就能把資料夾同步到 GitHub，在其他電腦也能下載";
         accountBtn.className = a ? "btn" : "btn btn-primary";
@@ -266,6 +278,7 @@ export class SettingsDialog {
           ),
           this.#row("github-publish", "上傳到 GitHub", "把目前開啟的資料夾建立成新的 GitHub 儲存庫", () => publishBtn),
         ]),
+        ...(adoRows ? this.#group("Azure DevOps（TFS）", adoRows.rows) : []),
         ...this.#group("自動同步", [
           this.#row("gitAutoSync", "自動同步", "定時提交、拉取、推送；兩邊改到同一個地方時會暫停，不會蓋掉任何內容", () =>
             this.#control("gitAutoSync"),
@@ -605,6 +618,73 @@ export class SettingsDialog {
       this.#store.update({ [key]: key === "gitSyncMinutes" ? Number(sel.value) : sel.value }),
     );
     return sel;
+  }
+
+  /** Azure DevOps：沒連線時輸入網址與權杖；連線後顯示帳號、下載儲存庫與工作項目。 */
+  #adoRows(
+    ado: AdoSettingsHooks,
+    action: (id: string, label: string, run: () => void) => HTMLButtonElement,
+  ): { rows: HTMLElement[]; refresh(): void } {
+    const input = (id: string, type: string, placeholder: string) => {
+      const el = document.createElement("input");
+      el.type = type;
+      el.id = `setting-${id}`;
+      el.className = "font-input ado-input";
+      el.placeholder = placeholder;
+      el.spellcheck = false;
+      el.autocomplete = "off";
+      return el;
+    };
+    const url = input("ado-url", "url", "https://tfs.公司.com/tfs/DefaultCollection");
+    const pat = input("ado-pat", "password", "貼上權杖");
+    const urlRow = this.#row("ado-url", "伺服器網址", "集合或組織的網址；貼上專案或儲存庫的網址也可以", () => url);
+    const patRow = this.#row(
+      "ado-pat",
+      "個人存取權杖（PAT）",
+      "在 ADO 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code（Read & write）與 Work Items（Read）",
+      () => pat,
+    );
+    const connectBtn = document.createElement("button");
+    connectBtn.type = "button";
+    connectBtn.id = "setting-ado-connect";
+    const statusRow = this.#row("ado-connect", "連線", "讀取中…", () => connectBtn);
+    const hint = statusRow.querySelector("small")!;
+    const label = statusRow.querySelector("label")!;
+    connectBtn.addEventListener("click", async () => {
+      if (ado.account()) {
+        ado.disconnect();
+        return;
+      }
+      connectBtn.disabled = true;
+      const ok = await ado.connect(url.value, pat.value);
+      connectBtn.disabled = false;
+      if (ok) pat.value = "";
+      refresh();
+    });
+    pat.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") connectBtn.click();
+    });
+    const openRow = this.#row("ado-open", "從 Azure DevOps 開啟儲存庫", "選一個儲存庫或專案 Wiki，下載到電腦並開啟", () =>
+      action("ado-open", "開啟…", () => ado.openRepo()),
+    );
+    const itemsRow = this.#row("ado-items", "工作項目", "在側邊欄列出指派給你的工作項目，可以插入連結到文件", () =>
+      action("ado-items", "顯示", () => ado.workItems()),
+    );
+    const refresh = () => {
+      const a = ado.account();
+      urlRow.hidden = patRow.hidden = !!a;
+      // 上面兩列藏起來時，帳號是第一列，不需要分隔線。
+      statusRow.style.borderTop = a ? "0" : "";
+      openRow.hidden = itemsRow.hidden = !a;
+      label.textContent = a ? "帳號" : "連線";
+      hint.textContent = a
+        ? `已連線：${a.name}（${a.url.replace(/^https?:\/\//, "")}）`
+        : "輸入網址與權杖後按「連線」；權杖只會送到這台伺服器";
+      connectBtn.className = a ? "btn" : "btn btn-primary";
+      connectBtn.textContent = a ? "中斷連線" : "連線";
+    };
+    refresh();
+    return { rows: [urlRow, patRow, statusRow, openRow, itemsRow], refresh };
   }
 
   /** 字型名稱：可以直接輸入，也可以從電腦上安裝的字型挑選；輸入框用該字型顯示當作預覽。 */

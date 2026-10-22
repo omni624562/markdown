@@ -19,6 +19,10 @@ import {
   Subscript,
   RemoveFormatting,
   ShieldCheck,
+  SquareKanban,
+  ExternalLink,
+  ArrowLeft,
+  Server,
   Palette,
   PenLine,
   SlidersHorizontal,
@@ -111,6 +115,10 @@ import {
 
 const ICONS: Record<string, IconNode> = {
   "shield-check": ShieldCheck,
+  "square-kanban": SquareKanban,
+  "external-link": ExternalLink,
+  "arrow-left": ArrowLeft,
+  server: Server,
   palette: Palette,
   "pen-line": PenLine,
   "sliders-horizontal": SlidersHorizontal,

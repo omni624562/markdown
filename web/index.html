@@ -49,6 +49,9 @@
           <button type="button" role="tab" id="side-tab-tags" data-panel="tags" aria-controls="panel-tags" aria-label="標籤">
             <i data-icon="tags"></i>
           </button>
+          <button type="button" role="tab" id="side-tab-workitems" data-panel="workitems" aria-controls="panel-workitems" aria-label="工作項目（Azure DevOps）" hidden>
+            <i data-icon="square-kanban"></i>
+          </button>
           <button type="button" role="tab" id="side-tab-git" data-panel="git" aria-controls="panel-git" aria-label="原始碼控制（Git）" hidden>
             <i data-icon="git-branch"></i><span class="activity-badge" id="git-badge" hidden></span>
           </button>
@@ -104,6 +107,16 @@
             </div>
           </div>
           <div class="side-body" id="tags-host"></div>
+        </section>
+
+        <section class="side-panel" id="panel-workitems" role="tabpanel" aria-labelledby="side-tab-workitems" hidden>
+          <div class="side-head">
+            <h2>工作項目</h2>
+            <div class="side-actions">
+              <button type="button" class="btn icon-only" id="workitems-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
+            </div>
+          </div>
+          <div class="side-body" id="workitems-host"></div>
         </section>
 
         <section class="side-panel" id="panel-git" role="tabpanel" aria-labelledby="side-tab-git" hidden>
