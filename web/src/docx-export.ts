@@ -351,7 +351,7 @@ export async function htmlToDocx(html: string, opts: DocxOptions): Promise<Blob>
   });
 
   const doc = new Document({
-    creator: "Laiwrite",
+    creator: "oMarker",
     title: opts.title,
     styles: {
       default: {

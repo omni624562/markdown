@@ -211,7 +211,7 @@ fn describe(doc: &ActiveDoc) -> String {
 #[tool_router]
 impl EditorTools {
     #[tool(
-        description = "取得使用者目前在 Laiwrite（Markdown 編輯器）中正在看的文件：檔名、路徑與編輯器中的完整內容（包含尚未存檔的變更）。"
+        description = "取得使用者目前在 oMarker（Markdown 編輯器）中正在看的文件：檔名、路徑與編輯器中的完整內容（包含尚未存檔的變更）。"
     )]
     fn get_active_document(&self) -> Result<String, String> {
         let snap = self.snapshot.read().unwrap();
@@ -498,7 +498,7 @@ impl ServerHandler for EditorTools {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
             .with_instructions(
-            "Laiwrite（Markdown 編輯器）：可以讀取使用者正在編輯的文件與選取範圍。要修改文件時請使用 propose_edit 或 propose_replace_selection，由使用者在編輯器中確認，不要直接寫入檔案。需要讓使用者看到執行過程的指令可以用 run_command（每次都會請使用者同意），用 read_terminal_output 讀取終端機的輸出。",
+            "oMarker（Markdown 編輯器）：可以讀取使用者正在編輯的文件與選取範圍。要修改文件時請使用 propose_edit 或 propose_replace_selection，由使用者在編輯器中確認，不要直接寫入檔案。需要讓使用者看到執行過程的指令可以用 run_command（每次都會請使用者同意），用 read_terminal_output 讀取終端機的輸出。",
         )
     }
 }
