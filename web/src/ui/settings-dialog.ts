@@ -46,6 +46,17 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
 };
 
 /** 桌面版提供：目前版本與手動檢查更新。 */
+/** 設定的 Git 頁：GitHub 帳號與儲存庫（桌面版）。 */
+export interface GitHubHooks {
+  account(): { login: string } | null;
+  /** 有開啟（本機的）資料夾，才能上傳到 GitHub。 */
+  canPublish(): boolean;
+  login(): void;
+  logout(): void;
+  openRepo(): void;
+  publish(): void;
+}
+
 export interface UpdateHooks {
   /** `label` 是版本號，`detail` 顯示在下面（例如發佈日期），`title` 是滑鼠停留時的技術資訊。 */
   version(): Promise<{ label: string; detail: string; title: string }>;
@@ -141,6 +152,8 @@ export class SettingsDialog {
 
   #ai: AiHooks | null;
   #actions!: HTMLElement;
+  /** 重新整理 Git 頁的帳號狀態（登入、登出後）。 */
+  #refreshGit = () => {};
   #page = 0;
 
   constructor(
@@ -148,6 +161,7 @@ export class SettingsDialog {
     theme: { get(): ThemePref; set(t: ThemePref): void },
     ai: AiHooks | null = null,
     update: UpdateHooks | null = null,
+    github: GitHubHooks | null = null,
   ) {
     this.#ai = ai;
     this.#store = store;
@@ -205,11 +219,47 @@ export class SettingsDialog {
     body.append(edit);
 
     body.append(this.#aiSection());
-    if (ai) {
-      const git = this.#section("Git", "git-branch", "開啟的資料夾是 Git 儲存庫時，原始碼控制面板的行為");
+    if (github) {
+      const git = this.#section("Git", "git-branch", "用 GitHub 帳號同步資料夾；Git 已經內建，不需要另外安裝");
+      const accountBtn = document.createElement("button");
+      accountBtn.type = "button";
+      accountBtn.id = "setting-github";
+      const accountRow = this.#row("github", "GitHub 帳號", "讀取中…", () => accountBtn);
+      const accountHint = accountRow.querySelector("small")!;
+      accountBtn.addEventListener("click", () => (github.account() ? github.logout() : github.login()));
+      const action = (id: string, label: string, run: () => void) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn";
+        b.id = `setting-${id}`;
+        b.textContent = label;
+        b.addEventListener("click", () => {
+          d.close();
+          run();
+        });
+        return b;
+      };
+      const publishBtn = action("github-publish", "上傳…", () => github.publish());
+      this.#refreshGit = () => {
+        const a = github.account();
+        accountHint.textContent = a ? `已登入：${a.login}` : "登入後就能把資料夾同步到 GitHub，在其他電腦也能下載";
+        accountBtn.className = a ? "btn" : "btn btn-primary";
+        accountBtn.textContent = a ? "登出" : "用 GitHub 登入";
+        publishBtn.disabled = !github.canPublish();
+        publishBtn.title = publishBtn.disabled ? "請先開啟要上傳的資料夾" : "";
+      };
+      this.#refreshGit();
+      d.addEventListener("toggle", () => this.#refreshGit());
       git.append(
+        ...this.#group("帳號", [accountRow]),
+        ...this.#group("儲存庫", [
+          this.#row("github-open", "從 GitHub 開啟儲存庫", "選一個儲存庫，下載到電腦並開啟", () =>
+            action("github-open", "開啟…", () => github.openRepo()),
+          ),
+          this.#row("github-publish", "上傳到 GitHub", "把目前開啟的資料夾建立成新的 GitHub 儲存庫", () => publishBtn),
+        ]),
         ...this.#group("自動同步", [
-          this.#row("gitAutoSync", "自動同步", "定時提交、拉取、推送；遇到衝突會暫停，不會自動合併", () =>
+          this.#row("gitAutoSync", "自動同步", "定時提交、拉取、推送；兩邊改到同一個地方時會暫停，不會蓋掉任何內容", () =>
             this.#control("gitAutoSync"),
           ),
           this.#row("gitSyncMinutes", "同步頻率", undefined, () => this.#control("gitSyncMinutes")),
@@ -271,6 +321,11 @@ export class SettingsDialog {
   }
 
   /** 開啟設定；`page` 是分類名稱（例如「AI 協作」）。 */
+  /** 外部狀態改變（例如登入 GitHub）後更新畫面。 */
+  refresh(): void {
+    this.#refreshGit();
+  }
+
   open(page?: string): void {
     this.#sync();
     this.#dialog.showModal();

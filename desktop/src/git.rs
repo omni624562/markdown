@@ -1,80 +1,32 @@
-//! Git 整合：呼叫系統安裝的 `git`（沿用使用者既有的帳號與認證設定）。找不到 git 時整個功能隱藏。
+//! Git 整合：內建 libgit2（git2），不需要另外安裝 Git。
 //!
 //! 安全原則：
-//! - 所有操作都在目前開啟的資料夾（工作區）裡進行，參數直接傳給 git，不經過殼層。
-//! - 拉取時有未提交的變更就不做；能快轉就快轉，否則改用 rebase，遇到衝突立刻取消（`rebase --abort`），
-//!   不會自動合併掉任何內容。
-//! - 關閉終端機提示（`GIT_TERMINAL_PROMPT=0`），需要密碼時不會卡住。
-//! - 儲存庫的設定（`.git/config` 的 `core.fsmonitor`、filter、hooks 等）可以執行任意程式，
-//!   所以資料夾要先經使用者「信任」才會執行 git。還沒信任時只用檔案系統判斷是不是儲存庫，
-//!   完全不執行 git（就像 VS Code 的工作區信任）。
+//! - 所有操作都在目前開啟的資料夾（工作區）所在的儲存庫進行。
+//! - libgit2 不會執行儲存庫設定指定的外部程式（hooks、fsmonitor、filter 等），
+//!   打開別人給的資料夾也不會被執行程式，所以不需要先「信任」資料夾。
+//! - 拉取時有未提交的變更就不做；能快轉就快轉，否則在記憶體裡合併，有衝突就放棄，
+//!   磁碟上的檔案完全不會被動到。
+//! - 遠端認證：github.com 用「登入 GitHub」取得的權杖；其他 HTTPS 遠端用使用者
+//!   全域 Git 設定裡的認證小幫手（credential helper）。不支援 SSH 遠端。
 
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
-use std::sync::OnceLock;
+use std::cell::{Cell, RefCell};
+use std::path::{Path, PathBuf, MAIN_SEPARATOR_STR};
 use std::time::Duration;
 
+use git2::build::CheckoutBuilder;
+use git2::{
+    BranchType, Cred, CredentialType, ErrorClass, ErrorCode, FetchOptions, IndexAddOption, Oid,
+    ProxyOptions, PushOptions, RemoteCallbacks, Repository, RepositoryState, Signature,
+    StatusOptions,
+};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::files::path_string;
 use crate::workspace::Workspace;
 
-/// 拉取、推送可能需要等使用者在認證視窗登入。
-const NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
-
-/// git 的完整路徑。找到後記住，不用每次都搜尋 PATH；找不到時下次再找（使用者可能剛裝好）。
-fn git_exe() -> Option<PathBuf> {
-    static GIT: OnceLock<PathBuf> = OnceLock::new();
-    if let Some(p) = GIT.get() {
-        return Some(p.clone());
-    }
-    let p = which::which("git").ok()?;
-    Some(GIT.get_or_init(|| p).clone())
-}
-
-fn git_command(dir: &Path) -> Result<Command, String> {
-    let exe =
-        git_exe().ok_or_else(|| "找不到 Git。請先安裝 Git（https://git-scm.com）。".to_string())?;
-    let mut cmd = Command::new(exe);
-    cmd.current_dir(dir)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        // 讀取狀態時不要改寫 .git/index，否則檔案監看會以為資料夾又變了。
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        // 輸出固定用英文，方便解析；給使用者看的訊息由這裡翻譯。
-        .env("LC_ALL", "C")
-        .env("LANG", "C");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    Ok(cmd)
-}
-
-fn run(dir: &Path, args: &[&str]) -> Result<Output, String> {
-    git_command(dir)?
-        .args(args)
-        .output()
-        .map_err(|e| format!("無法執行 git：{e}"))
-}
-
-/// 執行 git，失敗時回傳 git 的錯誤訊息。
-fn run_ok(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let out = run(dir, args)?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-    } else {
-        let err = String::from_utf8_lossy(&out.stderr);
-        let msg = err.trim();
-        Err(if msg.is_empty() {
-            String::from_utf8_lossy(&out.stdout).trim().to_string()
-        } else {
-            msg.to_string()
-        })
-    }
-}
+/// 拉取、推送、下載可能要等很久（大型儲存庫、慢速網路）。
+pub const NETWORK_TIMEOUT: Duration = Duration::from_secs(600);
 
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
@@ -105,116 +57,550 @@ pub struct Branch {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
-    /// 電腦上有沒有 git。
+    /// 內建 Git，一律可以使用（保留欄位給前端判斷）。
     available: bool,
     /// 工作區是不是 Git 儲存庫。
     repo: bool,
-    /// 使用者是否信任這個儲存庫（信任前不執行 git）。
+    /// 不再需要信任資料夾（libgit2 不執行外部程式）；保留欄位給前端判斷。
     trusted: bool,
     branch: Option<Branch>,
     changes: Vec<Change>,
+    /// 遠端（origin）的網址，例如 https://github.com/使用者/儲存庫.git。
+    remote: Option<String>,
 }
 
-/// 由 `XY` 狀態碼判斷檔案狀態（已暫存與未暫存合併來看）。
-fn classify(xy: &str) -> FileStatus {
-    let (x, y) = (
-        xy.chars().next().unwrap_or('.'),
-        xy.chars().nth(1).unwrap_or('.'),
-    );
-    if x == 'D' || y == 'D' {
-        FileStatus::Deleted
-    } else if x == 'A' {
-        FileStatus::Added
-    } else if x == 'R' || x == 'C' {
-        FileStatus::Renamed
+/// 提交時的名字與 Email（沒有設定 Git 時用 GitHub 帳號）。
+#[derive(Clone, Debug)]
+pub struct Identity {
+    pub name: String,
+    pub email: String,
+}
+
+/// 連線到遠端時用的認證。
+#[derive(Clone, Default)]
+pub struct Auth {
+    /// 登入 GitHub 取得的權杖（只用在 github.com）。
+    pub github_token: Option<String>,
+}
+
+fn classify(s: git2::Status) -> Option<FileStatus> {
+    use git2::Status as S;
+    if s.is_ignored() || s == S::CURRENT {
+        None
+    } else if s.is_conflicted() {
+        Some(FileStatus::Conflicted)
+    } else if s.intersects(S::INDEX_DELETED | S::WT_DELETED) {
+        Some(FileStatus::Deleted)
+    } else if s.intersects(S::INDEX_RENAMED | S::WT_RENAMED) {
+        Some(FileStatus::Renamed)
+    } else if s.contains(S::INDEX_NEW) {
+        Some(FileStatus::Added)
+    } else if s.contains(S::WT_NEW) {
+        Some(FileStatus::Untracked)
     } else {
-        FileStatus::Modified
+        Some(FileStatus::Modified)
     }
 }
 
-/// 解析 `git status --porcelain=v2 --branch -z`。路徑是相對於儲存庫根目錄的。
-fn parse_status(out: &str, repo_root: &Path) -> (Branch, Vec<Change>) {
-    let mut branch = Branch::default();
-    let mut changes = Vec::new();
-    let mut fields = out.split('\0').peekable();
-    let abs =
-        |rel: &str| path_string(&repo_root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR)));
-    while let Some(entry) = fields.next() {
-        if let Some(header) = entry.strip_prefix("# ") {
-            if let Some(name) = header.strip_prefix("branch.head ") {
-                branch.name = name.to_string();
-            } else if let Some(up) = header.strip_prefix("branch.upstream ") {
-                branch.upstream = Some(up.to_string());
-            } else if let Some(ab) = header.strip_prefix("branch.ab ") {
-                let mut it = ab.split(' ');
-                branch.ahead = it
-                    .next()
-                    .and_then(|a| a.trim_start_matches('+').parse().ok())
-                    .unwrap_or(0);
-                branch.behind = it
-                    .next()
-                    .and_then(|b| b.trim_start_matches('-').parse().ok())
-                    .unwrap_or(0);
+fn open(dir: &Path) -> Result<Repository, String> {
+    Repository::discover(dir).map_err(|_| "這個資料夾不是 Git 儲存庫".to_string())
+}
+
+fn workdir(repo: &Repository) -> Result<PathBuf, String> {
+    let dir = repo
+        .workdir()
+        .ok_or_else(|| "這個儲存庫沒有工作目錄（bare）".to_string())?;
+    Ok(dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()))
+}
+
+fn err(e: git2::Error) -> String {
+    e.message().to_string()
+}
+
+/// 儲存庫中的變更，路徑轉成絕對路徑（Windows 用反斜線）。
+fn changes_of(repo: &Repository, root: &Path) -> Result<Vec<Change>, git2::Error> {
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false)
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
+    let statuses = repo.statuses(Some(&mut opts))?;
+    let abs = |rel: &str| path_string(&root.join(rel.replace('/', MAIN_SEPARATOR_STR)));
+    Ok(statuses
+        .iter()
+        .filter_map(|e| {
+            let status = classify(e.status())?;
+            // 改名時用新的路徑。
+            let rel = e
+                .index_to_workdir()
+                .and_then(|d| d.new_file().path().map(Path::to_path_buf))
+                .or_else(|| {
+                    e.head_to_index()
+                        .and_then(|d| d.new_file().path().map(Path::to_path_buf))
+                })
+                .or_else(|| e.path().ok().map(PathBuf::from))?;
+            Some(Change {
+                path: abs(&rel.to_string_lossy()),
+                status,
+            })
+        })
+        .collect())
+}
+
+fn has_changes(repo: &Repository) -> Result<bool, String> {
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true).include_ignored(false);
+    Ok(!repo.statuses(Some(&mut opts)).map_err(err)?.is_empty())
+}
+
+/// 目前分支、追蹤的遠端分支，以及領先／落後幾個提交。
+fn branch_of(repo: &Repository) -> Branch {
+    let mut b = Branch::default();
+    match repo.head() {
+        Ok(head) => {
+            b.name = head.shorthand().unwrap_or("HEAD").to_string();
+            if let (true, Some(local), Some(name)) =
+                (head.is_branch(), head.target(), head.name().ok())
+            {
+                if let Some((up, oid)) = upstream_of(repo, name) {
+                    let (ahead, behind) = repo.graph_ahead_behind(local, oid).unwrap_or((0, 0));
+                    b.upstream = Some(up);
+                    b.ahead = ahead as u32;
+                    b.behind = behind as u32;
+                }
             }
-            continue;
         }
-        let mut parts = entry.splitn(2, ' ');
-        let kind = parts.next().unwrap_or("");
-        let rest = parts.next().unwrap_or("");
-        match kind {
-            // 1 XY sub mH mI mW hH hI path
-            "1" => {
-                let f: Vec<&str> = rest.splitn(8, ' ').collect();
-                if f.len() == 8 {
-                    changes.push(Change {
-                        path: abs(f[7]),
-                        status: classify(f[0]),
-                    });
-                }
-            }
-            // 2 XY sub mH mI mW hH hI Xscore path，接著一個 NUL 分隔的原路徑
-            "2" => {
-                let f: Vec<&str> = rest.splitn(9, ' ').collect();
-                fields.next(); // 原路徑
-                if f.len() == 9 {
-                    changes.push(Change {
-                        path: abs(f[8]),
-                        status: FileStatus::Renamed,
-                    });
-                }
-            }
-            // u XY sub m1 m2 m3 mW h1 h2 h3 path
-            "u" => {
-                if let Some(path) = rest.splitn(10, ' ').nth(9) {
-                    changes.push(Change {
-                        path: abs(path),
-                        status: FileStatus::Conflicted,
-                    });
-                }
-            }
-            "?" => changes.push(Change {
-                path: abs(rest),
-                status: FileStatus::Untracked,
-            }),
-            _ => {}
+        // 還沒有任何提交：顯示 HEAD 指向的分支名稱。
+        Err(_) => {
+            b.name = repo
+                .find_reference("HEAD")
+                .ok()
+                .and_then(|r| r.symbolic_target().ok().flatten().map(str::to_string))
+                .map(|t| t.trim_start_matches("refs/heads/").to_string())
+                .unwrap_or_else(|| "main".into());
         }
     }
-    (branch, changes)
+    b
 }
 
-fn repo_root(dir: &Path) -> Option<PathBuf> {
-    let out = run_ok(dir, &["rev-parse", "--show-toplevel"]).ok()?;
-    let root = PathBuf::from(out.trim());
-    Some(dunce::canonicalize(&root).unwrap_or(root))
+/// 分支追蹤的遠端分支（例如 `origin/main`）與它目前的提交。
+fn upstream_of(repo: &Repository, refname: &str) -> Option<(String, Oid)> {
+    let up = repo.branch_upstream_name(refname).ok()?;
+    let up = up.as_str().ok()?;
+    let oid = repo.refname_to_id(up).ok()?;
+    Some((up.trim_start_matches("refs/remotes/").to_string(), oid))
 }
 
-/// 不執行 git，只看檔案系統：往上找含有 `.git` 的資料夾（git 自己也是這樣找儲存庫的）。
-pub fn find_repo(dir: &Path) -> Option<PathBuf> {
+fn origin_url(repo: &Repository) -> Option<String> {
+    repo.find_remote("origin")
+        .ok()?
+        .url()
+        .ok()
+        .map(str::to_string)
+}
+
+pub fn status_at(dir: &Path) -> Status {
+    let empty = |repo| Status {
+        available: true,
+        repo,
+        trusted: true,
+        branch: None,
+        changes: vec![],
+        remote: None,
+    };
+    let Ok(repo) = open(dir) else {
+        return empty(false);
+    };
+    let Ok(root) = workdir(&repo) else {
+        return empty(false);
+    };
+    match changes_of(&repo, &root) {
+        Ok(changes) => Status {
+            available: true,
+            repo: true,
+            trusted: true,
+            branch: Some(branch_of(&repo)),
+            changes,
+            remote: origin_url(&repo),
+        },
+        Err(_) => empty(true),
+    }
+}
+
+fn require_clean_state(repo: &Repository) -> Result<(), String> {
+    if repo.state() == RepositoryState::Clean {
+        Ok(())
+    } else {
+        Err("這個儲存庫正在進行合併或 rebase，請先用其他 Git 工具完成或取消".into())
+    }
+}
+
+fn signature(repo: &Repository, who: Option<&Identity>) -> Result<Signature<'static>, String> {
+    if let Ok(sig) = repo.signature() {
+        return Ok(sig.to_owned());
+    }
+    match who {
+        Some(id) => Signature::now(&id.name, &id.email).map_err(err),
+        None => Err("提交需要你的名字與 Email：請先到設定的 Git 頁「用 GitHub 登入」".into()),
+    }
+}
+
+/// 提交工作區資料夾內的所有變更（工作區是儲存庫的子資料夾時，只提交那個子資料夾）。
+pub fn commit_at(dir: &Path, message: &str, who: Option<&Identity>) -> Result<String, String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Err("請輸入提交說明".into());
+    }
+    let repo = open(dir)?;
+    require_clean_state(&repo)?;
+    let root = workdir(&repo)?;
     let dir = dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
-    dir.ancestors()
-        .find(|d| d.join(".git").exists())
-        .map(Path::to_path_buf)
+    let scope = match dir.strip_prefix(&root) {
+        Ok(rel) if !rel.as_os_str().is_empty() => rel.to_string_lossy().replace('\\', "/"),
+        _ => "*".to_string(),
+    };
+    let mut index = repo.index().map_err(err)?;
+    index
+        .add_all([scope.as_str()], IndexAddOption::DEFAULT, None)
+        .map_err(err)?;
+    // add_all 不會記錄刪除的檔案。
+    index.update_all([scope.as_str()], None).map_err(err)?;
+    index.write().map_err(err)?;
+    let tree_id = index.write_tree().map_err(err)?;
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    let unchanged = match &parent {
+        Some(p) => p.tree_id() == tree_id,
+        None => index.is_empty(),
+    };
+    if unchanged {
+        return Err("沒有需要提交的變更".into());
+    }
+    let sig = signature(&repo, who)?;
+    let tree = repo.find_tree(tree_id).map_err(err)?;
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    let oid = repo
+        .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+        .map_err(|e| format!("提交失敗：{}", e.message()))?;
+    let first = message.lines().next().unwrap_or_default();
+    Ok(format!("{} {first}", &oid.to_string()[..7]))
 }
+
+// ---- 遠端 -------------------------------------------------------------------
+
+fn is_github(url: &str) -> bool {
+    url.to_ascii_lowercase().starts_with("https://github.com/")
+}
+
+fn require_https(url: &str) -> Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("https://") || lower.starts_with("http://") || Path::new(url).exists() {
+        Ok(())
+    } else {
+        Err(format!(
+            "目前只支援 HTTPS 的遠端網址（例如 https://github.com/…）。這個儲存庫的遠端是：{url}"
+        ))
+    }
+}
+
+/// 連線到遠端時的認證與 Proxy。`refused` 記錄是不是因為沒有可用的帳號而失敗。
+struct Session<'a> {
+    auth: &'a Auth,
+    tries: Cell<u32>,
+    refused: Cell<bool>,
+}
+
+impl<'a> Session<'a> {
+    fn new(auth: &'a Auth) -> Self {
+        Self {
+            auth,
+            tries: Cell::new(0),
+            refused: Cell::new(false),
+        }
+    }
+
+    fn callbacks(&self) -> RemoteCallbacks<'_> {
+        let mut cb = RemoteCallbacks::new();
+        cb.credentials(move |url, username, allowed| {
+            // 帳號密碼錯誤時 libgit2 會一直重問，只試一次。
+            self.tries.set(self.tries.get() + 1);
+            if self.tries.get() > 1 || !allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
+                self.refused.set(true);
+                return Err(git2::Error::from_str("需要登入"));
+            }
+            if let (true, Some(token)) = (is_github(url), &self.auth.github_token) {
+                return Cred::userpass_plaintext("x-access-token", token);
+            }
+            // 沒有登入 GitHub，或是其他網站：沿用電腦上 Git 已經存好的帳號（例如 Git Credential Manager）。
+            // 只讀使用者自己的全域設定，不讀儲存庫裡的（避免執行來路不明的程式）。
+            if let Ok(cfg) = git2::Config::open_default() {
+                if let Ok(cred) = Cred::credential_helper(&cfg, url, username) {
+                    return Ok(cred);
+                }
+            }
+            self.refused.set(true);
+            Err(git2::Error::from_str("需要登入"))
+        });
+        cb
+    }
+
+    fn fetch_options(&self) -> FetchOptions<'_> {
+        let mut fo = FetchOptions::new();
+        fo.remote_callbacks(self.callbacks());
+        fo.proxy_options(proxy());
+        fo
+    }
+
+    /// 連線失敗時給使用者看的說明。
+    fn describe(&self, e: &git2::Error, url: &str, what: &str) -> String {
+        if self.refused.get() || e.code() == ErrorCode::Auth {
+            if is_github(url) && self.auth.github_token.is_none() {
+                format!("{what}失敗：需要登入 GitHub。請到設定的 Git 頁按「用 GitHub 登入」。")
+            } else if is_github(url) {
+                format!("{what}失敗：GitHub 拒絕存取。可能沒有這個儲存庫的權限，或登入已過期，請重新登入 GitHub。")
+            } else {
+                format!("{what}失敗：需要登入遠端儲存庫（{url}）。")
+            }
+        } else if matches!(
+            e.class(),
+            ErrorClass::Net | ErrorClass::Http | ErrorClass::Ssl
+        ) {
+            format!("{what}失敗：無法連線到遠端儲存庫（{}）", e.message())
+        } else {
+            format!("{what}失敗：{}", e.message())
+        }
+    }
+}
+
+fn proxy() -> ProxyOptions<'static> {
+    let mut p = ProxyOptions::new();
+    p.auto();
+    p
+}
+
+/// 分支名稱、遠端名稱，以及遠端那邊的分支（`refs/heads/…`）。
+fn tracking(repo: &Repository) -> Result<(String, String, String), String> {
+    let head = repo.head().ok();
+    let branch = match &head {
+        Some(h) if h.is_branch() => h.shorthand().unwrap_or("main").to_string(),
+        Some(_) => return Err("目前不在任何分支上（detached HEAD），請先切換到分支".into()),
+        None => branch_of(repo).name,
+    };
+    let cfg = repo.config().map_err(err)?;
+    let remote = cfg
+        .get_string(&format!("branch.{branch}.remote"))
+        .ok()
+        .or_else(|| {
+            repo.find_remote("origin")
+                .ok()
+                .map(|_| "origin".to_string())
+        })
+        .ok_or_else(|| "這個資料夾還沒有連到 GitHub 或其他遠端儲存庫".to_string())?;
+    let merge = cfg
+        .get_string(&format!("branch.{branch}.merge"))
+        .unwrap_or_else(|_| format!("refs/heads/{branch}"));
+    Ok((branch, remote, merge))
+}
+
+fn remote_url(repo: &Repository, name: &str) -> Result<String, String> {
+    let url = repo
+        .find_remote(name)
+        .map_err(err)?
+        .url()
+        .unwrap_or_default()
+        .to_string();
+    require_https(&url)?;
+    Ok(url)
+}
+
+fn count_between(repo: &Repository, from: Option<Oid>, to: Oid) -> usize {
+    let Ok(mut walk) = repo.revwalk() else {
+        return 0;
+    };
+    if walk.push(to).is_err() {
+        return 0;
+    }
+    if let Some(f) = from {
+        let _ = walk.hide(f);
+    }
+    walk.count()
+}
+
+/// 拉取遠端的新提交。有未提交的變更時不做；遇到衝突時放棄，不動任何檔案。
+pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String, String> {
+    let repo = open(dir)?;
+    require_clean_state(&repo)?;
+    if has_changes(&repo)? {
+        return Err("還有未提交的變更，請先提交再拉取".into());
+    }
+    let (branch, remote_name, merge) = tracking(&repo)?;
+    let url = remote_url(&repo, &remote_name)?;
+    let session = Session::new(auth);
+    repo.find_remote(&remote_name)
+        .map_err(err)?
+        .fetch::<&str>(&[], Some(&mut session.fetch_options()), None)
+        .map_err(|e| session.describe(&e, &url, "拉取"))?;
+
+    let short = merge.trim_start_matches("refs/heads/");
+    let Ok(theirs_id) = repo.refname_to_id(&format!("refs/remotes/{remote_name}/{short}")) else {
+        return Ok("遠端還沒有這個分支，不需要拉取".into());
+    };
+    let theirs = repo.find_annotated_commit(theirs_id).map_err(err)?;
+    let (analysis, _) = repo.merge_analysis(&[&theirs]).map_err(err)?;
+    if analysis.is_up_to_date() {
+        return Ok("已經是最新的".into());
+    }
+    let local_ref = format!("refs/heads/{branch}");
+    let before = repo.head().ok().and_then(|h| h.target());
+    let count = count_between(&repo, before, theirs_id);
+
+    if analysis.is_fast_forward() || analysis.is_unborn() {
+        let target = repo.find_commit(theirs_id).map_err(err)?;
+        repo.checkout_tree(target.as_object(), Some(CheckoutBuilder::new().safe()))
+            .map_err(|e| format!("拉取失敗：{}", e.message()))?;
+        match repo.find_reference(&local_ref) {
+            Ok(mut r) => {
+                r.set_target(theirs_id, "pull: fast-forward").map_err(err)?;
+            }
+            Err(_) => {
+                repo.reference(&local_ref, theirs_id, true, "pull: fast-forward")
+                    .map_err(err)?;
+            }
+        }
+        repo.set_head(&local_ref).map_err(err)?;
+        return Ok(format!("已拉取 {count} 個新的提交"));
+    }
+
+    // 兩邊都有新提交：先在記憶體裡合併，沒有衝突才寫到磁碟。
+    let ours = repo
+        .find_commit(before.ok_or("找不到目前的提交")?)
+        .map_err(err)?;
+    let theirs_commit = repo.find_commit(theirs_id).map_err(err)?;
+    let mut merged = repo
+        .merge_commits(&ours, &theirs_commit, None)
+        .map_err(err)?;
+    if merged.has_conflicts() {
+        return Err("遠端和本機改到了同樣的地方，發生衝突。已經取消拉取，檔案都維持原樣；請用其他 Git 工具處理衝突。".into());
+    }
+    let tree_id = merged.write_tree_to(&repo).map_err(err)?;
+    let tree = repo.find_tree(tree_id).map_err(err)?;
+    let sig = signature(&repo, who)?;
+    let oid = repo
+        .commit(
+            None,
+            &sig,
+            &sig,
+            &format!("合併 {remote_name}/{short} 的變更"),
+            &tree,
+            &[&ours, &theirs_commit],
+        )
+        .map_err(err)?;
+    repo.checkout_tree(tree.as_object(), Some(CheckoutBuilder::new().safe()))
+        .map_err(|e| format!("拉取失敗：{}", e.message()))?;
+    repo.find_reference(&local_ref)
+        .map_err(err)?
+        .set_target(oid, "pull: merge")
+        .map_err(err)?;
+    Ok(format!("已拉取 {count} 個新的提交，並和本機的提交合併"))
+}
+
+/// 推送目前的分支。第一次推送時會記住對應的遠端分支。
+pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
+    let repo = open(dir)?;
+    let (branch, remote_name, merge) = tracking(&repo)?;
+    let url = remote_url(&repo, &remote_name)?;
+    let local = format!("refs/heads/{branch}");
+    if repo.refname_to_id(&local).is_err() {
+        return Err("還沒有任何提交，請先提交再推送".into());
+    }
+    let session = Session::new(auth);
+    let rejected = RefCell::new(None::<String>);
+    let mut cb = session.callbacks();
+    cb.push_update_reference(|_, status| {
+        if let Some(msg) = status {
+            *rejected.borrow_mut() = Some(msg.to_string());
+        }
+        Ok(())
+    });
+    let mut po = PushOptions::new();
+    po.remote_callbacks(cb);
+    po.proxy_options(proxy());
+    let behind = "遠端有你還沒拉取的提交，請先拉取再推送".to_string();
+    repo.find_remote(&remote_name)
+        .map_err(err)?
+        .push(&[format!("{local}:{merge}")], Some(&mut po))
+        .map_err(|e| {
+            if e.code() == ErrorCode::NotFastForward {
+                behind.clone()
+            } else {
+                session.describe(&e, &url, "推送")
+            }
+        })?;
+    drop(po);
+    if let Some(msg) = rejected.into_inner() {
+        return Err(
+            if msg.contains("fast-forward") || msg.contains("fetch first") {
+                behind
+            } else {
+                format!("推送被遠端拒絕：{msg}")
+            },
+        );
+    }
+    if repo.branch_upstream_name(&local).is_err() {
+        if let Ok(mut b) = repo.find_branch(&branch, BranchType::Local) {
+            let _ = b.set_upstream(Some(&format!(
+                "{remote_name}/{}",
+                merge.trim_start_matches("refs/heads/")
+            )));
+        }
+    }
+    Ok("已推送".into())
+}
+
+/// 下載遠端儲存庫到 `dest`（不能已經存在檔案）。
+pub fn clone_to(url: &str, dest: &Path, auth: &Auth) -> Result<(), String> {
+    require_https(url)?;
+    let session = Session::new(auth);
+    let mut builder = git2::build::RepoBuilder::new();
+    builder.fetch_options(session.fetch_options());
+    let result = builder.clone(url, dest).map(|_| ());
+    drop(builder);
+    result.map_err(|e| session.describe(&e, url, "下載"))
+}
+
+/// 把資料夾變成連到 `url` 的儲存庫並上傳：還不是儲存庫就建立，設定遠端 origin，
+/// 有變更就提交一次，再推送目前的分支。
+pub fn publish_at(
+    dir: &Path,
+    url: &str,
+    auth: &Auth,
+    who: Option<&Identity>,
+) -> Result<(), String> {
+    let repo = match Repository::discover(dir) {
+        Ok(r) => r,
+        Err(_) => {
+            let mut opts = git2::RepositoryInitOptions::new();
+            opts.initial_head("main");
+            Repository::init_opts(dir, &opts)
+                .map_err(|e| format!("無法建立 Git 儲存庫：{}", e.message()))?
+        }
+    };
+    match repo.find_remote("origin") {
+        Ok(_) => repo.remote_set_url("origin", url).map_err(err)?,
+        Err(_) => {
+            repo.remote("origin", url).map_err(err)?;
+        }
+    }
+    drop(repo);
+    match commit_at(dir, "初始版本", who) {
+        Ok(_) => {}
+        Err(e) if e == "沒有需要提交的變更" => {}
+        Err(e) => return Err(e),
+    }
+    push_at(dir, auth).map(|_| ())
+}
+
+// ---- 前端呼叫 ----------------------------------------------------------------
 
 fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
     app.state::<Workspace>()
@@ -222,245 +608,38 @@ fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
         .ok_or_else(|| "還沒有開啟資料夾".to_string())
 }
 
-// ---- 信任的儲存庫 ----------------------------------------------------------
-
-fn trust_file(app: &AppHandle) -> Option<PathBuf> {
-    app.path()
-        .app_config_dir()
-        .ok()
-        .map(|d| d.join("git-trust.json"))
-}
-
-/// 比對用的路徑：Windows 的路徑不分大小寫。
-fn trust_key(repo: &Path) -> String {
-    let s = path_string(repo);
-    if cfg!(windows) {
-        s.to_lowercase()
-    } else {
-        s
-    }
-}
-
-fn trusted_list(app: &AppHandle) -> Vec<String> {
-    trust_file(app)
-        .and_then(|p| fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-pub fn is_trusted(list: &[String], repo: &Path) -> bool {
-    let key = trust_key(repo);
-    list.contains(&key)
-}
-
-/// 工作區所在的儲存庫；還沒信任時回傳錯誤，不執行 git。
-fn trusted_repo(app: &AppHandle, dir: &Path) -> Result<(), String> {
-    match find_repo(dir) {
-        Some(repo) if !is_trusted(&trusted_list(app), &repo) => {
-            Err("還沒有信任這個資料夾的 Git 設定，請先在「原始碼控制」面板按「信任」。".into())
-        }
-        _ => Ok(()),
-    }
-}
-
-/// 使用者按下「信任」：記住工作區所在的儲存庫。
-#[tauri::command]
-pub async fn git_trust(app: AppHandle) -> Result<(), String> {
-    let dir = workspace_root(&app)?;
-    let repo = find_repo(&dir).ok_or_else(|| "這個資料夾不是 Git 儲存庫".to_string())?;
-    let mut list = trusted_list(&app);
-    if !is_trusted(&list, &repo) {
-        list.push(trust_key(&repo));
-    }
-    let path = trust_file(&app).ok_or_else(|| "找不到設定資料夾".to_string())?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("無法建立設定資料夾：{e}"))?;
-    }
-    let json = serde_json::to_string_pretty(&list).unwrap_or_default();
-    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| format!("無法儲存：{e}"))
-}
-
-pub fn status_at(dir: &Path, trusted: &[String]) -> Status {
-    let empty = |available, repo, trusted| Status {
-        available,
-        repo,
-        trusted,
-        branch: None,
-        changes: vec![],
-    };
-    if git_exe().is_none() {
-        return empty(false, false, false);
-    }
-    match find_repo(dir) {
-        None => return empty(true, false, false),
-        Some(repo) if !is_trusted(trusted, &repo) => return empty(true, true, false),
-        Some(_) => {}
-    }
-    let Some(root) = repo_root(dir) else {
-        return empty(true, false, true);
-    };
-    match run_ok(
-        dir,
-        &[
-            "status",
-            "--porcelain=v2",
-            "--branch",
-            "-z",
-            "--untracked-files=all",
-        ],
-    ) {
-        Ok(out) => {
-            let (branch, changes) = parse_status(&out, &root);
-            Status {
-                available: true,
-                repo: true,
-                trusted: true,
-                branch: Some(branch),
-                changes,
-            }
-        }
-        Err(_) => empty(true, true, true),
-    }
-}
-
 #[tauri::command]
 pub async fn git_status(app: AppHandle) -> Result<Status, String> {
     let dir = workspace_root(&app)?;
-    let trusted = trusted_list(&app);
-    crate::io::blocking(move || Ok(status_at(&dir, &trusted))).await
-}
-
-/// 提交工作區資料夾內的所有變更。
-pub fn commit_at(dir: &Path, message: &str) -> Result<String, String> {
-    let message = message.trim();
-    if message.is_empty() {
-        return Err("請輸入提交說明".into());
-    }
-    run_ok(dir, &["add", "--all", "--", "."])?;
-    if run_ok(dir, &["diff", "--cached", "--quiet"]).is_ok() {
-        return Err("沒有需要提交的變更".into());
-    }
-    run_ok(dir, &["commit", "--quiet", "-m", message]).map_err(|e| {
-        if e.contains("Please tell me who you are") || e.contains("user.email") {
-            "Git 還不知道你的名字與 Email，請先在終端機執行：git config --global user.name \"你的名字\" 與 git config --global user.email \"你的 Email\"".into()
-        } else {
-            format!("提交失敗：{e}")
-        }
-    })?;
-    let summary = run_ok(dir, &["log", "-1", "--format=%h %s"])?;
-    Ok(summary.trim().to_string())
+    crate::io::blocking(move || Ok(status_at(&dir))).await
 }
 
 #[tauri::command]
 pub async fn git_commit(app: AppHandle, message: String) -> Result<String, String> {
     let dir = workspace_root(&app)?;
-    trusted_repo(&app, &dir)?;
-    crate::io::blocking(move || commit_at(&dir, &message)).await
-}
-
-fn rebase_in_progress(dir: &Path) -> bool {
-    run_ok(dir, &["rev-parse", "--git-path", "rebase-merge"])
-        .into_iter()
-        .chain(run_ok(dir, &["rev-parse", "--git-path", "rebase-apply"]))
-        .any(|p| {
-            let p = PathBuf::from(p.trim());
-            (if p.is_absolute() { p } else { dir.join(p) }).exists()
-        })
-}
-
-/// 拉取遠端的新提交。有未提交的變更時不做；遇到衝突時取消，不留下半套的結果。
-pub fn pull_at(dir: &Path) -> Result<String, String> {
-    let dirty = run_ok(dir, &["status", "--porcelain"])?;
-    if !dirty.trim().is_empty() {
-        return Err("還有未提交的變更，請先提交再拉取".into());
-    }
-    let before = run_ok(dir, &["rev-parse", "HEAD"])?;
-    if run_ok(dir, &["pull", "--ff-only", "--quiet"]).is_err() {
-        // 兩邊都有新提交：改用 rebase 把本機的提交接在遠端之後；有衝突就取消。
-        if let Err(e) = run_ok(dir, &["pull", "--rebase", "--quiet"]) {
-            if rebase_in_progress(dir) {
-                let _ = run_ok(dir, &["rebase", "--abort"]);
-                return Err("遠端和本機改到了同樣的地方，發生衝突。已經取消拉取，檔案都維持原樣；請用其他 Git 工具處理衝突。".into());
-            }
-            return Err(network_message(&e, "拉取"));
-        }
-    }
-    let after = run_ok(dir, &["rev-parse", "HEAD"])?;
-    if before == after {
-        Ok("已經是最新的".into())
-    } else {
-        let count = run_ok(
-            dir,
-            &[
-                "rev-list",
-                "--count",
-                &format!("{}..{}", before.trim(), after.trim()),
-            ],
-        )
-        .unwrap_or_default();
-        Ok(format!("已拉取 {} 個新的提交", count.trim()))
-    }
-}
-
-fn network_message(e: &str, what: &str) -> String {
-    if e.contains("could not read Username")
-        || e.contains("Authentication failed")
-        || e.contains("terminal prompts disabled")
-    {
-        format!(
-            "{what}失敗：需要登入遠端儲存庫。請先在終端機執行一次 git {}，完成登入後再試。",
-            if what == "拉取" { "pull" } else { "push" }
-        )
-    } else if e.contains("no tracking information")
-        || e.contains("has no upstream")
-        || e.contains("No configured push destination")
-    {
-        format!("{what}失敗：這個分支還沒有設定遠端（upstream）。請先在終端機執行一次 git push -u origin 分支名稱。")
-    } else if e.contains("Could not resolve host") || e.contains("unable to access") {
-        format!("{what}失敗：無法連線到遠端儲存庫（{e}）")
-    } else {
-        format!("{what}失敗：{e}")
-    }
-}
-
-pub fn push_at(dir: &Path) -> Result<String, String> {
-    run_ok(dir, &["push", "--quiet"]).map_err(|e| {
-        if e.contains("rejected") || e.contains("fetch first") || e.contains("non-fast-forward") {
-            "遠端有你還沒拉取的提交，請先拉取再推送".into()
-        } else {
-            network_message(&e, "推送")
-        }
-    })?;
-    Ok("已推送".into())
+    let who = crate::github::identity(&app);
+    crate::io::blocking(move || commit_at(&dir, &message, who.as_ref())).await
 }
 
 #[tauri::command]
 pub async fn git_pull(app: AppHandle) -> Result<String, String> {
     let dir = workspace_root(&app)?;
-    trusted_repo(&app, &dir)?;
-    crate::io::blocking_for(NETWORK_TIMEOUT, move || pull_at(&dir)).await
+    let auth = crate::github::auth(&app);
+    let who = crate::github::identity(&app);
+    crate::io::blocking_for(NETWORK_TIMEOUT, move || pull_at(&dir, &auth, who.as_ref())).await
 }
 
 #[tauri::command]
 pub async fn git_push(app: AppHandle) -> Result<String, String> {
     let dir = workspace_root(&app)?;
-    trusted_repo(&app, &dir)?;
-    crate::io::blocking_for(NETWORK_TIMEOUT, move || push_at(&dir)).await
+    let auth = crate::github::auth(&app);
+    crate::io::blocking_for(NETWORK_TIMEOUT, move || push_at(&dir, &auth)).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
-
-    fn git(dir: &Path, args: &[&str]) {
-        let out = git_command(dir).unwrap().args(args).output().unwrap();
-        assert!(
-            out.status.success(),
-            "git {args:?}: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
 
     fn temp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("md-git-{name}-{}", std::process::id()));
@@ -469,133 +648,158 @@ mod tests {
         dunce::canonicalize(&dir).unwrap()
     }
 
-    fn init(dir: &Path) {
-        git(dir, &["init", "--quiet", "-b", "main"]);
-        git(dir, &["config", "user.name", "測試"]);
-        git(dir, &["config", "user.email", "test@example.com"]);
-        // Windows 的 Git 預設會把換行轉成 CRLF，測試比對檔案內容時固定用 LF。
-        git(dir, &["config", "core.autocrlf", "false"]);
-    }
-
-    #[test]
-    fn parses_porcelain_v2() {
-        let root = Path::new("/repo");
-        let out = "# branch.oid abc\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +2 -1\0\
-                   1 .M N... 100644 100644 100644 a b 筆記/週報.md\0\
-                   1 A. N... 000000 100644 100644 a b 新.md\0\
-                   2 R. N... 100644 100644 100644 a b R100 新名.md\0舊名.md\0\
-                   u UU N... 100644 100644 100644 100644 a b c 衝突.md\0\
-                   ? 未追蹤 檔案.md\0";
-        let (branch, changes) = parse_status(out, root);
-        assert_eq!(
-            branch,
-            Branch {
-                name: "main".into(),
-                upstream: Some("origin/main".into()),
-                ahead: 2,
-                behind: 1
-            }
-        );
-        let got: Vec<(String, FileStatus)> = changes
-            .iter()
-            .map(|c| (c.path.replace('\\', "/"), c.status))
-            .collect();
-        assert_eq!(
-            got,
-            vec![
-                ("/repo/筆記/週報.md".into(), FileStatus::Modified),
-                ("/repo/新.md".into(), FileStatus::Added),
-                ("/repo/新名.md".into(), FileStatus::Renamed),
-                ("/repo/衝突.md".into(), FileStatus::Conflicted),
-                ("/repo/未追蹤 檔案.md".into(), FileStatus::Untracked),
-            ]
-        );
-    }
-
-    #[test]
-    fn untrusted_repo_runs_no_git() {
-        if which::which("git").is_err() {
-            return;
+    fn me() -> Identity {
+        Identity {
+            name: "測試".into(),
+            email: "test@example.com".into(),
         }
-        let dir = temp("untrusted");
+    }
+
+    fn init(dir: &Path) {
+        let mut opts = git2::RepositoryInitOptions::new();
+        opts.initial_head("main");
+        Repository::init_opts(dir, &opts).unwrap();
+    }
+
+    /// Windows 的 Git 預設 core.autocrlf=true，取出的檔案是 CRLF：比對內容時統一成 LF。
+    fn read(path: PathBuf) -> std::io::Result<String> {
+        fs::read_to_string(path).map(|s| s.replace("\r\n", "\n"))
+    }
+
+    fn clone(remote: &Path, dir: &Path) {
+        clone_to(remote.to_str().unwrap(), dir, &Auth::default()).unwrap();
+    }
+
+    #[test]
+    fn status_of_plain_folder_and_new_repo() {
+        let dir = temp("plain");
+        let s = status_at(&dir);
+        assert!(s.available && !s.repo);
+
         init(&dir);
-        // 惡意的儲存庫設定：git status 會執行 core.fsmonitor 指定的程式。
-        let marker = dir.join("pwned");
-        git(&dir, &["config", "core.fsmonitor", "touch pwned; false"]);
-        let sub = dir.join("子資料夾");
-        fs::create_dir_all(&sub).unwrap();
-        assert_eq!(find_repo(&sub), Some(dir.clone()));
+        fs::create_dir_all(dir.join("筆記")).unwrap();
+        fs::write(dir.join("筆記/週報.md"), "# 週報\n").unwrap();
+        let s = status_at(&dir.join("筆記"));
+        assert!(s.repo && s.trusted);
+        assert_eq!(s.branch.unwrap().name, "main");
+        assert_eq!(s.changes.len(), 1);
+        assert_eq!(s.changes[0].status, FileStatus::Untracked);
+        assert_eq!(
+            s.changes[0].path,
+            path_string(&dir.join("筆記").join("週報.md"))
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
 
-        let s = status_at(&sub, &[]);
-        assert!(s.available && s.repo && !s.trusted && s.branch.is_none());
-        assert!(!marker.exists(), "還沒信任就執行了 git");
+    #[test]
+    fn commit_detects_changes_and_deletions() {
+        let dir = temp("commit");
+        init(&dir);
+        assert_eq!(
+            commit_at(&dir, "  ", Some(&me())).unwrap_err(),
+            "請輸入提交說明"
+        );
+        assert_eq!(
+            commit_at(&dir, "空的", Some(&me())).unwrap_err(),
+            "沒有需要提交的變更"
+        );
+        fs::write(dir.join("a.md"), "a\n").unwrap();
+        fs::write(dir.join("b.md"), "b\n").unwrap();
+        // 沒有 Git 設定也沒有登入：提示登入。
+        if Repository::open(&dir).unwrap().signature().is_err() {
+            assert!(commit_at(&dir, "第一版", None)
+                .unwrap_err()
+                .contains("登入"));
+        }
+        assert!(commit_at(&dir, "第一版", Some(&me()))
+            .unwrap()
+            .ends_with(" 第一版"));
+        assert!(status_at(&dir).changes.is_empty());
+        fs::remove_file(dir.join("b.md")).unwrap();
+        let s = status_at(&dir);
+        assert_eq!(s.changes.len(), 1);
+        assert_eq!(s.changes[0].status, FileStatus::Deleted);
+        commit_at(&dir, "刪掉 b", Some(&me())).unwrap();
+        assert!(status_at(&dir).changes.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
 
-        let s = status_at(&sub, &[trust_key(&dir)]);
-        assert!(s.repo && s.trusted && s.branch.is_some());
-        assert!(!is_trusted(&[trust_key(&sub)], &dir));
+    #[test]
+    fn rejects_ssh_remotes() {
+        assert!(require_https("git@github.com:a/b.git")
+            .unwrap_err()
+            .contains("HTTPS"));
+        assert!(require_https("https://github.com/a/b.git").is_ok());
+        assert!(is_github("https://GitHub.com/a/b"));
+        assert!(!is_github("https://gitlab.com/a/b"));
     }
 
     #[test]
     fn commit_pull_push_round_trip() {
-        if which::which("git").is_err() {
-            return;
-        }
         let remote = temp("remote");
-        git(&remote, &["init", "--quiet", "--bare", "-b", "main"]);
-        let a = temp("a");
-        init(&a);
-        fs::write(a.join("週報.md"), "# 週報\n").unwrap();
-        assert!(status_at(&a, &[trust_key(&a)])
-            .changes
-            .iter()
-            .any(|c| c.status == FileStatus::Untracked));
-        assert_eq!(commit_at(&a, "  ").unwrap_err(), "請輸入提交說明");
-        commit_at(&a, "第一版").unwrap();
-        assert_eq!(commit_at(&a, "沒有變更").unwrap_err(), "沒有需要提交的變更");
-        git(&a, &["remote", "add", "origin", remote.to_str().unwrap()]);
-        git(&a, &["push", "--quiet", "-u", "origin", "main"]);
+        let mut opts = git2::RepositoryInitOptions::new();
+        opts.initial_head("main").bare(true);
+        Repository::init_opts(&remote, &opts).unwrap();
+        let none = Auth::default();
 
-        // 另一台電腦 b 推了一個新提交，a 拉取（快轉）。
+        // a：新資料夾上傳到遠端（建立儲存庫、提交、推送、記住遠端分支）。
+        let a = temp("a");
+        fs::write(a.join("週報.md"), "# 週報\n").unwrap();
+        publish_at(&a, remote.to_str().unwrap(), &none, Some(&me())).unwrap();
+        let s = status_at(&a);
+        let b0 = s.branch.unwrap();
+        assert_eq!(b0.upstream.as_deref(), Some("origin/main"));
+        assert_eq!((b0.ahead, b0.behind), (0, 0));
+
+        // b：從遠端下載，修改後推送；a 拉取（快轉）。
         let b = temp("b");
-        git(&b, &["clone", "--quiet", remote.to_str().unwrap(), "."]);
-        init(&b);
+        fs::remove_dir_all(&b).unwrap();
+        clone(&remote, &b);
         fs::write(b.join("週報.md"), "# 週報\n\nb 的修改\n").unwrap();
-        commit_at(&b, "b 的修改").unwrap();
-        push_at(&b).unwrap();
-        assert_eq!(pull_at(&a).unwrap(), "已拉取 1 個新的提交");
-        assert_eq!(pull_at(&a).unwrap(), "已經是最新的");
+        commit_at(&b, "b 的修改", Some(&me())).unwrap();
+        assert_eq!(push_at(&b, &none).unwrap(), "已推送");
+        assert_eq!(
+            pull_at(&a, &none, Some(&me())).unwrap(),
+            "已拉取 1 個新的提交"
+        );
+        assert_eq!(read(a.join("週報.md")).unwrap(), "# 週報\n\nb 的修改\n");
+        assert_eq!(pull_at(&a, &none, Some(&me())).unwrap(), "已經是最新的");
 
         // 有未提交的變更時不拉取。
         fs::write(a.join("週報.md"), "未提交\n").unwrap();
-        assert!(pull_at(&a).unwrap_err().contains("未提交"));
-        git(&a, &["checkout", "--quiet", "--", "."]);
+        assert!(pull_at(&a, &none, Some(&me()))
+            .unwrap_err()
+            .contains("未提交"));
+        fs::write(a.join("週報.md"), "# 週報\n\nb 的修改\n").unwrap();
 
-        // 兩邊改同一行：拉取時衝突 → 取消，檔案維持原樣。
+        // 兩邊改同一行：推送被拒、拉取時衝突 → 取消，檔案維持原樣。
         fs::write(b.join("週報.md"), "# 週報\n\nb 又改了\n").unwrap();
-        commit_at(&b, "b 第二次").unwrap();
-        push_at(&b).unwrap();
+        commit_at(&b, "b 第二次", Some(&me())).unwrap();
+        push_at(&b, &none).unwrap();
         fs::write(a.join("週報.md"), "# 週報\n\na 也改了\n").unwrap();
-        commit_at(&a, "a 的修改").unwrap();
-        assert!(push_at(&a).unwrap_err().contains("先拉取"));
-        assert!(pull_at(&a).unwrap_err().contains("衝突"));
-        assert!(!rebase_in_progress(&a));
-        assert_eq!(
-            fs::read_to_string(a.join("週報.md")).unwrap(),
-            "# 週報\n\na 也改了\n"
-        );
+        commit_at(&a, "a 的修改", Some(&me())).unwrap();
+        assert!(push_at(&a, &none).unwrap_err().contains("先拉取"));
+        assert!(pull_at(&a, &none, Some(&me()))
+            .unwrap_err()
+            .contains("衝突"));
+        assert_eq!(read(a.join("週報.md")).unwrap(), "# 週報\n\na 也改了\n");
+        assert!(status_at(&a).changes.is_empty());
 
-        // 改不同檔案：rebase 成功，推送。
-        git(&a, &["reset", "--quiet", "--hard", "origin/main"]);
-        git(&a, &["pull", "--quiet", "--ff-only"]);
-        fs::write(a.join("另一份.md"), "a\n").unwrap();
-        commit_at(&a, "a 新增檔案").unwrap();
+        // 改不同檔案：合併後推送。
+        let c = temp("c");
+        fs::remove_dir_all(&c).unwrap();
+        clone(&remote, &c);
+        fs::write(c.join("另一份.md"), "c\n").unwrap();
+        commit_at(&c, "c 新增檔案", Some(&me())).unwrap();
         fs::write(b.join("週報.md"), "# 週報\n\nb 第三次\n").unwrap();
-        commit_at(&b, "b 第三次").unwrap();
-        push_at(&b).unwrap();
-        assert!(pull_at(&a).unwrap().starts_with("已拉取"));
-        assert_eq!(push_at(&a).unwrap(), "已推送");
+        commit_at(&b, "b 第三次", Some(&me())).unwrap();
+        push_at(&b, &none).unwrap();
+        assert!(pull_at(&c, &none, Some(&me())).unwrap().contains("合併"));
+        assert_eq!(push_at(&c, &none).unwrap(), "已推送");
+        assert_eq!(read(c.join("週報.md")).unwrap(), "# 週報\n\nb 第三次\n");
+        assert!(c.join("另一份.md").exists());
 
-        for d in [remote, a, b] {
+        for d in [remote, a, b, c] {
             let _ = fs::remove_dir_all(d);
         }
     }

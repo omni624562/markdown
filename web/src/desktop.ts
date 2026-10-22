@@ -169,14 +169,40 @@ export interface GitChange {
 }
 
 export interface GitStatus {
-  /** 電腦上有沒有安裝 git。 */
+  /** 內建 Git，一律可以使用。 */
   available: boolean;
   /** 開啟的資料夾是不是 Git 儲存庫。 */
   repo: boolean;
-  /** 使用者是否信任這個儲存庫的 Git 設定；信任前不會執行任何 git 指令。 */
+  /** 內建 Git 不執行外部程式，一律為 true（保留給舊介面）。 */
   trusted: boolean;
   branch: { name: string; upstream: string | null; ahead: number; behind: number } | null;
   changes: GitChange[];
+  /** 遠端（origin）的網址。 */
+  remote: string | null;
+}
+
+export interface GitHubAccount {
+  login: string;
+  id: number;
+  name: string | null;
+}
+
+/** 裝置碼登入：在 GitHub 網頁輸入 `userCode`。 */
+export interface GitHubDeviceCode {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  interval: number;
+  expiresIn: number;
+}
+
+export interface GitHubRepo {
+  fullName: string;
+  name: string;
+  private: boolean;
+  description: string | null;
+  updatedAt: string | null;
+  cloneUrl: string;
 }
 
 export interface FileVersion {
@@ -397,7 +423,17 @@ function bridge(core: TauriCore, event: TauriEvent) {
     aiCancel: (id: number) => core.invoke<void>("ai_cancel", { id }),
 
     gitStatus: () => core.invoke<GitStatus>("git_status"),
-    gitTrust: () => core.invoke<void>("git_trust"),
+    githubAccount: () => core.invoke<GitHubAccount | null>("github_account"),
+    githubLoginStart: () => core.invoke<GitHubDeviceCode>("github_login_start"),
+    githubLoginWait: (c: GitHubDeviceCode) =>
+      core.invoke<GitHubAccount>("github_login_wait", { deviceCode: c.deviceCode, interval: c.interval, expiresIn: c.expiresIn }),
+    githubLoginCancel: () => core.invoke<void>("github_login_cancel"),
+    githubLogout: () => core.invoke<void>("github_logout"),
+    githubRepos: () => core.invoke<GitHubRepo[]>("github_repos"),
+    /** 選擇放在哪個資料夾後下載並開啟；取消時回傳 null。 */
+    githubClone: (fullName: string) => core.invoke<Folder | null>("github_clone", { fullName }),
+    /** 把開啟的資料夾上傳成新的儲存庫，回傳儲存庫網址。 */
+    githubPublish: (name: string, isPrivate: boolean) => core.invoke<string>("github_publish", { name, private: isPrivate }),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
     gitPull: () => core.invoke<string>("git_pull"),
     gitPush: () => core.invoke<string>("git_push"),

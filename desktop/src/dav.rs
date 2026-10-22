@@ -513,51 +513,16 @@ fn save_conns(app: &AppHandle, conns: &[Conn]) -> Result<(), String> {
     crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| e.to_string())
 }
 
-fn keyring_ready() -> bool {
-    use std::sync::OnceLock;
-    static READY: OnceLock<bool> = OnceLock::new();
-    *READY.get_or_init(|| {
-        #[cfg(windows)]
-        {
-            match windows_native_keyring_store::Store::new() {
-                Ok(store) => {
-                    keyring_core::set_default_store(store);
-                    true
-                }
-                Err(_) => false,
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            false
-        }
-    })
-}
-
 fn saved_password(id: &str) -> Option<String> {
-    keyring_ready()
-        .then(|| {
-            keyring_core::Entry::new(KEYRING_SERVICE, id)
-                .ok()?
-                .get_password()
-                .ok()
-        })
-        .flatten()
+    crate::secrets::get(KEYRING_SERVICE, id)
 }
 
 fn remember_password(id: &str, password: &str) -> bool {
-    keyring_ready()
-        && keyring_core::Entry::new(KEYRING_SERVICE, id)
-            .and_then(|e| e.set_password(password))
-            .is_ok()
+    crate::secrets::set(KEYRING_SERVICE, id, password)
 }
 
 fn forget_password(id: &str) {
-    if keyring_ready() {
-        if let Ok(e) = keyring_core::Entry::new(KEYRING_SERVICE, id) {
-            let _ = e.delete_credential();
-        }
-    }
+    crate::secrets::forget(KEYRING_SERVICE, id);
 }
 
 /// `webdav://<代號>/<路徑>` → (代號, 路徑)。

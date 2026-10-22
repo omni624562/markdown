@@ -66,6 +66,8 @@ jobs:
           # 自動更新用：比較流水號判斷新舊。
           MD_EDITOR_BUILD: ${{ github.run_number }}
           MD_EDITOR_COMMIT: ${{ github.sha }}
+          # 「用 GitHub 登入」用的 OAuth App Client ID（公開資訊）。可以在儲存庫的 Settings → Variables 設定。
+          OMARKER_GITHUB_CLIENT_ID: ${{ vars.OMARKER_GITHUB_CLIENT_ID }}
         run: cargo build --release --locked
 
       # Cargo 套件名稱沿用 md-editor（避免動到設定與鑰匙圈等內部名稱），發佈時的檔名用 omarker.exe。

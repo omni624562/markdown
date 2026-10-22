@@ -133,7 +133,7 @@ pub struct CheckResult {
     latest: Option<Manifest>,
 }
 
-fn agent() -> ureq::Agent {
+pub(crate) fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         // 使用系統的憑證（公司網路常有自己的憑證）與系統的 Proxy 設定。
         .tls_config(

@@ -1284,8 +1284,17 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .offline-bar .btn { border-color: var(--border-strong); background: var(--bg); }
 
 /* ---- Git：原始碼控制面板 ---- */
-.git-trust { margin: 0 4px 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
-.git-trust p { margin: 6px 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+/* 還不是 Git 儲存庫：引導用 GitHub 同步。 */
+.git-setup { margin: 0 4px 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.git-setup p { margin: 6px 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.git-setup-actions { display: flex; flex-direction: column; gap: 6px; }
+.git-setup-actions .btn { justify-content: center; }
+.git-account { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-soft); color: var(--muted); font-size: 12px; }
+/* 已經是儲存庫，但還不能同步（沒有遠端、還沒登入）。 */
+.git-hint { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; margin: 0 4px 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--fg); font-size: 12.5px; }
+/* 用 GitHub 登入：顯示要在網頁輸入的代碼。 */
+.github-code { margin: 4px 0 8px; padding: 14px; border: 1px dashed var(--border-strong); border-radius: 10px; font: 600 28px/1.2 var(--font-mono); letter-spacing: 0.18em; text-align: center; user-select: all; }
+.github-wait { color: var(--muted); font-size: 12.5px; }
 .git-branch { display: flex; gap: 6px; align-items: center; justify-content: space-between; margin: 0 4px 8px; }
 .git-info { display: flex; flex: 1; gap: 5px; align-items: center; min-width: 0; overflow: hidden; color: var(--fg); font-size: 13px; white-space: nowrap; }
 .git-info .icon { width: 15px; height: 15px; color: var(--muted); }
