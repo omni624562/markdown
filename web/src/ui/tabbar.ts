@@ -8,6 +8,8 @@ export interface TabInfo {
   dirty: boolean;
   /** 檔案已從磁碟刪除。 */
   missing?: boolean;
+  /** 固定的分頁：顯示圖釘（按一下取消固定），沒有關閉按鈕。 */
+  pinned?: boolean;
 }
 
 export interface TabBarHandlers {
@@ -17,10 +19,13 @@ export interface TabBarHandlers {
   /** 雙擊分頁改名；回傳 false 表示這個分頁不能直接改名。 */
   canRename(id: string): boolean;
   rename(id: string, name: string): void;
+  /** 在分頁上按右鍵（或 Shift+F10、選單鍵）。 */
+  menu(id: string, at: DOMRect): void;
+  unpin(id: string): void;
 }
 
 /**
- * 分頁列（也是視窗最上方的標題列）。中鍵點分頁可以關閉；雙擊分頁可以改名；
+ * 分頁列（也是視窗最上方的標題列）。中鍵點分頁可以關閉；雙擊分頁可以改名；右鍵開啟分頁選單；
  * 左右方向鍵在分頁間移動（WAI-ARIA tabs 模式）。
  */
 export class TabBar {
@@ -66,6 +71,11 @@ export class TabBar {
         handlers.close(tabs[i].dataset.id!);
         e.preventDefault();
         return;
+      } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+        e.preventDefault();
+        const r = tabs[i].getBoundingClientRect();
+        handlers.menu(tabs[i].dataset.id!, new DOMRect(r.left, r.bottom, 0, 0));
+        return;
       }
       if (next < 0) return;
       e.preventDefault();
@@ -86,6 +96,7 @@ export class TabBar {
         tab.title = t.title;
         tab.setAttribute("aria-selected", String(t.id === activeId));
         tab.classList.toggle("missing", !!t.missing);
+        tab.classList.toggle("pinned", !!t.pinned);
         const name = document.createElement("span");
         name.className = "tab-name";
         name.textContent = t.name;
@@ -93,15 +104,29 @@ export class TabBar {
         close.type = "button";
         close.className = "tab-close";
         close.tabIndex = -1;
-        close.title = t.dirty ? "關閉（有未存檔的變更）" : "關閉";
-        close.setAttribute("aria-label", `關閉「${t.name}」`);
         close.classList.toggle("dirty", t.dirty);
-        close.append(icon("x"));
+        if (t.pinned) {
+          close.title = t.dirty ? "已固定（有未存檔的變更）；按一下取消固定" : "已固定；按一下取消固定";
+          close.setAttribute("aria-label", `取消固定「${t.name}」`);
+          close.append(icon("pin"));
+        } else {
+          close.title = t.dirty ? "關閉（有未存檔的變更）" : "關閉";
+          close.setAttribute("aria-label", `關閉「${t.name}」`);
+          close.append(icon("x"));
+        }
         close.addEventListener("click", (e) => {
           e.stopPropagation();
-          this.#handlers.close(t.id);
+          if (t.pinned) this.#handlers.unpin(t.id);
+          else this.#handlers.close(t.id);
         });
         tab.append(name, close);
+        tab.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          const at = new DOMRect(e.clientX, e.clientY, 0, 0);
+          // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
+          if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => this.#handlers.menu(t.id, at)), { once: true });
+          else this.#handlers.menu(t.id, at);
+        });
         tab.addEventListener("click", () => this.#handlers.select(t.id));
         tab.addEventListener("dblclick", (e) => {
           if ((e.target as HTMLElement).closest(".tab-close")) return;

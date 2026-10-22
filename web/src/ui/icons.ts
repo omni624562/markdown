@@ -19,6 +19,10 @@ import {
   Subscript,
   RemoveFormatting,
   ShieldCheck,
+  Pin,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  PinOff,
   Omega,
   Scissors,
   ClipboardType,
@@ -103,6 +107,10 @@ import {
 
 const ICONS: Record<string, IconNode> = {
   "shield-check": ShieldCheck,
+  pin: Pin,
+  "chevrons-down-up": ChevronsDownUp,
+  "chevrons-up-down": ChevronsUpDown,
+  "pin-off": PinOff,
   "spell-check": SpellCheck,
   presentation: Presentation,
   tag: Tag,

@@ -15,6 +15,8 @@ export interface DocMeta {
   baseline: string | null;
   /** 內容是否對應到一個實際存過或開啟過的檔案。 */
   fileBacked: boolean;
+  /** 固定的分頁：排在最左邊，「關閉其他分頁」不會關掉它。 */
+  pinned?: boolean;
 }
 
 export interface Session {
@@ -43,6 +45,7 @@ export function loadSession(): Session | null {
         path: typeof d.path === "string" ? d.path : null,
         baseline: typeof d.baseline === "string" && d.baseline ? d.baseline : null,
         fileBacked: d.fileBacked === true,
+        pinned: d.pinned === true,
       }));
       if (docs.length) {
         const activeId = docs.some((d) => d.id === parsed.activeId) ? parsed.activeId! : docs[0].id;

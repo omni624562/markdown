@@ -36,6 +36,8 @@ pub struct AppVersion {
     version: &'static str,
     build: Option<u64>,
     commit: Option<&'static str>,
+    /// 建置日期（CI 建置時才有，例如 2026-10-22）。
+    date: Option<&'static str>,
     /// 這個版本能不能自動更新（只有 CI 建置的 Windows 版可以）。
     updatable: bool,
 }
@@ -46,6 +48,7 @@ pub fn current() -> AppVersion {
         version: env!("CARGO_PKG_VERSION"),
         build,
         commit: option_env!("MD_EDITOR_COMMIT").map(|c| &c[..c.len().min(7)]),
+        date: option_env!("MD_EDITOR_DATE"),
         updatable: cfg!(windows) && build.is_some(),
     }
 }
@@ -67,6 +70,9 @@ pub struct Manifest {
     date: String,
     #[serde(default)]
     notes: String,
+    /// CHANGELOG.md 中這一版的完整說明（Markdown），更新視窗列出改了什麼。只用來顯示，不在簽章範圍內。
+    #[serde(default)]
+    changes: String,
     url: String,
     sha256: String,
     size: u64,
@@ -322,6 +328,7 @@ mod tests {
             commit: "abc1234".into(),
             date: "2026-10-20".into(),
             notes: String::new(),
+            changes: String::new(),
             url: "https://github.com/omni624562/markdown/releases/download/latest/md-editor.exe"
                 .into(),
             sha256: "a".repeat(64),

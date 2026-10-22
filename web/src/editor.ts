@@ -1,7 +1,15 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
 import { json } from "@codemirror/lang-json";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
+import {
+  HighlightStyle,
+  bracketMatching,
+  codeFolding,
+  foldGutter,
+  foldKeymap,
+  indentOnInput,
+  syntaxHighlighting,
+} from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { type Diagnostic, forceLinting, linter } from "@codemirror/lint";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
@@ -187,7 +195,8 @@ export class Editor {
       EditorState.phrases.of(PHRASES),
       EditorView.contentAttributes.of({ "aria-label": "文件內容", spellcheck: "false" }),
       cjkWords(),
-      keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+      folding(),
+      keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, indentWithTab]),
       syntaxHighlighting(syntaxColors),
       theme,
       this.#language.of(this.#languageFor(kind)),
@@ -390,3 +399,34 @@ export function cursorInfo(view: EditorView): { line: number; column: number; se
   }
   return { line: line.number, column: [...line.text.slice(0, sel.head - line.from)].length + 1, selected };
 }
+
+/**
+ * 摺疊：標題左邊的箭頭可以收起整個章節（到下一個同級或更高的標題為止），程式碼區塊、清單、JSON 也能摺疊。
+ * 箭頭平常隱藏，滑鼠移到左邊才出現；摺起來的地方顯示「⋯」，點一下展開。
+ * 快速鍵：Ctrl+Shift+[ 摺疊、Ctrl+Shift+] 展開、Ctrl+Alt+[ 全部摺疊、Ctrl+Alt+] 全部展開。
+ */
+function folding(): Extension {
+  return [
+    codeFolding({
+      placeholderDOM(_view, onclick) {
+        const el = document.createElement("span");
+        el.className = "cm-foldPlaceholder";
+        el.textContent = "⋯";
+        el.title = "已摺疊，按一下展開";
+        el.setAttribute("aria-label", "已摺疊的內容，按一下展開");
+        el.onclick = onclick;
+        return el;
+      },
+    }),
+    foldGutter({
+      markerDOM(open) {
+        const el = document.createElement("span");
+        el.className = `cm-fold-marker${open ? "" : " folded"}`;
+        el.textContent = "›";
+        el.title = open ? "摺疊這個章節" : "展開";
+        return el;
+      },
+    }),
+  ];
+}
+

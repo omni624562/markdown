@@ -22,6 +22,17 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["medium", "中"],
     ["wide", "寬"],
   ],
+  docFont: [
+    ["sans", "黑體（預設）"],
+    ["serif", "明體"],
+    ["kai", "楷體"],
+    ["mono", "等寬"],
+  ],
+  docLineHeight: [
+    ["compact", "緊湊"],
+    ["normal", "標準"],
+    ["relaxed", "寬鬆"],
+  ],
   aiTool: [
     ["claude", "Claude Code"],
     ["codex", "Codex"],
@@ -36,8 +47,14 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
 
 /** 桌面版提供：目前版本與手動檢查更新。 */
 export interface UpdateHooks {
-  version(): Promise<string>;
+  /** `label` 是版本號，`detail` 顯示在下面（例如發佈日期），`title` 是滑鼠停留時的技術資訊。 */
+  version(): Promise<{ label: string; detail: string; title: string }>;
+  /** 已經下載好、等重新啟動的新版本。 */
+  pending(): string | null;
+  /** 更新狀態改變時呼叫 `fn`。 */
+  onChange(fn: () => void): void;
   check(): void;
+  restart(): void;
 }
 
 /** AI 區中，總開關關閉時一起停用的選項。 */
@@ -52,6 +69,8 @@ interface Field {
 /** 「外觀」頁中，主題下面的選項。 */
 const LOOK_FIELDS: Field[] = [
   { key: "previewWidth", label: "預覽的文字欄寬" },
+  { key: "docFont", label: "內文字型", hint: "即時預覽、預覽與匯出 PDF 使用；原始碼檢視固定用等寬字型，表格才對得齊" },
+  { key: "docLineHeight", label: "行距" },
   { key: "fixedToolbar", label: "固定顯示格式工具列", hint: "在編輯區上方一直顯示粗體、清單等按鈕；關閉時選取文字才會浮出格式按鈕" },
   {
     key: "outlineRight",
@@ -207,11 +226,26 @@ export class SettingsDialog {
       const checkBtn = document.createElement("button");
       checkBtn.type = "button";
       checkBtn.className = "btn";
-      checkBtn.textContent = "檢查更新";
-      checkBtn.addEventListener("click", () => update.check());
+      checkBtn.addEventListener("click", () => (update.pending() ? update.restart() : update.check()));
       const versionRow = this.#row("version", "版本", "讀取中…", () => checkBtn);
+      const label = versionRow.querySelector("label")!;
+      const hint = versionRow.querySelector("small")!;
+      // 新版已經下載好時，版本列直接說明，按鈕改成「重新啟動並更新」。
+      const refresh = async () => {
+        const v = await update.version();
+        const pending = update.pending();
+        label.textContent = `版本 ${v.label}`;
+        label.title = v.title;
+        hint.textContent = pending ? `${pending} 已下載完成，重新啟動即可更新（未存檔的內容會保留）` : v.detail;
+        hint.classList.toggle("settings-ready", !!pending);
+        checkBtn.textContent = pending ? "重新啟動並更新" : "檢查更新";
+        checkBtn.classList.toggle("btn-primary", !!pending);
+      };
       d.addEventListener("toggle", () => {
-        if (d.open) void update.version().then((v) => (versionRow.querySelector("small")!.textContent = v));
+        if (d.open) void refresh();
+      });
+      update.onChange(() => {
+        if (d.open) void refresh();
       });
       advanced.append(
         versionRow,

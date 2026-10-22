@@ -171,9 +171,10 @@ kbd {
 /* 拿掉系統標題列後，視窗靠頂端列拖曳；頂端列稍微高一點，比較好抓。 */
 .custom-titlebar { --topbar-h: 42px; }
 .custom-titlebar .topbar { user-select: none; }
-.topbar.with-sidebar .nav-toggle { border-right: 1px solid var(--border); }
+/* 圖示列一直顯示（窄螢幕除外），頂端的側邊欄按鈕和它對齊。 */
+.nav-toggle { border-right: 1px solid var(--border); }
 .topbar.with-sidebar .topbar-side { display: block; border-right: 1px solid var(--border); }
-.workspace.outline-hidden .activity-bar { display: none; }
+.workspace.narrow.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; align-items: center; padding: 0 8px 0 12px; }
 .top-actions .btn.icon-only { color: var(--muted); }
 .top-actions .btn.icon-only:hover { color: var(--fg); }
@@ -296,6 +297,8 @@ kbd {
 .activity-tabs button .icon, .activity-btn .icon { width: 22px; height: 22px; stroke-width: 1.6; }
 .activity-tabs button:hover, .activity-btn:hover, .activity-btn[aria-expanded="true"] { color: var(--fg); }
 .activity-tabs button[aria-selected="true"] { color: var(--fg); }
+/* 側邊欄收起時，圖示都用一般的顏色（沒有哪個面板是打開的）。 */
+.workspace.outline-hidden .activity-tabs button[aria-selected="true"]:not(:hover) { color: var(--subtle); }
 /* 目前的面板：左邊一條強調色。側邊欄收起時不顯示。 */
 .workspace:not(.outline-hidden) .activity-tabs button[aria-selected="true"]::before {
   content: "";
@@ -660,6 +663,13 @@ kbd {
 /* ---- 通知 ---- */
 .toasts {
   position: fixed;
+  /* Popover 的預設樣式（置中、邊框、背景）拿掉，維持原本的位置。 */
+  inset: auto auto auto 50%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
   bottom: calc(40px + env(safe-area-inset-bottom));
   left: 50%;
   z-index: 50;
@@ -695,6 +705,8 @@ kbd {
   font: 600 13px var(--font-ui);
   cursor: pointer;
 }
+.toast button.primary { padding: 4px 12px; background: var(--accent); color: #ffffff; }
+.toast button.primary:hover { filter: brightness(1.1); }
 .toast.leaving { animation: toast-out 0.15s ease-in forwards; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(8px); } }
@@ -731,7 +743,7 @@ kbd {
   :root { --editor-font-size: 16px; } /* iOS 字級低於 16px 會在聚焦時自動放大 */
   .split-only { display: none !important; }
   .top-actions { padding: 0 6px; }
-  .nav-toggle { width: 44px; }
+  .nav-toggle { width: 44px; border-right: 0; }
   /* 手機只顯示目前的分頁（用側邊抽屜或 Ctrl+P 切換其他文件）。 */
   .tab-bar .tabs { flex: 1 1 auto; }
   .tab-bar .tab:not([aria-selected="true"]) { display: none; }
@@ -1006,6 +1018,10 @@ kbd {
 .tab-close.dirty::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .tab-close.dirty:hover .icon { display: block; }
 .tab-close.dirty:hover::after { display: none; }
+/* 固定的分頁：一直顯示圖釘（按一下取消固定），名稱不要太長。 */
+.tab.pinned .tab-close { visibility: visible !important; color: var(--muted); }
+.tab.pinned .tab-close .icon { transform: rotate(45deg); }
+.tab.pinned .tab-name { max-width: 12em; }
 .tab-new { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 4px; color: var(--muted); }
 .tab-new:hover { color: var(--fg); }
 .tab-bar.blank > * { visibility: hidden; }
@@ -1239,7 +1255,9 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 
 /* ---- 即時預覽：在編輯區直接顯示排版 ---- */
 .cm-editor.cm-lp { --lp-pad: 32px; }
-.cm-editor.cm-lp .cm-scroller { font-family: var(--font-doc); line-height: 1.8; }
+.cm-editor.cm-lp .cm-scroller { font-family: var(--font-doc); line-height: var(--doc-line-height, 1.8); }
+/* 設定「內文字型」「行距」也套用到預覽（document.css 是匯出用的預設值）。 */
+#preview.markdown-body { font-family: var(--font-doc); line-height: var(--doc-line-height, 1.8); }
 .cm-editor.cm-lp .cm-content { width: 100%; max-width: calc(var(--preview-width, 820px) + var(--lp-pad) * 2); margin: 0 auto; padding-top: 48px; }
 .cm-editor.cm-lp .cm-line { padding: 0 var(--lp-pad); }
 /* 像在看文件：不標示目前這一行。 */
@@ -1582,3 +1600,19 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .lightbox-bar { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: #eee; font: 13px var(--font-ui); }
 .lightbox-bar button { padding: 4px 12px; border: 1px solid rgb(255 255 255 / 40%); border-radius: 6px; background: transparent; color: #fff; font: inherit; cursor: pointer; }
 .lightbox-bar button:hover { background: rgb(255 255 255 / 12%); }
+
+/* 摺疊：箭頭平常隱藏，滑鼠移到左邊才出現；摺起來的一直顯示。 */
+.cm-foldGutter .cm-gutterElement { padding: 0 2px; cursor: pointer; }
+.cm-fold-marker { display: inline-block; width: 12px; color: var(--subtle); font: 16px/1 var(--font-ui); text-align: center; opacity: 0; transform: rotate(90deg); transition: opacity 0.12s; }
+.cm-gutters:hover .cm-fold-marker, .cm-fold-marker:focus-visible { opacity: 1; }
+.cm-fold-marker.folded { color: var(--accent); opacity: 1; transform: none; }
+.cm-editor .cm-foldPlaceholder { margin: 0 4px; padding: 0 8px; border: 0; border-radius: 4px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font: 600 12px/1.6 var(--font-ui); cursor: pointer; }
+
+/* 更新視窗：這一版改了什麼 */
+.choice.release { width: min(560px, calc(100vw - 32px)); }
+.release-sub { margin: -8px 0 12px; color: var(--muted); font-size: 13px; }
+.release-notes { max-height: min(50vh, 420px); overflow: auto; margin: 0 0 18px; padding: 4px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 14px; line-height: 1.7; }
+.release-notes h3 { margin: 10px 0 2px; font-size: 13px; color: var(--muted); }
+.release-notes ul { margin: 0 0 6px; padding-left: 1.3em; }
+.release-notes p { margin: 8px 0; }
+.settings-row small.settings-ready { color: var(--accent); font-weight: 600; }
