@@ -3865,7 +3865,7 @@ function applyLayout(): void {
     layout === "preview" ? "0px" : layout === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
     layout === "split" ? "var(--splitter-width)" : "0px",
     layout === "editor" ? "0px" : layout === "split" ? `minmax(0, ${1 - splitRatio}fr)` : "minmax(0, 1fr)",
-    outlineOnRight() ? "var(--outline-right-width, var(--outline-width))" : "0px",
+    outlineOnRight() ? "var(--outline-right-width)" : "0px",
   ];
   workspace.style.gridTemplateColumns = cols.join(" ");
   document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((b) => {
