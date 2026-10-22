@@ -19,6 +19,10 @@ import {
   Subscript,
   RemoveFormatting,
   ShieldCheck,
+  Palette,
+  PenLine,
+  SlidersHorizontal,
+  RotateCcw,
   Pin,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -107,6 +111,10 @@ import {
 
 const ICONS: Record<string, IconNode> = {
   "shield-check": ShieldCheck,
+  palette: Palette,
+  "pen-line": PenLine,
+  "sliders-horizontal": SlidersHorizontal,
+  "rotate-ccw": RotateCcw,
   pin: Pin,
   "chevrons-down-up": ChevronsDownUp,
   "chevrons-up-down": ChevronsUpDown,
