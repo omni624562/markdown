@@ -74,7 +74,8 @@ body {
 .markdown-body :is(h1, h2, h3, h4, h5, h6):hover .anchor,
 .markdown-body .anchor:focus-visible { opacity: 1; }
 
-.markdown-body p { text-wrap: pretty; }
+/* 避免段落、清單、表格裡最後一行只剩一兩個字。 */
+.markdown-body :is(p, li, td, th, dd) { text-wrap: pretty; }
 .markdown-body p, .markdown-body ul, .markdown-body ol, .markdown-body blockquote,
 .markdown-body pre, .markdown-body table, .markdown-body dl, .markdown-body .markdown-alert {
   margin: 0 0 1em;
@@ -121,6 +122,17 @@ body {
 /* 中文字之間可以隨處換行，欄寬不夠時，內容短的欄會被擠成一個字一行；每欄至少留約 5 個字寬。 */
 .markdown-body th, .markdown-body td { box-sizing: content-box; min-width: 5em; }
 .markdown-body th { font-weight: 600; background: var(--md-subtle); }
+/* 表格比版面寬、可以左右捲動時，邊緣出現陰影提示「還有內容」；捲到底那一邊的陰影會消失。 */
+.markdown-body table {
+  background:
+    linear-gradient(to right, var(--md-bg) 30%, transparent) left center / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--md-bg) 30%, transparent) right center / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--md-fg) 20%, transparent), transparent) left center / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--md-fg) 20%, transparent), transparent) right center / 14px 100% no-repeat scroll;
+}
+/* 寬度放得下的表格（預覽會標上 .fits）：往下捲動時標題列固定在上方。 */
+.markdown-body table.fits { overflow: visible; }
+.markdown-body table.fits thead th { position: sticky; top: 0; z-index: 1; box-shadow: inset 0 -1px var(--md-border); }
 
 .markdown-body .footnotes { font-size: 0.875em; color: var(--md-muted); border-top: 1px solid var(--md-border); margin-top: 2em; }
 
@@ -205,7 +217,7 @@ body {
   /* 程式碼與表格不要被裁掉：長行自動換行，表格不捲動。 */
   .markdown-body pre { overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; }
   .markdown-body pre code { white-space: inherit; }
-  .markdown-body table { display: table; width: auto; max-width: 100%; overflow: visible; }
+  .markdown-body table { display: table; width: auto; max-width: 100%; overflow: visible; background: none; }
   .markdown-body [data-math-style="display"], .markdown-body .mermaid-diagram { overflow: visible; }
   .markdown-body tr, .markdown-body img, .markdown-body blockquote, .markdown-body .markdown-alert,
   .markdown-body .mermaid-diagram, .markdown-body .katex-display, .markdown-body math[display="block"] { break-inside: avoid; }
