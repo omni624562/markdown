@@ -118,6 +118,8 @@ body {
 
 .markdown-body table { display: block; width: max-content; max-width: 100%; overflow: auto; border-collapse: collapse; }
 .markdown-body th, .markdown-body td { padding: 6px 13px; border: 1px solid var(--md-border); }
+/* 中文字之間可以隨處換行，欄寬不夠時，內容短的欄會被擠成一個字一行；每欄至少留約 5 個字寬。 */
+.markdown-body th, .markdown-body td { box-sizing: content-box; min-width: 5em; }
 .markdown-body th { font-weight: 600; background: var(--md-subtle); }
 
 .markdown-body .footnotes { font-size: 0.875em; color: var(--md-muted); border-top: 1px solid var(--md-border); margin-top: 2em; }
