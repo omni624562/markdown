@@ -233,6 +233,16 @@ kbd {
 .editor-host { flex: 1; min-height: 0; }
 .preview-pane { grid-area: preview; position: relative; overflow: auto; background: var(--md-bg); }
 
+/* 側邊欄、右邊大綱的邊緣：拖曳調整寬度（把手跨在面板的邊框上）。 */
+.sidebar-resizer { position: absolute; top: 0; bottom: 0; z-index: 5; width: 7px; cursor: col-resize; touch-action: none; }
+.sidebar-resizer.left { left: calc(var(--activity-width) + var(--outline-width) - 4px); }
+.sidebar-resizer.right { right: calc(var(--outline-right-width, var(--outline-width)) - 4px); }
+.sidebar-resizer::before { content: ""; position: absolute; inset: 0 3px; transition: background 0.12s; }
+.sidebar-resizer:hover::before, .sidebar-resizer:focus-visible::before, body.resizing .sidebar-resizer:active::before { inset: 0 2px; background: var(--accent); }
+.sidebar-resizer:focus-visible { outline: none; }
+.workspace.narrow .sidebar-resizer, .workspace.outline-hidden .sidebar-resizer.left,
+.workspace:not(:has(> .outline-right:not([hidden]))) .sidebar-resizer.right { display: none; }
+
 .splitter {
   grid-area: splitter;
   position: relative;
@@ -280,7 +290,7 @@ kbd {
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
-.activity-tabs, .activity-bottom { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.activity-tabs { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .activity-tabs button, .activity-btn {
   position: relative;
   display: grid;

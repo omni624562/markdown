@@ -107,6 +107,7 @@ import { WebDavDialog } from "./ui/webdav-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
 import type { FileVersion } from "./desktop.ts";
+import { clampSidebarWidth, setupSidebarResize } from "./ui/sidebar-resize.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
 import { fileReference } from "./ai-text.ts";
@@ -545,12 +546,6 @@ function renderOutline(headings: Heading[]): void {
       a.dataset.index = String(i);
       a.textContent = h.text || "（空白標題）";
       a.style.setProperty("--level", String(h.level));
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        if (view !== "preview") editor.reveal(h.line);
-        if (previewVisible()) document.getElementById(h.id)?.scrollIntoView({ block: "start" });
-        if (narrowQuery.matches) setOutline(false);
-      });
       if (movable) {
         a.draggable = true;
         a.title = "拖曳可以搬移整個章節；也可以按 Alt+↑／↓";
@@ -963,6 +958,16 @@ function dropTarget(e: DragEvent): { li: HTMLElement; before: number; after: boo
   return { li, before: Number(link.dataset.index) + (after ? 1 : 0), after };
 }
 
+// 點大綱的標題：跳到那一段。整個清單共用一個處理（大文件可能有上千個標題）。
+outlineList.addEventListener("click", (e) => {
+  const a = (e.target as Element).closest<HTMLAnchorElement>("a[data-index]");
+  const h = a && outlineHeadings[Number(a.dataset.index)];
+  if (!h) return;
+  e.preventDefault();
+  if (view !== "preview") editor.reveal(h.line);
+  if (previewVisible()) document.getElementById(h.id)?.scrollIntoView({ block: "start" });
+  if (narrowQuery.matches) setOutline(false);
+});
 outlineList.addEventListener("dragstart", (e) => {
   const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
   if (!link || kind !== "markdown") return;
@@ -2021,13 +2026,17 @@ interface ClosedTab {
   dirty: boolean;
 }
 const closedTabs: ClosedTab[] = [];
+/** 重新開啟分頁的清單，保留的內容合計上限（字元數，約 16 MB）。 */
+const CLOSED_TABS_TEXT_LIMIT = 8_000_000;
 
 function rememberClosed(doc: Doc): void {
   const text = (doc === active ? editor.text : loadDraft(doc.id)) ?? "";
   const path = doc === active ? (fileHandle?.path ?? null) : doc.path;
   if (!path && !text.trim()) return; // 空白的新文件不用記
   closedTabs.push({ name: doc === active ? fileName : doc.name, kind: doc.kind, path, text, dirty: doc.dirty });
-  if (closedTabs.length > 20) closedTabs.shift();
+  // 最多記 20 個；內容合計太大時（例如關掉好幾份大文件）先丟掉最舊的，避免一直佔著記憶體。
+  let total = closedTabs.reduce((n, c) => n + c.text.length, 0);
+  while (closedTabs.length > 20 || (closedTabs.length > 1 && total > CLOSED_TABS_TEXT_LIMIT)) total -= closedTabs.shift()!.text.length;
 }
 
 async function reopenClosedTab(): Promise<void> {
@@ -3235,6 +3244,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "slideshow",
   "-",
   { label: "AI 與終端機", icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
+  { label: "主題", icon: "sun", items: ["theme-system", "theme-light", "theme-dark"] },
   "palette",
   "settings",
 ]);
@@ -3247,18 +3257,6 @@ void desktop
   })
   .catch(console.error);
 status.save.addEventListener("click", () => void commands.run("save").catch(reportError));
-
-const themeButton = $<HTMLButtonElement>("#theme-menu");
-setupMenu(
-  themeButton,
-  commands,
-  (["system", "light", "dark"] as const).map((pref) => ({
-    label: { system: "跟隨系統", light: "淺色", dark: "深色" }[pref],
-    icon: { system: "monitor", light: "sun", dark: "moon" }[pref],
-    checked: () => themePref === pref,
-    run: () => setTheme(pref),
-  })),
-);
 
 /** 格式工具列的下拉按鈕（標題、插入），建立一次之後重複使用。 */
 function formatMenuButton(id: string, label: string, iconName: string, entries: string[]): HTMLButtonElement {
@@ -3867,7 +3865,7 @@ function applyLayout(): void {
     layout === "preview" ? "0px" : layout === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
     layout === "split" ? "var(--splitter-width)" : "0px",
     layout === "editor" ? "0px" : layout === "split" ? `minmax(0, ${1 - splitRatio}fr)` : "minmax(0, 1fr)",
-    outlineOnRight() ? "var(--outline-width)" : "0px",
+    outlineOnRight() ? "var(--outline-right-width, var(--outline-width))" : "0px",
   ];
   workspace.style.gridTemplateColumns = cols.join(" ");
   document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((b) => {
@@ -3909,9 +3907,6 @@ function setTheme(pref: ThemePref): void {
   storage.save("theme", pref);
   if (pref === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = pref;
-  const iconName = { system: "monitor", light: "sun", dark: "moon" }[pref];
-  themeButton.querySelector(".theme-icon")!.replaceChildren(icon(iconName));
-  themeButton.title = `主題：${{ system: "跟隨系統", light: "淺色", dark: "深色" }[pref]}`;
   // 流程圖的配色跟著主題，需要重畫。
   if (settings.value.mermaid) {
     scheduleRender();
@@ -4088,6 +4083,25 @@ document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((
   btn.title = commands.get(`view-${mode}`)!.title;
   btn.addEventListener("click", () => setView(mode));
 });
+
+// 側邊欄與右邊大綱的寬度：拖曳面板邊緣調整，各自記住。
+for (const [panel, side, key, cssVar] of [
+  [$("#sidebar"), "left", "sidebar-width", "--outline-width"],
+  [$("#outline-right"), "right", "outline-right-width", "--outline-right-width"],
+] as const) {
+  const saved = Number(storage.load(key));
+  if (saved) document.documentElement.style.setProperty(cssVar, `${clampSidebarWidth(saved)}px`);
+  setupSidebarResize(
+    workspace,
+    side,
+    () => panel.getBoundingClientRect().width,
+    (px) => {
+      document.documentElement.style.setProperty(cssVar, `${px}px`);
+      storage.save(key, String(px));
+      editor.view.requestMeasure();
+    },
+  );
+}
 
 setupSplitter($("#splitter"), workspace, splitRatio, (r) => {
   splitRatio = r;

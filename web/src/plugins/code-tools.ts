@@ -16,9 +16,28 @@ export function codeToolsPlugin(opts: {
   /** 會被其他外掛換成別的東西的區塊（例如流程圖），不加按鈕。 */
   skip(lang: string): boolean;
 }): PreviewPlugin {
+  /** 大文件可能有上千個程式碼區塊：整個預覽共用一個點擊處理，不要每個按鈕各掛一個。 */
+  const bound = new WeakSet<HTMLElement>();
+  const onClick = async (e: MouseEvent) => {
+    const button = (e.target as Element).closest<HTMLButtonElement>(".code-copy");
+    const pre = button?.closest(".code-block")?.querySelector("pre");
+    if (!button || !pre) return;
+    const ok = await opts.copy((pre.querySelector("code") ?? pre).textContent ?? "");
+    if (!ok) return;
+    button.classList.add("copied");
+    button.replaceChildren(icon("check"), "已複製");
+    setTimeout(() => {
+      button.classList.remove("copied");
+      button.replaceChildren(icon("copy"));
+    }, 1500);
+  };
   return {
     name: "code-tools",
     apply(root) {
+      if (!bound.has(root)) {
+        root.addEventListener("click", onClick);
+        bound.add(root);
+      }
       for (const pre of root.querySelectorAll<HTMLElement>("pre")) {
         if (pre.parentElement?.classList.contains("code-block")) continue;
         const code = pre.querySelector(":scope > code");
@@ -44,16 +63,6 @@ export function codeToolsPlugin(opts: {
         button.title = "複製程式碼";
         button.setAttribute("aria-label", "複製程式碼");
         button.append(icon("copy"));
-        button.addEventListener("click", async () => {
-          const ok = await opts.copy((pre.querySelector("code") ?? pre).textContent ?? "");
-          if (!ok) return;
-          button.classList.add("copied");
-          button.replaceChildren(icon("check"), "已複製");
-          setTimeout(() => {
-            button.classList.remove("copied");
-            button.replaceChildren(icon("copy"));
-          }, 1500);
-        });
         tools.append(button);
         pre.replaceWith(block);
         block.append(tools, pre);
