@@ -791,7 +791,7 @@ async function replaceDocText(path: string, expected: string, text: string): Pro
 // ---- 列印／匯出 PDF（E11） ------------------------------------------------------
 
 /**
- * 用和「匯出 HTML」相同的內容（公式、流程圖都已轉好）建立一個看不見的 iframe 來列印，
+ * 用和「匯出 HTML」相同的內容（公式、流程圖都已轉好）放進主視窗看不見的列印區（Shadow DOM）來列印，
  * 在列印對話框中選「另存為 PDF」就能存成 PDF。一律用淺色主題列印。
  */
 const PDF_DEFAULTS: Omit<PdfOptions, "header"> = { pageNumbers: true, cover: false, subtitle: "", paper: "A4" };

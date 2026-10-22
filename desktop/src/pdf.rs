@@ -5,11 +5,16 @@
 //! 頁首、頁碼、封面都由前端的 CSS（`@page`）處理。其他平台回傳錯誤，前端改用列印對話框。
 
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 
 use serde::Deserialize;
-use tauri::WebviewWindow;
+use tauri::{State, WebviewWindow};
+
+/// 使用者在「匯出 PDF」對話框選的位置。`print_to_pdf` 只能寫到這裡，而且只能用一次，
+/// 前端不能自己指定要寫到哪個路徑。
+#[derive(Default)]
+pub struct PdfTarget(Mutex<Option<PathBuf>>);
 
 /// 紙張大小與邊界（公釐），要和前端 CSS 的 `@page` 一致。
 #[derive(Deserialize, Debug, Clone, Copy)]
@@ -24,25 +29,41 @@ pub struct PageLayout {
 
 /// 選擇 PDF 的存檔位置；取消時回傳 None。
 #[tauri::command]
-pub async fn pick_pdf_path(window: WebviewWindow, suggested_name: String) -> Option<String> {
-    rfd::AsyncFileDialog::new()
+pub async fn pick_pdf_path(
+    window: WebviewWindow,
+    suggested_name: String,
+    target: State<'_, PdfTarget>,
+) -> Result<Option<String>, String> {
+    let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
         .set_title("匯出 PDF")
         .set_file_name(&suggested_name)
         .add_filter("PDF 文件", &["pdf"])
         .save_file()
         .await
-        .map(|h| h.path().to_string_lossy().into_owned())
+        .map(|h| h.path().to_path_buf());
+    *target.0.lock().unwrap() = picked.clone();
+    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
 }
 
-/// 把主視窗目前的內容（列印樣式）存成 PDF。
+/// 取出剛才在對話框選的位置；`path` 必須和它相同。
+fn take_target(target: &PdfTarget, path: &str) -> Result<PathBuf, String> {
+    let mut slot = target.0.lock().unwrap();
+    match slot.as_ref() {
+        Some(p) if p.as_os_str() == std::ffi::OsStr::new(path) => Ok(slot.take().unwrap()),
+        _ => Err("請重新選擇 PDF 的存檔位置".into()),
+    }
+}
+
+/// 把主視窗目前的內容（列印樣式）存成 PDF。`path` 必須是剛才用 `pick_pdf_path` 選的位置。
 #[tauri::command]
 pub async fn print_to_pdf(
     window: WebviewWindow,
     path: String,
     layout: PageLayout,
+    target: State<'_, PdfTarget>,
 ) -> Result<(), String> {
-    let path = PathBuf::from(path);
+    let path = take_target(&target, &path)?;
     let (tx, rx) = mpsc::channel::<Result<(), String>>();
     start(&window, path, layout, tx)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -162,4 +183,22 @@ fn start(
     _tx: mpsc::Sender<Result<(), String>>,
 ) -> Result<(), String> {
     Err("這個平台不支援直接匯出 PDF".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_picked_path_can_be_written_once() {
+        let target = PdfTarget::default();
+        assert!(take_target(&target, "/tmp/a.pdf").is_err(), "沒選過位置");
+        *target.0.lock().unwrap() = Some(PathBuf::from("/tmp/匯出.pdf"));
+        assert!(take_target(&target, "/home/me/.bashrc").is_err());
+        assert_eq!(
+            take_target(&target, "/tmp/匯出.pdf").unwrap(),
+            PathBuf::from("/tmp/匯出.pdf")
+        );
+        assert!(take_target(&target, "/tmp/匯出.pdf").is_err(), "只能用一次");
+    }
 }

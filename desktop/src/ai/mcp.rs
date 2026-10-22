@@ -275,7 +275,10 @@ impl EditorTools {
             }
         }
         let path = self.allowed_path(&args.path)?;
-        let bytes = std::fs::read(&path).map_err(|e| format!("無法讀取：{e}"))?;
+        let limit = crate::workspace::PEEK_LIMIT;
+        let bytes = crate::files::read_capped(&path, limit)
+            .map_err(|e| format!("無法讀取：{e}"))?
+            .ok_or_else(|| format!("檔案超過 {} MB，無法讀取", limit / 1024 / 1024))?;
         Ok(crate::files::decode(&bytes).0)
     }
 
@@ -533,12 +536,19 @@ fn load_token(dir: &Path) -> Result<String, String> {
     if let Ok(t) = std::fs::read_to_string(&path) {
         let t = t.trim();
         if t.len() >= 32 && t.chars().all(|c| c.is_ascii_hexdigit()) {
+            // 舊版建立的權杖檔可能是其他使用者也能讀的權限，順便收緊。
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            }
             return Ok(t.to_string());
         }
     }
     let token = new_token()?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    crate::files::write_atomic(&path, token.as_bytes()).map_err(|e| e.to_string())?;
+    // 權杖只有自己能讀（Unix 上權限 0600）。
+    crate::files::write_private(&path, token.as_bytes()).map_err(|e| e.to_string())?;
     Ok(token)
 }
 
@@ -594,7 +604,8 @@ pub async fn mcp_start(app: AppHandle, mcp: State<'_, Mcp>) -> Result<McpInfo, S
             "headers": { "Authorization": format!("Bearer {token}") }
         }}
     });
-    crate::files::write_atomic(&config_path, config.to_string().as_bytes())
+    // 設定檔裡有權杖，同樣只有自己能讀。
+    crate::files::write_private(&config_path, config.to_string().as_bytes())
         .map_err(|e| e.to_string())?;
 
     let tools = EditorTools {
@@ -642,9 +653,11 @@ pub fn mcp_stop(mcp: State<'_, Mcp>) {
 }
 
 /// 前端同步目前的文件、選取範圍與分頁清單。
+/// 用非同步指令：內容可能很大，不要在主執行緒上解析。
 #[tauri::command]
-pub fn mcp_sync(snapshot: Snapshot, mcp: State<'_, Mcp>) {
+pub async fn mcp_sync(snapshot: Snapshot, mcp: State<'_, Mcp>) -> Result<(), String> {
     *mcp.snapshot.write().unwrap() = snapshot;
+    Ok(())
 }
 
 /// 使用者對提議或指令的決定。回傳 false 表示 AI 已經不在等了（逾時或伺服器已停止）。
@@ -682,6 +695,15 @@ mod tests {
         let a = load_token(&dir).unwrap();
         assert_eq!(a.len(), 64);
         assert_eq!(load_token(&dir).unwrap(), a);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(dir.join("mcp-token"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "權杖只有自己能讀");
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

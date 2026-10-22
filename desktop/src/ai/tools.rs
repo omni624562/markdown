@@ -46,8 +46,9 @@ pub fn program_for(exe: &Path) -> (PathBuf, Vec<OsString>) {
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"));
     if cfg!(windows) && is_batch {
+        // 用完整路徑，免得執行到放在本程式旁邊的同名 cmd.exe。
         (
-            PathBuf::from("cmd.exe"),
+            crate::io::system_root().join("System32").join("cmd.exe"),
             vec!["/d".into(), "/c".into(), exe.into()],
         )
     } else {
@@ -62,13 +63,18 @@ pub struct Available {
 }
 
 /// 目前能使用哪些工具（給介面決定要顯示哪些按鈕）。
+/// 搜尋 PATH 可能很慢（例如 PATH 裡有斷線的網路磁碟），在背景執行緒進行。
 #[tauri::command]
-pub fn ai_tools() -> Available {
-    let find = |t: Tool| t.locate().ok().map(|p| p.to_string_lossy().into_owned());
-    Available {
-        claude: find(Tool::Claude),
-        codex: find(Tool::Codex),
-    }
+pub async fn ai_tools() -> Result<Available, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let find = |t: Tool| t.locate().ok().map(|p| p.to_string_lossy().into_owned());
+        Available {
+            claude: find(Tool::Claude),
+            codex: find(Tool::Codex),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -79,7 +85,10 @@ mod tests {
     fn batch_files_run_through_cmd_on_windows_only() {
         let (prog, pre) = program_for(Path::new(r"C:\npm\claude.cmd"));
         if cfg!(windows) {
-            assert_eq!(prog, PathBuf::from("cmd.exe"));
+            assert!(
+                prog.is_absolute() && prog.ends_with("System32/cmd.exe"),
+                "{prog:?}"
+            );
             assert_eq!(pre.len(), 3);
         } else {
             assert_eq!(prog, PathBuf::from(r"C:\npm\claude.cmd"));

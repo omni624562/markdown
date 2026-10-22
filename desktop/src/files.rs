@@ -161,10 +161,30 @@ pub fn encode(text: &str, format: FileFormat) -> Vec<u8> {
     out
 }
 
+/// 編輯器最多開啟多大的檔案。更大的通常不是筆記，整個讀進來只會讓介面卡住。
+pub const MAX_OPEN_BYTES: u64 = 64 * 1024 * 1024;
+
+/// 讀取檔案，但最多讀 `limit` 位元組；檔案比這個大時回傳 `None`（不會整個讀進記憶體）。
+pub fn read_capped(path: &Path, limit: u64) -> std::io::Result<Option<Vec<u8>>> {
+    use std::io::Read;
+    let f = fs::File::open(path)?;
+    let hint = f.metadata().map(|m| m.len().min(limit)).unwrap_or(0);
+    let mut bytes = Vec::with_capacity(hint as usize);
+    f.take(limit + 1).read_to_end(&mut bytes)?;
+    Ok((bytes.len() as u64 <= limit).then_some(bytes))
+}
+
 /// 讀取檔案、登記為已知檔案，並允許預覽顯示同資料夾的圖片。
 pub fn read_file(app: &AppHandle, path: PathBuf, known: &KnownFiles) -> Result<OpenedFile, String> {
-    let bytes = fs::read(&path)
-        .map_err(|e| crate::io::describe(&e, &format!("無法讀取「{}」", display_name(&path))))?;
+    let bytes = read_capped(&path, MAX_OPEN_BYTES)
+        .map_err(|e| crate::io::describe(&e, &format!("無法讀取「{}」", display_name(&path))))?
+        .ok_or_else(|| {
+            format!(
+                "「{}」超過 {} MB，無法開啟",
+                display_name(&path),
+                MAX_OPEN_BYTES / 1024 / 1024
+            )
+        })?;
     let (text, format, encoding) = decode(&bytes);
     known.0.lock().unwrap().insert(
         path.clone(),
@@ -182,28 +202,111 @@ pub fn read_file(app: &AppHandle, path: PathBuf, known: &KnownFiles) -> Result<O
     })
 }
 
+/// 存檔用的暫存檔名：`.<檔名>.<16 個十六進位亂數>.tmp`。
+///
+/// 名稱無法事先猜到，而且一律用 `create_new` 建立：別人在共用資料夾預先放好的同名檔案
+/// 或符號連結，不會讓存檔寫到工作區外的檔案。
+fn temp_name(name: &str) -> String {
+    let mut bytes = [0u8; 8];
+    if getrandom::fill(&mut bytes).is_err() {
+        // 幾乎不會發生。退回用時間與行程編號；就算被猜到，create_new 也不會寫進別人的檔案。
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        bytes = (nanos ^ (u64::from(std::process::id()) << 32)).to_le_bytes();
+    }
+    format!(".{name}.{:016x}.tmp", u64::from_le_bytes(bytes))
+}
+
+/// 是不是 [`write_atomic`] 產生的暫存檔（檔案監看要忽略它們）。
+pub fn is_temp_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix('.').and_then(|n| n.strip_suffix(".tmp")) else {
+        return false;
+    };
+    rest.rsplit_once('.').is_some_and(|(base, hex)| {
+        !base.is_empty() && hex.len() == 16 && hex.bytes().all(|b| b.is_ascii_hexdigit())
+    })
+}
+
 /// 先寫到同一個資料夾的暫存檔、確實寫入磁碟後再取代原檔，
 /// 避免寫到一半斷電或磁碟滿時留下殘缺的檔案。
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let tmp = dir.join(format!(
-        ".{}.{}.tmp",
-        display_name(path),
-        std::process::id()
-    ));
-    let result = (|| {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(bytes)?;
-        f.sync_all()?;
-        drop(f);
-        fs::rename(&tmp, path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&tmp);
-        // 有些情況無法取代（例如原檔正被其他程式以不允許刪除的方式開著），退回直接覆寫。
-        return fs::write(path, bytes);
+    write_atomic_with(path, bytes, false)
+}
+
+/// 和 [`write_atomic`] 相同，但檔案只有自己能讀寫（Unix 上權限是 0600）。用來存權杖之類的祕密。
+pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_atomic_with(path, bytes, true)
+}
+
+fn open_options(private: bool) -> fs::OpenOptions {
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true);
+    #[cfg(unix)]
+    if private {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
     }
-    result
+    #[cfg(not(unix))]
+    let _ = private;
+    opts
+}
+
+fn write_atomic_with(path: &Path, bytes: &[u8], private: bool) -> std::io::Result<()> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let name = display_name(path);
+    let mut opts = open_options(private);
+    opts.create_new(true);
+    // 亂數撞名的機率極低，還是重試幾次。
+    let mut created = Err(std::io::Error::other("無法建立暫存檔"));
+    for _ in 0..3 {
+        let tmp = dir.join(temp_name(&name));
+        match opts.open(&tmp) {
+            Ok(f) => {
+                created = Ok((tmp, f));
+                break;
+            }
+            Err(e) => {
+                let again = e.kind() == std::io::ErrorKind::AlreadyExists;
+                created = Err(e);
+                if !again {
+                    break;
+                }
+            }
+        }
+    }
+    let result = created.and_then(|(tmp, mut f)| {
+        let r = f.write_all(bytes).and_then(|_| f.sync_all()).and_then(|_| {
+            drop(f);
+            fs::rename(&tmp, path)
+        });
+        if r.is_err() {
+            // 只刪自己建立的暫存檔。
+            let _ = fs::remove_file(&tmp);
+        }
+        r
+    });
+    match result {
+        Ok(()) => Ok(()),
+        // 有些情況無法取代（例如原檔正被其他程式以不允許刪除的方式開著），退回直接覆寫。
+        Err(e) => overwrite_in_place(path, bytes, private).map_err(|_| e),
+    }
+}
+
+/// 直接覆寫原檔。原檔是符號連結時拒絕：直接覆寫會寫到連結指向的檔案，可能在工作區外。
+fn overwrite_in_place(path: &Path, bytes: &[u8], private: bool) -> std::io::Result<()> {
+    if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "這個檔案是符號連結，不直接覆寫",
+        ));
+    }
+    let mut opts = open_options(private);
+    opts.create(true).truncate(true);
+    let mut f = opts.open(path)?;
+    f.write_all(bytes)?;
+    f.sync_all()
 }
 
 /// 寫入檔案，回傳寫入內容的雜湊。
@@ -261,12 +364,15 @@ pub async fn reopen_file(
     trust: State<'_, Trust>,
 ) -> Result<OpenedFile, String> {
     let path = PathBuf::from(path);
-    let allowed = known.contains(&path) || trust.allows(&path);
+    let known_file = known.contains(&path);
     let app2 = app.clone();
     let p = path.clone();
     let opened = crate::io::blocking(move || {
-        // 位於工作區內的判斷需要讀取磁碟（解析實際路徑），也放在背景執行。
-        if !allowed && !app2.state::<crate::workspace::Workspace>().contains(&p) {
+        // 信任清單與工作區的判斷需要讀取磁碟（解析符號連結後的實際路徑），也放在背景執行。
+        let allowed = known_file
+            || app2.state::<Trust>().allows(&p)
+            || app2.state::<crate::workspace::Workspace>().contains(&p);
+        if !allowed {
             return Err("這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。".into());
         }
         read_file(&app2, p, &app2.state::<KnownFiles>())
@@ -540,6 +646,58 @@ mod tests {
         assert_eq!(fs::read_to_string(&file).unwrap(), "新內容");
         let leftovers: Vec<_> = fs::read_dir(&dir).unwrap().collect();
         assert_eq!(leftovers.len(), 1, "暫存檔應該被移走");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn temp_names_are_random_and_recognizable() {
+        let a = temp_name("筆記.md");
+        let b = temp_name("筆記.md");
+        assert_ne!(a, b, "暫存檔名不能被猜到");
+        assert!(a.starts_with(".筆記.md.") && a.ends_with(".tmp"), "{a}");
+        assert!(is_temp_name(&a));
+        assert!(is_temp_name(".a.0123456789abcdef.tmp"));
+        assert!(!is_temp_name("筆記.md"));
+        assert!(!is_temp_name(".hidden.tmp"));
+        assert!(!is_temp_name(".a.1234.tmp"), "舊格式（行程編號）不算");
+        assert!(!is_temp_name("..0123456789abcdef.tmp"));
+        assert!(!is_temp_name(".a.0123456789abcdeg.tmp"));
+    }
+
+    #[test]
+    fn reads_are_capped() {
+        let dir = std::env::temp_dir().join(format!("md-cap-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("大.md");
+        fs::write(&file, b"0123456789").unwrap();
+        assert_eq!(read_capped(&file, 10).unwrap().unwrap(), b"0123456789");
+        assert_eq!(read_capped(&file, 9).unwrap(), None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_never_writes_through_symlinks() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("md-symlink-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("共用")).unwrap();
+        let secret = dir.join("工作區外.txt");
+        fs::write(&secret, "機密").unwrap();
+        let link = dir.join("共用").join("筆記.md");
+        std::os::unix::fs::symlink(&secret, &link).unwrap();
+        // 退回直接覆寫時：原檔是符號連結就拒絕。
+        assert!(overwrite_in_place(&link, b"x", false).is_err());
+        assert_eq!(fs::read_to_string(&secret).unwrap(), "機密");
+        // 一般存檔：取代的是連結本身，連結指向的檔案不受影響。
+        write_atomic(&link, "新內容".as_bytes()).unwrap();
+        assert_eq!(fs::read_to_string(&secret).unwrap(), "機密");
+        assert_eq!(fs::read_to_string(&link).unwrap(), "新內容");
+        // 祕密檔案只有自己能讀寫。
+        let token = dir.join("token");
+        write_private(&token, b"abc").unwrap();
+        let mode = fs::metadata(&token).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
         fs::remove_dir_all(&dir).unwrap();
     }
 

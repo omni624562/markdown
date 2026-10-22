@@ -27,6 +27,12 @@ pub const SCHEME: &str = "webdav://";
 const KEYRING_SERVICE: &str = "md-editor-webdav";
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_FILES: usize = 5000;
+/// Ctrl+P 列出遠端檔案時：最多幾層、最多查幾個資料夾、最多處理幾個項目、同時送出幾個請求。
+/// 惡意或設定錯誤的伺服器可能回傳無限多層或大量的項目，所以都設上限。
+const LIST_MAX_DEPTH: usize = 6;
+const LIST_MAX_DIRS: usize = 2_000;
+const LIST_MAX_ENTRIES: usize = 100_000;
+const LIST_WORKERS: usize = 4;
 
 // ---- 錯誤 -------------------------------------------------------------------
 
@@ -71,7 +77,7 @@ fn encode_segment(s: &str) -> String {
     out
 }
 
-fn decode_percent(s: &str) -> String {
+pub(crate) fn decode_percent(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -794,6 +800,74 @@ pub async fn dav_list(path: String, dav: State<'_, Dav>) -> Result<Vec<Entry>, S
     .await
 }
 
+/// 用最多 `workers` 個執行緒同時處理 `items`，結果依原本的順序回傳。
+fn parallel_map<T: Sync, R: Send>(
+    items: &[T],
+    workers: usize,
+    f: &(dyn Fn(&T) -> R + Sync),
+) -> Vec<R> {
+    use std::sync::atomic::AtomicUsize;
+    let next = AtomicUsize::new(0);
+    let results: Mutex<Vec<Option<R>>> = Mutex::new(items.iter().map(|_| None).collect());
+    std::thread::scope(|scope| {
+        for _ in 0..workers.min(items.len()) {
+            scope.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                let Some(item) = items.get(i) else { break };
+                let r = f(item);
+                results.lock().unwrap()[i] = Some(r);
+            });
+        }
+    });
+    results
+        .into_inner()
+        .unwrap()
+        .into_iter()
+        .map(|r| r.expect("每個項目都處理過"))
+        .collect()
+}
+
+/// 一層一層列出遠端的文件（同一層的資料夾同時查詢），回傳相對路徑。
+/// `list` 查詢一個資料夾的直接子項目（Depth 1），失敗時回傳 `None`（略過那個資料夾）。
+fn walk_remote(list: &(dyn Fn(&str) -> Option<Vec<Item>> + Sync)) -> Vec<String> {
+    let mut files = Vec::new();
+    let mut level = vec![String::new()];
+    let mut seen = std::collections::HashSet::from([String::new()]);
+    let mut dirs = 0;
+    let mut entries = 0;
+    for depth in 0..=LIST_MAX_DEPTH {
+        level.truncate(LIST_MAX_DIRS.saturating_sub(dirs));
+        if level.is_empty() {
+            break;
+        }
+        dirs += level.len();
+        let results = parallel_map(&level, LIST_WORKERS, &|dir: &String| list(dir));
+        let mut next = Vec::new();
+        for (dir, items) in level.iter().zip(results) {
+            for i in items
+                .into_iter()
+                .flatten()
+                .filter(|i| &i.rel != dir && !name_of(&i.rel).starts_with('.'))
+            {
+                entries += 1;
+                if entries > LIST_MAX_ENTRIES {
+                    return files;
+                }
+                if i.is_dir {
+                    // 同一個資料夾只查一次（伺服器回傳奇怪的連結時也不會繞圈子）。
+                    if depth < LIST_MAX_DEPTH && seen.insert(i.rel.clone()) {
+                        next.push(i.rel);
+                    }
+                } else if is_doc(std::path::Path::new(&i.rel)) && files.len() < MAX_FILES {
+                    files.push(i.rel);
+                }
+            }
+        }
+        level = next;
+    }
+    files
+}
+
 /// 遠端資料夾內所有文件（給 Ctrl+P）。逐層列出，最多 6 層。
 #[tauri::command]
 pub async fn dav_list_files(dav: State<'_, Dav>) -> Result<Vec<FileItem>, String> {
@@ -805,26 +879,11 @@ pub async fn dav_list_files(dav: State<'_, Dav>) -> Result<Vec<FileItem>, String
         .ok_or("還沒有連線到 WebDAV 伺服器")?;
     crate::io::blocking_for(Duration::from_secs(60), move || {
         let id = session.conn.id.clone();
-        let mut out = Vec::new();
-        let mut queue = vec![(String::new(), 0)];
-        while let Some((dir, depth)) = queue.pop() {
-            let Ok(items) = session.client.propfind(&dir, 1) else {
-                continue;
-            };
-            for i in items
-                .into_iter()
-                .filter(|i| i.rel != dir && !name_of(&i.rel).starts_with('.'))
-            {
-                if i.is_dir {
-                    if depth < 6 {
-                        queue.push((i.rel, depth + 1));
-                    }
-                } else if is_doc(std::path::Path::new(&i.rel)) && out.len() < MAX_FILES {
-                    out.push(FileItem::new(join(&id, &i.rel), i.rel));
-                }
-            }
-        }
-        Ok(out)
+        let rels = walk_remote(&|dir: &str| session.client.propfind(dir, 1).ok());
+        Ok(rels
+            .into_iter()
+            .map(|rel| FileItem::new(join(&id, &rel), rel))
+            .collect())
     })
     .await
 }
@@ -1127,6 +1186,54 @@ struct Changed {
     text: String,
 }
 
+/// 查詢已開啟的遠端檔案目前的 ETag（`None` 表示伺服器沒給）。
+///
+/// 同一個資料夾有兩個以上的檔案時，用一次 Depth 1 的 PROPFIND 查整個資料夾，不必每個檔案各送一次；
+/// 在清單中找不到的檔案（例如伺服器的網址編碼和我們不同）再個別查詢，確認真的不見了才回報。
+/// 資料夾查詢失敗（網路斷線等）時，那些檔案這次都不回報，下次再試。
+fn remote_etags(
+    stat: &dyn Fn(&str) -> Result<Item, DavError>,
+    list: &dyn Fn(&str) -> Result<Vec<Item>, DavError>,
+    rels: &[String],
+) -> HashMap<String, Result<Option<String>, DavError>> {
+    let mut groups: std::collections::BTreeMap<&str, Vec<&String>> = Default::default();
+    for rel in rels {
+        let parent = rel.rsplit_once('/').map_or("", |(p, _)| p);
+        groups.entry(parent).or_default().push(rel);
+    }
+    let mut out = HashMap::new();
+    for (parent, files) in groups {
+        let mut single: Vec<&String> = Vec::new();
+        if files.len() >= 2 {
+            match list(parent) {
+                Ok(items) => {
+                    let etags: HashMap<&str, &Option<String>> = items
+                        .iter()
+                        .filter(|i| !i.is_dir)
+                        .map(|i| (i.rel.as_str(), &i.etag))
+                        .collect();
+                    for rel in files {
+                        match etags.get(rel.as_str()) {
+                            Some(etag) => {
+                                out.insert(rel.clone(), Ok((*etag).clone()));
+                            }
+                            None => single.push(rel),
+                        }
+                    }
+                }
+                Err(DavError::NotFound) => single = files,
+                Err(_) => {}
+            }
+        } else {
+            single = files;
+        }
+        for rel in single {
+            out.insert(rel.clone(), stat(rel).map(|i| i.etag));
+        }
+    }
+    out
+}
+
 /// 背景每 30 秒檢查已開啟的遠端檔案有沒有被改過。
 fn start_polling(app: &AppHandle) {
     let dav = app.state::<Dav>();
@@ -1140,26 +1247,32 @@ fn start_polling(app: &AppHandle) {
         let Some(session) = dav.session.lock().unwrap().clone() else {
             continue;
         };
-        let open: Vec<(String, String)> = dav
+        let open: Vec<(String, String, String)> = dav
             .etags
             .lock()
             .unwrap()
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .filter_map(|(path, etag)| {
+                let (id, rel) = split(path)?;
+                (id == session.conn.id).then(|| (path.clone(), rel.to_string(), etag.clone()))
+            })
             .collect();
-        for (path, etag) in open {
-            let Some((id, rel)) = split(&path) else {
+        let rels: Vec<String> = open.iter().map(|(_, rel, _)| rel.clone()).collect();
+        let mut states = remote_etags(
+            &|rel| session.client.stat(rel),
+            &|dir| session.client.propfind(dir, 1),
+            &rels,
+        );
+        for (path, rel, etag) in open {
+            let Some(state) = states.remove(&rel) else {
                 continue;
             };
-            if id != session.conn.id {
-                continue;
-            }
-            match session.client.stat(rel) {
-                Ok(item) => {
-                    let Some(remote) = item.etag else { continue };
+            match state {
+                Ok(remote) => {
+                    let Some(remote) = remote else { continue };
                     let already = dav.notified.lock().unwrap().get(&path) == Some(&remote);
                     if remote != etag && !already {
-                        if let Ok((bytes, _)) = session.client.get(rel) {
+                        if let Ok((bytes, _)) = session.client.get(&rel) {
                             dav.notified.lock().unwrap().insert(path.clone(), remote);
                             let _ = app.emit(
                                 "file-changed",
@@ -1188,6 +1301,107 @@ fn start_polling(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn item(rel: &str, is_dir: bool, etag: Option<&str>) -> Item {
+        Item {
+            rel: rel.into(),
+            is_dir,
+            etag: etag.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn remote_listing_is_bounded() {
+        // 惡意的伺服器：每個資料夾都有更深的資料夾與很多檔案，還有指回自己的連結。
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let list = |dir: &str| {
+            calls.fetch_add(1, Ordering::Relaxed);
+            let mut items = vec![item(dir, true, None), item("", true, None)];
+            for n in 0..5 {
+                let sub = if dir.is_empty() {
+                    format!("d{n}")
+                } else {
+                    format!("{dir}/d{n}")
+                };
+                items.push(item(&sub, true, None));
+                items.push(item(&format!("{sub}.md"), false, None));
+            }
+            Some(items)
+        };
+        let files = walk_remote(&list);
+        let calls = calls.load(Ordering::Relaxed);
+        assert!(calls <= LIST_MAX_DIRS, "查了 {calls} 個資料夾");
+        assert!(files.len() <= MAX_FILES);
+        assert!(files.contains(&"d0.md".to_string()));
+        assert!(files
+            .iter()
+            .all(|f| f.split('/').count() <= LIST_MAX_DEPTH + 1));
+    }
+
+    #[test]
+    fn walks_a_normal_tree_in_parallel() {
+        let list = |dir: &str| {
+            Some(match dir {
+                "" => vec![
+                    item("", true, None),
+                    item("筆記", true, None),
+                    item(".git", true, None),
+                    item("a.md", false, None),
+                    item("圖.png", false, None),
+                ],
+                "筆記" => vec![item("筆記", true, None), item("筆記/b.md", false, None)],
+                _ => return None,
+            })
+        };
+        let mut files = walk_remote(&list);
+        files.sort();
+        assert_eq!(files, ["a.md", "筆記/b.md"]);
+        let doubled = parallel_map(&[1, 2, 3, 4, 5, 6, 7], 3, &|n: &i32| n * 2);
+        assert_eq!(doubled, [2, 4, 6, 8, 10, 12, 14]);
+    }
+
+    #[test]
+    fn polls_folders_with_several_open_files_at_once() {
+        let stats = std::cell::RefCell::new(Vec::new());
+        let lists = std::cell::RefCell::new(Vec::new());
+        let stat = |rel: &str| {
+            stats.borrow_mut().push(rel.to_string());
+            match rel {
+                "b/改名中.md" => Ok(item(rel, false, Some("\"s\""))),
+                "c.md" => Ok(item(rel, false, Some("\"c\""))),
+                _ => Err(DavError::NotFound),
+            }
+        };
+        let list = |dir: &str| {
+            lists.borrow_mut().push(dir.to_string());
+            Ok(vec![
+                item(dir, true, None),
+                item("b/1.md", false, Some("\"1\"")),
+                item("b/2.md", false, None),
+            ])
+        };
+        let rels: Vec<String> = ["b/1.md", "b/2.md", "b/改名中.md", "b/不見了.md", "c.md"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let out = remote_etags(&stat, &list, &rels);
+        assert_eq!(*lists.borrow(), ["b"]);
+        let mut asked = stats.borrow().clone();
+        asked.sort();
+        assert_eq!(asked, ["b/不見了.md", "b/改名中.md", "c.md"]);
+        assert_eq!(out["b/1.md"], Ok(Some("\"1\"".into())));
+        assert_eq!(out["b/2.md"], Ok(None));
+        assert_eq!(out["b/改名中.md"], Ok(Some("\"s\"".into())));
+        assert_eq!(out["b/不見了.md"], Err(DavError::NotFound));
+        assert_eq!(out["c.md"], Ok(Some("\"c\"".into())));
+        // 資料夾查詢失敗（斷線）：這次都不回報。
+        let out = remote_etags(
+            &stat,
+            &|_| Err(DavError::Network("斷線".into())),
+            &rels[..2],
+        );
+        assert!(out.is_empty());
+    }
 
     #[test]
     fn etags_compare_with_or_without_quotes() {

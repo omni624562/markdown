@@ -250,7 +250,7 @@ fn trusted_list(app: &AppHandle) -> Vec<String> {
 
 pub fn is_trusted(list: &[String], repo: &Path) -> bool {
     let key = trust_key(repo);
-    list.iter().any(|k| *k == key)
+    list.contains(&key)
 }
 
 /// 工作區所在的儲存庫；還沒信任時回傳錯誤，不執行 git。
