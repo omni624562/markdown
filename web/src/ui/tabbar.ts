@@ -1,4 +1,5 @@
 import { icon } from "./icons.ts";
+import { placeMenu } from "./menu-place.ts";
 
 export interface TabInfo {
   id: string;
@@ -32,6 +33,11 @@ export class TabBar {
   #el: HTMLElement;
   #list: HTMLElement;
   #handlers: TabBarHandlers;
+  /** 分頁太多、放不下時出現的「所有分頁」按鈕與清單。 */
+  #more: HTMLButtonElement;
+  #moreMenu: HTMLDivElement;
+  #tabs: TabInfo[] = [];
+  #activeId = "";
 
   constructor(el: HTMLElement, handlers: TabBarHandlers) {
     this.#el = el;
@@ -47,7 +53,32 @@ export class TabBar {
     add.setAttribute("aria-label", "新增文件");
     add.append(icon("plus"));
     add.addEventListener("click", () => handlers.create());
-    el.replaceChildren(this.#list, add);
+    this.#more = document.createElement("button");
+    this.#more.type = "button";
+    this.#more.className = "btn icon-only tab-more";
+    this.#more.title = "所有分頁";
+    this.#more.setAttribute("aria-label", "所有分頁");
+    this.#more.setAttribute("aria-haspopup", "menu");
+    this.#more.hidden = true;
+    this.#more.append(icon("chevron-down"));
+    this.#moreMenu = document.createElement("div");
+    this.#moreMenu.className = "menu tab-more-menu";
+    this.#moreMenu.popover = "auto";
+    this.#moreMenu.role = "menu";
+    document.body.append(this.#moreMenu);
+    this.#more.addEventListener("click", () => this.#openMore());
+    this.#moreMenu.addEventListener("keydown", (e) => {
+      const items = [...this.#moreMenu.querySelectorAll<HTMLElement>("button")];
+      const i = items.indexOf(document.activeElement as HTMLElement);
+      if (e.key === "ArrowDown") items[(i + 1) % items.length]?.focus();
+      else if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length]?.focus();
+      else return;
+      e.preventDefault();
+    });
+    el.replaceChildren(this.#list, this.#more, add);
+    // 分頁變多、視窗變窄時，判斷要不要顯示「所有分頁」按鈕與兩側的淡出提示。
+    new ResizeObserver(() => this.#updateOverflow()).observe(this.#list);
+    this.#list.addEventListener("scroll", () => this.#updateOverflow(), { passive: true });
     // 分頁很多時用滑鼠滾輪左右捲動（捲軸隱藏起來比較乾淨）。
     this.#list.addEventListener(
       "wheel",
@@ -86,6 +117,8 @@ export class TabBar {
 
   render(tabs: TabInfo[], activeId: string): void {
     this.#el.hidden = false;
+    this.#tabs = tabs;
+    this.#activeId = activeId;
     this.#list.replaceChildren(
       ...tabs.map((t) => {
         const tab = document.createElement("div");
@@ -142,6 +175,43 @@ export class TabBar {
       }),
     );
     this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    this.#updateOverflow();
+  }
+
+  #updateOverflow(): void {
+    const list = this.#list;
+    const overflow = list.scrollWidth > list.clientWidth + 1;
+    this.#more.hidden = !overflow;
+    list.classList.toggle("more-left", overflow && list.scrollLeft > 1);
+    list.classList.toggle("more-right", overflow && list.scrollLeft + list.clientWidth < list.scrollWidth - 1);
+  }
+
+  /** 列出所有分頁（目前的打勾、未存檔的加圓點），點一下切換過去。 */
+  #openMore(): void {
+    const menu = this.#moreMenu;
+    menu.replaceChildren(
+      ...this.#tabs.map((t) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.role = "menuitemradio";
+        const current = t.id === this.#activeId;
+        item.setAttribute("aria-checked", String(current));
+        item.title = t.title;
+        item.append(icon(t.pinned ? "pin" : "file"));
+        item.append(Object.assign(document.createElement("span"), { textContent: `${t.name}${t.dirty ? "  ●" : ""}` }));
+        if (current) item.append(icon("check"));
+        item.addEventListener("click", () => {
+          menu.hidePopover();
+          this.#handlers.select(t.id);
+        });
+        return item;
+      }),
+    );
+    menu.showPopover();
+    const { width, height } = menu.getBoundingClientRect();
+    const p = placeMenu(this.#more.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight }, "below");
+    Object.assign(menu.style, { left: `${p.left}px`, top: `${p.top}px`, right: "auto", bottom: "auto", maxHeight: `${p.maxHeight}px` });
+    menu.querySelector<HTMLElement>("[aria-checked=true]")?.focus();
   }
 
   /** 把分頁名稱換成輸入框；Enter 確定、Esc 取消。 */
