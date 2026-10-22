@@ -15,10 +15,11 @@ use crate::files::path_string;
 use crate::git::{Auth, Identity};
 use crate::workspace::{FolderInfo, Workspace};
 
-/// GitHub OAuth App 的 Client ID（公開資訊，不是密碼）。建置時可以用環境變數覆蓋。
+/// GitHub OAuth App「oMarker」的 Client ID（公開資訊，不是密碼）。
+/// 建置時可以用環境變數 `OMARKER_GITHUB_CLIENT_ID` 換成別的 App；空字串（CI 沒設定變數時）視為沒有設定。
 const CLIENT_ID: &str = match option_env!("OMARKER_GITHUB_CLIENT_ID") {
-    Some(id) => id,
-    None => "",
+    Some(id) if !id.is_empty() => id,
+    _ => "Ov23liehNX3rQk93c6rf",
 };
 const SERVICE: &str = "omarker-github";
 const API: &str = "https://api.github.com";
@@ -123,14 +124,6 @@ fn form(url: &str, body: &str, what: &str) -> Result<serde_json::Value, String> 
     serde_json::from_str(&text).map_err(|e| format!("{what}失敗：{e}"))
 }
 
-fn client_id() -> Result<&'static str, String> {
-    if CLIENT_ID.is_empty() {
-        Err("這個版本還沒有設定 GitHub 登入（缺少 Client ID）".into())
-    } else {
-        Ok(CLIENT_ID)
-    }
-}
-
 // ---- 登入 -------------------------------------------------------------------
 
 #[derive(Serialize)]
@@ -152,7 +145,7 @@ pub fn github_account(app: AppHandle) -> Option<Account> {
 /// 開始登入：向 GitHub 要一組代碼，並在瀏覽器開啟輸入代碼的網頁。
 #[tauri::command]
 pub async fn github_login_start(app: AppHandle) -> Result<DeviceCode, String> {
-    let id = client_id()?;
+    let id = CLIENT_ID;
     let v = crate::io::blocking_for(Duration::from_secs(30), move || {
         form(
             "https://github.com/login/device/code",
@@ -186,7 +179,7 @@ pub async fn github_login_wait(
     interval: u64,
     expires_in: u64,
 ) -> Result<Account, String> {
-    let id = client_id()?;
+    let id = CLIENT_ID;
     CANCEL.store(false, Ordering::SeqCst);
     let limit = Duration::from_secs(expires_in.clamp(60, 1800));
     let token = crate::io::blocking_for(limit + Duration::from_secs(30), move || {
