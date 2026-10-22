@@ -1,6 +1,6 @@
 [package]
 name = "md-desktop"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 license = "MIT"
 description = "Markdown 編輯器桌面版（Tauri）"
@@ -13,7 +13,7 @@ path = "src/main.rs"
 tauri-build = { version = "2.7.3", features = [] }
 
 [dependencies]
-tauri = { version = "2.12.4", features = ["protocol-asset"] }
+tauri = { version = "2.12.4", features = [] }
 tauri-plugin-opener = "2.7.0"
 tauri-plugin-single-instance = "2.5.2"
 rfd = "0.17.2"
@@ -44,6 +44,8 @@ quick-xml = "0.42.0"
 # 自動更新
 ureq = { version = "3.4.2", default-features = false, features = ["rustls", "platform-verifier", "win-system-proxy"] }
 sha2 = "0.11.1"
+# 驗證更新的 Ed25519 簽章（rustls 已經使用 ring，不會多編譯一套密碼學程式庫）
+ring = "0.17.14"
 self-replace = "1.5.0"
 
 # Windows 認證管理員（WebDAV 密碼）。其他平台不保存密碼，只在這次開啟期間記在記憶體裡。

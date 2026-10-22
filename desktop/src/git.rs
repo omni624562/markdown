@@ -5,9 +5,14 @@
 //! - 拉取時有未提交的變更就不做；能快轉就快轉，否則改用 rebase，遇到衝突立刻取消（`rebase --abort`），
 //!   不會自動合併掉任何內容。
 //! - 關閉終端機提示（`GIT_TERMINAL_PROMPT=0`），需要密碼時不會卡住。
+//! - 儲存庫的設定（`.git/config` 的 `core.fsmonitor`、filter、hooks 等）可以執行任意程式，
+//!   所以資料夾要先經使用者「信任」才會執行 git。還沒信任時只用檔案系統判斷是不是儲存庫，
+//!   完全不執行 git（就像 VS Code 的工作區信任）。
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -19,12 +24,24 @@ use crate::workspace::Workspace;
 /// 拉取、推送可能需要等使用者在認證視窗登入。
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// git 的完整路徑。找到後記住，不用每次都搜尋 PATH；找不到時下次再找（使用者可能剛裝好）。
+fn git_exe() -> Option<PathBuf> {
+    static GIT: OnceLock<PathBuf> = OnceLock::new();
+    if let Some(p) = GIT.get() {
+        return Some(p.clone());
+    }
+    let p = which::which("git").ok()?;
+    Some(GIT.get_or_init(|| p).clone())
+}
+
 fn git_command(dir: &Path) -> Result<Command, String> {
-    let exe = which::which("git")
-        .map_err(|_| "找不到 Git。請先安裝 Git（https://git-scm.com）。".to_string())?;
+    let exe =
+        git_exe().ok_or_else(|| "找不到 Git。請先安裝 Git（https://git-scm.com）。".to_string())?;
     let mut cmd = Command::new(exe);
     cmd.current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
+        // 讀取狀態時不要改寫 .git/index，否則檔案監看會以為資料夾又變了。
+        .env("GIT_OPTIONAL_LOCKS", "0")
         // 輸出固定用英文，方便解析；給使用者看的訊息由這裡翻譯。
         .env("LC_ALL", "C")
         .env("LANG", "C");
@@ -92,6 +109,8 @@ pub struct Status {
     available: bool,
     /// 工作區是不是 Git 儲存庫。
     repo: bool,
+    /// 使用者是否信任這個儲存庫（信任前不執行 git）。
+    trusted: bool,
     branch: Option<Branch>,
     changes: Vec<Change>,
 }
@@ -189,28 +208,96 @@ fn repo_root(dir: &Path) -> Option<PathBuf> {
     Some(dunce::canonicalize(&root).unwrap_or(root))
 }
 
+/// 不執行 git，只看檔案系統：往上找含有 `.git` 的資料夾（git 自己也是這樣找儲存庫的）。
+pub fn find_repo(dir: &Path) -> Option<PathBuf> {
+    let dir = dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    dir.ancestors()
+        .find(|d| d.join(".git").exists())
+        .map(Path::to_path_buf)
+}
+
 fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
     app.state::<Workspace>()
         .root()
         .ok_or_else(|| "還沒有開啟資料夾".to_string())
 }
 
-pub fn status_at(dir: &Path) -> Status {
-    if which::which("git").is_err() {
-        return Status {
-            available: false,
-            repo: false,
-            branch: None,
-            changes: vec![],
-        };
+// ---- 信任的儲存庫 ----------------------------------------------------------
+
+fn trust_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("git-trust.json"))
+}
+
+/// 比對用的路徑：Windows 的路徑不分大小寫。
+fn trust_key(repo: &Path) -> String {
+    let s = path_string(repo);
+    if cfg!(windows) {
+        s.to_lowercase()
+    } else {
+        s
+    }
+}
+
+fn trusted_list(app: &AppHandle) -> Vec<String> {
+    trust_file(app)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn is_trusted(list: &[String], repo: &Path) -> bool {
+    let key = trust_key(repo);
+    list.iter().any(|k| *k == key)
+}
+
+/// 工作區所在的儲存庫；還沒信任時回傳錯誤，不執行 git。
+fn trusted_repo(app: &AppHandle, dir: &Path) -> Result<(), String> {
+    match find_repo(dir) {
+        Some(repo) if !is_trusted(&trusted_list(app), &repo) => {
+            Err("還沒有信任這個資料夾的 Git 設定，請先在「原始碼控制」面板按「信任」。".into())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// 使用者按下「信任」：記住工作區所在的儲存庫。
+#[tauri::command]
+pub async fn git_trust(app: AppHandle) -> Result<(), String> {
+    let dir = workspace_root(&app)?;
+    let repo = find_repo(&dir).ok_or_else(|| "這個資料夾不是 Git 儲存庫".to_string())?;
+    let mut list = trusted_list(&app);
+    if !is_trusted(&list, &repo) {
+        list.push(trust_key(&repo));
+    }
+    let path = trust_file(&app).ok_or_else(|| "找不到設定資料夾".to_string())?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("無法建立設定資料夾：{e}"))?;
+    }
+    let json = serde_json::to_string_pretty(&list).unwrap_or_default();
+    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| format!("無法儲存：{e}"))
+}
+
+pub fn status_at(dir: &Path, trusted: &[String]) -> Status {
+    let empty = |available, repo, trusted| Status {
+        available,
+        repo,
+        trusted,
+        branch: None,
+        changes: vec![],
+    };
+    if git_exe().is_none() {
+        return empty(false, false, false);
+    }
+    match find_repo(dir) {
+        None => return empty(true, false, false),
+        Some(repo) if !is_trusted(trusted, &repo) => return empty(true, true, false),
+        Some(_) => {}
     }
     let Some(root) = repo_root(dir) else {
-        return Status {
-            available: true,
-            repo: false,
-            branch: None,
-            changes: vec![],
-        };
+        return empty(true, false, true);
     };
     match run_ok(
         dir,
@@ -227,23 +314,20 @@ pub fn status_at(dir: &Path) -> Status {
             Status {
                 available: true,
                 repo: true,
+                trusted: true,
                 branch: Some(branch),
                 changes,
             }
         }
-        Err(_) => Status {
-            available: true,
-            repo: true,
-            branch: None,
-            changes: vec![],
-        },
+        Err(_) => empty(true, true, true),
     }
 }
 
 #[tauri::command]
 pub async fn git_status(app: AppHandle) -> Result<Status, String> {
     let dir = workspace_root(&app)?;
-    crate::io::blocking(move || Ok(status_at(&dir))).await
+    let trusted = trusted_list(&app);
+    crate::io::blocking(move || Ok(status_at(&dir, &trusted))).await
 }
 
 /// 提交工作區資料夾內的所有變更。
@@ -270,6 +354,7 @@ pub fn commit_at(dir: &Path, message: &str) -> Result<String, String> {
 #[tauri::command]
 pub async fn git_commit(app: AppHandle, message: String) -> Result<String, String> {
     let dir = workspace_root(&app)?;
+    trusted_repo(&app, &dir)?;
     crate::io::blocking(move || commit_at(&dir, &message)).await
 }
 
@@ -352,12 +437,14 @@ pub fn push_at(dir: &Path) -> Result<String, String> {
 #[tauri::command]
 pub async fn git_pull(app: AppHandle) -> Result<String, String> {
     let dir = workspace_root(&app)?;
+    trusted_repo(&app, &dir)?;
     crate::io::blocking_for(NETWORK_TIMEOUT, move || pull_at(&dir)).await
 }
 
 #[tauri::command]
 pub async fn git_push(app: AppHandle) -> Result<String, String> {
     let dir = workspace_root(&app)?;
+    trusted_repo(&app, &dir)?;
     crate::io::blocking_for(NETWORK_TIMEOUT, move || push_at(&dir)).await
 }
 
@@ -426,6 +513,29 @@ mod tests {
     }
 
     #[test]
+    fn untrusted_repo_runs_no_git() {
+        if which::which("git").is_err() {
+            return;
+        }
+        let dir = temp("untrusted");
+        init(&dir);
+        // 惡意的儲存庫設定：git status 會執行 core.fsmonitor 指定的程式。
+        let marker = dir.join("pwned");
+        git(&dir, &["config", "core.fsmonitor", "touch pwned; false"]);
+        let sub = dir.join("子資料夾");
+        fs::create_dir_all(&sub).unwrap();
+        assert_eq!(find_repo(&sub), Some(dir.clone()));
+
+        let s = status_at(&sub, &[]);
+        assert!(s.available && s.repo && !s.trusted && s.branch.is_none());
+        assert!(!marker.exists(), "還沒信任就執行了 git");
+
+        let s = status_at(&sub, &[trust_key(&dir)]);
+        assert!(s.repo && s.trusted && s.branch.is_some());
+        assert!(!is_trusted(&[trust_key(&sub)], &dir));
+    }
+
+    #[test]
     fn commit_pull_push_round_trip() {
         if which::which("git").is_err() {
             return;
@@ -435,7 +545,7 @@ mod tests {
         let a = temp("a");
         init(&a);
         fs::write(a.join("週報.md"), "# 週報\n").unwrap();
-        assert!(status_at(&a)
+        assert!(status_at(&a, &[trust_key(&a)])
             .changes
             .iter()
             .any(|c| c.status == FileStatus::Untracked));

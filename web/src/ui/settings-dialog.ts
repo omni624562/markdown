@@ -60,6 +60,11 @@ const LOOK_FIELDS: Field[] = [
   },
   { key: "math", label: "顯示數學公式", hint: "用 $…$ 或 $$…$$ 撰寫，使用 KaTeX" },
   { key: "mermaid", label: "顯示流程圖", hint: "```mermaid 程式碼區塊" },
+  {
+    key: "blockRemoteImages",
+    label: "封鎖遠端圖片",
+    hint: "不載入文件中網路上的圖片（https://…）。別人傳來的文件可以用遠端圖片得知你何時開啟、你的 IP 位址",
+  },
 ];
 
 const SECTIONS: { title: string; fields: Field[] }[] = [

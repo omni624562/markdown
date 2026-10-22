@@ -5,6 +5,7 @@
 import { type Task, isoDate, plainTaskText } from "../doc-index.ts";
 import type { IndexedDoc } from "../workspace-index.ts";
 import { icon } from "./icons.ts";
+import { collator } from "../collator.ts";
 
 export interface TaskItem extends Task {
   doc: IndexedDoc;
@@ -79,7 +80,7 @@ export class TasksPanel {
     }
     if (seq !== this.#seq) return;
     this.#items = docs.flatMap((doc) => doc.info.tasks.map((t) => ({ ...t, doc })));
-    const owners = [...new Set(this.#items.flatMap((t) => t.owners))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+    const owners = [...new Set(this.#items.flatMap((t) => t.owners))].sort(collator.compare);
     const current = this.#owner.value;
     this.#owner.replaceChildren(new Option("所有人", ""), ...owners.map((o) => new Option(`@${o}`, o)));
     this.#owner.value = owners.includes(current) ? current : "";
@@ -98,14 +99,18 @@ export class TasksPanel {
       : this.#handlers.emptyHint();
     this.#list.replaceChildren();
     if (this.#order === "due") {
-      const sorted = [...items].sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.doc.rel.localeCompare(b.doc.rel));
+      const sorted = [...items].sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || collator.compare(a.doc.rel, b.doc.rel));
       const ul = document.createElement("ul");
       ul.append(...sorted.map((t) => this.#row(t, today, true)));
       this.#list.append(ul);
       return;
     }
     const groups = new Map<IndexedDoc, TaskItem[]>();
-    for (const t of items) groups.set(t.doc, [...(groups.get(t.doc) ?? []), t]);
+    for (const t of items) {
+      const list = groups.get(t.doc);
+      if (list) list.push(t);
+      else groups.set(t.doc, [t]);
+    }
     for (const [doc, tasks] of groups) {
       const section = document.createElement("section");
       const h = document.createElement("h3");

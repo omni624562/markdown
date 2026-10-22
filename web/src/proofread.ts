@@ -8,6 +8,7 @@ import { type EditorState, type Extension, StateEffect } from "@codemirror/state
 import type { EditorView } from "@codemirror/view";
 import { findPunctuation } from "./punct.ts";
 import { type TermMatch, findTerms, termMessage } from "./terms.ts";
+import { rangeChecker } from "./ranges.ts";
 
 /** 這些語法節點裡不檢查。 */
 const SKIP = /^(InlineCode|FencedCode|CodeBlock|HTMLTag|HTMLBlock|Comment|CommentBlock|URL|Autolink|ProcessingInstruction)$/;
@@ -37,7 +38,8 @@ export function scanDocument(state: EditorState, ignore: ReadonlySet<string>): T
   const skip = skipRanges(state);
   const terms = findTerms(text, skip, ignore);
   // 標點和用語重疊時以用語為準。
-  const marks = findPunctuation(text, skip, ignore).filter((p) => !terms.some((t) => p.from < t.to && p.to > t.from));
+  const onTerm = rangeChecker(terms.map((t) => [t.from, t.to]));
+  const marks = findPunctuation(text, skip, ignore).filter((p) => !onTerm(p.from, p.to));
   return [...terms, ...marks].sort((a, b) => a.from - b.from);
 }
 

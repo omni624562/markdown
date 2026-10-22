@@ -251,7 +251,7 @@ pub fn spacing_positions(text: &str, kind: DocKind) -> Vec<usize> {
             let options = crate::markdown::comrak_options(&crate::RenderOptions {
                 kind,
                 sourcepos: true,
-                hardbreaks: false,
+                ..Default::default()
             });
             let arena = Arena::new();
             let root = parse_document(&arena, text, &options);

@@ -5,9 +5,10 @@
  */
 import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { TAG } from "./doc-index.ts";
+import { rangeChecker } from "./ranges.ts";
 import { editorFocused, focusChanged, focusTracking } from "./inline-tools.ts";
 import { EditableTableWidget } from "./table-widget.ts";
 
@@ -274,10 +275,9 @@ const marks = {
 };
 const lineClass = (cls: string) => Decoration.line({ class: cls });
 
-function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
-  if (opts.enabled && !opts.enabled()) return Decoration.none;
+/** 游標或選取範圍所在的行（顯示原始碼）；編輯器沒有焦點時（例如在側邊欄操作）整份都顯示排版。 */
+function activeLines(state: EditorState) {
   const doc = state.doc;
-  // 游標或選取範圍所在的行顯示原始碼；編輯器沒有焦點時（例如在側邊欄操作）整份都顯示排版。
   const active = new Set<number>();
   for (const r of editorFocused(state) ? state.selection.ranges : []) {
     for (let l = doc.lineAt(r.from).number; l <= doc.lineAt(r.to).number; l++) active.add(l);
@@ -287,21 +287,85 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
     for (let l = doc.lineAt(from).number; l <= doc.lineAt(to).number; l++) if (active.has(l)) return true;
     return false;
   };
-  /** 整行都在範圍內（區塊替換只能用在完整的行上）。 */
+  return { active, lineActive, rangeActive };
+}
+
+/**
+ * 區塊元件（表格、`$$` 公式）：會改變版面高度，CodeMirror 規定要由 StateField 提供，所以看整份文件；
+ * 只走區塊層級的節點（不進入段落內容），大文件也很快。
+ */
+function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSet {
+  if (opts.enabled && !opts.enabled()) return Decoration.none;
+  const doc = state.doc;
+  const { rangeActive } = activeLines(state);
   const wholeLines = (from: number, to: number) => doc.lineAt(from).from === from && doc.lineAt(to).to === to;
+  const mathOn = !!opts.renderMath && (opts.mathEnabled?.() ?? true);
+  const decos: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    enter: ({ name, from, to }) => {
+      switch (name) {
+        case "Document":
+        case "Blockquote":
+        case "BulletList":
+        case "OrderedList":
+        case "ListItem":
+          return;
+        case "Table":
+          if (!rangeActive(from, to) && wholeLines(from, to)) {
+            decos.push(
+              Decoration.replace({
+                widget: new EditableTableWidget(doc.sliceString(from, to), opts.renderTable, opts.formatTable ?? (() => undefined)),
+                block: true,
+              }).range(from, to),
+            );
+          }
+          return false;
+        case "Paragraph": {
+          if (!mathOn || doc.sliceString(from, from + 2) !== "$$") return false;
+          const display = blockMath(doc.sliceString(from, to));
+          if (display !== null && !rangeActive(from, to) && wholeLines(from, to)) {
+            decos.push(Decoration.replace({ widget: new MathWidget(display, true, opts.renderMath!), block: true }).range(from, to));
+          }
+          return false;
+        }
+        default:
+          return false;
+      }
+    },
+  });
+  return Decoration.set(decos, true);
+}
+
+/**
+ * 行內的排版（隱藏符號、連結、圖片、勾選框、標題樣式……）：只處理畫面上看得到的範圍，
+ * 文件再長，每次按鍵或移動游標的工作量都差不多。
+ */
+function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { from: number; to: number }[]): DecorationSet {
+  if (opts.enabled && !opts.enabled()) return Decoration.none;
+  const doc = state.doc;
+  const { active, lineActive, rangeActive } = activeLines(state);
+  /** 同一行內（由 ViewPlugin 提供的替換不能跨行）。 */
+  const oneLine = (from: number, to: number) => doc.lineAt(from).to >= to;
   const decos: Range<Decoration>[] = [];
   const hide = (from: number, to: number) => {
-    if (to > from) decos.push(hidden.range(from, to));
+    if (to > from && oneLine(from, to)) decos.push(hidden.range(from, to));
   };
   /** 標記後面如果緊接一個空白，一起隱藏。 */
   const withSpace = (to: number) => (doc.sliceString(to, to + 1) === " " ? to + 1 : to);
   const mathOn = !!opts.renderMath && (opts.mathEnabled?.() ?? true);
   const htmlTags: InlineTag[] = [];
   const noInline: [number, number][] = [];
+  // 畫面上可能有好幾段可見範圍（中間有摺疊）：同一個節點只處理一次。
+  const seen = new Set<string>();
 
-  syntaxTree(state).iterate({
+  for (const range of ranges) syntaxTree(state).iterate({
+    from: range.from,
+    to: range.to,
     enter: (ref) => {
       const { name, from, to } = ref;
+      const key = `${name}:${from}:${to}`;
+      if (seen.has(key)) return;
+      seen.add(key);
       const node = ref.node;
       // `[[週報]]` 裡的 `[週報]` 會被當成沒有網址的連結，那種不算。
       if (NO_INLINE.test(name) && (name !== "Link" || node.getChild("URL"))) noInline.push([from, to]);
@@ -361,7 +425,7 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
           return;
         }
         case "Image": {
-          if (lineActive(from)) return false;
+          if (lineActive(from) || !oneLine(from, to)) return false;
           const url = node.getChild("URL");
           if (!url) return false;
           const alt = doc.sliceString(from + 2, Math.max(from + 2, (node.getChildren("LinkMark")[1]?.from ?? from + 2)));
@@ -415,17 +479,7 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
           return false;
         }
         case "Table":
-          if (!rangeActive(from, to) && wholeLines(from, to)) {
-            decos.push(
-              Decoration.replace({
-                widget: new EditableTableWidget(doc.sliceString(from, to), opts.renderTable, opts.formatTable ?? (() => undefined)),
-                block: true,
-              }).range(
-                from,
-                to,
-              ),
-            );
-          }
+          // 由 buildBlocks 畫成表格元件。
           return false;
         case "CommentBlock":
           // HTML 註解（例如目錄的 <!-- toc --> 標記）在預覽中看不到，這裡淡化顯示。
@@ -443,20 +497,13 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
         case "Paragraph": {
           if (!mathOn) return;
           const text = doc.sliceString(from, to);
-          const display = blockMath(text);
-          if (display !== null) {
-            if (!rangeActive(from, to) && wholeLines(from, to)) {
-              decos.push(
-                Decoration.replace({ widget: new MathWidget(display, true, opts.renderMath!), block: true }).range(from, to),
-              );
-            }
-            return false;
-          }
+          // 整段 `$$…$$` 由 buildBlocks 畫成區塊公式。
+          if (blockMath(text) !== null) return false;
           // 行內公式：避開行內程式碼裡的 $。
           const skip = node.getChildren("InlineCode").map((c) => [c.from - from, c.to - from]);
           for (const m of inlineMath(text)) {
             if (skip.some(([a, b]) => m.from < b && m.to > a)) continue;
-            if (lineActive(from + m.from) || lineActive(from + m.to)) continue;
+            if (lineActive(from + m.from) || lineActive(from + m.to) || !oneLine(from + m.from, from + m.to)) continue;
             decos.push(
               Decoration.replace({ widget: new MathWidget(m.tex, false, opts.renderMath!) }).range(from + m.from, from + m.to),
             );
@@ -466,9 +513,11 @@ function build(state: EditorState, opts: LivePreviewOptions): DecorationSet {
       }
     },
   });
-  // [[文件]] 與 #標籤
-  const blocked = (a: number, b: number) => noInline.some(([x, y]) => a < y && b > x);
-  for (let l = 1; l <= doc.lines; l++) {
+  // [[文件]] 與 #標籤（只看可見範圍內的行）
+  const blocked = rangeChecker(noInline);
+  let lastLine = 0;
+  for (const range of ranges) for (let l = Math.max(doc.lineAt(range.from).number, lastLine + 1); l <= doc.lineAt(range.to).number; l++) {
+    lastLine = l;
     const line = doc.line(l);
     if (!line.text.includes("[[") && !line.text.includes("#")) continue;
     for (const m of line.text.matchAll(WIKI_LINK)) {
@@ -572,19 +621,38 @@ export function refreshLivePreview(view: EditorView): void {
 }
 
 export function livePreview(opts: LivePreviewOptions): Extension {
-  const field = StateField.define<DecorationSet>({
-    create: (state) => build(state, opts),
+  const blocks = StateField.define<DecorationSet>({
+    create: (state) => buildBlocks(state, opts),
     update(value, tr) {
       const treeChanged = syntaxTree(tr.state) !== syntaxTree(tr.startState);
       const forced = tr.effects.some((e) => e.is(rebuild));
-      if (!tr.docChanged && !tr.selection && !treeChanged && !tr.reconfigured && !focusChanged(tr) && !forced) return value;
-      return build(tr.state, opts);
+      if (!tr.docChanged && !tr.selection && !treeChanged && !tr.reconfigured && !focusChanged(tr) && !forced) return value.map(tr.changes);
+      return buildBlocks(tr.state, opts);
     },
     provide: (f) => EditorView.decorations.from(f),
   });
+  const inline = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = build(view.state, opts, view.visibleRanges);
+      }
+      update(u: ViewUpdate) {
+        const changed =
+          u.docChanged ||
+          u.viewportChanged ||
+          u.selectionSet ||
+          syntaxTree(u.state) !== syntaxTree(u.startState) ||
+          u.transactions.some((tr) => tr.reconfigured || focusChanged(tr) || tr.effects.some((e) => e.is(rebuild)));
+        if (changed) this.decorations = build(u.state, opts, u.view.visibleRanges);
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
   return [
     focusTracking,
-    field,
+    blocks,
+    inline,
     EditorView.editorAttributes.of({ class: "cm-lp" }),
     EditorView.domEventHandlers({
       mousedown(e) {

@@ -23,24 +23,50 @@ export function samePath(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
+interface WikiIndex {
+  /** 完整的相對路徑（小寫、不含副檔名）→ 檔案。 */
+  full: Map<string, FileRef[]>;
+  /** 檔名（小寫、不含副檔名）→ 檔案。 */
+  base: Map<string, FileRef[]>;
+}
+
+const stemOf = (rel: string) => rel.toLowerCase().replace(MD, "");
+const indexes = new WeakMap<readonly FileRef[], WikiIndex>();
+
+/** 依檔名建立索引（同一份清單只建一次），之後每個 `[[ ]]` 都不用掃過全部檔案。 */
+function wikiIndex(files: readonly FileRef[]): WikiIndex {
+  let index = indexes.get(files);
+  if (index) return index;
+  index = { full: new Map(), base: new Map() };
+  const add = (map: Map<string, FileRef[]>, key: string, f: FileRef) => {
+    const list = map.get(key);
+    if (list) list.push(f);
+    else map.set(key, [f]);
+  };
+  for (const f of files) {
+    const stem = stemOf(f.rel);
+    add(index.full, stem, f);
+    add(index.base, stem.slice(stem.lastIndexOf("/") + 1), f);
+  }
+  indexes.set(files, index);
+  return index;
+}
+
 /** `[[target]]` 對應的檔案路徑；找不到時回傳 null。 */
 export function resolveWiki(target: string, files: readonly FileRef[], fromDir: string | null): string | null {
   let t = target.trim().replace(/\\/g, "/").replace(/^\.\//, "");
   if (!t) return null;
   if (!MD.test(t)) t += ".md";
-  const want = t.toLowerCase();
-  const stem = (rel: string) => rel.toLowerCase().replace(MD, "");
+  const want = stemOf(t);
   // 寫了資料夾（[[筆記/想法]]）要完全符合；只寫檔名時找所有同名的檔案。.md 與 .markdown 都算。
-  const pool = files.filter((f) =>
-    want.includes("/")
-      ? stem(f.rel) === stem(want)
-      : stem(f.rel) === stem(want) || stem(f.rel).endsWith(`/${stem(want)}`),
-  );
-  if (!pool.length) return null;
+  const index = wikiIndex(files);
+  const pool = (want.includes("/") ? index.full : index.base).get(want);
+  if (!pool?.length) return null;
   if (fromDir) {
     const near = pool.find((f) => samePath(dirname(f.path), fromDir));
     if (near) return near.path;
   }
+  if (pool.length === 1) return pool[0].path;
   return [...pool].sort((a, b) => a.rel.split("/").length - b.rel.split("/").length || a.rel.length - b.rel.length)[0].path;
 }
 

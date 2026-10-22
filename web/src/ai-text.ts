@@ -59,3 +59,13 @@ function relativeInside(root: string, path: string): string | null {
   const same = windows ? p.toLowerCase().startsWith(`${r.toLowerCase()}/`) : p.startsWith(`${r}/`);
   return same ? p.slice(r.length + 1) : null;
 }
+
+/**
+ * 要貼到終端機的文字：拿掉控制字元（保留 Tab 與換行）。文件裡可能藏著看不見的跳脫字元，
+ * 例如 `ESC[201~` 會提早結束括號貼上模式，之後的文字（含 Enter）就變成在終端機裡打字、執行指令。
+ */
+export function sanitizeForTerminal(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "");
+}

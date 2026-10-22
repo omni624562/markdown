@@ -2,3 +2,6 @@
 node_modules/
 /web/dist
 /web/pkg
+
+# 自動更新的簽章私鑰（只放在 GitHub Secrets，絕不提交）
+/update-signing-key.txt

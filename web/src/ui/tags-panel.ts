@@ -3,6 +3,7 @@
  */
 import type { IndexedDoc } from "../workspace-index.ts";
 import { icon } from "./icons.ts";
+import { collator } from "../collator.ts";
 
 export interface TagsHandlers {
   docs(): Promise<IndexedDoc[]>;
@@ -50,7 +51,13 @@ export class TagsPanel {
     }
     if (seq !== this.#seq) return;
     this.#tags.clear();
-    for (const doc of docs) for (const tag of doc.info.tags) this.#tags.set(tag, [...(this.#tags.get(tag) ?? []), doc]);
+    for (const doc of docs) {
+      for (const tag of doc.info.tags) {
+        const list = this.#tags.get(tag);
+        if (list) list.push(doc);
+        else this.#tags.set(tag, [doc]);
+      }
+    }
     this.#render();
   }
 
@@ -66,7 +73,7 @@ export class TagsPanel {
     const q = this.#filter.value.trim().replace(/^#/, "").toLowerCase();
     const tags = [...this.#tags]
       .filter(([t]) => !q || t.toLowerCase().includes(q))
-      .sort(([a, x], [b, y]) => y.length - x.length || a.localeCompare(b, "zh-Hant"));
+      .sort(([a, x], [b, y]) => y.length - x.length || collator.compare(a, b));
     this.#summary.textContent = this.#tags.size
       ? q
         ? `${tags.length} 個標籤符合`

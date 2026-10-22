@@ -1142,6 +1142,8 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .offline-bar .btn { border-color: var(--border-strong); background: var(--bg); }
 
 /* ---- Git：原始碼控制面板 ---- */
+.git-trust { margin: 0 4px 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.git-trust p { margin: 6px 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 .git-branch { display: flex; gap: 6px; align-items: center; justify-content: space-between; margin: 0 4px 8px; }
 .git-info { display: flex; flex: 1; gap: 5px; align-items: center; min-width: 0; overflow: hidden; color: var(--fg); font-size: 13px; white-space: nowrap; }
 .git-info .icon { width: 15px; height: 15px; color: var(--muted); }

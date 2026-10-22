@@ -379,7 +379,14 @@ export function cursorInfo(view: EditorView): { line: number; column: number; se
   const line = view.state.doc.lineAt(sel.head);
   let selected = 0;
   for (const r of view.state.selection.ranges) {
-    selected += [...view.state.sliceDoc(r.from, r.to)].length;
+    // 依字元（不是 UTF-16 單位）計算；不展開成陣列，全選大文件時才不會配置大量記憶體。
+    const text = view.state.sliceDoc(r.from, r.to);
+    let n = text.length;
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff) n--;
+    }
+    selected += n;
   }
   return { line: line.number, column: [...line.text.slice(0, sel.head - line.from)].length + 1, selected };
 }

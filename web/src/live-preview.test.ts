@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type InlineTag, blockMath, inlineMath, pairTags, parseTag } from "./live-preview.ts";
+import { rangeChecker } from "./ranges.ts";
 
 test("行內公式的規則和 md-core 一致", () => {
   assert.deepEqual(inlineMath("能量 $E=mc^2$ 守恆"), [{ from: 3, to: 11, tex: "E=mc^2" }]);
@@ -44,4 +45,16 @@ test("格式標籤配對：同層、同名、正確巢狀", () => {
   ]);
   // 不同層不配對
   assert.deepEqual(names(pairTags([t("u", false, 0, 0), t("u", true, 4, 9)])), []);
+});
+
+test("rangeChecker：合併重疊範圍後用二分搜尋判斷", () => {
+  const inside = rangeChecker([[50, 60], [10, 20], [15, 30], [100, 200], [120, 130]]);
+  assert.equal(inside(0, 10), false);
+  assert.equal(inside(9, 11), true);
+  assert.equal(inside(25, 35), true);
+  assert.equal(inside(30, 50), false);
+  assert.equal(inside(59, 61), true);
+  assert.equal(inside(140, 150), true);
+  assert.equal(inside(200, 210), false);
+  assert.equal(rangeChecker([])(0, 100), false);
 });
