@@ -62,6 +62,11 @@ export function toast(message: string, opts: ToastOptions = {}): { dismiss(): vo
 
   // 錯誤訊息要讓螢幕閱讀器立即唸出。
   if (opts.tone === "error") el.setAttribute("role", "alert");
+  // 同一則通知還在畫面上時（例如連按兩次同一個按鈕），換成新的，不要疊兩則一樣的。
+  el.dataset.message = message;
+  for (const old of region.children) {
+    if (old instanceof HTMLElement && old.dataset.message === message && old.className === el.className) old.remove();
+  }
   region.append(el);
   raise();
   timer = window.setTimeout(close, opts.duration ?? (opts.action ? 8000 : 3500));
