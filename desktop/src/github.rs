@@ -406,9 +406,223 @@ pub async fn github_publish(
     .await
 }
 
+// ---- Issues -----------------------------------------------------------------
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Issue {
+    number: u64,
+    title: String,
+    state: String,
+    labels: Vec<String>,
+    author: String,
+    comments: u64,
+    updated: Option<String>,
+    web_url: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueComment {
+    author: String,
+    created: Option<String>,
+    body: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueDetail {
+    #[serde(flatten)]
+    issue: Issue,
+    assignees: Vec<String>,
+    body: String,
+    comment_list: Vec<IssueComment>,
+}
+
+fn login_of(v: &serde_json::Value) -> String {
+    v.get("login")
+        .and_then(|x| x.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// GitHub 的 issue 清單也會包含 PR（有 `pull_request` 欄位），這裡只留下 issue。
+fn issue_of(v: &serde_json::Value) -> Option<Issue> {
+    if v.get("pull_request").is_some() {
+        return None;
+    }
+    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
+    Some(Issue {
+        number: v.get("number")?.as_u64()?,
+        title: s("title").unwrap_or_default(),
+        state: s("state").unwrap_or_default(),
+        labels: v
+            .get("labels")
+            .and_then(|x| x.as_array())
+            .map(|l| {
+                l.iter()
+                    .filter_map(|x| x.get("name").and_then(|n| n.as_str()).map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        author: v.get("user").map(login_of).unwrap_or_default(),
+        comments: v.get("comments").and_then(|x| x.as_u64()).unwrap_or(0),
+        updated: s("updated_at"),
+        web_url: s("html_url")?,
+    })
+}
+
+fn json(text: &str, what: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(text).map_err(|e| format!("{what}失敗：{e}"))
+}
+
+/// 目前資料夾的 GitHub 儲存庫的 issue：搜尋文字空白時是還沒關閉的，數字是編號，其他搜尋標題與內容。
+#[tauri::command]
+pub async fn github_issues(app: AppHandle, search: String) -> Result<Vec<Issue>, String> {
+    let token = require_token(&app)?;
+    let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
+    crate::io::blocking_for(Duration::from_secs(60), move || {
+        let q = search.trim().trim_start_matches('#').to_string();
+        let what = "讀取 issue";
+        if !q.is_empty() && q.chars().all(|c| c.is_ascii_digit()) {
+            let v = json(
+                &api_get(&token, &format!("/repos/{owner}/{name}/issues/{q}"), what).or_else(
+                    |e| {
+                        if e.contains("404") {
+                            Ok("{}".into())
+                        } else {
+                            Err(e)
+                        }
+                    },
+                )?,
+                what,
+            )?;
+            return Ok(issue_of(&v).into_iter().collect());
+        }
+        if q.is_empty() {
+            let v = json(
+                &api_get(
+                    &token,
+                    &format!("/repos/{owner}/{name}/issues?state=open&sort=updated&per_page=100"),
+                    what,
+                )?,
+                what,
+            )?;
+            return Ok(v
+                .as_array()
+                .map(|l| l.iter().filter_map(issue_of).collect())
+                .unwrap_or_default());
+        }
+        let query = crate::git_files::encode(&format!("repo:{owner}/{name} is:issue {q}"));
+        let v = json(
+            &api_get(
+                &token,
+                &format!("/search/issues?q={query}&sort=updated&per_page=50"),
+                what,
+            )?,
+            what,
+        )?;
+        Ok(v.get("items")
+            .and_then(|x| x.as_array())
+            .map(|l| l.iter().filter_map(issue_of).collect())
+            .unwrap_or_default())
+    })
+    .await
+}
+
+/// 一個 issue 的內容與最近的留言（最多 30 則）。
+#[tauri::command]
+pub async fn github_issue(app: AppHandle, number: u64) -> Result<IssueDetail, String> {
+    let token = require_token(&app)?;
+    let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
+    crate::io::blocking_for(Duration::from_secs(60), move || {
+        let what = "讀取 issue";
+        let v = json(
+            &api_get(
+                &token,
+                &format!("/repos/{owner}/{name}/issues/{number}"),
+                what,
+            )?,
+            what,
+        )?;
+        let issue = issue_of(&v).ok_or("讀取 issue 失敗：這個編號是 Pull Request")?;
+        let comments = if issue.comments > 0 {
+            json(
+                &api_get(
+                    &token,
+                    &format!("/repos/{owner}/{name}/issues/{number}/comments?per_page=30"),
+                    what,
+                )?,
+                what,
+            )?
+        } else {
+            serde_json::Value::Null
+        };
+        Ok(IssueDetail {
+            assignees: v
+                .get("assignees")
+                .and_then(|x| x.as_array())
+                .map(|l| l.iter().map(login_of).collect())
+                .unwrap_or_default(),
+            body: v
+                .get("body")
+                .and_then(|x| x.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            comment_list: comments
+                .as_array()
+                .map(|l| {
+                    l.iter()
+                        .map(|c| IssueComment {
+                            author: c.get("user").map(login_of).unwrap_or_default(),
+                            created: c
+                                .get("created_at")
+                                .and_then(|x| x.as_str())
+                                .map(str::to_string),
+                            body: c
+                                .get("body")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or_default()
+                                .to_string(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            issue,
+        })
+    })
+    .await
+}
+
+/// 目前資料夾是不是連到 GitHub 的儲存庫（前端決定要不要顯示 Issues）。
+#[tauri::command]
+pub fn github_workspace_repo(app: AppHandle) -> Option<String> {
+    crate::git_files::workspace_github_repo(&app)
+        .ok()
+        .map(|(o, n)| format!("{o}/{n}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skips_pull_requests_in_issue_lists() {
+        let list: serde_json::Value = serde_json::from_str(
+            r#"[{"number":3,"title":"錯字","state":"open","labels":[{"name":"文件"}],"user":{"login":"a"},"comments":2,"updated_at":"2026-10-22T00:00:00Z","html_url":"https://github.com/o/r/issues/3"},
+               {"number":4,"title":"PR","pull_request":{},"html_url":"x"}]"#,
+        )
+        .unwrap();
+        let issues: Vec<Issue> = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(issue_of)
+            .collect();
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].labels, ["文件"]);
+        assert_eq!(issues[0].author, "a");
+    }
 
     #[test]
     fn identity_uses_noreply_email() {
