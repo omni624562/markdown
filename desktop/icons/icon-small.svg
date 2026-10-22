@@ -1,19 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 32 像素以下用的版本：邊界較窄、線條較粗，縮小後仍然清楚。 -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4c8df5"/>
-      <stop offset="1" stop-color="#1f4fc2"/>
+      <stop offset="0" stop-color="#4f7cf7"/>
+      <stop offset="1" stop-color="#2a3fb8"/>
     </linearGradient>
   </defs>
   <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#bg)"/>
-  <path d="M9 5 H19.5 L24 9.5 V25 A2 2 0 0 1 22 27 H9 A2 2 0 0 1 7 25 V7 A2 2 0 0 1 9 5 Z" fill="#ffffff"/>
-  <path d="M19.5 5 V8 A1.5 1.5 0 0 0 21 9.5 H24 Z" fill="#c9dbfb"/>
-  <g stroke="#2563eb" stroke-width="1.6" stroke-linecap="round">
-    <path d="M11.3 9.2 L10.8 14.2"/>
-    <path d="M14.1 9.2 L13.6 14.2"/>
-    <path d="M9.8 10.8 H15.2"/>
-    <path d="M9.6 12.8 H15"/>
-  </g>
-  <rect x="9.5" y="17.2" width="11.5" height="2" rx="1" fill="#9fb3d9"/>
-  <rect x="9.5" y="21.2" width="9" height="2" rx="1" fill="#9fb3d9"/>
+  <path d="M6.2 23.4 L25.6 20.9 L26 24.4 L6.6 26.9 Z" fill="#facc15"/>
+  <circle cx="16" cy="14.2" r="5.6" fill="none" stroke="#ffffff" stroke-width="3.6"/>
 </svg>

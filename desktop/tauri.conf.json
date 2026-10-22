@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Laiwrite",
+  "productName": "oMarker",
   "identifier": "io.github.omni624562.markdown",
   "build": {
     "frontendDist": "../web/dist",
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Laiwrite",
+        "title": "oMarker",
         "width": 1280,
         "height": 820,
         "minWidth": 480,
