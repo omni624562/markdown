@@ -3,7 +3,7 @@
  * 只比對詞語，不猜文意；同一個詞在台灣也有別的意思時標成「依文意」，不會在整份修正時自動換掉。
  */
 
-export type TermKind = "cn" | "typo";
+export type TermKind = "cn" | "typo" | "punct";
 
 export interface Term {
   /** 要找的詞。 */
@@ -233,6 +233,7 @@ function covers(text: string, from: number, to: number, e: string): boolean {
 /** 提示文字，例如「「視頻」是中國用語，台灣說「影片」」。 */
 export function termMessage(t: Term): string {
   const to = t.to.map((w) => `「${w}」`).join("或");
+  if (t.kind === "punct") return `${t.note}：改成${to}`;
   if (t.kind === "typo") return `「${t.word}」可能是錯字，應該是${to}${t.note ? `（${t.note}）` : ""}`;
   if (t.context) return `「${t.word}」${t.note ? `${t.note}，` : "在這裡如果是中國用語，"}台灣說${to}`;
   return `「${t.word}」是中國用語，台灣說${to}`;

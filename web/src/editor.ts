@@ -62,6 +62,36 @@ const theme = EditorView.theme({
   ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
   ".cm-placeholder": { color: "var(--subtle)" },
   ".cm-panels": { backgroundColor: "var(--surface)", color: "var(--fg)", borderColor: "var(--border)" },
+  // 搜尋與取代列：和介面其他地方一樣的輸入框與按鈕。
+  ".cm-panel.cm-search": { padding: "6px 34px 6px 10px", fontFamily: "var(--font-ui)", fontSize: "13px" },
+  ".cm-panel.cm-search input, .cm-panel.cm-search button, .cm-panel.cm-search label": {
+    margin: "2px 4px 2px 0",
+    verticalAlign: "middle",
+  },
+  ".cm-panel.cm-search .cm-textfield": {
+    height: "28px",
+    padding: "0 8px",
+    border: "1px solid var(--border)",
+    borderRadius: "6px",
+    background: "var(--bg)",
+    color: "var(--fg)",
+    fontSize: "13px",
+  },
+  ".cm-panel.cm-search .cm-textfield:focus": { outline: "2px solid var(--accent)", outlineOffset: "-1px" },
+  ".cm-panel.cm-search .cm-button": {
+    height: "28px",
+    padding: "0 10px",
+    border: "1px solid var(--border)",
+    borderRadius: "6px",
+    backgroundImage: "none",
+    background: "var(--bg)",
+    color: "var(--fg)",
+    fontSize: "13px",
+    cursor: "pointer",
+  },
+  ".cm-panel.cm-search .cm-button:hover": { background: "var(--active-line)" },
+  ".cm-panel.cm-search label": { display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--muted)" },
+  ".cm-panel.cm-search [name=close]": { top: "8px", right: "10px", fontSize: "18px", color: "var(--muted)", cursor: "pointer" },
   ".cm-tooltip": { backgroundColor: "var(--surface-raised)", color: "var(--fg)", border: "1px solid var(--border)", borderRadius: "8px" },
   ".cm-diagnostic-error": { borderLeftColor: "var(--danger)" },
 });
@@ -99,6 +129,37 @@ const PLACEHOLDER: Record<DocKind, string> = {
   json: '貼上或輸入 JSON，例如 {"name": "值"}',
 };
 
+/** CodeMirror 內建介面（搜尋與取代列、跳到行、摺疊）的中文字串。 */
+const PHRASES = {
+  Find: "尋找",
+  Replace: "取代",
+  next: "下一個",
+  previous: "上一個",
+  all: "全選",
+  "match case": "大小寫須相符",
+  regexp: "正規表示式",
+  "by word": "全字拼寫須相符",
+  replace: "取代",
+  "replace all": "全部取代",
+  close: "關閉",
+  "current match": "目前的符合項目",
+  "replaced $ matches": "已取代 $ 處",
+  "replaced match on line $": "已取代第 $ 行的符合項目",
+  "on line": "在第",
+  "Go to line": "跳到第幾行",
+  go: "前往",
+  "Selection deleted": "已刪除選取範圍",
+  "Control character": "控制字元",
+  "folded code": "摺疊的內容",
+  unfold: "展開",
+  "Fold line": "摺疊",
+  "Unfold line": "展開",
+  "Folded lines": "已摺疊",
+  "Unfolded lines": "已展開",
+  Completions: "自動完成",
+  to: "到",
+};
+
 export class Editor {
   readonly view: EditorView;
   #language = new Compartment();
@@ -123,6 +184,7 @@ export class Editor {
       highlightActiveLine(),
       highlightSelectionMatches(),
       EditorView.lineWrapping,
+      EditorState.phrases.of(PHRASES),
       EditorView.contentAttributes.of({ "aria-label": "文件內容", spellcheck: "false" }),
       cjkWords(),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),

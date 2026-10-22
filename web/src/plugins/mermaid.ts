@@ -16,7 +16,9 @@ async function loadMermaid(): Promise<Mermaid> {
   const mermaid = await mermaidPromise;
   const theme = isDark() ? "dark" : "default";
   if (initializedTheme !== theme) {
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme, fontFamily: "inherit" });
+    // Mermaid 12 預設用 ELK 排版（要另外下載約 1.4 MB）；改用輕量的 dagre，
+    // 圖裡寫了 `layout: elk` 時才會載入 ELK。
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme, fontFamily: "inherit", layout: "dagre" });
     initializedTheme = theme;
   }
   return mermaid;

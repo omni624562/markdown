@@ -3,7 +3,7 @@ import "./styles.css";
 
 import { undo } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
-import { EditorView } from "@codemirror/view";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
 import init, {
   type Heading,
   type RenderResult,
@@ -86,6 +86,9 @@ import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
 import { openLightbox } from "./ui/lightbox.ts";
+import { type Convert, conversionChanges, loadConverter, looksSimplified } from "./s2t.ts";
+import { dateCompletion, dateFormats } from "./date-complete.ts";
+import { type SlashItem, slashCompletion } from "./slash-complete.ts";
 import { setupWindowControls } from "./ui/window-controls.ts";
 import { askPdfOptions } from "./ui/pdf-dialog.ts";
 import { PAPERS, PRINT_ROOT_CSS, type PdfOptions, coverHtml, pageCss, pageLayout, shadowCss } from "./pdf-print.ts";
@@ -297,6 +300,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   ],
   extra: [
     review.extension,
+    EditorView.updateListener.of((u) => onSimplifiedPaste(u)),
     autoSymbols(() => kind !== "json" && settings.value.autoSymbols),
     proofread({
       enabled: () => kind !== "json" && settings.value.termCheck,
@@ -306,22 +310,28 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
         toast(`不再提示「${word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。`);
       },
     }),
-    linkCompletion({
-      enabled: () => kind === "markdown",
-      docPath: () => fileHandle?.path ?? null,
-      files: async () => {
-        if (!desktop || !workspaceRoot) return [];
-        fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
-        return fileListCache.map((f) => f.path);
+    linkCompletion(
+      {
+        enabled: () => kind === "markdown",
+        docPath: () => fileHandle?.path ?? null,
+        files: async () => {
+          if (!desktop || !workspaceRoot) return [];
+          fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
+          return fileListCache.map((f) => f.path);
+        },
+        headings: () => preview.result?.headings ?? [],
+        fileHeadings: headingsOfFile,
+        wikiPath: async (target) => {
+          if (!desktop || !workspaceRoot) return null;
+          fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
+          return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
+        },
       },
-      headings: () => preview.result?.headings ?? [],
-      fileHeadings: headingsOfFile,
-      wikiPath: async (target) => {
-        if (!desktop || !workspaceRoot) return null;
-        fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
-        return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
-      },
-    }),
+      [
+        (ctx) => (kind === "json" ? null : dateCompletion(ctx)),
+        (ctx) => (kind === "markdown" ? slashSource(ctx) : null),
+      ],
+    ),
     EditorView.domEventHandlers({
       keydown(e) {
         // Ctrl+Shift+V：接下來的貼上一律貼純文字（交給編輯器原本的處理）。
@@ -1820,6 +1830,7 @@ async function closeTab(id: string): Promise<void> {
     }
   }
   if (pendingDraft?.id === doc.id) pendingDraft = null;
+  rememberClosed(doc);
   const i = docs.indexOf(doc);
   docs.splice(i, 1);
   dropDraft(doc.id);
@@ -1835,6 +1846,48 @@ async function closeTab(id: string): Promise<void> {
     persistSession();
     renderTabs();
   }
+}
+
+/** 最近關閉的分頁（Ctrl+Shift+T 重新開啟）。沒存的內容也記下來，不小心按了「不儲存」還找得回來。 */
+interface ClosedTab {
+  name: string;
+  kind: DocKind;
+  path: string | null;
+  text: string;
+  dirty: boolean;
+}
+const closedTabs: ClosedTab[] = [];
+
+function rememberClosed(doc: Doc): void {
+  const text = (doc === active ? editor.text : loadDraft(doc.id)) ?? "";
+  const path = doc === active ? (fileHandle?.path ?? null) : doc.path;
+  if (!path && !text.trim()) return; // 空白的新文件不用記
+  closedTabs.push({ name: doc === active ? fileName : doc.name, kind: doc.kind, path, text, dirty: doc.dirty });
+  if (closedTabs.length > 20) closedTabs.shift();
+}
+
+async function reopenClosedTab(): Promise<void> {
+  const t = closedTabs.pop();
+  if (!t) {
+    toast("沒有剛關閉的分頁。");
+    return;
+  }
+  if (t.path && desktop) {
+    try {
+      await openPath(t.path);
+      if (t.dirty && editor.text !== t.text) {
+        editor.replaceAll(t.text, { userEvent: "input.restore", isolate: true });
+        toast("已重新開啟，並還原關閉時沒有存的內容（可以按 Ctrl+Z 回到檔案原本的內容）。", { duration: 8000 });
+      }
+      return;
+    } catch {
+      // 檔案已經不在了：改用關閉時的內容開一個新分頁。
+    }
+  }
+  const doc = makeDoc({ name: t.name, kind: t.kind });
+  saveDraft(doc.id, t.text);
+  addTab(doc);
+  if (t.path) toast(`找不到「${t.name}」，已用關閉時的內容開成新分頁。`, { duration: 8000 });
 }
 
 function cycleTab(step: number): void {
@@ -2064,6 +2117,14 @@ commands.register(
     },
   },
   {
+    id: "reopen-closed-tab",
+    title: "重新開啟關閉的分頁",
+    group: "檔案",
+    icon: "history",
+    keys: "Mod-Shift-t",
+    run: () => reopenClosedTab(),
+  },
+  {
     id: "new-from-template",
     title: "從範本新增…",
     group: "檔案",
@@ -2257,11 +2318,19 @@ commands.register(
   },
   {
     id: "fix-terms",
-    title: "修正兩國用語與錯字（整份文件）",
+    title: "修正兩國用語、錯字與標點（整份文件）",
     group: "編輯",
     icon: "spell-check",
     when: () => kind !== "json" && view !== "preview",
     run: () => fixTerms(),
+  },
+  {
+    id: "s2t",
+    title: "簡體轉繁體（台灣用語）",
+    group: "編輯",
+    icon: "languages",
+    when: () => kind !== "json" && view !== "preview",
+    run: () => convertToTraditional(),
   },
   {
     id: "clear-term-ignore",
@@ -2926,6 +2995,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "-",
   { label: "匯出", icon: "download", items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich"] },
   "fix-terms",
+  "s2t",
   "slideshow",
   "-",
   { label: "AI 與終端機", icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
@@ -3070,6 +3140,42 @@ const insertMenuUi = floatingMenu("insert-anchor", [
   "insert-symbol",
 ]);
 const openInsertMenu = (at: DOMRect) => insertMenuUi.open(at);
+
+/** 斜線指令的項目：插入選單的內容，加上篩選用的英文與別名。 */
+const SLASH_KEYWORDS: Record<string, string> = {
+  h1: "h1 heading 大標題",
+  h2: "h2 heading",
+  h3: "h3 heading",
+  bullet: "ul list bullet 清單",
+  ordered: "ol list number 數字 編號",
+  task: "todo task checkbox 待辦 勾選",
+  quote: "quote blockquote 引言",
+  table: "table 表",
+  "code-block": "code 程式",
+  "math-block": "math latex 數學 公式",
+  "mermaid-block": "mermaid diagram flow 圖",
+  "insert-image": "image img picture 照片",
+  hr: "hr line divider 分隔",
+  "insert-toc": "toc 目錄",
+  "insert-symbol": "symbol 符號 特殊",
+  "insert-today": "date today 日期 今天",
+};
+function slashItems(): SlashItem[] {
+  return Object.entries(SLASH_KEYWORDS).flatMap(([id, keywords]) => {
+    if (id === "insert-today") return [{ id, title: "今天的日期", keywords }];
+    const cmd = commands.get(id);
+    if (!cmd || !(cmd.when?.() ?? true)) return [];
+    const keys = cmd.keys ?? cmd.shownKeys;
+    return [{ id, title: cmd.title, keywords, keys: keys ? formatKeys(keys) : undefined }];
+  });
+}
+const slashSource = slashCompletion(slashItems, (id) => {
+  if (id === "insert-today") {
+    editor.view.dispatch(editor.view.state.replaceSelection(dateFormats(new Date())[0].text), { userEvent: "input" });
+    return;
+  }
+  void commands.run(id).catch(reportError);
+});
 
 /** 浮出格式按鈕的「更多」：上標、下標、清除格式、符號。 */
 const moreFormatMenu = floatingMenu("format-more-anchor", ["superscript", "subscript", "-", "clear-format", "insert-symbol"]);
@@ -3569,12 +3675,63 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
 }
 
 /** 整份文件的兩國用語與錯字：不需要判斷文意的直接換掉，其他的留著波浪底線。 */
+/** 簡體轉繁體：有選取時只轉選取範圍，否則轉整份文件。程式碼與網址不轉。 */
+async function convertToTraditional(ranges?: readonly { from: number; to: number }[]): Promise<void> {
+  const doc = active;
+  const loading = window.setTimeout(() => toast("正在載入簡繁轉換詞庫…"), 300);
+  let convert: Convert;
+  try {
+    convert = await loadConverter();
+  } finally {
+    clearTimeout(loading);
+  }
+  if (active !== doc) return;
+  const state = editor.view.state;
+  const targets = ranges ?? state.selection.ranges.filter((r) => !r.empty);
+  const list = targets.length ? targets : [{ from: 0, to: state.doc.length }];
+  const changes = list.flatMap((r) => conversionChanges(state.sliceDoc(r.from, r.to), convert, r.from));
+  if (!changes.length) {
+    toast("沒有需要轉換的簡體字。", { tone: "success" });
+    return;
+  }
+  editor.view.dispatch({ changes, userEvent: "input.s2t" });
+  toast(`已轉成繁體（${targets.length ? "選取範圍" : "整份文件"}，${changes.length} 處；可以按 Ctrl+Z 復原）。`, {
+    tone: "success",
+  });
+}
+
+/** 貼上的內容看起來是簡體時，提示可以轉成繁體。 */
+function onSimplifiedPaste(u: ViewUpdate): void {
+  if (kind === "json" || !u.transactions.some((tr) => tr.isUserEvent("input.paste"))) return;
+  const ranges: { from: number; to: number }[] = [];
+  let inserted = "";
+  u.changes.iterChanges((_fa, _ta, from, to, text) => {
+    ranges.push({ from, to });
+    inserted += text.toString();
+  });
+  if (!looksSimplified(inserted)) return;
+  const doc = active;
+  toast("貼上的內容看起來是簡體中文。", {
+    duration: 10000,
+    action: {
+      label: "轉成繁體",
+      run: () => {
+        // 貼上的內容還在原處就只轉它；之後又改過內容時改為轉換整份文件（或選取範圍）。
+        const state = editor.view.state;
+        const intact = active === doc && ranges.every((r) => r.to <= state.doc.length) &&
+          ranges.map((r) => state.sliceDoc(r.from, r.to)).join("") === inserted;
+        void convertToTraditional(intact ? ranges : undefined).catch(reportError);
+      },
+    },
+  });
+}
+
 function fixTerms(): void {
   const matches = scanDocument(editor.view.state, new Set(settings.value.termIgnore));
   const fixes = sureFixes(matches);
   const left = matches.length - fixes.length;
   if (fixes.length) editor.view.dispatch({ changes: fixes, userEvent: "input.proofread" });
-  if (!matches.length) toast("沒有找到中國用語或常見錯字。", { tone: "success" });
+  if (!matches.length) toast("沒有找到中國用語、常見錯字或半形標點。", { tone: "success" });
   else {
     toast(
       (fixes.length ? `已修正 ${fixes.length} 處（可以按 Ctrl+Z 復原）。` : "") +

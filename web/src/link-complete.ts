@@ -4,7 +4,13 @@
  * 輸入 `[[` 時列出資料夾中的文件名稱，`[[文件#` 列出那份文件的標題。
  * 標題錨點直接用 md-core 產生的 id，和預覽中的一致。
  */
-import { autocompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import {
+  autocompletion,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult,
+  type CompletionSource,
+} from "@codemirror/autocomplete";
 import type { Extension } from "@codemirror/state";
 import { dirname, relativePath, resolvePath } from "./paths.ts";
 
@@ -142,9 +148,9 @@ async function complete(ctx: CompletionContext, src: LinkSources): Promise<Compl
   return { from: ctx.pos - dest.length, options, validFor: VALID };
 }
 
-export function linkCompletion(src: LinkSources): Extension {
+export function linkCompletion(src: LinkSources, extra: CompletionSource[] = []): Extension {
   return autocompletion({
-    override: [(ctx) => complete(ctx, src)],
+    override: [(ctx) => complete(ctx, src), ...extra],
     icons: false,
     maxRenderedOptions: 50,
   });

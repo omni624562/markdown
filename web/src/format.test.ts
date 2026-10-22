@@ -37,6 +37,9 @@ test("toggleLineStyle 套用、切換與取代區塊標記", () => {
   assert.equal(run(toggleLineStyle("ordered"), "«a\nb\nc»"), "1. «a\n2. b\n3. c»");
   assert.equal(run(toggleLineStyle("task"), "- [x] 完|成"), "完|成");
   assert.equal(run(toggleLineStyle("bullet"), "1. 第|一"), "- 第|一");
+  // 游標在行首（空白行）時跑到新標記後面
+  assert.equal(run(toggleLineStyle("task"), "|"), "- [ ] |");
+  assert.equal(run(toggleLineStyle("h1"), "|標題"), "# |標題");
 });
 
 test("insertBlock 前後補空行並選取預留文字", () => {
