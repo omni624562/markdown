@@ -50,3 +50,11 @@ test("不認得的 AI 工具退回預設值", () => {
   assert.equal(settings.aiTool, "claude");
   assert.equal(problems, 1);
 });
+
+test("自訂字型名稱會去掉危險字元，型別錯誤時退回預設值", () => {
+  const { settings, problems } = sanitize({ docFont: "custom", docFontCustom: ' "霞鶩文楷"; ', codeFont: 3 });
+  assert.equal(settings.docFont, "custom");
+  assert.equal(settings.docFontCustom, "霞鶩文楷");
+  assert.equal(settings.codeFont, DEFAULTS.codeFont);
+  assert.equal(problems, 1);
+});

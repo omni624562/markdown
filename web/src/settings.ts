@@ -4,6 +4,7 @@
  * 不會因為清除 WebView 快取而遺失。
  */
 import { desktop } from "./desktop.ts";
+import { cleanFontName } from "./fonts.ts";
 import * as storage from "./storage.ts";
 import { TEMPLATE_LIMITS, type Template } from "./templates.ts";
 
@@ -50,8 +51,12 @@ export interface Settings {
   typewriterMode: boolean;
   /** 預覽與匯出的文字欄寬。 */
   previewWidth: "narrow" | "medium" | "wide";
-  /** 即時預覽、預覽與 PDF 的內文字型（原始碼檢視固定用等寬字型，表格才對得齊）。 */
-  docFont: "sans" | "serif" | "kai" | "mono";
+  /** 即時預覽、預覽與 PDF 的內文字型（原始碼檢視用程式碼字型，表格才對得齊）。 */
+  docFont: "sans" | "serif" | "kai" | "mono" | "custom";
+  /** `docFont` 為 `"custom"` 時使用的字型名稱。 */
+  docFontCustom: string;
+  /** 原始碼檢視與程式碼區塊的字型；空字串表示用內建的等寬字型。 */
+  codeFont: string;
   /** 即時預覽、預覽與 PDF 的行距。 */
   docLineHeight: "compact" | "normal" | "relaxed";
   /** 用 KaTeX 顯示 `$…$` 數學公式。 */
@@ -107,6 +112,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   typewriterMode: false,
   previewWidth: "medium",
   docFont: "sans",
+  docFontCustom: "",
+  codeFont: "",
   docLineHeight: "normal",
   math: true,
   mermaid: true,
@@ -226,7 +233,13 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   }
   if ("docFont" in input) {
     const f = input.docFont;
-    if (f === "sans" || f === "serif" || f === "kai" || f === "mono") out.docFont = f;
+    if (f === "sans" || f === "serif" || f === "kai" || f === "mono" || f === "custom") out.docFont = f;
+    else problems++;
+  }
+  for (const key of ["docFontCustom", "codeFont"] as const) {
+    if (!(key in input)) continue;
+    const name = input[key];
+    if (typeof name === "string") out[key] = cleanFontName(name);
     else problems++;
   }
   if ("docLineHeight" in input) {

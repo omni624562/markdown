@@ -859,6 +859,9 @@ pub async fn dav_read(path: String, dav: State<'_, Dav>) -> Result<OpenedFile, S
     let (bytes, etag) =
         crate::io::blocking(move || session.client.get(&rel).map_err(|e| e.message("無法讀取")))
             .await?;
+    if let Some(why) = crate::files::not_text_reason(&bytes) {
+        return Err(format!("「{}」{why}", name_of(&path)));
+    }
     let (text, _, encoding) = decode(&bytes);
     if let Some(etag) = etag {
         dav.etags.lock().unwrap().insert(path.clone(), etag);

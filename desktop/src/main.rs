@@ -14,6 +14,7 @@ mod ai;
 mod dav;
 mod doc_index;
 mod files;
+mod fonts;
 mod git;
 mod github;
 mod history;
@@ -247,6 +248,7 @@ fn main() {
             files::save_file,
             files::export_binary,
             files::import_docx,
+            fonts::list_fonts,
             pdf::pick_pdf_path,
             pdf::print_to_pdf,
             settings::load_settings,

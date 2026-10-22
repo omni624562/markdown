@@ -5,6 +5,7 @@ import {
   type Settings,
   type SettingsStore,
 } from "../settings.ts";
+import { fontStack, installedFonts } from "../fonts.ts";
 import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
 
@@ -27,6 +28,7 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["serif", "明體"],
     ["kai", "楷體"],
     ["mono", "等寬"],
+    ["custom", "自訂…"],
   ],
   docLineHeight: [
     ["compact", "緊湊"],
@@ -88,7 +90,13 @@ const LOOK_GROUPS: Group[] = [
   {
     title: "主題與字型",
     fields: [
-      { key: "docFont", label: "內文字型", hint: "即時預覽、預覽與 PDF 使用；原始碼檢視固定用等寬字型" },
+      { key: "docFont", label: "內文字型", hint: "即時預覽、預覽與 PDF 使用" },
+      {
+        key: "docFontCustom",
+        label: "自訂內文字型",
+        hint: "輸入或從清單挑選電腦上的字型；這個字型缺字時，用預設字型補上",
+      },
+      { key: "codeFont", label: "程式碼字型", hint: "原始碼檢視與程式碼區塊；留空使用內建的等寬字型" },
       { key: "docLineHeight", label: "行距" },
       { key: "previewWidth", label: "文字欄寬", hint: "預覽與匯出的版面寬度" },
     ],
@@ -579,6 +587,7 @@ export class SettingsDialog {
       input.addEventListener("change", () => this.#store.update({ [key]: input.checked }));
       return input;
     }
+    if (key === "docFontCustom" || key === "codeFont") return this.#fontInput(key);
     if (key === "editorFontSize") {
       const input = document.createElement("input");
       input.type = "number";
@@ -598,19 +607,62 @@ export class SettingsDialog {
     return sel;
   }
 
+  /** 字型名稱：可以直接輸入，也可以從電腦上安裝的字型挑選；輸入框用該字型顯示當作預覽。 */
+  #fontInput(key: "docFontCustom" | "codeFont"): HTMLInputElement {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "font-input";
+    input.dataset.key = key;
+    input.placeholder = key === "codeFont" ? "內建等寬字型" : "例如：微軟正黑體";
+    input.spellcheck = false;
+    input.autocomplete = "off";
+    input.setAttribute("list", "font-choices");
+    input.addEventListener("focus", () => this.#loadFonts(), { once: true });
+    input.addEventListener("input", () => (input.style.fontFamily = fontPreview(input.value)));
+    input.addEventListener("change", () => this.#store.update({ [key]: input.value }));
+    return input;
+  }
+
+  /** 第一次點字型欄位時才讀取安裝的字型（桌面版要掃描字型資料夾）。 */
+  #loadFonts(): void {
+    if (this.#dialog.querySelector("#font-choices")) return;
+    const list = document.createElement("datalist");
+    list.id = "font-choices";
+    this.#dialog.append(list);
+    installedFonts()
+      .then((fonts) => {
+        for (const f of fonts) {
+          const label = [f.label, f.mono ? "等寬" : ""].filter(Boolean).join("・");
+          list.append(new Option(label, f.name));
+        }
+      })
+      .catch(console.error);
+  }
+
   /** 讓畫面上的控制項反映目前的設定值。 */
   #sync(): void {
     const v = this.#store.value;
     for (const el of this.#dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-key]")) {
       const value = v[el.dataset.key as keyof Settings];
       if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = value as boolean;
-      else el.value = String(value);
+      else if (el.classList.contains("font-input")) {
+        // 正在輸入時不要蓋掉。
+        if (el !== document.activeElement) el.value = String(value);
+        el.style.fontFamily = fontPreview(el.value);
+      } else el.value = String(value);
       if (AI_DEPENDENT.includes(el.dataset.key as keyof Settings)) el.disabled = !v.aiEnabled;
     }
+    const customFont = this.#dialog.querySelector('[data-key="docFontCustom"]')?.closest<HTMLElement>(".settings-row");
+    if (customFont) customFont.hidden = v.docFont !== "custom";
     for (const el of this.#dialog.querySelectorAll<HTMLButtonElement>("[data-ai-dependent]")) el.disabled = !v.aiEnabled;
     // AI 總開關關閉時，相關的卡片一起變淡。
     for (const el of this.#dialog.querySelectorAll<HTMLElement>("[data-ai-group]")) el.classList.toggle("is-off", !v.aiEnabled);
     // 正在輸入時不要重畫，避免游標跳走。
     if (!this.#actions?.contains(document.activeElement)) this.#renderActions();
   }
+}
+
+/** 字型欄位用輸入的字型顯示；名稱不完整時退回介面字型。 */
+function fontPreview(name: string): string {
+  return fontStack(name, "var(--font-ui)");
 }

@@ -8,7 +8,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 
 use grep_regex::RegexMatcherBuilder;
-use grep_searcher::{sinks::UTF8, SearcherBuilder};
+use grep_searcher::{sinks::UTF8, BinaryDetection, SearcherBuilder};
 use ignore::WalkBuilder;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
@@ -17,8 +17,23 @@ use crate::files::{display_name, path_string, KnownFiles};
 use crate::trust::Trust;
 use crate::watch::Watcher;
 
-/// 編輯器能開啟的副檔名。
-const DOC_EXTENSIONS: &[&str] = &["md", "markdown", "txt", "text", "log", "json"];
+/// 編輯器能開啟的副檔名（檔案樹、Ctrl+P、搜尋只列出這些）。
+#[rustfmt::skip]
+pub const DOC_EXTENSIONS: &[&str] = &[
+    // 文件
+    "md", "markdown", "mdown", "mkd", "txt", "text", "log",
+    // 資料與設定
+    "json", "jsonc", "yaml", "yml", "toml", "ini", "cfg", "conf", "properties", "env", "csv", "tsv", "xml",
+    // 網頁
+    "html", "htm", "css", "scss", "sass", "less", "js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "vue",
+    "svelte",
+    // 程式碼
+    "py", "rb", "php", "java", "kt", "kts", "scala", "groovy", "gradle", "go", "rs", "c", "h", "cpp", "cc",
+    "cxx", "hpp", "hh", "cs", "fs", "vb", "swift", "m", "mm", "dart", "lua", "pl", "r", "jl", "sql",
+    "graphql", "proto", "sh", "bash", "zsh", "fish", "ps1", "psm1", "bat", "cmd", "tex", "bib",
+];
+/// 沒有副檔名、但也是文字檔的常見檔名（比對時不分大小寫）。
+const DOC_FILE_NAMES: &[&str] = &["dockerfile", "makefile", "license", "readme", "changelog"];
 /// Ctrl+P 與搜尋最多處理的檔案數，避免誤開整個磁碟時卡住。
 const MAX_FILES: usize = 20_000;
 const MAX_MATCHES: usize = 2_000;
@@ -48,9 +63,13 @@ impl Workspace {
 }
 
 pub fn is_doc(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| DOC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(e) => DOC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()),
+        None => path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| DOC_FILE_NAMES.contains(&n.to_ascii_lowercase().as_str())),
+    }
 }
 
 /// 解析符號連結後的實際位置（檔案可以還不存在：往上找到第一個存在的資料夾解析，再接上其餘部分）。
@@ -327,6 +346,9 @@ pub async fn peek_text(app: AppHandle, path: String) -> Result<String, String> {
             return Err("檔案太大".into());
         }
         let bytes = fs::read(&real).map_err(|e| crate::io::describe(&e, "無法讀取"))?;
+        if crate::files::not_text_reason(&bytes).is_some() {
+            return Err("不是文字檔".into());
+        }
         Ok(crate::files::decode(&bytes).0)
     })
     .await
@@ -621,7 +643,11 @@ pub fn search_dir(
         .fixed_strings(!regex)
         .build(query)
         .map_err(|e| format!("搜尋條件無效：{e}"))?;
-    let mut searcher = SearcherBuilder::new().line_number(true).build();
+    // 副檔名對但內容是二進位的檔案（例如損壞或改錯副檔名）直接略過。
+    let mut searcher = SearcherBuilder::new()
+        .line_number(true)
+        .binary_detection(BinaryDetection::quit(0))
+        .build();
     let mut files = Vec::new();
     let mut total = 0;
     let mut truncated = false;
@@ -741,6 +767,10 @@ pub fn replace_dir(
                 continue;
             }
         };
+        // 內容不是文字（例如副檔名改錯的二進位檔）時不動它，避免取代後把檔案弄壞。
+        if crate::files::not_text_reason(&bytes).is_some() {
+            continue;
+        }
         let Ok(text) = std::str::from_utf8(&bytes) else {
             if re.is_match(&String::from_utf8_lossy(&bytes)) {
                 result.failed.push(format!(
@@ -826,6 +856,43 @@ mod tests {
         fs::write(dir.join("略過.md"), "季度報告").unwrap();
         fs::write(dir.join(".gitignore"), "略過.md\n").unwrap();
         dir
+    }
+
+    #[test]
+    fn recognizes_text_files_by_extension_or_name() {
+        for name in [
+            "a.md",
+            "設定.YAML",
+            "資料.csv",
+            "index.html",
+            "main.rs",
+            "app.tsx",
+            "Dockerfile",
+        ] {
+            assert!(is_doc(Path::new(name)), "{name}");
+        }
+        for name in [
+            "圖片.png",
+            "封裝.zip",
+            "程式.exe",
+            "報告.docx",
+            "沒有副檔名",
+        ] {
+            assert!(!is_doc(Path::new(name)), "{name}");
+        }
+    }
+
+    #[test]
+    fn search_skips_binary_files_with_text_extensions() {
+        let dir = std::env::temp_dir().join(format!("md-ws-binary-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("壞掉.txt"), "\0\0\0季度報告").unwrap();
+        fs::write(dir.join("正常.txt"), "季度報告").unwrap();
+        let found = search_dir(&dir, "季度報告", false, false).unwrap();
+        let names: Vec<_> = found.files.iter().map(|f| f.rel.as_str()).collect();
+        assert_eq!(names, ["正常.txt"]);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
