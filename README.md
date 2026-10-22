@@ -1,6 +1,6 @@
-# Markdown 編輯器
+# Laiwrite 來寫
 
-左邊編輯、右邊預覽，也可以直接在編輯區看到排版結果的網頁編輯器，支援 **Markdown、純文字（.txt）與 JSON**。解析核心用 Rust 撰寫並編譯成 WebAssembly，介面則用 TypeScript，可以自由接上 JS 生態系的套件。
+名字取自台語的「來寫！」（lâi siá）。左邊編輯、右邊預覽，也可以直接在編輯區看到排版結果的網頁編輯器，支援 **Markdown、純文字（.txt）與 JSON**。解析核心用 Rust 撰寫並編譯成 WebAssembly，介面則用 TypeScript，可以自由接上 JS 生態系的套件。
 
 ## 功能
 

@@ -5,7 +5,7 @@
  * - 在 issue 或 PR 留言提到 @claude：Claude 照指示處理，必要時開 PR。
  * 使用 anthropics/claude-code-action@v1。
  */
-export const CLAUDE_WORKFLOW = `# Claude Code 自動校對與助理（由 Markdown 編輯器建立）
+export const CLAUDE_WORKFLOW = `# Claude Code 自動校對與助理（由 Laiwrite 建立）
 #
 # 設定一次：
 #   在 GitHub 儲存庫的 Settings → Secrets and variables → Actions 新增 CLAUDE_CODE_OAUTH_TOKEN
