@@ -70,7 +70,7 @@ export class Updater {
         storage.remove("update-skipped");
         this.#offer(latest);
       } else {
-        toast(`已經是最新版本（第 ${current.build} 版）。`, { tone: "success" });
+        toast(`已經是最新版本（${versionLabel(current)}）。`, { tone: "success" });
       }
     } catch (e) {
       toast(`無法檢查更新：${e instanceof Error ? e.message : e}`, { tone: "error", duration: 8000 });
@@ -79,7 +79,7 @@ export class Updater {
 
   #offer(m: UpdateManifest): void {
     const size = `${(m.size / 1024 / 1024).toFixed(1)} MB`;
-    toast(`有新版本（第 ${m.build} 版，${size}）${m.notes ? `：${m.notes}` : ""}`, {
+    toast(`有新版本 ${m.version}（第 ${m.build} 版，${size}）${m.notes ? `：${m.notes}` : ""}`, {
       duration: 30000,
       action: { label: "下載並更新", run: () => void this.#install() },
     });

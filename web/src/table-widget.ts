@@ -78,10 +78,18 @@ export class EditableTableWidget extends WidgetType {
       return setCell(m, Number(editing.dataset.row), Number(editing.dataset.col), editing.innerText);
     };
 
+    /**
+     * 表格還在文件原本的位置。編輯儲存格時切換分頁或開新文件，離開儲存格的時候文件已經換掉了，
+     * 這時不能再寫回去（位置對不上）。
+     */
+    const inPlace = (from: number) =>
+      from >= 0 && view.state.sliceDoc(from, from + this.markdown.length) === this.markdown;
+
     const commit = (next: TableModel, focus: Cell | null) => {
       const md = serializeTable(next);
       const text = this.format(md) ?? md;
       const from = tableFrom();
+      if (!inPlace(from)) return;
       if (text === this.markdown) {
         if (focus && at(focus)) start(at(focus)!);
         return;
@@ -217,6 +225,7 @@ export class EditableTableWidget extends WidgetType {
       moving = true;
       stop(false);
       moving = false;
+      if (!inPlace(from)) return;
       const changed = text !== this.markdown;
       const length = view.state.doc.length - this.markdown.length + text.length;
       view.dispatch({
