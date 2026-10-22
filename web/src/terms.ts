@@ -2,6 +2,7 @@
  * 兩國用語與錯別字檢查：找出中國用語（建議台灣的說法）與台灣常見的錯別字。
  * 只比對詞語，不猜文意；同一個詞在台灣也有別的意思時標成「依文意」，不會在整份修正時自動換掉。
  */
+import { rangeChecker } from "./ranges.ts";
 
 export type TermKind = "cn" | "typo" | "punct";
 
@@ -208,13 +209,14 @@ export function findTerms(
   ignore: ReadonlySet<string> = new Set(),
 ): TermMatch[] {
   const out: TermMatch[] = [];
+  const skipped = rangeChecker([...skip]);
   pattern.lastIndex = 0;
   for (let m = pattern.exec(text); m; m = pattern.exec(text)) {
     const from = m.index;
     const to = from + m[0].length;
     const term = byWord.get(m[0])!;
     if (ignore.has(term.word)) continue;
-    if (skip.some(([a, b]) => from < b && to > a)) continue;
+    if (skipped(from, to)) continue;
     if (term.except.some((e) => covers(text, from, to, e))) continue;
     out.push({ from, to, term });
   }

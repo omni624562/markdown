@@ -16,7 +16,8 @@
         "minWidth": 480,
         "minHeight": 400,
         "center": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "create": false
       }
     ],
     "security": {
@@ -24,13 +25,16 @@
         "default-src": "'self'",
         "script-src": "'self' 'wasm-unsafe-eval'",
         "style-src": "'self' 'unsafe-inline'",
-        "img-src": "'self' data: blob: https: http: asset: http://asset.localhost",
+        "img-src": "'self' data: blob: https: http: mdimg: http://mdimg.localhost",
         "font-src": "'self' data:",
-        "connect-src": "'self' ipc: http://ipc.localhost"
+        "connect-src": "'self' ipc: http://ipc.localhost mdimg: http://mdimg.localhost",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'none'",
+        "frame-src": "'none'"
       },
       "assetProtocol": {
-        "enable": true,
-        "scope": []
+        "enable": false
       }
     }
   },

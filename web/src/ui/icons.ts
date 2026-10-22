@@ -18,6 +18,7 @@ import {
   Superscript,
   Subscript,
   RemoveFormatting,
+  ShieldCheck,
   Omega,
   Scissors,
   ClipboardType,
@@ -101,6 +102,7 @@ import {
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  "shield-check": ShieldCheck,
   "spell-check": SpellCheck,
   presentation: Presentation,
   tag: Tag,

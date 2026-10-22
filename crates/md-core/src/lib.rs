@@ -48,6 +48,9 @@ pub struct RenderOptions {
     pub sourcepos: bool,
     /// （Markdown）把單一換行視為 `<br>`。
     pub hardbreaks: bool,
+    /// 只要大綱與統計、不需要 HTML 時（例如預覽沒有顯示），省下產生 HTML 的時間。
+    /// JSON 仍會解析以回報語法錯誤。
+    pub skip_html: bool,
 }
 
 /// 文件中的一個標題，用於大綱（目錄）。
@@ -102,6 +105,14 @@ pub fn render(text: &str, opts: &RenderOptions) -> Rendered {
 }
 
 fn render_text(text: &str, opts: &RenderOptions) -> Rendered {
+    if opts.skip_html {
+        return Rendered {
+            html: String::new(),
+            headings: Vec::new(),
+            stats: count_text(text),
+            error: None,
+        };
+    }
     let mut html = String::from("<pre class=\"plain-text\"");
     if opts.sourcepos && !text.is_empty() {
         // 整份文字視為單一區塊，捲動同步會在其中依行數比例內插。
@@ -290,6 +301,31 @@ mod tests {
         assert!(render("段落", &opts)
             .html
             .contains("data-sourcepos=\"1:1-1:6\""));
+    }
+
+    #[test]
+    fn skip_html_keeps_outline_and_stats() {
+        let text = "# 標題\n\n內文 hello\n";
+        let full = render(text, &RenderOptions::default());
+        let fast = render(
+            text,
+            &RenderOptions {
+                skip_html: true,
+                ..Default::default()
+            },
+        );
+        assert!(fast.html.is_empty() && !full.html.is_empty());
+        assert_eq!(fast.headings, full.headings);
+        assert_eq!(fast.stats, full.stats);
+        let json = render(
+            "{",
+            &RenderOptions {
+                kind: DocKind::Json,
+                skip_html: true,
+                ..Default::default()
+            },
+        );
+        assert!(json.error.is_some());
     }
 
     #[test]

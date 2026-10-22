@@ -3,6 +3,7 @@
  * 只看緊接在中文字後面的標點，數字（3.5、10:00）、英文句子、網址與程式碼都不會動。
  */
 import type { Term, TermMatch } from "./terms.ts";
+import { rangeChecker } from "./ranges.ts";
 
 const CJK = "\\u3400-\\u9fff\\uf900-\\ufaff";
 const FULL: Record<string, string> = { ",": "，", ".": "。", ";": "；", ":": "：", "!": "！", "?": "？" };
@@ -28,7 +29,7 @@ export function findPunctuation(
   ignore: ReadonlySet<string> = new Set(),
 ): TermMatch[] {
   const out: TermMatch[] = [];
-  const skipped = (from: number, to: number) => skip.some(([a, b]) => from < b && to > a);
+  const skipped = rangeChecker([...skip]);
   for (const m of text.matchAll(MARK)) {
     const mark = m[1];
     const from = m.index;

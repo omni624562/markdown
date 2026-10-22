@@ -42,6 +42,15 @@ test("localImagePath 只處理本機相對路徑", () => {
   assert.equal(localImagePath("/a.png", "C:\\筆記"), null);
 });
 
+test("localImagePath 不讓文件連到其他網路共用資料夾（會送出 Windows 登入資訊）", () => {
+  assert.equal(localImagePath("%5C%5Cattacker.example@SSL%5Cs%5Ca.png", "C:\\筆記"), null);
+  assert.equal(localImagePath("\\\\203.0.113.5\\s\\a.png", "C:\\筆記"), null);
+  assert.equal(localImagePath("\\\\nas\\其他\\a.png", "\\\\nas\\共用\\筆記"), null);
+  assert.equal(localImagePath("\\\\NAS\\共用\\圖\\a.png", "\\\\nas\\共用\\筆記"), "\\\\NAS\\共用\\圖\\a.png");
+  assert.equal(localImagePath("a.png", "\\\\nas\\共用\\筆記"), "\\\\nas\\共用\\筆記\\a.png");
+  assert.equal(localImagePath("../../../evil/s/a.png", "\\\\nas\\共用\\筆記"), null);
+});
+
 test("markdownUrl 在需要時加上角括號", () => {
   assert.equal(markdownUrl("assets/週報-20261020.png"), "assets/週報-20261020.png");
   assert.equal(markdownUrl("assets/my note (1).png"), "<assets/my note (1).png>");

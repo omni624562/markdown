@@ -56,6 +56,7 @@ import { localImagesPlugin } from "./plugins/local-images.ts";
 import { mathPlugin, renderTex } from "./plugins/math.ts";
 import { livePreview } from "./live-preview.ts";
 import { mermaidPlugin } from "./plugins/mermaid.ts";
+import { blockRemoteImages, blockRemoteImagesInHtml } from "./remote-images.ts";
 import { Preview } from "./preview.ts";
 import sample from "./sample.md?raw";
 import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
@@ -134,12 +135,14 @@ const status = {
 };
 
 hydrateIcons();
-await init();
-const { store: settings, recovered: settingsRecovered } = await SettingsStore.load();
+// 同時載入核心（WebAssembly）與設定。
+const [, { store: settings, recovered: settingsRecovered }] = await Promise.all([init(), SettingsStore.load()]);
 
 // ---- 狀態 ---------------------------------------------------------------
 
 const narrowQuery = matchMedia("(max-width: 720px)");
+/** 資料夾有變動時搜尋面板沒有顯示：下次打開時重新搜尋。 */
+let searchStale = false;
 
 /** FNV-1a，只用來比較內容是否相同。 */
 function hash(text: string): string {
@@ -222,14 +225,37 @@ let editorTopLine = 1;
 
 // ---- 編輯器與預覽 -------------------------------------------------------
 
+/**
+ * WebDAV 遠端圖片（下載後的 data: 網址）。預覽與即時預覽共用，捲出畫面再捲回來不會重新下載。
+ * 失敗的不快取，下次再試。
+ */
+const davImages = new Map<string, Promise<string>>();
+function davImageCached(path: string): Promise<string> {
+  let p = davImages.get(path);
+  if (!p) {
+    if (davImages.size >= 200) davImages.delete(davImages.keys().next().value!);
+    p = desktop!.davImage(path);
+    p.catch(() => davImages.delete(path));
+    davImages.set(path, p);
+  }
+  return p;
+}
+
 const preview = new Preview(previewEl, [
   highlightPlugin(),
   mathPlugin(() => settings.value.math),
   mermaidPlugin(() => settings.value.mermaid),
   docLinksPlugin({ wikiExists: (target) => wikiExists(target) }),
   ...(desktop
-    ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, desktop.davImage)]
+    ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, (p) => davImageCached(p))]
     : []),
+  {
+    name: "remote-images",
+    apply() {},
+    prepare(content) {
+      if (settings.value.blockRemoteImages) blockRemoteImages(content);
+    },
+  },
 ]);
 
 /** 表格排版：關閉自動對齊時只移動游標，不重排。 */
@@ -270,14 +296,18 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   typewriterMode: settings.value.typewriterMode,
   live: livePreview({
     imageUrl(src) {
-      if (/^(https?:|data:image\/)/i.test(src)) return src;
+      if (/^https?:/i.test(src)) return settings.value.blockRemoteImages ? null : src;
+      if (/^data:image\//i.test(src)) return src;
       const docPath = fileHandle?.path;
       if (!desktop || !docPath) return null;
       const path = localImagePath(src, dirname(docPath));
       if (!path) return null;
-      return isRemote(path) ? desktop.davImage(path) : desktop.fileUrl(path);
+      return isRemote(path) ? davImageCached(path) : desktop.fileUrl(path);
     },
-    renderTable: (markdown) => renderMarkdown(markdown, { kind: "markdown" }).html,
+    renderTable: (markdown) => {
+      const html = renderMarkdown(markdown, { kind: "markdown" }).html;
+      return settings.value.blockRemoteImages ? blockRemoteImagesInHtml(html) : html;
+    },
     formatTable: (markdown) => tableFormatter(markdown),
     renderMath: renderTex,
     mathEnabled: () => settings.value.math,
@@ -392,19 +422,32 @@ function updateCursor(v: EditorView): void {
   status.cursor.hidden = liveApplied && !selected;
 }
 
+/** 超過這個長度的文件，預覽改成停止輸入一下子再更新，打字不會被預覽拖慢。 */
+const LARGE_DOC = 150_000;
 let renderQueued = false;
+let renderTimer: number | undefined;
 function scheduleRender(): void {
   if (renderQueued) return;
   renderQueued = true;
-  requestAnimationFrame(() => {
+  const run = () => {
     renderQueued = false;
     renderNow();
-  });
+  };
+  if (previewVisible() && editor.view.state.doc.length > LARGE_DOC) {
+    clearTimeout(renderTimer);
+    renderTimer = window.setTimeout(run, 250);
+  } else {
+    requestAnimationFrame(run);
+  }
 }
 
-function renderNow(): void {
+/**
+ * 更新預覽、大綱與統計。預覽沒有顯示時（例如即時預覽、原始碼檢視）只算大綱與統計，
+ * 切換到預覽時才補畫；`full` 強制產生預覽畫面（簡報、複製 HTML 等要用到）。
+ */
+function renderNow(full = false): void {
   const text = editor.text;
-  const result = preview.update(text, kind);
+  const result = preview.update(text, kind, !full && !previewVisible());
   blocks = null;
   renderError(result);
   renderEmptyState(text);
@@ -464,12 +507,17 @@ function renderEmptyState(text: string): void {
   actions.querySelector("button")?.classList.add("btn-primary");
 }
 
+let outlineKey = "";
 function renderOutline(headings: Heading[]): void {
   outlineEmpty.hidden = headings.length > 0;
   outlineEmpty.textContent =
     kind === "markdown" ? "文件中還沒有標題。用 # 開頭的行會出現在這裡。" : "只有 Markdown 文件的標題會顯示在大綱中。";
   outlineHeadings = headings;
   const movable = kind === "markdown";
+  // 標題沒有變（大多數按鍵都是這樣）就不重建，大文件可能有上千個標題。
+  const key = `${movable}\n${headings.map((h) => `${h.level} ${h.line} ${h.id} ${h.text}`).join("\n")}`;
+  if (key === outlineKey && outlineList.childElementCount === headings.length) return;
+  outlineKey = key;
   // 重新產生大綱時保留鍵盤焦點（例如用 Alt+↑／↓ 連續搬移章節）。
   const focused = document.activeElement as HTMLElement | null;
   const focusedIndex = focused && outlineList.contains(focused) ? Number(focused.dataset.index) : -1;
@@ -515,8 +563,11 @@ async function headingsOfFile(path: string): Promise<HeadingRef[]> {
     if (!desktop) return [];
     text = await desktop.peekText(path);
   }
-  const headings = renderMarkdown(text, { kind: "markdown" }).headings;
-  if (!open) headingCache.set(path, { at: Date.now(), headings });
+  const headings = renderMarkdown(text, { kind: "markdown", skipHtml: true }).headings;
+  if (!open) {
+    if (headingCache.size >= 200) headingCache.delete(headingCache.keys().next().value!);
+    headingCache.set(path, { at: Date.now(), headings });
+  }
   return headings;
 }
 
@@ -579,23 +630,31 @@ previewEl.addEventListener("click", (e) => {
     openTag(tag.dataset.tag!);
     return;
   }
-  const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[href]");
+  // 流程圖裡的連結是 SVG 的 <a xlink:href>，`a[href]` 選不到，所以任何 <a> 都要攔下來。
+  const link = (e.target as Element).closest?.("a");
   if (!link || e.defaultPrevented) return;
-  if (link.hasAttribute("data-wikilink")) {
-    e.preventDefault();
-    void openWiki(wikiTarget(link)).catch(reportError);
-    return;
-  }
   // 不讓整個編輯器視窗被導到別的網頁。
   e.preventDefault();
-  void followLink(link.getAttribute("href") ?? "").catch(reportError);
+  if (link.hasAttribute("data-wikilink")) {
+    void openWiki(wikiTarget(link as HTMLAnchorElement)).catch(reportError);
+    return;
+  }
+  const href = link.getAttribute("href") ?? link.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+  if (href) void followLink(href).catch(reportError);
 });
 
 // ---- 文件互連：[[文件]] -----------------------------------------------------------
 
-/** 資料夾中的 Markdown 文件。 */
+const markdownLists = new WeakMap<readonly FileItem[], FileRef[]>();
+
+/** 資料夾中的 Markdown 文件（同一份清單只過濾一次，`resolveWiki` 的索引也能沿用）。 */
 function markdownFiles(list: readonly FileItem[]): FileRef[] {
-  return list.filter((f) => /\.(md|markdown)$/i.test(f.path));
+  let md = markdownLists.get(list);
+  if (!md) {
+    md = list.filter((f) => /\.(md|markdown)$/i.test(f.path));
+    markdownLists.set(list, md);
+  }
+  return md;
 }
 
 let fileListLoading: Promise<void> | null = null;
@@ -732,7 +791,7 @@ async function replaceDocText(path: string, expected: string, text: string): Pro
 // ---- 列印／匯出 PDF（E11） ------------------------------------------------------
 
 /**
- * 用和「匯出 HTML」相同的內容（公式、流程圖都已轉好）建立一個看不見的 iframe 來列印，
+ * 用和「匯出 HTML」相同的內容（公式、流程圖都已轉好）放進主視窗看不見的列印區（Shadow DOM）來列印，
  * 在列印對話框中選「另存為 PDF」就能存成 PDF。一律用淺色主題列印。
  */
 const PDF_DEFAULTS: Omit<PdfOptions, "header"> = { pageNumbers: true, cover: false, subtitle: "", paper: "A4" };
@@ -1022,7 +1081,18 @@ function syncPreview(): void {
 new ResizeObserver(() => {
   blocks = null;
 }).observe(previewEl);
-previewScroller.addEventListener("scroll", () => view === "preview" && updateActiveHeading(), { passive: true });
+let headingFrame = 0;
+previewScroller.addEventListener(
+  "scroll",
+  () => {
+    if (view !== "preview" || headingFrame) return;
+    headingFrame = requestAnimationFrame(() => {
+      headingFrame = 0;
+      updateActiveHeading();
+    });
+  },
+  { passive: true },
+);
 
 // ---- 自動儲存草稿 -------------------------------------------------------
 
@@ -1214,10 +1284,14 @@ const gitPanel =
           const tab = $("#side-tab-git");
           tab.hidden = !status;
           const count = status?.changes.length ?? 0;
+          const untrusted = !!status && !status.trusted;
           const badge = $("#git-badge");
-          badge.hidden = !count;
-          badge.textContent = count > 99 ? "99+" : String(count);
-          tab.setAttribute("aria-label", count ? `原始碼控制（Git），${count} 個變更` : "原始碼控制（Git）");
+          badge.hidden = !count && !untrusted;
+          badge.textContent = untrusted ? "?" : count > 99 ? "99+" : String(count);
+          tab.setAttribute(
+            "aria-label",
+            untrusted ? "原始碼控制（Git）：尚未信任這個資料夾" : count ? `原始碼控制（Git），${count} 個變更` : "原始碼控制（Git）",
+          );
           tab.title = tab.getAttribute("aria-label")!;
           if (!status && sidePanel === "git") showPanel("files", false);
         },
@@ -1453,6 +1527,10 @@ function showPanel(panel: SidePanel, reveal = true): void {
   }
   if (reveal && !outlineShown) setOutline(true);
   if (panel === "outline") updateActiveHeading();
+  if (panel === "search" && searchStale) {
+    searchStale = false;
+    searchPanel?.rerun();
+  }
   refreshIndexPanels();
 }
 
@@ -2297,6 +2375,7 @@ commands.register(
     group: "檔案",
     icon: "copy",
     async run() {
+      if (preview.stale) renderNow(true);
       const result = preview.result;
       if (!result || result.error) {
         toast("文件有格式錯誤，修正後才能複製。", { tone: "error" });
@@ -2873,7 +2952,7 @@ commands.register(
       title,
       group: "檔案",
       icon: iconName,
-      when: () => !!gitPanel?.status?.repo,
+      when: () => !!gitPanel?.status?.repo && gitPanel.status.trusted,
       run: () => void run(),
     }),
   ),
@@ -3249,7 +3328,7 @@ let slideshow: Slideshow | null = null;
 
 /** 簡報模式：用預覽的內容（公式、流程圖都畫好了）切成一頁一頁播放。 */
 async function startSlideshow(fromCursor: boolean): Promise<void> {
-  renderNow();
+  renderNow(true);
   // 等流程圖等非同步的外掛畫完。
   await new Promise((r) => setTimeout(r, 120));
   const slides = splitSlides(previewEl);
@@ -3388,14 +3467,14 @@ function refreshToc(): void {
   if (kind !== "markdown") return;
   const text = editor.text;
   if (!text.includes(TOC_START)) return;
-  const next = updateToc(text, renderMarkdown(text, { kind: "markdown" }).headings);
+  const next = updateToc(text, renderMarkdown(text, { kind: "markdown", skipHtml: true }).headings);
   if (next !== null) editor.replaceAll(next, { userEvent: "input.toc" });
 }
 
 /** 插入目錄；已經有目錄時改成更新。 */
 function insertToc(): void {
   const text = editor.text;
-  const headings = renderMarkdown(text, { kind: "markdown" }).headings;
+  const headings = renderMarkdown(text, { kind: "markdown", skipHtml: true }).headings;
   if (text.includes(TOC_START)) {
     const next = updateToc(text, headings);
     if (next !== null) editor.replaceAll(next, { userEvent: "input.toc", isolate: true });
@@ -3623,12 +3702,16 @@ function applyLayout(): void {
   }
   blocks = null;
   if (effective !== "preview") editor.view.requestMeasure();
+  // 視窗變寬而出現預覽時（分割檢視），補畫之前略過的預覽。
+  if (preview.stale && previewVisible()) scheduleRender();
 }
 
 function setView(mode: ViewMode): void {
   view = mode;
   storage.save("view", mode);
   applyLayout();
+  // 預覽之前沒有顯示、內容是舊的：現在補畫。
+  if (preview.stale && previewVisible()) renderNow();
   renderEmptyState(editor.text);
   syncPreview();
   updateActiveHeading();
@@ -3702,7 +3785,7 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
     buildFormatBar();
     editor.view.requestMeasure();
   }
-  if (changed.includes("math") || changed.includes("mermaid")) {
+  if (changed.includes("math") || changed.includes("mermaid") || changed.includes("blockRemoteImages")) {
     preview.clear();
     renderNow();
   }
@@ -4008,7 +4091,9 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
       indexStale = true;
       refreshIndexPanels(300);
       void fileTree?.refresh(dirs).then(() => gitPanel?.refreshSoon());
-      searchPanel?.rerun();
+      // 搜尋面板沒顯示時先記下來，打開時再重新搜尋（每次存檔都會走到這裡）。
+      if (outlineShown && sidePanel === "search") searchPanel?.rerun();
+      else searchStale = true;
     }),
     d.onOpenTarget((t) => {
       if (t.kind === "file") openOpenedFile(fromDesktop(t));

@@ -7,6 +7,7 @@ import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
 import type { Desktop, TermProgram } from "../desktop.ts";
+import { sanitizeForTerminal } from "../ai-text.ts";
 import * as storage from "../storage.ts";
 import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
@@ -93,6 +94,8 @@ export class TerminalPanel {
   #early = new Map<number, string[]>();
   /** 還沒對應到分頁就結束的程式（編號 → 結束代碼）。 */
   #exitedEarly = new Map<number, number | null>();
+  /** 已經關閉的終端機：之後才到的輸出與結束事件直接丟掉，不要一直留在記憶體裡。 */
+  #closed = new Set<number>();
   #resizeTimer = 0;
   #onLayout: () => void;
 
@@ -136,13 +139,17 @@ export class TerminalPanel {
       if (s) {
         s.term.write(data);
         s.lastOutput = Date.now();
-      } else this.#early.set(id, [...(this.#early.get(id) ?? []), data]);
+      } else if (!this.#closed.has(id)) {
+        const early = this.#early.get(id);
+        if (early) early.push(data);
+        else this.#early.set(id, [data]);
+      }
     });
     void d.onTermAttached(({ id, label }) => void this.#attach(id, label));
     void d.onTermExit(({ id, code }) => {
       const s = this.#sessions.find((x) => x.id === id);
       if (s) this.#markExited(s, code);
-      else this.#exitedEarly.set(id, code);
+      else if (!this.#closed.delete(id)) this.#exitedEarly.set(id, code);
     });
   }
 
@@ -220,7 +227,7 @@ export class TerminalPanel {
       this.#onLayout();
       this.#activate(target);
     }
-    await this.#d.termWrite(target.id, `\x1b[200~${text}\x1b[201~`);
+    await this.#d.termWrite(target.id, `\x1b[200~${sanitizeForTerminal(text)}\x1b[201~`);
     target.term.focus();
     return true;
   }
@@ -257,6 +264,12 @@ export class TerminalPanel {
       // 文字和底色太接近時（例如淺色背景上的黃字）自動調深或調淺，維持好讀的對比。
       minimumContrastRatio: 4.5,
       theme: this.#theme(),
+      // 程式輸出的超連結（OSC 8）：和一般網址一樣用預設瀏覽器開，不在編輯器裡開新視窗。
+      linkHandler: {
+        activate: (e, uri) => {
+          if (e.ctrlKey || e.metaKey) void this.#d.openExternal(uri).catch(() => toast("無法開啟這個網址。"));
+        },
+      },
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -311,7 +324,11 @@ export class TerminalPanel {
   }
 
   close(session: Session): void {
-    if (!session.exited) void this.#d.termClose(session.id).catch(() => {});
+    if (!session.exited) {
+      this.#closed.add(session.id);
+      void this.#d.termClose(session.id).catch(() => {});
+    }
+    this.#early.delete(session.id);
     session.term.dispose();
     session.host.remove();
     const i = this.#sessions.indexOf(session);

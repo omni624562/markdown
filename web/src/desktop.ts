@@ -169,6 +169,8 @@ export interface GitStatus {
   available: boolean;
   /** 開啟的資料夾是不是 Git 儲存庫。 */
   repo: boolean;
+  /** 使用者是否信任這個儲存庫的 Git 設定；信任前不會執行任何 git 指令。 */
+  trusted: boolean;
   branch: { name: string; upstream: string | null; ahead: number; behind: number } | null;
   changes: GitChange[];
 }
@@ -391,6 +393,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
     aiCancel: (id: number) => core.invoke<void>("ai_cancel", { id }),
 
     gitStatus: () => core.invoke<GitStatus>("git_status"),
+    gitTrust: () => core.invoke<void>("git_trust"),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
     gitPull: () => core.invoke<string>("git_pull"),
     gitPush: () => core.invoke<string>("git_push"),
@@ -403,8 +406,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     onUpdateProgress: (fn: (p: { downloaded: number; total: number }) => void) =>
       event.listen<{ downloaded: number; total: number }>("update-progress", (e) => fn(e.payload)),
 
-    /** 本機檔案在預覽中可以使用的網址。 */
-    fileUrl: (path: string) => core.convertFileSrc(path),
+    /** 本機圖片在預覽中可以使用的網址（原生端的 mdimg 協定，只提供工作區與已開啟檔案資料夾內的圖片）。 */
+    fileUrl: (path: string) => core.convertFileSrc(path, "mdimg"),
     onFileChanged: (fn: (p: { path: string; text: string }) => void) =>
       event.listen<{ path: string; text: string }>("file-changed", (e) => fn(e.payload)),
     /** 又開了一次 exe（例如在檔案總管雙擊另一個檔案）：在原本的視窗開啟。 */

@@ -96,21 +96,36 @@ impl Trust {
         self.0.lock().unwrap().folders.iter().any(|p| p == path)
     }
 
-    /// 檔案在最近開啟清單中，或位於最近開啟的資料夾內。
+    /// 檔案在最近開啟清單中，或實際位於最近開啟的資料夾內。
+    ///
+    /// 資料夾用解析符號連結後的實際路徑判斷（和工作區的 `resolve_inside` 一致）：
+    /// 資料夾裡名叫 `notes.md`、實際指向 `~/.ssh/id_rsa` 的符號連結不算在資料夾內。
+    /// 需要讀取磁碟，請在背景執行緒呼叫。
     pub fn allows(&self, path: &Path) -> bool {
-        let r = self.0.lock().unwrap();
-        allowed(&r, path)
+        let r = self.snapshot();
+        allowed(&r, path, |p| crate::workspace::real_path(p).ok())
     }
 }
 
-fn allowed(r: &Recent, path: &Path) -> bool {
+fn allowed(r: &Recent, path: &Path, real: impl Fn(&Path) -> Option<PathBuf>) -> bool {
     if path
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))
     {
         return false;
     }
-    r.files.iter().any(|p| p == path) || r.folders.iter().any(|f| path.starts_with(f))
+    // 使用者在對話框選過的檔案本身。
+    if r.files.iter().any(|p| p == path) {
+        return true;
+    }
+    let mut candidates = r.folders.iter().filter(|f| path.starts_with(f)).peekable();
+    if candidates.peek().is_none() {
+        return false;
+    }
+    let Some(target) = real(path) else {
+        return false;
+    };
+    candidates.any(|f| real(f).is_some_and(|f| target.starts_with(f)))
 }
 
 #[cfg(test)]
@@ -133,9 +148,40 @@ mod tests {
             folders: vec!["/筆記".into()],
             files: vec!["/其他/單一.md".into()],
         };
-        assert!(allowed(&r, Path::new("/筆記/子/a.md")));
-        assert!(allowed(&r, Path::new("/其他/單一.md")));
-        assert!(!allowed(&r, Path::new("/其他/別的.md")));
-        assert!(!allowed(&r, Path::new("/筆記/../etc/passwd")));
+        let same = |p: &Path| Some(p.to_path_buf());
+        assert!(allowed(&r, Path::new("/筆記/子/a.md"), same));
+        assert!(allowed(&r, Path::new("/其他/單一.md"), same));
+        assert!(!allowed(&r, Path::new("/其他/別的.md"), same));
+        assert!(!allowed(&r, Path::new("/筆記/../etc/passwd"), same));
+        // 資料夾內的符號連結實際指向資料夾外：不允許。
+        let link = |p: &Path| {
+            Some(if p == Path::new("/筆記/notes.md") {
+                PathBuf::from("/home/me/.ssh/id_rsa")
+            } else {
+                p.to_path_buf()
+            })
+        };
+        assert!(!allowed(&r, Path::new("/筆記/notes.md"), link));
+        assert!(allowed(&r, Path::new("/筆記/a.md"), link));
+        // 讀不到實際位置（例如網路斷線）時不允許。
+        assert!(!allowed(&r, Path::new("/筆記/a.md"), |_| None));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_inside_trusted_folders_are_checked() {
+        let dir = std::env::temp_dir().join(format!("md-trust-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("筆記")).unwrap();
+        fs::write(dir.join("祕密"), "x").unwrap();
+        fs::write(dir.join("筆記/a.md"), "a").unwrap();
+        std::os::unix::fs::symlink(dir.join("祕密"), dir.join("筆記/notes.md")).unwrap();
+        let t = Trust(Mutex::new(Recent {
+            folders: vec![dir.join("筆記")],
+            files: vec![],
+        }));
+        assert!(t.allows(&dir.join("筆記/a.md")));
+        assert!(!t.allows(&dir.join("筆記/notes.md")));
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

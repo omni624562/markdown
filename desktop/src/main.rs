@@ -16,8 +16,10 @@ mod doc_index;
 mod files;
 mod git;
 mod history;
+mod image_protocol;
 mod images;
 mod io;
+mod navigation;
 mod pdf;
 mod settings;
 mod trust;
@@ -36,17 +38,29 @@ use trust::Trust;
 use watch::Watcher;
 use workspace::{FolderInfo, Workspace};
 
-/// 讓預覽可以顯示資料夾內的本機圖片（Tauri asset 協定）。
-pub fn allow_assets_in(app: &AppHandle, dir: &Path) {
-    let _ = app.asset_protocol_scope().allow_directory(dir, true);
-}
-
-/// 檔案被開啟或存檔後：允許預覽顯示同資料夾的圖片，並監看外部修改。
+/// 檔案被開啟或存檔後：允許預覽顯示同資料夾（含子資料夾）的圖片（`mdimg:` 協定），並監看外部修改。
 pub fn track_file(app: &AppHandle, path: &Path) {
     if let Some(dir) = path.parent() {
-        allow_assets_in(app, dir);
+        app.state::<image_protocol::ImageRoots>().allow(dir);
     }
     app.state::<Watcher>().watch_file(app, path);
+}
+
+/// 建立主視窗。視窗的設定寫在 tauri.conf.json（`create: false`，不自動建立），
+/// 在這裡建立是為了加上導覽限制：只能停留在 app 自己的頁面，也不能開新視窗（見 `navigation`）。
+fn create_main_window(app: &tauri::App) -> tauri::Result<WebviewWindow> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == "main")
+        .cloned()
+        .unwrap_or_default();
+    tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+        .on_navigation(navigation::is_app_url)
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .build()
 }
 
 /// 啟動時從命令列帶入的檔案或資料夾。
@@ -199,8 +213,17 @@ fn main() {
         .manage(ai::mcp::Mcp::default())
         .manage(ai::run::Runs::default())
         .manage(dav::Dav::default())
+        .manage(pdf::PdfTarget::default())
+        .manage(image_protocol::ImageRoots::default())
+        .register_asynchronous_uri_scheme_protocol(
+            image_protocol::SCHEME,
+            |ctx, request, responder| {
+                image_protocol::handle(ctx.app_handle().clone(), request, responder)
+            },
+        )
         .setup(|app| {
             app.manage(Trust::load(app.handle()));
+            create_main_window(app)?;
             if CUSTOM_TITLE_BAR {
                 if let Some(window) = app.get_webview_window("main") {
                     // 拿掉標題列後仍保留視窗陰影與可拖曳調整大小的邊框。
@@ -261,6 +284,7 @@ fn main() {
             dav::dav_peek,
             dav::dav_probe,
             git::git_status,
+            git::git_trust,
             git::git_commit,
             git::git_pull,
             git::git_push,

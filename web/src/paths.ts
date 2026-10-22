@@ -83,11 +83,28 @@ export function localImagePath(src: string, docDir: string): string | null {
   } catch {
     decoded = src;
   }
-  if (/^[a-zA-Z]:[\\/]/.test(decoded) || decoded.startsWith("\\\\")) return decoded;
+  if (/^[a-zA-Z]:[\\/]/.test(decoded)) return decoded;
+  // 網路路徑（\\伺服器\共用\…）：光是讀取就會連到那台伺服器並送出 Windows 登入資訊，
+  // 所以只有文件本身就在同一個網路共用資料夾時才允許。
+  if (decoded.startsWith("\\\\")) return sameShare(decoded, docDir) ? decoded : null;
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(src)) return null;
   if (decoded.startsWith("/")) return null; // 網站根目錄的路徑，對本機文件沒有意義
   // 去掉查詢字串與錨點。
-  return resolvePath(docDir, decoded.replace(/[?#].*$/, ""));
+  const path = resolvePath(docDir, decoded.replace(/[?#].*$/, ""));
+  // 從網路共用資料夾用「..」往上跳到別的共用資料夾也不行。
+  return path.startsWith("\\\\") && !sameShare(path, docDir) ? null : path;
+}
+
+/** `\\伺服器\共用` 部分（不分大小寫）；不是網路路徑時回傳 null。 */
+function shareOf(path: string): string | null {
+  const m = /^[\\/]{2}([^\\/]+)[\\/]+([^\\/]+)/.exec(path);
+  return m ? `${m[1]}\\${m[2]}`.toLowerCase() : null;
+}
+
+/** 兩個路徑在同一個網路共用資料夾。 */
+export function sameShare(a: string, b: string): boolean {
+  const share = shareOf(a);
+  return share !== null && share === shareOf(b);
 }
 
 /** Markdown 連結網址：含空白或括號時用 `<…>` 包起來。 */

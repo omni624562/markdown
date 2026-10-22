@@ -153,7 +153,9 @@ impl Terminals {
             },
         );
 
-        let out_app = app.clone();
+        // 讀取與送出分成兩個執行緒：大量輸出時（例如建置記錄），送出前把已經讀到的合併成一次，
+        // 不用每讀一次就送一個事件給前端。打字時的少量輸出仍然立刻送出。
+        let (tx, rx) = std::sync::mpsc::channel::<Chunk>();
         std::thread::spawn(move || {
             let mut buf = [0u8; 16 * 1024];
             let mut pending = Vec::new();
@@ -163,20 +165,27 @@ impl Terminals {
                     Ok(n) => {
                         pending.extend_from_slice(&buf[..n]);
                         let data = take_utf8(&mut pending);
-                        if !data.is_empty() {
-                            if let Some(log) = out_app
-                                .state::<Terminals>()
-                                .logs
-                                .lock()
-                                .unwrap()
-                                .get_mut(&id)
-                            {
-                                log.push(&data);
-                            }
-                            let _ = out_app.emit("term-output", Output { id, data });
+                        let full = n == buf.len();
+                        if !data.is_empty() && tx.send(Chunk { data, full }).is_err() {
+                            break;
                         }
                     }
                 }
+            }
+        });
+        let out_app = app.clone();
+        std::thread::spawn(move || {
+            while let Some(data) = next_batch(&rx) {
+                if let Some(log) = out_app
+                    .state::<Terminals>()
+                    .logs
+                    .lock()
+                    .unwrap()
+                    .get_mut(&id)
+                {
+                    log.push(&data);
+                }
+                let _ = out_app.emit("term-output", Output { id, data });
             }
         });
 
@@ -219,6 +228,11 @@ fn shorten(s: &str, max: usize) -> String {
     }
 }
 
+/// Windows 內建的 PowerShell（完整路徑，免得執行到放在本程式旁邊的同名程式）。
+fn windows_powershell() -> PathBuf {
+    crate::io::system_root().join(r"System32\WindowsPowerShell\v1.0\powershell.exe")
+}
+
 /// 用預設的殼層執行一行指令（Windows 是 PowerShell）。
 /// 環境變數的名稱與值是否能放進 Windows 建立程式時的環境區塊。
 /// 名稱是空的（例如登錄檔「使用者環境變數」裡被設了值的「(預設值)」）、名稱中間有 `=`，
@@ -246,7 +260,7 @@ fn command_line(command: &str) -> CommandBuilder {
     if cfg!(windows) {
         let mut cmd = match which::which("pwsh") {
             Ok(p) => CommandBuilder::new(p),
-            Err(_) => CommandBuilder::new("powershell.exe"),
+            Err(_) => CommandBuilder::new(windows_powershell()),
         };
         cmd.args(["-NoLogo", "-NoProfile", "-Command", command]);
         cmd
@@ -300,6 +314,48 @@ pub fn strip_ansi(s: &str) -> String {
     out
 }
 
+/// 讀到的一段輸出。`full` 表示讀取的緩衝區滿了（後面很可能還有）。
+struct Chunk {
+    data: String,
+    full: bool,
+}
+
+/// 大量輸出時最多等多久把後續的輸出合併成一次送出。
+const BATCH_WAIT: std::time::Duration = std::time::Duration::from_millis(8);
+/// 一次最多送出多少（位元組）。
+const BATCH_LIMIT: usize = 256 * 1024;
+
+/// 等下一段輸出，並合併已經在排隊的輸出。只有在確實是大量輸出時（排隊中還有，或緩衝區讀滿）
+/// 才再多等最多 [`BATCH_WAIT`]；打字的回應不會被延遲。讀取結束時回傳 `None`。
+fn next_batch(rx: &std::sync::mpsc::Receiver<Chunk>) -> Option<String> {
+    use std::sync::mpsc::RecvTimeoutError;
+    let first = rx.recv().ok()?;
+    let mut data = first.data;
+    let mut burst = first.full;
+    let deadline = std::time::Instant::now() + BATCH_WAIT;
+    while data.len() < BATCH_LIMIT {
+        let next = match rx.try_recv() {
+            Ok(c) => Ok(c),
+            Err(_) if burst => {
+                let left = deadline.saturating_duration_since(std::time::Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                rx.recv_timeout(left)
+            }
+            Err(_) => break,
+        };
+        match next {
+            Ok(c) => {
+                data.push_str(&c.data);
+                burst = true;
+            }
+            Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    Some(data)
+}
+
 #[derive(Serialize, Clone)]
 struct Output {
     id: u32,
@@ -349,7 +405,7 @@ fn default_shell() -> CommandBuilder {
                 cmd
             }
             Err(_) => {
-                let mut cmd = CommandBuilder::new("powershell.exe");
+                let mut cmd = CommandBuilder::new(windows_powershell());
                 cmd.arg("-NoLogo");
                 cmd
             }
@@ -392,20 +448,25 @@ fn tool_command(app: &AppHandle, tool: Tool) -> Result<CommandBuilder, String> {
 }
 
 /// 開啟一個終端機，回傳編號。工作目錄是目前開啟的資料夾（沒有的話是使用者家目錄）。
+/// 搜尋程式與啟動子程序可能要一點時間，在背景執行緒進行，不會卡住視窗。
 #[tauri::command]
-pub fn term_open(
+pub async fn term_open(
     app: AppHandle,
     program: Program,
     cols: u16,
     rows: u16,
-    terms: State<'_, Terminals>,
 ) -> Result<u32, String> {
-    let (cmd, label) = match program {
-        Program::Shell => (default_shell(), "終端機"),
-        Program::Claude => (tool_command(&app, Tool::Claude)?, "Claude Code"),
-        Program::Codex => (tool_command(&app, Tool::Codex)?, "Codex"),
-    };
-    terms.spawn(&app, cmd, cols, rows, label.into())
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cmd, label) = match program {
+            Program::Shell => (default_shell(), "終端機"),
+            Program::Claude => (tool_command(&app, Tool::Claude)?, "Claude Code"),
+            Program::Codex => (tool_command(&app, Tool::Codex)?, "Codex"),
+        };
+        app.state::<Terminals>()
+            .spawn(&app, cmd, cols, rows, label.into())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -537,6 +598,33 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(50));
         };
         assert!(status.success());
+    }
+
+    #[test]
+    fn batches_only_bursts() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let chunk = |s: &str, full| Chunk {
+            data: s.into(),
+            full,
+        };
+        // 打字：一次一小段，立刻送出，不合併。
+        tx.send(chunk("a", false)).unwrap();
+        assert_eq!(next_batch(&rx).as_deref(), Some("a"));
+        // 已經在排隊的輸出合併成一次。
+        tx.send(chunk("b", false)).unwrap();
+        tx.send(chunk("c", false)).unwrap();
+        assert_eq!(next_batch(&rx).as_deref(), Some("bc"));
+        // 緩衝區讀滿：稍等後續的輸出。
+        tx.send(chunk("d", true)).unwrap();
+        let tx2 = tx.clone();
+        let later = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            tx2.send(chunk("e", false)).unwrap();
+        });
+        later.join().unwrap();
+        assert_eq!(next_batch(&rx).as_deref(), Some("de"));
+        drop(tx);
+        assert_eq!(next_batch(&rx), None);
     }
 
     #[test]

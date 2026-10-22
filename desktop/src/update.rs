@@ -4,6 +4,9 @@
 //! 附上 `version.json`（流水號、SHA-256、下載網址）。這裡比對流水號，有新版時下載、
 //! 核對 SHA-256，再用新檔取代正在執行的 exe（Windows 允許改名執行中的檔案），重新啟動後生效。
 //!
+//! `version.json` 另外有 Ed25519 簽章（`scripts/sign-update.mjs`，私鑰只在 GitHub Secrets），
+//! 用內建的公鑰驗證。只有 SHA-256 時，能改 Release 檔案的人可以連檢查碼一起換掉；有簽章就做不到。
+//!
 //! 自己編譯的版本沒有流水號，不會檢查更新，避免把開發中的版本換掉。
 
 use std::io::{Read, Write};
@@ -19,6 +22,8 @@ const MANIFEST_URL: &str =
 /// 只接受從這個網址開頭下載執行檔。
 const DOWNLOAD_PREFIX: &str = "https://github.com/omni624562/markdown/releases/download/";
 const MAX_SIZE: u64 = 200 * 1024 * 1024;
+/// 驗證更新簽章的公鑰（Ed25519，base64）。對應的私鑰是 GitHub Actions secret `UPDATE_SIGNING_KEY`。
+const UPDATE_PUBLIC_KEY: &str = "jrj/RFTEfLoSMPa3Bi+GMm6qhgOTyx7DbeGvNdsg08E=";
 
 /// 這個執行檔的建置流水號（CI 建置時才有）。
 fn build_number() -> Option<u64> {
@@ -65,10 +70,42 @@ pub struct Manifest {
     url: String,
     sha256: String,
     size: u64,
+    /// `signed_message` 的 Ed25519 簽章（base64）。
+    #[serde(default)]
+    signature: String,
 }
 
 impl Manifest {
+    /// 簽章的內容；要和 `scripts/sign-update.mjs` 的 `signedMessage` 完全一致。
+    fn signed_message(&self) -> String {
+        format!(
+            "md-editor-update/v1\n{}\n{}\n{}\n{}\n{}",
+            self.build,
+            self.version,
+            self.url,
+            self.sha256.to_ascii_lowercase(),
+            self.size
+        )
+    }
+
+    fn verify_signature(&self, public_key: &str) -> Result<(), String> {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let key = b64.decode(public_key).map_err(|e| e.to_string())?;
+        let sig = b64
+            .decode(self.signature.trim())
+            .map_err(|_| "更新資訊沒有正確的簽章，已取消更新".to_string())?;
+        ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
+            .verify(self.signed_message().as_bytes(), &sig)
+            .map_err(|_| "更新資訊的簽章不符，可能被竄改，已取消更新".to_string())
+    }
+
     fn validate(&self) -> Result<(), String> {
+        self.check_fields()?;
+        self.verify_signature(UPDATE_PUBLIC_KEY)
+    }
+
+    fn check_fields(&self) -> Result<(), String> {
         if !self.url.starts_with(DOWNLOAD_PREFIX) {
             return Err("更新資訊中的下載網址不正確".into());
         }
@@ -289,12 +326,13 @@ mod tests {
                 .into(),
             sha256: "a".repeat(64),
             size: 1234,
+            signature: String::new(),
         }
     }
 
     #[test]
     fn accepts_a_valid_manifest() {
-        assert!(manifest().validate().is_ok());
+        assert!(manifest().check_fields().is_ok());
         let json = serde_json::to_string(&manifest()).unwrap();
         assert_eq!(serde_json::from_str::<Manifest>(&json).unwrap(), manifest());
     }
@@ -303,13 +341,13 @@ mod tests {
     fn rejects_foreign_urls_and_bad_checksums() {
         let mut m = manifest();
         m.url = "https://evil.example.com/md-editor.exe".into();
-        assert!(m.validate().is_err());
+        assert!(m.check_fields().is_err());
         let mut m = manifest();
         m.sha256 = "xyz".into();
-        assert!(m.validate().is_err());
+        assert!(m.check_fields().is_err());
         let mut m = manifest();
         m.size = 0;
-        assert!(m.validate().is_err());
+        assert!(m.check_fields().is_err());
     }
 
     /// 在本機開一個只回應一次的 HTTP 伺服器，回傳網址。
@@ -392,5 +430,46 @@ mod tests {
             hex(&Sha256::digest(b"abc")),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    /// 測試用的金鑰對（不是正式的金鑰）；簽章由 `scripts/sign-update.mjs` 產生。
+    const TEST_PUBLIC_KEY: &str = "k/jJUUWf7oXHqNQDFWjbWsMjxZs8uadP4DACFnpFhCM=";
+    const TEST_SIGNATURE: &str =
+        "FPPn4B7cOrF1yqA2r+4aOkoLWiu9rF7bQAtDJUSoORlBt/H0gG/Ts92rK4Bhd+k3tKAGIWyeaT7nK9svdJCWBA==";
+
+    fn signed() -> Manifest {
+        Manifest {
+            build: 123,
+            version: "1.1.0".into(),
+            sha256: "AB".repeat(32),
+            size: 4096,
+            signature: TEST_SIGNATURE.into(),
+            ..manifest()
+        }
+    }
+
+    #[test]
+    fn verifies_update_signature() {
+        assert_eq!(signed().verify_signature(TEST_PUBLIC_KEY), Ok(()));
+        // 正式的公鑰不接受測試金鑰的簽章。
+        assert!(signed().verify_signature(UPDATE_PUBLIC_KEY).is_err());
+        assert!(signed().validate().is_err());
+        // 改任何一個簽過的欄位都會失敗；沒有簽章也會失敗。
+        for tamper in [
+            |m: &mut Manifest| m.build += 1,
+            |m: &mut Manifest| m.sha256 = "cd".repeat(32),
+            |m: &mut Manifest| m.size += 1,
+            |m: &mut Manifest| m.url.push('x'),
+            |m: &mut Manifest| m.version = "9.9.9".into(),
+            |m: &mut Manifest| m.signature.clear(),
+        ] {
+            let mut m = signed();
+            tamper(&mut m);
+            assert!(m.verify_signature(TEST_PUBLIC_KEY).is_err());
+        }
+        // 沒有簽到的說明文字可以改。
+        let mut m = signed();
+        m.notes = "其他說明".into();
+        assert_eq!(m.verify_signature(TEST_PUBLIC_KEY), Ok(()));
     }
 }

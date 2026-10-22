@@ -41,6 +41,8 @@ export interface RenderOptions {
   kind?: DocKind;
   sourcepos?: boolean;
   hardbreaks?: boolean;
+  /** 只要大綱、統計與錯誤，不產生 HTML（預覽沒有顯示時用，比較快）。 */
+  skipHtml?: boolean;
   /** renderDocument：文件沒有標題時使用的頁面標題。 */
   title?: string;
 }
@@ -65,11 +67,12 @@ struct RenderResult<'a> {
 }
 
 #[derive(Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 struct Options {
     kind: DocKind,
     sourcepos: bool,
     hardbreaks: bool,
+    skip_html: bool,
     title: Option<String>,
 }
 
@@ -86,6 +89,7 @@ impl Options {
             kind: self.kind,
             sourcepos: self.sourcepos,
             hardbreaks: self.hardbreaks,
+            skip_html: self.skip_html,
         }
     }
 }

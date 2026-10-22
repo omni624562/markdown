@@ -4,6 +4,7 @@
  */
 import type { DocText } from "./desktop.ts";
 import { type DocInfo, parseDoc } from "./doc-index.ts";
+import { collator } from "./collator.ts";
 
 export interface IndexedDoc {
   /** 檔案路徑；還沒存成檔案的分頁是 null。 */
@@ -98,6 +99,6 @@ export class WorkspaceIndex {
       out.push({ path: o.path, rel, text: o.text, info: cached.info, tabId: o.id });
     }
     for (const key of this.#open.keys()) if (!keep.has(key)) this.#open.delete(key);
-    return out.sort((a, b) => a.rel.localeCompare(b.rel, "zh-Hant", { numeric: true }));
+    return out.sort((a, b) => collator.compare(a.rel, b.rel));
   }
 }

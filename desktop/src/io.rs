@@ -66,6 +66,17 @@ pub fn describe(e: &io::Error, what: &str) -> String {
     }
 }
 
+/// Windows 資料夾（`%SystemRoot%`，通常是 `C:\Windows`）。
+///
+/// 啟動 cmd.exe、explorer.exe 這類系統程式時一律用完整路徑：只寫檔名的話，Windows 會先找
+/// 本程式所在的資料夾，免安裝版旁邊被放了同名的程式就會執行到它。
+pub fn system_root() -> std::path::PathBuf {
+    std::env::var_os("SystemRoot")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"))
+}
+
 /// 路徑是否在網路上：`\\NAS\共用` 這類 UNC 路徑，或 Windows 對應的網路磁碟機（例如 Z:）。
 pub fn is_network_path(path: &Path) -> bool {
     let s = path.to_string_lossy();

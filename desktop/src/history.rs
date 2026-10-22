@@ -6,6 +6,11 @@
 //! - `disk`：存檔前磁碟上的內容（和上一個版本不同時才記，例如被其他程式改過）
 //!
 //! 保留規則：最多 50 版；超過 30 天的會刪掉，但每個檔案至少留最新的 10 版。
+//!
+//! 自動存檔每隔一兩秒就存一次，每次都留一版的話，50 版很快就只剩最近幾分鐘。
+//! 存檔指令分不出是自動存檔還是使用者按的（前端的 API 沒有這個資訊），所以單純依時間合併：
+//! 連續的 `save` 版本之間至少隔 2 分鐘，太密的中間版本會被下一次存檔取代
+//! （一定保留最新的一版）。`disk` 版本（存檔前被其他程式改過的內容）永遠不會被合併掉。
 
 use std::fs;
 use std::io;
@@ -14,7 +19,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager};
 
 use crate::files::{decode, KnownFiles};
 use crate::trust::Trust;
@@ -23,6 +28,8 @@ use crate::workspace::Workspace;
 const MAX_VERSIONS: usize = 50;
 const KEEP_AT_LEAST: usize = 10;
 const MAX_AGE_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+/// 連續的存檔版本至少間隔多久（見模組說明）。
+const COALESCE_MS: u64 = 2 * 60 * 1000;
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -125,6 +132,10 @@ pub fn record_at(root: &Path, path: &Path, text: &str, kind: Kind, now: u64) -> 
             &dir.join(format!("{id}-{}.txt", kind.tag())),
             text.as_bytes(),
         )?;
+        // 新版本寫好之後，才拿掉被它取代的中間版本（寫入失敗時不會少掉任何一版）。
+        if kind == Kind::Save && superseded(&existing) {
+            let _ = fs::remove_file(file);
+        }
     } else {
         crate::files::write_atomic(
             &dir.join(format!("{now}-{}.txt", kind.tag())),
@@ -133,6 +144,20 @@ pub fn record_at(root: &Path, path: &Path, text: &str, kind: Kind, now: u64) -> 
     }
     prune(&dir, now);
     Ok(())
+}
+
+/// 再存一個 `save` 版本時，目前最新的版本是否可以拿掉：它和前一版都是 `save`，
+/// 而且兩者相隔不到 [`COALESCE_MS`]。這樣連續存檔時保留的是每段的第一版與最新的一版，
+/// 版本之間至少隔 2 分鐘。
+fn superseded(existing: &[(Version, PathBuf)]) -> bool {
+    match existing {
+        [(latest, _), (previous, _), ..] => {
+            latest.kind == Kind::Save
+                && previous.kind == Kind::Save
+                && latest.id.saturating_sub(previous.id) < COALESCE_MS
+        }
+        _ => false,
+    }
 }
 
 pub fn list_at(root: &Path, path: &Path) -> Vec<Version> {
@@ -235,32 +260,38 @@ fn allowed(
     }
 }
 
+/// 版本記錄的讀取與權限判斷都要讀磁碟（權限判斷可能要解析網路磁碟上的路徑），在背景執行。
 #[tauri::command]
-pub fn history_list(
-    app: AppHandle,
-    path: String,
-    known: State<'_, KnownFiles>,
-    trust: State<'_, Trust>,
-    workspace: State<'_, Workspace>,
-) -> Result<Vec<Version>, String> {
-    let path = PathBuf::from(path);
-    allowed(&app, &path, &known, &trust, &workspace)?;
-    Ok(root(&app).map(|r| list_at(&r, &path)).unwrap_or_default())
+pub async fn history_list(app: AppHandle, path: String) -> Result<Vec<Version>, String> {
+    crate::io::blocking(move || {
+        let path = PathBuf::from(path);
+        allowed(
+            &app,
+            &path,
+            &app.state::<KnownFiles>(),
+            &app.state::<Trust>(),
+            &app.state::<Workspace>(),
+        )?;
+        Ok(root(&app).map(|r| list_at(&r, &path)).unwrap_or_default())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn history_read(
-    app: AppHandle,
-    path: String,
-    id: u64,
-    known: State<'_, KnownFiles>,
-    trust: State<'_, Trust>,
-    workspace: State<'_, Workspace>,
-) -> Result<String, String> {
-    let path = PathBuf::from(path);
-    allowed(&app, &path, &known, &trust, &workspace)?;
-    let root = root(&app).ok_or("找不到版本記錄資料夾")?;
-    read_at(&root, &path, id).map_err(|e| format!("無法讀取版本：{e}"))
+pub async fn history_read(app: AppHandle, path: String, id: u64) -> Result<String, String> {
+    crate::io::blocking(move || {
+        let path = PathBuf::from(path);
+        allowed(
+            &app,
+            &path,
+            &app.state::<KnownFiles>(),
+            &app.state::<Trust>(),
+            &app.state::<Workspace>(),
+        )?;
+        let root = root(&app).ok_or("找不到版本記錄資料夾")?;
+        read_at(&root, &path, id).map_err(|e| format!("無法讀取版本：{e}"))
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -297,23 +328,57 @@ mod tests {
     }
 
     #[test]
+    fn coalesces_frequent_saves() {
+        let root = temp("coalesce");
+        let file = Path::new("/筆記/自動存檔.md");
+        let s = 1000;
+        // 每 1.5 秒自動存檔一次，持續 3 分鐘。
+        for i in 0..=120u64 {
+            record_at(&root, file, &format!("v{i}"), Kind::Save, i * 1500).unwrap();
+        }
+        let ids: Vec<u64> = list_at(&root, file).iter().map(|v| v.id).collect();
+        // 保留第一版、2 分鐘後的第一版，以及最新的一版。
+        assert_eq!(ids, [180 * s, 120 * s, 0]);
+        assert_eq!(read_at(&root, file, 180 * s).unwrap(), "v120");
+        // 外部修改（disk）一定保留，之後的存檔也不會把它合併掉。
+        record_at(&root, file, "別的程式改的", Kind::Disk, 181 * s).unwrap();
+        record_at(&root, file, "v121", Kind::Save, 181 * s).unwrap();
+        record_at(&root, file, "v122", Kind::Save, 182 * s).unwrap();
+        let list = list_at(&root, file);
+        let kinds: Vec<(u64, Kind)> = list.iter().map(|v| (v.id, v.kind)).collect();
+        assert_eq!(
+            kinds,
+            [
+                (182 * s, Kind::Save),
+                (181 * s + 1, Kind::Save),
+                (181 * s, Kind::Disk),
+                (180 * s, Kind::Save),
+                (120 * s, Kind::Save),
+                (0, Kind::Save),
+            ]
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn prunes_by_count_and_age() {
         let root = temp("prune");
         let file = Path::new("/筆記/a.md");
         let day = 24 * 60 * 60 * 1000;
-        // 60 版，前 45 版在 40 天前。
+        // 60 版（間隔夠久，不會被合併），前 45 版在 40 天前。
+        let gap = COALESCE_MS;
         for i in 0..60u64 {
-            let t = if i < 45 { i } else { 40 * day + i };
+            let t = if i < 45 { i * gap } else { 40 * day + i * gap };
             record_at(&root, file, &format!("v{i}"), Kind::Save, t).unwrap();
         }
         let list = list_at(&root, file);
         // 最後一次存檔時「現在」是 40 天後：舊的 45 版只留到湊滿 10 版為止。
         assert_eq!(list.len(), 15);
-        assert_eq!(list[0].id, 40 * day + 59);
+        assert_eq!(list[0].id, 40 * day + 59 * gap);
         // 版本數上限。
         let root2 = temp("cap");
         for i in 0..60u64 {
-            record_at(&root2, file, &format!("v{i}"), Kind::Save, 1000 + i).unwrap();
+            record_at(&root2, file, &format!("v{i}"), Kind::Save, 1000 + i * gap).unwrap();
         }
         assert_eq!(list_at(&root2, file).len(), MAX_VERSIONS);
         fs::remove_dir_all(&root).unwrap();

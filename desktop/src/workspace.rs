@@ -53,12 +53,11 @@ pub fn is_doc(path: &Path) -> bool {
         .is_some_and(|e| DOC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
-/// 確認 `path` 位於 `root` 之內（檔案可以還不存在，例如新增時）。
-pub fn resolve_inside(root: &Path, path: &Path) -> Result<PathBuf, String> {
+/// 解析符號連結後的實際位置（檔案可以還不存在：往上找到第一個存在的資料夾解析，再接上其餘部分）。
+pub fn real_path(path: &Path) -> Result<PathBuf, String> {
     if !path.is_absolute() || path.components().any(|c| matches!(c, Component::ParentDir)) {
         return Err("路徑無效".into());
     }
-    // 不存在的路徑往上找到第一個存在的資料夾來判斷（處理符號連結）。
     let mut existing = path;
     let mut rest = Vec::new();
     while !existing.exists() {
@@ -70,6 +69,36 @@ pub fn resolve_inside(root: &Path, path: &Path) -> Result<PathBuf, String> {
     for part in rest.into_iter().rev() {
         real.push(part);
     }
+    Ok(real)
+}
+
+/// 項目本身的實際位置：上層資料夾解析符號連結，最後一段保持原樣
+/// （項目本身是符號連結時，指的是連結，不是它指向的地方）。
+fn entry_location(path: &Path) -> Option<PathBuf> {
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) => dunce::canonicalize(parent).ok().map(|p| p.join(name)),
+        _ => dunce::canonicalize(path).ok(),
+    }
+}
+
+/// 檢查要改名或刪除的項目：項目本身的位置（上層資料夾解析符號連結，最後一段保持原樣）
+/// 必須在工作區內，而且不是工作區資料夾本身（大小寫不同、結尾多了 `\.` 也認得出來）。
+fn check_entry(root: &Path, path: &Path, root_message: &str) -> Result<(), String> {
+    let real_root =
+        dunce::canonicalize(root).map_err(|e| crate::io::describe(&e, "無法存取資料夾"))?;
+    let entry = entry_location(path).ok_or("路徑無效")?;
+    if path == root || entry == real_root {
+        Err(root_message.into())
+    } else if !entry.starts_with(&real_root) {
+        Err("只能存取目前開啟的資料夾內的檔案".into())
+    } else {
+        Ok(())
+    }
+}
+
+/// 確認 `path` 位於 `root` 之內（檔案可以還不存在，例如新增時）。
+pub fn resolve_inside(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    let real = real_path(path)?;
     let root = dunce::canonicalize(root).map_err(|e| crate::io::describe(&e, "無法存取資料夾"))?;
     if real.starts_with(&root) {
         Ok(path.to_path_buf())
@@ -204,7 +233,6 @@ fn activate(app: &AppHandle, root: PathBuf, workspace: &Workspace, trust: &Trust
     *workspace.0.lock().unwrap() = Some(root.clone());
     app.state::<crate::dav::Dav>().disconnect();
     trust.add_folder(app, &root);
-    crate::allow_assets_in(app, &root);
     // 網路磁碟的監看要先掃描整個資料夾，可能很久，放在背景進行。
     let app2 = app.clone();
     let root2 = root.clone();
@@ -406,12 +434,26 @@ pub async fn create_workflow(app: AppHandle, name: String, text: String) -> Resu
         }
         let dir = root.join(".github").join("workflows");
         let target = dir.join(name);
+        // `.github` 或 `workflows` 可能是指向工作區外的符號連結：建立前後都確認實際位置。
+        resolve_inside(&root, &target)?;
         if target.exists() {
             return Err(format!("「.github/workflows/{name}」已經存在，沒有覆蓋"));
         }
         fs::create_dir_all(&dir)
             .map_err(|e| crate::io::describe(&e, "無法建立 .github/workflows 資料夾"))?;
-        crate::files::write_atomic(&target, text.as_bytes())
+        resolve_inside(&root, &target)?;
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    format!("「.github/workflows/{name}」已經存在，沒有覆蓋")
+                } else {
+                    crate::io::describe(&e, "無法寫入工作流程檔")
+                }
+            })?;
+        std::io::Write::write_all(&mut f, text.as_bytes())
             .map_err(|e| crate::io::describe(&e, "無法寫入工作流程檔"))?;
         Ok(path_string(&target))
     })
@@ -431,9 +473,7 @@ pub async fn rename_entry(
 fn rename_entry_now(app: &AppHandle, path: &str, new_name: &str) -> Result<String, String> {
     let root = app.state::<Workspace>().require_root()?;
     let from = resolve_inside(&root, Path::new(path))?;
-    if from == root {
-        return Err("不能重新命名工作區資料夾本身".into());
-    }
+    check_entry(&root, &from, "不能重新命名工作區資料夾本身")?;
     let to = from
         .parent()
         .ok_or("路徑無效")?
@@ -456,9 +496,7 @@ pub async fn trash_entry(app: AppHandle, path: String) -> Result<(), String> {
     crate::io::blocking(move || {
         let root = app.state::<Workspace>().require_root()?;
         let path = resolve_inside(&root, Path::new(&path))?;
-        if path == root {
-            return Err("不能刪除工作區資料夾本身".into());
-        }
+        check_entry(&root, &path, "不能刪除工作區資料夾本身")?;
         // 網路磁碟上的檔案通常沒有資源回收筒，系統會回報錯誤。
         trash::delete(&path).map_err(|e| format!("無法移到資源回收筒：{e}"))?;
         app.state::<Trust>().remove(&app, &path);
@@ -477,11 +515,11 @@ fn reveal_now(app: &AppHandle, path: &str) -> Result<(), String> {
     let root = app.state::<Workspace>().require_root()?;
     let path = resolve_inside(&root, Path::new(path))?;
     // explorer 不接受整個被引號包住的 `"/select,路徑"`（Rust 遇到空白會自動加引號），
-    // 所以自己組參數，只把路徑放進引號。
+    // 所以自己組參數，只把路徑放進引號。用完整路徑啟動，免得執行到放在本程式旁邊的同名程式。
     #[cfg(target_os = "windows")]
     let result = {
         use std::os::windows::process::CommandExt;
-        std::process::Command::new("explorer")
+        std::process::Command::new(crate::io::system_root().join("explorer.exe"))
             .raw_arg(format!("/select,\"{}\"", path.display()))
             .spawn()
     };
@@ -688,11 +726,20 @@ pub fn replace_dir(
         if !entry.file_type().is_some_and(|t| t.is_file()) || !is_doc(path) {
             continue;
         }
-        let Ok(bytes) = fs::read(path) else {
-            result
-                .failed
-                .push(format!("{}：無法讀取", display_name(path)));
-            continue;
+        let bytes = match crate::files::read_capped(path, crate::files::MAX_OPEN_BYTES) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => {
+                result
+                    .failed
+                    .push(format!("{}：檔案太大，已略過", display_name(path)));
+                continue;
+            }
+            Err(_) => {
+                result
+                    .failed
+                    .push(format!("{}：無法讀取", display_name(path)));
+                continue;
+            }
         };
         let Ok(text) = std::str::from_utf8(&bytes) else {
             if re.is_match(&String::from_utf8_lossy(&bytes)) {
@@ -801,6 +848,46 @@ mod tests {
         assert!(resolve_inside(&dir, Path::new("相對路徑.md")).is_err());
         assert!(resolve_inside(&dir, &std::env::temp_dir()).is_err());
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rename_and_trash_targets_stay_inside() {
+        let dir = temp_ws("entry");
+        let root_msg = "工作區本身";
+        assert_eq!(check_entry(&dir, &dir, root_msg), Err(root_msg.into()));
+        assert_eq!(
+            check_entry(&dir, &dir.join("."), root_msg),
+            Err(root_msg.into())
+        );
+        assert!(check_entry(&dir, &dir.join("README.md"), root_msg).is_ok());
+        #[cfg(unix)]
+        {
+            // 工作區內指向工作區的符號連結：改名、刪除的是連結本身，可以。
+            std::os::unix::fs::symlink(&dir, dir.join("捷徑")).unwrap();
+            assert!(check_entry(&dir, &dir.join("捷徑"), root_msg).is_ok());
+            // 工作區外指向工作區的符號連結：不是工作區內的項目。
+            let alias = std::env::temp_dir().join(format!("md-ws-alias-{}", std::process::id()));
+            let _ = fs::remove_file(&alias);
+            std::os::unix::fs::symlink(&dir, &alias).unwrap();
+            assert!(resolve_inside(&dir, &alias).is_ok());
+            assert!(check_entry(&dir, &alias, root_msg).is_err());
+            assert!(check_entry(&dir, &alias.join("."), root_msg).is_err());
+            fs::remove_file(&alias).unwrap();
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_folders_cannot_escape() {
+        let dir = temp_ws("escape");
+        let outside = std::env::temp_dir().join(format!("md-ws-outside-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join(".github")).unwrap();
+        assert!(resolve_inside(&dir, &dir.join(".github/workflows/ci.yml")).is_err());
+        fs::remove_dir_all(&dir).unwrap();
+        fs::remove_dir_all(&outside).unwrap();
     }
 
     #[test]

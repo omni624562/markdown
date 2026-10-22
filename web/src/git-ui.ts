@@ -127,6 +127,10 @@ export class GitPanel {
       this.#host.replaceChildren();
       return;
     }
+    if (!s.trusted) {
+      this.#renderUntrusted();
+      return;
+    }
     const b = s.branch;
     const changes = s.changes;
 
@@ -193,6 +197,30 @@ export class GitPanel {
     this.#host.replaceChildren(branch, this.#message, actions, head, list);
   }
 
+  /**
+   * 還沒信任的儲存庫：儲存庫的設定（.git/config）可以讓 git 執行任意程式，
+   * 所以別人給的資料夾要先由使用者確認，才會執行 git。
+   */
+  #renderUntrusted(): void {
+    const box = document.createElement("div");
+    box.className = "git-trust";
+    const title = document.createElement("strong");
+    title.textContent = "要信任這個資料夾的 Git 設定嗎？";
+    const text = document.createElement("p");
+    text.textContent =
+      "Git 儲存庫裡的設定可以在執行 git 時啟動其他程式。如果這是你自己的資料夾，或來源可靠，按「信任」就會啟用原始碼控制；" +
+      "來路不明的資料夾（例如別人傳來的壓縮檔）請不要信任。不信任也可以照常編輯檔案。";
+    const trust = this.#button("信任並啟用 Git", "shield-check", async () => {
+      await this.#run("無法信任", async () => {
+        await this.#d.gitTrust();
+        return "已信任這個資料夾，原始碼控制已啟用";
+      });
+    });
+    trust.classList.add("btn-primary");
+    box.append(title, text, trust);
+    this.#host.replaceChildren(box);
+  }
+
   #button(label: string, iconName: string, run: () => Promise<void>): HTMLButtonElement {
     const el = document.createElement("button");
     el.type = "button";
@@ -249,13 +277,13 @@ export class GitPanel {
   #scheduleSync(): void {
     clearTimeout(this.#syncTimer);
     const s = this.#settings.value;
-    if (!s.gitAutoSync || this.#syncPaused || !this.#status?.repo) return;
+    if (!s.gitAutoSync || this.#syncPaused || !this.#status?.repo || !this.#status.trusted) return;
     this.#syncTimer = window.setTimeout(() => void this.#sync(), s.gitSyncMinutes * 60_000);
   }
 
   /** 提交 → 拉取 → 推送。任何一步出錯就暫停自動同步，不會自動處理衝突。 */
   async #sync(): Promise<void> {
-    if (this.#busy || !this.#status?.repo) return this.#scheduleSync();
+    if (this.#busy || !this.#status?.repo || !this.#status.trusted) return this.#scheduleSync();
     const ok = await this.#run(
       "自動同步失敗，已暫停",
       async () => {

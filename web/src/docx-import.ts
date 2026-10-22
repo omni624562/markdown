@@ -4,6 +4,10 @@
  */
 import mammoth from "mammoth";
 import { htmlToMarkdown } from "./html-paste.ts";
+import { zipUncompressedSize } from "./zip-size.ts";
+
+/** 解壓縮後超過這個大小就不匯入（正常的 Word 檔，連圖片也很少超過幾百 MB）。 */
+const MAX_UNCOMPRESSED = 500 * 1024 * 1024;
 
 /** 圖片：回傳要寫進 Markdown 的網址（例如存好的 `assets/…png`，或 data: 網址）。 */
 export type SaveImage = (data: Uint8Array, contentType: string) => Promise<string>;
@@ -37,6 +41,9 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 export async function docxToMarkdown(data: ArrayBuffer, saveImage: SaveImage): Promise<ImportResult> {
+  const size = zipUncompressedSize(data);
+  if (size === null) throw new Error("這不是有效的 Word（.docx）檔案");
+  if (size > MAX_UNCOMPRESSED) throw new Error("這個 Word 檔解壓縮後太大，可能是損毀或惡意的檔案，已取消匯入");
   const result = await mammoth.convertToHtml(
     { arrayBuffer: data },
     {

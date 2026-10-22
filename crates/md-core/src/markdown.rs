@@ -40,8 +40,11 @@ pub(crate) fn render(markdown: &str, opts: &RenderOptions) -> Rendered {
     let headings = collect_headings(root);
     let stats = count_text(&plain_text(root));
 
-    let mut html = String::with_capacity(markdown.len() * 3 / 2);
-    format_html(root, &options, &mut html).expect("writing to a String cannot fail");
+    let mut html = String::new();
+    if !opts.skip_html {
+        html.reserve(markdown.len() * 3 / 2);
+        format_html(root, &options, &mut html).expect("writing to a String cannot fail");
+    }
 
     Rendered {
         html,

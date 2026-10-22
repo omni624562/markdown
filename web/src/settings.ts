@@ -32,6 +32,8 @@ export interface Settings {
   fixedToolbar: boolean;
   /** 大綱固定顯示在內文右邊（視窗夠寬時）；檔案、搜尋等面板仍在左邊。 */
   outlineRight: boolean;
+  /** 不載入文件中的遠端圖片（避免對方知道你何時開啟文件、你的 IP）。 */
+  blockRemoteImages: boolean;
   /** 桌面版：已經存過的檔案，停止打字一下子後自動存回磁碟。 */
   autoSave: boolean;
   /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
@@ -91,6 +93,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   smartPaste: true,
   fixedToolbar: false,
   outlineRight: false,
+  blockRemoteImages: false,
   autoSymbols: true,
   autoSave: true,
   termCheck: true,
@@ -142,6 +145,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("smartPaste");
   bool("fixedToolbar");
   bool("outlineRight");
+  bool("blockRemoteImages");
   bool("autoSymbols");
   bool("autoSave");
   bool("termCheck");
