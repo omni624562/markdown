@@ -1057,7 +1057,7 @@ function renderSaveState(): void {
   // 只有一份還沒存過的空白文件時，不需要「未命名.md」分頁與標題；開始打字才出現。
   const blank = docs.length === 1 && !fileBacked && !fileHandle && text === "";
   $("#tab-bar").classList.toggle("blank", blank);
-  const title = blank ? "Markdown 編輯器" : `${dirty ? "● " : ""}${fileName} - Markdown 編輯器`;
+  const title = blank ? "Laiwrite" : `${dirty ? "● " : ""}${fileName} - Laiwrite`;
   if (document.title !== title) {
     document.title = title;
     desktop?.setTitle(title).catch(console.error);

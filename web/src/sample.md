@@ -1,4 +1,4 @@
-# 歡迎使用 Markdown 編輯器
+# 歡迎使用 Laiwrite
 
 左邊寫 Markdown，右邊**即時預覽**。解析由 Rust（[comrak](https://github.com/kivikakk/comrak)）編譯成 WebAssembly 執行，程式碼語法上色則交給 JS 生態系的 highlight.js。
 

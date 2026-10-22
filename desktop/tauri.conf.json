@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Markdown 編輯器",
+  "productName": "Laiwrite",
   "identifier": "io.github.omni624562.markdown",
   "build": {
     "frontendDist": "../web/dist",
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Markdown 編輯器",
+        "title": "Laiwrite",
         "width": 1280,
         "height": 820,
         "minWidth": 480,
