@@ -187,8 +187,6 @@ kbd {
   border-radius: calc(var(--radius) + 2px);
   background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
-/* 檢視切換只顯示圖示，名稱在滑鼠提示中。 */
-.segmented .label { display: none; }
 .segmented button {
   display: inline-flex;
   align-items: center;
@@ -569,6 +567,28 @@ kbd {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
+}
+/* 檢視切換在狀態列左邊：選中的用強調色；視窗窄時只顯示圖示（名稱在滑鼠提示中）。 */
+.view-switch {
+  margin: 0 auto 0 -8px;
+  padding: 1px;
+  gap: 1px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.view-switch button { gap: 5px; min-height: 20px; padding: 0 7px; border-radius: 6px; color: var(--muted); font-size: 12px; }
+.view-switch button .icon { width: 14px; height: 14px; }
+.view-switch button[aria-checked="true"] {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+@media (max-width: 960px) {
+  .view-switch .label { display: none; }
+}
+@media (pointer: coarse) {
+  .view-switch button { min-height: 30px; padding: 0 10px; }
 }
 .status-select {
   height: 22px;
