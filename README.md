@@ -112,6 +112,10 @@
 | 把選取範圍傳給終端機中的 AI（桌面版） | `Ctrl+Alt+J` | `⌘⌥J` |
 | 檔案樹：重新命名／移到資源回收筒 | `F2`／`Delete` | `F2`／`Delete` |
 
+## 版本與更新紀錄
+
+版本號採用語意化版本（`主版號.次版號.修訂號`）：新功能改次版號、修正改修訂號、不相容的改變改主版號。規則與升版方式見 [VERSIONING.md](VERSIONING.md)，每一版改了什麼見 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 桌面版（Windows 免安裝）
 
 **[下載最新版 md-editor.exe](https://github.com/omni624562/markdown/releases/download/latest/md-editor.exe)**（不需登入 GitHub），下載後直接執行，不需要安裝。也可以到 [Releases 頁面](https://github.com/omni624562/markdown/releases/latest)查看更新內容。

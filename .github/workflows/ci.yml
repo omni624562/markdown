@@ -43,3 +43,22 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # 版本號規範（VERSIONING.md）：版本號一致；PR 改到程式時要升版並寫好 CHANGELOG.md。
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/version.test.mjs
+      - name: 檢查版本號
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            node scripts/version.mjs check "origin/${{ github.base_ref }}"
+          else
+            node scripts/version.mjs
+          fi
