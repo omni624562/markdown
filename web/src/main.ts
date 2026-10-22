@@ -17,6 +17,7 @@ import init, {
 } from "../pkg/md_wasm.js";
 import { AiController } from "./ai.ts";
 import { GitPanel } from "./git-ui.ts";
+import { GitHub } from "./github-ui.ts";
 import { type Command, Commands, formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, cursorInfo } from "./editor.ts";
 import {
@@ -1331,25 +1332,36 @@ const fileTree = desktop
     })
   : null;
 
+/** 用 GitHub 帳號同步（桌面版）：登入、從 GitHub 開啟儲存庫、上傳資料夾。 */
+const github = desktop
+  ? new GitHub(desktop, {
+      root: () => workspaceRoot,
+      openFolder: async (folder) => {
+        await setWorkspace(folder);
+        showPanel("files");
+      },
+      changed: () => {
+        void gitPanel?.refresh();
+        settingsDialog.refresh();
+      },
+    })
+  : null;
+
 const gitPanel =
-  desktop && fileTree
-    ? new GitPanel($("#git-host"), desktop, settings, fileTree, {
+  desktop && fileTree && github
+    ? new GitPanel($("#git-host"), desktop, settings, fileTree, github, {
         root: () => workspaceRoot?.path ?? null,
         open: (path) => void openPath(path).catch(reportError),
         changed: (status) => {
+          // Git 內建在程式裡：圖示一直顯示，還沒同步的資料夾點進去會引導上傳到 GitHub。
           const tab = $("#side-tab-git");
-          tab.hidden = !status;
-          const count = status?.changes.length ?? 0;
-          const untrusted = !!status && !status.trusted;
+          tab.hidden = false;
+          const count = status?.repo ? status.changes.length : 0;
           const badge = $("#git-badge");
-          badge.hidden = !count && !untrusted;
-          badge.textContent = untrusted ? "?" : count > 99 ? "99+" : String(count);
-          tab.setAttribute(
-            "aria-label",
-            untrusted ? "原始碼控制（Git）：尚未信任這個資料夾" : count ? `原始碼控制（Git），${count} 個變更` : "原始碼控制（Git）",
-          );
+          badge.hidden = !count;
+          badge.textContent = count > 99 ? "99+" : String(count);
+          tab.setAttribute("aria-label", count ? `原始碼控制（Git），${count} 個變更` : "原始碼控制（Git）");
           tab.title = tab.getAttribute("aria-label")!;
-          if (!status && sidePanel === "git") showPanel("files", false);
         },
       })
     : null;
@@ -3085,7 +3097,24 @@ commands.register(
       title,
       group: "檔案",
       icon: iconName,
-      when: () => !!gitPanel?.status?.repo && gitPanel.status.trusted,
+      when: () => !!gitPanel?.status?.repo,
+      run: () => void run(),
+    }),
+  ),
+  ...(
+    [
+      ["github-open", "GitHub：從 GitHub 開啟儲存庫…", "git-branch", () => github?.openRepo(), () => true],
+      ["github-publish", "GitHub：把這個資料夾上傳到 GitHub…", "arrow-up-from-line", () => github?.publish(), () => !!workspaceRoot && !isRemote(workspaceRoot.path)],
+      ["github-login", "GitHub：登入", "shield-check", () => github?.login(), () => !github?.account],
+      ["github-logout", "GitHub：登出", "x", () => github?.logout(), () => !!github?.account],
+    ] as const
+  ).map(
+    ([id, title, iconName, run, when]): Command => ({
+      id,
+      title,
+      group: "檔案",
+      icon: iconName,
+      when: () => !!github && when(),
       run: () => void run(),
     }),
   ),
@@ -4076,7 +4105,22 @@ const settingsDialog = new SettingsDialog(
         restart: () => updater!.restart(),
       }
     : null,
+  github
+    ? {
+        account: () => github!.account,
+        canPublish: () => !!workspaceRoot && !isRemote(workspaceRoot.path),
+        login: () => void github!.login(),
+        logout: () => void github!.logout(),
+        openRepo: () => void github!.openRepo(),
+        publish: () => void github!.publish(),
+      }
+    : null,
 );
+// 讀到 GitHub 登入狀態後更新設定頁與原始碼控制面板。
+void github?.ready().then(() => {
+  settingsDialog.refresh();
+  void gitPanel?.refresh();
+});
 
 document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((btn) => {
   const mode = btn.dataset.view as ViewMode;

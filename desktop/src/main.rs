@@ -15,12 +15,14 @@ mod dav;
 mod doc_index;
 mod files;
 mod git;
+mod github;
 mod history;
 mod image_protocol;
 mod images;
 mod io;
 mod navigation;
 mod pdf;
+mod secrets;
 mod settings;
 mod trust;
 mod update;
@@ -284,10 +286,17 @@ fn main() {
             dav::dav_peek,
             dav::dav_probe,
             git::git_status,
-            git::git_trust,
             git::git_commit,
             git::git_pull,
             git::git_push,
+            github::github_account,
+            github::github_login_start,
+            github::github_login_wait,
+            github::github_login_cancel,
+            github::github_logout,
+            github::github_repos,
+            github::github_clone,
+            github::github_publish,
             history::history_read,
             ai::tools::ai_tools,
             ai::term::term_open,

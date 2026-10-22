@@ -1,8 +1,10 @@
 /**
  * Git 整合（桌面版）：側邊欄的「原始碼控制」面板、檔案樹的變更標記、自動同步。
- * 找不到 git 或資料夾不是 Git 儲存庫時，面板和活動列的圖示都會隱藏。
+ * Git 內建在程式裡（不需要安裝）；資料夾還不是 Git 儲存庫時，面板改成引導：
+ * 用 GitHub 登入、從 GitHub 開啟儲存庫、把資料夾上傳到 GitHub。
  */
 import type { Desktop, GitChange, GitStatus } from "./desktop.ts";
+import type { GitHub } from "./github-ui.ts";
 import type { SettingsStore } from "./settings.ts";
 import type { FileTree } from "./ui/filetree.ts";
 import { icon } from "./ui/icons.ts";
@@ -44,7 +46,7 @@ export interface GitPanelHooks {
   root(): string | null;
   /** 點變更清單中的檔案。 */
   open(path: string): void;
-  /** 儲存庫狀態改變（顯示或隱藏活動列圖示、更新變更數）。 */
+  /** 儲存庫狀態改變（更新活動列圖示的變更數）。沒有開啟資料夾時是 null。 */
   changed(status: GitStatus | null): void;
 }
 
@@ -54,6 +56,7 @@ export class GitPanel {
   #tree: FileTree;
   #host: HTMLElement;
   #hooks: GitPanelHooks;
+  #github: GitHub;
   #status: GitStatus | null = null;
   #busy = false;
   #refreshTimer = 0;
@@ -62,8 +65,9 @@ export class GitPanel {
   #syncPaused = false;
   #message: HTMLTextAreaElement;
 
-  constructor(host: HTMLElement, d: Desktop, settings: SettingsStore, tree: FileTree, hooks: GitPanelHooks) {
+  constructor(host: HTMLElement, d: Desktop, settings: SettingsStore, tree: FileTree, github: GitHub, hooks: GitPanelHooks) {
     this.#host = host;
+    this.#github = github;
     this.#d = d;
     this.#settings = settings;
     this.#tree = tree;
@@ -112,7 +116,7 @@ export class GitPanel {
     for (const c of this.#status?.changes ?? []) marks.set(c.path, MARK[c.status]);
     this.#tree.setStatus(marks);
     this.#render();
-    this.#hooks.changed(this.#status?.repo ? this.#status : null);
+    this.#hooks.changed(this.#status);
     this.#scheduleSync();
   }
 
@@ -124,11 +128,7 @@ export class GitPanel {
   #render(): void {
     const s = this.#status;
     if (!s?.repo) {
-      this.#host.replaceChildren();
-      return;
-    }
-    if (!s.trusted) {
-      this.#renderUntrusted();
+      this.#renderSetup();
       return;
     }
     const b = s.branch;
@@ -194,31 +194,79 @@ export class GitPanel {
       }),
     );
 
-    this.#host.replaceChildren(branch, this.#message, actions, head, list);
+    const hint = this.#syncHint(s);
+    this.#host.replaceChildren(...(hint ? [hint] : []), branch, this.#message, actions, head, list);
   }
 
-  /**
-   * 還沒信任的儲存庫：儲存庫的設定（.git/config）可以讓 git 執行任意程式，
-   * 所以別人給的資料夾要先由使用者確認，才會執行 git。
-   */
-  #renderUntrusted(): void {
+  /** 還沒有開啟資料夾，或資料夾還不是 Git 儲存庫：引導用 GitHub 同步。 */
+  #renderSetup(): void {
+    const root = this.#hooks.root();
     const box = document.createElement("div");
-    box.className = "git-trust";
+    box.className = "git-setup";
     const title = document.createElement("strong");
-    title.textContent = "要信任這個資料夾的 Git 設定嗎？";
     const text = document.createElement("p");
-    text.textContent =
-      "Git 儲存庫裡的設定可以在執行 git 時啟動其他程式。如果這是你自己的資料夾，或來源可靠，按「信任」就會啟用原始碼控制；" +
-      "來路不明的資料夾（例如別人傳來的壓縮檔）請不要信任。不信任也可以照常編輯檔案。";
-    const trust = this.#button("信任並啟用 Git", "shield-check", async () => {
-      await this.#run("無法信任", async () => {
-        await this.#d.gitTrust();
-        return "已信任這個資料夾，原始碼控制已啟用";
-      });
-    });
-    trust.classList.add("btn-primary");
-    box.append(title, text, trust);
+    const actions = document.createElement("div");
+    actions.className = "git-setup-actions";
+    const open = this.#button("從 GitHub 開啟儲存庫", "git-branch", () => this.#github.openRepo());
+    if (root) {
+      title.textContent = "這個資料夾還沒有同步到 GitHub";
+      text.textContent = "上傳到 GitHub 之後，可以在其他電腦下載同一個資料夾，每次的修改都會留下紀錄，也可以自動同步。不需要安裝 Git。";
+      const publish = this.#button("上傳到 GitHub", "arrow-up-from-line", () => this.#github.publish());
+      publish.classList.add("btn-primary");
+      actions.append(publish, open);
+    } else {
+      title.textContent = "用 GitHub 同步你的筆記";
+      text.textContent = "從 GitHub 下載儲存庫到電腦，編輯後一鍵同步；或先開啟資料夾，再上傳到 GitHub。不需要安裝 Git。";
+      open.classList.add("btn-primary");
+      actions.append(open);
+    }
+    box.append(title, text, actions, this.#accountLine());
     this.#host.replaceChildren(box);
+  }
+
+  /** 目前登入的 GitHub 帳號（或登入按鈕）。 */
+  #accountLine(): HTMLElement {
+    const line = document.createElement("div");
+    line.className = "git-account";
+    const a = this.#github.account;
+    if (a) {
+      line.append(Object.assign(document.createElement("span"), { textContent: `已登入 GitHub：${a.login}` }));
+    } else {
+      line.append(
+        Object.assign(document.createElement("span"), { textContent: "還沒有登入 GitHub" }),
+        this.#button("用 GitHub 登入", "shield-check", async () => {
+          await this.#github.login();
+          this.#render();
+        }),
+      );
+    }
+    return line;
+  }
+
+  /** 已經是儲存庫，但還不能同步時的提示（沒有遠端、還沒登入 GitHub）。 */
+  #syncHint(s: GitStatus): HTMLElement | null {
+    if (!s.remote) {
+      const box = document.createElement("div");
+      box.className = "git-hint";
+      box.append(
+        Object.assign(document.createElement("span"), { textContent: "這個儲存庫還沒有連到 GitHub。" }),
+        this.#button("上傳到 GitHub", "arrow-up-from-line", () => this.#github.publish()),
+      );
+      return box;
+    }
+    if (/^https:\/\/github\.com\//i.test(s.remote) && !this.#github.account) {
+      const box = document.createElement("div");
+      box.className = "git-hint";
+      box.append(
+        Object.assign(document.createElement("span"), { textContent: "登入 GitHub 才能拉取與推送。" }),
+        this.#button("用 GitHub 登入", "shield-check", async () => {
+          await this.#github.login();
+          this.#render();
+        }),
+      );
+      return box;
+    }
+    return null;
   }
 
   #button(label: string, iconName: string, run: () => Promise<void>): HTMLButtonElement {
@@ -277,13 +325,13 @@ export class GitPanel {
   #scheduleSync(): void {
     clearTimeout(this.#syncTimer);
     const s = this.#settings.value;
-    if (!s.gitAutoSync || this.#syncPaused || !this.#status?.repo || !this.#status.trusted) return;
+    if (!s.gitAutoSync || this.#syncPaused || !this.#status?.repo) return;
     this.#syncTimer = window.setTimeout(() => void this.#sync(), s.gitSyncMinutes * 60_000);
   }
 
   /** 提交 → 拉取 → 推送。任何一步出錯就暫停自動同步，不會自動處理衝突。 */
   async #sync(): Promise<void> {
-    if (this.#busy || !this.#status?.repo || !this.#status.trusted) return this.#scheduleSync();
+    if (this.#busy || !this.#status?.repo) return this.#scheduleSync();
     const ok = await this.#run(
       "自動同步失敗，已暫停",
       async () => {

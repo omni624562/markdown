@@ -31,7 +31,8 @@ function raise(): void {
   if (typeof region.showPopover === "function" && region.isConnected) region.showPopover();
 }
 
-export function toast(message: string, opts: ToastOptions = {}): void {
+/** 顯示通知；回傳的 `dismiss()` 可以提早關掉（例如「正在下載…」完成時）。 */
+export function toast(message: string, opts: ToastOptions = {}): { dismiss(): void } {
   const el = document.createElement("div");
   el.className = `toast toast-${opts.tone ?? "info"}`;
   const text = document.createElement("span");
@@ -66,4 +67,5 @@ export function toast(message: string, opts: ToastOptions = {}): void {
   timer = window.setTimeout(close, opts.duration ?? (opts.action ? 8000 : 3500));
   el.addEventListener("pointerenter", () => clearTimeout(timer));
   el.addEventListener("pointerleave", () => (timer = window.setTimeout(close, 2000)));
+  return { dismiss: close };
 }

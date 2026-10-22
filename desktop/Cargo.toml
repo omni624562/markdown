@@ -1,6 +1,6 @@
 [package]
 name = "md-desktop"
-version = "1.4.2"
+version = "1.5.0"
 edition = "2021"
 license = "MIT"
 description = "oMarker（Markdown 編輯器）桌面版（Tauri）"
@@ -47,6 +47,9 @@ sha2 = "0.11.1"
 # 驗證更新的 Ed25519 簽章（rustls 已經使用 ring，不會多編譯一套密碼學程式庫）
 ring = "0.17.14"
 self-replace = "1.5.0"
+# 內建 Git（不需要另外安裝 Git）。不執行儲存庫設定指定的外部程式，打開來路不明的資料夾也安全。
+# HTTPS 在 Windows 用系統的 WinHTTP（沿用系統憑證與 Proxy）；不支援 SSH 遠端。
+git2 = { version = "0.21.0", default-features = false, features = ["https", "vendored-libgit2"] }
 
 # Windows 認證管理員（WebDAV 密碼）。其他平台不保存密碼，只在這次開啟期間記在記憶體裡。
 [target.'cfg(windows)'.dependencies]
