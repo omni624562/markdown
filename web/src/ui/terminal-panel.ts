@@ -40,6 +40,47 @@ function loadXterm(): Promise<Xterm> {
   return xterm;
 }
 
+/**
+ * 終端機的 16 色。xterm 預設的色盤是給深色背景用的，在淺色背景上亮綠、亮黃很刺眼又看不清楚；
+ * 淺色用較深、較柔和的顏色（參考 GitHub 淺色主題），深色配合介面的 One Dark 風格。
+ */
+const ANSI_LIGHT = {
+  black: "#24292f",
+  red: "#cf222e",
+  green: "#116329",
+  yellow: "#7d4e00",
+  blue: "#0550ae",
+  magenta: "#8250df",
+  cyan: "#1b7c83",
+  white: "#6e7781",
+  brightBlack: "#57606a",
+  brightRed: "#a40e26",
+  brightGreen: "#1a7f37",
+  brightYellow: "#633c01",
+  brightBlue: "#0969da",
+  brightMagenta: "#a475f9",
+  brightCyan: "#3192aa",
+  brightWhite: "#8c959f",
+};
+const ANSI_DARK = {
+  black: "#3f4451",
+  red: "#e06c75",
+  green: "#98c379",
+  yellow: "#e5c07b",
+  blue: "#61afef",
+  magenta: "#c678dd",
+  cyan: "#56b6c2",
+  white: "#d7dae0",
+  brightBlack: "#5c6370",
+  brightRed: "#ef7b85",
+  brightGreen: "#a5d48a",
+  brightYellow: "#f0cd8c",
+  brightBlue: "#74bbf5",
+  brightMagenta: "#d38ce6",
+  brightCyan: "#66c6d1",
+  brightWhite: "#f0f2f5",
+};
+
 export class TerminalPanel {
   #el: HTMLElement;
   #tabs: HTMLElement;
@@ -213,6 +254,8 @@ export class TerminalPanel {
       cursorBlink: true,
       allowProposedApi: false,
       scrollback: 5000,
+      // 文字和底色太接近時（例如淺色背景上的黃字）自動調深或調淺，維持好讀的對比。
+      minimumContrastRatio: 4.5,
       theme: this.#theme(),
     });
     const fit = new FitAddon();
@@ -376,12 +419,16 @@ export class TerminalPanel {
       probe.style.color = `var(${name})`;
       return getComputedStyle(probe).color || undefined;
     };
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
     const theme = {
       background: color("--surface"),
       foreground: color("--fg"),
       cursor: color("--accent"),
       cursorAccent: color("--surface"),
       selectionBackground: color("--accent-soft"),
+      ...(dark ? ANSI_DARK : ANSI_LIGHT),
     };
     probe.remove();
     return theme;
