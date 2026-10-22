@@ -14,7 +14,7 @@ function isDark(): boolean {
 async function loadMermaid(): Promise<Mermaid> {
   mermaidPromise ??= import("mermaid").then((m) => m.default);
   const mermaid = await mermaidPromise;
-  const theme = isDark() ? "dark" : "default";
+  const theme = mermaidTheme();
   if (initializedTheme !== theme) {
     // Mermaid 12 預設用 ELK 排版（要另外下載約 1.4 MB）；改用輕量的 dagre，
     // 圖裡寫了 `layout: elk` 時才會載入 ELK。
@@ -25,29 +25,34 @@ async function loadMermaid(): Promise<Mermaid> {
 }
 
 let seq = 0;
+const cache = new Map<string, string>();
+
+/** 目前流程圖的配色（跟著深淺色主題）；主題改變時要重畫。 */
+export function mermaidTheme(): "dark" | "default" {
+  return isDark() ? "dark" : "default";
+}
+
+/** 把 Mermaid 原始碼畫成 SVG（同樣的原始碼與主題只畫一次）。語法錯誤時丟出例外。 */
+export async function renderMermaid(code: string): Promise<string> {
+  const mermaid = await loadMermaid();
+  const key = `${initializedTheme}\u0000${code}`;
+  let svg = cache.get(key);
+  if (svg === undefined) {
+    const id = `mermaid-${++seq}`;
+    try {
+      ({ svg } = await mermaid.render(id, code));
+    } finally {
+      // 語法錯誤時 Mermaid 會把繪圖用的暫存元素留在 body 裡。
+      document.getElementById(`d${id}`)?.remove();
+    }
+    if (cache.size >= 100) cache.clear();
+    cache.set(key, svg);
+  }
+  return svg;
+}
 
 /** 把 ```mermaid 程式碼區塊換成圖。保留 data-sourcepos，捲動同步才不會失準。 */
 export function mermaidPlugin(enabled: () => boolean): PreviewPlugin {
-  const cache = new Map<string, string>();
-
-  const svgFor = async (code: string): Promise<string> => {
-    const mermaid = await loadMermaid();
-    const key = `${initializedTheme}\u0000${code}`;
-    let svg = cache.get(key);
-    if (svg === undefined) {
-      const id = `mermaid-${++seq}`;
-      try {
-        ({ svg } = await mermaid.render(id, code));
-      } finally {
-        // 語法錯誤時 Mermaid 會把繪圖用的暫存元素留在 body 裡。
-        document.getElementById(`d${id}`)?.remove();
-      }
-      if (cache.size >= 100) cache.clear();
-      cache.set(key, svg);
-    }
-    return svg;
-  };
-
   const replace = async (root: ParentNode, keepAttrs: boolean) => {
     const blocks = [...root.querySelectorAll<HTMLElement>("pre > code.language-mermaid")];
     for (const code of blocks) {
@@ -56,7 +61,7 @@ export function mermaidPlugin(enabled: () => boolean): PreviewPlugin {
       figure.className = "mermaid-diagram";
       if (keepAttrs && pre.dataset.sourcepos) figure.dataset.sourcepos = pre.dataset.sourcepos;
       try {
-        figure.innerHTML = await svgFor(code.textContent ?? "");
+        figure.innerHTML = await renderMermaid(code.textContent ?? "");
       } catch (e) {
         figure.classList.add("mermaid-error");
         figure.textContent = `流程圖語法錯誤：${e instanceof Error ? e.message : String(e)}`;

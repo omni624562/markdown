@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type InlineTag, blockMath, inlineMath, pairTags, parseTag } from "./live-preview.ts";
+import { type InlineTag, blockMath, inlineMath, mermaidSource, pairTags, parseTag } from "./live-preview.ts";
 import { rangeChecker } from "./ranges.ts";
 
 test("行內公式的規則和 md-core 一致", () => {
@@ -17,6 +17,19 @@ test("行內公式的規則和 md-core 一致", () => {
 test("區塊公式", () => {
   assert.equal(blockMath("$$\nE=mc^2\n$$"), "\nE=mc^2\n");
   assert.equal(blockMath("文字 $$x$$"), null);
+});
+
+test("流程圖區塊的原始碼", () => {
+  assert.equal(mermaidSource("```mermaid\nflowchart LR\n  A --> B\n```"), "flowchart LR\n  A --> B");
+  assert.equal(mermaidSource("~~~~ mermaid title\ngraph TD\n~~~~"), "graph TD");
+  // 還沒打結尾圍欄：整段都是原始碼
+  assert.equal(mermaidSource("```mermaid\ngraph TD\n  A"), "graph TD\n  A");
+  // 結尾圍欄比開頭短或字元不同，不算結尾
+  assert.equal(mermaidSource("````mermaid\ngraph TD\n```"), "graph TD\n```");
+  assert.equal(mermaidSource("```mermaid\ngraph TD\n~~~"), "graph TD\n~~~");
+  assert.equal(mermaidSource("```js\nlet a\n```"), null);
+  assert.equal(mermaidSource("```mermaidx\ngraph\n```"), null);
+  assert.equal(mermaidSource("```mermaid"), null);
 });
 
 test("格式標籤：只認不帶屬性的 u／mark／sup／sub", () => {

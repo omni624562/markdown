@@ -1394,6 +1394,21 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .cm-lp-table table { margin: 0; }
 .cm-lp-math-block { text-align: center; }
 .cm-lp-math { cursor: pointer; }
+/* 即時預覽的流程圖：滑過時右上角出現工具列；編輯中接在原始碼下面。 */
+.cm-lp-mermaid { position: relative; }
+.cm-lp-diagram { overflow-x: auto; text-align: center; color: var(--muted); font-size: 0.9em; }
+.cm-lp-diagram svg { display: inline-block; vertical-align: top; }
+.cm-lp-mermaid-stale .cm-lp-diagram { opacity: 0.45; }
+.cm-lp-diagram-error { margin-top: 4px; color: var(--danger); font: 12px var(--font-ui); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-lp-mermaid-editing { cursor: default; margin-top: 4px !important; border: 1px dashed var(--border); border-radius: 6px; }
+.cm-lp-mermaid-editing:hover { outline: none; }
+.cm-lp-mermaid-editing .cm-lp-diagram-edit { display: none; }
+.cm-lp-diagram-tools { position: absolute; top: 6px; right: 6px; z-index: 1; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 2px 8px rgb(0 0 0 / 10%); opacity: 0; transition: opacity 0.12s; }
+.cm-lp-mermaid:hover .cm-lp-diagram-tools, .cm-lp-diagram-tools:focus-within { opacity: 1; }
+.cm-lp-diagram-tools button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.cm-lp-diagram-tools button:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.cm-lp-diagram-tools svg { width: 16px; height: 16px; }
+@media (hover: none) { .cm-lp-diagram-tools { opacity: 1; } }
 
 /* ---- 選取文字時浮出的格式按鈕 ---- */
 .cm-tooltip.cm-format-bubble {

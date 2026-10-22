@@ -11,6 +11,7 @@ import { TAG } from "./doc-index.ts";
 import { rangeChecker } from "./ranges.ts";
 import { editorFocused, focusChanged, focusTracking } from "./inline-tools.ts";
 import { EditableTableWidget } from "./table-widget.ts";
+import { icon } from "./ui/icons.ts";
 
 export interface LivePreviewOptions {
   /** 圖片的網址（相對路徑換成可載入的網址）；回傳 null 表示無法顯示。 */
@@ -22,6 +23,15 @@ export interface LivePreviewOptions {
   /** 數學公式；沒有提供或關閉公式時顯示原始碼。 */
   renderMath?(tex: string, display: boolean): Promise<string>;
   mathEnabled?(): boolean;
+  /** Mermaid 流程圖畫成 SVG；沒有提供或關閉流程圖時顯示原始碼。 */
+  renderMermaid?(code: string): Promise<string>;
+  mermaidEnabled?(): boolean;
+  /** 流程圖目前的配色；改變時（切換深淺色主題）重畫。 */
+  mermaidTheme?(): string;
+  /** 放大檢視流程圖；`editSource` 把游標移進原始碼。 */
+  openDiagram?(svg: string, editSource: () => void): void;
+  /** 流程圖複製成圖片。 */
+  copyDiagram?(svg: string): void;
   /** Ctrl（⌘）＋點連結。 */
   openLink(href: string): void;
   /** 暫停顯示（例如正在逐段比較差異時，一律顯示原始碼）。 */
@@ -58,6 +68,17 @@ export function inlineMath(text: string): { from: number; to: number; tex: strin
   const re = /(?<![\\$])\$(?![\s$])((?:\\.|[^$\\\n])+?)(?<![\s\\])\$(?![\d$])/g;
   for (const m of text.matchAll(re)) out.push({ from: m.index, to: m.index + m[0].length, tex: m[1] });
   return out;
+}
+
+/** ```mermaid 區塊裡的流程圖原始碼（不含前後的圍欄）；不是流程圖時回傳 null。 */
+export function mermaidSource(block: string): string | null {
+  const open = /^ {0,3}(`{3,}|~{3,})[ \t]*mermaid(?:[ \t][^\n]*)?\n/.exec(block);
+  if (!open) return null;
+  const lines = block.slice(open[0].length).split("\n");
+  const fence = open[1];
+  const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(lines.at(-1) ?? "");
+  if (close && close[1][0] === fence[0] && close[1].length >= fence.length) lines.pop();
+  return lines.join("\n");
 }
 
 /** 整段都是 `$$…$$` 的區塊公式時回傳 TeX。 */
@@ -262,6 +283,182 @@ class MathWidget extends WidgetType {
   }
 }
 
+/** 流程圖畫面上最多多高，超過的等比例縮小（點「放大」看原始大小）。 */
+const DIAGRAM_MAX_HEIGHT = 560;
+/** 編輯原始碼時，停止打字多久後重畫。 */
+const DIAGRAM_DEBOUNCE = 300;
+/** 畫好的流程圖高度：重新建立元件時先用這個高度估算，捲動才不會跳。 */
+const diagramHeights = new Map<string, number>();
+
+interface DiagramState {
+  widget: MermaidWidget;
+  /** 上一次畫成功的圖；語法錯誤時繼續顯示。 */
+  svg: string | null;
+  timer: number;
+  seq: number;
+}
+const diagramStates = new WeakMap<HTMLElement, DiagramState>();
+
+/**
+ * Mermaid 流程圖。游標不在區塊裡時取代整個區塊，只顯示圖；
+ * 游標在區塊裡時接在原始碼下面，邊打字邊更新（語法錯誤時保留上一次畫好的圖）。
+ */
+class MermaidWidget extends WidgetType {
+  readonly code: string;
+  readonly theme: string;
+  readonly editing: boolean;
+  readonly opts: LivePreviewOptions;
+  constructor(code: string, theme: string, editing: boolean, opts: LivePreviewOptions) {
+    super();
+    this.code = code;
+    this.theme = theme;
+    this.editing = editing;
+    this.opts = opts;
+  }
+  eq(other: MermaidWidget): boolean {
+    return other.code === this.code && other.theme === this.theme && other.editing === this.editing;
+  }
+  get estimatedHeight(): number {
+    return diagramHeights.get(this.code) ?? -1;
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "cm-lp-block cm-lp-mermaid";
+    const tools = document.createElement("div");
+    tools.className = "cm-lp-diagram-tools";
+    const button = (name: string, label: string, run: (st: DiagramState) => void, cls = "") => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = cls;
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      b.append(icon(name));
+      b.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.button === 0) run(diagramStates.get(el)!);
+      });
+      return b;
+    };
+    tools.append(
+      button("pen-line", "編輯原始碼", () => editDiagram(view, el), "cm-lp-diagram-edit"),
+      button("maximize-2", "放大", (st) => {
+        if (st.svg && st.widget.opts.openDiagram) st.widget.opts.openDiagram(st.svg, () => editDiagram(view, el));
+      }),
+      button("copy", "複製成圖片", (st) => {
+        if (st.svg) st.widget.opts.copyDiagram?.(st.svg);
+      }),
+    );
+    const diagram = document.createElement("div");
+    diagram.className = "cm-lp-diagram";
+    diagram.textContent = "流程圖繪製中…";
+    const error = document.createElement("div");
+    error.className = "cm-lp-diagram-error";
+    error.hidden = true;
+    el.append(tools, diagram, error);
+    el.addEventListener("mousedown", (e) => {
+      // 點圖開始編輯原始碼（已經在編輯時不動，免得游標跳走）。
+      if (e.button !== 0 || diagramStates.get(el)?.widget.editing) return;
+      e.preventDefault();
+      editDiagram(view, el);
+    });
+    diagramStates.set(el, { widget: this, svg: null, timer: 0, seq: 0 });
+    this.#apply(el, view, 0);
+    return el;
+  }
+  updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    const st = diagramStates.get(dom);
+    if (!st) return false;
+    const redraw = st.widget.code !== this.code || st.widget.theme !== this.theme;
+    st.widget = this;
+    this.#apply(dom, view, redraw && this.editing ? DIAGRAM_DEBOUNCE : redraw ? 0 : -1);
+    return true;
+  }
+  /** `delay` 是 -1 時只更新外觀，不重畫。 */
+  #apply(el: HTMLElement, view: EditorView, delay: number): void {
+    el.classList.toggle("cm-lp-mermaid-editing", this.editing);
+    el.title = this.editing ? "" : "按一下編輯流程圖";
+    if (delay < 0) return;
+    const st = diagramStates.get(el)!;
+    clearTimeout(st.timer);
+    const draw = () => {
+      const seq = ++st.seq;
+      const done = (svg: string | null, err?: unknown) => {
+        // 等待期間又改了原始碼，以最新的為準。
+        if (seq !== st.seq) return;
+        const diagram = el.querySelector<HTMLElement>(".cm-lp-diagram")!;
+        const error = el.querySelector<HTMLElement>(".cm-lp-diagram-error")!;
+        if (svg !== null) {
+          st.svg = svg;
+          diagram.innerHTML = svg;
+          fitDiagram(diagram.querySelector("svg"));
+        } else if (st.svg === null) {
+          diagram.textContent = "";
+        }
+        error.hidden = err === undefined;
+        if (err !== undefined) {
+          const message = err instanceof Error ? err.message : String(err);
+          error.textContent = `流程圖語法錯誤：${message.split("\n").find((l) => l.trim()) ?? ""}`;
+          error.title = message;
+        }
+        el.classList.toggle("cm-lp-mermaid-stale", err !== undefined && st.svg !== null);
+        view.requestMeasure({
+          read: () => el.getBoundingClientRect().height,
+          write: (h) => {
+            if (svg === null) return;
+            if (diagramHeights.size >= 200) diagramHeights.clear();
+            diagramHeights.set(this.code, h);
+          },
+        });
+      };
+      this.opts.renderMermaid!(this.code).then(
+        (svg) => done(svg),
+        (e) => done(null, e),
+      );
+    };
+    if (delay > 0) st.timer = window.setTimeout(draw, delay);
+    else draw();
+  }
+  destroy(dom: HTMLElement): void {
+    const st = diagramStates.get(dom);
+    if (st) clearTimeout(st.timer);
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+/** 流程圖照原始大小顯示：太高的等比例縮小，太寬的先縮到六成，再寬就左右捲動。 */
+function fitDiagram(svg: SVGSVGElement | null): void {
+  const box = svg?.viewBox.baseVal;
+  if (!svg || !box?.width || !box.height) return;
+  const scale = Math.min(1, DIAGRAM_MAX_HEIGHT / box.height);
+  const width = box.width * scale;
+  svg.removeAttribute("height");
+  svg.style.width = `${width}px`;
+  svg.style.maxWidth = "100%";
+  svg.style.minWidth = `${Math.round(width * 0.6)}px`;
+  svg.style.height = "auto";
+}
+
+/** 把游標移到流程圖原始碼的第一行（圍欄的下一行）。 */
+function editDiagram(view: EditorView, el: HTMLElement): void {
+  const pos = view.posAtDOM(el);
+  const doc = view.state.doc;
+  let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(pos, 1);
+  while (node && node.name !== "FencedCode") node = node.parent;
+  // 編輯中的圖接在區塊後面，往前找區塊。
+  if (!node) {
+    node = syntaxTree(view.state).resolveInner(pos, -1);
+    while (node && node.name !== "FencedCode") node = node.parent;
+  }
+  const start = node ? node.from : pos;
+  const line = doc.lineAt(start);
+  const anchor = line.number < doc.lines && (!node || doc.line(line.number + 1).from < node.to) ? doc.line(line.number + 1).from : start;
+  view.dispatch({ selection: { anchor }, scrollIntoView: false, userEvent: "select.pointer" });
+  view.focus();
+}
+
 // ---- 計算要隱藏或替換的範圍 ----------------------------------------------------
 
 const hidden = Decoration.replace({});
@@ -291,7 +488,7 @@ function activeLines(state: EditorState) {
 }
 
 /**
- * 區塊元件（表格、`$$` 公式）：會改變版面高度，CodeMirror 規定要由 StateField 提供，所以看整份文件；
+ * 區塊元件（表格、`$$` 公式、流程圖）：會改變版面高度，CodeMirror 規定要由 StateField 提供，所以看整份文件；
  * 只走區塊層級的節點（不進入段落內容），大文件也很快。
  */
 function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSet {
@@ -300,6 +497,8 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSe
   const { rangeActive } = activeLines(state);
   const wholeLines = (from: number, to: number) => doc.lineAt(from).from === from && doc.lineAt(to).to === to;
   const mathOn = !!opts.renderMath && (opts.mathEnabled?.() ?? true);
+  const mermaidOn = !!opts.renderMermaid && (opts.mermaidEnabled?.() ?? true);
+  const theme = opts.mermaidTheme?.() ?? "";
   const decos: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter: ({ name, from, to }) => {
@@ -320,6 +519,17 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSe
             );
           }
           return false;
+        case "FencedCode": {
+          const code = mermaidOn && wholeLines(from, to) ? mermaidSource(doc.sliceString(from, to)) : null;
+          if (code === null) return false;
+          if (!rangeActive(from, to)) {
+            decos.push(Decoration.replace({ widget: new MermaidWidget(code, theme, false, opts), block: true }).range(from, to));
+          } else if (code.trim()) {
+            // 編輯中：上面是原始碼，下面是即時更新的圖。
+            decos.push(Decoration.widget({ widget: new MermaidWidget(code, theme, true, opts), block: true, side: 1 }).range(to));
+          }
+          return false;
+        }
         case "Paragraph": {
           if (!mathOn || doc.sliceString(from, from + 2) !== "$$") return false;
           const display = blockMath(doc.sliceString(from, to));
