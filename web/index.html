@@ -27,12 +27,6 @@
       <div class="topbar-side" aria-hidden="true"></div>
       <div class="tab-bar" id="tab-bar"></div>
       <div class="top-actions">
-        <div class="segmented" role="radiogroup" aria-label="檢視模式">
-          <button type="button" role="radio" data-view="editor"><i data-icon="code"></i><span class="label">原始碼</span></button>
-          <button type="button" role="radio" data-view="live"><i data-icon="book-open-text"></i><span class="label">即時預覽</span></button>
-          <button type="button" role="radio" data-view="split" class="split-only"><i data-icon="columns-2"></i><span class="label">分割</span></button>
-          <button type="button" role="radio" data-view="preview"><i data-icon="eye"></i><span class="label">預覽</span></button>
-        </div>
         <button type="button" id="main-menu" class="btn icon-only" title="更多功能" aria-label="更多功能"><i data-icon="ellipsis"></i></button>
       </div>
     </header>
@@ -141,6 +135,12 @@
     <section class="terminal-panel" id="terminal-panel" aria-label="終端機" hidden></section>
 
     <footer class="statusbar">
+      <div class="segmented view-switch" role="radiogroup" aria-label="檢視模式">
+        <button type="button" role="radio" data-view="editor"><i data-icon="code"></i><span class="label">原始碼</span></button>
+        <button type="button" role="radio" data-view="live"><i data-icon="book-open-text"></i><span class="label">即時預覽</span></button>
+        <button type="button" role="radio" data-view="split" class="split-only"><i data-icon="columns-2"></i><span class="label">分割</span></button>
+        <button type="button" role="radio" data-view="preview"><i data-icon="eye"></i><span class="label">預覽</span></button>
+      </div>
       <span id="status-cursor"></span>
       <span id="status-stats"></span>
       <select id="doc-kind" class="status-select" aria-label="文件類型" title="文件類型（依副檔名自動判斷，也可以在這裡切換）">
