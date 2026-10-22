@@ -560,7 +560,7 @@ kbd {
 }
 .status-select {
   height: 22px;
-  margin-left: -6px;
+  margin: 0 -6px;
   padding: 0 20px 0 6px;
   border: 0;
   border-radius: 5px;
@@ -571,7 +571,6 @@ kbd {
   cursor: pointer;
 }
 .status-select:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
-#doc-kind { order: -1; margin-right: auto; }
 .save-state[data-state="saved"] { color: var(--success); }
 .save-state:disabled { cursor: default; background: transparent; }
 .save-state[data-state="dirty"] { color: var(--fg); }
