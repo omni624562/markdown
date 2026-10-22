@@ -8,6 +8,7 @@ import type { GitHub } from "./github-ui.ts";
 import type { SettingsStore } from "./settings.ts";
 import type { FileTree } from "./ui/filetree.ts";
 import { icon } from "./ui/icons.ts";
+import { choose } from "./ui/choice.ts";
 import { toast } from "./ui/toast.ts";
 
 const MARK: Record<GitChange["status"], string> = {
@@ -46,6 +47,12 @@ export interface GitPanelHooks {
   root(): string | null;
   /** 點變更清單中的檔案。 */
   open(path: string): void;
+  /** 開啟衝突的檔案並逐段比較（`theirs` 是都採用遠端時的內容）。 */
+  resolve(path: string, theirs: string): void;
+  /** 切換或建立分支。 */
+  switchBranch(): void;
+  /** 建立 Pull Request。 */
+  createPr(): void;
   /** 儲存庫狀態改變（更新活動列圖示的變更數）。沒有開啟資料夾時是 null。 */
   changed(status: GitStatus | null): void;
 }
@@ -64,6 +71,8 @@ export class GitPanel {
   /** 自動同步出錯後，這次開啟期間先暫停。 */
   #syncPaused = false;
   #message: HTMLTextAreaElement;
+  /** 這次合併中，每個衝突檔案「都採用遠端」的內容（重新開啟程式後就沒有了）。 */
+  #theirs = new Map<string, string>();
 
   constructor(host: HTMLElement, d: Desktop, settings: SettingsStore, tree: FileTree, github: GitHub, hooks: GitPanelHooks) {
     this.#host = host;
@@ -137,17 +146,24 @@ export class GitPanel {
     // 分支與同步按鈕
     const branch = document.createElement("div");
     branch.className = "git-branch";
-    const info = document.createElement("span");
+    const info = document.createElement("button");
+    info.type = "button";
     info.className = "git-info";
-    info.title = b?.upstream ? `追蹤 ${b.upstream}` : "這個分支還沒有設定遠端";
+    info.title = `${b?.upstream ? `追蹤 ${b.upstream}` : "這個分支還沒有設定遠端"}；按一下切換或建立分支`;
+    info.disabled = this.#busy || s.merging;
+    info.addEventListener("click", () => this.#hooks.switchBranch());
     info.append(icon("git-branch"), Object.assign(document.createElement("strong"), { textContent: b?.name ?? "（未知分支）" }));
     if (b?.ahead) info.append(Object.assign(document.createElement("small"), { textContent: `↑${b.ahead}`, title: `${b.ahead} 個提交還沒推送` }));
     if (b?.behind) info.append(Object.assign(document.createElement("small"), { textContent: `↓${b.behind}`, title: `遠端有 ${b.behind} 個新提交` }));
     const sync = document.createElement("div");
     sync.className = "git-sync";
+    const pr = this.#button("", "git-pull-request", async () => this.#hooks.createPr());
+    pr.title = "建立 Pull Request";
+    pr.setAttribute("aria-label", "建立 Pull Request");
     sync.append(
       this.#button("拉取", "arrow-down-to-line", () => this.pull()),
       this.#button("推送", "arrow-up-from-line", () => this.push()),
+      ...(s.remote ? [pr] : []),
     );
     branch.append(info, sync);
 
@@ -156,13 +172,13 @@ export class GitPanel {
     this.#message.placeholder = changes.length
       ? `提交說明（留空就用「${defaultMessage(changes, baseName)}」）`
       : "沒有需要提交的變更";
-    this.#message.disabled = this.#busy || !changes.length;
+    this.#message.disabled = this.#busy || !changes.length || s.merging;
     const actions = document.createElement("div");
     actions.className = "git-actions";
     const commit = this.#button("提交", "git-commit-horizontal", () => this.commit(false));
     const commitPush = this.#button("提交並推送", "arrow-up-from-line", () => this.commit(true));
     commitPush.classList.add("btn-primary");
-    for (const el of [commit, commitPush]) el.disabled = this.#busy || !changes.length;
+    for (const el of [commit, commitPush]) el.disabled = this.#busy || !changes.length || s.merging;
     commit.title = "提交（Ctrl+Enter）";
     actions.append(commit, commitPush);
 
@@ -188,14 +204,41 @@ export class GitPanel {
           Object.assign(document.createElement("b"), { textContent: MARK[c.status], title: LABEL[c.status] }),
         );
         btn.disabled = c.status === "deleted";
-        btn.addEventListener("click", () => this.#hooks.open(c.path));
+        btn.addEventListener("click", () => {
+          const theirs = this.#theirs.get(c.path);
+          if (c.status === "conflicted" && theirs !== undefined) this.#hooks.resolve(c.path, theirs);
+          else this.#hooks.open(c.path);
+        });
         li.append(btn);
         return li;
       }),
     );
 
-    const hint = this.#syncHint(s);
+    const hint = s.merging ? this.#mergeBox(changes) : this.#syncHint(s);
     this.#host.replaceChildren(...(hint ? [hint] : []), branch, this.#message, actions, head, list);
+  }
+
+  /** 正在合併：說明怎麼處理，並提供「完成合併」「放棄合併」。 */
+  #mergeBox(changes: GitChange[]): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "git-hint git-merge";
+    const left = changes.filter((c) => c.status === "conflicted").length;
+    box.append(
+      Object.assign(document.createElement("strong"), { textContent: "正在合併遠端的變更" }),
+      Object.assign(document.createElement("span"), {
+        textContent: left
+          ? `下面標「!」的 ${left} 個檔案兩邊改到同一個地方。點檔案逐段選「採用遠端」或「保留本機」，存檔後按「完成合併」。`
+          : "處理完了，按「完成合併」建立合併提交。",
+      }),
+    );
+    const finish = this.#button("完成合併", "git-merge", () => this.finishMerge());
+    finish.classList.add("btn-primary");
+    const abort = this.#button("放棄合併", "x", () => this.abortMerge());
+    const row = document.createElement("div");
+    row.className = "git-merge-actions";
+    row.append(finish, abort);
+    box.append(row);
+    return box;
   }
 
   /** 還沒有開啟資料夾，或資料夾還不是 Git 儲存庫：引導用 GitHub 同步。 */
@@ -296,8 +339,74 @@ export class GitPanel {
     }
   }
 
-  pull(): Promise<void> {
-    return this.#run("Git", () => this.#d.gitPull()).then(() => {});
+  async pull(): Promise<void> {
+    if (this.#busy) return;
+    this.#busy = true;
+    this.#render();
+    try {
+      toast(await this.#d.gitPull(), { tone: "success" });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      // 兩邊改到同一個地方：讓使用者選擇逐段處理。
+      if (message.includes("逐段處理")) {
+        toast(message, {
+          tone: "error",
+          duration: 20000,
+          action: { label: "逐段處理", run: () => void this.startMerge() },
+        });
+      } else {
+        toast(`Git：${message}`, { tone: "error", duration: 12000 });
+      }
+    } finally {
+      this.#busy = false;
+      await this.refresh();
+    }
+  }
+
+  /** 開始合併：沒有衝突的部分直接合併，有衝突的檔案逐段處理。 */
+  async startMerge(): Promise<void> {
+    let conflicts: Awaited<ReturnType<Desktop["gitMergeStart"]>> = [];
+    const ok = await this.#run(
+      "合併失敗",
+      async () => {
+        conflicts = await this.#d.gitMergeStart();
+        return "";
+      },
+      true,
+    );
+    if (!ok) return;
+    this.#theirs.clear();
+    for (const c of conflicts) if (c.theirs !== null) this.#theirs.set(c.path, c.theirs);
+    const notes = conflicts.filter((c) => c.note).map((c) => `${baseName(c.path)}：${c.note}`);
+    if (notes.length) toast(notes.join("；"), { duration: 12000 });
+    const first = conflicts.find((c) => c.theirs !== null);
+    if (first) this.#hooks.resolve(first.path, first.theirs!);
+    else toast("沒有需要逐段處理的檔案，按「完成合併」就好。");
+  }
+
+  finishMerge(): Promise<void> {
+    return this.#run("完成合併失敗", async () => {
+      const message = await this.#d.gitMergeFinish();
+      this.#theirs.clear();
+      return message;
+    }).then(() => {});
+  }
+
+  async abortMerge(): Promise<void> {
+    const ok = await choose(
+      "放棄合併",
+      "會回到拉取前的狀態，剛才逐段處理的內容會被丟掉。遠端的變更之後還可以再拉取一次。",
+      [
+        { id: "cancel", label: "取消" },
+        { id: "abort", label: "放棄合併", danger: true },
+      ],
+    );
+    if (ok !== "abort") return;
+    await this.#run("放棄合併失敗", async () => {
+      const message = await this.#d.gitMergeAbort();
+      this.#theirs.clear();
+      return message;
+    });
   }
 
   push(): Promise<void> {

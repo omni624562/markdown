@@ -150,7 +150,8 @@ pub async fn github_login_start(app: AppHandle) -> Result<DeviceCode, String> {
     let v = crate::io::blocking_for(Duration::from_secs(30), move || {
         form(
             "https://github.com/login/device/code",
-            &format!("client_id={id}&scope=repo"),
+            // repo：儲存庫、issue、PR、Pages；gist：分享成 Gist。
+            &format!("client_id={id}&scope=repo%20gist"),
             "登入",
         )
     })
@@ -402,6 +403,240 @@ pub async fn github_publish(
         };
         crate::git::publish_at(&dir, &created.clone_url, &auth, who.as_ref())?;
         Ok(created.html_url)
+    })
+    .await
+}
+
+// ---- 建立 PR、GitHub Pages、Gist ----------------------------------------------
+
+/// 送出 JSON；回傳狀態碼與內容（4xx 也回傳，讓呼叫端依狀態碼說明）。
+fn api_send(
+    token: &str,
+    method: &str,
+    path: &str,
+    body: &serde_json::Value,
+    what: &str,
+) -> Result<(u16, serde_json::Value), String> {
+    let agent = crate::update::agent();
+    let url = format!("{API}{path}");
+    let req = match method {
+        "PUT" => agent.put(&url),
+        _ => agent.post(&url),
+    };
+    let res = req
+        .config()
+        .http_status_as_error(false)
+        .build()
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("Content-Type", "application/json")
+        .send(&body.to_string());
+    match res {
+        Ok(mut r) => {
+            let code = r.status().as_u16();
+            let text = r.body_mut().read_to_string().unwrap_or_default();
+            Ok((
+                code,
+                serde_json::from_str(&text).unwrap_or(serde_json::Value::Null),
+            ))
+        }
+        Err(e) => Err(format!("{what}失敗：無法連線到 GitHub（{e}）")),
+    }
+}
+
+fn github_message(v: &serde_json::Value) -> String {
+    let main = v
+        .get("message")
+        .and_then(|x| x.as_str())
+        .unwrap_or_default();
+    let detail = v
+        .get("errors")
+        .and_then(|x| x.as_array())
+        .and_then(|l| l.first())
+        .and_then(|e| e.get("message").and_then(|m| m.as_str()))
+        .unwrap_or_default();
+    [main, detail]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("：")
+}
+
+/// 儲存庫的預設分支（通常是 main）。
+pub(crate) fn default_branch(token: &str, owner: &str, name: &str) -> Result<String, String> {
+    let v: serde_json::Value = serde_json::from_str(&api_get(
+        token,
+        &format!("/repos/{owner}/{name}"),
+        "讀取儲存庫",
+    )?)
+    .map_err(|e| format!("讀取儲存庫失敗：{e}"))?;
+    Ok(v.get("default_branch")
+        .and_then(|x| x.as_str())
+        .unwrap_or("main")
+        .to_string())
+}
+
+/// 建立 PR：從 `branch` 合併到預設分支；這個分支已經有開著的 PR 時直接回傳它的網址。
+pub(crate) fn create_pull(
+    token: &str,
+    owner: &str,
+    name: &str,
+    branch: &str,
+    title: &str,
+    body: &str,
+) -> Result<String, String> {
+    let base = default_branch(token, owner, name)?;
+    if branch == base {
+        return Err(format!(
+            "目前在預設分支「{base}」上，請先建立新分支再建立 Pull Request"
+        ));
+    }
+    let what = "建立 Pull Request";
+    let (code, v) = api_send(
+        token,
+        "POST",
+        &format!("/repos/{owner}/{name}/pulls"),
+        &serde_json::json!({ "title": title, "head": branch, "base": base, "body": body }),
+        what,
+    )?;
+    if code == 201 {
+        return v
+            .get("html_url")
+            .and_then(|x| x.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| format!("{what}失敗：GitHub 的回應不正確"));
+    }
+    if code == 422 {
+        // 已經有 PR，或兩個分支沒有差異。
+        let existing = api_get(
+            token,
+            &format!(
+                "/repos/{owner}/{name}/pulls?state=open&head={}",
+                crate::git_files::encode(&format!("{owner}:{branch}"))
+            ),
+            what,
+        )
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|l| {
+            l.as_array()?
+                .first()?
+                .get("html_url")?
+                .as_str()
+                .map(str::to_string)
+        });
+        if let Some(url) = existing {
+            return Ok(url);
+        }
+        return Err(format!(
+            "{what}失敗：「{branch}」和「{base}」沒有差異，或 GitHub 不接受（{}）",
+            github_message(&v)
+        ));
+    }
+    Err(format!(
+        "{what}失敗：GitHub 回應 {code}（{}）",
+        github_message(&v)
+    ))
+}
+
+/// 用 GitHub Pages 把儲存庫發佈成網站（從預設分支的根目錄），回傳網站網址。
+#[tauri::command]
+pub async fn github_pages(app: AppHandle) -> Result<String, String> {
+    let token = require_token(&app)?;
+    let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
+    crate::io::blocking_for(Duration::from_secs(60), move || {
+        let what = "發佈網站";
+        let branch = default_branch(&token, &owner, &name)?;
+        let (code, v) = api_send(
+            &token,
+            "POST",
+            &format!("/repos/{owner}/{name}/pages"),
+            &serde_json::json!({ "source": { "branch": branch, "path": "/" } }),
+            what,
+        )?;
+        let url = match code {
+            201 => v
+                .get("html_url")
+                .and_then(|x| x.as_str())
+                .map(str::to_string),
+            // 已經開啟過：讀出目前的網址。
+            409 => api_get(&token, &format!("/repos/{owner}/{name}/pages"), what)
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .and_then(|p| p.get("html_url")?.as_str().map(str::to_string)),
+            422 => {
+                return Err(format!(
+                    "{what}失敗：私人儲存庫需要 GitHub 付費方案才能使用 GitHub Pages（{}）",
+                    github_message(&v)
+                ))
+            }
+            403 | 404 => {
+                return Err(format!(
+                    "{what}失敗：沒有權限設定這個儲存庫的 GitHub Pages（{}）",
+                    github_message(&v)
+                ))
+            }
+            _ => {
+                return Err(format!(
+                    "{what}失敗：GitHub 回應 {code}（{}）",
+                    github_message(&v)
+                ))
+            }
+        };
+        Ok(url.unwrap_or_else(|| format!("https://{owner}.github.io/{name}/")))
+    })
+    .await
+}
+
+/// 把文字分享成 Gist，回傳網址。`public` 為 false 時是秘密 Gist（知道網址的人才看得到）。
+#[tauri::command]
+pub async fn github_gist(
+    app: AppHandle,
+    file_name: String,
+    content: String,
+    description: String,
+    public: bool,
+) -> Result<String, String> {
+    let token = require_token(&app)?;
+    if content.trim().is_empty() {
+        return Err("沒有內容可以分享".into());
+    }
+    let file_name = file_name
+        .trim()
+        .replace(['/', '\\'], "-")
+        .chars()
+        .take(100)
+        .collect::<String>();
+    let file_name = if file_name.is_empty() {
+        "筆記.md".to_string()
+    } else {
+        file_name
+    };
+    crate::io::blocking_for(Duration::from_secs(60), move || {
+        let what = "分享成 Gist";
+        let (code, v) = api_send(
+            &token,
+            "POST",
+            "/gists",
+            &serde_json::json!({
+                "description": description,
+                "public": public,
+                "files": { file_name: { "content": content } },
+            }),
+            what,
+        )?;
+        match code {
+            201 => v
+                .get("html_url")
+                .and_then(|x| x.as_str())
+                .map(str::to_string)
+                .ok_or_else(|| format!("{what}失敗：GitHub 的回應不正確")),
+            // 1.8.0 以前登入的權杖沒有 gist 權限。
+            403 | 404 => Err(format!(
+                "{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 Git 頁登出 GitHub 再重新登入一次"
+            )),
+            _ => Err(format!("{what}失敗：GitHub 回應 {code}（{}）", github_message(&v))),
+        }
     })
     .await
 }

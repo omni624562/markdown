@@ -179,6 +179,23 @@ export interface GitStatus {
   changes: GitChange[];
   /** 遠端（origin）的網址。 */
   remote: string | null;
+  /** 正在逐段處理合併衝突（還沒按「完成合併」）。 */
+  merging: boolean;
+}
+
+export interface GitBranches {
+  current: string | null;
+  local: string[];
+  /** 只在遠端上、本機還沒有的分支。 */
+  remote: string[];
+}
+
+/** 合併衝突的檔案：磁碟上是「都採用本機」的內容，`theirs` 是「都採用遠端」的內容。 */
+export interface GitConflict {
+  path: string;
+  theirs: string | null;
+  /** 不能逐段處理時的說明（例如一邊刪除了檔案）。 */
+  note: string | null;
 }
 
 export interface GitHubAccount {
@@ -506,6 +523,18 @@ function bridge(core: TauriCore, event: TauriEvent) {
     githubIssues: (search: string) => core.invoke<GitHubIssue[]>("github_issues", { search }),
     githubIssue: (number: number) => core.invoke<GitHubIssueDetail>("github_issue", { number }),
     githubWorkspaceRepo: () => core.invoke<string | null>("github_workspace_repo"),
+    gitBranches: () => core.invoke<GitBranches>("git_branches"),
+    gitCheckout: (name: string) => core.invoke<string>("git_checkout", { name }),
+    gitCreateBranch: (name: string) => core.invoke<string>("git_create_branch", { name }),
+    gitMergeStart: () => core.invoke<GitConflict[]>("git_merge_start"),
+    gitMergeConflicts: () => core.invoke<string[]>("git_merge_conflicts"),
+    gitMergeFinish: () => core.invoke<string>("git_merge_finish"),
+    gitMergeAbort: () => core.invoke<string>("git_merge_abort"),
+    gitCreatePr: (title: string, body: string, newBranch: string | null) =>
+      core.invoke<string>("git_create_pr", { title, body, newBranch }),
+    githubPages: () => core.invoke<string>("github_pages"),
+    githubGist: (fileName: string, content: string, description: string, isPublic: boolean) =>
+      core.invoke<string>("github_gist", { fileName, content, description, public: isPublic }),
     adoAccount: () => core.invoke<AdoAccount | null>("ado_account"),
     adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
