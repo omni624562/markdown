@@ -1394,6 +1394,26 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .cm-lp-table table { margin: 0; }
 .cm-lp-math-block { text-align: center; }
 .cm-lp-math { cursor: pointer; }
+/* 預覽中的程式碼區塊：左上角語言，滑過時右上角「複製」。 */
+.markdown-body .code-block { position: relative; }
+.markdown-body .code-block > pre { margin-bottom: 1em; }
+.markdown-body .code-block:has(.code-lang) > pre { padding-top: 2em; }
+.code-tools { position: absolute; inset: 0 0 auto; display: flex; align-items: center; justify-content: space-between; height: 2em; padding: 0 6px 0 1.2em; pointer-events: none; font: 12px var(--font-ui); }
+.code-lang { color: var(--subtle); text-transform: lowercase; letter-spacing: 0.02em; }
+.code-copy { pointer-events: auto; display: inline-flex; align-items: center; gap: 4px; margin: 6px 0 0 auto; padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted); font: inherit; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.code-copy svg { width: 14px; height: 14px; }
+.code-block:hover .code-copy, .code-copy:focus-visible, .code-copy.copied { opacity: 1; }
+.code-copy:hover { color: var(--fg); border-color: var(--border-strong); }
+.code-copy.copied { color: var(--accent); }
+/* 預覽中的流程圖：滑過時右上角「放大」「複製成圖片」，點圖也能放大。 */
+.markdown-body .mermaid-diagram.has-tools { position: relative; cursor: zoom-in; }
+.diagram-tools { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 2px 8px rgb(0 0 0 / 10%); opacity: 0; transition: opacity 0.12s; cursor: default; }
+.mermaid-diagram:hover .diagram-tools, .diagram-tools:focus-within { opacity: 1; }
+.diagram-tools button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.diagram-tools button:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.diagram-tools svg { width: 16px; height: 16px; }
+@media (hover: none) { .code-copy, .diagram-tools { opacity: 1; } }
+
 /* 即時預覽的流程圖：滑過時右上角出現工具列；編輯中接在原始碼下面。 */
 .cm-lp-mermaid { position: relative; }
 .cm-lp-diagram { overflow-x: auto; text-align: center; color: var(--muted); font-size: 0.9em; }

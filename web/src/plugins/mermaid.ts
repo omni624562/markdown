@@ -1,4 +1,5 @@
 import type { PreviewPlugin } from "../preview.ts";
+import { icon } from "../ui/icons.ts";
 
 type Mermaid = typeof import("mermaid").default;
 
@@ -51,8 +52,39 @@ export async function renderMermaid(code: string): Promise<string> {
   return svg;
 }
 
-/** 把 ```mermaid 程式碼區塊換成圖。保留 data-sourcepos，捲動同步才不會失準。 */
-export function mermaidPlugin(enabled: () => boolean): PreviewPlugin {
+/** 預覽中的流程圖：點一下或按「放大」放大檢視，「複製成圖片」可以貼到其他軟體。 */
+export interface DiagramActions {
+  open(svg: string): void;
+  copy(svg: string): void;
+}
+
+function diagramTools(svg: string, actions: DiagramActions): HTMLElement {
+  const tools = document.createElement("div");
+  tools.className = "diagram-tools";
+  const button = (name: string, label: string, run: () => void) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.append(icon(name));
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      run();
+    });
+    return b;
+  };
+  tools.append(
+    button("maximize-2", "放大", () => actions.open(svg)),
+    button("copy", "複製成圖片", () => actions.copy(svg)),
+  );
+  return tools;
+}
+
+/**
+ * 把 ```mermaid 程式碼區塊換成圖。保留 data-sourcepos，捲動同步才不會失準。
+ * 預覽中的圖加上工具列（匯出的 HTML、PDF 不加）。
+ */
+export function mermaidPlugin(enabled: () => boolean, actions?: DiagramActions): PreviewPlugin {
   const replace = async (root: ParentNode, keepAttrs: boolean) => {
     const blocks = [...root.querySelectorAll<HTMLElement>("pre > code.language-mermaid")];
     for (const code of blocks) {
@@ -61,7 +93,14 @@ export function mermaidPlugin(enabled: () => boolean): PreviewPlugin {
       figure.className = "mermaid-diagram";
       if (keepAttrs && pre.dataset.sourcepos) figure.dataset.sourcepos = pre.dataset.sourcepos;
       try {
-        figure.innerHTML = await renderMermaid(code.textContent ?? "");
+        const svg = await renderMermaid(code.textContent ?? "");
+        figure.innerHTML = svg;
+        if (keepAttrs && actions) {
+          figure.classList.add("has-tools");
+          figure.title = "按一下放大";
+          figure.append(diagramTools(svg, actions));
+          figure.addEventListener("click", () => actions.open(svg));
+        }
       } catch (e) {
         figure.classList.add("mermaid-error");
         figure.textContent = `流程圖語法錯誤：${e instanceof Error ? e.message : String(e)}`;

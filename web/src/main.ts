@@ -56,6 +56,8 @@ import { highlightPlugin } from "./plugins/highlight.ts";
 import { localImagesPlugin } from "./plugins/local-images.ts";
 import { mathPlugin, renderTex } from "./plugins/math.ts";
 import { livePreview } from "./live-preview.ts";
+import { codeToolsPlugin } from "./plugins/code-tools.ts";
+import { tablesPlugin } from "./plugins/tables.ts";
 import { mermaidPlugin, mermaidTheme, renderMermaid } from "./plugins/mermaid.ts";
 import { blockRemoteImages, blockRemoteImagesInHtml } from "./remote-images.ts";
 import { Preview } from "./preview.ts";
@@ -246,7 +248,12 @@ function davImageCached(path: string): Promise<string> {
 const preview = new Preview(previewEl, [
   highlightPlugin(),
   mathPlugin(() => settings.value.math),
-  mermaidPlugin(() => settings.value.mermaid),
+  mermaidPlugin(() => settings.value.mermaid, { open: (svg) => openDiagram(svg), copy: (svg) => void copyDiagram(svg) }),
+  tablesPlugin(),
+  codeToolsPlugin({
+    copy: copyCode,
+    skip: (lang) => (lang === "mermaid" && settings.value.mermaid) || (lang === "math" && settings.value.math),
+  }),
   docLinksPlugin({ wikiExists: (target) => wikiExists(target) }),
   ...(desktop
     ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, (p) => davImageCached(p))]
@@ -316,10 +323,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     renderMermaid,
     mermaidEnabled: () => settings.value.mermaid,
     mermaidTheme,
-    openDiagram: (svg, editSource) => {
-      const image = standaloneSvg(svg, diagramImageOptions());
-      if (image) openLightbox(svgDataUrl(image.svg), "流程圖", editSource);
-    },
+    openDiagram: (svg, editSource) => openDiagram(svg, editSource),
     copyDiagram: (svg) => void copyDiagram(svg),
     openLink: (href) => void followLink(href).catch(reportError),
     enabled: () => !review.active,
@@ -3716,6 +3720,23 @@ function diagramImageOptions(): SvgImageOptions {
   const style = getComputedStyle(editor.view.contentDOM);
   const bg = getComputedStyle(document.body).backgroundColor;
   return { font: style.fontFamily, background: bg && bg !== "rgba(0, 0, 0, 0)" ? bg : "#ffffff" };
+}
+
+/** 放大檢視流程圖（即時預覽中的圖可以從這裡回到原始碼）。 */
+function openDiagram(svg: string, editSource?: () => void): void {
+  const image = standaloneSvg(svg, diagramImageOptions());
+  if (image) openLightbox(svgDataUrl(image.svg), "流程圖", editSource);
+}
+
+/** 預覽中程式碼區塊的「複製」。 */
+async function copyCode(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    toast("無法寫入剪貼簿。", { tone: "error" });
+    return false;
+  }
 }
 
 /** 流程圖複製成 PNG，可以直接貼到 Word、簡報、聊天軟體。 */
