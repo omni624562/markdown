@@ -1,5 +1,6 @@
 import {
   SpellCheck,
+  Languages,
   Presentation,
   Tag,
   Tags,
@@ -188,6 +189,7 @@ const ICONS: Record<string, IconNode> = {
   search: Search,
   settings: Settings,
   sparkles: Sparkles,
+  languages: Languages,
   "square-code": SquareCode,
   "square-terminal": SquareTerminal,
   strikethrough: Strikethrough,

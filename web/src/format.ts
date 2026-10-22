@@ -89,15 +89,18 @@ export function toggleLineStyle(style: LineStyle): StateCommand {
     }
     const sorted = [...lines.values()].sort((a, b) => a.from - b.from);
     const removing = sorted.every((l) => hasStyle(l.text, style));
-    const changes = sorted.map((l, i) => {
-      const existing = l.text.match(LINE_PREFIX)?.[0] ?? "";
-      return {
-        from: l.from,
-        to: l.from + existing.length,
-        insert: removing ? "" : prefixFor(style, i),
-      };
-    });
-    return apply(state, dispatch, { changes });
+    const changes = state.changes(
+      sorted.map((l, i) => {
+        const existing = l.text.match(LINE_PREFIX)?.[0] ?? "";
+        return {
+          from: l.from,
+          to: l.from + existing.length,
+          insert: removing ? "" : prefixFor(style, i),
+        };
+      }),
+    );
+    // 游標在行首（例如空白行）時要跑到新加的標記後面，才能接著打字。
+    return apply(state, dispatch, { changes, selection: state.selection.map(changes, 1) });
   };
 }
 
