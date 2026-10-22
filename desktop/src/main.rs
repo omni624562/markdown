@@ -17,6 +17,7 @@ mod doc_index;
 mod files;
 mod fonts;
 mod git;
+mod git_files;
 mod github;
 mod history;
 mod image_protocol;
@@ -250,6 +251,12 @@ fn main() {
             files::export_binary,
             files::import_docx,
             fonts::list_fonts,
+            git_files::git_file_history,
+            git_files::git_file_at,
+            git_files::git_web_url,
+            github::github_issues,
+            github::github_issue,
+            github::github_workspace_repo,
             ado::ado_account,
             ado::ado_connect,
             ado::ado_disconnect,

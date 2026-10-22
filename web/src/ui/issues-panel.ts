@@ -1,19 +1,40 @@
 /**
- * 側邊欄的「工作項目」（Azure DevOps）：列出指派給我、還沒結束的工作項目，
+ * 側邊欄的議題清單：Azure DevOps 的工作項目、GitHub 的 Issues 共用。
  * 可以搜尋標題或輸入編號；點一下看內容，再插入連結到文件或在瀏覽器開啟。
  */
-import type { AdoWorkItem, AdoWorkItemDetail } from "../desktop.ts";
 import { icon } from "./icons.ts";
 
-export interface WorkItemsHandlers {
-  list(search: string): Promise<AdoWorkItem[]>;
-  detail(id: number): Promise<AdoWorkItemDetail>;
-  insert(item: AdoWorkItem): void;
-  open(url: string): void;
+export interface IssueSummary {
+  id: number;
+  title: string;
+  /** 標題上方的小字，例如「Bug 123・Active・10/20」。 */
+  meta: string;
+  webUrl: string;
 }
 
-/** 工作項目的說明是 HTML：轉成純文字顯示（在不會執行程式、不會載入圖片的文件裡解析）。 */
-function htmlToText(html: string): string {
+export interface IssueSection {
+  title: string;
+  text: string;
+}
+
+export interface IssueDetail {
+  /** 補在標題下方的資訊，例如「指派給 王小明」。 */
+  meta: string;
+  sections: IssueSection[];
+}
+
+export interface IssuesHandlers<T extends IssueSummary> {
+  list(search: string): Promise<T[]>;
+  detail(item: T): Promise<IssueDetail>;
+  insert(item: T): void;
+  open(url: string): void;
+  /** 狀態列文字：`count` 是結果數量，`search` 是搜尋文字（空白表示預設清單）。 */
+  status(count: number, search: string): string;
+  placeholder: string;
+}
+
+/** HTML 轉成純文字顯示（在不會執行程式、不會載入圖片的文件裡解析）。 */
+export function htmlToText(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   for (const el of doc.querySelectorAll("script, style, template")) el.remove();
   for (const br of doc.querySelectorAll("br")) br.replaceWith("\n");
@@ -22,15 +43,16 @@ function htmlToText(html: string): string {
   return (doc.body.textContent ?? "").replace(/ /g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function when(iso: string | null): string {
+/** 「10/20」這樣的短日期。 */
+export function shortDate(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export class WorkItemsPanel {
+export class IssuesPanel<T extends IssueSummary> {
   #el: HTMLElement;
-  #h: WorkItemsHandlers;
+  #h: IssuesHandlers<T>;
   #input: HTMLInputElement;
   #status: HTMLElement;
   #list: HTMLUListElement;
@@ -39,15 +61,15 @@ export class WorkItemsPanel {
   #timer = 0;
   #loaded = false;
 
-  constructor(el: HTMLElement, handlers: WorkItemsHandlers) {
+  constructor(el: HTMLElement, handlers: IssuesHandlers<T>) {
     this.#el = el;
     this.#h = handlers;
     el.classList.add("workitems");
     this.#input = document.createElement("input");
     this.#input.type = "search";
     this.#input.className = "workitems-search";
-    this.#input.placeholder = "搜尋標題，或輸入編號";
-    this.#input.setAttribute("aria-label", "搜尋工作項目");
+    this.#input.placeholder = handlers.placeholder;
+    this.#input.setAttribute("aria-label", handlers.placeholder);
     this.#input.addEventListener("input", () => {
       clearTimeout(this.#timer);
       this.#timer = window.setTimeout(() => void this.refresh(), 400);
@@ -73,7 +95,7 @@ export class WorkItemsPanel {
     if (!this.#loaded) void this.refresh();
   }
 
-  /** 連線狀態改變時清掉舊的內容。 */
+  /** 連線狀態或資料夾改變時清掉舊的內容。 */
   reset(): void {
     this.#loaded = false;
     this.#seq++;
@@ -91,13 +113,7 @@ export class WorkItemsPanel {
     try {
       const items = await this.#h.list(search);
       if (seq !== this.#seq) return;
-      this.#status.textContent = items.length
-        ? search
-          ? `找到 ${items.length} 個工作項目`
-          : `指派給你、還沒結束的工作項目（${items.length}）`
-        : search
-          ? "找不到符合的工作項目"
-          : "目前沒有指派給你、還沒結束的工作項目";
+      this.#status.textContent = this.#h.status(items.length, search);
       this.#list.replaceChildren(...items.map((it) => this.#row(it)));
     } catch (e) {
       if (seq !== this.#seq) return;
@@ -106,15 +122,15 @@ export class WorkItemsPanel {
     }
   }
 
-  #row(item: AdoWorkItem): HTMLLIElement {
+  #row(item: T): HTMLLIElement {
     const li = document.createElement("li");
     const b = document.createElement("button");
     b.type = "button";
     b.className = "workitem";
-    b.title = `${item.kind} ${item.id}：${item.title}`;
+    b.title = `#${item.id}：${item.title}`;
     const top = document.createElement("span");
     top.className = "workitem-meta";
-    top.textContent = [`${item.kind} ${item.id}`, item.state, when(item.changed)].filter(Boolean).join("・");
+    top.textContent = item.meta;
     const title = document.createElement("span");
     title.className = "workitem-title";
     title.textContent = item.title;
@@ -132,7 +148,7 @@ export class WorkItemsPanel {
     this.#list.hidden = false;
   }
 
-  async #open(item: AdoWorkItem): Promise<void> {
+  async #open(item: T): Promise<void> {
     this.#input.hidden = true;
     this.#status.hidden = true;
     this.#list.hidden = true;
@@ -152,7 +168,7 @@ export class WorkItemsPanel {
     h.textContent = item.title;
     const meta = document.createElement("p");
     meta.className = "workitem-meta";
-    meta.textContent = [`${item.kind} ${item.id}`, item.state, item.project].filter(Boolean).join("・");
+    meta.textContent = item.meta;
     const actions = document.createElement("div");
     actions.className = "workitems-actions";
     const insert = document.createElement("button");
@@ -174,22 +190,19 @@ export class WorkItemsPanel {
     back.focus();
 
     try {
-      const d = await this.#h.detail(item.id);
+      const d = await this.#h.detail(item);
       if (seq !== this.#seq) return;
-      if (d.assignedTo) meta.textContent += `・指派給 ${d.assignedTo}`;
+      if (d.meta) meta.textContent += `・${d.meta}`;
       const parts: HTMLElement[] = [];
-      const section = (title: string, html: string | null) => {
-        const text = html ? htmlToText(html) : "";
-        if (!text) return;
+      for (const s of d.sections) {
+        if (!s.text.trim()) continue;
         const t = document.createElement("h4");
-        t.textContent = title;
+        t.textContent = s.title;
         const p = document.createElement("p");
         p.className = "workitem-text";
-        p.textContent = text;
+        p.textContent = s.text.trim();
         parts.push(t, p);
-      };
-      section("說明", d.description);
-      section(d.kind === "Bug" ? "重現步驟" : "驗收條件", d.details);
+      }
       if (!parts.length) {
         const p = document.createElement("p");
         p.className = "workitems-status";

@@ -242,6 +242,34 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   details: string | null;
 }
 
+/** 改過某個檔案的提交。 */
+export interface FileCommit {
+  id: string;
+  short: string;
+  summary: string;
+  author: string;
+  /** Unix 秒。 */
+  time: number;
+}
+
+export interface GitHubIssue {
+  number: number;
+  title: string;
+  state: string;
+  labels: string[];
+  author: string;
+  comments: number;
+  updated: string | null;
+  webUrl: string;
+}
+
+export interface GitHubIssueDetail extends GitHubIssue {
+  assignees: string[];
+  /** 內容（Markdown）。 */
+  body: string;
+  commentList: { author: string; created: string | null; body: string }[];
+}
+
 export interface FileVersion {
   /** 保存時間（Unix 毫秒）。 */
   id: number;
@@ -472,6 +500,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
     githubClone: (fullName: string) => core.invoke<Folder | null>("github_clone", { fullName }),
     /** 把開啟的資料夾上傳成新的儲存庫，回傳儲存庫網址。 */
     githubPublish: (name: string, isPrivate: boolean) => core.invoke<string>("github_publish", { name, private: isPrivate }),
+    gitFileHistory: (path: string) => core.invoke<FileCommit[]>("git_file_history", { path }),
+    gitFileAt: (path: string, id: string) => core.invoke<string>("git_file_at", { path, id }),
+    gitWebUrl: (path: string, from?: number, to?: number) => core.invoke<string>("git_web_url", { path, from, to }),
+    githubIssues: (search: string) => core.invoke<GitHubIssue[]>("github_issues", { search }),
+    githubIssue: (number: number) => core.invoke<GitHubIssueDetail>("github_issue", { number }),
+    githubWorkspaceRepo: () => core.invoke<string | null>("github_workspace_repo"),
     adoAccount: () => core.invoke<AdoAccount | null>("ado_account"),
     adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),

@@ -26,6 +26,7 @@ import {
   type DavConnection,
   type EditorSnapshot,
   type Entry,
+  type FileCommit,
   type FileItem,
   type Folder,
   desktop,
@@ -91,7 +92,7 @@ import { Picker } from "./ui/picker.ts";
 import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
-import { WorkItemsPanel } from "./ui/workitems-panel.ts";
+import { IssuesPanel, type IssueSummary, htmlToText, shortDate } from "./ui/issues-panel.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
@@ -1318,8 +1319,8 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "workitems" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "workitems", "git"];
+type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
 let sidePanel: SidePanel = SIDE_PANELS.find((p) => p === storage.load("side-panel")) ?? "outline";
 /** 目前開啟的資料夾（工作區）。 */
@@ -1348,6 +1349,7 @@ const github = desktop
       },
       changed: () => {
         void gitPanel?.refresh();
+        void renderIssuesTab();
         settingsDialog.refresh();
       },
     })
@@ -1371,17 +1373,100 @@ const ado = desktop
     })
   : null;
 
+/** 插入 `[#123 標題](網址)` 到游標位置。 */
+function insertIssueLink(item: IssueSummary): void {
+  insertAtCursor(workItemLink(item));
+  toast(`已插入「#${item.id}」的連結`);
+}
+
 const workItemsPanel = desktop
-  ? new WorkItemsPanel($("#workitems-host"), {
-      list: (search) => desktop!.adoWorkItems(search),
-      detail: (id) => desktop!.adoWorkItem(id),
-      insert: (item) => {
-        insertAtCursor(workItemLink(item));
-        toast(`已插入「#${item.id}」的連結`);
+  ? new IssuesPanel($("#workitems-host"), {
+      placeholder: "搜尋標題，或輸入編號",
+      list: async (search) =>
+        (await desktop!.adoWorkItems(search)).map((w) => ({
+          ...w,
+          meta: [`${w.kind} ${w.id}`, w.state, shortDate(w.changed)].filter(Boolean).join("・"),
+        })),
+      detail: async (item) => {
+        const d = await desktop!.adoWorkItem(item.id);
+        return {
+          meta: [d.project, d.assignedTo ? `指派給 ${d.assignedTo}` : ""].filter(Boolean).join("・"),
+          sections: [
+            { title: "說明", text: d.description ? htmlToText(d.description) : "" },
+            { title: d.kind === "Bug" ? "重現步驟" : "驗收條件", text: d.details ? htmlToText(d.details) : "" },
+          ],
+        };
       },
+      insert: insertIssueLink,
       open: (url) => void desktop!.openExternal(url).catch(reportError),
+      status: (n, search) =>
+        n
+          ? search
+            ? `找到 ${n} 個工作項目`
+            : `指派給你、還沒結束的工作項目（${n}）`
+          : search
+            ? "找不到符合的工作項目"
+            : "目前沒有指派給你、還沒結束的工作項目",
     })
   : null;
+
+/** GitHub Issues：目前開啟的資料夾連到 GitHub、而且已經登入時才顯示。 */
+const issuesPanel = desktop
+  ? new IssuesPanel($("#issues-host"), {
+      placeholder: "搜尋 issue，或輸入編號",
+      list: async (search) =>
+        (await desktop!.githubIssues(search)).map((i) => ({
+          ...i,
+          id: i.number,
+          meta: [
+            `#${i.number}`,
+            i.state === "closed" ? "已關閉" : "",
+            i.labels.join("、"),
+            i.comments ? `${i.comments} 則留言` : "",
+            shortDate(i.updated),
+          ]
+            .filter(Boolean)
+            .join("・"),
+        })),
+      detail: async (item) => {
+        const d = await desktop!.githubIssue(item.id);
+        return {
+          meta: [`由 ${d.author} 建立`, d.assignees.length ? `指派給 ${d.assignees.join("、")}` : ""]
+            .filter(Boolean)
+            .join("・"),
+          sections: [
+            { title: "內容", text: d.body },
+            ...d.commentList.map((c) => ({ title: `${c.author}・${shortDate(c.created)}`, text: c.body })),
+          ],
+        };
+      },
+      insert: insertIssueLink,
+      open: (url) => void desktop!.openExternal(url).catch(reportError),
+      status: (n, search) =>
+        n
+          ? search
+            ? `找到 ${n} 個 issue`
+            : `還沒關閉的 issue（${n}）`
+          : search
+            ? "找不到符合的 issue"
+            : "目前沒有還沒關閉的 issue",
+    })
+  : null;
+
+let issuesRepo: string | null = null;
+async function renderIssuesTab(): Promise<void> {
+  const repo = desktop && github?.account ? await desktop.githubWorkspaceRepo().catch(() => null) : null;
+  if (repo !== issuesRepo) {
+    issuesRepo = repo;
+    issuesPanel?.reset();
+    if (sidePanel === "issues" && repo) issuesPanel?.shown();
+  }
+  const tab = $("#side-tab-issues");
+  tab.hidden = !repo;
+  tab.title = repo ? `Issues（${repo}）` : "Issues";
+  if (tab.hidden && sidePanel === "issues") showPanel("files", false);
+}
+$("#issues-refresh").addEventListener("click", () => void issuesPanel?.refresh());
 
 /** 連線到 Azure DevOps 後才顯示「工作項目」圖示。 */
 function renderAdoTab(): void {
@@ -1624,6 +1709,7 @@ function placeOutline(): void {
 function showPanel(panel: SidePanel, reveal = true): void {
   if (panel === "git" && $("#side-tab-git").hidden) panel = "files";
   if (panel === "workitems" && $("#side-tab-workitems").hidden) panel = "files";
+  if (panel === "issues" && $("#side-tab-issues").hidden) panel = "files";
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
   if (panel === "outline" && outlineOnRight()) {
     updateActiveHeading();
@@ -1641,6 +1727,7 @@ function showPanel(panel: SidePanel, reveal = true): void {
   if (reveal && !outlineShown) setOutline(true);
   if (panel === "outline") updateActiveHeading();
   if (panel === "workitems") workItemsPanel?.shown();
+  if (panel === "issues") issuesPanel?.shown();
   if (panel === "search" && searchStale) {
     searchStale = false;
     searchPanel?.rerun();
@@ -1780,6 +1867,7 @@ async function setWorkspace(folder: Folder | null): Promise<void> {
   await fileTree?.setActive(treeActive);
   await renderFilesEmpty();
   void gitPanel?.refresh();
+  void renderIssuesTab();
 }
 
 async function openRecentFolder(path: string): Promise<void> {
@@ -3088,6 +3176,69 @@ async function compareWithVersion(v: FileVersion & { path: string }): Promise<vo
   if (!started) toast("這個版本和目前的內容相同。");
 }
 
+// ---- Git：檔案的提交歷史、網頁連結 --------------------------------------------
+
+const commitPicker = new Picker<FileCommit & { path: string }>({
+  label: "提交歷史",
+  placeholder: "選一次提交，和目前的內容比較",
+  empty: "這個檔案還沒有提交過",
+  async query(q) {
+    const path = fileHandle?.path;
+    if (!desktop || !path) return [];
+    const list = await desktop.gitFileHistory(path);
+    const needle = q.trim().toLowerCase();
+    return list
+      .map((c) => ({ ...c, path }))
+      .filter((c) => !needle || `${c.summary} ${c.author} ${c.short}`.toLowerCase().includes(needle));
+  },
+  render: (c) => ({
+    title: c.summary || "（沒有說明）",
+    detail: [c.short, c.author, versionTitle(c.time * 1000)].filter(Boolean).join(" · "),
+    icon: "git-commit-horizontal",
+  }),
+  pick: (c) => void compareWithCommit(c).catch(reportError),
+});
+
+async function compareWithCommit(c: FileCommit & { path: string }): Promise<void> {
+  if (!desktop || fileHandle?.path !== c.path) return;
+  const text = await desktop.gitFileAt(c.path, c.id);
+  if (review.active) review.finish();
+  const started = review.start(text, {
+    title: `與提交 ${c.short}（${c.summary}）的版本比較`,
+    hint: "「採用這一版」會把那一段換回這次提交時的內容，可以用 Ctrl+Z 復原；處理完記得存檔",
+    acceptLabel: "採用這一版",
+    rejectLabel: "保留目前",
+  });
+  if (!started) toast("這次提交時的內容和目前相同。");
+}
+
+/** 目前檔案在 GitHub／Azure DevOps 網頁上的網址；有選取文字時標示那幾行。 */
+async function webLink(): Promise<string | null> {
+  const path = fileHandle?.path;
+  if (!desktop || !path) return null;
+  const { state } = editor.view;
+  const sel = state.selection.main;
+  const lines = sel.empty
+    ? undefined
+    : [state.doc.lineAt(sel.from).number, state.doc.lineAt(Math.max(sel.from, sel.to - 1)).number];
+  return desktop.gitWebUrl(path, lines?.[0], lines?.[1]);
+}
+
+async function openOnWeb(): Promise<void> {
+  if (fileHandle && !active.dirty && gitPanel?.status?.branch?.ahead) {
+    toast("這個檔案還有提交沒有推送，網頁上看到的可能是舊的內容。");
+  }
+  const url = await webLink();
+  if (url) await desktop!.openExternal(url);
+}
+
+async function copyWebLink(): Promise<void> {
+  const url = await webLink();
+  if (!url) return;
+  await navigator.clipboard.writeText(url);
+  toast(url.includes("#L") || url.includes("&line=") ? "已複製連結（含選取的行號）" : "已複製連結");
+}
+
 /** 外部修改後，以修改前的版本為基準逐段標示（A4）。沒有差異時回傳 false。 */
 function showExternalChanges(original: string, current: string): boolean {
   return review.start(current, {
@@ -3174,6 +3325,30 @@ commands.register(
     icon: "clock",
     when: () => !!desktop,
     run: () => recentPicker.open(),
+  },
+  {
+    id: "git-file-history",
+    title: "Git：這個檔案的提交歷史…",
+    group: "檔案",
+    icon: "git-commit-horizontal",
+    when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.repo,
+    run: () => commitPicker.open(),
+  },
+  {
+    id: "git-open-web",
+    title: "Git：在網頁上開啟這個檔案（GitHub／Azure DevOps）",
+    group: "檔案",
+    icon: "external-link",
+    when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.remote,
+    run: () => void openOnWeb().catch(reportError),
+  },
+  {
+    id: "git-copy-link",
+    title: "Git：複製這個檔案的網頁連結",
+    group: "檔案",
+    icon: "link",
+    when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.remote,
+    run: () => void copyWebLink().catch(reportError),
   },
   {
     id: "history",
@@ -3315,6 +3490,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "save",
   "save-as",
   "history",
+  "git-file-history",
   "-",
   { label: "匯出", icon: "download", items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich"] },
   "fix-terms",
@@ -3536,6 +3712,8 @@ const contextMenu = floatingMenu("context-anchor", [
   "-",
   "ai-actions",
   "send-to-terminal-ai",
+  "-",
+  "git-copy-link",
 ]);
 
 const symbolPicker = new SymbolPicker((text) => {
@@ -4190,6 +4368,7 @@ void ado?.ready().then(() => {
 void github?.ready().then(() => {
   settingsDialog.refresh();
   void gitPanel?.refresh();
+  void renderIssuesTab();
 });
 
 document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((btn) => {
