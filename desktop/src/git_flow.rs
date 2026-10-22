@@ -431,6 +431,11 @@ pub async fn git_merge_abort(app: AppHandle) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    /// Windows 的 Git 預設 core.autocrlf=true，取出的檔案是 CRLF：比對內容時統一成 LF。
+    fn read(path: std::path::PathBuf) -> String {
+        fs::read_to_string(path).unwrap().replace("\r\n", "\n")
+    }
+
     fn me() -> Identity {
         Identity {
             name: "測試".into(),
@@ -482,10 +487,7 @@ mod tests {
         let local = conflicted("resolve");
         let list = merge_start_at(&local).unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(
-            fs::read_to_string(local.join("a.md")).unwrap(),
-            "一\n本機\n三\n"
-        );
+        assert_eq!(read(local.join("a.md")), "一\n本機\n三\n");
         assert_eq!(list[0].theirs.as_deref(), Some("一\n遠端\n三\n"));
         assert!(crate::git::status_at(&local).merging);
         assert_eq!(merge_conflicts_at(&local).unwrap().len(), 1);
@@ -510,10 +512,7 @@ mod tests {
         .unwrap();
         assert!(merge_finish_at(&local, Some(&me())).is_err());
         merge_abort_at(&local).unwrap();
-        assert_eq!(
-            fs::read_to_string(local.join("a.md")).unwrap(),
-            "一\n本機\n三\n"
-        );
+        assert_eq!(read(local.join("a.md")), "一\n本機\n三\n");
         assert!(!crate::git::status_at(&local).merging);
     }
 
@@ -531,7 +530,7 @@ mod tests {
         assert_eq!(b.current.as_deref(), Some("草稿"));
         assert_eq!(b.local, ["main", "草稿"]);
         checkout_at(&dir, "main").unwrap();
-        assert_eq!(fs::read_to_string(dir.join("a.md")).unwrap(), "一\n");
+        assert_eq!(read(dir.join("a.md")), "一\n");
         fs::write(dir.join("a.md"), "沒存的修改\n").unwrap();
         assert!(checkout_at(&dir, "草稿").is_err());
     }
