@@ -328,12 +328,12 @@ impl<'a> Session<'a> {
                 self.refused.set(true);
                 return Err(git2::Error::from_str("需要登入"));
             }
-            if is_github(url) {
-                if let Some(token) = &self.auth.github_token {
-                    return Cred::userpass_plaintext("x-access-token", token);
-                }
-            } else if let Ok(cfg) = git2::Config::open_default() {
-                // 只讀使用者自己的全域設定，不讀儲存庫裡的（避免執行來路不明的程式）。
+            if let (true, Some(token)) = (is_github(url), &self.auth.github_token) {
+                return Cred::userpass_plaintext("x-access-token", token);
+            }
+            // 沒有登入 GitHub，或是其他網站：沿用電腦上 Git 已經存好的帳號（例如 Git Credential Manager）。
+            // 只讀使用者自己的全域設定，不讀儲存庫裡的（避免執行來路不明的程式）。
+            if let Ok(cfg) = git2::Config::open_default() {
                 if let Ok(cred) = Cred::credential_helper(&cfg, url, username) {
                     return Ok(cred);
                 }
