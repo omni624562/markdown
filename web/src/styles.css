@@ -1394,6 +1394,21 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .cm-lp-table table { margin: 0; }
 .cm-lp-math-block { text-align: center; }
 .cm-lp-math { cursor: pointer; }
+/* 即時預覽的流程圖：滑過時右上角出現工具列；編輯中接在原始碼下面。 */
+.cm-lp-mermaid { position: relative; }
+.cm-lp-diagram { overflow-x: auto; text-align: center; color: var(--muted); font-size: 0.9em; }
+.cm-lp-diagram svg { display: inline-block; vertical-align: top; }
+.cm-lp-mermaid-stale .cm-lp-diagram { opacity: 0.45; }
+.cm-lp-diagram-error { margin-top: 4px; color: var(--danger); font: 12px var(--font-ui); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-lp-mermaid-editing { cursor: default; margin-top: 4px !important; border: 1px dashed var(--border); border-radius: 6px; }
+.cm-lp-mermaid-editing:hover { outline: none; }
+.cm-lp-mermaid-editing .cm-lp-diagram-edit { display: none; }
+.cm-lp-diagram-tools { position: absolute; top: 6px; right: 6px; z-index: 1; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 2px 8px rgb(0 0 0 / 10%); opacity: 0; transition: opacity 0.12s; }
+.cm-lp-mermaid:hover .cm-lp-diagram-tools, .cm-lp-diagram-tools:focus-within { opacity: 1; }
+.cm-lp-diagram-tools button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.cm-lp-diagram-tools button:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.cm-lp-diagram-tools svg { width: 16px; height: 16px; }
+@media (hover: none) { .cm-lp-diagram-tools { opacity: 1; } }
 
 /* ---- 選取文字時浮出的格式按鈕 ---- */
 .cm-tooltip.cm-format-bubble {
@@ -1721,3 +1736,104 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .release-notes ul { margin: 0 0 6px; padding-left: 1.3em; }
 .release-notes p { margin: 8px 0; }
 .settings-row small.settings-ready { color: var(--accent); font-weight: 600; }
+
+/* ==== 一致的表單與對話框外觀（和設定視窗同一套標準） ====
+ * 輸入框、下拉選單、勾選框、對話框的間距與圓角統一；下拉選單和勾選框不用系統預設的樣子。 */
+:root {
+  --ctl-radius: 8px;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23898e96' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* 對話框 */
+.choice { padding: 24px 26px 20px; border-radius: 14px; }
+.choice h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: 0.02em; }
+.choice p { font-size: 13.5px; }
+.choice-actions { margin-top: 22px; }
+.choice-actions .btn { min-height: 34px; padding: 0 16px; }
+.choice-actions .btn:not(.btn-primary) { background: var(--bg); }
+.choice-actions .btn:not(.btn-primary):hover { background: var(--surface); }
+.btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* 對話框裡的欄位：標籤在上、輸入框在下 */
+.dav-dialog label:not(.dav-remember), .pdf-field {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+.pdf-form { gap: 0; }
+.pdf-field > span { color: var(--fg); }
+.dav-dialog input:not([type="checkbox"]), .pdf-field input, .pdf-field select, .choice-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--ctl-radius);
+  background-color: var(--bg);
+  color: var(--fg);
+  font: 400 14px var(--font-ui);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.choice-input { margin: 4px 0 0; }
+.dav-dialog input:not([type="checkbox"]):hover, .pdf-field input:hover, .pdf-field select:hover, .choice-input:hover { border-color: var(--subtle); }
+.dav-dialog input:not([type="checkbox"]):focus, .pdf-field input:focus, .pdf-field select:focus, .choice-input:focus,
+.git-message:focus, .tasks-filters select:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.dav-dialog .dav-remember, .pdf-check { display: flex; gap: 10px; align-items: center; margin: 2px 0 12px; color: var(--fg); font-size: 14px; font-weight: 400; cursor: pointer; }
+.dav-hint { margin-bottom: 18px !important; }
+
+/* 下拉選單：圓角加小箭頭 */
+.pdf-field select, .tasks-filters select, .choice select {
+  padding-right: 32px;
+  background: var(--bg) var(--chevron) no-repeat right 10px center;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* 勾選框：圓角方塊，勾選時填滿強調色 */
+input[type="checkbox"]:not(.switch) {
+  flex: none;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg);
+  appearance: none;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+input[type="checkbox"]:not(.switch):hover { border-color: var(--accent); }
+input[type="checkbox"]:not(.switch):checked {
+  border-color: var(--accent);
+  background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") no-repeat center / 12px;
+}
+input[type="checkbox"]:not(.switch):focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+input[type="checkbox"]:not(.switch):disabled { opacity: 0.5; cursor: not-allowed; }
+@media (forced-colors: active) {
+  input[type="checkbox"]:not(.switch) { appearance: auto; }
+}
+
+/* 側邊欄：待辦篩選列整齊排成一行，原始碼控制的輸入框圓角一致 */
+.tasks-filters { gap: 6px; margin-bottom: 8px; }
+.tasks-filters select { height: 28px; max-width: none; padding: 0 26px 0 10px; border-color: var(--border-strong); border-radius: 7px; background-position: right 8px center; }
+.git-message { padding: 8px 10px; border-radius: var(--ctl-radius); line-height: 1.5; }
+.git-actions .btn { min-height: 32px; border-radius: var(--ctl-radius); }
+.git-actions .btn:not(.btn-primary) { background: var(--bg); }
+/* 文件內容裡的待辦勾選框：沿用上面的外觀，但大小跟著字級、位置和原本一樣 */
+.markdown-body .task-list-item input[type="checkbox"] { width: 1em; height: 1em; margin: 0 0.45em 0 -1.5em; vertical-align: -0.12em; }
+.markdown-body .task-list-item > input[type="checkbox"]:has(+ p) { margin-top: 0.45em; }
+input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45em 0 0; vertical-align: -0.12em; }
+.markdown-body input[type="checkbox"]:checked, input[type="checkbox"].cm-lp-checkbox:checked { background-size: 80%; }
+.pdf-dialog h2 { margin-bottom: 18px; }
+.tasks-filters .segmented { flex: 1 1 100%; }
+.tasks-filters .segmented button { flex: 1; justify-content: center; }
+.tasks-filters select { flex: 1 1 0; min-width: 0; }
+.pdf-form .choice-actions, .dav-dialog .choice-actions { margin-top: 8px; }

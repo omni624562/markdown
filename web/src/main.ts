@@ -56,7 +56,7 @@ import { highlightPlugin } from "./plugins/highlight.ts";
 import { localImagesPlugin } from "./plugins/local-images.ts";
 import { mathPlugin, renderTex } from "./plugins/math.ts";
 import { livePreview } from "./live-preview.ts";
-import { mermaidPlugin } from "./plugins/mermaid.ts";
+import { mermaidPlugin, mermaidTheme, renderMermaid } from "./plugins/mermaid.ts";
 import { blockRemoteImages, blockRemoteImagesInHtml } from "./remote-images.ts";
 import { Preview } from "./preview.ts";
 import sample from "./sample.md?raw";
@@ -114,6 +114,7 @@ import { TOC_START, tocBlock, updateToc } from "./toc.ts";
 import { BUILTIN_TEMPLATES, TEMPLATE_LIMITS, type Template, fillTemplate, templateFileName } from "./templates.ts";
 import { askText } from "./ui/choice.ts";
 import { toast } from "./ui/toast.ts";
+import { type SvgImageOptions, standaloneSvg, svgDataUrl, svgToPng } from "./svg-image.ts";
 
 type ViewMode = "editor" | "live" | "split" | "preview";
 type ThemePref = "system" | "light" | "dark";
@@ -312,6 +313,14 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     formatTable: (markdown) => tableFormatter(markdown),
     renderMath: renderTex,
     mathEnabled: () => settings.value.math,
+    renderMermaid,
+    mermaidEnabled: () => settings.value.mermaid,
+    mermaidTheme,
+    openDiagram: (svg, editSource) => {
+      const image = standaloneSvg(svg, diagramImageOptions());
+      if (image) openLightbox(svgDataUrl(image.svg), "流程圖", editSource);
+    },
+    copyDiagram: (svg) => void copyDiagram(svg),
     openLink: (href) => void followLink(href).catch(reportError),
     enabled: () => !review.active,
     openWiki: (target) => void openWiki(target).catch(reportError),
@@ -3702,6 +3711,25 @@ async function copyRich(): Promise<void> {
   editor.view.focus();
 }
 
+/** 流程圖單獨成為圖片時的字型與背景色（和畫面上一樣）。 */
+function diagramImageOptions(): SvgImageOptions {
+  const style = getComputedStyle(editor.view.contentDOM);
+  const bg = getComputedStyle(document.body).backgroundColor;
+  return { font: style.fontFamily, background: bg && bg !== "rgba(0, 0, 0, 0)" ? bg : "#ffffff" };
+}
+
+/** 流程圖複製成 PNG，可以直接貼到 Word、簡報、聊天軟體。 */
+async function copyDiagram(svg: string): Promise<void> {
+  try {
+    const png = svgToPng(svg, diagramImageOptions());
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+  } catch {
+    toast("無法把流程圖複製成圖片。", { tone: "error" });
+    return;
+  }
+  toast("已把流程圖複製成圖片", { tone: "success" });
+}
+
 /** 選取範圍的文字（多重選取用換行連接）。 */
 function selectedText(): string {
   const state = editor.view.state;
@@ -3864,14 +3892,20 @@ function setTheme(pref: ThemePref): void {
   themeButton.querySelector(".theme-icon")!.replaceChildren(icon(iconName));
   themeButton.title = `主題：${{ system: "跟隨系統", light: "淺色", dark: "深色" }[pref]}`;
   // 流程圖的配色跟著主題，需要重畫。
-  if (settings.value.mermaid) scheduleRender();
+  if (settings.value.mermaid) {
+    scheduleRender();
+    refreshLivePreview(editor.view);
+  }
   terminal?.applyTheme();
 }
 
 // 跟隨系統時，系統切換深淺色也要重畫流程圖。
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (themePref === "system") terminal?.applyTheme();
-  if (themePref === "system" && settings.value.mermaid) scheduleRender();
+  if (themePref === "system" && settings.value.mermaid) {
+    scheduleRender();
+    refreshLivePreview(editor.view);
+  }
 });
 
 // ---- 設定 ---------------------------------------------------------------
@@ -3932,6 +3966,7 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
   if (changed.includes("math") || changed.includes("mermaid") || changed.includes("blockRemoteImages")) {
     preview.clear();
     renderNow();
+    refreshLivePreview(editor.view);
   }
   if (changed.includes("termCheck") || changed.includes("termIgnore")) recheckTerms(editor.view);
   if (changed.includes("outlineRight")) applyLayout();
