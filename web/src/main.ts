@@ -1321,7 +1321,7 @@ let workspaceRoot: Folder | null = null;
 let fileListCache: FileItem[] | null = null;
 let treeActive: string | null = null;
 
-const DOWNLOAD_URL = "https://github.com/omni624562/markdown/releases/download/latest/md-editor.exe";
+const DOWNLOAD_URL = "https://github.com/omni624562/markdown/releases/download/latest/omarker.exe";
 
 const fileTree = desktop
   ? new FileTree($("#file-tree"), {

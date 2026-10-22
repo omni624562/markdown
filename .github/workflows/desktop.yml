@@ -1,6 +1,6 @@
 name: Desktop
 
-# 編譯 Windows 免安裝執行檔（md-editor.exe）。
+# 編譯 Windows 免安裝執行檔（omarker.exe）。
 # - 每次 PR 都會產生 Artifact（需登入 GitHub 才能下載），方便測試。
 # - 合併到 main 時，更新公開的「最新版」Release：不用登入就能下載。
 # - 推送 v* 標籤時，另外建立該版本的 Release。
@@ -68,14 +68,20 @@ jobs:
           MD_EDITOR_COMMIT: ${{ github.sha }}
         run: cargo build --release --locked
 
+      # Cargo 套件名稱沿用 md-editor（避免動到設定與鑰匙圈等內部名稱），發佈時的檔名用 omarker.exe。
+      - name: 改成發佈用的檔名
+        working-directory: desktop/target/release
+        run: Copy-Item md-editor.exe omarker.exe
+
       - uses: actions/upload-artifact@v4
         with:
-          name: md-editor-windows-x64
-          path: desktop/target/release/md-editor.exe
+          name: omarker-windows-x64
+          path: desktop/target/release/omarker.exe
           if-no-files-found: error
 
   # 公開的「最新版」：標籤 latest 永遠指向 main 最新一次成功建置的版本。
-  # 固定下載連結：https://github.com/<owner>/<repo>/releases/download/latest/md-editor.exe
+  # 固定下載連結：https://github.com/<owner>/<repo>/releases/download/latest/omarker.exe
+  # 舊的連結（latest/md-editor.exe）也繼續提供同一個檔案，已經分享出去的連結不會失效。
   latest:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: windows
@@ -89,7 +95,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: md-editor-windows-x64
+          name: omarker-windows-x64
       - name: 產生更新資訊（version.json）
         env:
           BUILD: ${{ github.run_number }}
@@ -113,9 +119,9 @@ jobs:
             --arg date "$(TZ=Asia/Taipei date +%Y-%m-%d)" \
             --arg notes "$notes" \
             --arg changes "$(node scripts/version.mjs notes "$version" || true)" \
-            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/latest/md-editor.exe" \
-            --arg sha256 "$(sha256sum md-editor.exe | cut -d' ' -f1)" \
-            --argjson size "$(stat -c%s md-editor.exe)" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/latest/omarker.exe" \
+            --arg sha256 "$(sha256sum omarker.exe | cut -d' ' -f1)" \
+            --argjson size "$(stat -c%s omarker.exe)" \
             '{build: $build, version: $version, commit: $commit, date: $date, notes: $notes, changes: $changes, url: $url, sha256: $sha256, size: $size}' \
             > version.json
       - name: 簽章（程式只接受用正式私鑰簽過的更新）
@@ -132,12 +138,12 @@ jobs:
           changes="$(node scripts/version.mjs notes "$version" || true)"
           short="${GITHUB_SHA::7}"
           today="$(TZ=Asia/Taipei date +%Y-%m-%d)"
-          howto="下載 md-editor.exe 後直接執行即可，不需要安裝。
+          howto="下載 omarker.exe 後直接執行即可，不需要安裝。
           第一次執行時若出現「Windows 已保護您的電腦」，請點「其他資訊」→「仍要執行」（這個執行檔沒有數位簽章）。
           之後有新版時，程式會自動提示更新。"
           # 這個版本號第一次發佈：另外建立 v<版本號> 的 Release 保留下來（之後同版本號的建置不再覆蓋）。
           if ! gh release view "v${version}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "v${version}" md-editor.exe --repo "$GITHUB_REPOSITORY" \
+            gh release create "v${version}" omarker.exe --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" --title "v${version}（${today}）" --latest=false \
               --notes "${changes}
 
@@ -149,7 +155,8 @@ jobs:
 
           ${howto}"
           gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          gh release create latest md-editor.exe version.json --repo "$GITHUB_REPOSITORY" \
+          cp omarker.exe md-editor.exe
+          gh release create latest omarker.exe md-editor.exe version.json --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "最新版 v${version}（${today}）" --notes "$notes" --latest
 
   release:
@@ -161,10 +168,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: md-editor-windows-x64
+          name: omarker-windows-x64
       - name: 建立 Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "$GITHUB_REF_NAME" md-editor.exe
+          gh release create "$GITHUB_REF_NAME" omarker.exe
           --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

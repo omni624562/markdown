@@ -1019,10 +1019,19 @@ kbd {
 }
 .tabs { display: flex; flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
+/* 分頁放不下、可以左右捲動時，有更多分頁的那一邊淡出，提示還有內容。 */
+.tabs.more-left { mask-image: linear-gradient(to right, transparent, #000 32px); }
+.tabs.more-right { mask-image: linear-gradient(to left, transparent, #000 32px); }
+.tabs.more-left.more-right { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+.tab-more { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 2px; color: var(--muted); }
+.tab-more:hover { color: var(--fg); }
+.tab-more-menu { max-width: min(420px, 90vw); }
+.tab-more-menu span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab {
   position: relative;
   display: flex;
-  flex: none;
+  /* 分頁多時先縮小（名稱用…截短），縮到最小寬度後才改成左右捲動。 */
+  flex: 0 1 auto;
   gap: 6px;
   align-items: center;
   min-width: 96px;

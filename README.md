@@ -121,7 +121,7 @@
 
 ## 桌面版（Windows 免安裝）
 
-**[下載最新版 md-editor.exe](https://github.com/omni624562/markdown/releases/download/latest/md-editor.exe)**（不需登入 GitHub），下載後直接執行，不需要安裝。也可以到 [Releases 頁面](https://github.com/omni624562/markdown/releases/latest)查看更新內容。
+**[下載最新版 omarker.exe](https://github.com/omni624562/markdown/releases/download/latest/omarker.exe)**（不需登入 GitHub），下載後直接執行，不需要安裝。也可以到 [Releases 頁面](https://github.com/omni624562/markdown/releases/latest)查看更新內容。
 
 - 每次合併到 `main`，CI 都會自動更新這個「最新版」。
 - 推送 `v` 開頭的標籤（例如 `v0.2.0`）時，會另外建立該版本的 Release。
@@ -137,7 +137,7 @@
 - **WebDAV 遠端資料夾**（檔案面板的「⋯」→「連線到 WebDAV」）：直接開啟 Synology、QNAP、Nextcloud 等 NAS 上的資料夾，不需要先掛載成網路磁碟。可以瀏覽、開啟、存檔、新增、重新命名、刪除（遠端沒有資源回收筒，會先確認）、貼上圖片，預覽也會顯示遠端圖片。每 30 秒檢查已開啟的檔案有沒有被其他電腦改過；存檔時用 ETag 確認，被改過就先詢問，不會蓋掉別人的修改。密碼可以選擇存在 Windows 認證管理員；為了安全，預設只接受 HTTPS，只有區域網路的位址在你確認後才能用 HTTP
 - **內嵌終端機**（``Ctrl+` ``，或「⋯」→「AI 與終端機」→「顯示／隱藏終端機」）：在下方開啟 PowerShell，工作目錄是目前開啟的資料夾；可以開好幾個分頁。輸出中的網址按住 `Ctrl` 點一下，就會用預設瀏覽器開啟（例如 Claude Code 開好的 PR 連結）
 - **自動更新**：每天檢查一次 GitHub 上的最新版，有新版時詢問，下載並核對數位簽章與檢查碼後替換執行檔（只接受用正式私鑰簽過的版本），重新啟動即完成（設定 → 進階可以關閉，或手動「檢查更新」）。自己編譯的版本不會自動更新
-- 可以把 `.md`／`.txt`／`.json` 檔或資料夾拖到 `md-editor.exe` 上開啟，或在「開啟檔案」中設定成預設程式。編輯器已經開著時，再開其他檔案會在原本的視窗開成新分頁，不會多開一個視窗
+- 可以把 `.md`／`.txt`／`.json` 檔或資料夾拖到 `omarker.exe` 上開啟，或在「開啟檔案」中設定成預設程式。編輯器已經開著時，再開其他檔案會在原本的視窗開成新分頁，不會多開一個視窗
 - **最近開啟**（「⋯」→「最近開啟…」）：最近的 10 個檔案與 5 個資料夾
 - 原本是 CRLF 換行或有 BOM 的檔案，存檔時會維持原樣；不是 UTF-8 的舊檔案會以 Big5 讀取（存檔時改存 UTF-8，開啟時會提示）
 - 需要 Microsoft Edge WebView2 執行階段：Windows 10／11 已內建；若是精簡版系統，可到微軟官網下載安裝
