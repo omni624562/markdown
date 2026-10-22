@@ -53,6 +53,11 @@ interface Field {
 const LOOK_FIELDS: Field[] = [
   { key: "previewWidth", label: "預覽的文字欄寬" },
   { key: "fixedToolbar", label: "固定顯示格式工具列", hint: "在編輯區上方一直顯示粗體、清單等按鈕；關閉時選取文字才會浮出格式按鈕" },
+  {
+    key: "outlineRight",
+    label: "大綱放在右邊",
+    hint: "大綱固定顯示在內文右邊，捲動時目前的章節會亮起來；檔案、搜尋、待辦等面板仍在左邊。視窗太窄時會回到左邊",
+  },
   { key: "math", label: "顯示數學公式", hint: "用 $…$ 或 $$…$$ 撰寫，使用 KaTeX" },
   { key: "mermaid", label: "顯示流程圖", hint: "```mermaid 程式碼區塊" },
 ];

@@ -30,6 +30,8 @@ export interface Settings {
    * 舊版的 `formatBar`（預設開啟）不再讀取，讓簡約版面也套用到已經有設定檔的使用者。
    */
   fixedToolbar: boolean;
+  /** 大綱固定顯示在內文右邊（視窗夠寬時）；檔案、搜尋等面板仍在左邊。 */
+  outlineRight: boolean;
   /** 桌面版：已經存過的檔案，停止打字一下子後自動存回磁碟。 */
   autoSave: boolean;
   /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
@@ -88,6 +90,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   tableAutoFormat: true,
   smartPaste: true,
   fixedToolbar: false,
+  outlineRight: false,
   autoSymbols: true,
   autoSave: true,
   termCheck: true,
@@ -138,6 +141,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("tableAutoFormat");
   bool("smartPaste");
   bool("fixedToolbar");
+  bool("outlineRight");
   bool("autoSymbols");
   bool("autoSave");
   bool("termCheck");

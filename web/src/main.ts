@@ -1404,18 +1404,51 @@ function refreshIndexPanels(delay = 0): void {
     if (!outlineShown) return;
     if (sidePanel === "tasks") void tasksPanel.refresh();
     if (sidePanel === "tags") void tagsPanel.refresh();
-    if (sidePanel === "outline") void renderBacklinks();
+    if (sidePanel === "outline" || outlineOnRight()) void renderBacklinks();
   }, delay);
+}
+
+/** 視窗夠寬時，大綱可以固定放在內文右邊（設定「大綱放在右邊」）。 */
+const wideQuery = matchMedia("(min-width: 1100px)");
+function outlineOnRight(): boolean {
+  return settings.value.outlineRight && wideQuery.matches && !narrowQuery.matches;
+}
+
+/** 依設定把大綱面板移到右邊或放回左邊的側邊欄。 */
+function placeOutline(): void {
+  const panel = $("#panel-outline");
+  const right = $("#outline-right");
+  const onRight = outlineOnRight();
+  const outlineTab = $<HTMLButtonElement>("#side-tab-outline");
+  if (onRight && panel.parentElement !== right) {
+    right.append(panel);
+    panel.hidden = false;
+    outlineTab.hidden = true;
+    if (sidePanel === "outline") showPanel("files", false);
+    void renderBacklinks();
+    updateActiveHeading();
+  } else if (!onRight && panel.parentElement === right) {
+    $("#panel-files").after(panel);
+    outlineTab.hidden = false;
+    panel.hidden = sidePanel !== "outline";
+  }
+  right.hidden = !onRight;
 }
 
 function showPanel(panel: SidePanel, reveal = true): void {
   if (panel === "git" && $("#side-tab-git").hidden) panel = "files";
+  // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
+  if (panel === "outline" && outlineOnRight()) {
+    updateActiveHeading();
+    return;
+  }
   sidePanel = panel;
   storage.save("side-panel", panel);
   for (const tab of sideTabs) {
     const on = tab.dataset.panel === panel;
     tab.setAttribute("aria-selected", String(on));
     tab.tabIndex = on ? 0 : -1;
+    if (tab.dataset.panel === "outline" && outlineOnRight()) continue;
     $(`#panel-${tab.dataset.panel}`).hidden = !on;
   }
   if (reveal && !outlineShown) setOutline(true);
@@ -3568,12 +3601,14 @@ function applyLayout(): void {
   }
   workspace.classList.toggle("outline-hidden", !outlineShown);
   workspace.classList.toggle("narrow", narrow);
+  placeOutline();
   const cols = [
     narrow || !outlineShown ? "0px" : "var(--activity-width)",
     outlineShown && !narrow ? "var(--outline-width)" : "0px",
     layout === "preview" ? "0px" : layout === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
     layout === "split" ? "var(--splitter-width)" : "0px",
     layout === "editor" ? "0px" : layout === "split" ? `minmax(0, ${1 - splitRatio}fr)` : "minmax(0, 1fr)",
+    outlineOnRight() ? "var(--outline-width)" : "0px",
   ];
   workspace.style.gridTemplateColumns = cols.join(" ");
   document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((b) => {
@@ -3672,6 +3707,7 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
     renderNow();
   }
   if (changed.includes("termCheck") || changed.includes("termIgnore")) recheckTerms(editor.view);
+  if (changed.includes("outlineRight")) applyLayout();
 }
 
 /** 整份文件的兩國用語與錯字：不需要判斷文意的直接換掉，其他的留著波浪底線。 */
@@ -3767,6 +3803,7 @@ setupSplitter($("#splitter"), workspace, splitRatio, (r) => {
   applyLayout();
 });
 
+wideQuery.addEventListener("change", () => applyLayout());
 narrowQuery.addEventListener("change", () => {
   // 切換到手機寬度時，大綱抽屜先收起來，避免蓋住內容。
   if (narrowQuery.matches) outlineShown = false;

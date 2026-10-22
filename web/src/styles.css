@@ -208,13 +208,24 @@ kbd {
 .workspace {
   position: relative;
   display: grid;
-  grid-template-areas: "activity sidebar editor splitter preview";
+  grid-template-areas: "activity sidebar editor splitter preview outline";
   min-height: 0;
 }
 .workspace[data-view="preview"] .editor-pane,
 .workspace[data-view="editor"] .preview-pane,
 .workspace:not([data-view="split"]) .splitter,
 .workspace.outline-hidden .sidebar { display: none; }
+/* 大綱放在右邊：固定在內文右側，和左邊的側邊欄同樣的樣式。 */
+.outline-right {
+  grid-area: outline;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
 
 .pane { min-width: 0; min-height: 0; }
 .editor-pane { grid-area: editor; display: flex; flex-direction: column; overflow: hidden; }
