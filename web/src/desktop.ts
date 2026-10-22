@@ -145,6 +145,8 @@ export interface AppVersion {
   /** CI 建置流水號；自己編譯的版本沒有。 */
   build: number | null;
   commit: string | null;
+  /** 建置日期（CI 建置時才有）。 */
+  date?: string | null;
   updatable: boolean;
 }
 
@@ -154,6 +156,8 @@ export interface UpdateManifest {
   commit: string;
   date: string;
   notes: string;
+  /** CHANGELOG.md 中這一版的完整說明（Markdown；舊的更新資訊沒有）。 */
+  changes?: string;
   url: string;
   sha256: string;
   size: number;

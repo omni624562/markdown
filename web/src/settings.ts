@@ -50,6 +50,10 @@ export interface Settings {
   typewriterMode: boolean;
   /** 預覽與匯出的文字欄寬。 */
   previewWidth: "narrow" | "medium" | "wide";
+  /** 即時預覽、預覽與 PDF 的內文字型（原始碼檢視固定用等寬字型，表格才對得齊）。 */
+  docFont: "sans" | "serif" | "kai" | "mono";
+  /** 即時預覽、預覽與 PDF 的行距。 */
+  docLineHeight: "compact" | "normal" | "relaxed";
   /** 用 KaTeX 顯示 `$…$` 數學公式。 */
   math: boolean;
   /** 顯示 ```mermaid 流程圖。 */
@@ -102,6 +106,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   focusMode: false,
   typewriterMode: false,
   previewWidth: "medium",
+  docFont: "sans",
+  docLineHeight: "normal",
   math: true,
   mermaid: true,
   aiEnabled: false,
@@ -216,6 +222,16 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   if ("previewWidth" in input) {
     const w = input.previewWidth;
     if (w === "narrow" || w === "medium" || w === "wide") out.previewWidth = w;
+    else problems++;
+  }
+  if ("docFont" in input) {
+    const f = input.docFont;
+    if (f === "sans" || f === "serif" || f === "kai" || f === "mono") out.docFont = f;
+    else problems++;
+  }
+  if ("docLineHeight" in input) {
+    const h = input.docLineHeight;
+    if (h === "compact" || h === "normal" || h === "relaxed") out.docLineHeight = h;
     else problems++;
   }
   return { settings: out, problems };

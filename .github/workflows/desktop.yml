@@ -56,6 +56,10 @@ jobs:
         working-directory: desktop
         run: cargo test --locked
 
+      - name: 建置日期
+        shell: bash
+        run: echo "MD_EDITOR_DATE=$(TZ=Asia/Taipei date +%Y-%m-%d)" >> "$GITHUB_ENV"
+
       - name: 編譯執行檔
         working-directory: desktop
         env:
@@ -108,10 +112,11 @@ jobs:
             --arg commit "$GITHUB_SHA" \
             --arg date "$(TZ=Asia/Taipei date +%Y-%m-%d)" \
             --arg notes "$notes" \
+            --arg changes "$(node scripts/version.mjs notes "$version" || true)" \
             --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/latest/md-editor.exe" \
             --arg sha256 "$(sha256sum md-editor.exe | cut -d' ' -f1)" \
             --argjson size "$(stat -c%s md-editor.exe)" \
-            '{build: $build, version: $version, commit: $commit, date: $date, notes: $notes, url: $url, sha256: $sha256, size: $size}' \
+            '{build: $build, version: $version, commit: $commit, date: $date, notes: $notes, changes: $changes, url: $url, sha256: $sha256, size: $size}' \
             > version.json
       - name: 簽章（程式只接受用正式私鑰簽過的更新）
         env:

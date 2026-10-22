@@ -2,7 +2,8 @@
 
 export interface ToastOptions {
   tone?: "info" | "success" | "error";
-  action?: { label: string; run(): void };
+  /** `primary`：醒目的按鈕（這則通知主要就是要使用者按它）。 */
+  action?: { label: string; run(): void; primary?: boolean };
   /** 顯示時間（毫秒）。有動作按鈕時預設較長。 */
   duration?: number;
 }
@@ -11,7 +12,24 @@ const region = document.createElement("div");
 region.className = "toasts";
 region.setAttribute("role", "status");
 region.setAttribute("aria-live", "polite");
+// 用 Popover 放進最上層，開著設定等對話框時通知也不會被遮住或變暗。
+region.popover = "manual";
 document.body.append(region);
+
+/**
+ * 把通知區移到最上層（之後才開的對話框會蓋在它上面，所以每次顯示通知時重新放一次）。
+ * 開著對話框（例如設定）時，對話框以外的東西都不能點，所以通知區暫時放進對話框裡，關閉時再移回來。
+ */
+function raise(): void {
+  const modal = [...document.querySelectorAll("dialog")].filter((d) => d.matches(":modal")).at(-1);
+  const host = modal ?? document.body;
+  if (typeof region.showPopover === "function" && region.matches(":popover-open")) region.hidePopover();
+  if (region.parentElement !== host) {
+    host.append(region);
+    modal?.addEventListener("close", () => raise(), { once: true });
+  }
+  if (typeof region.showPopover === "function" && region.isConnected) region.showPopover();
+}
 
 export function toast(message: string, opts: ToastOptions = {}): void {
   const el = document.createElement("div");
@@ -33,6 +51,7 @@ export function toast(message: string, opts: ToastOptions = {}): void {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = opts.action.label;
+    if (opts.action.primary) btn.className = "primary";
     btn.addEventListener("click", () => {
       opts.action!.run();
       close();
@@ -43,6 +62,7 @@ export function toast(message: string, opts: ToastOptions = {}): void {
   // 錯誤訊息要讓螢幕閱讀器立即唸出。
   if (opts.tone === "error") el.setAttribute("role", "alert");
   region.append(el);
+  raise();
   timer = window.setTimeout(close, opts.duration ?? (opts.action ? 8000 : 3500));
   el.addEventListener("pointerenter", () => clearTimeout(timer));
   el.addEventListener("pointerleave", () => (timer = window.setTimeout(close, 2000)));

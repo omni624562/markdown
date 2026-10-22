@@ -2,6 +2,7 @@ import "../../crates/md-core/src/document.css";
 import "./styles.css";
 
 import { undo } from "@codemirror/commands";
+import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import init, {
@@ -101,7 +102,7 @@ import { SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
 import { TerminalPanel } from "./ui/terminal-panel.ts";
 import { WebDavDialog } from "./ui/webdav-dialog.ts";
-import { Updater, versionLabel } from "./updater.ts";
+import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
 import type { FileVersion } from "./desktop.ts";
 import { setupSplitter } from "./ui/splitter.ts";
@@ -862,13 +863,16 @@ async function preparePrint(opts: PdfOptions, title: string): Promise<() => void
   const html = await preview.exportDocument(editor.text, kind, title);
   const doc = new DOMParser().parseFromString(html, "text/html");
   await resolvePrintImages(doc);
+  if (settings.value.blockRemoteImages) blockRemoteImages(doc);
   document.getElementById("print-root")?.remove();
   document.getElementById("print-page")?.remove();
   const host = document.createElement("div");
   host.id = "print-root";
   const shadow = host.attachShadow({ mode: "open" });
   const css = [...doc.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n");
-  shadow.innerHTML = `<style>${shadowCss(css)}\n${PRINT_ROOT_CSS}</style>${opts.cover ? coverHtml(opts, title, isoDate(new Date())) : ""}`;
+  // 設定的內文字型與行距（CSS 變數會從主視窗繼承進 Shadow DOM）。
+  const docStyle = "article.markdown-body { font-family: var(--font-doc); line-height: var(--doc-line-height, 1.8); }";
+  shadow.innerHTML = `<style>${shadowCss(css)}\n${PRINT_ROOT_CSS}\n${docStyle}</style>${opts.cover ? coverHtml(opts, title, isoDate(new Date())) : ""}`;
   const article = doc.querySelector("article.markdown-body");
   if (article) shadow.append(document.importNode(article, true));
   const page = document.createElement("style");
@@ -1236,7 +1240,41 @@ const tabBar = new TabBar($("#tab-bar"), {
     return false;
   },
   rename: (id, name) => renameDoc(id, name),
+  menu: (id, at) => {
+    menuTabId = id;
+    tabMenu.open(at);
+  },
+  unpin: (id) => {
+    const doc = docs.find((d) => d.id === id);
+    if (doc) setPinned(doc, false);
+  },
 });
+
+// ---- 分頁選單：關閉其他、關閉右側、固定分頁…… ---------------------------------
+
+/** 按右鍵的分頁；從指令面板執行時是目前的分頁。 */
+let menuTabId: string | null = null;
+const menuTab = (): Doc => docs.find((d) => d.id === menuTabId) ?? active;
+const tabPath = (doc: Doc): string | null => (doc === active ? fileHandle?.path : doc.path) ?? null;
+
+/** 固定或取消固定分頁：固定的分頁排在最左邊（依固定的先後）。 */
+function setPinned(doc: Doc, pinned: boolean): void {
+  doc.pinned = pinned || undefined;
+  docs.splice(docs.indexOf(doc), 1);
+  const lastPinned = docs.reduce((n, d, i) => (d.pinned ? i + 1 : n), 0);
+  docs.splice(lastPinned, 0, doc);
+  persistSession();
+  renderTabs();
+}
+
+/** 依序關閉分頁；使用者在「要儲存變更嗎？」按取消時就停下來。 */
+async function closeTabs(list: Doc[]): Promise<void> {
+  for (const doc of list) {
+    if (!docs.includes(doc)) continue;
+    await closeTab(doc.id);
+    if (docs.includes(doc)) return;
+  }
+}
 
 /** 還沒存成檔案的文件改名（存檔時當成預設檔名）。輸入已知的副檔名時順便切換文件類型。 */
 function renameDoc(id: string, name: string): void {
@@ -1863,7 +1901,7 @@ function persistSession(): void {
   stash();
   saveSession({
     activeId: active.id,
-    docs: docs.map(({ id, name, kind, path, baseline, fileBacked }) => ({ id, name, kind, path, baseline, fileBacked })),
+    docs: docs.map(({ id, name, kind, path, baseline, fileBacked, pinned }) => ({ id, name, kind, path, baseline, fileBacked, pinned })),
   });
 }
 
@@ -1875,6 +1913,7 @@ function renderTabs(): void {
       title: ((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name),
       dirty: d.dirty,
       missing: d.missing,
+      pinned: d.pinned,
     })),
     active.id,
   );
@@ -1917,8 +1956,9 @@ function activate(doc: Doc): void {
 
 /** 新增一個分頁並切換過去（不會寫入內容，呼叫端負責）。 */
 function addTab(doc: Doc): void {
-  const i = docs.indexOf(active);
-  docs.splice(i + 1, 0, doc);
+  // 放在目前分頁的右邊，但不插進固定的分頁之間。
+  const lastPinned = docs.reduce((n, d, i) => (d.pinned ? i + 1 : n), 0);
+  docs.splice(Math.max(docs.indexOf(active) + 1, lastPinned), 0, doc);
   activate(doc);
 }
 
@@ -2267,7 +2307,78 @@ commands.register(
     when: () => docs.length > 1,
     run: () => cycleTab(-1),
   },
-  { id: "tab-close", title: "關閉分頁", group: "檔案", icon: "x", keys: "Mod-w", run: () => closeTab(active.id) },
+  { id: "tab-close", title: "關閉分頁", group: "檔案", icon: "x", keys: "Mod-w", run: () => closeTab(menuTab().id) },
+  {
+    id: "fold-all",
+    title: "摺疊所有章節",
+    group: "檢視",
+    icon: "chevrons-down-up",
+    shownKeys: "Ctrl-Alt-[",
+    run: () => void foldAll(editor.view),
+  },
+  {
+    id: "unfold-all",
+    title: "展開所有章節",
+    group: "檢視",
+    icon: "chevrons-up-down",
+    shownKeys: "Ctrl-Alt-]",
+    run: () => void unfoldAll(editor.view),
+  },
+  {
+    id: "tab-close-others",
+    title: "關閉其他分頁",
+    group: "檔案",
+    when: () => docs.some((d) => d !== menuTab() && !d.pinned),
+    run() {
+      const keep = menuTab();
+      return closeTabs(docs.filter((d) => d !== keep && !d.pinned));
+    },
+  },
+  {
+    id: "tab-close-right",
+    title: "關閉右側的分頁",
+    group: "檔案",
+    when: () => docs.slice(docs.indexOf(menuTab()) + 1).some((d) => !d.pinned),
+    run() {
+      return closeTabs(docs.slice(docs.indexOf(menuTab()) + 1).filter((d) => !d.pinned));
+    },
+  },
+  {
+    id: "tab-close-saved",
+    title: "關閉已儲存的分頁",
+    group: "檔案",
+    when: () => docs.some((d) => !d.dirty && !d.pinned),
+    run: () => closeTabs(docs.filter((d) => !d.dirty && !d.pinned)),
+  },
+  {
+    id: "tab-pin",
+    title: "固定／取消固定分頁",
+    group: "檔案",
+    icon: "pin",
+    run() {
+      const doc = menuTab();
+      setPinned(doc, !doc.pinned);
+    },
+  },
+  {
+    id: "tab-copy-path",
+    title: "複製檔案路徑",
+    group: "檔案",
+    icon: "copy",
+    when: () => !!tabPath(menuTab()),
+    async run() {
+      await navigator.clipboard.writeText(displayPath(tabPath(menuTab())!));
+      toast("已複製路徑");
+    },
+  },
+  {
+    id: "tab-reveal",
+    title: "在檔案總管中顯示",
+    group: "檔案",
+    icon: "folder-open",
+    when: () => !!desktop && !!tabPath(menuTab()),
+    run: () => desktop!.revealEntry(tabPath(menuTab())!),
+  },
   {
     id: "open",
     title: "開啟檔案…",
@@ -3205,7 +3316,7 @@ function formatBubble(): HTMLElement {
  * 浮動選單（插入選單、更多格式、右鍵選單）：用一個看不見的定位按鈕決定選單出現的位置。
  * 按 Esc 或點外面關閉時，焦點回到編輯器。
  */
-function floatingMenu(id: string, entries: MenuEntry[]): { open(at: DOMRect): void } {
+function floatingMenu(id: string, entries: MenuEntry[], onClose?: () => void): { open(at: DOMRect): void } {
   const anchor = document.createElement("button");
   anchor.type = "button";
   anchor.id = id;
@@ -3216,6 +3327,7 @@ function floatingMenu(id: string, entries: MenuEntry[]): { open(at: DOMRect): vo
   menu.addEventListener("toggle", (e) => {
     const closed = (e as ToggleEvent).newState === "closed";
     if (closed && (document.activeElement === anchor || document.activeElement === document.body)) editor.view.focus();
+    if (closed) onClose?.();
   });
   return {
     open(at) {
@@ -3291,6 +3403,24 @@ const slashSource = slashCompletion(slashItems, (id) => {
 
 /** 浮出格式按鈕的「更多」：上標、下標、清除格式、符號。 */
 const moreFormatMenu = floatingMenu("format-more-anchor", ["superscript", "subscript", "-", "clear-format", "insert-symbol"]);
+
+/** 分頁的右鍵選單。 */
+const tabMenu = floatingMenu(
+  "tab-menu-anchor",
+  [
+    "tab-close",
+    "tab-close-others",
+    "tab-close-right",
+    "tab-close-saved",
+    "-",
+    { label: "固定分頁", icon: "pin", checked: () => !!menuTab().pinned, run: () => setPinned(menuTab(), !menuTab().pinned) },
+    "-",
+    "tab-copy-path",
+    "tab-reveal",
+  ],
+  // 選單關閉後，指令面板裡的分頁指令回到「目前的分頁」。等點下的指令先讀到按右鍵的分頁。
+  () => setTimeout(() => (menuTabId = null)),
+);
 
 const contextMenu = floatingMenu("context-anchor", [
   "cut",
@@ -3682,7 +3812,8 @@ function applyLayout(): void {
   workspace.classList.toggle("narrow", narrow);
   placeOutline();
   const cols = [
-    narrow || !outlineShown ? "0px" : "var(--activity-width)",
+    // 收起側邊欄時只收面板，圖示列留著（和 VS Code 一樣），點圖示就能打開對應的面板。
+    narrow ? "0px" : "var(--activity-width)",
     outlineShown && !narrow ? "var(--outline-width)" : "0px",
     layout === "preview" ? "0px" : layout === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
     layout === "split" ? "var(--splitter-width)" : "0px",
@@ -3746,6 +3877,15 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
 // ---- 設定 ---------------------------------------------------------------
 
 const PREVIEW_WIDTH: Record<Settings["previewWidth"], string> = { narrow: "680px", medium: "820px", wide: "1080px" };
+/** 內文字型：英文字型在前，中文指定台灣的字型（沒有安裝時往後找）。 */
+const DOC_FONT: Record<Settings["docFont"], string> = {
+  sans: "",
+  serif:
+    'Georgia, "Times New Roman", "Noto Serif TC", "Source Han Serif TC", "思源宋體", "PMingLiU", "新細明體", "Songti TC", serif',
+  kai: 'Georgia, "Times New Roman", "BiauKai", "DFKai-SB", "標楷體", "TW-Kai", "Kaiti TC", "AR PL UKai TW", serif',
+  mono: "var(--font-mono)",
+};
+const DOC_LINE_HEIGHT: Record<Settings["docLineHeight"], string> = { compact: "1.6", normal: "1.8", relaxed: "2.1" };
 
 function toggleSetting(key: "focusMode" | "typewriterMode", label: string): void {
   const on = !settings.value[key];
@@ -3767,7 +3907,11 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
   const root = document.documentElement.style;
   root.setProperty("--editor-font-size", `${s.editorFontSize}px`);
   root.setProperty("--preview-width", PREVIEW_WIDTH[s.previewWidth]);
+  if (DOC_FONT[s.docFont]) root.setProperty("--font-doc", DOC_FONT[s.docFont]);
+  else root.removeProperty("--font-doc");
+  root.setProperty("--doc-line-height", DOC_LINE_HEIGHT[s.docLineHeight]);
   if (!changed) return;
+  if (changed.includes("docFont") || changed.includes("docLineHeight")) editor.view.requestMeasure();
   const editorKeys: (keyof Settings)[] = ["lineNumbers", "autoPairBrackets", "focusMode", "typewriterMode"];
   if (changed.some((k) => editorKeys.includes(k))) {
     editor.configure({
@@ -3870,7 +4014,16 @@ const settingsDialog = new SettingsDialog(
   { get: () => themePref, set: setTheme },
   desktop && ai ? { available: () => desktop!.aiTools(), registration: () => ai!.registration() } : null,
   updater
-    ? { version: async () => versionLabel(await updater!.version()), check: () => void updater!.check() }
+    ? {
+        async version() {
+          const v = await updater!.version();
+          return { label: versionLabel(v), detail: versionDetail(v), title: versionTooltip(v) };
+        },
+        pending: () => (updater!.state.kind === "ready" ? updater!.state.version : null),
+        onChange: (fn) => void updater!.subscribe(fn),
+        check: () => void updater!.check(),
+        restart: () => updater!.restart(),
+      }
     : null,
 );
 
