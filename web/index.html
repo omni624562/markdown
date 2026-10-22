@@ -145,13 +145,13 @@
     <section class="terminal-panel" id="terminal-panel" aria-label="終端機" hidden></section>
 
     <footer class="statusbar">
-      <select id="doc-kind" class="status-select" aria-label="文件類型" title="文件類型">
+      <span id="status-cursor"></span>
+      <span id="status-stats"></span>
+      <select id="doc-kind" class="status-select" aria-label="文件類型" title="文件類型（依副檔名自動判斷，也可以在這裡切換）">
         <option value="markdown">Markdown</option>
         <option value="text">純文字</option>
         <option value="json">JSON</option>
       </select>
-      <span id="status-cursor"></span>
-      <span id="status-stats"></span>
       <button type="button" id="status-save" class="status-btn save-state"></button>
       <span id="status-update" class="update-state" role="status" hidden></span>
       <button type="button" class="status-btn" data-command="toggle-terminal" hidden><i data-icon="square-terminal"></i><span>終端機</span></button>

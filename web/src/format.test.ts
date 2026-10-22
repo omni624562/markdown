@@ -65,3 +65,20 @@ test("清除格式", () => {
   // 清單符號、乘法的星號不受影響
   assert.equal(run(clearInlineFormat, "«3 * 4 = 12»"), "«3 * 4 = 12»");
 });
+
+test("游標在已套用的格式裡：再按一次就拿掉（不用自己刪標籤）", () => {
+  assert.equal(run(toggleWrap("<mark>", "</mark>"), "估算<mark>統計|數據</mark>，並"), "估算統計|數據，並");
+  assert.equal(run(toggleWrap("<mark>", "</mark>"), "<mark>a</mark> <mark>b|c</mark>"), "<mark>a</mark> b|c");
+  assert.equal(run(toggleWrap("**"), "這是**重|點**文字"), "這是重|點文字");
+  assert.equal(run(toggleWrap("**"), "這是**«重»點**文字"), "這是«重»點文字");
+  // 斜體的 * 不會配到粗體 ** 的一半
+  assert.equal(run(toggleWrap("*"), "**粗|體**"), "**粗*|*體**");
+  // 不在格式裡：照常插入成對標記
+  assert.equal(run(toggleWrap("<mark>", "</mark>"), "<mark>a</mark> b|"), "<mark>a</mark> b<mark>|</mark>");
+});
+
+test("清除格式：沒有選取時拿掉游標外面的格式", () => {
+  assert.equal(run(clearInlineFormat, "估算<mark>統計|數據</mark>，並"), "估算統計|數據，並");
+  assert.equal(run(clearInlineFormat, "a **<u>重|點</u>** b"), "a 重|點 b");
+  assert.equal(run(clearInlineFormat, "沒有格式|"), "沒有格式|");
+});
