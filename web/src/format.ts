@@ -28,6 +28,18 @@ export function toggleWrap(marker: string, close = marker): StateCommand {
           range: EditorSelection.range(range.from - n, range.to - n),
         };
       }
+      // 游標（或選取範圍）在已經套用的格式裡面：拿掉這組標記，不用自己去刪 <mark> 之類的標籤。
+      const span = enclosingSpan(state, range.from, range.to, marker, close);
+      if (span) {
+        const shift = (pos: number) => (pos >= span.to - m ? pos - n - m : pos > span.from + n ? pos - n : span.from);
+        return {
+          changes: [
+            { from: span.from, to: span.from + n },
+            { from: span.to - m, to: span.to },
+          ],
+          range: EditorSelection.range(shift(range.anchor), shift(range.head)),
+        };
+      }
       return {
         changes: [
           { from: range.from, insert: marker },
@@ -38,6 +50,41 @@ export function toggleWrap(marker: string, close = marker): StateCommand {
     });
     return apply(state, dispatch, tr);
   };
+}
+
+/**
+ * 同一行裡包住 `from`～`to` 的一組 `open`…`close`（含標記本身）；沒有時回傳 null。
+ * 單一字元的標記（`*`、`_`、`` ` ``）不能是更長標記的一部分（`*` 不會配到 `**` 的一半）。
+ */
+export function enclosingSpan(
+  state: EditorState,
+  from: number,
+  to: number,
+  open: string,
+  close: string,
+): { from: number; to: number } | null {
+  const line = state.doc.lineAt(from);
+  if (to > line.to) return null;
+  const text = line.text;
+  const single = open.length === 1 && open === close;
+  const isMarker = (i: number, mk: string) =>
+    text.startsWith(mk, i) && (!single || (text[i - 1] !== mk && text[i + 1] !== mk));
+  const a = from - line.from;
+  const b = to - line.from;
+  let i = 0;
+  while (i < text.length) {
+    if (!isMarker(i, open)) {
+      i++;
+      continue;
+    }
+    let j = i + open.length;
+    while (j < text.length && !isMarker(j, close)) j++;
+    if (j >= text.length) return null;
+    const end = j + close.length;
+    if (i <= a && b <= end && !(a === b && (a === i || a === end))) return { from: line.from + i, to: line.from + end };
+    i = end;
+  }
+  return null;
 }
 
 /** 行首會被互相取代的區塊標記：標題、引言、清單、待辦。 */
@@ -170,7 +217,19 @@ const INLINE_MARK_RE = /<\/?(?:u|mark|sup|sub|ins)>|\*\*|__|~~|(?<![\w*])\*(?=\S
  * 外面的標記也一起拿掉。連結、標題、清單等不受影響。
  */
 export const clearInlineFormat: StateCommand = ({ state, dispatch }) => {
-  if (state.selection.ranges.every((r) => r.empty)) return false;
+  if (state.selection.ranges.every((r) => r.empty)) {
+    // 沒有選取：拿掉游標所在位置外面的所有格式標記（例如游標在 <mark>重點</mark> 裡）。
+    const pos = state.selection.main.head;
+    const changes: { from: number; to: number }[] = [];
+    for (const [open, close] of INLINE_MARKERS) {
+      const span = enclosingSpan(state, pos, pos, open, close);
+      if (!span || changes.some((c) => c.from < span.to && span.from < c.to && (c.from === span.from || c.to === span.to))) continue;
+      changes.push({ from: span.from, to: span.from + open.length }, { from: span.to - close.length, to: span.to });
+    }
+    if (!changes.length) return false;
+    const set = state.changes(changes);
+    return apply(state, dispatch, { changes: set, selection: EditorSelection.cursor(set.mapPos(pos, -1)) });
+  }
   const tr = state.changeByRange((range) => {
     let from = range.from;
     let to = range.to;

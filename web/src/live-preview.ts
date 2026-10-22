@@ -557,8 +557,11 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
     }
   }
   // 成對的 <u>、<mark>、<sup>、<sub>：隱藏標籤，中間套上格式（和預覽一樣，只認同一層裡成對的標籤）。
+  // 只有游標在這一組標籤裡（或碰到它）時才顯示 <mark> 等原始碼，同一行其他地方編輯時照樣顯示排版。
+  const cursors = editorFocused(state) ? state.selection.ranges : [];
+  const touches = (a: number, b: number) => cursors.some((r) => r.from <= b && r.to >= a);
   for (const [open, close] of pairTags(htmlTags)) {
-    if (rangeActive(open.from, close.to)) continue;
+    if (touches(open.from, close.to)) continue;
     hide(open.from, open.to);
     hide(close.from, close.to);
     if (close.from > open.to) decos.push(tagMarks[open.name].range(open.to, close.from));
