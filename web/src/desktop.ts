@@ -403,6 +403,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
     davImage: (path: string) => core.invoke<string>("dav_image", { path }),
 
     aiTools: () => core.invoke<{ claude: string | null; codex: string | null }>("ai_tools"),
+    listFonts: () => core.invoke<{ name: string; label?: string; mono: boolean }[]>("list_fonts"),
     termOpen: (program: TermProgram, cols: number, rows: number) =>
       core.invoke<number>("term_open", { program, cols, rows }),
     termWrite: (id: number, data: string) => core.invoke<void>("term_write", { id, data }),

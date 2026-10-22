@@ -4,7 +4,7 @@
  * 其他瀏覽器則退回「選擇檔案」與「下載」。
  */
 import { type DesktopFile, desktop } from "./desktop.ts";
-import { type DocKind, KINDS, OPEN_ACCEPT } from "./kinds.ts";
+import { type DocKind, KINDS, OPEN_ACCEPT, notTextReason } from "./kinds.ts";
 
 export interface FileHandle {
   name: string;
@@ -70,6 +70,14 @@ function isAbort(e: unknown): boolean {
   return e instanceof DOMException && e.name === "AbortError";
 }
 
+/** 讀出使用者選的檔案；內容不是文字（圖片、壓縮檔等）時丟出錯誤。 */
+export async function readTextFile(file: File): Promise<string> {
+  const text = await file.text();
+  const why = notTextReason(text);
+  if (why) throw new Error(`「${file.name}」${why}`);
+  return text;
+}
+
 /** 開啟檔案。使用者取消時回傳 `null`。 */
 export async function openFile(fallbackInput: HTMLInputElement): Promise<OpenedFile | null> {
   if (desktop) {
@@ -80,18 +88,20 @@ export async function openFile(fallbackInput: HTMLInputElement): Promise<OpenedF
     try {
       const [handle] = await window.showOpenFilePicker({ types: [OPEN_ACCEPT] });
       const file = await remember(handle);
-      return { name: file.name, text: await file.text(), handle };
+      return { name: file.name, text: await readTextFile(file), handle };
     } catch (e) {
       if (isAbort(e)) return null;
       throw e;
     }
   }
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     fallbackInput.value = "";
+    fallbackInput.accept = Object.values(OPEN_ACCEPT.accept).flat().join(",");
     fallbackInput.onchange = async () => {
       const file = fallbackInput.files?.[0];
-      resolve(file ? { name: file.name, text: await file.text(), handle: null } : null);
+      if (!file) return resolve(null);
+      readTextFile(file).then((text) => resolve({ name: file.name, text, handle: null }), reject);
     };
     fallbackInput.click();
   });

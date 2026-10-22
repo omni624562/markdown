@@ -33,11 +33,13 @@
 
   --font-ui: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
   /* 文件內文（即時預覽）：英文用系統字型，中文用台灣的字型；和預覽、匯出（document.css）一致。 */
-  --font-doc: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC",
+  --font-doc: var(--font-doc-default);
+  --font-doc-default: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC",
     "Microsoft JhengHei", sans-serif;
   /* 前兩個字型的中文字寬剛好是英文的兩倍，有安裝時表格在編輯區裡也會完全對齊。
      沒有安裝時，英文用系統內建的等寬字型，中文明確指定台灣的字型，避免瀏覽器挑到簡體或點陣字型。 */
-  --font-mono: "Sarasa Mono TC", "Noto Sans Mono CJK TC", ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono",
+  --font-mono: var(--font-mono-default);
+  --font-mono-default: "Sarasa Mono TC", "Noto Sans Mono CJK TC", ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono",
     "Cascadia Code", Menlo, Consolas, "Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC",
     monospace;
   /* 終端機：英文優先用 Windows 終端機的 Cascadia Mono（沒有連字，不會把 -> 合成箭頭）。 */
@@ -970,7 +972,7 @@ kbd {
 .settings-row label { color: var(--fg); font-size: 14px; font-weight: 500; }
 .settings-row small { max-width: 46ch; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
 .settings-row > :last-child:not(div) { flex: none; }
-.settings-row select, .settings-row input[type="number"] {
+.settings-row select, .settings-row input[type="number"], .settings-row .font-input {
   min-width: 120px;
   height: 32px;
   padding: 0 32px 0 12px;
@@ -982,9 +984,10 @@ kbd {
   appearance: none;
   cursor: pointer;
 }
-.settings-row select:hover, .settings-row input[type="number"]:hover { border-color: var(--subtle); }
+.settings-row select:hover, .settings-row input[type="number"]:hover, .settings-row .font-input:hover { border-color: var(--subtle); }
 .settings-row select:focus-visible, .settings-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .settings-row input[type="number"] { width: 84px; min-width: 0; padding: 0 8px 0 12px; background-image: none; cursor: text; }
+.settings-row .font-input { width: 200px; min-width: 0; padding: 0 12px; background-image: none; cursor: text; }
 .settings-row .btn { height: 32px; border-color: var(--border-strong); white-space: nowrap; }
 .btn.btn-small { min-height: 30px; padding: 0 12px; font-size: 13px; }
 /* 設定裡的次要按鈕要看得出是按鈕：白底加框。 */

@@ -279,6 +279,9 @@ impl EditorTools {
         let bytes = crate::files::read_capped(&path, limit)
             .map_err(|e| format!("無法讀取：{e}"))?
             .ok_or_else(|| format!("檔案超過 {} MB，無法讀取", limit / 1024 / 1024))?;
+        if let Some(why) = crate::files::not_text_reason(&bytes) {
+            return Err(format!("這個檔案{why}"));
+        }
         Ok(crate::files::decode(&bytes).0)
     }
 
@@ -448,7 +451,7 @@ impl EditorTools {
             .ok_or("只能存取已開啟的分頁，或使用者開啟的資料夾中的文件")?;
         resolve_inside(&root, &p)?;
         if !is_doc(&p) {
-            return Err("只能存取 .md、.txt、.json 等文字文件".into());
+            return Err("只能存取 Markdown、純文字、JSON、YAML、CSV、HTML、程式碼等文字檔".into());
         }
         Ok(p)
     }

@@ -3,6 +3,8 @@ import { json } from "@codemirror/lang-json";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   HighlightStyle,
+  LanguageDescription,
+  type LanguageSupport,
   bracketMatching,
   codeFolding,
   foldGutter,
@@ -177,6 +179,10 @@ export class Editor {
   #handlers: EditorHandlers;
   #kind: DocKind;
   #options: EditorOptions;
+  /** 目前文件的檔名；純文字類型依副檔名替程式碼、YAML、HTML 等上色。 */
+  #fileName = "";
+  /** 依檔名載入好的語法（`null` 表示這個檔名沒有對應的語法）。 */
+  #syntax: LanguageSupport | null = null;
 
   constructor(parent: HTMLElement, doc: string, kind: DocKind, handlers: EditorHandlers, options: EditorOptions) {
     this.#handlers = handlers;
@@ -267,7 +273,7 @@ export class Editor {
       case "json":
         return [common, json(), linter(() => this.#diagnostics(), { delay: 300 })];
       case "text":
-        return [common, brackets];
+        return [common, brackets, this.#syntax ?? []];
     }
   }
 
@@ -301,6 +307,29 @@ export class Editor {
         this.#language.reconfigure(this.#languageFor(kind)),
       ],
     });
+  }
+
+  /** 告訴編輯器目前文件的檔名：純文字類型會依副檔名載入對應的語法上色（例如 .py、.yaml、.html）。 */
+  setFileName(name: string): void {
+    if (name === this.#fileName) return;
+    this.#fileName = name;
+    const had = this.#syntax !== null;
+    this.#syntax = null;
+    // 這個方法可能在編輯器更新的過程中被呼叫，所以稍後再套用。
+    if (had) queueMicrotask(() => this.#applySyntax());
+    LanguageDescription.matchFilename(languages, name)
+      ?.load()
+      .then((support) => {
+        // 載入期間可能已經換了檔案。
+        if (this.#fileName !== name) return;
+        this.#syntax = support;
+        this.#applySyntax();
+      })
+      .catch(console.error);
+  }
+
+  #applySyntax(): void {
+    if (this.#kind === "text") this.view.dispatch({ effects: this.#language.reconfigure(this.#languageFor("text")) });
   }
 
   /** 重新檢查錯誤（JSON 解析結果更新後呼叫）。 */

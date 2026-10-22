@@ -40,10 +40,12 @@ import {
   downloadBytes,
   fromDesktop,
   openFile,
+  readTextFile,
   replaceExtension,
   saveFile,
   stem,
 } from "./files.ts";
+import { fontStack } from "./fonts.ts";
 import { TABLE_TEMPLATE, clearInlineFormat, insertBlock, insertLink, toggleLineStyle, toggleWrap } from "./format.ts";
 import { indentLess, indentMore, selectAll } from "@codemirror/commands";
 import { autoSymbols } from "./auto-symbols.ts";
@@ -51,7 +53,7 @@ import { refreshLivePreview } from "./live-preview.ts";
 import { proofread, recheckTerms, scanDocument } from "./proofread.ts";
 import { sureFixes } from "./terms.ts";
 import { SymbolPicker } from "./ui/symbol-picker.ts";
-import { type DocKind, KINDS } from "./kinds.ts";
+import { type DocKind, KINDS, isTextFileName } from "./kinds.ts";
 import { basename, dirname, isInside, localImagePath, markdownUrl, rebase, resolvePath } from "./paths.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
 import { localImagesPlugin } from "./plugins/local-images.ts";
@@ -505,7 +507,7 @@ function renderEmptyState(text: string): void {
     text: previewOnly ? "按「開始寫作」切換到可以輸入的檢視。" : "在左邊輸入文字，這裡會顯示閱讀版面。",
     json: previewOnly ? "按「開始寫作」切換到可以輸入的檢視。" : "貼上 JSON，這裡會顯示可摺疊的樹狀檢視，並即時檢查語法。",
   };
-  emptyStateEl.innerHTML = `<h2>空白文件</h2><p></p><div class="empty-actions"></div><p class="empty-tip">也可以直接把 .md、.txt、.json 檔拖曳進來</p>`;
+  emptyStateEl.innerHTML = `<h2>空白文件</h2><p></p><div class="empty-actions"></div><p class="empty-tip">也可以直接把 Markdown、文字檔或程式碼檔拖曳進來</p>`;
   emptyStateEl.querySelector("p")!.textContent = hints[kind];
   const actions = emptyStateEl.querySelector(".empty-actions")!;
   const mk = (label: string, run: () => void) => {
@@ -1067,6 +1069,7 @@ function renderSaveState(): void {
   // 只有一份還沒存過的空白文件時，不需要「未命名.md」分頁與標題；開始打字才出現。
   const blank = docs.length === 1 && !fileBacked && !fileHandle && text === "";
   $("#tab-bar").classList.toggle("blank", blank);
+  editor.setFileName(fileName);
   const title = blank ? "oMarker" : `${dirty ? "● " : ""}${fileName} - oMarker`;
   if (document.title !== title) {
     document.title = title;
@@ -1307,7 +1310,7 @@ function renameDoc(id: string, name: string): void {
   }
   setFileName(name);
   const k = kindFromFileName(name);
-  if (/\.(md|markdown|txt|json)$/i.test(name) && k !== kind) setKind(k, { rename: false });
+  if (isTextFileName(name) && k !== kind) setKind(k, { rename: false });
 }
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
@@ -3963,6 +3966,8 @@ const DOC_FONT: Record<Settings["docFont"], string> = {
     'Georgia, "Times New Roman", "Noto Serif TC", "Source Han Serif TC", "思源宋體", "PMingLiU", "新細明體", "Songti TC", serif',
   kai: 'Georgia, "Times New Roman", "BiauKai", "DFKai-SB", "標楷體", "TW-Kai", "Kaiti TC", "AR PL UKai TW", serif',
   mono: "var(--font-mono)",
+  // 由 docFontCustom 決定（見 applySettings）。
+  custom: "",
 };
 const DOC_LINE_HEIGHT: Record<Settings["docLineHeight"], string> = { compact: "1.6", normal: "1.8", relaxed: "2.1" };
 
@@ -3986,11 +3991,17 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
   const root = document.documentElement.style;
   root.setProperty("--editor-font-size", `${s.editorFontSize}px`);
   root.setProperty("--preview-width", PREVIEW_WIDTH[s.previewWidth]);
-  if (DOC_FONT[s.docFont]) root.setProperty("--font-doc", DOC_FONT[s.docFont]);
+  const docFont =
+    s.docFont === "custom" ? fontStack(s.docFontCustom, "var(--font-doc-default)") : DOC_FONT[s.docFont];
+  if (docFont) root.setProperty("--font-doc", docFont);
   else root.removeProperty("--font-doc");
+  const codeFont = fontStack(s.codeFont, "var(--font-mono-default)");
+  if (codeFont) root.setProperty("--font-mono", codeFont);
+  else root.removeProperty("--font-mono");
   root.setProperty("--doc-line-height", DOC_LINE_HEIGHT[s.docLineHeight]);
   if (!changed) return;
-  if (changed.includes("docFont") || changed.includes("docLineHeight")) editor.view.requestMeasure();
+  const fontKeys: (keyof Settings)[] = ["docFont", "docFontCustom", "codeFont", "docLineHeight"];
+  if (changed.some((k) => fontKeys.includes(k))) editor.view.requestMeasure();
   const editorKeys: (keyof Settings)[] = ["lineNumbers", "autoPairBrackets", "focusMode", "typewriterMode"];
   if (changed.some((k) => editorKeys.includes(k))) {
     editor.configure({
@@ -4314,7 +4325,9 @@ window.addEventListener("drop", async (e) => {
     toast("檔案超過 20 MB，可能不是文字檔。", { tone: "error" });
     return;
   }
-  openDocument(file.name, await file.text(), null);
+  const text = await readTextFile(file).catch(reportError);
+  if (text === undefined) return;
+  openDocument(file.name, text, null);
   toast(`已開啟「${file.name}」`);
 });
 

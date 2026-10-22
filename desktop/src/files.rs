@@ -148,6 +148,21 @@ pub fn decode(bytes: &[u8]) -> (String, FileFormat, &'static str) {
     (text, FileFormat { crlf, bom }, encoding)
 }
 
+/// 內容看起來不是能編輯的文字時回傳原因（接在檔名後面顯示）；是文字時回傳 `None`。
+pub fn not_text_reason(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\xFF\xFE") || bytes.starts_with(b"\xFE\xFF") {
+        return Some(
+            "是 UTF-16 編碼，目前只能開啟 UTF-8 或 Big5 的文字檔。可以用記事本「另存新檔」，編碼選 UTF-8 後再開啟",
+        );
+    }
+    // 和 Git 一樣：開頭一段裡有 NUL 字元就當成二進位檔。
+    let head = &bytes[..bytes.len().min(8192)];
+    if head.starts_with(b"%PDF-") || head.contains(&0) {
+        return Some("不是文字檔（可能是圖片、PDF、壓縮檔或執行檔），無法開啟");
+    }
+    None
+}
+
 pub fn encode(text: &str, format: FileFormat) -> Vec<u8> {
     let mut out = Vec::with_capacity(text.len() + 3);
     if format.bom {
@@ -185,6 +200,9 @@ pub fn read_file(app: &AppHandle, path: PathBuf, known: &KnownFiles) -> Result<O
                 MAX_OPEN_BYTES / 1024 / 1024
             )
         })?;
+    if let Some(why) = not_text_reason(&bytes) {
+        return Err(format!("「{}」{why}", display_name(&path)));
+    }
     let (text, format, encoding) = decode(&bytes);
     known.0.lock().unwrap().insert(
         path.clone(),
@@ -339,10 +357,7 @@ pub async fn open_file(
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
         .set_title("開啟檔案")
-        .add_filter(
-            "Markdown、純文字、JSON",
-            &["md", "markdown", "txt", "text", "log", "json"],
-        )
+        .add_filter("文件與程式碼", crate::workspace::DOC_EXTENSIONS)
         .add_filter("所有檔案", &["*"])
         .pick_file()
         .await;
@@ -614,6 +629,16 @@ mod tests {
     fn lf_files_stay_lf() {
         let (text, format, _) = decode(b"a\nb\n");
         assert_eq!(encode(&text, format), b"a\nb\n");
+    }
+
+    #[test]
+    fn rejects_binary_and_utf16() {
+        assert!(not_text_reason(b"# \xE6\xA8\x99\xE9\xA1\x8C\nabc").is_none());
+        assert!(not_text_reason(b"\xA4\xA4\xA4\xE5").is_none());
+        assert!(not_text_reason(b"").is_none());
+        assert!(not_text_reason(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").is_some());
+        assert!(not_text_reason(b"%PDF-1.7\n").is_some());
+        assert!(not_text_reason(b"\xFF\xFEa\0b\0").is_some_and(|why| why.contains("UTF-16")));
     }
 
     #[test]
