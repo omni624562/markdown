@@ -286,7 +286,7 @@ kbd {
   grid-area: activity;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
   min-height: 0;
   padding: 4px 0;
   border-right: 1px solid var(--border);
@@ -2024,8 +2024,37 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .project-switch:hover:not(:disabled) { background: var(--active-line); color: var(--fg); }
 .project-switch:disabled { cursor: default; }
 .project-switch:disabled .icon { display: none; }
-#status-project { max-width: 220px; }
-#status-project .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 圖示列最上方的專案方塊（顏色與縮寫）。 */
+.activity-project { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; margin-bottom: 6px; padding: 0; border: 0; border-radius: var(--radius); background: transparent; cursor: pointer; }
+.activity-project[hidden] { display: none; }
+.activity-project::after { content: ""; position: absolute; bottom: -4px; left: 8px; right: 8px; height: 1px; background: var(--border); }
+.project-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  color: var(--fg);
+  font: 600 13px/1 var(--font-ui);
+  letter-spacing: 0;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.project-avatar.empty { background: transparent; color: var(--subtle); }
+.project-avatar .icon { width: 22px; height: 22px; stroke-width: 1.6; }
+.project-avatar[data-color] { color: #fff; }
+.project-avatar[data-color="red"] { background: light-dark(#d1453b, #c0504a); }
+.project-avatar[data-color="orange"] { background: light-dark(#d9730d, #c47a2c); }
+.project-avatar[data-color="yellow"] { background: light-dark(#c29a00, #a8862a); }
+.project-avatar[data-color="green"] { background: light-dark(#2e9e5b, #3f8f5c); }
+.project-avatar[data-color="teal"] { background: light-dark(#0f9a9a, #2f8f96); }
+.project-avatar[data-color="blue"] { background: light-dark(#2f6fd6, #3f74c9); }
+.project-avatar[data-color="purple"] { background: light-dark(#8250df, #8a5bc9); }
+.project-avatar[data-color="pink"] { background: light-dark(#d4458f, #c0598f); }
+.project-avatar[data-color="gray"] { background: light-dark(#8a8f98, #6b717c); }
+.activity-project:hover .project-avatar { box-shadow: 0 0 0 2px color-mix(in srgb, var(--fg) 25%, transparent); }
+.activity-project:hover .project-avatar.empty { box-shadow: none; color: var(--fg); }
+.activity-project:focus-visible { outline-offset: -2px; }
 
 .palette .palette-section {
   padding: 10px 10px 4px;

@@ -104,7 +104,7 @@ import { Palette } from "./ui/palette.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
-import { projectSections, samePath } from "./projects.ts";
+import { projectInitials, projectSections, samePath } from "./projects.ts";
 import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
@@ -1523,16 +1523,24 @@ async function renderProjectName(): Promise<void> {
   const color = project?.color ?? null;
   const hint = t("切換專案（{keys}）", { keys: formatKeys("Mod-Alt-p") });
   $("#folder-name").textContent = label;
-  for (const el of document.querySelectorAll<HTMLElement>(".project-switch, #status-project")) {
-    el.title = workspaceRoot ? `${displayPath(workspaceRoot.path)}\n${hint}` : hint;
-    const dot = el.querySelector<HTMLElement>(".project-dot")!;
-    dot.hidden = !workspaceRoot;
-    if (color) dot.dataset.color = color;
-    else delete dot.dataset.color;
-  }
-  const status = $("#status-project");
-  status.hidden = !workspaceRoot;
-  status.querySelector(".label")!.textContent = label;
+  const switcher = $(".project-switch");
+  switcher.title = workspaceRoot ? `${displayPath(workspaceRoot.path)}\n${hint}` : hint;
+  const dot = switcher.querySelector<HTMLElement>(".project-dot")!;
+  dot.hidden = !workspaceRoot;
+  if (color) dot.dataset.color = color;
+  else delete dot.dataset.color;
+  // 圖示列最上方的專案方塊：專案的顏色與縮寫；沒有開資料夾時是資料夾圖示。
+  const button = $("#activity-project");
+  button.hidden = !projectUi;
+  const name = workspaceRoot ? label : t("開啟資料夾或切換專案");
+  button.title = workspaceRoot ? `${label}\n${displayPath(workspaceRoot.path)}\n${hint}` : `${name}\n${hint}`;
+  button.setAttribute("aria-label", name);
+  const avatar = button.querySelector<HTMLElement>(".project-avatar")!;
+  if (workspaceRoot) avatar.textContent = projectInitials(label);
+  else avatar.replaceChildren(icon("folder-open"));
+  avatar.classList.toggle("empty", !workspaceRoot);
+  if (color) avatar.dataset.color = color;
+  else delete avatar.dataset.color;
 }
 
 /** 用 GitHub 帳號同步（桌面版）：登入、從 GitHub 開啟儲存庫、上傳資料夾。 */
@@ -4242,7 +4250,7 @@ setupMenu($<HTMLButtonElement>("#files-more"), commands, [
   "connect-webdav",
   "open-recent",
 ]);
-for (const el of document.querySelectorAll<HTMLButtonElement>(".project-switch, #status-project")) {
+for (const el of document.querySelectorAll<HTMLButtonElement>(".project-switch, #activity-project")) {
   el.disabled = !desktop;
   el.addEventListener("click", () => void commands.run("switch-project").catch(reportError));
 }

@@ -73,6 +73,7 @@ export const main: Record<string, Translation> = {
   "已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。":
     "This document is saved as a file. Rename it in the Files panel (select it and press F2).",
   "切換專案（{keys}）": "Switch Project ({keys})",
+  "開啟資料夾或切換專案": "Open a Folder or Switch Projects",
 
   // 工作項目、Issues
   "已插入「#{id}」的連結": "Inserted a link to \"#{id}\".",

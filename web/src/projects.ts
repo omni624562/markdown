@@ -63,6 +63,21 @@ export function projectGroups(list: Project[]): string[] {
   return [...new Set(list.map((p) => p.group).filter((g): g is string => !!g))].sort(collator.compare);
 }
 
+/**
+ * 專案縮寫（圖示列的專案方塊）：中文等取第一個字；英文取前兩個詞的字首（「my notes」→「MN」），
+ * 只有一個詞就取第一個字母。
+ */
+export function projectInitials(label: string): string {
+  const text = label.trim();
+  const first = [...text][0] ?? "";
+  if (!/[A-Za-z0-9]/.test(first)) return first;
+  const words = text.split(/[\s_\-.]+/).filter((w) => /^[A-Za-z0-9]/.test(w));
+  return words
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
+}
+
 /** 同一個資料夾？Windows 的路徑不分大小寫。 */
 export function samePath(a: string, b: string): boolean {
   return a === b || (/^[a-z]:[\\/]|^\\\\/i.test(a) && a.toLowerCase() === b.toLowerCase());
