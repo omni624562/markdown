@@ -2062,3 +2062,56 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .project-edit .pe-check { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
 .project-edit .choice-actions { align-items: center; }
 .pe-spacer { flex: 1; }
+
+/* ---- 編輯器的尋找與取代列（加上 .cm-editor，蓋過 CodeMirror 內建搜尋列的樣式） ---- */
+.cm-editor .cm-panels .find-panel { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; font: 13px var(--font-ui); }
+.cm-editor .cm-panels .find-row { display: flex; gap: 2px; align-items: center; min-width: 0; }
+.cm-editor .cm-panels .find-box {
+  display: flex;
+  flex: 0 1 360px;
+  align-items: center;
+  min-width: 140px;
+  height: 28px;
+  margin-right: 6px;
+  padding: 0 2px 0 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.cm-editor .cm-panels .find-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.cm-editor .cm-panels .find-box .cm-textfield {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+.cm-editor .cm-panels .find-box .cm-textfield.find-invalid { color: var(--danger); }
+.cm-editor .cm-panels .find-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cm-editor .cm-panels .find-btn .icon { width: 16px; height: 16px; }
+.cm-editor .cm-panels .find-btn:hover { background: var(--active-line); color: var(--fg); }
+.cm-editor .cm-panels .find-box .find-btn { width: 22px; height: 22px; }
+.cm-editor .cm-panels .find-box .find-btn .icon { width: 15px; height: 15px; }
+.cm-editor .cm-panels .find-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.cm-editor .cm-panels .find-count { flex: none; min-width: 64px; margin-right: 4px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cm-editor .cm-panels .find-count.find-none { color: var(--danger); }
+.cm-editor .cm-panels .find-panel .find-btn[name="close"] { position: static; margin-left: auto; }

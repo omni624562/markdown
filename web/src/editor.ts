@@ -14,7 +14,7 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { type Diagnostic, forceLinting, linter } from "@codemirror/lint";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, type Extension, Prec, type StateCommand } from "@codemirror/state";
 import {
   EditorView,
@@ -32,6 +32,7 @@ import type { DocKind } from "./kinds.ts";
 import { type Formatter, newRow, nextCell, previousCell } from "./table.ts";
 import { cjkWords } from "./words.ts";
 import { focusMode, typewriterMode } from "./writing-modes.ts";
+import { createFindPanel } from "./ui/find-panel.ts";
 
 /** 顏色全部走 CSS 變數，深淺色主題只要在 styles.css 切換變數即可。 */
 const syntaxColors = HighlightStyle.define([
@@ -72,36 +73,6 @@ const theme = EditorView.theme({
   ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
   ".cm-placeholder": { color: "var(--subtle)" },
   ".cm-panels": { backgroundColor: "var(--surface)", color: "var(--fg)", borderColor: "var(--border)" },
-  // 搜尋與取代列：和介面其他地方一樣的輸入框與按鈕。
-  ".cm-panel.cm-search": { padding: "6px 34px 6px 10px", fontFamily: "var(--font-ui)", fontSize: "13px" },
-  ".cm-panel.cm-search input, .cm-panel.cm-search button, .cm-panel.cm-search label": {
-    margin: "2px 4px 2px 0",
-    verticalAlign: "middle",
-  },
-  ".cm-panel.cm-search .cm-textfield": {
-    height: "28px",
-    padding: "0 8px",
-    border: "1px solid var(--border)",
-    borderRadius: "6px",
-    background: "var(--bg)",
-    color: "var(--fg)",
-    fontSize: "13px",
-  },
-  ".cm-panel.cm-search .cm-textfield:focus": { outline: "2px solid var(--accent)", outlineOffset: "-1px" },
-  ".cm-panel.cm-search .cm-button": {
-    height: "28px",
-    padding: "0 10px",
-    border: "1px solid var(--border)",
-    borderRadius: "6px",
-    backgroundImage: "none",
-    background: "var(--bg)",
-    color: "var(--fg)",
-    fontSize: "13px",
-    cursor: "pointer",
-  },
-  ".cm-panel.cm-search .cm-button:hover": { background: "var(--active-line)" },
-  ".cm-panel.cm-search label": { display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--muted)" },
-  ".cm-panel.cm-search [name=close]": { top: "8px", right: "10px", fontSize: "18px", color: "var(--muted)", cursor: "pointer" },
   ".cm-tooltip": { backgroundColor: "var(--surface-raised)", color: "var(--fg)", border: "1px solid var(--border)", borderRadius: "8px" },
   ".cm-diagnostic-error": { borderLeftColor: "var(--danger)" },
 });
@@ -197,6 +168,7 @@ export class Editor {
       bracketMatching(),
       highlightActiveLine(),
       highlightSelectionMatches(),
+      search({ createPanel: createFindPanel }),
       EditorView.lineWrapping,
       EditorState.phrases.of(PHRASES),
       EditorView.contentAttributes.of({ "aria-label": "文件內容", spellcheck: "false" }),

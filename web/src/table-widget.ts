@@ -211,7 +211,8 @@ export class EditableTableWidget extends WidgetType {
       if (moving || !editing) return;
       // 焦點移到工具列以外的地方：存起來。
       if (e.relatedTarget instanceof Node && wrap.contains(e.relatedTarget)) return;
-      stop(true);
+      // 焦點可能是在編輯器更新的途中被搶走（例如開啟搜尋列時），那時不能修改文件：等這次更新結束再存。
+      queueMicrotask(() => stop(true));
     });
 
     /**
