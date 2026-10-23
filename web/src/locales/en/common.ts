@@ -4,9 +4,9 @@ export const common: Record<string, Translation> = {
   // 前端用來辨認後端訊息的字（後端的英文翻譯必須用一模一樣的寫法，見 desktop/src/locales/common.rs）。
   "逐段處理": "Resolve Chunk by Chunk",
   "已取消登入": "Sign-in canceled",
-  "還沒有連線到 WebDAV 伺服器": "Not connected to a WebDAV server",
+  "還沒有連線到遠端資料夾": "Not connected to a remote folder",
   "網路磁碟無法連線": "Network drive unreachable",
-  "這個檔案屬於另一個 WebDAV 連線": "This file belongs to another WebDAV connection",
+  "這個檔案屬於另一個遠端連線": "This file belongs to another remote connection",
   "取消": "Cancel",
   "確定": "OK",
   "關閉": "Close",
@@ -119,4 +119,5 @@ export const common: Record<string, Translation> = {
   "區域": "Area",
   // 好幾個區域共用的字。
   "展開": "Expand",
+  "用 SSH 連線": "Connect with SSH",
 };

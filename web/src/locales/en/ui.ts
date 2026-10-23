@@ -306,4 +306,21 @@ export const ui: Record<string, Translation> = {
   "在內容裡找字": "Find in Content",
   "關閉找字": "Close Find",
   "工作項目內容": "Work Item Content",
+  // SSH 連線對話框
+  "第一次連線到這台主機": "First Connection to This Host",
+  "無法確認「{host}」的身分。請核對下面的主機金鑰指紋和伺服器上的一致（在伺服器上執行 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 可以看到）。信任之後會記在 ~/.ssh/known_hosts，下次不再詢問。":
+    "The identity of \"{host}\" can't be verified. Check that the host key fingerprint below matches the one on the server (run ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on the server to see it). Once trusted, it's saved in ~/.ssh/known_hosts and you won't be asked again.",
+  "信任並連線": "Trust and Connect",
+  "直接開啟 Linux 主機（伺服器、NAS、樹莓派等）上的資料夾。密碼留空時，會用 ssh-agent 或 ~/.ssh 裡的金鑰登入。":
+    "Open a folder on a Linux host (server, NAS, Raspberry Pi…) directly. If you leave the password blank, ssh-agent or the keys in ~/.ssh are used to sign in.",
+  "主機": "Host",
+  "192.168.1.10 或 server.example.com": "192.168.1.10 or server.example.com",
+  "連接埠": "Port",
+  "留空就用 SSH 金鑰": "Leave blank to use SSH keys",
+  "遠端資料夾": "Remote folder",
+  "~/筆記（留空是家目錄）": "~/notes (blank for home folder)",
+  "金鑰檔": "Key file",
+  "~/.ssh/id_ed25519（留空會自動尋找）": "~/.ssh/id_ed25519 (blank to find automatically)",
+  "重新連線到 {host}": "Reconnect to {host}",
+  "用金鑰登入失敗，請輸入密碼（或金鑰的密語）。": "Couldn't sign in with a key. Enter the password (or the key's passphrase).",
 };

@@ -3,8 +3,9 @@
 pub static EN: &[(&str, &str)] = &[
     ("遠端和本機改到了同樣的地方。已經取消拉取，檔案都維持原樣；可以按「逐段處理」決定每一段要用哪一邊。", "The remote and local changes touch the same lines. The pull was canceled and your files are unchanged; click \"Resolve Chunk by Chunk\" to choose which side to keep for each chunk."),
     ("已取消登入", "Sign-in canceled"),
-    ("還沒有連線到 WebDAV 伺服器", "Not connected to a WebDAV server."),
-    ("這個檔案屬於另一個 WebDAV 連線，請先重新連線", "This file belongs to another WebDAV connection. Reconnect first."),
+    ("還沒有連線到遠端資料夾", "Not connected to a remote folder."),
+    ("這個檔案屬於另一個遠端連線，請先重新連線", "This file belongs to another remote connection. Reconnect first."),
+    ("等了 {s} 秒沒有回應", "No response after {s} seconds"),
     ("還沒有開啟資料夾", "No folder is open."),
     ("這個資料夾不是 Git 儲存庫", "This folder is not a Git repository."),
     ("沒有需要提交的變更", "There are no changes to commit."),

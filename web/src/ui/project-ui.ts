@@ -84,7 +84,8 @@ export class ProjectUi {
           };
         }
         if (item.kind === "remote") {
-          return { title: item.remote.name, detail: item.remote.url, icon: "cloud", section: "WebDAV" };
+          const ssh = item.remote.kind === "ssh";
+          return { title: item.remote.name, detail: item.remote.url, icon: ssh ? "server" : "cloud", section: ssh ? "SSH" : "WebDAV" };
         }
         return { title: item.title, icon: item.icon, section: t("動作") };
       },

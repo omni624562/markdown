@@ -171,11 +171,11 @@ export const sync: Record<string, Translation> = {
     "{version} has been downloaded. Restart to use the new version (unsaved changes are kept).",
   "立即重新啟動": "Restart Now",
   // desktop.ts
-  "遠端（WebDAV）資料夾不支援在檔案總管中顯示": "Remote (WebDAV) folders can't be revealed in File Explorer.",
-  "遠端（WebDAV）資料夾不支援待辦總覽、標籤與反向連結": "Tasks, Tags and Backlinks aren't available for remote (WebDAV) folders.",
-  "遠端（WebDAV）資料夾不支援直接修改沒有開啟的檔案": "Remote (WebDAV) folders don't support editing files that aren't open.",
-  "遠端（WebDAV）資料夾不支援全文取代": "Replace in Files isn't available for remote (WebDAV) folders.",
-  "遠端（WebDAV）資料夾不支援全文搜尋": "Search in Files isn't available for remote (WebDAV) folders.",
+  "遠端資料夾不支援在檔案總管中顯示": "Remote folders can't be revealed in File Explorer.",
+  "遠端資料夾不支援待辦總覽、標籤與反向連結": "Tasks, Tags and Backlinks aren't available for remote folders.",
+  "遠端資料夾不支援直接修改沒有開啟的檔案": "Remote folders don't support editing files that aren't open.",
+  "遠端資料夾不支援全文取代": "Replace in Files isn't available for remote folders.",
+  "遠端資料夾不支援全文搜尋": "Search in Files isn't available for remote folders.",
   // files.ts、kinds.ts
   "「{name}」{reason}": "\"{name}\" {reason}",
   "文件與程式碼": "Documents and Code",

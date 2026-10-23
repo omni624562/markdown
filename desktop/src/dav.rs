@@ -1,4 +1,6 @@
-//! WebDAV 遠端工作區：直接編輯 NAS（Synology、QNAP、Nextcloud…）上的筆記。
+//! 遠端工作區：直接編輯 NAS（Synology、QNAP、Nextcloud…）上的筆記（WebDAV），
+//! 或 Linux 主機上的檔案（SSH，見 `ssh.rs`）。兩種連線共用這裡的指令、輪詢與狀態，
+//! 只有實際的檔案操作（`RemoteFs`）不同。
 //!
 //! - 前端用 `webdav://<連線代號>/路徑` 表示遠端檔案；這裡換算成實際的網址。
 //! - 存檔用 `PUT` 加 `If-Match: <ETag>`：遠端在開啟後被改過時伺服器回 412，前端顯示衝突處理。
@@ -46,10 +48,14 @@ pub enum DavError {
     Exists,
     Network(String),
     Http(u16),
+    /// 登入成功，但沒有權限做這件事（SSH）。
+    Forbidden,
+    /// 伺服器回報的其他錯誤（SSH）。
+    Other(String),
 }
 
 impl DavError {
-    fn message(&self, what: &str) -> String {
+    pub(crate) fn message(&self, what: &str) -> String {
         match self {
             DavError::Unauthorized => tr!("{what}：帳號或密碼不正確，或沒有權限", what = what),
             DavError::NotFound => tr!("{what}：遠端找不到這個項目", what = what),
@@ -63,6 +69,8 @@ impl DavError {
                 e = e
             ),
             DavError::Http(code) => tr!("{what}：伺服器回應 {code}", what = what, code = code),
+            DavError::Forbidden => tr!("{what}：沒有權限", what = what),
+            DavError::Other(e) => tr!("{what}：{e}", what = what, e = e),
         }
     }
 }
@@ -195,9 +203,15 @@ pub fn normalize_url(input: &str, allow_http: bool) -> Result<String, String> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
     /// 相對於連線根目錄的路徑，以 `/` 分隔，不含開頭與結尾的 `/`。
-    rel: String,
-    is_dir: bool,
+    pub(crate) rel: String,
+    pub(crate) is_dir: bool,
     etag: Option<String>,
+}
+
+impl Item {
+    pub(crate) fn new(rel: String, is_dir: bool, etag: Option<String>) -> Self {
+        Item { rel, is_dir, etag }
+    }
 }
 
 pub struct Client {
@@ -368,6 +382,56 @@ impl Client {
     }
 }
 
+/// 遠端資料夾的檔案操作（WebDAV 與 SSH 各自實作）。路徑都相對於連線的根目錄，以 `/` 分隔。
+pub trait RemoteFs: Send + Sync {
+    fn stat(&self, rel: &str) -> Result<Item, DavError>;
+    /// 資料夾的直接子項目（可能也包含資料夾本身，呼叫端會略過）。
+    fn list(&self, rel: &str) -> Result<Vec<Item>, DavError>;
+    fn get(&self, rel: &str) -> Result<(Vec<u8>, Option<String>), DavError>;
+    /// 上傳。`if_match` 為 `Some` 時只在遠端的版本相同時寫入（否則 `Changed`）；
+    /// `None` 時只在檔案不存在時建立（已存在也是 `Changed`）。回傳新的版本標記。
+    fn put(
+        &self,
+        rel: &str,
+        bytes: &[u8],
+        if_match: Option<&str>,
+    ) -> Result<Option<String>, DavError>;
+    fn mkdir(&self, rel: &str) -> Result<(), DavError>;
+    /// 改名或搬移；目的地已經存在時失敗。
+    fn rename(&self, from: &str, to: &str) -> Result<(), DavError>;
+    /// 刪除檔案或整個資料夾。
+    fn delete(&self, rel: &str) -> Result<(), DavError>;
+}
+
+impl RemoteFs for Client {
+    fn stat(&self, rel: &str) -> Result<Item, DavError> {
+        Client::stat(self, rel)
+    }
+    fn list(&self, rel: &str) -> Result<Vec<Item>, DavError> {
+        self.propfind(rel, 1)
+    }
+    fn get(&self, rel: &str) -> Result<(Vec<u8>, Option<String>), DavError> {
+        Client::get(self, rel)
+    }
+    fn put(
+        &self,
+        rel: &str,
+        bytes: &[u8],
+        if_match: Option<&str>,
+    ) -> Result<Option<String>, DavError> {
+        Client::put(self, rel, bytes, if_match)
+    }
+    fn mkdir(&self, rel: &str) -> Result<(), DavError> {
+        self.mkcol(rel)
+    }
+    fn rename(&self, from: &str, to: &str) -> Result<(), DavError> {
+        self.move_to(from, to)
+    }
+    fn delete(&self, rel: &str) -> Result<(), DavError> {
+        Client::delete(self, rel)
+    }
+}
+
 /// ETag 統一成 `"值"`。有些伺服器（例如 wsgidav）PROPFIND 回的 ETag 沒有引號，
 /// GET／PUT 的標頭卻有，不統一的話每次輪詢都會誤判成檔案被改過。
 /// 弱 ETag（`W/"…"`）也當成一般 ETag 比較。
@@ -466,17 +530,33 @@ fn parse_multistatus(xml: &str, base_path: &str) -> Vec<Item> {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Conn {
-    id: String,
-    name: String,
-    url: String,
-    username: String,
+    pub(crate) id: String,
+    pub(crate) name: String,
+    /// 給人看的位置（WebDAV 是網址；SSH 是 `ssh://帳號@主機/路徑`）。
+    pub(crate) url: String,
+    pub(crate) username: String,
     #[serde(default)]
-    allow_http: bool,
+    pub(crate) allow_http: bool,
+    /// SSH 連線的設定；沒有就是 WebDAV。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) ssh: Option<crate::ssh::SshTarget>,
+}
+
+impl Conn {
+    /// 這個連線的檔案路徑開頭（`webdav://代號` 或 `ssh://代號`）。
+    pub(crate) fn prefix(&self) -> String {
+        let scheme = if self.ssh.is_some() {
+            crate::ssh::SCHEME
+        } else {
+            SCHEME
+        };
+        format!("{scheme}{}", self.id)
+    }
 }
 
 struct Session {
     conn: Conn,
-    client: Client,
+    client: Box<dyn RemoteFs>,
 }
 
 #[derive(Default)]
@@ -501,7 +581,7 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| e.to_string())
 }
 
-fn load_conns(app: &AppHandle) -> Vec<Conn> {
+pub(crate) fn load_conns(app: &AppHandle) -> Vec<Conn> {
     config_path(app)
         .ok()
         .and_then(|p| fs::read_to_string(p).ok())
@@ -509,7 +589,7 @@ fn load_conns(app: &AppHandle) -> Vec<Conn> {
         .unwrap_or_default()
 }
 
-fn save_conns(app: &AppHandle, conns: &[Conn]) -> Result<(), String> {
+pub(crate) fn save_conns(app: &AppHandle, conns: &[Conn]) -> Result<(), String> {
     let path = config_path(app)?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -530,22 +610,30 @@ fn forget_password(id: &str) {
     crate::secrets::forget(KEYRING_SERVICE, id);
 }
 
-/// `webdav://<代號>/<路徑>` → (代號, 路徑)。
+/// 遠端資料夾（WebDAV 或 SSH）的路徑。
+pub fn is_remote_path(path: &str) -> bool {
+    path.starts_with(SCHEME) || path.starts_with(crate::ssh::SCHEME)
+}
+
+/// `webdav://<代號>/<路徑>`（或 `ssh://`）→ (`webdav://<代號>`, 路徑)。
 fn split(path: &str) -> Option<(&str, &str)> {
-    let rest = path.strip_prefix(SCHEME)?;
+    let scheme = [SCHEME, crate::ssh::SCHEME]
+        .into_iter()
+        .find(|s| path.starts_with(s))?;
+    let rest = &path[scheme.len()..];
     let (id, rel) = rest.split_once('/').unwrap_or((rest, ""));
-    if rel.split('/').any(|s| s == ".." || s == ".") {
+    if id.is_empty() || rel.split('/').any(|s| s == ".." || s == ".") {
         return None;
     }
-    Some((id, rel.trim_matches('/')))
+    Some((&path[..scheme.len() + id.len()], rel.trim_matches('/')))
 }
 
 /// 連線根目錄是 `webdav://<代號>`（結尾沒有 `/`，和其他路徑的「上一層」算法一致）。
-fn join(id: &str, rel: &str) -> String {
+fn join(prefix: &str, rel: &str) -> String {
     if rel.is_empty() {
-        format!("{SCHEME}{id}")
+        prefix.to_string()
     } else {
-        format!("{SCHEME}{id}/{rel}")
+        format!("{prefix}/{rel}")
     }
 }
 
@@ -560,17 +648,24 @@ impl Dav {
     }
 
     fn resolve(&self, path: &str) -> Result<(std::sync::Arc<Session>, String), String> {
-        let (id, rel) = split(path).ok_or_else(|| tr!("遠端路徑不正確"))?;
+        let (prefix, rel) = split(path).ok_or_else(|| tr!("遠端路徑不正確"))?;
         let session = self
             .session
             .lock()
             .unwrap()
             .clone()
-            .ok_or_else(|| tr!("還沒有連線到 WebDAV 伺服器"))?;
-        if session.conn.id != id {
-            return Err(tr!("這個檔案屬於另一個 WebDAV 連線，請先重新連線"));
+            .ok_or_else(|| tr!("還沒有連線到遠端資料夾"))?;
+        if session.conn.prefix() != prefix {
+            return Err(tr!("這個檔案屬於另一個遠端連線，請先重新連線"));
         }
         Ok((session, rel.to_string()))
+    }
+
+    /// 目前連著 SSH 時，給內嵌終端機用的 (帳號, 主機設定)。
+    pub fn ssh_target(&self) -> Option<(String, crate::ssh::SshTarget)> {
+        let session = self.session.lock().unwrap().clone()?;
+        let target = session.conn.ssh.clone()?;
+        Some((session.conn.username.clone(), target))
     }
 
     /// 改開本機資料夾時中斷遠端連線。
@@ -585,6 +680,8 @@ impl Dav {
 #[serde(rename_all = "camelCase")]
 pub struct ConnInfo {
     id: String,
+    /// `webdav` 或 `ssh`。
+    kind: &'static str,
     name: String,
     url: String,
     username: String,
@@ -598,6 +695,7 @@ pub fn dav_connections(app: AppHandle) -> Vec<ConnInfo> {
         .into_iter()
         .map(|c| ConnInfo {
             has_password: saved_password(&c.id).is_some(),
+            kind: if c.ssh.is_some() { "ssh" } else { "webdav" },
             id: c.id,
             name: c.name,
             url: c.url,
@@ -606,8 +704,22 @@ pub fn dav_connections(app: AppHandle) -> Vec<ConnInfo> {
         .collect()
 }
 
-fn folder_info(conn: &Conn) -> FolderInfo {
-    FolderInfo::new(join(&conn.id, ""), conn.name.clone())
+pub(crate) fn folder_info(conn: &Conn) -> FolderInfo {
+    FolderInfo::new(conn.prefix(), conn.name.clone())
+}
+
+/// 記住剛輸入的密碼：選了「記住」而且系統能保存時存進認證管理員，
+/// 否則只記在這次開啟期間的記憶體裡（重新連線時不必再問）。
+pub(crate) fn keep_password(dav: &Dav, id: &str, password: String, remember: bool) {
+    if !(remember && remember_password(id, &password)) {
+        if !remember {
+            forget_password(id);
+        }
+        dav.passwords
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), password);
+    }
 }
 
 /// 連線（第一次連線或修改設定）。成功後設為目前的工作區。
@@ -653,47 +765,48 @@ pub async fn dav_connect(
         url: base,
         username,
         allow_http,
+        ssh: None,
     };
     open_session(&app, &dav, conn.clone(), password.clone()).await?;
-    if !(remember && remember_password(&conn.id, &password)) {
-        dav.passwords
-            .lock()
-            .unwrap()
-            .insert(conn.id.clone(), password);
-        if !remember {
-            forget_password(&conn.id);
-        }
-    }
+    keep_password(&dav, &conn.id, password, remember);
     let mut conns: Vec<Conn> = conns.into_iter().filter(|c| c.id != conn.id).collect();
     conns.insert(0, conn.clone());
     save_conns(&app, &conns)?;
     Ok(folder_info(&conn))
 }
 
-/// 用存好的密碼重新連線（重新開啟 app、從最近清單開啟時）。沒有密碼時回傳 `NEED_PASSWORD`。
+/// 用存好的密碼重新連線（重新開啟 app、從最近清單開啟時）。沒有密碼時回傳 `NEED_PASSWORD`
+/// （SSH 會先試金鑰，都不行才要密碼）。`trust` 是使用者確認過的 SSH 主機金鑰指紋。
 #[tauri::command]
 pub async fn dav_reconnect(
     app: AppHandle,
     id: String,
     password: Option<String>,
     remember: Option<bool>,
+    trust: Option<String>,
     dav: State<'_, Dav>,
 ) -> Result<FolderInfo, String> {
     let typed = password.is_some();
     let conn = load_conns(&app)
         .into_iter()
         .find(|c| c.id == id)
-        .ok_or_else(|| tr!("找不到這個 WebDAV 連線，請重新設定"))?;
+        .ok_or_else(|| tr!("找不到這個遠端連線，請重新設定"))?;
     let password = password
         .or_else(|| dav.passwords.lock().unwrap().get(&id).cloned())
-        .or_else(|| saved_password(&id))
-        .ok_or("NEED_PASSWORD")?;
-    open_session(&app, &dav, conn.clone(), password.clone()).await?;
-    // 剛輸入的密碼：照使用者的選擇記住（或不記住）。
-    if typed && remember == Some(true) {
-        remember_password(&id, &password);
+        .or_else(|| saved_password(&id));
+    if conn.ssh.is_some() {
+        crate::ssh::reconnect(&app, &dav, conn.clone(), password.clone(), trust).await?;
+    } else {
+        let password = password.clone().ok_or("NEED_PASSWORD")?;
+        open_session(&app, &dav, conn.clone(), password).await?;
     }
-    dav.passwords.lock().unwrap().insert(id, password);
+    if let Some(password) = password {
+        // 剛輸入的密碼：照使用者的選擇記住（或不記住）。
+        if typed && remember == Some(true) {
+            remember_password(&id, &password);
+        }
+        dav.passwords.lock().unwrap().insert(id, password);
+    }
     Ok(folder_info(&conn))
 }
 
@@ -717,6 +830,12 @@ async fn open_session(
         }
     })
     .await?;
+    install(app, dav, conn, Box::new(client));
+    Ok(())
+}
+
+/// 換成剛連上的遠端資料夾。
+pub(crate) fn install(app: &AppHandle, dav: &Dav, conn: Conn, client: Box<dyn RemoteFs>) {
     *dav.session.lock().unwrap() = Some(std::sync::Arc::new(Session { conn, client }));
     dav.etags.lock().unwrap().clear();
     dav.read.lock().unwrap().clear();
@@ -725,7 +844,6 @@ async fn open_session(
     app.state::<crate::workspace::Workspace>().clear();
     app.state::<crate::watch::Watcher>().stop_workspace();
     start_polling(app);
-    Ok(())
 }
 
 /// 切換到本機資料夾時中斷遠端連線。
@@ -748,11 +866,11 @@ pub fn dav_forget(app: AppHandle, id: String, dav: State<'_, Dav>) -> Result<(),
 #[tauri::command]
 pub async fn dav_list(path: String, dav: State<'_, Dav>) -> Result<Vec<Entry>, String> {
     let (session, rel) = dav.resolve(&path)?;
-    let id = session.conn.id.clone();
+    let id = session.conn.prefix();
     crate::io::blocking(move || {
         let items = session
             .client
-            .propfind(&rel, 1)
+            .list(&rel)
             .map_err(|e| e.message(&tr!("無法讀取資料夾")))?;
         let mut entries: Vec<Entry> = items
             .into_iter()
@@ -847,10 +965,10 @@ pub async fn dav_list_files(dav: State<'_, Dav>) -> Result<Vec<FileItem>, String
         .lock()
         .unwrap()
         .clone()
-        .ok_or_else(|| tr!("還沒有連線到 WebDAV 伺服器"))?;
+        .ok_or_else(|| tr!("還沒有連線到遠端資料夾"))?;
     crate::io::blocking_for(Duration::from_secs(60), move || {
-        let id = session.conn.id.clone();
-        let rels = walk_remote(&|dir: &str| session.client.propfind(dir, 1).ok());
+        let id = session.conn.prefix();
+        let rels = walk_remote(&|dir: &str| session.client.list(dir).ok());
         Ok(rels
             .into_iter()
             .map(|rel| FileItem::new(join(&id, &rel), rel))
@@ -967,11 +1085,11 @@ pub async fn dav_create(
     } else {
         format!("{rel}/{name}")
     };
-    let id = session.conn.id.clone();
+    let id = session.conn.prefix();
     let t = target.clone();
     crate::io::blocking(move || {
         if is_dir {
-            session.client.mkcol(&t)
+            session.client.mkdir(&t)
         } else {
             session.client.put(&t, b"", None).map(|_| ())
         }
@@ -1002,12 +1120,12 @@ pub async fn dav_rename(
     } else {
         format!("{parent}/{new_name}")
     };
-    let id = session.conn.id.clone();
+    let id = session.conn.prefix();
     let (from, to) = (rel.clone(), target.clone());
     crate::io::blocking(move || {
         session
             .client
-            .move_to(&from, &to)
+            .rename(&from, &to)
             .map_err(|e| e.message(&tr!("無法重新命名")))
     })
     .await?;
@@ -1031,7 +1149,7 @@ pub async fn dav_rename(
     Ok(new_path)
 }
 
-/// 刪除（WebDAV 沒有資源回收筒，無法還原；前端會先確認）。
+/// 刪除（遠端沒有資源回收筒，無法還原；前端會先確認）。
 #[tauri::command]
 pub async fn dav_delete(path: String, dav: State<'_, Dav>) -> Result<(), String> {
     let (session, rel) = dav.resolve(&path)?;
@@ -1076,7 +1194,7 @@ pub async fn dav_save_image(
         } else {
             format!("{dir}/assets")
         };
-        match session.client.mkcol(&assets) {
+        match session.client.mkdir(&assets) {
             Ok(()) | Err(DavError::Exists) => {}
             Err(e) => return Err(e.message(&tr!("無法建立 assets 資料夾"))),
         }
@@ -1235,14 +1353,15 @@ fn start_polling(app: &AppHandle) {
             .unwrap()
             .iter()
             .filter_map(|(path, etag)| {
-                let (id, rel) = split(path)?;
-                (id == session.conn.id).then(|| (path.clone(), rel.to_string(), etag.clone()))
+                let (prefix, rel) = split(path)?;
+                (prefix == session.conn.prefix())
+                    .then(|| (path.clone(), rel.to_string(), etag.clone()))
             })
             .collect();
         let rels: Vec<String> = open.iter().map(|(_, rel, _)| rel.clone()).collect();
         let mut states = remote_etags(
             &|rel| session.client.stat(rel),
-            &|dir| session.client.propfind(dir, 1),
+            &|dir| session.client.list(dir),
             &rels,
         );
         for (path, rel, etag) in open {
@@ -1500,13 +1619,15 @@ mod tests {
     fn splits_remote_paths_safely() {
         assert_eq!(
             split("webdav://ab12/筆記/週報.md"),
-            Some(("ab12", "筆記/週報.md"))
+            Some(("webdav://ab12", "筆記/週報.md"))
         );
-        assert_eq!(split("webdav://ab12/"), Some(("ab12", "")));
-        assert_eq!(split("webdav://ab12"), Some(("ab12", "")));
-        assert_eq!(join("ab12", ""), "webdav://ab12");
-        assert_eq!(join("ab12", "a/b.md"), "webdav://ab12/a/b.md");
+        assert_eq!(split("webdav://ab12/"), Some(("webdav://ab12", "")));
+        assert_eq!(split("webdav://ab12"), Some(("webdav://ab12", "")));
+        assert_eq!(split("ssh://cd34/a/b.md"), Some(("ssh://cd34", "a/b.md")));
+        assert_eq!(join("webdav://ab12", ""), "webdav://ab12");
+        assert_eq!(join("ssh://cd34", "a/b.md"), "ssh://cd34/a/b.md");
         assert_eq!(split("webdav://ab12/../etc"), None);
+        assert_eq!(split("ssh:///etc"), None);
         assert_eq!(split("C:\\notes"), None);
     }
 

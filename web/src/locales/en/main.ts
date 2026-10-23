@@ -126,8 +126,8 @@ export const main: Record<string, Translation> = {
   "「{name}」": "\"{name}\"",
   "已開啟的分頁會保留內容，但有尚未存檔的變更。": "Open tabs keep their content, but some have unsaved changes.",
   "永久刪除？": "Delete Permanently?",
-  "要刪除{what}嗎？遠端（WebDAV）沒有資源回收筒，刪除後無法復原。{note}":
-    "Delete {what}? The remote (WebDAV) has no Recycle Bin, so this can't be undone. {note}",
+  "要刪除{what}嗎？遠端資料夾沒有資源回收筒，刪除後無法復原。{note}":
+    "Delete {what}? Remote folders have no Recycle Bin, so this can't be undone. {note}",
   "永久刪除": "Delete Permanently",
   "移到資源回收筒？": "Move to Recycle Bin?",
   "要把{what}移到資源回收筒嗎？之後可以從資源回收筒還原。{note}":
@@ -162,12 +162,12 @@ export const main: Record<string, Translation> = {
   "已儲存到「{name}」": "Saved to \"{name}\".",
   "已下載「{name}」": "Downloaded \"{name}\".",
   // 後端（desktop/src/io.rs 的 OFFLINE）錯誤訊息的開頭，前端用它判斷網路斷線；後端的英文必須一模一樣。
-  "WebDAV 伺服器已恢復連線，記得回到那份文件存檔。": "The WebDAV server is back online. Remember to go back to that document and save it.",
+  "遠端伺服器已恢復連線，記得回到那份文件存檔。": "The remote server is back online. Remember to go back to that document and save it.",
   "網路磁碟已恢復連線，記得回到那份文件存檔。": "The network drive is back online. Remember to go back to that document and save it.",
-  "WebDAV 伺服器已恢復連線。": "The WebDAV server is back online.",
+  "遠端伺服器已恢復連線。": "The remote server is back online.",
   "網路磁碟已恢復連線。": "The network drive is back online.",
   "立即存檔": "Save Now",
-  "WebDAV 伺服器無法連線": "WebDAV server unreachable",
+  "遠端伺服器無法連線": "Remote server unreachable",
   "這次沒有存到檔案。內容會保留在編輯器裡（草稿也已自動保存），連線恢復後會提醒你。":
     "The file wasn't saved this time. Your content stays in the editor (the draft was also saved automatically), and you'll be reminded when the connection is back.",
   "重試存檔": "Retry Save",
@@ -563,4 +563,5 @@ export const main: Record<string, Translation> = {
   "收合": "Collapse",
   "全部收合": "Collapse All",
   "全部展開": "Expand All",
+  "用 SSH 連線到 Linux 主機…": "Connect to a Linux Host with SSH…",
 };

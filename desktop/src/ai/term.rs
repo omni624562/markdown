@@ -458,7 +458,15 @@ pub async fn term_open(
 ) -> Result<u32, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let (cmd, label) = match program {
-            Program::Shell => (default_shell(), tr!("終端機")),
+            // 開著 SSH 遠端資料夾時，終端機也連到同一台主機。
+            Program::Shell => match app
+                .state::<crate::dav::Dav>()
+                .ssh_target()
+                .and_then(|(user, t)| Some((crate::ssh::terminal_command(&user, &t)?, t.host)))
+            {
+                Some((cmd, host)) => (cmd, tr!("SSH：{host}", host = host)),
+                None => (default_shell(), tr!("終端機")),
+            },
             Program::Claude => (tool_command(&app, Tool::Claude)?, "Claude Code".into()),
             Program::Codex => (tool_command(&app, Tool::Codex)?, "Codex".into()),
         };

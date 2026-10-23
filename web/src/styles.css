@@ -1433,6 +1433,12 @@ button.git-info:disabled { cursor: default; }
 .dav-dialog input:read-only { color: var(--muted); }
 .dav-dialog .dav-remember { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
 .dav-hint { font-size: 12.5px; }
+.dav-row { display: flex; gap: 10px; }
+.dav-row .dav-grow { flex: 1; min-width: 0; }
+.dav-row .dav-port { width: 92px; flex: none; }
+.dav-advanced { margin: 0 0 10px; font-size: 13px; }
+.dav-advanced summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
+.dav-advanced[open] summary { color: var(--fg); }
 .dav-error { margin: 0 0 12px !important; color: var(--danger) !important; font-size: 13px; }
 
 /* 列印／匯出 PDF 用的 iframe：不顯示在畫面上。 */
