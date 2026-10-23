@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Project } from "./desktop.ts";
-import { matchesProject, projectGroups, projectSections, samePath } from "./projects.ts";
+import { matchesProject, projectGroups, projectInitials, projectSections, samePath } from "./projects.ts";
 
 const p = (label: string, extra: Partial<Project> = {}): Project => ({
   path: `C:\\專案\\${label}`,
@@ -51,4 +51,14 @@ test("Windows 路徑不分大小寫", () => {
   assert.ok(samePath("C:\\Notes", "c:\\notes"));
   assert.ok(samePath("\\\\server\\share\\A", "\\\\SERVER\\share\\a"));
   assert.ok(!samePath("/home/a", "/home/A"));
+});
+
+test("專案縮寫", () => {
+  assert.equal(projectInitials("markdown"), "M");
+  assert.equal(projectInitials("my notes"), "MN");
+  assert.equal(projectInitials("oMarker-web_app"), "OW");
+  assert.equal(projectInitials("  工作筆記 "), "工");
+  assert.equal(projectInitials("2026 規劃"), "2");
+  assert.equal(projectInitials("😀 表情"), "😀");
+  assert.equal(projectInitials(""), "");
 });
