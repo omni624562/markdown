@@ -219,7 +219,6 @@ export const ui: Record<string, Translation> = {
   "未完成": "Open",
   "全部": "All",
   "負責人": "Assignee",
-  "所有人": "Everyone",
   "排列方式": "Sort By",
   "依檔案": "By File",
   "依截止日": "By Due Date",
@@ -251,9 +250,6 @@ export const ui: Record<string, Translation> = {
   "仍要用 HTTP 連線": "Connect over HTTP Anyway",
   // issues-panel.ts
   "#{id}：{title}": "#{id}: {title}",
-  "返回清單": "Back to List",
-  "在文件的游標位置插入 [#{id} 標題](網址)": "Insert [#{id} Title](URL) at the cursor in the document",
-  "沒有說明": "No description",
   // review.ts
   "保留新內容": "Keep New",
   "這一段採用新的內容": "Use the new content for this chunk",
@@ -304,4 +300,9 @@ export const ui: Record<string, Translation> = {
   "紙張": "Paper",
   "在列印對話框中選「另存為 PDF」就能存成 PDF；頁首與頁碼需要較新的瀏覽器（Chrome、Edge）。": "Choose \"Save as PDF\" in the print dialog to save a PDF. Headers and page numbers need a recent browser (Chrome, Edge).",
   // 和 editing 共用（連線到 WebDAV、插入連結、還原、圖片、列印… 放在 main.ts）
+  "複製成 Markdown 文件": "Copy as Markdown Document",
+  "開成一份可以編輯的 Markdown 分頁（修改不會回寫到伺服器）": "Open an editable Markdown tab (changes won't be saved back to the server)",
+  "在內容裡找字": "Find in Content",
+  "關閉找字": "Close Find",
+  "工作項目內容": "Work Item Content",
 };

@@ -1,6 +1,11 @@
 //! Azure DevOps：連線、儲存庫、工作項目、Pull Request。
 
 pub static EN: &[(&str, &str)] = &[
+    ("讀取留言", "Loading comments"),
+    ("讀取工作項目類型", "Loading work item types"),
+    ("只能讀取 Azure DevOps 伺服器上的圖片", "Only images on the Azure DevOps server can be loaded."),
+    ("無法讀取圖片：{e}", "Couldn't load the image: {e}"),
+    ("無法讀取圖片：不是圖片", "Couldn't load the image: It isn't an image."),
     ("請輸入 https:// 或 http:// 開頭的網址", "Enter a URL that starts with https:// or http://."),
     ("{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖", "{what} failed: The server's response wasn't in the expected format. Check the URL and personal access token."),
     ("{what}失敗：個人存取權杖無效或已過期，請到設定的 Git 頁重新連線", "{what} failed: The personal access token is invalid or has expired. Reconnect on the Git page in Settings."),

@@ -1686,12 +1686,10 @@ button.git-info:disabled { cursor: default; }
 .workitem:hover, .workitem:focus-visible { background: var(--active-line); }
 .workitem-meta { margin: 0; color: var(--muted); font-size: 11.5px; }
 .workitem-title { overflow-wrap: anywhere; }
-.workitems-detail h3 { margin: 10px 4px 2px; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
-.workitems-detail .workitem-meta { margin: 0 4px 8px; }
-.workitems-detail h4 { margin: 12px 4px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
-.workitems-back { margin-top: 2px; }
-.workitems-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 4px; }
-.workitem-text { margin: 0 4px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workitem[aria-current="true"] { background: var(--accent-soft); }
+.workitem[aria-current="true"] .workitem-title { color: var(--accent); }
+.workitems-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 6px; }
+.workitems-filters select { width: 100%; min-width: 0; height: 26px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); }
 .tasks-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
 .tasks-filters .segmented button[aria-pressed="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
 .tasks-filters select { height: 28px; max-width: 110px; padding: 0 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 12px var(--font-ui); }
@@ -2115,3 +2113,55 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .cm-editor .cm-panels .find-count { flex: none; min-width: 64px; margin-right: 4px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cm-editor .cm-panels .find-count.find-none { color: var(--danger); }
 .cm-editor .cm-panels .find-panel .find-btn[name="close"] { position: static; margin-left: auto; }
+
+/* ---- 工作項目、GitHub issue 的唯讀檢視（蓋在編輯區與預覽上面） ---- */
+.issue-pane {
+  grid-column: editor-start / preview-end;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--md-bg);
+}
+.issue-pane[hidden] { display: none; }
+.issue-pane:focus { outline: none; }
+.workspace.issue-open > .editor-pane,
+.workspace.issue-open > .splitter,
+.workspace.issue-open > .preview-pane { display: none; }
+.issue-head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.issue-heading { display: flex; flex: 1 1 260px; flex-direction: column; min-width: 0; }
+.issue-label { color: var(--muted); font-size: 12px; }
+.issue-title { margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.issue-find[hidden] { display: none; }
+.issue-find input {
+  width: min(320px, 50%);
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.issue-find input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.issue-find-count { min-width: 56px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.issue-find-count.issue-find-none { color: var(--danger); }
+.issue-scroll { flex: 1; min-height: 0; overflow: auto; }
+.issue-body { padding-top: 24px; padding-bottom: 80px; }
+.issue-status { color: var(--muted); }
+.issue-status.issue-error { color: var(--danger); }
+::highlight(issue-find) { background-color: rgba(255, 200, 0, 0.35); }
+::highlight(issue-find-current) { background-color: rgba(255, 150, 0, 0.75); }

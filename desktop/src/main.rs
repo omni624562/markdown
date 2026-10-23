@@ -280,6 +280,8 @@ fn main() {
             ado::ado_clone,
             ado::ado_work_items,
             ado::ado_work_item,
+            ado::ado_image,
+            ado::ado_work_item_filters,
             pdf::pick_pdf_path,
             pdf::print_to_pdf,
             settings::load_settings,

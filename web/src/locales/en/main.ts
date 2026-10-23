@@ -76,18 +76,12 @@ export const main: Record<string, Translation> = {
 
   // 工作項目、Issues
   "已插入「#{id}」的連結": "Inserted a link to \"#{id}\".",
-  "搜尋標題，或輸入編號": "Search titles or enter an ID",
-  "指派給 {name}": "Assigned to {name}",
-  "重現步驟": "Repro Steps",
-  "驗收條件": "Acceptance Criteria",
   "找到 {n} 個工作項目": ["{n} work item found", "{n} work items found"],
   "指派給你、還沒結束的工作項目（{n}）": "Open work items assigned to you ({n})",
   "找不到符合的工作項目": "No matching work items",
   "目前沒有指派給你、還沒結束的工作項目": "No open work items are assigned to you",
   "搜尋 issue，或輸入編號": "Search issues or enter a number",
-  "已關閉": "Closed",
   "{n} 則留言": ["{n} comment", "{n} comments"],
-  "由 {name} 建立": "Created by {name}",
   "找到 {n} 個 issue": ["{n} issue found", "{n} issues found"],
   "還沒關閉的 issue（{n}）": "Open issues ({n})",
   "找不到符合的 issue": "No matching issues",
@@ -211,7 +205,6 @@ export const main: Record<string, Translation> = {
   "複製檔案路徑": "Copy File Path",
   "開啟檔案…": "Open File…",
   "切換專案…": "Switch Project…",
-  "專案": "Project",
   "目前專案的設定（名稱、顏色、群組）…": "Current Project Settings (Name, Color, Group)…",
   "連線到 WebDAV 遠端資料夾…": "Connect to WebDAV Remote Folder…",
   "快速開啟檔案…": "Quick Open File…",
@@ -546,4 +539,14 @@ export const main: Record<string, Translation> = {
   "目前內容和{store}上的版本相同。": "The current content is the same as the version on the {store}.",
 
   // 和 ui/、index.html、editing 共用的詞（放在這裡，其他檔案不再重複）。
+  "已複製成新的 Markdown 分頁，修改不會回寫到伺服器": "Copied to a new Markdown tab. Changes won't be saved back to the server.",
+  "指派給我": "Assigned to Me",
+  "全部狀態": "All States",
+  "已結束": "Closed",
+  "進行中": "Active",
+  "所有類型": "All Types",
+  "所有專案": "All Projects",
+  "搜尋標題或內容，或輸入編號": "Search titles and content, or enter an ID",
+  "符合篩選條件的工作項目（{n}）": "Work items matching the filters ({n})",
+  "沒有符合篩選條件的工作項目": "No work items match the filters.",
 };

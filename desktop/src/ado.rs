@@ -641,10 +641,27 @@ pub struct WorkItemDetail {
     #[serde(flatten)]
     item: WorkItem,
     assigned_to: Option<String>,
-    /// 說明（HTML，前端轉成純文字顯示）。
+    created_by: Option<String>,
+    /// 區域與反覆項目（例如「產品\前端」「產品\Sprint 3」）。
+    area: Option<String>,
+    iteration: Option<String>,
+    priority: Option<u64>,
+    tags: Vec<String>,
+    /// 說明（HTML，前端轉成 Markdown 顯示）。
     description: Option<String>,
     /// 驗收條件或重現步驟（HTML）。
     details: Option<String>,
+    /// 留言（舊到新）；伺服器不支援或讀不到時是空的。
+    comments: Vec<WorkItemComment>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemComment {
+    author: String,
+    created: Option<String>,
+    /// HTML。
+    text: String,
 }
 
 /// 指派給我、還沒結束的工作項目；中英文的流程範本都有對應的「結束」狀態名稱。
@@ -671,25 +688,77 @@ fn wiql_string(s: &str) -> String {
 }
 
 /// 依搜尋文字決定查詢：空白是「指派給我」，數字是工作項目編號，其他搜尋標題。
-fn wiql_for(search: &str) -> Option<String> {
+/// 工作項目清單的篩選條件（前端的篩選列）。
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkItemFilter {
+    /// 只列出指派給我的。
+    pub mine: bool,
+    /// `open`（還沒結束）、`closed`（已結束）或 `all`。
+    pub state: String,
+    pub kind: Option<String>,
+    pub project: Option<String>,
+}
+
+impl Default for WorkItemFilter {
+    fn default() -> Self {
+        WorkItemFilter {
+            mine: true,
+            state: "open".into(),
+            kind: None,
+            project: None,
+        }
+    }
+}
+
+/// 搜尋內容時一併搜尋的長文字欄位（全文搜尋）。伺服器沒有全文索引、或流程範本沒有某個欄位時
+/// 查詢會失敗，所以依序退回較少的欄位，最後只搜尋標題。
+const CONTENT_FIELDS: [&[&str]; 3] = [
+    &[
+        "System.Description",
+        "Microsoft.VSTS.TCM.ReproSteps",
+        "Microsoft.VSTS.Common.AcceptanceCriteria",
+    ],
+    &["System.Description"],
+    &[],
+];
+
+/// 依搜尋文字與篩選條件產生 WIQL；輸入的是編號（`123`、`#123`）時回傳 None，直接讀取那一個。
+fn wiql_for(search: &str, f: &WorkItemFilter, content: &[&str]) -> Option<String> {
     let q = search.trim().trim_start_matches('#');
     if q.chars().all(|c| c.is_ascii_digit()) && !q.is_empty() {
         return None;
     }
-    let select = "SELECT [System.Id] FROM WorkItems WHERE";
-    let order = "ORDER BY [System.ChangedDate] DESC";
-    Some(if q.is_empty() {
-        let closed: Vec<String> = CLOSED_STATES.iter().map(|s| wiql_string(s)).collect();
-        format!(
-            "{select} [System.AssignedTo] = @Me AND [System.State] NOT IN ({}) {order}",
-            closed.join(", ")
-        )
-    } else {
-        format!(
-            "{select} [System.Title] CONTAINS {} {order}",
-            wiql_string(q)
-        )
-    })
+    let mut cond: Vec<String> = vec![];
+    if f.mine {
+        cond.push("[System.AssignedTo] = @Me".into());
+    }
+    let closed: Vec<String> = CLOSED_STATES.iter().map(|s| wiql_string(s)).collect();
+    match f.state.as_str() {
+        "open" => cond.push(format!("[System.State] NOT IN ({})", closed.join(", "))),
+        "closed" => cond.push(format!("[System.State] IN ({})", closed.join(", "))),
+        _ => {}
+    }
+    if let Some(k) = f.kind.as_deref().filter(|k| !k.trim().is_empty()) {
+        cond.push(format!("[System.WorkItemType] = {}", wiql_string(k.trim())));
+    }
+    if let Some(p) = f.project.as_deref().filter(|p| !p.trim().is_empty()) {
+        cond.push(format!("[System.TeamProject] = {}", wiql_string(p.trim())));
+    }
+    if !q.is_empty() {
+        let mut any = vec![format!("[System.Title] CONTAINS {}", wiql_string(q))];
+        for field in content {
+            any.push(format!("[{field}] CONTAINS WORDS {}", wiql_string(q)));
+        }
+        cond.push(format!("({})", any.join(" OR ")));
+    }
+    if cond.is_empty() {
+        cond.push("[System.Id] > 0".into());
+    }
+    Some(format!(
+        "SELECT [System.Id] FROM WorkItems WHERE {} ORDER BY [System.ChangedDate] DESC",
+        cond.join(" AND ")
+    ))
 }
 
 fn work_item_url(base: &str, project: &str, id: u64) -> String {
@@ -736,30 +805,54 @@ fn person(v: Option<&Value>) -> Option<String> {
 
 /// 工作項目清單（最多 100 個）：搜尋文字空白時是「指派給我、還沒結束的」。
 #[tauri::command]
-pub async fn ado_work_items(app: AppHandle, search: String) -> Result<Vec<WorkItem>, String> {
+pub async fn ado_work_items(
+    app: AppHandle,
+    search: String,
+    filter: Option<WorkItemFilter>,
+) -> Result<Vec<WorkItem>, String> {
     let (a, pat) = require(&app)?;
+    let filter = filter.unwrap_or_default();
     crate::io::blocking_for(TIMEOUT, move || {
         let base = a.url;
-        let ids: Vec<u64> = match wiql_for(&search) {
-            Some(query) => {
-                let res = post(
+        let ids: Vec<u64> = if wiql_for(&search, &filter, &[]).is_none() {
+            vec![search.trim().trim_start_matches('#').parse().unwrap_or(0)]
+        } else {
+            let mut last = String::new();
+            let mut found = None;
+            // 有搜尋文字時先試全文搜尋內容，失敗（伺服器不支援）再退回較少的欄位。
+            let levels: &[&[&str]] = if search.trim().is_empty() {
+                &[&[]]
+            } else {
+                &CONTENT_FIELDS
+            };
+            for content in levels {
+                let query = wiql_for(&search, &filter, content).unwrap_or_default();
+                match post(
                     &base,
                     &pat,
                     "/_apis/wit/wiql?$top=100",
                     &serde_json::json!({ "query": query }),
                     &tr!("查詢工作項目"),
-                )?;
-                res.get("workItems")
-                    .and_then(Value::as_array)
-                    .map(|list| {
-                        list.iter()
-                            .filter_map(|w| w.get("id").and_then(Value::as_u64))
-                            .take(100)
-                            .collect()
-                    })
-                    .unwrap_or_default()
+                ) {
+                    Ok(res) => {
+                        found = Some(res);
+                        break;
+                    }
+                    // 權杖或權限的問題換欄位也沒用。
+                    Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+                    Err(e) => last = e,
+                }
             }
-            None => vec![search.trim().trim_start_matches('#').parse().unwrap_or(0)],
+            let res = found.ok_or(last)?;
+            res.get("workItems")
+                .and_then(Value::as_array)
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|w| w.get("id").and_then(Value::as_u64))
+                        .take(100)
+                        .collect()
+                })
+                .unwrap_or_default()
         };
         if ids.is_empty() {
             return Ok(vec![]);
@@ -797,6 +890,55 @@ pub async fn ado_work_items(app: AppHandle, search: String) -> Result<Vec<WorkIt
 }
 
 /// 一個工作項目的內容。
+/// 篩選列的選項：專案與工作項目類型。
+#[derive(Serialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemFilterOptions {
+    projects: Vec<String>,
+    kinds: Vec<String>,
+}
+
+/// 不會出現在一般清單的類型（測試、程式碼檢閱、意見反應等）。
+const HIDDEN_KINDS: &[&str] = &[
+    "Code Review Request",
+    "Code Review Response",
+    "Feedback Request",
+    "Feedback Response",
+    "Shared Steps",
+    "Shared Parameter",
+    "Test Case",
+    "Test Plan",
+    "Test Suite",
+];
+
+#[tauri::command]
+pub async fn ado_work_item_filters(app: AppHandle) -> Result<WorkItemFilterOptions, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = get(&a.url, &pat, "/_apis/projects?$top=1000", &tr!("讀取專案"))?;
+        let mut projects: Vec<String> = values(&res)
+            .iter()
+            .filter_map(|p| str_of(p, "name").map(str::to_string))
+            .collect();
+        projects.sort_by_key(|p| p.to_lowercase());
+        let mut kinds: Vec<String> = vec![];
+        for p in projects.iter().take(20) {
+            let path = format!("/{}/_apis/wit/workitemtypes", encode_segment(p));
+            let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取工作項目類型")) else {
+                continue;
+            };
+            for k in values(&res).iter().filter_map(|t| str_of(t, "name")) {
+                if !HIDDEN_KINDS.contains(&k) && !kinds.iter().any(|x| x == k) {
+                    kinds.push(k.to_string());
+                }
+            }
+        }
+        kinds.sort_by_key(|k| k.to_lowercase());
+        Ok(WorkItemFilterOptions { projects, kinds })
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, String> {
     let (a, pat) = require(&app)?;
@@ -807,7 +949,84 @@ pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, St
             &format!("/_apis/wit/workitems/{id}"),
             &tr!("讀取工作項目"),
         )?;
-        detail_of(&a.url, &v).ok_or_else(|| tr!("讀取工作項目失敗：回應的格式不正確"))
+        let mut d =
+            detail_of(&a.url, &v).ok_or_else(|| tr!("讀取工作項目失敗：回應的格式不正確"))?;
+        // 留言是另外的 API（2019 起的預覽版）；讀不到不影響其他內容。
+        let path = format!(
+            "/{}/_apis/wit/workItems/{id}/comments",
+            encode_segment(&d.item.project)
+        );
+        if let Ok(c) = get_version(&a.url, &pat, &path, Some("5.0-preview.2"), &tr!("讀取留言"))
+        {
+            d.comments = comments_of(&c);
+        }
+        Ok(d)
+    })
+    .await
+}
+
+fn comments_of(v: &Value) -> Vec<WorkItemComment> {
+    let mut list: Vec<WorkItemComment> = v
+        .get("comments")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|c| {
+            let text = str_of(c, "text")?.trim().to_string();
+            (!text.is_empty()).then(|| WorkItemComment {
+                author: person(c.get("createdBy")).unwrap_or_default(),
+                created: str_of(c, "createdDate").map(str::to_string),
+                text,
+            })
+        })
+        .collect();
+    list.sort_by(|a, b| a.created.cmp(&b.created));
+    list
+}
+
+/// 工作項目內文裡的圖片：附件要用權杖才能讀，網頁元件自己載不到。
+/// 只讀取連線中那台伺服器上的網址，不跟隨轉址（權杖不會被送到別的地方），回傳 data: 網址。
+#[tauri::command]
+pub async fn ado_image(app: AppHandle, url: String) -> Result<String, String> {
+    let (a, pat) = require(&app)?;
+    let lower = url.to_ascii_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("http://"))
+        || !same_server(&url, &a.url)
+    {
+        return Err(tr!("只能讀取 Azure DevOps 伺服器上的圖片"));
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let mut res = crate::update::agent()
+            .get(&url)
+            .config()
+            .max_redirects(0)
+            .build()
+            .header("Authorization", &basic(&pat))
+            .call()
+            .map_err(|e| tr!("無法讀取圖片：{e}", e = e))?;
+        let mime = res
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        if !mime.starts_with("image/") || mime == "image/svg+xml" {
+            return Err(tr!("無法讀取圖片：不是圖片"));
+        }
+        let bytes = res
+            .body_mut()
+            .with_config()
+            .limit(10 * 1024 * 1024)
+            .read_to_vec()
+            .map_err(|e| tr!("無法讀取圖片：{e}", e = e))?;
+        Ok(format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ))
     })
     .await
 }
@@ -819,9 +1038,21 @@ fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
             .filter(|s| !s.trim().is_empty())
             .map(str::to_string)
     };
+    let text = |name: &str| Some(field_str(v, name)).filter(|s| !s.trim().is_empty());
     Some(WorkItemDetail {
         item: item_of(base, v)?,
         assigned_to: person(field(v, "System.AssignedTo")),
+        created_by: person(field(v, "System.CreatedBy")),
+        area: text("System.AreaPath"),
+        iteration: text("System.IterationPath"),
+        priority: field(v, "Microsoft.VSTS.Common.Priority").and_then(Value::as_u64),
+        tags: field_str(v, "System.Tags")
+            .split(';')
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+            .collect(),
+        comments: vec![],
         description: html("System.Description"),
         details: html("Microsoft.VSTS.Common.AcceptanceCriteria")
             .or_else(|| html("Microsoft.VSTS.TCM.ReproSteps")),
@@ -1029,13 +1260,55 @@ mod tests {
 
     #[test]
     fn builds_wiql_for_each_search() {
-        assert!(wiql_for("").unwrap().contains("[System.AssignedTo] = @Me"));
-        assert!(wiql_for("").unwrap().contains("'已關閉'"));
-        assert_eq!(wiql_for("#123"), None);
-        assert!(wiql_for("登入 bug")
+        let mine = WorkItemFilter::default();
+        assert!(wiql_for("", &mine, &[])
             .unwrap()
-            .contains("CONTAINS '登入 bug'"));
-        assert!(wiql_for("it's").unwrap().contains("'it''s'"));
+            .contains("[System.AssignedTo] = @Me"));
+        assert!(wiql_for("", &mine, &[]).unwrap().contains("'已關閉'"));
+        assert_eq!(wiql_for("#123", &mine, &[]), None);
+        let all = WorkItemFilter {
+            mine: false,
+            state: "all".into(),
+            kind: Some("Bug".into()),
+            project: Some("產品".into()),
+        };
+        let q = wiql_for("登入 bug", &all, CONTENT_FIELDS[0]).unwrap();
+        assert!(!q.contains("@Me") && !q.contains("[System.State]"));
+        assert!(q.contains("[System.WorkItemType] = 'Bug'"));
+        assert!(q.contains("[System.TeamProject] = '產品'"));
+        assert!(q.contains(
+            "([System.Title] CONTAINS '登入 bug' OR [System.Description] CONTAINS WORDS '登入 bug'"
+        ));
+        assert!(q.contains("[Microsoft.VSTS.Common.AcceptanceCriteria] CONTAINS WORDS"));
+        let closed = WorkItemFilter {
+            mine: false,
+            state: "closed".into(),
+            kind: None,
+            project: None,
+        };
+        assert!(wiql_for("", &closed, &[])
+            .unwrap()
+            .contains("[System.State] IN ("));
+        let none = WorkItemFilter {
+            state: "all".into(),
+            ..closed
+        };
+        assert!(wiql_for("", &none, &[])
+            .unwrap()
+            .contains("WHERE [System.Id] > 0"));
+        assert!(wiql_for("it's", &mine, &[]).unwrap().contains("'it''s'"));
+    }
+
+    #[test]
+    fn reads_comments_oldest_first() {
+        let v = json!({"comments": [
+            {"text": "<p>第二則</p>", "createdBy": {"displayName": "B"}, "createdDate": "2026-10-02T00:00:00Z"},
+            {"text": "  ", "createdBy": {"displayName": "空"}, "createdDate": "2026-10-03T00:00:00Z"},
+            {"text": "<p>第一則</p>", "createdBy": {"displayName": "A"}, "createdDate": "2026-10-01T00:00:00Z"}
+        ]});
+        let c = comments_of(&v);
+        assert_eq!(c.len(), 2);
+        assert_eq!((c[0].author.as_str(), c[1].author.as_str()), ("A", "B"));
     }
 
     #[test]
@@ -1043,9 +1316,15 @@ mod tests {
         let v = json!({"id": 42, "fields": {
             "System.Title": "修正登入", "System.State": "Active", "System.WorkItemType": "Bug",
             "System.TeamProject": "產品", "System.AssignedTo": {"displayName": "王小明"},
-            "Microsoft.VSTS.TCM.ReproSteps": "<div>步驟</div>"
+            "Microsoft.VSTS.TCM.ReproSteps": "<div>步驟</div>",
+            "System.Tags": "前端; 登入 ;", "Microsoft.VSTS.Common.Priority": 2,
+            "System.AreaPath": "產品\\前端"
         }});
         let d = detail_of("https://tfs/DC", &v).unwrap();
+        assert_eq!(d.tags, ["前端", "登入"]);
+        assert_eq!(d.priority, Some(2));
+        assert_eq!(d.area.as_deref(), Some("產品\\前端"));
+        assert_eq!(d.iteration, None);
         assert_eq!(d.item.title, "修正登入");
         assert_eq!(d.assigned_to.as_deref(), Some("王小明"));
         assert_eq!(d.details.as_deref(), Some("<div>步驟</div>"));
