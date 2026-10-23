@@ -268,16 +268,37 @@ export interface AdoWorkItem {
   /** 類型，例如 Bug、Task、User Story。 */
   kind: string;
   project: string;
+  assignedTo: string | null;
   changed: string | null;
   webUrl: string;
 }
 
 export interface AdoWorkItemDetail extends AdoWorkItem {
-  assignedTo: string | null;
+  createdBy: string | null;
+  /** 區域、反覆項目（例如「產品\\前端」）。 */
+  area: string | null;
+  iteration: string | null;
+  priority: number | null;
+  tags: string[];
   /** 說明（HTML）。 */
   description: string | null;
   /** 驗收條件或重現步驟（HTML）。 */
   details: string | null;
+  /** 留言（舊到新，內容是 HTML）。 */
+  comments: { author: string; created: string | null; text: string }[];
+}
+
+/** 工作項目清單的篩選條件。 */
+export interface AdoWorkItemFilter {
+  /** 依指派給誰或建立者篩選人。 */
+  role: "assigned" | "created";
+  /** `@me`（我）、空字串（不限）或名字（部分符合即可）。 */
+  person: string;
+  state: "open" | "closed" | "all";
+  kind: string | null;
+  project: string | null;
+  /** 區域路徑（包含底下的區域）。 */
+  area: string | null;
 }
 
 /** 改過某個檔案的提交。 */
@@ -570,7 +591,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
     adoClone: (cloneUrl: string, name: string) => core.invoke<Folder | null>("ado_clone", { cloneUrl, name }),
-    adoWorkItems: (search: string) => core.invoke<AdoWorkItem[]>("ado_work_items", { search }),
+    adoWorkItems: (search: string, filter?: AdoWorkItemFilter) => core.invoke<AdoWorkItem[]>("ado_work_items", { search, filter }),
+    adoWorkItemFilters: () => core.invoke<{ projects: string[]; kinds: string[] }>("ado_work_item_filters"),
+    adoWorkItemScope: (project: string | null) =>
+      core.invoke<{ areas: string[]; people: string[] }>("ado_work_item_scope", { project }),
+    /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
+    adoImage: (url: string) => core.invoke<string>("ado_image", { url }),
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
     gitPull: () => core.invoke<string>("git_pull"),

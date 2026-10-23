@@ -105,4 +105,16 @@ export const common: Record<string, Translation> = {
   "知道了": "Got It",
   "純文字": "Plain Text",
   "最近開啟": "Recent",
+  // 好幾個區域共用的字。
+  "標籤": "Tags",
+  "重現步驟": "Repro Steps",
+  "驗收條件": "Acceptance Criteria",
+  "已關閉": "Closed",
+  "專案": "Project",
+  "指派給": "Assigned To",
+  "狀態": "State",
+  "類型": "Type",
+  "所有人": "Everyone",
+  // 好幾個區域共用的字。
+  "區域": "Area",
 };

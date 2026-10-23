@@ -66,7 +66,7 @@ import { codeToolsPlugin } from "./plugins/code-tools.ts";
 import { tablesPlugin } from "./plugins/tables.ts";
 import { mermaidPlugin, mermaidTheme, renderMermaid } from "./plugins/mermaid.ts";
 import { blockRemoteImages, blockRemoteImagesInHtml } from "./remote-images.ts";
-import { Preview } from "./preview.ts";
+import { Preview, type PreviewPlugin } from "./preview.ts";
 import sampleEn from "./sample.en.md?raw";
 import sampleZh from "./sample.md?raw";
 import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
@@ -108,7 +108,9 @@ import { projectSections, samePath } from "./projects.ts";
 import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
-import { IssuesPanel, type IssueSummary, htmlToText, shortDate } from "./ui/issues-panel.ts";
+import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
+import { IssueView } from "./ui/issue-view.ts";
+import { githubIssueMarkdown, issueFileName, workItemMarkdown } from "./issue-doc.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
@@ -129,7 +131,7 @@ import { TerminalPanel } from "./ui/terminal-panel.ts";
 import { WebDavDialog } from "./ui/webdav-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
-import type { FileVersion } from "./desktop.ts";
+import type { AdoWorkItem, AdoWorkItemFilter, FileVersion } from "./desktop.ts";
 import { clampSidebarWidth, setupSidebarResize } from "./ui/sidebar-resize.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
@@ -1462,35 +1464,274 @@ function insertIssueLink(item: IssueSummary): void {
   toast(t("已插入「#{id}」的連結", { id: item.id }));
 }
 
-const workItemsPanel = desktop
-  ? new IssuesPanel($("#workitems-host"), {
-      placeholder: t("搜尋標題，或輸入編號"),
-      list: async (search) =>
-        (await desktop!.adoWorkItems(search)).map((w) => ({
-          ...w,
-          meta: [`${w.kind} ${w.id}`, w.state, shortDate(w.changed)].filter(Boolean).join("・"),
-        })),
-      detail: async (item) => {
-        const d = await desktop!.adoWorkItem(item.id);
-        return {
-          meta: [d.project, d.assignedTo ? t("指派給 {name}", { name: d.assignedTo }) : ""].filter(Boolean).join("・"),
-          sections: [
-            // 「說明」在 common 是選單的 Help；這裡是工作項目的 Description 欄位，英文另外寫。
-            { title: currentLang() === "en" ? "Description" : "說明", text: d.description ? htmlToText(d.description) : "" }, // i18n-ignore
-            { title: d.kind === "Bug" ? t("重現步驟") : t("驗收條件"), text: d.details ? htmlToText(d.details) : "" },
-          ],
-        };
+// ---- 工作項目、GitHub issue：開在主要區域的唯讀檢視 ------------------------------
+
+/** 工作項目內文裡的圖片放在 Azure DevOps 伺服器上，要帶權杖才讀得到：改由原生端讀取。 */
+const adoImagesPlugin: PreviewPlugin = {
+  name: "ado-images",
+  prepare(content) {
+    const base = ado?.account?.url;
+    if (!base) return;
+    const origin = (u: string) => {
+      try {
+        return new URL(u).origin;
+      } catch {
+        return null;
+      }
+    };
+    for (const img of content.querySelectorAll<HTMLImageElement>("img[src]")) {
+      const src = img.getAttribute("src")!;
+      if (origin(src) !== origin(base)) continue;
+      img.dataset.adoSrc = src;
+      img.removeAttribute("src");
+    }
+  },
+  apply(root) {
+    for (const img of root.querySelectorAll<HTMLImageElement>("img[data-ado-src]")) {
+      void desktop!
+        .adoImage(img.dataset.adoSrc!)
+        .then((url) => (img.src = url))
+        .catch((e) => (img.title = e instanceof Error ? e.message : String(e)));
+    }
+  },
+};
+
+let issuePreview: Preview | null = null;
+const issueView = new IssueView($(".workspace"), {
+  render(markdown, into) {
+    issuePreview ??= new Preview(into, [
+      highlightPlugin(),
+      tablesPlugin(),
+      adoImagesPlugin,
+      {
+        name: "remote-images",
+        apply() {},
+        prepare(content) {
+          if (settings.value.blockRemoteImages) blockRemoteImages(content);
+        },
       },
-      insert: insertIssueLink,
-      open: (url) => void desktop!.openExternal(url).catch(reportError),
+    ]);
+    issuePreview.update(markdown, "markdown");
+  },
+  open: (url) => void desktop?.openExternal(url).catch(reportError),
+  copyAsDocument(name, markdown) {
+    issueView.close();
+    const doc = makeDoc({ name, kind: "markdown", baseline: hash("") });
+    saveDraft(doc.id, markdown);
+    addTab(doc);
+    toast(t("已複製成新的 Markdown 分頁，修改不會回寫到伺服器"));
+  },
+  closed() {
+    workItemsPanel?.select(null);
+    issuesPanel?.select(null);
+  },
+});
+
+/** 工作項目的篩選條件（記住上次的選擇）。 */
+const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {
+  role: "assigned",
+  person: "@me",
+  state: "open",
+  kind: null,
+  project: null,
+  area: null,
+};
+const workItemFilter: AdoWorkItemFilter = (() => {
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
+  try {
+    const v = JSON.parse(storage.load("workitem-filter") ?? "{}") as Partial<AdoWorkItemFilter>;
+    const project = text(v.project);
+    return {
+      role: v.role === "created" ? "created" : "assigned",
+      person: typeof v.person === "string" ? v.person : "@me",
+      state: v.state === "closed" || v.state === "all" ? v.state : "open",
+      kind: text(v.kind),
+      project,
+      area: project ? text(v.area) : null,
+    };
+  } catch {
+    return { ...DEFAULT_WORK_ITEM_FILTER };
+  }
+})();
+const isDefaultFilter = () =>
+  workItemFilter.role === "assigned" &&
+  workItemFilter.person === "@me" &&
+  workItemFilter.state === "open" &&
+  !workItemFilter.kind &&
+  !workItemFilter.project &&
+  !workItemFilter.area;
+/** 清單上要不要顯示指派給誰（只看自己的就不必）。 */
+const showAssignee = () => !(workItemFilter.role === "assigned" && workItemFilter.person === "@me");
+
+/** 讀取篩選列的選項（第一次列出工作項目時）。 */
+let loadWorkItemFilterOptions = (): void => {};
+
+/**
+ * 工作項目的篩選列：人（指派給、建立者）、狀態、類型、專案、區域。
+ * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
+ */
+function workItemFilterBar(): HTMLElement {
+  const bar = document.createElement("div");
+  bar.className = "workitems-filters";
+  const changed = () => {
+    storage.save("workitem-filter", JSON.stringify(workItemFilter));
+    void workItemsPanel?.refresh();
+  };
+  const select = (label: string, options: [string, string][], value: string, change: (v: string) => void) => {
+    const sel = document.createElement("select");
+    sel.className = "status-select";
+    sel.setAttribute("aria-label", label);
+    sel.title = label;
+    for (const [v, text] of options) sel.append(new Option(text, v, false, v === value));
+    sel.addEventListener("change", () => {
+      change(sel.value);
+      changed();
+    });
+    return sel;
+  };
+  const fill = (sel: HTMLSelectElement, values: [string, string][], current: string | null) => {
+    sel.length = 1;
+    for (const [v, text] of values) sel.append(new Option(text, v, false, v === current));
+    if (current && !values.some(([v]) => v === current)) sel.append(new Option(current, current, true, true));
+    sel.value = current ?? "";
+  };
+  const pairs = (values: string[]): [string, string][] => values.map((v) => [v, v]);
+
+  // 人：指派給我、我建立的、所有人，或指定某個人（輸入名字）。
+  const f = workItemFilter;
+  const personValue = f.person === "@me" ? `${f.role}:@me` : f.person ? `${f.role}:` : "any";
+  const name = document.createElement("input");
+  name.type = "search";
+  name.className = "workitems-person";
+  name.value = f.person === "@me" ? "" : f.person;
+  name.placeholder = t("輸入名字（部分即可）");
+  name.setAttribute("aria-label", t("名字"));
+  name.setAttribute("list", "workitem-people");
+  name.hidden = !personValue.endsWith(":");
+  const people = document.createElement("datalist");
+  people.id = "workitem-people";
+  let timer = 0;
+  name.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      if (f.person === name.value.trim()) return;
+      f.person = name.value.trim();
+      changed();
+    }, 500);
+  });
+  const person = select(
+    t("人"),
+    [
+      ["assigned:@me", t("指派給我")],
+      ["created:@me", t("我建立的")],
+      ["any", t("所有人")],
+      ["assigned:", t("指派給…")],
+      ["created:", t("建立者是…")],
+    ],
+    personValue,
+    (v) => {
+      clearTimeout(timer);
+      const [role, who] = v === "any" ? ["assigned", ""] : v.split(":");
+      f.role = role as AdoWorkItemFilter["role"];
+      name.hidden = !v.endsWith(":");
+      f.person = who === "@me" ? "@me" : name.hidden ? "" : name.value.trim();
+      if (!name.hidden) name.focus();
+    },
+  );
+  const state = select(
+    t("狀態"),
+    [["open", t("進行中")], ["closed", t("已結束")], ["all", t("全部狀態")]],
+    f.state,
+    (v) => (f.state = v as AdoWorkItemFilter["state"]),
+  );
+  const kind = select(t("類型"), [["", t("所有類型")]], "", (v) => (f.kind = v || null));
+  const area = select(t("區域"), [["", t("所有區域")]], "", (v) => (f.area = v || null));
+  area.classList.add("workitems-area");
+  const project = select(t("專案"), [["", t("所有專案")]], "", (v) => {
+    f.project = v || null;
+    f.area = null;
+    loadScope();
+  });
+  // 還沒讀到選項前，先放上目前選的值，免得顯示成「所有類型」。
+  fill(kind, f.kind ? [[f.kind, f.kind]] : [], f.kind);
+  fill(project, f.project ? [[f.project, f.project]] : [], f.project);
+  fill(area, [], f.area);
+  area.hidden = !f.project;
+
+  /** 區域（選了專案時）與人名建議；同一個專案只讀一次。 */
+  const scopes = new Map<string, Promise<{ areas: string[]; people: string[] }>>();
+  const loadScope = () => {
+    const key = f.project ?? "";
+    area.hidden = !key;
+    fill(area, [], f.area);
+    if (!desktop) return;
+    let p = scopes.get(key);
+    if (!p) {
+      p = desktop.adoWorkItemScope(f.project);
+      scopes.set(key, p);
+      p.catch(() => scopes.delete(key));
+    }
+    void p
+      .then(({ areas, people: names }) => {
+        if ((f.project ?? "") !== key) return;
+        // 區域路徑的第一層是專案本身，顯示時省略。
+        fill(area, areas.map((a) => [a, a.slice(key.length + 1)]), f.area);
+        people.replaceChildren(...names.map((n) => new Option(n)));
+      })
+      .catch(() => {});
+  };
+  let loaded = false;
+  loadWorkItemFilterOptions = () => {
+    if (loaded || !desktop) return;
+    loaded = true;
+    loadScope();
+    void desktop
+      .adoWorkItemFilters()
+      .then(({ projects, kinds }) => {
+        fill(kind, pairs(kinds), f.kind);
+        fill(project, pairs(projects), f.project);
+      })
+      .catch(() => (loaded = false));
+  };
+  bar.append(person, state, name, kind, project, area, people);
+  return bar;
+}
+
+const workItemsPanel = desktop
+  ? new IssuesPanel<AdoWorkItem & IssueSummary>($("#workitems-host"), {
+      placeholder: t("搜尋標題或內容，或輸入編號"),
+      filters: workItemFilterBar(),
+      list: async (search) => {
+        loadWorkItemFilterOptions();
+        return (await desktop!.adoWorkItems(search, workItemFilter)).map((w) => ({
+          ...w,
+          meta: [`${w.kind} ${w.id}`, w.state, showAssignee() ? w.assignedTo : "", shortDate(w.changed)]
+            .filter(Boolean)
+            .join("・"),
+        }));
+      },
+      view: (item) =>
+        void issueView.show({
+          key: `ado:${item.id}`,
+          label: `${item.kind} ${item.id}`,
+          title: item.title,
+          webUrl: item.webUrl,
+          fileName: issueFileName(`${item.kind} ${item.id}`, item.title),
+          load: async () => workItemMarkdown(await desktop!.adoWorkItem(item.id)),
+          insertLink: () => insertIssueLink(item),
+        }),
       status: (n, search) =>
         n
           ? search
             ? t("找到 {n} 個工作項目", { n })
-            : t("指派給你、還沒結束的工作項目（{n}）", { n })
+            : isDefaultFilter()
+              ? t("指派給你、還沒結束的工作項目（{n}）", { n })
+              : t("符合篩選條件的工作項目（{n}）", { n })
           : search
             ? t("找不到符合的工作項目")
-            : t("目前沒有指派給你、還沒結束的工作項目"),
+            : isDefaultFilter()
+              ? t("目前沒有指派給你、還沒結束的工作項目")
+              : t("沒有符合篩選條件的工作項目"),
     })
   : null;
 
@@ -1512,20 +1753,16 @@ const issuesPanel = desktop
             .filter(Boolean)
             .join("・"),
         })),
-      detail: async (item) => {
-        const d = await desktop!.githubIssue(item.id);
-        return {
-          meta: [t("由 {name} 建立", { name: d.author }), d.assignees.length ? t("指派給 {name}", { name: d.assignees.join(t("、")) }) : ""]
-            .filter(Boolean)
-            .join("・"),
-          sections: [
-            { title: t("內容"), text: d.body },
-            ...d.commentList.map((c) => ({ title: `${c.author}・${shortDate(c.created)}`, text: c.body })),
-          ],
-        };
-      },
-      insert: insertIssueLink,
-      open: (url) => void desktop!.openExternal(url).catch(reportError),
+      view: (item) =>
+        void issueView.show({
+          key: `github:${item.id}`,
+          label: `#${item.id}`,
+          title: item.title,
+          webUrl: item.webUrl,
+          fileName: issueFileName(`#${item.id}`, item.title),
+          load: async () => githubIssueMarkdown(await desktop!.githubIssue(item.id)),
+          insertLink: () => insertIssueLink(item),
+        }),
       status: (n, search) =>
         n
           ? search
@@ -2227,6 +2464,8 @@ function renderTabs(): void {
 
 /** 切換到另一個分頁。 */
 function activate(doc: Doc): void {
+  // 點分頁（包括目前的分頁）就回到文件，關掉工作項目的檢視。
+  issueView.close();
   if (doc === active) return;
   flushDraft();
   // 切換前先把這個分頁還沒自動存的內容存起來（autoSaveNow 一開始就記下了分頁與內容）。
@@ -2927,7 +3166,8 @@ commands.register(
     group: t("編輯"),
     keys: "Mod-f",
     when: () => view !== "preview",
-    run: () => void openSearchPanel(editor.view),
+    // 工作項目開在主要區域時，在它的內容裡找字。
+    run: () => (issueView.isOpen ? issueView.openFind() : void openSearchPanel(editor.view)),
   },
   {
     id: "format-json",
@@ -4519,6 +4759,7 @@ function applyLayout(): void {
 }
 
 function setView(mode: ViewMode): void {
+  issueView.close();
   view = mode;
   storage.save("view", mode);
   applyLayout();

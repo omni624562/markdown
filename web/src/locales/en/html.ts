@@ -6,7 +6,6 @@ export const html: Record<string, Translation> = {
   "更多功能": "More Actions",
   "側邊欄": "Sidebar",
   "待辦總覽": "Tasks",
-  "標籤": "Tags",
   "Issues（GitHub）": "Issues (GitHub)",
   "工作項目（Azure DevOps）": "Work Items (Azure DevOps)",
   "側邊欄內容": "Sidebar Content",
