@@ -4961,6 +4961,7 @@ const settingsDialog = new SettingsDialog(
           return { label: versionLabel(v), detail: versionDetail(v), title: versionTooltip(v) };
         },
         pending: () => (updater!.state.kind === "ready" ? updater!.state.version : null),
+        checking: () => updater!.checking,
         onChange: (fn) => void updater!.subscribe(fn),
         check: () => void updater!.check(),
         restart: () => updater!.restart(),

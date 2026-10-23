@@ -83,6 +83,7 @@ export const ui: Record<string, Translation> = {
   "版本 {version}": "Version {version}",
   "{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）": "{version} has been downloaded. Restart to update (unsaved changes are kept).",
   "重新啟動並更新": "Restart and Update",
+  "檢查中…": "Checking…",
   "自動檢查更新": "Check for Updates Automatically",
   "每天檢查一次，下載前會先詢問": "Checks once a day and asks before downloading.",
   "重設": "Reset",

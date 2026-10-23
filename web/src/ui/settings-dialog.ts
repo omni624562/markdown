@@ -74,6 +74,8 @@ export interface UpdateHooks {
   version(): Promise<{ label: string; detail: string; title: string }>;
   /** 已經下載好、等重新啟動的新版本。 */
   pending(): string | null;
+  /** 正在檢查更新（按鈕暫時不能按）。 */
+  checking(): boolean;
   /** 更新狀態改變時呼叫 `fn`。 */
   onChange(fn: () => void): void;
   check(): void;
@@ -326,7 +328,9 @@ export class SettingsDialog {
         label.title = v.title;
         hint.textContent = pending ? t("{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）", { version: pending }) : v.detail;
         hint.classList.toggle("settings-ready", !!pending);
-        checkBtn.textContent = pending ? t("重新啟動並更新") : t("檢查更新");
+        const checking = !pending && update.checking();
+        checkBtn.textContent = pending ? t("重新啟動並更新") : checking ? t("檢查中…") : t("檢查更新");
+        checkBtn.disabled = checking;
         checkBtn.classList.toggle("btn-primary", !!pending);
       };
       d.addEventListener("toggle", () => {
