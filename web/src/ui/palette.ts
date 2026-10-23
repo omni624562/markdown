@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { type Command, type Commands, formatKeys, fuzzyScore } from "../commands.ts";
 import { Picker } from "./picker.ts";
 
@@ -9,9 +10,9 @@ export class Palette {
 
   constructor(commands: Commands) {
     this.#picker = new Picker<Command>({
-      label: "指令面板",
-      placeholder: "輸入指令名稱，例如「匯出」「表格」「深色」",
-      empty: "找不到符合的指令",
+      label: t("指令面板"),
+      placeholder: t("輸入指令名稱，例如「匯出」「表格」「深色」"),
+      empty: t("找不到符合的指令"),
       query: (q) =>
         commands
           .available()

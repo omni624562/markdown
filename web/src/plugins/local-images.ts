@@ -1,4 +1,5 @@
 import { localImagePath } from "../paths.ts";
+import { t } from "../i18n.ts";
 import type { PreviewPlugin } from "../preview.ts";
 
 const REMOTE = "webdav://";
@@ -44,7 +45,7 @@ export function localImagesPlugin(
           })
           .catch(() => {
             cache.delete(path);
-            img.alt = `${img.alt || "圖片"}（無法從遠端載入）`;
+            img.alt = img.alt ? t("{alt}（無法從遠端載入）", { alt: img.alt }) : t("圖片（無法從遠端載入）");
             delete img.dataset.loading;
           });
       }

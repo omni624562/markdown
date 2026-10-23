@@ -3,6 +3,7 @@
  * 密碼只傳給原生端；選「記住密碼」時存在 Windows 認證管理員。
  */
 import type { Desktop, Folder } from "../desktop.ts";
+import { t } from "../i18n.ts";
 import { choose } from "./choice.ts";
 
 export interface DavPrefill {
@@ -24,18 +25,29 @@ export class WebDavDialog {
     const dialog = document.createElement("dialog");
     dialog.className = "choice dav-dialog";
     dialog.setAttribute("aria-labelledby", "dav-title");
+    const tr = {
+      title: t("連線到 WebDAV"),
+      hint: t("直接開啟 NAS（Synology、QNAP、Nextcloud 等）上的資料夾。Synology 預設的 HTTPS 連接埠是 5006。"),
+      url: t("網址"),
+      example: t("https://nas.local:5006/筆記/"),
+      username: t("帳號"),
+      password: t("密碼"),
+      remember: t("記住密碼（存在 Windows 認證管理員）"),
+      cancel: t("取消"),
+      connect: t("連線"),
+    };
     dialog.innerHTML = `
       <form method="dialog">
-        <h2 id="dav-title">連線到 WebDAV</h2>
-        <p class="dav-hint">直接開啟 NAS（Synology、QNAP、Nextcloud 等）上的資料夾。Synology 預設的 HTTPS 連接埠是 5006。</p>
-        <label>網址<input name="url" type="url" required placeholder="https://nas.local:5006/筆記/" autocomplete="url" spellcheck="false" /></label>
-        <label>帳號<input name="username" required autocomplete="username" spellcheck="false" /></label>
-        <label>密碼<input name="password" type="password" required autocomplete="current-password" /></label>
-        <label class="dav-remember"><input name="remember" type="checkbox" checked /> 記住密碼（存在 Windows 認證管理員）</label>
+        <h2 id="dav-title">${tr.title}</h2>
+        <p class="dav-hint">${tr.hint}</p>
+        <label>${tr.url}<input name="url" type="url" required placeholder="${tr.example}" autocomplete="url" spellcheck="false" /></label>
+        <label>${tr.username}<input name="username" required autocomplete="username" spellcheck="false" /></label>
+        <label>${tr.password}<input name="password" type="password" required autocomplete="current-password" /></label>
+        <label class="dav-remember"><input name="remember" type="checkbox" checked /> ${tr.remember}</label>
         <p class="dav-error" role="alert" hidden></p>
         <div class="choice-actions">
-          <button type="button" class="btn" value="cancel">取消</button>
-          <button type="submit" class="btn btn-primary" value="ok">連線</button>
+          <button type="button" class="btn" value="cancel">${tr.cancel}</button>
+          <button type="submit" class="btn btn-primary" value="ok">${tr.connect}</button>
         </div>
       </form>`;
     const form = dialog.querySelector("form")!;
@@ -57,7 +69,7 @@ export class WebDavDialog {
     f.username.value = prefill.username ?? "";
     f.password.value = "";
     f.url.readOnly = f.username.readOnly = !!prefill.passwordOnly;
-    this.#dialog.querySelector("h2")!.textContent = prefill.passwordOnly ? "重新連線到 WebDAV" : "連線到 WebDAV";
+    this.#dialog.querySelector("h2")!.textContent = prefill.passwordOnly ? t("重新連線到 WebDAV") : t("連線到 WebDAV");
     this.#error("");
     this.#dialog.showModal();
     (prefill.passwordOnly ? f.password : f.url).focus();
@@ -79,7 +91,7 @@ export class WebDavDialog {
     const f = this.#form();
     const submit = this.#dialog.querySelector<HTMLButtonElement>("button[type=submit]")!;
     submit.disabled = true;
-    submit.textContent = "連線中…";
+    submit.textContent = t("連線中…");
     this.#error("");
     try {
       const folder = this.#prefill.passwordOnly && this.#prefill.id
@@ -92,11 +104,11 @@ export class WebDavDialog {
         // 對話框疊在對話框上：先關掉，問完再打開。
         this.#dialog.close();
         const ok = await choose(
-          "要用沒有加密的 HTTP 連線嗎？",
-          "HTTP 不會加密，同一個網路上的人可能看到你的密碼與筆記內容。建議改用 HTTPS（Synology 預設是 5006 連接埠）。只在家裡或公司的區域網路中使用。",
+          t("要用沒有加密的 HTTP 連線嗎？"),
+          t("HTTP 不會加密，同一個網路上的人可能看到你的密碼與筆記內容。建議改用 HTTPS（Synology 預設是 5006 連接埠）。只在家裡或公司的區域網路中使用。"),
           [
-            { id: "use", label: "仍要用 HTTP 連線", danger: true },
-            { id: "cancel", label: "取消", primary: true },
+            { id: "use", label: t("仍要用 HTTP 連線"), danger: true },
+            { id: "cancel", label: t("取消"), primary: true },
           ],
         );
         this.#dialog.showModal();
@@ -106,7 +118,7 @@ export class WebDavDialog {
       this.#error(message);
     } finally {
       submit.disabled = false;
-      submit.textContent = "連線";
+      submit.textContent = t("連線");
     }
   }
 

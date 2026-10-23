@@ -19,6 +19,7 @@ import {
 import type { EditorState } from "@codemirror/state";
 import { type EditorView, type Panel, runScopeHandlers, type ViewUpdate } from "@codemirror/view";
 import { formatKeys } from "../commands.ts";
+import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 
 /** 最多算到幾個符合項目（再多就顯示「1000+」）。 */
@@ -51,22 +52,22 @@ export function countMatches(state: EditorState, query: SearchQuery, limit = COU
 
 /** 「3／12」「12 個結果」「沒有結果」。 */
 export function countLabel(c: MatchCount, valid = true): string {
-  if (!valid) return "格式錯誤";
-  if (!c.total) return "沒有結果";
+  if (!valid) return t("格式錯誤");
+  if (!c.total) return t("沒有結果");
   const total = c.more ? `${c.total}+` : String(c.total);
-  return c.current ? `${c.current}／${total}` : `${total} 個結果`;
+  return c.current ? t("{current}／{total}", { current: c.current, total }) : t("{n} 個結果", { n: total });
 }
 
 type Option = "caseSensitive" | "wholeWord" | "regexp";
 
 const OPTIONS: { key: Option; icon: string; label: string; code: string }[] = [
-  { key: "caseSensitive", icon: "case-sensitive", label: "大小寫須相符", code: "KeyC" },
-  { key: "wholeWord", icon: "whole-word", label: "全字拼寫須相符", code: "KeyW" },
-  { key: "regexp", icon: "regex", label: "使用正規表示式", code: "KeyR" },
+  { key: "caseSensitive", icon: "case-sensitive", label: t("大小寫須相符"), code: "KeyC" },
+  { key: "wholeWord", icon: "whole-word", label: t("全字拼寫須相符"), code: "KeyW" },
+  { key: "regexp", icon: "regex", label: t("使用正規表示式"), code: "KeyR" },
 ];
 
 function tip(label: string, keys?: string): string {
-  return keys ? `${label}（${formatKeys(keys)}）` : label;
+  return keys ? t("{label}（{keys}）", { label, keys: formatKeys(keys) }) : label;
 }
 
 function iconButton(name: string, iconName: string, label: string, keys: string | undefined, run: () => void): HTMLButtonElement {
@@ -98,9 +99,9 @@ class FindPanel implements Panel {
     this.#query = getSearchQuery(view.state);
     const commit = () => this.#commit();
 
-    this.#search = this.#input("search", "尋找", commit);
+    this.#search = this.#input("search", t("尋找"), commit);
     this.#search.setAttribute("main-field", "true");
-    this.#replace = this.#input("replace", "取代", commit);
+    this.#replace = this.#input("replace", t("取代"), commit);
 
     const findBox = document.createElement("div");
     findBox.className = "find-box";
@@ -121,10 +122,10 @@ class FindPanel implements Panel {
     findRow.append(
       findBox,
       this.#count,
-      iconButton("prev", "arrow-up", "上一個", "Shift-Enter", () => findPrevious(view)),
-      iconButton("next", "arrow-down", "下一個", "Enter", () => findNext(view)),
-      iconButton("select", "text-cursor-input", "選取所有符合項目", "Alt-Enter", () => selectMatches(view)),
-      iconButton("close", "x", "關閉", "Esc", () => closeSearchPanel(view)),
+      iconButton("prev", "arrow-up", t("上一個"), "Shift-Enter", () => findPrevious(view)),
+      iconButton("next", "arrow-down", t("下一個"), "Enter", () => findNext(view)),
+      iconButton("select", "text-cursor-input", t("選取所有符合項目"), "Alt-Enter", () => selectMatches(view)),
+      iconButton("close", "x", t("關閉"), "Esc", () => closeSearchPanel(view)),
     );
     this.dom = document.createElement("div");
     this.dom.className = "cm-search find-panel";
@@ -138,8 +139,8 @@ class FindPanel implements Panel {
       replaceRow.className = "find-row";
       replaceRow.append(
         replaceBox,
-        iconButton("replace", "replace", "取代", "Enter", () => replaceNext(view)),
-        iconButton("replaceAll", "replace-all", "全部取代", "Mod-Alt-Enter", () => replaceAll(view)),
+        iconButton("replace", "replace", t("取代"), "Enter", () => replaceNext(view)),
+        iconButton("replaceAll", "replace-all", t("全部取代"), "Mod-Alt-Enter", () => replaceAll(view)),
       );
       this.dom.append(replaceRow);
     }
@@ -222,7 +223,7 @@ class FindPanel implements Panel {
       const q = this.#query;
       const label = q.search ? countLabel(countMatches(this.#view.state, q), q.valid) : "";
       this.#count.textContent = label;
-      this.#count.classList.toggle("find-none", label === "沒有結果" || label === "格式錯誤");
+      this.#count.classList.toggle("find-none", label === t("沒有結果") || label === t("格式錯誤"));
       this.#search.classList.toggle("find-invalid", !!q.search && !q.valid);
     });
   }

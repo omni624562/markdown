@@ -256,7 +256,7 @@ const ICONS: Record<string, IconNode> = {
 
 export function icon(name: string): SVGElement {
   const node = ICONS[name];
-  if (!node) throw new Error(`未知的圖示：${name}`);
+  if (!node) throw new Error(`未知的圖示：${name}`); // i18n-ignore：開發用的錯誤
   const svg = createElement(node, { width: 18, height: 18, "aria-hidden": "true", "stroke-width": 1.75 });
   svg.classList.add("icon");
   return svg;

@@ -8,11 +8,12 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
 import type { Desktop, TermProgram } from "../desktop.ts";
 import { sanitizeForTerminal } from "../ai-text.ts";
+import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
 import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
 
-const LABELS: Record<TermProgram, string> = { shell: "終端機", claude: "Claude Code", codex: "Codex" };
+const LABELS: Record<TermProgram, string> = { shell: t("終端機"), claude: "Claude Code", codex: "Codex" };
 const HEIGHT = { min: 120, default: 280 };
 
 interface Session {
@@ -103,10 +104,11 @@ export class TerminalPanel {
     this.#el = el;
     this.#d = d;
     this.#onLayout = onLayout;
+    const tr = { resize: t("調整終端機高度"), tabs: t("終端機分頁") };
     el.innerHTML = `
-      <div class="term-resize" role="separator" aria-orientation="horizontal" aria-label="調整終端機高度" tabindex="0"></div>
+      <div class="term-resize" role="separator" aria-orientation="horizontal" aria-label="${tr.resize}" tabindex="0"></div>
       <header class="term-head">
-        <div class="term-tabs" role="tablist" aria-label="終端機分頁"></div>
+        <div class="term-tabs" role="tablist" aria-label="${tr.tabs}"></div>
         <div class="term-actions"></div>
       </header>
       <div class="term-body"></div>`;
@@ -125,10 +127,10 @@ export class TerminalPanel {
       actions.append(b);
       return b;
     };
-    this.#toolButtons.claude = button("啟動 Claude Code", "sparkles", () => void this.start("claude"));
-    this.#toolButtons.codex = button("啟動 Codex", "sparkles", () => void this.start("codex"));
-    button("新增終端機", "plus", () => void this.start("shell"), true);
-    button("隱藏終端機", "chevron-down", () => this.hide(), true);
+    this.#toolButtons.claude = button(t("啟動 Claude Code"), "sparkles", () => void this.start("claude"));
+    this.#toolButtons.codex = button(t("啟動 Codex"), "sparkles", () => void this.start("codex"));
+    button(t("新增終端機"), "plus", () => void this.start("shell"), true);
+    button(t("隱藏終端機"), "chevron-down", () => this.hide(), true);
 
     this.#el.style.setProperty("--term-height", `${Number(storage.load("terminal-height")) || HEIGHT.default}px`);
     this.#setupResize(el.querySelector(".term-resize")!);
@@ -267,7 +269,7 @@ export class TerminalPanel {
       // 程式輸出的超連結（OSC 8）：和一般網址一樣用預設瀏覽器開，不在編輯器裡開新視窗。
       linkHandler: {
         activate: (e, uri) => {
-          if (e.ctrlKey || e.metaKey) void this.#d.openExternal(uri).catch(() => toast("無法開啟這個網址。"));
+          if (e.ctrlKey || e.metaKey) void this.#d.openExternal(uri).catch(() => toast(t("無法開啟這個網址。")));
         },
       },
     });
@@ -276,7 +278,7 @@ export class TerminalPanel {
     // 網址：Ctrl（⌘）＋點用預設瀏覽器開啟（例如 Claude Code 登入、錯誤訊息裡的連結）。
     term.loadAddon(
       new WebLinksAddon((e, uri) => {
-        if (e.ctrlKey || e.metaKey) void this.#d.openExternal(uri).catch(() => toast("無法開啟這個網址。"));
+        if (e.ctrlKey || e.metaKey) void this.#d.openExternal(uri).catch(() => toast(t("無法開啟這個網址。")));
       }),
     );
     term.open(host);
@@ -319,7 +321,8 @@ export class TerminalPanel {
 
   #markExited(s: Session, code: number | null): void {
     s.exited = true;
-    s.term.write(`\r\n\x1b[2m[程式已結束${code ? `（代碼 ${code}）` : ""}，按任意鍵關閉這個分頁]\x1b[0m\r\n`);
+    const text = code ? t("程式已結束（代碼 {code}），按任意鍵關閉這個分頁", { code }) : t("程式已結束，按任意鍵關閉這個分頁");
+    s.term.write(`\r\n\x1b[2m[${text}]\x1b[0m\r\n`);
     this.#renderTabs();
   }
 
@@ -399,8 +402,8 @@ export class TerminalPanel {
         close.type = "button";
         close.className = "tab-close";
         close.tabIndex = -1;
-        close.setAttribute("aria-label", `關閉「${s.label}」`);
-        close.title = "關閉（會結束這個程式）";
+        close.setAttribute("aria-label", t("關閉「{name}」", { name: s.label }));
+        close.title = t("關閉（會結束這個程式）");
         close.append(icon("x"));
         close.addEventListener("click", (e) => {
           e.stopPropagation();

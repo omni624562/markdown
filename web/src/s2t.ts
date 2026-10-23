@@ -11,7 +11,7 @@ export function loadConverter(): Promise<Convert> {
   converter ??= import("opencc-js/cn2t").then((m) => {
     const cn2tw = m.Converter({ from: "cn", to: "twp" });
     // 詞庫一律轉成「臺」；台灣日常文件多半寫「台」（台灣、台北、平台）。
-    return (text: string) => cn2tw(text).replaceAll("臺", "台");
+    return (text: string) => cn2tw(text).replaceAll("臺", "台"); // i18n-ignore
   });
   return converter;
 }
@@ -55,6 +55,7 @@ export function conversionChanges(text: string, convert: Convert, offset = 0): {
 
 /** 常見、只有簡體才會出現的字（繁體中文不會用到；「后」「里」這類兩邊都有的字不列）。 */
 const SIMPLIFIED_ONLY = new Set(
+  // i18n-ignore
   "们这个说为时国会对发经动现过还关进实开问应与学务长见东车门书页业电话认识让给级无么头样将区产报软数库设计视频质录类专传吗间请谢欢边击图标该没总从办还写读错误项码维护连链调试"
 );
 

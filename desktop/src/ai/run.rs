@@ -67,9 +67,9 @@ fn parse_claude(line: &str) -> Option<Parsed> {
             let text = v["result"].as_str().unwrap_or("").to_string();
             if v["is_error"].as_bool().unwrap_or(false) || v["subtype"] != "success" {
                 Some(Parsed::Error(if text.is_empty() {
-                    format!(
-                        "Claude Code 回報錯誤（{}）",
-                        v["subtype"].as_str().unwrap_or("未知")
+                    tr!(
+                        "Claude Code 回報錯誤（{reason}）",
+                        reason = v["subtype"].as_str().unwrap_or(&tr!("未知"))
                     )
                 } else {
                     text
@@ -109,13 +109,13 @@ fn parse_codex(line: &str) -> Option<Parsed> {
         "turn.failed" => Some(Parsed::Error(
             v["error"]["message"]
                 .as_str()
-                .unwrap_or("Codex 執行失敗")
+                .unwrap_or(&tr!("Codex 執行失敗"))
                 .to_string(),
         )),
         "error" => Some(Parsed::Error(
             v["message"]
                 .as_str()
-                .unwrap_or("Codex 執行失敗")
+                .unwrap_or(&tr!("Codex 執行失敗"))
                 .to_string(),
         )),
         _ => None,
@@ -179,10 +179,10 @@ pub async fn ai_run(
 ) -> Result<(), String> {
     let mut child = command(&app, tool)?
         .spawn()
-        .map_err(|e| format!("無法執行 {}：{e}", tool.label()))?;
-    let mut stdin = child.stdin.take().ok_or("無法傳送內容")?;
-    let stdout = child.stdout.take().ok_or("無法讀取輸出")?;
-    let mut stderr = child.stderr.take().ok_or("無法讀取輸出")?;
+        .map_err(|e| tr!("無法執行 {tool}：{e}", tool = tool.label(), e = e))?;
+    let mut stdin = child.stdin.take().ok_or_else(|| tr!("無法傳送內容"))?;
+    let stdout = child.stdout.take().ok_or_else(|| tr!("無法讀取輸出"))?;
+    let mut stderr = child.stderr.take().ok_or_else(|| tr!("無法讀取輸出"))?;
     let (cancel, mut cancelled) = oneshot::channel();
     runs.0.lock().unwrap().insert(id, cancel);
 
@@ -197,7 +197,7 @@ pub async fn ai_run(
         if let Err(e) = write.await {
             emit(RunEvent::Error {
                 id,
-                message: format!("無法傳送內容給 {}：{e}", tool.label()),
+                message: tr!("無法傳送內容給 {tool}：{e}", tool = tool.label(), e = e),
             });
         }
         let parse = match tool {
@@ -246,10 +246,10 @@ pub async fn ai_run(
             emit(RunEvent::Error {
                 id,
                 message: if detail.is_empty() {
-                    format!(
-                        "{} 沒有回傳結果（結束代碼 {}）",
-                        tool.label(),
-                        status.ok().and_then(|s| s.code()).unwrap_or(-1)
+                    tr!(
+                        "{tool} 沒有回傳結果（結束代碼 {status}）",
+                        tool = tool.label(),
+                        status = status.ok().and_then(|s| s.code()).unwrap_or(-1)
                     )
                 } else {
                     // 錯誤訊息可能很長，只留最後幾行。

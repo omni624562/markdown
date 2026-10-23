@@ -6,6 +6,7 @@ import {
   type SettingsStore,
 } from "../settings.ts";
 import { fontStack, installedFonts } from "../fonts.ts";
+import { type LangPref, langPref, langPrefs, setLangPref, t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
 
@@ -19,31 +20,31 @@ export interface AiHooks {
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
   previewWidth: [
-    ["narrow", "窄"],
-    ["medium", "中"],
-    ["wide", "寬"],
+    ["narrow", t("窄")],
+    ["medium", t("中")],
+    ["wide", t("寬")],
   ],
   docFont: [
-    ["sans", "黑體（預設）"],
-    ["serif", "明體"],
-    ["kai", "楷體"],
-    ["mono", "等寬"],
-    ["custom", "自訂…"],
+    ["sans", t("黑體（預設）")],
+    ["serif", t("明體")],
+    ["kai", t("楷體")],
+    ["mono", t("等寬")],
+    ["custom", t("自訂…")],
   ],
   docLineHeight: [
-    ["compact", "緊湊"],
-    ["normal", "標準"],
-    ["relaxed", "寬鬆"],
+    ["compact", t("緊湊")],
+    ["normal", t("標準")],
+    ["relaxed", t("寬鬆")],
   ],
   aiTool: [
     ["claude", "Claude Code"],
     ["codex", "Codex"],
   ],
   gitSyncMinutes: [
-    ["5", "每 5 分鐘"],
-    ["10", "每 10 分鐘"],
-    ["30", "每 30 分鐘"],
-    ["60", "每小時"],
+    ["5", t("每 {n} 分鐘", { n: 5 })],
+    ["10", t("每 {n} 分鐘", { n: 10 })],
+    ["30", t("每 {n} 分鐘", { n: 30 })],
+    ["60", t("每小時")],
   ],
 };
 
@@ -97,65 +98,65 @@ interface Group {
 /** 「外觀」頁（主題另外加在第一組的最前面）。 */
 const LOOK_GROUPS: Group[] = [
   {
-    title: "主題與字型",
+    title: t("主題與字型"),
     fields: [
-      { key: "docFont", label: "內文字型", hint: "即時預覽、預覽與 PDF 使用" },
+      { key: "docFont", label: t("內文字型"), hint: t("即時預覽、預覽與 PDF 使用") },
       {
         key: "docFontCustom",
-        label: "自訂內文字型",
-        hint: "輸入或從清單挑選電腦上的字型；這個字型缺字時，用預設字型補上",
+        label: t("自訂內文字型"),
+        hint: t("輸入或從清單挑選電腦上的字型；這個字型缺字時，用預設字型補上"),
       },
-      { key: "codeFont", label: "程式碼字型", hint: "原始碼檢視與程式碼區塊；留空使用內建的等寬字型" },
-      { key: "docLineHeight", label: "行距" },
-      { key: "previewWidth", label: "文字欄寬", hint: "預覽與匯出的版面寬度" },
+      { key: "codeFont", label: t("程式碼字型"), hint: t("原始碼檢視與程式碼區塊；留空使用內建的等寬字型") },
+      { key: "docLineHeight", label: t("行距") },
+      { key: "previewWidth", label: t("文字欄寬"), hint: t("預覽與匯出的版面寬度") },
     ],
   },
   {
-    title: "版面",
+    title: t("版面"),
     fields: [
-      { key: "fixedToolbar", label: "固定顯示格式工具列", hint: "關閉時，選取文字才會浮出格式按鈕" },
-      { key: "outlineRight", label: "大綱放在右邊", hint: "視窗夠寬時，大綱固定在內文右邊，目前的章節會亮起來" },
+      { key: "fixedToolbar", label: t("固定顯示格式工具列"), hint: t("關閉時，選取文字才會浮出格式按鈕") },
+      { key: "outlineRight", label: t("大綱放在右邊"), hint: t("視窗夠寬時，大綱固定在內文右邊，目前的章節會亮起來") },
     ],
   },
   {
-    title: "文件內容",
+    title: t("文件內容"),
     fields: [
-      { key: "math", label: "顯示數學公式", hint: "$…$ 與 $$…$$，使用 KaTeX" },
-      { key: "mermaid", label: "顯示流程圖", hint: "```mermaid 程式碼區塊" },
-      { key: "blockRemoteImages", label: "封鎖遠端圖片", hint: "不載入網路上的圖片，避免別人得知你何時開啟文件" },
+      { key: "math", label: t("顯示數學公式"), hint: t("$…$ 與 $$…$$，使用 KaTeX") },
+      { key: "mermaid", label: t("顯示流程圖"), hint: t("```mermaid 程式碼區塊") },
+      { key: "blockRemoteImages", label: t("封鎖遠端圖片"), hint: t("不載入網路上的圖片，避免別人得知你何時開啟文件") },
     ],
   },
 ];
 
 const EDIT_GROUPS: Group[] = [
   {
-    title: "編輯區",
+    title: t("編輯區"),
     fields: [
-      { key: "editorFontSize", label: "字級", hint: "也可以按 Ctrl+= 或 Ctrl+- 調整" },
-      { key: "lineNumbers", label: "顯示行號", hint: "原始碼檢視" },
-      { key: "focusMode", label: "專注模式", hint: "淡化目前段落以外的文字" },
-      { key: "typewriterMode", label: "打字機模式", hint: "游標所在的行保持在畫面中央" },
+      { key: "editorFontSize", label: t("字級"), hint: t("也可以按 Ctrl+= 或 Ctrl+- 調整") },
+      { key: "lineNumbers", label: t("顯示行號"), hint: t("原始碼檢視") },
+      { key: "focusMode", label: t("專注模式"), hint: t("淡化目前段落以外的文字") },
+      { key: "typewriterMode", label: t("打字機模式"), hint: t("游標所在的行保持在畫面中央") },
     ],
   },
   {
-    title: "輸入輔助",
+    title: t("輸入輔助"),
     fields: [
-      { key: "autoPairBrackets", label: "自動補上右括號與引號", hint: "包含全形「」『』（）《》【】" },
-      { key: "autoSymbols", label: "打字自動轉符號", hint: "<= 變 ≤、-> 變 →、!= 變 ≠；轉換後按 Backspace 可以還原" },
-      { key: "tableAutoFormat", label: "表格自動對齊", hint: "在表格中按 Tab 時，依中文字寬對齊直線" },
+      { key: "autoPairBrackets", label: t("自動補上右括號與引號"), hint: t("包含全形「」『』（）《》【】") },
+      { key: "autoSymbols", label: t("打字自動轉符號"), hint: t("<= 變 ≤、-> 變 →、!= 變 ≠；轉換後按 Backspace 可以還原") },
+      { key: "tableAutoFormat", label: t("表格自動對齊"), hint: t("在表格中按 Tab 時，依中文字寬對齊直線") },
       {
         key: "termCheck",
-        label: "檢查兩國用語、錯字與標點",
-        hint: "中國用語、常見錯字與中文裡的半形標點畫上波浪底線，滑鼠移上去就能修正",
+        label: t("檢查兩國用語、錯字與標點"),
+        hint: t("中國用語、常見錯字與中文裡的半形標點畫上波浪底線，滑鼠移上去就能修正"),
       },
     ],
   },
   {
-    title: "貼上與存檔",
+    title: t("貼上與存檔"),
     fields: [
-      { key: "smartPaste", label: "貼上時轉成 Markdown", hint: "網頁、Google 文件、Word 保留標題、清單與表格；Ctrl+Shift+V 貼純文字" },
-      { key: "imageCompress", label: "壓縮貼上的大圖片", hint: "超過 2000 像素的圖片自動縮小，大照片改存成 JPEG" },
-      { key: "autoSave", label: "自動存檔", hint: "已經存過的檔案，停止打字後自動存回磁碟" },
+      { key: "smartPaste", label: t("貼上時轉成 Markdown"), hint: t("網頁、Google 文件、Word 保留標題、清單與表格；Ctrl+Shift+V 貼純文字") },
+      { key: "imageCompress", label: t("壓縮貼上的大圖片"), hint: t("超過 2000 像素的圖片自動縮小，大照片改存成 JPEG") },
+      { key: "autoSave", label: t("自動存檔"), hint: t("已經存過的檔案，停止打字後自動存回磁碟") },
     ],
   },
 ];
@@ -191,11 +192,11 @@ export class SettingsDialog {
     const header = document.createElement("header");
     const h = document.createElement("h2");
     h.id = "settings-title";
-    h.textContent = "設定";
+    h.textContent = t("設定");
     const close = document.createElement("button");
     close.type = "button";
     close.className = "btn btn-primary btn-small";
-    close.textContent = "完成";
+    close.textContent = t("完成");
     close.addEventListener("click", () => d.close());
     header.append(h, close);
     d.append(header);
@@ -206,21 +207,32 @@ export class SettingsDialog {
     const nav = document.createElement("div");
     nav.className = "settings-nav";
     nav.role = "tablist";
-    nav.setAttribute("aria-label", "設定分類");
+    nav.setAttribute("aria-label", t("設定分類"));
     nav.setAttribute("aria-orientation", "vertical");
     const body = document.createElement("div");
     body.className = "settings-body";
     layout.append(nav, body);
     d.append(layout);
 
+    // 介面語言：存在 localStorage，切換後重新載入介面（所有模組在載入時就決定好語言）。
+    const langRow = this.#row("language", t("介面語言"), t("切換後會重新載入介面，開著的分頁和沒存的內容都會保留"), () => {
+      const sel = document.createElement("select");
+      sel.id = "setting-language";
+      for (const p of langPrefs()) sel.append(new Option(p.label, p.id, false, langPref() === p.id));
+      sel.addEventListener("change", () => {
+        setLangPref(sel.value as LangPref);
+        location.reload();
+      });
+      return sel;
+    });
     // 外觀：主題沿用標題列主題選單的同一份狀態。
-    const themeRow = this.#row("theme", "主題", undefined, () => {
+    const themeRow = this.#row("theme", t("主題"), undefined, () => {
       const sel = document.createElement("select");
       sel.id = "setting-theme";
       for (const [v, l] of [
-        ["system", "跟隨系統"],
-        ["light", "淺色"],
-        ["dark", "深色"],
+        ["system", t("跟隨系統")],
+        ["light", t("淺色")],
+        ["dark", t("深色")],
       ] as const) {
         sel.append(new Option(l, v, false, theme.get() === v));
       }
@@ -228,21 +240,21 @@ export class SettingsDialog {
       d.addEventListener("toggle", () => (sel.value = theme.get()));
       return sel;
     });
-    const look = this.#section("外觀", "palette", "主題、字型與版面配置");
-    LOOK_GROUPS.forEach((g, i) => look.append(...this.#group(g.title, [...(i === 0 ? [themeRow] : []), ...this.#rows(g.fields)])));
+    const look = this.#section(t("外觀"), "palette", t("主題、字型與版面配置"));
+    LOOK_GROUPS.forEach((g, i) => look.append(...this.#group(g.title, [...(i === 0 ? [langRow, themeRow] : []), ...this.#rows(g.fields)])));
     body.append(look);
 
-    const edit = this.#section("編輯", "pen-line", "打字、貼上與存檔的方式");
+    const edit = this.#section(t("編輯"), "pen-line", t("打字、貼上與存檔的方式"));
     for (const g of EDIT_GROUPS) edit.append(...this.#group(g.title, this.#rows(g.fields)));
     body.append(edit);
 
     body.append(this.#aiSection());
     if (github) {
-      const git = this.#section("Git", "git-branch", "用 GitHub 或 Azure DevOps 同步資料夾；Git 已經內建，不需要另外安裝");
+      const git = this.#section("Git", "git-branch", t("用 GitHub 或 Azure DevOps 同步資料夾；Git 已經內建，不需要另外安裝"));
       const accountBtn = document.createElement("button");
       accountBtn.type = "button";
       accountBtn.id = "setting-github";
-      const accountRow = this.#row("github", "GitHub 帳號", "讀取中…", () => accountBtn);
+      const accountRow = this.#row("github", t("GitHub 帳號"), t("讀取中…"), () => accountBtn);
       const accountHint = accountRow.querySelector("small")!;
       accountBtn.addEventListener("click", () => (github.account() ? github.logout() : github.login()));
       const action = (id: string, label: string, run: () => void) => {
@@ -257,43 +269,43 @@ export class SettingsDialog {
         });
         return b;
       };
-      const publishBtn = action("github-publish", "上傳…", () => github.publish());
+      const publishBtn = action("github-publish", t("上傳…"), () => github.publish());
       const adoRows = ado ? this.#adoRows(ado, action) : null;
       this.#refreshGit = () => {
         adoRows?.refresh();
         const a = github.account();
-        accountHint.textContent = a ? `已登入：${a.login}` : "登入後就能把資料夾同步到 GitHub，在其他電腦也能下載";
+        accountHint.textContent = a ? t("已登入：{name}", { name: a.login }) : t("登入後就能把資料夾同步到 GitHub，在其他電腦也能下載");
         accountBtn.className = a ? "btn" : "btn btn-primary";
-        accountBtn.textContent = a ? "登出" : "用 GitHub 登入";
+        accountBtn.textContent = a ? t("登出") : t("用 GitHub 登入");
         publishBtn.disabled = !github.canPublish();
-        publishBtn.title = publishBtn.disabled ? "請先開啟要上傳的資料夾" : "";
+        publishBtn.title = publishBtn.disabled ? t("請先開啟要上傳的資料夾") : "";
       };
       this.#refreshGit();
       d.addEventListener("toggle", () => this.#refreshGit());
       git.append(
-        ...this.#group("帳號", [accountRow]),
-        ...this.#group("儲存庫", [
-          this.#row("github-open", "從 GitHub 開啟儲存庫", "選一個儲存庫，下載到電腦並開啟", () =>
-            action("github-open", "開啟…", () => github.openRepo()),
+        ...this.#group(t("帳號"), [accountRow]),
+        ...this.#group(t("儲存庫"), [
+          this.#row("github-open", t("從 GitHub 開啟儲存庫"), t("選一個儲存庫，下載到電腦並開啟"), () =>
+            action("github-open", t("開啟…"), () => github.openRepo()),
           ),
-          this.#row("github-publish", "上傳到 GitHub", "把目前開啟的資料夾建立成新的 GitHub 儲存庫", () => publishBtn),
+          this.#row("github-publish", t("上傳到 GitHub"), t("把目前開啟的資料夾建立成新的 GitHub 儲存庫"), () => publishBtn),
         ]),
-        ...(adoRows ? this.#group("Azure DevOps（TFS）", adoRows.rows) : []),
-        ...this.#group("自動同步", [
-          this.#row("gitAutoSync", "自動同步", "定時提交、拉取、推送；兩邊改到同一個地方時會暫停，不會蓋掉任何內容", () =>
+        ...(adoRows ? this.#group(t("Azure DevOps（TFS）"), adoRows.rows) : []),
+        ...this.#group(t("自動同步"), [
+          this.#row("gitAutoSync", t("自動同步"), t("定時提交、拉取、推送；兩邊改到同一個地方時會暫停，不會蓋掉任何內容"), () =>
             this.#control("gitAutoSync"),
           ),
-          this.#row("gitSyncMinutes", "同步頻率", undefined, () => this.#control("gitSyncMinutes")),
+          this.#row("gitSyncMinutes", t("同步頻率"), undefined, () => this.#control("gitSyncMinutes")),
         ]),
       );
       body.append(git);
     }
 
-    const advanced = this.#section("進階", "sliders-horizontal", "版本、更新與重設");
+    const advanced = this.#section(t("進階"), "sliders-horizontal", t("版本、更新與重設"));
     const reset = document.createElement("button");
     reset.type = "button";
     reset.className = "btn";
-    reset.append(icon("rotate-ccw"), "恢復預設值");
+    reset.append(icon("rotate-ccw"), t("恢復預設值"));
     reset.addEventListener("click", () => {
       store.reset();
       this.#sync();
@@ -303,18 +315,18 @@ export class SettingsDialog {
       checkBtn.type = "button";
       checkBtn.className = "btn";
       checkBtn.addEventListener("click", () => (update.pending() ? update.restart() : update.check()));
-      const versionRow = this.#row("version", "版本", "讀取中…", () => checkBtn);
+      const versionRow = this.#row("version", t("版本"), t("讀取中…"), () => checkBtn);
       const label = versionRow.querySelector("label")!;
       const hint = versionRow.querySelector("small")!;
       // 新版已經下載好時，版本列直接說明，按鈕改成「重新啟動並更新」。
       const refresh = async () => {
         const v = await update.version();
         const pending = update.pending();
-        label.textContent = `版本 ${v.label}`;
+        label.textContent = t("版本 {version}", { version: v.label });
         label.title = v.title;
-        hint.textContent = pending ? `${pending} 已下載完成，重新啟動即可更新（未存檔的內容會保留）` : v.detail;
+        hint.textContent = pending ? t("{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）", { version: pending }) : v.detail;
         hint.classList.toggle("settings-ready", !!pending);
-        checkBtn.textContent = pending ? "重新啟動並更新" : "檢查更新";
+        checkBtn.textContent = pending ? t("重新啟動並更新") : t("檢查更新");
         checkBtn.classList.toggle("btn-primary", !!pending);
       };
       d.addEventListener("toggle", () => {
@@ -324,13 +336,13 @@ export class SettingsDialog {
         if (d.open) void refresh();
       });
       advanced.append(
-        ...this.#group("更新", [
+        ...this.#group(t("更新"), [
           versionRow,
-          this.#row("autoUpdate", "自動檢查更新", "每天檢查一次，下載前會先詢問", () => this.#control("autoUpdate")),
+          this.#row("autoUpdate", t("自動檢查更新"), t("每天檢查一次，下載前會先詢問"), () => this.#control("autoUpdate")),
         ]),
       );
     }
-    advanced.append(...this.#group("重設", [this.#row("reset", "所有設定", "恢復成預設值；主題、版面配置不受影響", () => reset)]));
+    advanced.append(...this.#group(t("重設"), [this.#row("reset", t("所有設定"), t("恢復成預設值；主題、版面配置不受影響"), () => reset)]));
     body.append(advanced);
     this.#buildNav(nav, body);
 
@@ -354,7 +366,9 @@ export class SettingsDialog {
     this.#dialog.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus();
     void this.#refreshTools();
     if (page) {
-      const tab = [...this.#dialog.querySelectorAll<HTMLButtonElement>("[role=tab]")].find((t) => t.textContent === page);
+      // 呼叫端可能傳中文原文或翻譯過的名稱。
+      const names = [page, t(page)];
+      const tab = [...this.#dialog.querySelectorAll<HTMLButtonElement>("[role=tab]")].find((b) => names.includes(b.textContent ?? ""));
       tab?.click();
     }
   }
@@ -398,31 +412,31 @@ export class SettingsDialog {
 
   #aiSection(): HTMLElement {
     const section = this.#section(
-      "AI 協作",
+      t("AI 協作"),
       "sparkles",
-      "使用你自己安裝並登入的 Claude Code 或 Codex。編輯器不會儲存帳號或金鑰；AI 提出的修改一律先標示差異，由你決定是否套用。",
+      t("使用你自己安裝並登入的 Claude Code 或 Codex。編輯器不會儲存帳號或金鑰；AI 提出的修改一律先標示差異，由你決定是否套用。"),
     );
     if (!this.#ai) {
       const p = document.createElement("p");
       p.className = "settings-note";
-      p.textContent = "AI 協作（Claude Code／Codex）需要桌面版。";
+      p.textContent = t("AI 協作（Claude Code／Codex）需要桌面版。");
       section.append(p);
       return section;
     }
     section.append(
       ...this.#group(undefined, [
-        this.#row("aiEnabled", "啟用 AI 協作", "開啟後可以使用終端機與選取段落快捷動作", () => this.#control("aiEnabled")),
+        this.#row("aiEnabled", t("啟用 AI 協作"), t("開啟後可以使用終端機與選取段落快捷動作"), () => this.#control("aiEnabled")),
       ]),
     );
-    const permissions = this.#group("AI 可以做的事", [
-      this.#row("aiTool", "快捷動作使用", undefined, () => this.#control("aiTool")),
-      this.#row("mcpServer", "讀取目前的文件", "Claude Code／Codex 可以讀取你正在看的文件並提出修改；只接受本機連線", () =>
+    const permissions = this.#group(t("AI 可以做的事"), [
+      this.#row("aiTool", t("快捷動作使用"), undefined, () => this.#control("aiTool")),
+      this.#row("mcpServer", t("讀取目前的文件"), t("Claude Code／Codex 可以讀取你正在看的文件並提出修改；只接受本機連線"), () =>
         this.#control("mcpServer"),
       ),
-      this.#row("aiTerminal", "在終端機執行指令", "AI 要執行指令（例如 git、轉檔）時，每次都會先問你；需要開啟上一項", () =>
+      this.#row("aiTerminal", t("在終端機執行指令"), t("AI 要執行指令（例如 git、轉檔）時，每次都會先問你；需要開啟上一項"), () =>
         this.#control("aiTerminal"),
       ),
-      this.#row("markExternalChanges", "標示外部修改", "其他程式改了已開啟的檔案時，標示改了哪裡，可以逐段還原", () =>
+      this.#row("markExternalChanges", t("標示外部修改"), t("其他程式改了已開啟的檔案時，標示改了哪裡，可以逐段還原"), () =>
         this.#control("markExternalChanges"),
       ),
     ]);
@@ -439,22 +453,22 @@ export class SettingsDialog {
       b.type = "button";
       b.className = "btn btn-small";
       b.append(icon("copy"), label);
-      b.title = `複製 ${label} 的註冊指令`;
-      b.setAttribute("aria-label", `複製 ${label} 的註冊指令`);
+      b.title = t("複製 {name} 的註冊指令", { name: label });
+      b.setAttribute("aria-label", b.title);
       b.dataset.aiDependent = "1";
       b.addEventListener("click", async () => {
         try {
           const r = await this.#ai!.registration();
           await navigator.clipboard.writeText(tool === "claude" ? r.claudeAdd : r.codexAdd);
-          toast("已複製。在終端機貼上執行一次，之後在任何地方啟動都能連到編輯器（編輯器要開著）。", { duration: 8000 });
+          toast(t("已複製。在終端機貼上執行一次，之後在任何地方啟動都能連到編輯器（編輯器要開著）。"), { duration: 8000 });
         } catch (e) {
-          toast(`無法取得註冊指令：${e instanceof Error ? e.message : e}`, { tone: "error" });
+          toast(t("無法取得註冊指令：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });
         }
       });
       register.append(b);
     }
-    const outside = this.#group("在其他終端機使用", [
-      this.#row("register", "註冊指令", "從編輯器的終端機啟動會自動連線；其他終端機要先執行一次註冊指令", () => register),
+    const outside = this.#group(t("在其他終端機使用"), [
+      this.#row("register", t("註冊指令"), t("從編輯器的終端機啟動會自動連線；其他終端機要先執行一次註冊指令"), () => register),
     ]);
     outside[outside.length - 1].dataset.aiGroup = "1";
     section.append(...outside);
@@ -466,19 +480,19 @@ export class SettingsDialog {
     add.type = "button";
     add.className = "quick-action-add";
     add.dataset.aiDependent = "1";
-    add.append(icon("plus"), "新增動作");
+    add.append(icon("plus"), t("新增動作"));
     add.addEventListener("click", () => {
-      const list = [...this.#store.value.quickActions, { name: "新動作", prompt: "請描述要 AI 怎麼處理選取的文字" }];
+      const list = [...this.#store.value.quickActions, { name: t("新動作"), prompt: t("請描述要 AI 怎麼處理選取的文字") }];
       this.#store.update({ quickActions: list });
       this.#renderActions();
       this.#actions.querySelector<HTMLInputElement>(".quick-action:last-child input")?.select();
     });
     const title = document.createElement("h4");
     title.className = "settings-group-title";
-    title.textContent = "選取段落快捷動作";
+    title.textContent = t("選取段落快捷動作");
     const hint = document.createElement("p");
     hint.className = "settings-group-hint";
-    hint.textContent = "選取文字後按 Ctrl+J（或按右鍵）執行；提示詞會連同選取的文字一起送出。";
+    hint.textContent = t("選取文字後按 Ctrl+J（或按右鍵）執行；提示詞會連同選取的文字一起送出。");
     section.append(title, hint, this.#actions, add);
     return section;
   }
@@ -501,19 +515,19 @@ export class SettingsDialog {
         const name = document.createElement("input");
         name.value = a.name;
         name.maxLength = QUICK_ACTION_LIMITS.name;
-        name.setAttribute("aria-label", `第 ${i + 1} 個動作的名稱`);
-        name.placeholder = "動作名稱";
+        name.setAttribute("aria-label", t("第 {n} 個動作的名稱", { n: i + 1 }));
+        name.placeholder = t("動作名稱");
         const prompt = document.createElement("textarea");
         prompt.value = a.prompt;
         prompt.rows = 2;
         prompt.maxLength = QUICK_ACTION_LIMITS.prompt;
-        prompt.setAttribute("aria-label", `「${a.name}」的提示詞`);
-        prompt.placeholder = "要 AI 怎麼處理選取的文字";
+        prompt.setAttribute("aria-label", t("「{name}」的提示詞", { name: a.name }));
+        prompt.placeholder = t("要 AI 怎麼處理選取的文字");
         const del = document.createElement("button");
         del.type = "button";
         del.className = "quick-action-delete";
-        del.title = "刪除這個動作";
-        del.setAttribute("aria-label", `刪除「${a.name}」`);
+        del.title = t("刪除這個動作");
+        del.setAttribute("aria-label", t("刪除「{name}」", { name: a.name }));
         del.append(icon("x"));
         del.addEventListener("click", () => {
           row.remove();
@@ -534,9 +548,10 @@ export class SettingsDialog {
     const sel = this.#dialog.querySelector<HTMLSelectElement>("select[data-key=aiTool]");
     try {
       const found = await this.#ai.available();
+      const notInstalled = t("（未安裝）");
       for (const opt of sel?.options ?? []) {
         const ok = !!found[opt.value as "claude" | "codex"];
-        opt.textContent = `${opt.value === "claude" ? "Claude Code" : "Codex"}${ok ? "" : "（未安裝）"}`;
+        opt.textContent = `${opt.value === "claude" ? "Claude Code" : "Codex"}${ok ? "" : notInstalled}`;
       }
     } catch (e) {
       console.error(e);
@@ -635,19 +650,19 @@ export class SettingsDialog {
       el.autocomplete = "off";
       return el;
     };
-    const url = input("ado-url", "url", "https://tfs.公司.com/tfs/DefaultCollection");
-    const pat = input("ado-pat", "password", "貼上權杖");
-    const urlRow = this.#row("ado-url", "伺服器網址", "集合或組織的網址；貼上專案或儲存庫的網址也可以", () => url);
+    const url = input("ado-url", "url", t("https://tfs.公司.com/tfs/DefaultCollection"));
+    const pat = input("ado-pat", "password", t("貼上權杖"));
+    const urlRow = this.#row("ado-url", t("伺服器網址"), t("集合或組織的網址；貼上專案或儲存庫的網址也可以"), () => url);
     const patRow = this.#row(
       "ado-pat",
-      "個人存取權杖（PAT）",
-      "在 ADO 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code（Read & write）與 Work Items（Read）",
+      t("個人存取權杖（PAT）"),
+      t("在 ADO 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code（Read & write）與 Work Items（Read）"),
       () => pat,
     );
     const connectBtn = document.createElement("button");
     connectBtn.type = "button";
     connectBtn.id = "setting-ado-connect";
-    const statusRow = this.#row("ado-connect", "連線", "讀取中…", () => connectBtn);
+    const statusRow = this.#row("ado-connect", t("連線"), t("讀取中…"), () => connectBtn);
     const hint = statusRow.querySelector("small")!;
     const label = statusRow.querySelector("label")!;
     connectBtn.addEventListener("click", async () => {
@@ -664,11 +679,11 @@ export class SettingsDialog {
     pat.addEventListener("keydown", (e) => {
       if (e.key === "Enter") connectBtn.click();
     });
-    const openRow = this.#row("ado-open", "從 Azure DevOps 開啟儲存庫", "選一個儲存庫或專案 Wiki，下載到電腦並開啟", () =>
-      action("ado-open", "開啟…", () => ado.openRepo()),
+    const openRow = this.#row("ado-open", t("從 Azure DevOps 開啟儲存庫"), t("選一個儲存庫或專案 Wiki，下載到電腦並開啟"), () =>
+      action("ado-open", t("開啟…"), () => ado.openRepo()),
     );
-    const itemsRow = this.#row("ado-items", "工作項目", "在側邊欄列出指派給你的工作項目，可以插入連結到文件", () =>
-      action("ado-items", "顯示", () => ado.workItems()),
+    const itemsRow = this.#row("ado-items", t("工作項目"), t("在側邊欄列出指派給你的工作項目，可以插入連結到文件"), () =>
+      action("ado-items", t("顯示"), () => ado.workItems()),
     );
     const refresh = () => {
       const a = ado.account();
@@ -676,12 +691,12 @@ export class SettingsDialog {
       // 上面兩列藏起來時，帳號是第一列，不需要分隔線。
       statusRow.style.borderTop = a ? "0" : "";
       openRow.hidden = itemsRow.hidden = !a;
-      label.textContent = a ? "帳號" : "連線";
+      label.textContent = a ? t("帳號") : t("連線");
       hint.textContent = a
-        ? `已連線：${a.name}（${a.url.replace(/^https?:\/\//, "")}）`
-        : "輸入網址與權杖後按「連線」；權杖只會送到這台伺服器";
+        ? t("已連線：{name}（{url}）", { name: a.name, url: a.url.replace(/^https?:\/\//, "") })
+        : t("輸入網址與權杖後按「連線」；權杖只會送到這台伺服器");
       connectBtn.className = a ? "btn" : "btn btn-primary";
-      connectBtn.textContent = a ? "中斷連線" : "連線";
+      connectBtn.textContent = a ? t("中斷連線") : t("連線");
     };
     refresh();
     return { rows: [urlRow, patRow, statusRow, openRow, itemsRow], refresh };
@@ -693,7 +708,7 @@ export class SettingsDialog {
     input.type = "text";
     input.className = "font-input";
     input.dataset.key = key;
-    input.placeholder = key === "codeFont" ? "內建等寬字型" : "例如：微軟正黑體";
+    input.placeholder = key === "codeFont" ? t("內建等寬字型") : t("例如：微軟正黑體");
     input.spellcheck = false;
     input.autocomplete = "off";
     input.setAttribute("list", "font-choices");
@@ -712,7 +727,7 @@ export class SettingsDialog {
     installedFonts()
       .then((fonts) => {
         for (const f of fonts) {
-          const label = [f.label, f.mono ? "等寬" : ""].filter(Boolean).join("・");
+          const label = [f.label, f.mono ? t("等寬") : ""].filter(Boolean).join("・");
           list.append(new Option(label, f.name));
         }
       })

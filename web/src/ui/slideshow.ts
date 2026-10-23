@@ -3,6 +3,7 @@
  * 文件中沒有分隔線時，每個一級、二級標題開始新的一頁。
  * 內容直接沿用預覽畫面（公式、流程圖、圖片都已經畫好）。
  */
+import { t } from "../i18n.ts";
 
 export interface Slide {
   nodes: Node[];
@@ -62,15 +63,23 @@ export class Slideshow {
     this.#el.className = "slideshow";
     this.#el.hidden = true;
     this.#el.setAttribute("role", "dialog");
-    this.#el.setAttribute("aria-label", "簡報");
+    this.#el.setAttribute("aria-label", t("簡報"));
     this.#el.tabIndex = -1;
+    const tr = {
+      prev: t("上一頁"),
+      prevTip: t("上一頁（←）"),
+      next: t("下一頁"),
+      nextTip: t("下一頁（→ 或空白鍵）"),
+      exit: t("結束簡報"),
+      exitTip: t("結束簡報（Esc）"),
+    };
     this.#el.innerHTML = `
       <div class="slide-stage"><article class="slide markdown-body"></article></div>
       <div class="slide-bar">
-        <button type="button" class="slide-prev" aria-label="上一頁" title="上一頁（←）">‹</button>
+        <button type="button" class="slide-prev" aria-label="${tr.prev}" title="${tr.prevTip}">‹</button>
         <span class="slide-counter" aria-live="polite"></span>
-        <button type="button" class="slide-next" aria-label="下一頁" title="下一頁（→ 或空白鍵）">›</button>
-        <button type="button" class="slide-exit" aria-label="結束簡報" title="結束簡報（Esc）">✕</button>
+        <button type="button" class="slide-next" aria-label="${tr.next}" title="${tr.nextTip}">›</button>
+        <button type="button" class="slide-exit" aria-label="${tr.exit}" title="${tr.exitTip}">✕</button>
       </div>`;
     this.#stage = this.#el.querySelector(".slide-stage")!;
     this.#page = this.#el.querySelector(".slide")!;

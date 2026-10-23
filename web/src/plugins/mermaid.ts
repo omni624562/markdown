@@ -1,4 +1,5 @@
 import type { PreviewPlugin } from "../preview.ts";
+import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 
 type Mermaid = typeof import("mermaid").default;
@@ -7,8 +8,8 @@ let mermaidPromise: Promise<Mermaid> | null = null;
 let initializedTheme = "";
 
 function isDark(): boolean {
-  const t = document.documentElement.dataset.theme;
-  return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme = document.documentElement.dataset.theme;
+  return theme ? theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
 /** 第一次遇到流程圖時才下載 Mermaid（檔案很大）。 */
@@ -74,8 +75,8 @@ function diagramTools(svg: string, actions: DiagramActions): HTMLElement {
     return b;
   };
   tools.append(
-    button("maximize-2", "放大", () => actions.open(svg)),
-    button("copy", "複製成圖片", () => actions.copy(svg)),
+    button("maximize-2", t("放大"), () => actions.open(svg)),
+    button("copy", t("複製成圖片"), () => actions.copy(svg)),
   );
   return tools;
 }
@@ -97,13 +98,13 @@ export function mermaidPlugin(enabled: () => boolean, actions?: DiagramActions):
         figure.innerHTML = svg;
         if (keepAttrs && actions) {
           figure.classList.add("has-tools");
-          figure.title = "按一下放大";
+          figure.title = t("按一下放大");
           figure.append(diagramTools(svg, actions));
           figure.addEventListener("click", () => actions.open(svg));
         }
       } catch (e) {
         figure.classList.add("mermaid-error");
-        figure.textContent = `流程圖語法錯誤：${e instanceof Error ? e.message : String(e)}`;
+        figure.textContent = t("流程圖語法錯誤：{message}", { message: e instanceof Error ? e.message : String(e) });
       }
       // 等待期間預覽可能已經重新渲染，原本的區塊不在頁面上就不處理。
       if (!keepAttrs || pre.isConnected) pre.replaceWith(figure);

@@ -5,6 +5,8 @@
  * - 在 issue 或 PR 留言提到 @claude：Claude 照指示處理，必要時開 PR。
  * 使用 anthropics/claude-code-action@v1。
  */
+// 寫進使用者儲存庫的檔案內容（不是介面），維持中文。
+// i18n-ignore
 export const CLAUDE_WORKFLOW = `# Claude Code 自動校對與助理（由 oMarker 建立）
 #
 # 設定一次：

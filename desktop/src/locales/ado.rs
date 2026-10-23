@@ -1,0 +1,27 @@
+//! Azure DevOps：連線、儲存庫、工作項目、Pull Request。
+
+pub static EN: &[(&str, &str)] = &[
+    ("請輸入 https:// 或 http:// 開頭的網址", "Enter a URL that starts with https:// or http://."),
+    ("{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖", "{what} failed: The server's response wasn't in the expected format. Check the URL and personal access token."),
+    ("{what}失敗：個人存取權杖無效或已過期，請到設定的 Git 頁重新連線", "{what} failed: The personal access token is invalid or has expired. Reconnect on the Git page in Settings."),
+    ("{what}失敗：沒有權限", "{what} failed: Permission denied."),
+    ("{what}失敗：找不到（404），請確認網址", "{what} failed: Not found (404). Check the URL."),
+    ("{what}失敗：伺服器回應 {code}", "{what} failed: The server responded with {code}."),
+    ("{what}失敗：無法連線到 Azure DevOps（{e}）", "{what} failed: Couldn't connect to Azure DevOps ({e})"),
+    ("連線失敗：個人存取權杖無效或已過期", "Connection failed: The personal access token is invalid or has expired."),
+    ("連線失敗：這台伺服器上沒有可以使用的集合", "Connection failed: There are no collections you can use on this server."),
+    ("這台伺服器上有好幾個集合（{many}），請在網址後面加上集合名稱，例如 {base}/{first}", "This server has several collections ({many}). Add the collection name to the end of the URL, for example {base}/{first}"),
+    ("連線失敗：找不到 Azure DevOps（404）。已試過：{tries}。請輸入集合的網址，例如 https://伺服器/tfs/DefaultCollection（在瀏覽器打開 TFS，網址裡專案名稱前面的那一段）", "Connection failed: Azure DevOps wasn't found (404). Tried: {tries}. Enter the URL of a collection, for example https://server/tfs/DefaultCollection (open TFS in your browser; it's the part of the URL before the project name)."),
+    ("請輸入個人存取權杖", "Enter a personal access token."),
+    ("請先到設定的 Git 頁連線到 Azure DevOps", "Connect to Azure DevOps on the Git page in Settings first."),
+    ("讀取 Wiki", "Loading wikis"),
+    ("讀取專案", "Loading projects"),
+    ("儲存庫網址不在目前連線的 Azure DevOps 上", "The repository URL isn't on the Azure DevOps server you're connected to."),
+    ("這個儲存庫不在目前連線的 Azure DevOps 上", "This repository isn't on the Azure DevOps server you're connected to."),
+    ("讀取儲存庫失敗", "Couldn't load the repository."),
+    ("目前在預設分支「{branch}」上，請先建立新分支再建立 Pull Request", "You're on the default branch \"{branch}\". Create a new branch before creating a pull request."),
+    ("{what}失敗：這個分支已經有一個開著的 Pull Request", "{what} failed: This branch already has an open pull request."),
+    ("建立 Pull Request 失敗：回應的格式不正確", "Couldn't create the pull request: The response was in an unexpected format."),
+    ("查詢工作項目", "Searching Work Items"),
+    ("讀取工作項目失敗：回應的格式不正確", "Couldn't load the work item: The response was in an unexpected format."),
+];

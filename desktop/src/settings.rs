@@ -18,7 +18,7 @@ pub fn load_settings(app: AppHandle) -> Result<Option<String>, String> {
     match fs::read_to_string(settings_path(&app)?) {
         Ok(s) => Ok(Some(s)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("無法讀取設定：{e}")),
+        Err(e) => Err(tr!("無法讀取設定：{e}", e = e)),
     }
 }
 
@@ -26,7 +26,7 @@ pub fn load_settings(app: AppHandle) -> Result<Option<String>, String> {
 pub fn save_settings(app: AppHandle, json: String) -> Result<(), String> {
     let path = settings_path(&app)?;
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("無法建立設定資料夾：{e}"))?;
+        fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
     }
-    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| format!("無法儲存設定：{e}"))
+    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存設定：{e}", e = e))
 }

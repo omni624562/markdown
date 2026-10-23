@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
 
@@ -45,19 +46,19 @@ export class TabBar {
     this.#list = document.createElement("div");
     this.#list.className = "tabs";
     this.#list.role = "tablist";
-    this.#list.setAttribute("aria-label", "已開啟的文件");
+    this.#list.setAttribute("aria-label", t("已開啟的文件"));
     const add = document.createElement("button");
     add.type = "button";
     add.className = "btn icon-only tab-new";
-    add.title = "新增文件";
-    add.setAttribute("aria-label", "新增文件");
+    add.title = t("新增文件");
+    add.setAttribute("aria-label", t("新增文件"));
     add.append(icon("plus"));
     add.addEventListener("click", () => handlers.create());
     this.#more = document.createElement("button");
     this.#more.type = "button";
     this.#more.className = "btn icon-only tab-more";
-    this.#more.title = "所有分頁";
-    this.#more.setAttribute("aria-label", "所有分頁");
+    this.#more.title = t("所有分頁");
+    this.#more.setAttribute("aria-label", t("所有分頁"));
     this.#more.setAttribute("aria-haspopup", "menu");
     this.#more.hidden = true;
     this.#more.append(icon("chevron-down"));
@@ -120,55 +121,55 @@ export class TabBar {
     this.#tabs = tabs;
     this.#activeId = activeId;
     this.#list.replaceChildren(
-      ...tabs.map((t) => {
+      ...tabs.map((info) => {
         const tab = document.createElement("div");
         tab.className = "tab";
         tab.role = "tab";
-        tab.dataset.id = t.id;
-        tab.tabIndex = t.id === activeId ? 0 : -1;
-        tab.title = t.title;
-        tab.setAttribute("aria-selected", String(t.id === activeId));
-        tab.classList.toggle("missing", !!t.missing);
-        tab.classList.toggle("pinned", !!t.pinned);
+        tab.dataset.id = info.id;
+        tab.tabIndex = info.id === activeId ? 0 : -1;
+        tab.title = info.title;
+        tab.setAttribute("aria-selected", String(info.id === activeId));
+        tab.classList.toggle("missing", !!info.missing);
+        tab.classList.toggle("pinned", !!info.pinned);
         const name = document.createElement("span");
         name.className = "tab-name";
-        name.textContent = t.name;
+        name.textContent = info.name;
         const close = document.createElement("button");
         close.type = "button";
         close.className = "tab-close";
         close.tabIndex = -1;
-        close.classList.toggle("dirty", t.dirty);
-        if (t.pinned) {
-          close.title = t.dirty ? "已固定（有未存檔的變更）；按一下取消固定" : "已固定；按一下取消固定";
-          close.setAttribute("aria-label", `取消固定「${t.name}」`);
+        close.classList.toggle("dirty", info.dirty);
+        if (info.pinned) {
+          close.title = info.dirty ? t("已固定（有未存檔的變更）；按一下取消固定") : t("已固定；按一下取消固定");
+          close.setAttribute("aria-label", t("取消固定「{name}」", { name: info.name }));
           close.append(icon("pin"));
         } else {
-          close.title = t.dirty ? "關閉（有未存檔的變更）" : "關閉";
-          close.setAttribute("aria-label", `關閉「${t.name}」`);
+          close.title = info.dirty ? t("關閉（有未存檔的變更）") : t("關閉");
+          close.setAttribute("aria-label", t("關閉「{name}」", { name: info.name }));
           close.append(icon("x"));
         }
         close.addEventListener("click", (e) => {
           e.stopPropagation();
-          if (t.pinned) this.#handlers.unpin(t.id);
-          else this.#handlers.close(t.id);
+          if (info.pinned) this.#handlers.unpin(info.id);
+          else this.#handlers.close(info.id);
         });
         tab.append(name, close);
         tab.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           const at = new DOMRect(e.clientX, e.clientY, 0, 0);
           // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
-          if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => this.#handlers.menu(t.id, at)), { once: true });
-          else this.#handlers.menu(t.id, at);
+          if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => this.#handlers.menu(info.id, at)), { once: true });
+          else this.#handlers.menu(info.id, at);
         });
-        tab.addEventListener("click", () => this.#handlers.select(t.id));
+        tab.addEventListener("click", () => this.#handlers.select(info.id));
         tab.addEventListener("dblclick", (e) => {
           if ((e.target as HTMLElement).closest(".tab-close")) return;
-          this.startRename(t.id);
+          this.startRename(info.id);
         });
         tab.addEventListener("auxclick", (e) => {
           if (e.button === 1) {
             e.preventDefault();
-            this.#handlers.close(t.id);
+            this.#handlers.close(info.id);
           }
         });
         return tab;
@@ -223,7 +224,7 @@ export class TabBar {
     const input = document.createElement("input");
     input.className = "tab-rename";
     input.value = name.textContent ?? "";
-    input.setAttribute("aria-label", "文件名稱");
+    input.setAttribute("aria-label", t("文件名稱"));
     input.spellcheck = false;
     let done = false;
     const finish = (commit: boolean) => {

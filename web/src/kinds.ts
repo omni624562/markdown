@@ -1,4 +1,5 @@
 import type { DocKind } from "../pkg/md_wasm.js";
+import { t } from "./i18n.ts";
 
 export type { DocKind };
 
@@ -16,7 +17,7 @@ export const KINDS: Record<DocKind, KindInfo> = {
     mime: "text/markdown",
     accept: { "text/markdown": [".md", ".markdown"] },
   },
-  text: { label: "純文字", ext: ".txt", mime: "text/plain", accept: { "text/plain": [".txt", ".text", ".log"] } },
+  text: { label: t("純文字"), ext: ".txt", mime: "text/plain", accept: { "text/plain": [".txt", ".text", ".log"] } },
   json: { label: "JSON", ext: ".json", mime: "application/json", accept: { "application/json": [".json"] } },
 };
 
@@ -42,7 +43,7 @@ export function isTextFileName(name: string): boolean {
 
 /** 開檔對話框可選的所有類型。 */
 export const OPEN_ACCEPT = {
-  description: "文件與程式碼",
+  description: t("文件與程式碼"),
   accept: { "text/plain": TEXT_EXTENSIONS.map((e) => `.${e}`) },
 };
 
@@ -50,7 +51,7 @@ export const OPEN_ACCEPT = {
 export function notTextReason(text: string): string | null {
   // 和 Git 一樣：開頭一段裡有 NUL 字元就當成二進位檔（UTF-16 的文字檔也會有 NUL）。
   if (text.startsWith("%PDF-") || text.slice(0, 8192).includes("\0")) {
-    return "不是文字檔（可能是圖片、PDF、壓縮檔或執行檔，也可能是 UTF-16 編碼），無法開啟";
+    return t("不是文字檔（可能是圖片、PDF、壓縮檔或執行檔，也可能是 UTF-16 編碼），無法開啟");
   }
   return null;
 }

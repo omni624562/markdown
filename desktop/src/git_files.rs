@@ -24,29 +24,31 @@ pub struct FileCommit {
 }
 
 fn open_for(file: &Path) -> Result<(Repository, String), String> {
-    let dir = file.parent().ok_or("路徑不正確")?;
-    let repo = Repository::discover(dir).map_err(|_| "這個檔案不在 Git 儲存庫裡".to_string())?;
+    let dir = file.parent().ok_or_else(|| tr!("路徑不正確"))?;
+    let repo = Repository::discover(dir).map_err(|_| tr!("這個檔案不在 Git 儲存庫裡"))?;
     let rel = rel_path(&repo, file)?;
     Ok((repo, rel))
 }
 
 /// 檔案在儲存庫裡的相對路徑（用 `/` 分隔）。
 fn rel_path(repo: &Repository, file: &Path) -> Result<String, String> {
-    let root = repo.workdir().ok_or("這個儲存庫沒有工作目錄")?;
+    let root = repo
+        .workdir()
+        .ok_or_else(|| tr!("這個儲存庫沒有工作目錄"))?;
     let root = dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     // 檔案可能已經被刪除：用資料夾解析實際位置再接上檔名。
     let file = match dunce::canonicalize(file) {
         Ok(p) => p,
         Err(_) => {
-            let parent = file.parent().ok_or("路徑不正確")?;
+            let parent = file.parent().ok_or_else(|| tr!("路徑不正確"))?;
             dunce::canonicalize(parent)
                 .map_err(|e| e.to_string())?
-                .join(file.file_name().ok_or("路徑不正確")?)
+                .join(file.file_name().ok_or_else(|| tr!("路徑不正確"))?)
         }
     };
     let rel = file
         .strip_prefix(&root)
-        .map_err(|_| "這個檔案不在 Git 儲存庫裡".to_string())?;
+        .map_err(|_| tr!("這個檔案不在 Git 儲存庫裡"))?;
     Ok(rel.to_string_lossy().replace('\\', "/"))
 }
 
@@ -100,16 +102,14 @@ pub fn history_at(file: &Path) -> Result<Vec<FileCommit>, String> {
 /// 檔案在某次提交時的內容。
 pub fn file_at(file: &Path, id: &str) -> Result<String, String> {
     let (repo, rel) = open_for(file)?;
-    let oid = Oid::from_str(id).map_err(|_| "提交編號不正確".to_string())?;
-    let commit = repo
-        .find_commit(oid)
-        .map_err(|_| "找不到這個提交".to_string())?;
+    let oid = Oid::from_str(id).map_err(|_| tr!("提交編號不正確"))?;
+    let commit = repo.find_commit(oid).map_err(|_| tr!("找不到這個提交"))?;
     let blob = blob_at(&commit, &rel)
         .and_then(|b| repo.find_blob(b).ok())
-        .ok_or("這個版本沒有這個檔案")?;
+        .ok_or_else(|| tr!("這個版本沒有這個檔案"))?;
     let bytes = blob.content();
     if let Some(why) = crate::files::not_text_reason(bytes) {
-        return Err(format!("這個版本的檔案{why}"));
+        return Err(tr!("這個版本的檔案{why}", why = why));
     }
     Ok(crate::files::decode(bytes).0)
 }
@@ -210,9 +210,9 @@ fn link_at(file: &Path, lines: Option<(u32, u32)>) -> Result<String, String> {
         .find_remote("origin")
         .ok()
         .and_then(|r| r.url().ok().map(str::to_string))
-        .ok_or("這個資料夾還沒有連到 GitHub 或 Azure DevOps")?;
+        .ok_or_else(|| tr!("這個資料夾還沒有連到 GitHub 或 Azure DevOps"))?;
     web_url(&remote, &branch_name(&repo), &rel, lines)
-        .ok_or_else(|| "目前只支援 GitHub 與 Azure DevOps 上的儲存庫".to_string())
+        .ok_or_else(|| tr!("目前只支援 GitHub 與 Azure DevOps 上的儲存庫"))
 }
 
 // ---- 前端呼叫 ----------------------------------------------------------------
@@ -222,7 +222,7 @@ fn checked(app: &AppHandle, path: &str) -> Result<PathBuf, String> {
     let root = app
         .state::<Workspace>()
         .root()
-        .ok_or("請先開啟檔案所在的資料夾")?;
+        .ok_or_else(|| tr!("請先開啟檔案所在的資料夾"))?;
     resolve_inside(&root, Path::new(path))
 }
 
@@ -255,14 +255,14 @@ pub fn workspace_github_repo(app: &AppHandle) -> Result<(String, String), String
     let root = app
         .state::<Workspace>()
         .root()
-        .ok_or("請先開啟連到 GitHub 的資料夾")?;
-    let repo = Repository::discover(&root).map_err(|_| "這個資料夾不是 Git 儲存庫".to_string())?;
+        .ok_or_else(|| tr!("請先開啟連到 GitHub 的資料夾"))?;
+    let repo = Repository::discover(&root).map_err(|_| tr!("這個資料夾不是 Git 儲存庫"))?;
     let remote = repo
         .find_remote("origin")
         .ok()
         .and_then(|r| r.url().ok().map(str::to_string))
-        .ok_or("這個資料夾還沒有連到 GitHub")?;
-    github_repo(&remote).ok_or_else(|| "這個資料夾不是連到 GitHub 的儲存庫".to_string())
+        .ok_or_else(|| tr!("這個資料夾還沒有連到 GitHub"))?;
+    github_repo(&remote).ok_or_else(|| tr!("這個資料夾不是連到 GitHub 的儲存庫"))
 }
 
 #[cfg(test)]

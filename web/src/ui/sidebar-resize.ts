@@ -2,6 +2,7 @@
  * 側邊欄（檔案、大綱等面板）的寬度：拖曳面板邊緣調整，方向鍵也可以調，雙擊恢復預設寬度。
  * 寬度寫在 `--outline-width`，左邊的側邊欄和放在右邊的大綱共用。
  */
+import { t } from "../i18n.ts";
 export const SIDEBAR_WIDTH = { min: 180, max: 560, default: 248 } as const;
 
 export function clampSidebarWidth(px: number): number {
@@ -22,9 +23,9 @@ export function setupSidebarResize(
   handle.className = `sidebar-resizer ${side}`;
   handle.role = "separator";
   handle.tabIndex = 0;
-  handle.title = "拖曳調整寬度（雙擊恢復）";
+  handle.title = t("拖曳調整寬度（雙擊恢復）");
   handle.setAttribute("aria-orientation", "vertical");
-  handle.setAttribute("aria-label", "調整側邊欄寬度（方向鍵調整，雙擊恢復）");
+  handle.setAttribute("aria-label", t("調整側邊欄寬度（方向鍵調整，雙擊恢復）"));
   handle.setAttribute("aria-valuemin", String(SIDEBAR_WIDTH.min));
   handle.setAttribute("aria-valuemax", String(SIDEBAR_WIDTH.max));
   const apply = (px: number) => {

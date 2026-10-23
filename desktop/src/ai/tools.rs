@@ -29,10 +29,10 @@ impl Tool {
 
     pub fn locate(self) -> Result<PathBuf, String> {
         which::which(self.exe()).map_err(|_| {
-            format!(
-                "找不到 {}。請先安裝並登入，確認在命令提示字元輸入 {} 可以執行。",
-                self.label(),
-                self.exe()
+            tr!(
+                "找不到 {label}。請先安裝並登入，確認在命令提示字元輸入 {exe} 可以執行。",
+                label = self.label(),
+                exe = self.exe()
             )
         })
     }

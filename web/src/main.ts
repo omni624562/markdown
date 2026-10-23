@@ -67,7 +67,8 @@ import { tablesPlugin } from "./plugins/tables.ts";
 import { mermaidPlugin, mermaidTheme, renderMermaid } from "./plugins/mermaid.ts";
 import { blockRemoteImages, blockRemoteImagesInHtml } from "./remote-images.ts";
 import { Preview } from "./preview.ts";
-import sample from "./sample.md?raw";
+import sampleEn from "./sample.en.md?raw";
+import sampleZh from "./sample.md?raw";
 import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
 import {
   DEFAULTS as DEFAULT_SETTINGS,
@@ -101,6 +102,7 @@ import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type MenuEntry, setupMenu } from "./ui/menu.ts";
 import { Palette } from "./ui/palette.ts";
 import { Picker } from "./ui/picker.ts";
+import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
 import { projectSections, samePath } from "./projects.ts";
 import { Review } from "./ui/review.ts";
@@ -143,6 +145,8 @@ import { type SvgImageOptions, standaloneSvg, svgDataUrl, svgToPng } from "./svg
 type ViewMode = "editor" | "live" | "split" | "preview";
 type ThemePref = "system" | "light" | "dark";
 
+/** 範例文件（英文介面用英文版）。 */
+const sample = currentLang() === "en" ? sampleEn : sampleZh;
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const workspace = $(".workspace");
 const previewEl = $("#preview");
@@ -160,6 +164,10 @@ const status = {
   save: $("#status-save"),
 };
 
+// 介面語言：靜態的 HTML 先翻譯，也告訴後端用哪個語言回訊息。
+document.documentElement.lang = currentLang() === "en" ? "en" : "zh-Hant-TW";
+translateDom(document.body);
+void desktop?.setLanguage(currentLang()).catch(() => {});
 hydrateIcons();
 // 同時載入核心（WebAssembly）與設定。
 const [, { store: settings, recovered: settingsRecovered }] = await Promise.all([init(), SettingsStore.load()]);
@@ -230,7 +238,7 @@ const restored = loadSession(tabScope);
 let docs: Doc[] = docsFrom(restored);
 if (!docs.length) {
   // 第一次使用：開啟範例文件，並以它為基準（不顯示未存檔）。
-  const first = makeDoc({ name: "未命名.md", kind: "markdown", baseline: hash(sample) });
+  const first = makeDoc({ name: t("未命名.md"), kind: "markdown", baseline: hash(sample) });
   saveDraft(first.id, sample);
   docs = [first];
 }
@@ -385,7 +393,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
       ignored: () => new Set(settings.value.termIgnore),
       ignore: (word) => {
         settings.update({ termIgnore: [...settings.value.termIgnore, word].slice(-TERM_IGNORE_LIMIT) });
-        toast(`不再提示「${word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。`);
+        toast(t("不再提示「{word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。", { word }));
       },
     }),
     linkCompletion(
@@ -465,7 +473,7 @@ review.attach(editor.view);
 
 function updateCursor(v: EditorView): void {
   const { line, column, selected } = cursorInfo(v);
-  status.cursor.textContent = `第 ${line} 行，第 ${column} 欄` + (selected ? `（已選取 ${selected} 字）` : "");
+  status.cursor.textContent = t("第 {line} 行，第 {column} 欄", { line, column }) + (selected ? t("（已選取 {n} 字）", { n: selected }) : "");
   // 即時預覽像在看文件，只有選取文字時才顯示（選取字數）。
   status.cursor.hidden = liveApplied && !selected;
 }
@@ -514,14 +522,14 @@ function renderError({ error }: RenderResult): void {
   const msg = document.createElement("p");
   msg.append(icon("circle-alert"));
   const strong = document.createElement("strong");
-  strong.textContent = `${KINDS[kind].label} 格式錯誤（第 ${error.line} 行，第 ${error.column} 欄）`;
+  strong.textContent = t("{kind} 格式錯誤（第 {line} 行，第 {column} 欄）", { kind: KINDS[kind].label, line: error.line, column: error.column });
   const detail = document.createElement("span");
   detail.textContent = error.message;
   msg.append(strong, detail);
   const jump = document.createElement("button");
   jump.type = "button";
   jump.className = "btn";
-  jump.textContent = "跳到錯誤位置";
+  jump.textContent = t("跳到錯誤位置");
   jump.addEventListener("click", () => editor.reveal(error.line, error.column));
   parseErrorEl.replaceChildren(msg, jump);
 }
@@ -533,11 +541,13 @@ function renderEmptyState(text: string): void {
   // 只有預覽時旁邊沒有編輯區，提示改成切換到可以打字的檢視。
   const previewOnly = view === "preview";
   const hints: Record<DocKind, string> = {
-    markdown: previewOnly ? "按「開始寫作」切換到即時預覽，直接在畫面上打字。" : "在左邊開始寫，這裡會即時顯示排版結果。",
-    text: previewOnly ? "按「開始寫作」切換到可以輸入的檢視。" : "在左邊輸入文字，這裡會顯示閱讀版面。",
-    json: previewOnly ? "按「開始寫作」切換到可以輸入的檢視。" : "貼上 JSON，這裡會顯示可摺疊的樹狀檢視，並即時檢查語法。",
+    markdown: previewOnly ? t("按「開始寫作」切換到即時預覽，直接在畫面上打字。") : t("在左邊開始寫，這裡會即時顯示排版結果。"),
+    text: previewOnly ? t("按「開始寫作」切換到可以輸入的檢視。") : t("在左邊輸入文字，這裡會顯示閱讀版面。"),
+    json: previewOnly ? t("按「開始寫作」切換到可以輸入的檢視。") : t("貼上 JSON，這裡會顯示可摺疊的樹狀檢視，並即時檢查語法。"),
   };
-  emptyStateEl.innerHTML = `<h2>空白文件</h2><p></p><div class="empty-actions"></div><p class="empty-tip">也可以直接把 Markdown、文字檔或程式碼檔拖曳進來</p>`;
+  emptyStateEl.innerHTML = `<h2></h2><p></p><div class="empty-actions"></div><p class="empty-tip"></p>`;
+  emptyStateEl.querySelector("h2")!.textContent = t("空白文件");
+  emptyStateEl.querySelector(".empty-tip")!.textContent = t("也可以直接把 Markdown、文字檔或程式碼檔拖曳進來");
   emptyStateEl.querySelector("p")!.textContent = hints[kind];
   const actions = emptyStateEl.querySelector(".empty-actions")!;
   const mk = (label: string, run: () => void) => {
@@ -548,10 +558,10 @@ function renderEmptyState(text: string): void {
     b.addEventListener("click", run);
     actions.append(b);
   };
-  if (previewOnly) mk("開始寫作", () => setView(kind === "markdown" ? "live" : "editor"));
-  mk("開啟檔案", () => void commands.run("open"));
-  if (kind === "markdown") mk("從範本新增", () => void commands.run("new-from-template"));
-  if (kind === "markdown") mk("載入範例文件", () => editor.replaceAll(sample));
+  if (previewOnly) mk(t("開始寫作"), () => setView(kind === "markdown" ? "live" : "editor"));
+  mk(t("開啟檔案"), () => void commands.run("open"));
+  if (kind === "markdown") mk(t("從範本新增"), () => void commands.run("new-from-template"));
+  if (kind === "markdown") mk(t("載入範例文件"), () => editor.replaceAll(sample));
   actions.querySelector("button")?.classList.add("btn-primary");
 }
 
@@ -559,7 +569,7 @@ let outlineKey = "";
 function renderOutline(headings: Heading[]): void {
   outlineEmpty.hidden = headings.length > 0;
   outlineEmpty.textContent =
-    kind === "markdown" ? "文件中還沒有標題。用 # 開頭的行會出現在這裡。" : "只有 Markdown 文件的標題會顯示在大綱中。";
+    kind === "markdown" ? t("文件中還沒有標題。用 # 開頭的行會出現在這裡。") : t("只有 Markdown 文件的標題會顯示在大綱中。");
   outlineHeadings = headings;
   const movable = kind === "markdown";
   // 標題沒有變（大多數按鍵都是這樣）就不重建，大文件可能有上千個標題。
@@ -577,11 +587,11 @@ function renderOutline(headings: Heading[]): void {
       a.dataset.id = h.id;
       a.dataset.line = String(h.line);
       a.dataset.index = String(i);
-      a.textContent = h.text || "（空白標題）";
+      a.textContent = h.text || t("（空白標題）");
       a.style.setProperty("--level", String(h.level));
       if (movable) {
         a.draggable = true;
-        a.title = "拖曳可以搬移整個章節；也可以按 Alt+↑／↓";
+        a.title = t("拖曳可以搬移整個章節；也可以按 Alt+↑／↓");
       }
       li.append(a);
       return li;
@@ -646,12 +656,12 @@ async function followLink(href: string): Promise<void> {
   const anchor = hashAt >= 0 ? decodeHref(href.slice(hashAt + 1)) : "";
   const base = fileHandle?.path;
   if (!desktop || !base) {
-    toast(desktop ? "存檔之後才能開啟相對路徑的連結。" : "網頁版無法開啟相對路徑的檔案，請改用桌面版。");
+    toast(desktop ? t("存檔之後才能開啟相對路徑的連結。") : t("網頁版無法開啟相對路徑的檔案，請改用桌面版。"));
     return;
   }
   const target = resolvePath(dirname(base), rel);
   if (!/\.(md|markdown|txt|json)$/i.test(target)) {
-    toast("只能在編輯器中開啟 Markdown、純文字與 JSON 檔。");
+    toast(t("只能在編輯器中開啟 Markdown、純文字與 JSON 檔。"));
     return;
   }
   await openPath(target);
@@ -734,7 +744,7 @@ async function openWiki(full: string): Promise<void> {
     return;
   }
   if (!desktop || !workspaceRoot) {
-    toast(desktop ? "開啟資料夾後，才能用 [[文件]] 連到資料夾中的其他文件。" : "網頁版無法開啟其他檔案，請改用桌面版。");
+    toast(desktop ? t("開啟資料夾後，才能用 [[文件]] 連到資料夾中的其他文件。") : t("網頁版無法開啟其他檔案，請改用桌面版。"));
     return;
   }
   const root = workspaceRoot.path;
@@ -751,9 +761,12 @@ async function openWiki(full: string): Promise<void> {
   }
   const name = basename(target.replace(/\\/g, "/")).replace(/\.(md|markdown)$/i, "");
   const parent = here && isInside(here, root) ? here : root;
-  const choice = await choose(`建立「${name}.md」？`, `資料夾中還沒有「${target}」這份文件。要在「${basename(parent) || parent}」資料夾建立嗎？`, [
-    { id: "create", label: "建立", primary: true },
-    { id: "cancel", label: "取消" },
+  const choice = await choose(
+    t("建立「{name}.md」？", { name }),
+    t("資料夾中還沒有「{target}」這份文件。要在「{folder}」資料夾建立嗎？", { target, folder: basename(parent) || parent }),
+    [
+    { id: "create", label: t("建立"), primary: true },
+    { id: "cancel", label: t("取消") },
   ]);
   if (choice !== "create") return;
   const created = await desktop.createEntry(parent, `${name}.md`, false);
@@ -783,11 +796,15 @@ async function updateLinksAfterRename(from: string, to: string, docsBefore: Inde
   }
   if (!changes.length) return;
   const choice = await choose(
-    "更新連結？",
-    `有 ${changes.length} 份文件連到「${basename(from)}」，要一起把連結改成「${basename(to)}」嗎？更新前的內容會記在版本記錄中。`,
+    t("更新連結？"),
+    t("有 {n} 份文件連到「{from}」，要一起把連結改成「{to}」嗎？更新前的內容會記在版本記錄中。", {
+      n: changes.length,
+      from: basename(from),
+      to: basename(to),
+    }),
     [
-      { id: "update", label: "更新連結", primary: true },
-      { id: "skip", label: "不用" },
+      { id: "update", label: t("更新連結"), primary: true },
+      { id: "skip", label: t("不用") },
     ],
   );
   if (choice !== "update") return;
@@ -798,13 +815,13 @@ async function updateLinksAfterRename(from: string, to: string, docsBefore: Inde
       await replaceDocText(c.path, c.doc.text, c.text);
       done++;
     } catch (e) {
-      failed.push(`${basename(c.path)}（${e instanceof Error ? e.message : e}）`);
+      failed.push(t("{name}（{error}）", { name: basename(c.path), error: e instanceof Error ? e.message : String(e) }));
     }
   }
   indexStale = true;
   refreshIndexPanels();
-  if (failed.length) toast(`已更新 ${done} 份文件的連結；無法更新：${failed.join("、")}`, { tone: "error", duration: 10000 });
-  else toast(`已更新 ${done} 份文件的連結。`, { tone: "success" });
+  if (failed.length) toast(t("已更新 {n} 份文件的連結；無法更新：{failed}", { n: done, failed: failed.join(t("、")) }), { tone: "error", duration: 10000 });
+  else toast(t("已更新 {n} 份文件的連結。", { n: done }), { tone: "success" });
 }
 
 /**
@@ -864,7 +881,7 @@ function documentTitle(): string {
  */
 async function exportPdf(printer = false): Promise<void> {
   if (preview.result?.error) {
-    toast("文件有格式錯誤，修正後才能列印。", { tone: "error" });
+    toast(t("文件有格式錯誤，修正後才能列印。"), { tone: "error" });
     return;
   }
   const title = documentTitle();
@@ -879,11 +896,11 @@ async function exportPdf(printer = false): Promise<void> {
     const cleanup = await preparePrint(opts, title);
     try {
       await desktop!.printToPdf(path, pageLayout(opts));
-      toast(`已匯出「${basename(path)}」`, { tone: "success" });
+      toast(t("已匯出「{name}」", { name: basename(path) }), { tone: "success" });
       return;
     } catch (e) {
       // 不支援直接匯出或匯出失敗：改用列印對話框（選「另存為 PDF」）。
-      toast(`無法直接匯出 PDF（${e instanceof Error ? e.message : e}），改用列印對話框，請選「另存為 PDF」。`, {
+      toast(t("無法直接匯出 PDF（{error}），改用列印對話框，請選「另存為 PDF」。", { error: e instanceof Error ? e.message : String(e) }), {
         tone: "error",
         duration: 10000,
       });
@@ -952,7 +969,7 @@ async function resolvePrintImages(doc: Document): Promise<void> {
       try {
         img.setAttribute("src", isRemote(path) ? await desktop!.davImage(path) : desktop!.fileUrl(path));
       } catch {
-        img.alt = `${img.alt || "圖片"}（無法載入）`;
+        img.alt = t("{alt}（無法載入）", { alt: img.alt || t("圖片") });
       }
     }),
   );
@@ -1079,14 +1096,17 @@ function updateActiveHeading(): void {
 
 function renderStats({ stats }: RenderResult): void {
   if (kind === "json") {
-    status.stats.textContent = `${editor.view.state.doc.lines.toLocaleString()} 行 · ${editor.text.length.toLocaleString()} 字元`;
+    status.stats.textContent = t("{lines} 行 · {chars} 字元", {
+      lines: editor.view.state.doc.lines.toLocaleString(),
+      chars: editor.text.length.toLocaleString(),
+    });
     status.stats.title = "";
     return;
   }
-  status.stats.textContent = `${stats.words.toLocaleString()} 字`;
+  status.stats.textContent = t("{n} 字", { n: stats.words.toLocaleString() });
   status.stats.title =
-    `${stats.words.toLocaleString()} 字 · ${stats.chars.toLocaleString()} 字元` +
-    (stats.readingMinutes ? ` · 約 ${stats.readingMinutes} 分鐘讀完` : "");
+    t("{words} 字 · {chars} 字元", { words: stats.words.toLocaleString(), chars: stats.chars.toLocaleString() }) +
+    (stats.readingMinutes ? t(" · 約 {n} 分鐘讀完", { n: stats.readingMinutes }) : "");
 }
 
 function renderSaveState(): void {
@@ -1106,11 +1126,11 @@ function renderSaveState(): void {
     desktop?.setTitle(title).catch(console.error);
   }
   status.save.dataset.state = dirty ? "dirty" : "saved";
-  if (!dirty) status.save.textContent = fileBacked ? "已儲存" : "";
-  else status.save.textContent = (fileBacked ? "尚未存檔" : "尚未存成檔案") + (draftSaved ? " · 草稿已自動保存" : "");
+  if (!dirty) status.save.textContent = fileBacked ? t("已儲存") : "";
+  else status.save.textContent = (fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (draftSaved ? t(" · 草稿已自動保存") : "");
   // 已儲存時不佔位置；只有需要注意時才顯示。
   status.save.hidden = !dirty;
-  status.save.title = dirty ? "按一下存檔（Ctrl+S）" : "";
+  status.save.title = dirty ? t("按一下存檔（Ctrl+S）") : "";
   (status.save as HTMLButtonElement).disabled = !dirty;
 }
 
@@ -1202,7 +1222,7 @@ async function autoSaveNow(): Promise<void> {
     if (!out) return;
     if (out.status === "conflict") {
       diskSaveBlocked = path;
-      toast(`「${out.name}」被${otherWriter(path)}改過，已暫停自動存檔。按 Ctrl+S 比較差異後再存。`, {
+      toast(t("「{name}」被{who}改過，已暫停自動存檔。按 Ctrl+S 比較差異後再存。", { name: out.name, who: otherWriter(path) }), {
         tone: "error",
         duration: 12000,
       });
@@ -1228,7 +1248,7 @@ async function autoSaveNow(): Promise<void> {
     if (isOffline(e)) showOffline(path);
     else {
       diskSaveBlocked = path;
-      toast(`自動存檔失敗，已暫停：${e instanceof Error ? e.message : e}`, { tone: "error", duration: 12000 });
+      toast(t("自動存檔失敗，已暫停：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error", duration: 12000 });
     }
   } finally {
     saving = false;
@@ -1243,7 +1263,7 @@ function flushDraft(): void {
   pendingDraft = null;
   if (!docs.some((d) => d.id === id)) return; // 分頁已經關閉
   draftSaved = saveDraft(id, text);
-  if (!draftSaved) toast("瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。", { tone: "error" });
+  if (!draftSaved) toast(t("瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。"), { tone: "error" });
   renderSaveState();
 }
 
@@ -1288,7 +1308,7 @@ const tabBar = new TabBar($("#tab-bar"), {
     const doc = docs.find((d) => d.id === id);
     if (!doc) return false;
     if ((doc === active ? fileHandle : doc.handle) === null) return true;
-    toast("已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。");
+    toast(t("已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。"));
     return false;
   },
   rename: (id, name) => renameDoc(id, name),
@@ -1386,9 +1406,9 @@ const projectUi = desktop
 async function renderProjectName(): Promise<void> {
   if (workspaceRoot && !isRemote(workspaceRoot.path)) await projectUi?.refresh();
   const project = workspaceRoot ? projectUi?.current : undefined;
-  const label = project?.label ?? workspaceRoot?.name ?? "檔案";
+  const label = project?.label ?? workspaceRoot?.name ?? t("檔案");
   const color = project?.color ?? null;
-  const hint = `切換專案（${formatKeys("Mod-Alt-p")}）`;
+  const hint = t("切換專案（{keys}）", { keys: formatKeys("Mod-Alt-p") });
   $("#folder-name").textContent = label;
   for (const el of document.querySelectorAll<HTMLElement>(".project-switch, #status-project")) {
     el.title = workspaceRoot ? `${displayPath(workspaceRoot.path)}\n${hint}` : hint;
@@ -1439,12 +1459,12 @@ const ado = desktop
 /** 插入 `[#123 標題](網址)` 到游標位置。 */
 function insertIssueLink(item: IssueSummary): void {
   insertAtCursor(workItemLink(item));
-  toast(`已插入「#${item.id}」的連結`);
+  toast(t("已插入「#{id}」的連結", { id: item.id }));
 }
 
 const workItemsPanel = desktop
   ? new IssuesPanel($("#workitems-host"), {
-      placeholder: "搜尋標題，或輸入編號",
+      placeholder: t("搜尋標題，或輸入編號"),
       list: async (search) =>
         (await desktop!.adoWorkItems(search)).map((w) => ({
           ...w,
@@ -1453,10 +1473,11 @@ const workItemsPanel = desktop
       detail: async (item) => {
         const d = await desktop!.adoWorkItem(item.id);
         return {
-          meta: [d.project, d.assignedTo ? `指派給 ${d.assignedTo}` : ""].filter(Boolean).join("・"),
+          meta: [d.project, d.assignedTo ? t("指派給 {name}", { name: d.assignedTo }) : ""].filter(Boolean).join("・"),
           sections: [
-            { title: "說明", text: d.description ? htmlToText(d.description) : "" },
-            { title: d.kind === "Bug" ? "重現步驟" : "驗收條件", text: d.details ? htmlToText(d.details) : "" },
+            // 「說明」在 common 是選單的 Help；這裡是工作項目的 Description 欄位，英文另外寫。
+            { title: currentLang() === "en" ? "Description" : "說明", text: d.description ? htmlToText(d.description) : "" }, // i18n-ignore
+            { title: d.kind === "Bug" ? t("重現步驟") : t("驗收條件"), text: d.details ? htmlToText(d.details) : "" },
           ],
         };
       },
@@ -1465,27 +1486,27 @@ const workItemsPanel = desktop
       status: (n, search) =>
         n
           ? search
-            ? `找到 ${n} 個工作項目`
-            : `指派給你、還沒結束的工作項目（${n}）`
+            ? t("找到 {n} 個工作項目", { n })
+            : t("指派給你、還沒結束的工作項目（{n}）", { n })
           : search
-            ? "找不到符合的工作項目"
-            : "目前沒有指派給你、還沒結束的工作項目",
+            ? t("找不到符合的工作項目")
+            : t("目前沒有指派給你、還沒結束的工作項目"),
     })
   : null;
 
 /** GitHub Issues：目前開啟的資料夾連到 GitHub、而且已經登入時才顯示。 */
 const issuesPanel = desktop
   ? new IssuesPanel($("#issues-host"), {
-      placeholder: "搜尋 issue，或輸入編號",
+      placeholder: t("搜尋 issue，或輸入編號"),
       list: async (search) =>
         (await desktop!.githubIssues(search)).map((i) => ({
           ...i,
           id: i.number,
           meta: [
             `#${i.number}`,
-            i.state === "closed" ? "已關閉" : "",
-            i.labels.join("、"),
-            i.comments ? `${i.comments} 則留言` : "",
+            i.state === "closed" ? t("已關閉") : "",
+            i.labels.join(t("、")),
+            i.comments ? t("{n} 則留言", { n: i.comments }) : "",
             shortDate(i.updated),
           ]
             .filter(Boolean)
@@ -1494,11 +1515,11 @@ const issuesPanel = desktop
       detail: async (item) => {
         const d = await desktop!.githubIssue(item.id);
         return {
-          meta: [`由 ${d.author} 建立`, d.assignees.length ? `指派給 ${d.assignees.join("、")}` : ""]
+          meta: [t("由 {name} 建立", { name: d.author }), d.assignees.length ? t("指派給 {name}", { name: d.assignees.join(t("、")) }) : ""]
             .filter(Boolean)
             .join("・"),
           sections: [
-            { title: "內容", text: d.body },
+            { title: t("內容"), text: d.body },
             ...d.commentList.map((c) => ({ title: `${c.author}・${shortDate(c.created)}`, text: c.body })),
           ],
         };
@@ -1508,11 +1529,11 @@ const issuesPanel = desktop
       status: (n, search) =>
         n
           ? search
-            ? `找到 ${n} 個 issue`
-            : `還沒關閉的 issue（${n}）`
+            ? t("找到 {n} 個 issue", { n })
+            : t("還沒關閉的 issue（{n}）", { n })
           : search
-            ? "找不到符合的 issue"
-            : "目前沒有還沒關閉的 issue",
+            ? t("找不到符合的 issue")
+            : t("目前沒有還沒關閉的 issue"),
     })
   : null;
 
@@ -1526,7 +1547,7 @@ async function renderIssuesTab(): Promise<void> {
   }
   const tab = $("#side-tab-issues");
   tab.hidden = !repo;
-  tab.title = repo ? `Issues（${repo}）` : "Issues";
+  tab.title = repo ? t("Issues（{repo}）", { repo }) : "Issues";
   if (tab.hidden && sidePanel === "issues") showPanel("files", false);
 }
 $("#issues-refresh").addEventListener("click", () => void issuesPanel?.refresh());
@@ -1555,7 +1576,7 @@ const gitPanel =
           const badge = $("#git-badge");
           badge.hidden = !count;
           badge.textContent = count > 99 ? "99+" : String(count);
-          tab.setAttribute("aria-label", count ? `原始碼控制（Git），${count} 個變更` : "原始碼控制（Git）");
+          tab.setAttribute("aria-label", count ? t("原始碼控制（Git），{n} 個變更", { n: count }) : t("原始碼控制（Git）"));
           tab.title = tab.getAttribute("aria-label")!;
         },
       })
@@ -1566,10 +1587,10 @@ const searchPanel = desktop
       search: (query, caseSensitive, regex) =>
         workspaceRoot
           ? desktop!.search(query, caseSensitive, regex, workspaceRoot.path)
-          : Promise.reject(new Error("還沒有開啟資料夾")),
+          : Promise.reject(new Error(t("還沒有開啟資料夾"))),
       open: (path, line, column) => void openPath(path, line, column).catch(reportError),
       async replace(query, replacement, caseSensitive, regex) {
-        if (!workspaceRoot) throw new Error("還沒有開啟資料夾");
+        if (!workspaceRoot) throw new Error(t("還沒有開啟資料夾"));
         stash();
         // 有未存檔變更的分頁不碰，避免蓋掉使用者還沒存的內容。
         const skip = docs.filter((d) => (d === active ? baseline !== hash(editor.text) : d.dirty)).flatMap((d) => docPath(d) ?? []);
@@ -1629,25 +1650,25 @@ const tasksPanel = new TasksPanel($("#tasks-host"), {
     if (tab) {
       if (tab !== active) activate(tab);
       const doc = editor.view.state.doc;
-      if (item.line > doc.lines) throw new Error("這一行已經不是待辦了，請重新整理");
+      if (item.line > doc.lines) throw new Error(t("這一行已經不是待辦了，請重新整理"));
       const line = doc.line(item.line);
       const next = setTaskLine(line.text, done);
-      if (next === null) throw new Error("這一行已經不是待辦了，請重新整理");
+      if (next === null) throw new Error(t("這一行已經不是待辦了，請重新整理"));
       editor.view.dispatch({ changes: { from: line.from, to: line.to, insert: next }, userEvent: "input.task" });
       return;
     }
     const path = item.doc.path!;
     const next = setTaskDone(item.doc.text, item.line, done);
-    if (next === null) throw new Error("這一行已經不是待辦了，請重新整理");
+    if (next === null) throw new Error(t("這一行已經不是待辦了，請重新整理"));
     await desktop!.updateDoc(path, item.doc.text, next);
     docIndex.remember(path, next);
   },
   emptyHint: () =>
     indexScope() === "folder"
-      ? "資料夾中沒有待辦事項。在文件中寫「- [ ] 要做的事」就會列在這裡，可以加上 @負責人 與截止日（例如 10/25）。"
+      ? t("資料夾中沒有待辦事項。在文件中寫「- [ ] 要做的事」就會列在這裡，可以加上 @負責人 與截止日（例如 10/25）。")
       : desktop && !workspaceRoot
-        ? "開啟資料夾後，這裡會列出資料夾中所有文件的待辦；目前只看已開啟的分頁。"
-        : "這裡會列出已開啟分頁中的待辦。在文件中寫「- [ ] 要做的事」就會列在這裡，可以加上 @負責人 與截止日（例如 10/25）。",
+        ? t("開啟資料夾後，這裡會列出資料夾中所有文件的待辦；目前只看已開啟的分頁。")
+        : t("這裡會列出已開啟分頁中的待辦。在文件中寫「- [ ] 要做的事」就會列在這裡，可以加上 @負責人 與截止日（例如 10/25）。"),
 });
 $("#tasks-refresh").addEventListener("click", () => {
   indexStale = true;
@@ -1659,8 +1680,8 @@ const tagsPanel = new TagsPanel($("#tags-host"), {
   open: (doc, line) => openIndexed(doc, line),
   emptyHint: () =>
     indexScope() === "folder"
-      ? "資料夾中還沒有標籤。在文件中寫 #專案A、#KR2 這樣的標籤，就能在這裡依標籤找文件。"
-      : "這裡會列出已開啟分頁中的標籤；開啟資料夾後會列出資料夾中所有文件的標籤。",
+      ? t("資料夾中還沒有標籤。在文件中寫 #專案A、#KR2 這樣的標籤，就能在這裡依標籤找文件。")
+      : t("這裡會列出已開啟分頁中的標籤；開啟資料夾後會列出資料夾中所有文件的標籤。"),
 });
 $("#tags-refresh").addEventListener("click", () => {
   indexStale = true;
@@ -1690,12 +1711,12 @@ async function renderBacklinks(): Promise<void> {
   el.hidden = false;
   el.replaceChildren();
   const h = document.createElement("h3");
-  h.textContent = list.length ? `反向連結（${list.length}）` : "反向連結";
+  h.textContent = list.length ? t("反向連結（{n}）", { n: list.length }) : t("反向連結");
   el.append(h);
   if (!list.length) {
     const p = document.createElement("p");
     p.className = "outline-empty";
-    p.textContent = "還沒有其他文件連到這裡。在別的文件中輸入 [[ 就能連過來。";
+    p.textContent = t("還沒有其他文件連到這裡。在別的文件中輸入 [[ 就能連過來。");
     el.append(p);
     return;
   }
@@ -1710,7 +1731,7 @@ async function renderBacklinks(): Promise<void> {
       const snippet = document.createElement("span");
       snippet.textContent = plainTaskText(b.doc.text.split("\n")[line - 1] ?? "").replace(/^[-*+>#\s]+|^\d+[.)]\s+/g, "");
       btn.append(name, snippet);
-      btn.title = `${b.doc.rel}：第 ${line} 行`;
+      btn.title = t("{file}：第 {line} 行", { file: b.doc.rel, line });
       btn.addEventListener("click", () => openIndexed(b.doc, line));
       li.append(btn);
       ul.append(li);
@@ -1828,25 +1849,25 @@ async function renderFilesEmpty(): Promise<void> {
   if (workspaceRoot) return;
   const p = document.createElement("p");
   if (!desktop) {
-    p.textContent = "開啟資料夾、管理檔案與搜尋整個資料夾需要桌面版（Windows，免安裝）。";
+    p.textContent = t("開啟資料夾、管理檔案與搜尋整個資料夾需要桌面版（Windows，免安裝）。");
     const a = Object.assign(document.createElement("a"), {
       className: "btn",
       href: DOWNLOAD_URL,
-      textContent: "下載桌面版",
+      textContent: t("下載桌面版"),
     });
     box.replaceChildren(p, a);
     return;
   }
-  p.textContent = "開啟一個資料夾，就能在這裡瀏覽、新增、重新命名檔案，也能搜尋整個資料夾的內容。";
+  p.textContent = t("開啟一個資料夾，就能在這裡瀏覽、新增、重新命名檔案，也能搜尋整個資料夾的內容。");
   const open = document.createElement("button");
   open.type = "button";
   open.className = "btn";
-  open.append(icon("folder-open"), "開啟資料夾");
+  open.append(icon("folder-open"), t("開啟資料夾"));
   open.addEventListener("click", () => void commands.run("open-folder").catch(reportError));
   const remote = document.createElement("button");
   remote.type = "button";
   remote.className = "btn";
-  remote.append(icon("cloud"), "連線到 WebDAV");
+  remote.append(icon("cloud"), t("連線到 WebDAV"));
   remote.addEventListener("click", () => void commands.run("connect-webdav").catch(reportError));
   const actions = document.createElement("div");
   actions.className = "side-buttons";
@@ -1856,7 +1877,7 @@ async function renderFilesEmpty(): Promise<void> {
   const folders = projectSections(projects).flatMap((s) => s.items).slice(0, 10);
   if ((!folders.length && !conns.length) || workspaceRoot) return;
   const h = document.createElement("h3");
-  h.textContent = "最近開啟";
+  h.textContent = t("最近開啟");
   const list = document.createElement("ul");
   list.className = "recent-list";
   const add = (iconName: string, label: string, title: string, run: () => void, forget?: () => void) => {
@@ -1871,8 +1892,8 @@ async function renderFilesEmpty(): Promise<void> {
       const x = document.createElement("button");
       x.type = "button";
       x.className = "recent-forget";
-      x.title = "從清單移除（也會刪除記住的密碼）";
-      x.setAttribute("aria-label", `移除「${label}」`);
+      x.title = t("從清單移除（也會刪除記住的密碼）");
+      x.setAttribute("aria-label", t("移除「{name}」", { name: label }));
       x.append(icon("x"));
       x.addEventListener("click", forget);
       li.append(x);
@@ -1881,7 +1902,7 @@ async function renderFilesEmpty(): Promise<void> {
   };
   for (const p of folders) add("folder", p.label, displayPath(p.path), () => void openRecentFolder(p.path));
   for (const c of conns) {
-    add("cloud", c.name, `${c.url}（${c.username}）`, () => void openRemote(c), () =>
+    add("cloud", c.name, t("{url}（{user}）", { url: c.url, user: c.username }), () => void openRemote(c), () =>
       void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError),
     );
   }
@@ -1890,7 +1911,7 @@ async function renderFilesEmpty(): Promise<void> {
     const more = document.createElement("button");
     more.type = "button";
     more.className = "btn";
-    more.append(icon("layout-grid"), `全部 ${projects.length} 個專案…`);
+    more.append(icon("layout-grid"), t("全部 {n} 個專案…", { n: projects.length }));
     more.addEventListener("click", () => void commands.run("project-overview").catch(reportError));
     box.append(more);
   }
@@ -1899,10 +1920,10 @@ async function renderFilesEmpty(): Promise<void> {
 const davDialog = desktop ? new WebDavDialog(desktop) : null;
 
 /** 原生端在遠端檔案的連線沒有連上時回傳的錯誤開頭。 */
-const NOT_CONNECTED = ["還沒有連線到 WebDAV 伺服器", "這個檔案屬於另一個 WebDAV 連線"];
+const NOT_CONNECTED = [t("還沒有連線到 WebDAV 伺服器"), t("這個檔案屬於另一個 WebDAV 連線")];
 
 /** 遠端檔案所屬的連線目前沒有連上：提示重新連線（不自動跳出對話框打斷）。 */
-async function suggestReconnect(path: string, message: (name: string) => string, label = "重新連線"): Promise<boolean> {
+async function suggestReconnect(path: string, message: (name: string) => string, label = t("重新連線")): Promise<boolean> {
   const id = path.slice("webdav://".length).split("/")[0];
   const c = (await desktop?.davConnections().catch(() => []))?.find((x) => x.id === id);
   if (!c) return false;
@@ -1968,7 +1989,7 @@ async function switchTabs(scope: string): Promise<void> {
     const path = docPath(d);
     if (!next.some((n) => n.id === d.id || (path && n.path && samePath(n.path, path)))) next.push(d);
   }
-  if (!next.length) next.push(makeDoc({ name: "未命名.md", kind: "markdown" }));
+  if (!next.length) next.push(makeDoc({ name: t("未命名.md"), kind: "markdown" }));
   const target = next.find((d) => d.id === saved?.activeId) ?? (next.includes(active) ? active : next[0]);
   docs = next;
   if (target === active) {
@@ -2011,7 +2032,7 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
     case "new-file":
     case "new-folder": {
       const isDir = action === "new-folder";
-      let name = await fileTree.promptName(entry.path, isDir ? "新資料夾" : "未命名.md", isDir ? "folder" : "file");
+      let name = await fileTree.promptName(entry.path, isDir ? t("新資料夾") : t("未命名.md"), isDir ? "folder" : "file");
       if (!name) return;
       if (!isDir && !name.includes(".")) name += ".md";
       const path = await d.createEntry(entry.path, name, isDir);
@@ -2051,18 +2072,18 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
     case "trash": {
       stash();
       const affected = docs.filter((doc) => doc.path && isInside(doc.path, entry.path));
-      const what = entry.isDir ? `資料夾「${entry.name}」和裡面所有的檔案` : `「${entry.name}」`;
-      const note = affected.some((doc) => doc.dirty) ? "已開啟的分頁會保留內容，但有尚未存檔的變更。" : "";
+      const what = entry.isDir ? t("資料夾「{name}」和裡面所有的檔案", { name: entry.name }) : t("「{name}」", { name: entry.name });
+      const note = affected.some((doc) => doc.dirty) ? t("已開啟的分頁會保留內容，但有尚未存檔的變更。") : "";
       // WebDAV 沒有資源回收筒：講清楚是永久刪除。
       const remote = isRemote(entry.path);
       const choice = remote
-        ? await choose("永久刪除？", `要刪除${what}嗎？遠端（WebDAV）沒有資源回收筒，刪除後無法復原。${note}`, [
-            { id: "trash", label: "永久刪除", danger: true },
-            { id: "cancel", label: "取消", primary: true },
+        ? await choose(t("永久刪除？"), t("要刪除{what}嗎？遠端（WebDAV）沒有資源回收筒，刪除後無法復原。{note}", { what, note }), [
+            { id: "trash", label: t("永久刪除"), danger: true },
+            { id: "cancel", label: t("取消"), primary: true },
           ])
-        : await choose("移到資源回收筒？", `要把${what}移到資源回收筒嗎？之後可以從資源回收筒還原。${note}`, [
-            { id: "trash", label: "移到資源回收筒", danger: true },
-            { id: "cancel", label: "取消" },
+        : await choose(t("移到資源回收筒？"), t("要把{what}移到資源回收筒嗎？之後可以從資源回收筒還原。{note}", { what, note }), [
+            { id: "trash", label: t("移到資源回收筒"), danger: true },
+            { id: "cancel", label: t("取消") },
           ]);
       if (choice !== "trash") return;
       await d.trashEntry(entry.path);
@@ -2070,7 +2091,7 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
       fileListCache = null;
       renderTabs();
       await fileTree.refresh([dirname(entry.path)]);
-      toast(remote ? `已刪除「${entry.name}」` : `已把「${entry.name}」移到資源回收筒`);
+      toast(remote ? t("已刪除「{name}」", { name: entry.name }) : t("已把「{name}」移到資源回收筒", { name: entry.name }));
       break;
     }
     case "reveal":
@@ -2078,7 +2099,7 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
       break;
     case "copy-path":
       await navigator.clipboard.writeText(entry.path);
-      toast("已複製路徑");
+      toast(t("已複製路徑"));
       break;
   }
 }
@@ -2101,8 +2122,10 @@ $("#tree-refresh").addEventListener("click", () => {
 if (!desktop) {
   const p = document.createElement("p");
   p.className = "side-empty";
-  p.textContent = "搜尋整個資料夾的內容需要桌面版。要搜尋目前的文件，請按 ";
-  p.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys("Mod-f") }), "。");
+  // 「{keys}」換成快速鍵的 <kbd>。
+  const [before, after] = t("搜尋整個資料夾的內容需要桌面版。要搜尋目前的文件，請按 {keys}。").split("{keys}");
+  p.textContent = before;
+  p.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys("Mod-f") }), after ?? "");
   $("#search-host").append(p);
 }
 
@@ -2116,15 +2139,15 @@ interface QuickItem {
 }
 
 const quickOpen = new Picker<QuickItem>({
-  label: "快速開啟",
-  placeholder: desktop ? "輸入檔名，例如「週報」" : "輸入檔名切換分頁",
-  empty: "找不到符合的檔案",
+  label: t("快速開啟"),
+  placeholder: desktop ? t("輸入檔名，例如「週報」") : t("輸入檔名切換分頁"),
+  empty: t("找不到符合的檔案"),
   async query(q) {
     stash();
     // 已開啟的分頁優先，目前分頁放最後（按 Enter 不會停在原地）。
     const items: QuickItem[] = [...docs.filter((d) => d !== active), active].map((d) => ({
       title: d.name,
-      detail: d === active ? "目前分頁" : "已開啟",
+      detail: d === active ? t("目前分頁") : t("已開啟"),
       doc: d,
     }));
     const seen = new Set(docs.map((d) => d.path).filter(Boolean));
@@ -2142,7 +2165,7 @@ const quickOpen = new Picker<QuickItem>({
       for (const path of files) {
         if (seen.has(path)) continue;
         seen.add(path);
-        items.push({ title: basename(path), detail: `最近開啟 · ${displayPath(dirname(path))}`, path });
+        items.push({ title: basename(path), detail: t("最近開啟 · {dir}", { dir: displayPath(dirname(path)) }), path });
       }
     }
     if (!q.trim()) return items.slice(0, 200);
@@ -2245,10 +2268,10 @@ async function closeTab(id: string): Promise<void> {
   if (!doc) return;
   if (doc === active) stash();
   if (doc.dirty) {
-    const choice = await choose("要儲存變更嗎？", `「${doc.name}」有尚未存檔的變更。`, [
-      { id: "save", label: "儲存", primary: true },
-      { id: "discard", label: "不儲存", danger: true },
-      { id: "cancel", label: "取消" },
+    const choice = await choose(t("要儲存變更嗎？"), t("「{name}」有尚未存檔的變更。", { name: doc.name }), [
+      { id: "save", label: t("儲存"), primary: true },
+      { id: "discard", label: t("不儲存"), danger: true },
+      { id: "cancel", label: t("取消") },
     ]);
     if (choice === "save") {
       activate(doc);
@@ -2264,7 +2287,7 @@ async function closeTab(id: string): Promise<void> {
   docs.splice(i, 1);
   dropDraft(doc.id);
   if (!docs.length) {
-    const blank = makeDoc({ name: `未命名${KINDS[kind].ext}`, kind });
+    const blank = makeDoc({ name: t("未命名{ext}", { ext: KINDS[kind].ext }), kind });
     docs.push(blank);
   }
   if (doc === active) {
@@ -2300,27 +2323,27 @@ function rememberClosed(doc: Doc): void {
 }
 
 async function reopenClosedTab(): Promise<void> {
-  const t = closedTabs.pop();
-  if (!t) {
-    toast("沒有剛關閉的分頁。");
+  const closed = closedTabs.pop();
+  if (!closed) {
+    toast(t("沒有剛關閉的分頁。"));
     return;
   }
-  if (t.path && desktop) {
+  if (closed.path && desktop) {
     try {
-      await openPath(t.path);
-      if (t.dirty && editor.text !== t.text) {
-        editor.replaceAll(t.text, { userEvent: "input.restore", isolate: true });
-        toast("已重新開啟，並還原關閉時沒有存的內容（可以按 Ctrl+Z 回到檔案原本的內容）。", { duration: 8000 });
+      await openPath(closed.path);
+      if (closed.dirty && editor.text !== closed.text) {
+        editor.replaceAll(closed.text, { userEvent: "input.restore", isolate: true });
+        toast(t("已重新開啟，並還原關閉時沒有存的內容（可以按 Ctrl+Z 回到檔案原本的內容）。"), { duration: 8000 });
       }
       return;
     } catch {
       // 檔案已經不在了：改用關閉時的內容開一個新分頁。
     }
   }
-  const doc = makeDoc({ name: t.name, kind: t.kind });
-  saveDraft(doc.id, t.text);
+  const doc = makeDoc({ name: closed.name, kind: closed.kind });
+  saveDraft(doc.id, closed.text);
   addTab(doc);
-  if (t.path) toast(`找不到「${t.name}」，已用關閉時的內容開成新分頁。`, { duration: 8000 });
+  if (closed.path) toast(t("找不到「{name}」，已用關閉時的內容開成新分頁。", { name: closed.name }), { duration: 8000 });
 }
 
 function cycleTab(step: number): void {
@@ -2369,7 +2392,7 @@ function openDocument(
 function openOpenedFile(file: OpenedFile): void {
   openDocument(file.name, file.text, file.handle);
   if (file.encoding === "big5") {
-    toast("這個檔案是 Big5 編碼，已轉換後顯示；存檔時會改存成 UTF-8。", { duration: 8000 });
+    toast(t("這個檔案是 Big5 編碼，已轉換後顯示；存檔時會改存成 UTF-8。"), { duration: 8000 });
   }
 }
 
@@ -2391,7 +2414,7 @@ async function save(saveAs: boolean, force = false): Promise<void> {
     const path = fileHandle?.path;
     const message = e instanceof Error ? e.message : String(e);
     if (isRemote(path) && NOT_CONNECTED.some((m) => message.startsWith(m))) {
-      if (await suggestReconnect(path, (name) => `還沒有連線到「${name}」，重新連線後再存檔。`)) return;
+      if (await suggestReconnect(path, (name) => t("還沒有連線到「{name}」，重新連線後再存檔。", { name }))) return;
     }
     throw e;
   }
@@ -2406,13 +2429,13 @@ async function save(saveAs: boolean, force = false): Promise<void> {
   gitPanel?.refreshSoon(300);
   setBaseline(text, true);
   setFileName(out.name);
-  toast(out.handle ? `已儲存到「${out.name}」` : `已下載「${out.name}」`, { tone: "success" });
+  toast(out.handle ? t("已儲存到「{name}」", { name: out.name }) : t("已下載「{name}」", { name: out.name }), { tone: "success" });
 }
 
 // ---- 網路磁碟斷線（R1） --------------------------------------------------------
 
-/** 原生端回報網路錯誤時，訊息以這段文字開頭。 */
-const OFFLINE = "網路磁碟無法連線";
+/** 原生端回報網路錯誤時，訊息以這段文字開頭（和後端的 `io::OFFLINE` 一致）。 */
+const OFFLINE = t("網路磁碟無法連線");
 const offlineBar = $("#offline-bar");
 let offline: { path: string; timer: number; back: boolean } | null = null;
 
@@ -2439,7 +2462,11 @@ async function probeOffline(): Promise<void> {
   clearInterval(offline.timer);
   renderOffline();
   if (fileHandle?.path !== offline.path) {
-    toast(`${isRemote(offline.path) ? "WebDAV 伺服器" : "網路磁碟"}已恢復連線，記得回到那份文件存檔。`);
+    toast(
+      isRemote(offline.path)
+        ? t("WebDAV 伺服器已恢復連線，記得回到那份文件存檔。")
+        : t("網路磁碟已恢復連線，記得回到那份文件存檔。"),
+    );
   }
 }
 
@@ -2454,24 +2481,24 @@ function renderOffline(): void {
   offlineBar.hidden = !show;
   if (!show || !offline) return;
   offlineBar.classList.toggle("back", offline.back);
-  const where = isRemote(offline.path) ? "WebDAV 伺服器" : "網路磁碟";
+  const remote = isRemote(offline.path);
   const msg = document.createElement("p");
   msg.append(icon(offline.back ? "refresh-cw" : "circle-alert"));
   const button = document.createElement("button");
   button.type = "button";
   button.className = "btn";
   if (offline.back) {
-    msg.append(`${where}已恢復連線。`);
-    button.textContent = "立即存檔";
+    msg.append(remote ? t("WebDAV 伺服器已恢復連線。") : t("網路磁碟已恢復連線。"));
+    button.textContent = t("立即存檔");
     button.addEventListener("click", () => void save(false).catch(reportError));
   } else {
     msg.append(
-      Object.assign(document.createElement("strong"), { textContent: `${where}無法連線` }),
+      Object.assign(document.createElement("strong"), { textContent: remote ? t("WebDAV 伺服器無法連線") : t("網路磁碟無法連線") }),
       Object.assign(document.createElement("span"), {
-        textContent: "這次沒有存到檔案。內容會保留在編輯器裡（草稿也已自動保存），連線恢復後會提醒你。",
+        textContent: t("這次沒有存到檔案。內容會保留在編輯器裡（草稿也已自動保存），連線恢復後會提醒你。"),
       }),
     );
-    button.textContent = "重試存檔";
+    button.textContent = t("重試存檔");
     button.addEventListener("click", () => void save(false).catch(reportError));
   }
   offlineBar.replaceChildren(msg, button);
@@ -2479,37 +2506,37 @@ function renderOffline(): void {
 
 /** 提示文字用：遠端檔案存在「伺服器」，本機檔案存在「磁碟」。 */
 function storeName(path = fileHandle?.path): string {
-  return isRemote(path) ? "伺服器" : "磁碟";
+  return isRemote(path) ? t("伺服器") : t("磁碟");
 }
 
 /** 提示文字用：誰會在背後改檔案。 */
 function otherWriter(path = fileHandle?.path): string {
-  return isRemote(path) ? "其他電腦或程式" : "其他程式";
+  return isRemote(path) ? t("其他電腦或程式") : t("其他程式");
 }
 
 /** 檔案在開啟後被別的程式改過：讓使用者比較差異、覆蓋或另存。 */
 async function resolveConflict(name: string, diskText: string): Promise<void> {
   const remote = isRemote(fileHandle?.path);
   const choice = await choose(
-    `檔案已被${otherWriter()}修改`,
+    t("檔案已被{who}修改", { who: otherWriter() }),
     remote
-      ? `「${name}」在你開啟之後被其他電腦或程式改過。要怎麼處理？`
-      : `「${name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？`,
+      ? t("「{name}」在你開啟之後被其他電腦或程式改過。要怎麼處理？", { name })
+      : t("「{name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？", { name }),
     [
-      { id: "compare", label: "比較差異", primary: true },
-      { id: "overwrite", label: "用我的版本覆蓋", danger: true },
-      { id: "save-as", label: "另存新檔" },
-      { id: "cancel", label: "取消" },
+      { id: "compare", label: t("比較差異"), primary: true },
+      { id: "overwrite", label: t("用我的版本覆蓋"), danger: true },
+      { id: "save-as", label: t("另存新檔") },
+      { id: "cancel", label: t("取消") },
     ],
   );
   if (choice === "overwrite") await save(false, true);
   else if (choice === "save-as") await save(true);
   else if (choice === "compare") {
     const started = review.start(diskText, {
-      title: `與${storeName()}上的版本比較`,
-      hint: "逐段選擇要採用哪個版本，全部處理完會自動存檔。",
-      acceptLabel: `採用${storeName()}版本`,
-      rejectLabel: "保留我的版本",
+      title: t("與{store}上的版本比較", { store: storeName() }),
+      hint: t("逐段選擇要採用哪個版本，全部處理完會自動存檔。"),
+      acceptLabel: isRemote(fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
+      rejectLabel: t("保留我的版本"),
       onFinish: () => void save(false, true).catch(reportError),
     });
     if (!started) await save(false, true);
@@ -2522,7 +2549,7 @@ function runTableEdit(kind: Parameters<typeof editTable>[0]): void {
     state: editor.view.state,
     dispatch: (tr) => editor.view.dispatch(tr),
   });
-  if (!ok) toast(kind === "delete-row" ? "標題列與分隔列不能刪除，或游標不在表格中。" : "請先把游標移到表格裡。");
+  if (!ok) toast(kind === "delete-row" ? t("標題列與分隔列不能刪除，或游標不在表格中。") : t("請先把游標移到表格裡。"));
   editor.view.focus();
 }
 
@@ -2531,19 +2558,24 @@ function runTableEdit(kind: Parameters<typeof editTable>[0]): void {
 const commands = new Commands();
 const isMarkdown = () => kind === "markdown" && view !== "preview";
 
+/** 插入一段範例區塊，並選取第 `line` 行（從 0 算起）的範例文字，直接打字就能取代。 */
+function insertPlaceholder(text: string, line: number): void {
+  editor.exec(insertBlock(text, text.split("\n")[line]?.trim()));
+}
+
 function fmt(id: string, title: string, iconName: string, run: () => void, keys?: string): Command {
-  return { id, title, group: "格式", icon: iconName, keys, when: isMarkdown, run };
+  return { id, title, group: t("格式"), icon: iconName, keys, when: isMarkdown, run };
 }
 
 commands.register(
   {
     id: "new",
-    title: "新增文件",
-    group: "檔案",
+    title: t("新增文件"),
+    group: t("檔案"),
     icon: "file-plus",
     keys: "Mod-Alt-n",
     run() {
-      const doc = makeDoc({ name: `未命名${KINDS[kind].ext}`, kind });
+      const doc = makeDoc({ name: t("未命名{ext}", { ext: KINDS[kind].ext }), kind });
       saveDraft(doc.id, "");
       addTab(doc);
       editor.view.focus();
@@ -2551,65 +2583,65 @@ commands.register(
   },
   {
     id: "reopen-closed-tab",
-    title: "重新開啟關閉的分頁",
-    group: "檔案",
+    title: t("重新開啟關閉的分頁"),
+    group: t("檔案"),
     icon: "history",
     keys: "Mod-Shift-t",
     run: () => reopenClosedTab(),
   },
   {
     id: "new-from-template",
-    title: "從範本新增…",
-    group: "檔案",
+    title: t("從範本新增…"),
+    group: t("檔案"),
     icon: "layout-template",
     run: () => templatePicker.open(),
   },
   {
     id: "save-as-template",
-    title: "把目前文件存成範本…",
-    group: "檔案",
+    title: t("把目前文件存成範本…"),
+    group: t("檔案"),
     icon: "layout-template",
     when: () => kind === "markdown",
     run: () => saveAsTemplate(),
   },
   {
     id: "delete-template",
-    title: "刪除自訂範本…",
-    group: "檔案",
+    title: t("刪除自訂範本…"),
+    group: t("檔案"),
     icon: "x",
     when: () => settings.value.templates.length > 0,
     run: () => deleteTemplatePicker.open(),
   },
-  { id: "tab-next", title: "下一個分頁", group: "檢視", keys: "Ctrl-Tab", when: () => docs.length > 1, run: () => cycleTab(1) },
+  { id: "tab-next", title: t("下一個分頁"), group: t("檢視"), keys: "Ctrl-Tab", when: () => docs.length > 1, run: () => cycleTab(1) },
   {
     id: "tab-prev",
-    title: "上一個分頁",
-    group: "檢視",
+    title: t("上一個分頁"),
+    group: t("檢視"),
     keys: "Ctrl-Shift-Tab",
     when: () => docs.length > 1,
     run: () => cycleTab(-1),
   },
-  { id: "tab-close", title: "關閉分頁", group: "檔案", icon: "x", keys: "Mod-w", run: () => closeTab(menuTab().id) },
+  { id: "tab-close", title: t("關閉分頁"), group: t("檔案"), icon: "x", keys: "Mod-w", run: () => closeTab(menuTab().id) },
   {
     id: "fold-all",
-    title: "摺疊所有章節",
-    group: "檢視",
+    title: t("摺疊所有章節"),
+    group: t("檢視"),
     icon: "chevrons-down-up",
     shownKeys: "Ctrl-Alt-[",
     run: () => void foldAll(editor.view),
   },
   {
     id: "unfold-all",
-    title: "展開所有章節",
-    group: "檢視",
+    title: t("展開所有章節"),
+    group: t("檢視"),
     icon: "chevrons-up-down",
     shownKeys: "Ctrl-Alt-]",
     run: () => void unfoldAll(editor.view),
   },
   {
     id: "tab-close-others",
-    title: "關閉其他分頁",
-    group: "檔案",
+    title: t("關閉其他分頁"),
+    group: t("檔案"),
     when: () => docs.some((d) => d !== menuTab() && !d.pinned),
     run() {
       const keep = menuTab();
@@ -2618,8 +2650,8 @@ commands.register(
   },
   {
     id: "tab-close-right",
-    title: "關閉右側的分頁",
-    group: "檔案",
+    title: t("關閉右側的分頁"),
+    group: t("檔案"),
     when: () => docs.slice(docs.indexOf(menuTab()) + 1).some((d) => !d.pinned),
     run() {
       return closeTabs(docs.slice(docs.indexOf(menuTab()) + 1).filter((d) => !d.pinned));
@@ -2627,15 +2659,15 @@ commands.register(
   },
   {
     id: "tab-close-saved",
-    title: "關閉已儲存的分頁",
-    group: "檔案",
+    title: t("關閉已儲存的分頁"),
+    group: t("檔案"),
     when: () => docs.some((d) => !d.dirty && !d.pinned),
     run: () => closeTabs(docs.filter((d) => !d.dirty && !d.pinned)),
   },
   {
     id: "tab-pin",
-    title: "固定／取消固定分頁",
-    group: "檔案",
+    title: t("固定／取消固定分頁"),
+    group: t("檔案"),
     icon: "pin",
     run() {
       const doc = menuTab();
@@ -2644,27 +2676,27 @@ commands.register(
   },
   {
     id: "tab-copy-path",
-    title: "複製檔案路徑",
-    group: "檔案",
+    title: t("複製檔案路徑"),
+    group: t("檔案"),
     icon: "copy",
     when: () => !!tabPath(menuTab()),
     async run() {
       await navigator.clipboard.writeText(displayPath(tabPath(menuTab())!));
-      toast("已複製路徑");
+      toast(t("已複製路徑"));
     },
   },
   {
     id: "tab-reveal",
-    title: "在檔案總管中顯示",
-    group: "檔案",
+    title: t("在檔案總管中顯示"),
+    group: t("檔案"),
     icon: "folder-open",
     when: () => !!desktop && !!tabPath(menuTab()),
     run: () => desktop!.revealEntry(tabPath(menuTab())!),
   },
   {
     id: "open",
-    title: "開啟檔案…",
-    group: "檔案",
+    title: t("開啟檔案…"),
+    group: t("檔案"),
     icon: "folder-open",
     keys: "Mod-o",
     async run() {
@@ -2674,8 +2706,8 @@ commands.register(
   },
   {
     id: "open-folder",
-    title: "開啟資料夾…",
-    group: "檔案",
+    title: t("開啟資料夾…"),
+    group: t("檔案"),
     icon: "folder-open",
     when: () => !!desktop,
     async run() {
@@ -2687,8 +2719,8 @@ commands.register(
   },
   {
     id: "switch-project",
-    title: "切換專案…",
-    group: "專案",
+    title: t("切換專案…"),
+    group: t("專案"),
     icon: "folder-kanban",
     keys: "Mod-Alt-p",
     when: () => !!projectUi,
@@ -2696,24 +2728,24 @@ commands.register(
   },
   {
     id: "project-overview",
-    title: "專案總覽",
-    group: "專案",
+    title: t("專案總覽"),
+    group: t("專案"),
     icon: "layout-grid",
     when: () => !!projectUi,
     run: () => projectUi!.openOverview(),
   },
   {
     id: "project-settings",
-    title: "目前專案的設定（名稱、顏色、群組）…",
-    group: "專案",
+    title: t("目前專案的設定（名稱、顏色、群組）…"),
+    group: t("專案"),
     icon: "pencil",
     when: () => !!projectUi?.current,
     run: () => projectUi!.edit(projectUi!.current!),
   },
   {
     id: "connect-webdav",
-    title: "連線到 WebDAV 遠端資料夾…",
-    group: "檔案",
+    title: t("連線到 WebDAV 遠端資料夾…"),
+    group: t("檔案"),
     icon: "cloud",
     when: () => !!desktop,
     async run() {
@@ -2725,16 +2757,16 @@ commands.register(
   },
   {
     id: "quick-open",
-    title: "快速開啟檔案…",
-    group: "檔案",
+    title: t("快速開啟檔案…"),
+    group: t("檔案"),
     icon: "search",
     keys: "Mod-p",
     run: () => quickOpen.open(),
   },
   {
     id: "search-in-folder",
-    title: "在資料夾中搜尋",
-    group: "編輯",
+    title: t("在資料夾中搜尋"),
+    group: t("編輯"),
     icon: "search",
     keys: "Mod-Shift-f",
     when: () => !!desktop,
@@ -2748,8 +2780,8 @@ commands.register(
   },
   {
     id: "replace-in-folder",
-    title: "在資料夾中取代…",
-    group: "檔案",
+    title: t("在資料夾中取代…"),
+    group: t("檔案"),
     icon: "replace",
     when: () => !!searchPanel && !!workspaceRoot && !isRemote(workspaceRoot.path),
     run() {
@@ -2757,65 +2789,65 @@ commands.register(
       searchPanel?.showReplace();
     },
   },
-  { id: "show-files", title: "顯示檔案", group: "檢視", icon: "folder", keys: "Mod-Shift-e", run: () => showPanel("files") },
-  { id: "show-outline", title: "顯示大綱", group: "檢視", icon: "list-tree", run: () => showPanel("outline") },
-  { id: "save", title: "儲存", group: "檔案", icon: "save", keys: "Mod-s", run: () => save(false) },
-  { id: "save-as", title: "另存新檔…", group: "檔案", icon: "file", keys: "Mod-Shift-s", run: () => save(true) },
+  { id: "show-files", title: t("顯示檔案"), group: t("檢視"), icon: "folder", keys: "Mod-Shift-e", run: () => showPanel("files") },
+  { id: "show-outline", title: t("顯示大綱"), group: t("檢視"), icon: "list-tree", run: () => showPanel("outline") },
+  { id: "save", title: t("儲存"), group: t("檔案"), icon: "save", keys: "Mod-s", run: () => save(false) },
+  { id: "save-as", title: t("另存新檔…"), group: t("檔案"), icon: "file", keys: "Mod-Shift-s", run: () => save(true) },
   {
     id: "export-html",
-    title: "匯出成 HTML 檔",
-    group: "檔案",
+    title: t("匯出成 HTML 檔"),
+    group: t("檔案"),
     icon: "download",
     async run() {
       const html = await preview.exportDocument(editor.text, kind, stem(fileName));
       const name = replaceExtension(fileName, ".html");
-      if ((await download(name, html, "text/html")) && desktop) toast(`已匯出「${name}」`, { tone: "success" });
+      if ((await download(name, html, "text/html")) && desktop) toast(t("已匯出「{name}」", { name }), { tone: "success" });
     },
   },
   {
     id: "export-pdf",
-    title: desktop ? "匯出 PDF…" : "列印／匯出 PDF…",
-    group: "檔案",
+    title: desktop ? t("匯出 PDF…") : t("列印／匯出 PDF…"),
+    group: t("檔案"),
     icon: desktop ? "file-down" : "printer",
     run: () => exportPdf(),
   },
   {
     id: "print",
-    title: "列印…",
-    group: "檔案",
+    title: t("列印…"),
+    group: t("檔案"),
     icon: "printer",
     when: () => !!desktop,
     run: () => exportPdf(true),
   },
   {
     id: "copy-html",
-    title: "複製 HTML",
-    group: "檔案",
+    title: t("複製 HTML"),
+    group: t("檔案"),
     icon: "copy",
     async run() {
       if (preview.stale) renderNow(true);
       const result = preview.result;
       if (!result || result.error) {
-        toast("文件有格式錯誤，修正後才能複製。", { tone: "error" });
+        toast(t("文件有格式錯誤，修正後才能複製。"), { tone: "error" });
         return;
       }
       // 複製出去的 HTML 不需要捲動同步用的 data-sourcepos。
       await navigator.clipboard.writeText(result.html.replace(/ data-sourcepos="[^"]*"/g, ""));
-      toast("已複製 HTML 到剪貼簿", { tone: "success" });
+      toast(t("已複製 HTML 到剪貼簿"), { tone: "success" });
     },
   },
   {
     id: "export-docx",
-    title: "匯出成 Word 檔（.docx）",
-    group: "檔案",
+    title: t("匯出成 Word 檔（.docx）"),
+    group: t("檔案"),
     icon: "file-type",
     when: () => kind === "markdown",
     run: () => exportDocx(),
   },
   {
     id: "slideshow",
-    title: "簡報模式：從頭播放",
-    group: "檢視",
+    title: t("簡報模式：從頭播放"),
+    group: t("檢視"),
     icon: "presentation",
     keys: "F5",
     when: () => kind === "markdown",
@@ -2823,8 +2855,8 @@ commands.register(
   },
   {
     id: "slideshow-here",
-    title: "簡報模式：從目前這一頁播放",
-    group: "檢視",
+    title: t("簡報模式：從目前這一頁播放"),
+    group: t("檢視"),
     icon: "presentation",
     keys: "Shift-F5",
     when: () => kind === "markdown",
@@ -2832,15 +2864,15 @@ commands.register(
   },
   {
     id: "import-docx",
-    title: "匯入 Word 文件（.docx）…",
-    group: "檔案",
+    title: t("匯入 Word 文件（.docx）…"),
+    group: t("檔案"),
     icon: "file-input",
     run: () => importDocx(),
   },
   {
     id: "copy-rich",
-    title: "複製為格式文字（貼到 Word、Outlook、Teams）",
-    group: "檔案",
+    title: t("複製為格式文字（貼到 Word、Outlook、Teams）"),
+    group: t("檔案"),
     icon: "clipboard-copy",
     keys: "Mod-Alt-c",
     when: () => kind === "markdown",
@@ -2848,59 +2880,59 @@ commands.register(
   },
   {
     id: "fix-terms",
-    title: "修正兩國用語、錯字與標點（整份文件）",
-    group: "編輯",
+    title: t("修正兩國用語、錯字與標點（整份文件）"),
+    group: t("編輯"),
     icon: "spell-check",
     when: () => kind !== "json" && view !== "preview",
     run: () => fixTerms(),
   },
   {
     id: "s2t",
-    title: "簡體轉繁體（台灣用語）",
-    group: "編輯",
+    title: t("簡體轉繁體（台灣用語）"),
+    group: t("編輯"),
     icon: "languages",
     when: () => kind !== "json" && view !== "preview",
     run: () => convertToTraditional(),
   },
   {
     id: "clear-term-ignore",
-    title: "兩國用語檢查：清除「不再提示」的詞",
-    group: "編輯",
+    title: t("兩國用語檢查：清除「不再提示」的詞"),
+    group: t("編輯"),
     icon: "spell-check",
     when: () => settings.value.termIgnore.length > 0,
     run: () => {
       const n = settings.value.termIgnore.length;
       settings.update({ termIgnore: [] });
-      toast(`已清除 ${n} 個不再提示的詞。`, { tone: "success" });
+      toast(t("已清除 {n} 個不再提示的詞。", { n }), { tone: "success" });
     },
   },
-  { id: "palette", title: "開啟指令面板", group: "說明", icon: "command", keys: "Mod-Shift-p", run: () => palette.open() },
+  { id: "palette", title: t("開啟指令面板"), group: t("說明"), icon: "command", keys: "Mod-Shift-p", run: () => palette.open() },
   {
     id: "rename-doc",
-    title: "重新命名文件…",
-    group: "檔案",
+    title: t("重新命名文件…"),
+    group: t("檔案"),
     icon: "pencil",
     run: () => tabBar.startRename(active.id),
   },
   {
     id: "toggle-format-bar",
-    title: "固定顯示／隱藏格式工具列",
-    group: "檢視",
+    title: t("固定顯示／隱藏格式工具列"),
+    group: t("檢視"),
     icon: "bold",
     run: () => settings.update({ fixedToolbar: !settings.value.fixedToolbar }),
   },
   {
     id: "find",
-    title: "搜尋與取代",
-    group: "編輯",
+    title: t("搜尋與取代"),
+    group: t("編輯"),
     keys: "Mod-f",
     when: () => view !== "preview",
     run: () => void openSearchPanel(editor.view),
   },
   {
     id: "format-json",
-    title: "格式化 JSON",
-    group: "編輯",
+    title: t("格式化 JSON"),
+    group: t("編輯"),
     icon: "wand-sparkles",
     keys: "Shift-Alt-f",
     when: () => kind === "json",
@@ -2908,90 +2940,91 @@ commands.register(
       try {
         const formatted = formatJson(editor.text);
         if (formatted !== editor.text) editor.replaceAll(formatted);
-        toast("已重新排版（可用 Ctrl+Z 復原）", { tone: "success" });
+        toast(t("已重新排版（可用 Ctrl+Z 復原）"), { tone: "success" });
       } catch (e) {
         const err = preview.result?.error;
-        toast(`無法格式化：${e instanceof Error ? e.message : e}`, {
+        toast(t("無法格式化：{error}", { error: e instanceof Error ? e.message : String(e) }), {
           tone: "error",
-          action: err ? { label: "跳到錯誤", run: () => editor.reveal(err.line, err.column) } : undefined,
+          action: err ? { label: t("跳到錯誤"), run: () => editor.reveal(err.line, err.column) } : undefined,
         });
       }
     },
   },
-  fmt("bold", "粗體", "bold", () => editor.exec(toggleWrap("**")), "Mod-b"),
-  fmt("italic", "斜體", "italic", () => editor.exec(toggleWrap("*")), "Mod-i"),
-  fmt("strike", "刪除線", "strikethrough", () => editor.exec(toggleWrap("~~")), "Mod-Shift-x"),
-  fmt("code", "行內程式碼", "code", () => editor.exec(toggleWrap("`")), "Mod-e"),
-  fmt("link", "插入連結", "link", () => editor.exec(insertLink), "Mod-k"),
-  fmt("underline", "底線", "underline", () => editor.exec(toggleWrap("<u>", "</u>")), "Mod-u"),
-  fmt("highlight", "螢光標記", "highlighter", () => editor.exec(toggleWrap("<mark>", "</mark>")), "Mod-Shift-h"),
-  fmt("superscript", "上標（例如 m²）", "superscript", () => editor.exec(toggleWrap("<sup>", "</sup>"))),
-  fmt("subscript", "下標（例如 H₂O）", "subscript", () => editor.exec(toggleWrap("<sub>", "</sub>"))),
+  fmt("bold", t("粗體"), "bold", () => editor.exec(toggleWrap("**")), "Mod-b"),
+  fmt("italic", t("斜體"), "italic", () => editor.exec(toggleWrap("*")), "Mod-i"),
+  fmt("strike", t("刪除線"), "strikethrough", () => editor.exec(toggleWrap("~~")), "Mod-Shift-x"),
+  fmt("code", t("行內程式碼"), "code", () => editor.exec(toggleWrap("`")), "Mod-e"),
+  fmt("link", t("插入連結"), "link", () => editor.exec(insertLink), "Mod-k"),
+  fmt("underline", t("底線"), "underline", () => editor.exec(toggleWrap("<u>", "</u>")), "Mod-u"),
+  fmt("highlight", t("螢光標記"), "highlighter", () => editor.exec(toggleWrap("<mark>", "</mark>")), "Mod-Shift-h"),
+  fmt("superscript", t("上標（例如 m²）"), "superscript", () => editor.exec(toggleWrap("<sup>", "</sup>"))),
+  fmt("subscript", t("下標（例如 H₂O）"), "subscript", () => editor.exec(toggleWrap("<sub>", "</sub>"))),
   fmt(
     "clear-format",
-    "清除格式",
+    t("清除格式"),
     "remove-formatting",
     () => {
       const ok = clearInlineFormat({ state: editor.view.state, dispatch: (tr) => editor.view.dispatch(tr) });
-      if (!ok) toast("請先選取要清除格式的文字。");
+      if (!ok) toast(t("請先選取要清除格式的文字。"));
       editor.view.focus();
     },
     "Mod-\\",
   ),
-  fmt("h1", "標題 1", "heading-1", () => editor.exec(toggleLineStyle("h1")), "Mod-Alt-1"),
-  fmt("h2", "標題 2", "heading-2", () => editor.exec(toggleLineStyle("h2")), "Mod-Alt-2"),
-  fmt("h3", "標題 3", "heading-3", () => editor.exec(toggleLineStyle("h3")), "Mod-Alt-3"),
-  fmt("quote", "引言", "quote", () => editor.exec(toggleLineStyle("quote"))),
-  fmt("bullet", "項目清單", "list", () => editor.exec(toggleLineStyle("bullet")), "Mod-Shift-8"),
-  fmt("ordered", "編號清單", "list-ordered", () => editor.exec(toggleLineStyle("ordered")), "Mod-Shift-7"),
-  fmt("task", "待辦清單", "list-checks", () => editor.exec(toggleLineStyle("task")), "Mod-Shift-9"),
-  fmt("code-block", "程式碼區塊", "square-code", () => editor.exec(insertBlock("```\n程式碼\n```", "程式碼"))),
-  fmt("table", "插入表格", "table", () => editor.exec(insertBlock(TABLE_TEMPLATE, "欄位 1"))),
-  fmt("hr", "分隔線", "minus", () => editor.exec(insertBlock("---"))),
-  fmt("insert-toc", "插入或更新目錄", "toc", () => insertToc()),
-  fmt("math-block", "數學公式區塊", "sigma", () => editor.exec(insertBlock("$$\n公式\n$$", "公式"))),
-  fmt("mermaid-block", "流程圖", "workflow", () =>
-    editor.exec(insertBlock("```mermaid\nflowchart LR\n  A[開始] --> B[結束]\n```", "A[開始] --> B[結束]")),
+  fmt("h1", t("標題 1"), "heading-1", () => editor.exec(toggleLineStyle("h1")), "Mod-Alt-1"),
+  fmt("h2", t("標題 2"), "heading-2", () => editor.exec(toggleLineStyle("h2")), "Mod-Alt-2"),
+  fmt("h3", t("標題 3"), "heading-3", () => editor.exec(toggleLineStyle("h3")), "Mod-Alt-3"),
+  fmt("quote", t("引言"), "quote", () => editor.exec(toggleLineStyle("quote"))),
+  fmt("bullet", t("項目清單"), "list", () => editor.exec(toggleLineStyle("bullet")), "Mod-Shift-8"),
+  fmt("ordered", t("編號清單"), "list-ordered", () => editor.exec(toggleLineStyle("ordered")), "Mod-Shift-7"),
+  fmt("task", t("待辦清單"), "list-checks", () => editor.exec(toggleLineStyle("task")), "Mod-Shift-9"),
+  fmt("code-block", t("程式碼區塊"), "square-code", () => insertPlaceholder(t("```\n程式碼\n```"), 1)),
+  // 插入後選取第一個欄位名稱，直接打字就能取代。
+  fmt("table", t("插入表格"), "table", () => editor.exec(insertBlock(TABLE_TEMPLATE, TABLE_TEMPLATE.split("|")[1].trim()))),
+  fmt("hr", t("分隔線"), "minus", () => editor.exec(insertBlock("---"))),
+  fmt("insert-toc", t("插入或更新目錄"), "toc", () => insertToc()),
+  fmt("math-block", t("數學公式區塊"), "sigma", () => insertPlaceholder(t("$$\n公式\n$$"), 1)),
+  fmt("mermaid-block", t("流程圖"), "workflow", () =>
+    insertPlaceholder(t("```mermaid\nflowchart LR\n  A[開始] --> B[結束]\n```"), 2),
   ),
-  fmt("insert-image", "圖片…", "image", () => imageInput.click()),
-  fmt("insert-menu", "插入…", "plus", () => {
+  fmt("insert-image", t("圖片…"), "image", () => imageInput.click()),
+  fmt("insert-menu", t("插入…"), "plus", () => {
     const pos = editor.view.state.selection.main.head;
     const at = editor.view.coordsAtPos(pos);
     if (at) openInsertMenu(new DOMRect(at.left, at.top, 0, at.bottom - at.top));
   }, "Mod-Shift-Enter"),
-  fmt("table-format", "表格：對齊目前的表格", "table", () => runTableEdit("format")),
-  fmt("table-insert-row", "表格：在下方插入一列", "table", () => runTableEdit("insert-row")),
-  fmt("table-insert-column", "表格：在右側插入一欄", "table", () => runTableEdit("insert-column")),
-  fmt("table-delete-row", "表格：刪除目前這一列", "table", () => runTableEdit("delete-row")),
-  fmt("table-delete-column", "表格：刪除目前這一欄", "table", () => runTableEdit("delete-column")),
+  fmt("table-format", t("表格：對齊目前的表格"), "table", () => runTableEdit("format")),
+  fmt("table-insert-row", t("表格：在下方插入一列"), "table", () => runTableEdit("insert-row")),
+  fmt("table-insert-column", t("表格：在右側插入一欄"), "table", () => runTableEdit("insert-column")),
+  fmt("table-delete-row", t("表格：刪除目前這一列"), "table", () => runTableEdit("delete-row")),
+  fmt("table-delete-column", t("表格：刪除目前這一欄"), "table", () => runTableEdit("delete-column")),
   {
     id: "format-tables",
-    title: "對齊文件中所有表格",
-    group: "編輯",
+    title: t("對齊文件中所有表格"),
+    group: t("編輯"),
     icon: "wand-sparkles",
     keys: "Shift-Alt-f",
     when: () => kind === "markdown",
     run() {
       const formatted = formatAllTables(editor.text);
       if (formatted === editor.text) {
-        toast("所有表格都已經對齊。");
+        toast(t("所有表格都已經對齊。"));
         return;
       }
       editor.replaceAll(formatted);
-      toast("已對齊所有表格（可用 Ctrl+Z 復原）", { tone: "success" });
+      toast(t("已對齊所有表格（可用 Ctrl+Z 復原）"), { tone: "success" });
     },
   },
   {
     id: "tidy-spacing",
-    title: "整理文件：在中文與英文、數字之間加空格",
-    group: "編輯",
+    title: t("整理文件：在中文與英文、數字之間加空格"),
+    group: t("編輯"),
     icon: "wand-sparkles",
     when: () => kind !== "json" && view !== "preview",
     run() {
       const text = editor.text;
       const positions = spacingPositions(text, kind);
       if (!positions.length) {
-        toast("沒有需要加空格的地方。");
+        toast(t("沒有需要加空格的地方。"));
         return;
       }
       // 原本對齊的表格補完空格後重新對齊；整個過程是一次可復原的編輯。
@@ -3012,13 +3045,13 @@ commands.register(
       } else {
         editor.replaceAll(result);
       }
-      toast(`已補上 ${positions.length} 個空格（可用 Ctrl+Z 復原）`, { tone: "success" });
+      toast(t("已補上 {n} 個空格（可用 Ctrl+Z 復原）", { n: positions.length }), { tone: "success" });
     },
   },
   {
     id: "settings",
-    title: "設定",
-    group: "說明",
+    title: t("設定"),
+    group: t("說明"),
     icon: "settings",
     keys: "Mod-,",
     run: () => settingsDialog.open(),
@@ -3027,12 +3060,12 @@ commands.register(
     (mode): Command => ({
       id: `view-${mode}`,
       title: {
-        editor: "只顯示原始碼",
-        live: "即時預覽（在編輯區直接顯示排版）",
-        split: "原始碼與預覽並排",
-        preview: "只顯示預覽",
+        editor: t("只顯示原始碼"),
+        live: t("即時預覽（在編輯區直接顯示排版）"),
+        split: t("原始碼與預覽並排"),
+        preview: t("只顯示預覽"),
       }[mode],
-      group: "檢視",
+      group: t("檢視"),
       icon: { editor: "code", live: "book-open-text", split: "columns-2", preview: "eye" }[mode],
       when: () => mode !== "split" || !narrowQuery.matches,
       run: () => setView(mode),
@@ -3040,48 +3073,48 @@ commands.register(
   ),
   {
     id: "toggle-focus-mode",
-    title: "專注模式（淡化其他段落）",
-    group: "檢視",
+    title: t("專注模式（淡化其他段落）"),
+    group: t("檢視"),
     icon: "focus",
     when: () => view !== "preview",
-    run: () => toggleSetting("focusMode", "專注模式"),
+    run: () => toggleSetting("focusMode", t("專注模式")),
   },
   {
     id: "toggle-typewriter-mode",
-    title: "打字機模式（游標保持在畫面中央）",
-    group: "檢視",
+    title: t("打字機模式（游標保持在畫面中央）"),
+    group: t("檢視"),
     icon: "text-cursor",
     when: () => view !== "preview",
-    run: () => toggleSetting("typewriterMode", "打字機模式"),
+    run: () => toggleSetting("typewriterMode", t("打字機模式")),
   },
   {
     id: "font-bigger",
-    title: "放大編輯區文字",
-    group: "檢視",
+    title: t("放大編輯區文字"),
+    group: t("檢視"),
     icon: "a-arrow-up",
     keys: "Mod-Equal",
     run: () => changeFontSize(1),
   },
   {
     id: "font-smaller",
-    title: "縮小編輯區文字",
-    group: "檢視",
+    title: t("縮小編輯區文字"),
+    group: t("檢視"),
     icon: "a-arrow-down",
     keys: "Mod-Minus",
     run: () => changeFontSize(-1),
   },
   {
     id: "font-reset",
-    title: "編輯區文字恢復預設大小",
-    group: "檢視",
+    title: t("編輯區文字恢復預設大小"),
+    group: t("檢視"),
     icon: "text-cursor",
     keys: "Mod-0",
     run: () => settings.update({ editorFontSize: DEFAULT_SETTINGS.editorFontSize }),
   },
   {
     id: "toggle-outline",
-    title: "顯示／隱藏側邊欄",
-    group: "檢視",
+    title: t("顯示／隱藏側邊欄"),
+    group: t("檢視"),
     icon: "panel-left",
     keys: "Mod-Shift-o",
     run: () => setOutline(!outlineShown),
@@ -3089,8 +3122,8 @@ commands.register(
   ...(["system", "light", "dark"] as const).map(
     (pref): Command => ({
       id: `theme-${pref}`,
-      title: { system: "主題：跟隨系統", light: "主題：淺色", dark: "主題：深色" }[pref],
-      group: "檢視",
+      title: { system: t("主題：跟隨系統"), light: t("主題：淺色"), dark: t("主題：深色") }[pref],
+      group: t("檢視"),
       icon: { system: "monitor", light: "sun", dark: "moon" }[pref],
       run: () => setTheme(pref),
     }),
@@ -3098,8 +3131,8 @@ commands.register(
   ...(Object.keys(KINDS) as DocKind[]).map(
     (k): Command => ({
       id: `kind-${k}`,
-      title: `文件類型改為 ${KINDS[k].label}`,
-      group: "檢視",
+      title: t("文件類型改為 {kind}", { kind: KINDS[k].label }),
+      group: t("檢視"),
       when: () => kind !== k,
       run: () => setKind(k),
     }),
@@ -3153,8 +3186,8 @@ async function refreshAiTools(): Promise<void> {
   storage.save("ai-hint", "shown");
   const tool = aiFound.claude ? "claude" : "codex";
   toast(
-    `偵測到 ${tool === "claude" ? "Claude Code" : "Codex"}。開啟 AI 協作後，可以在下方的終端機使用它讀取、修改目前的文件。`,
-    { duration: 20000, action: { label: "開啟 AI 協作", run: () => settings.update({ aiEnabled: true, aiTool: tool }) } },
+    t("偵測到 {tool}。開啟 AI 協作後，可以在下方的終端機使用它讀取、修改目前的文件。", { tool: tool === "claude" ? "Claude Code" : "Codex" }),
+    { duration: 20000, action: { label: t("開啟 AI 協作"), run: () => settings.update({ aiEnabled: true, aiTool: tool }) } },
   );
 }
 
@@ -3184,7 +3217,7 @@ async function sendSelectionToAi(): Promise<void> {
   } else if (from !== to) {
     text = `${state.sliceDoc(from, to)}\n\n`;
   } else {
-    toast("請先存檔，或選取要傳送的文字。");
+    toast(t("請先存檔，或選取要傳送的文字。"));
     return;
   }
   const preferred = settings.value.aiTool === "codex" ? (aiFound.codex ? "codex" : "claude") : aiFound.claude ? "claude" : "codex";
@@ -3195,22 +3228,22 @@ async function sendSelectionToAi(): Promise<void> {
 async function addClaudeWorkflow(): Promise<void> {
   if (!desktop) return;
   const ok = await choose(
-    "加入 Claude Code 自動校對",
-    "會在這個資料夾建立 .github/workflows/claude.yml。推送到 GitHub 之後：開 PR 修改文件時，Claude 會用台灣繁體中文校對並留言；在 issue 或 PR 留言寫「@claude 請幫我……」，Claude 會照著做。需要在 GitHub 設定一次權杖（建立後會說明）。",
+    t("加入 Claude Code 自動校對"),
+    t("會在這個資料夾建立 .github/workflows/claude.yml。推送到 GitHub 之後：開 PR 修改文件時，Claude 會用台灣繁體中文校對並留言；在 issue 或 PR 留言寫「@claude 請幫我……」，Claude 會照著做。需要在 GitHub 設定一次權杖（建立後會說明）。"),
     [
-      { id: "create", label: "建立", primary: true },
-      { id: "cancel", label: "取消" },
+      { id: "create", label: t("建立"), primary: true },
+      { id: "cancel", label: t("取消") },
     ],
   );
   if (ok !== "create") return;
   await desktop.createWorkflow("claude.yml", CLAUDE_WORKFLOW);
   gitPanel?.refreshSoon(200);
   const next = await choose(
-    "已建立 .github/workflows/claude.yml",
-    "接著：① 提交並推送；② 在 GitHub 儲存庫的 Settings → Secrets and variables → Actions 新增 CLAUDE_CODE_OAUTH_TOKEN（在終端機執行 claude setup-token 取得）。也可以在 Claude Code 裡執行 /install-github-app，它會自動設定。",
+    t("已建立 .github/workflows/claude.yml"),
+    t("接著：① 提交並推送；② 在 GitHub 儲存庫的 Settings → Secrets and variables → Actions 新增 CLAUDE_CODE_OAUTH_TOKEN（在終端機執行 claude setup-token 取得）。也可以在 Claude Code 裡執行 /install-github-app，它會自動設定。"),
     [
-      ...(terminal && aiFound.claude ? [{ id: "token", label: "在終端機執行 claude setup-token", primary: true }] : []),
-      { id: "done", label: "知道了" },
+      ...(terminal && aiFound.claude ? [{ id: "token", label: t("在終端機執行 claude setup-token"), primary: true }] : []),
+      { id: "done", label: t("知道了") },
     ],
   );
   if (next === "token") await terminal?.runInShell("claude setup-token");
@@ -3236,9 +3269,9 @@ function editorSnapshot(): EditorSnapshot {
 }
 
 const aiPicker = new Picker<QuickAction & { custom?: boolean }>({
-  label: "AI 快捷動作",
-  placeholder: "選擇動作，或直接輸入要 AI 怎麼處理選取的文字",
-  empty: "沒有符合的動作；按 Enter 會把輸入的文字當成指示",
+  label: t("AI 快捷動作"),
+  placeholder: t("選擇動作，或直接輸入要 AI 怎麼處理選取的文字"),
+  empty: t("沒有符合的動作；按 Enter 會把輸入的文字當成指示"),
   query(q) {
     const actions = settings.value.quickActions
       .map((a) => ({ a, score: fuzzyScore(q, a.name) }))
@@ -3247,10 +3280,10 @@ const aiPicker = new Picker<QuickAction & { custom?: boolean }>({
       .map((x) => x.a);
     const text = q.trim();
     return text && !actions.some((a) => a.name === text)
-      ? [...actions, { name: `自訂：${text}`, prompt: text, custom: true }]
+      ? [...actions, { name: t("自訂：{text}", { text }), prompt: text, custom: true }]
       : actions;
   },
-  render: (a) => ({ title: a.name, detail: a.custom ? "自訂指示" : undefined, icon: "sparkles" }),
+  render: (a) => ({ title: a.name, detail: a.custom ? t("自訂指示") : undefined, icon: "sparkles" }),
   pick: (a) => void ai?.runAction(a).catch(reportError),
 });
 
@@ -3259,9 +3292,9 @@ const aiPicker = new Picker<QuickAction & { custom?: boolean }>({
 const RECENT_LIMITS = { files: 10, folders: 5 } as const;
 
 const recentPicker = new Picker<{ path: string; folder: boolean }>({
-  label: "最近開啟",
-  placeholder: "輸入檔名或資料夾名稱",
-  empty: "還沒有最近開啟的檔案或資料夾。",
+  label: t("最近開啟"),
+  placeholder: t("輸入檔名或資料夾名稱"),
+  empty: t("還沒有最近開啟的檔案或資料夾。"),
   async query(q) {
     if (!desktop) return [];
     const { files, folders } = await desktop.recent();
@@ -3274,7 +3307,7 @@ const recentPicker = new Picker<{ path: string; folder: boolean }>({
   },
   render: (i) => ({
     title: basename(i.path) || i.path,
-    detail: `${i.folder ? "資料夾 · " : ""}${displayPath(dirname(i.path))}`,
+    detail: i.folder ? t("資料夾 · {dir}", { dir: displayPath(dirname(i.path)) }) : displayPath(dirname(i.path)),
     icon: i.folder ? "folder" : "file-text",
   }),
   pick: (i) => void (i.folder ? openRecentFolder(i.path) : openPath(i.path)).catch(reportError),
@@ -3283,9 +3316,9 @@ const recentPicker = new Picker<{ path: string; folder: boolean }>({
 // ---- 本機版本記錄（E12） ------------------------------------------------------
 
 const historyPicker = new Picker<FileVersion & { path: string }>({
-  label: "版本記錄",
-  placeholder: "選擇一個版本，和目前的內容比較",
-  empty: "這個檔案還沒有版本記錄。存檔時會自動保存。",
+  label: t("版本記錄"),
+  placeholder: t("選擇一個版本，和目前的內容比較"),
+  empty: t("這個檔案還沒有版本記錄。存檔時會自動保存。"),
   async query(q) {
     const path = fileHandle?.path;
     if (!desktop || !path) return [];
@@ -3296,7 +3329,10 @@ const historyPicker = new Picker<FileVersion & { path: string }>({
   },
   render: (v) => ({
     title: versionTitle(v.id),
-    detail: `${v.kind === "disk" ? `存檔前${storeName(v.path)}上的內容 · ` : ""}${sizeLabel(v.size)}`,
+    detail:
+      v.kind === "disk"
+        ? t("存檔前{store}上的內容 · {size}", { store: storeName(v.path), size: sizeLabel(v.size) })
+        : sizeLabel(v.size),
     icon: "history",
   }),
   pick: (v) => void compareWithVersion(v).catch(reportError),
@@ -3307,20 +3343,20 @@ async function compareWithVersion(v: FileVersion & { path: string }): Promise<vo
   const text = await desktop.historyRead(v.path, v.id);
   if (review.active) review.finish();
   const started = review.start(text, {
-    title: `與 ${versionTitle(v.id)} 的版本比較`,
-    hint: "「採用舊版」會把那一段換回舊版的內容，可以用 Ctrl+Z 復原；處理完記得存檔",
-    acceptLabel: "採用舊版",
-    rejectLabel: "保留目前",
+    title: t("與 {version} 的版本比較", { version: versionTitle(v.id) }),
+    hint: t("「採用舊版」會把那一段換回舊版的內容，可以用 Ctrl+Z 復原；處理完記得存檔"),
+    acceptLabel: t("採用舊版"),
+    rejectLabel: t("保留目前"),
   });
-  if (!started) toast("這個版本和目前的內容相同。");
+  if (!started) toast(t("這個版本和目前的內容相同。"));
 }
 
 // ---- Git：檔案的提交歷史、網頁連結 --------------------------------------------
 
 const commitPicker = new Picker<FileCommit & { path: string }>({
-  label: "提交歷史",
-  placeholder: "選一次提交，和目前的內容比較",
-  empty: "這個檔案還沒有提交過",
+  label: t("提交歷史"),
+  placeholder: t("選一次提交，和目前的內容比較"),
+  empty: t("這個檔案還沒有提交過"),
   async query(q) {
     const path = fileHandle?.path;
     if (!desktop || !path) return [];
@@ -3331,7 +3367,7 @@ const commitPicker = new Picker<FileCommit & { path: string }>({
       .filter((c) => !needle || `${c.summary} ${c.author} ${c.short}`.toLowerCase().includes(needle));
   },
   render: (c) => ({
-    title: c.summary || "（沒有說明）",
+    title: c.summary || t("（沒有說明）"),
     detail: [c.short, c.author, versionTitle(c.time * 1000)].filter(Boolean).join(" · "),
     icon: "git-commit-horizontal",
   }),
@@ -3343,12 +3379,12 @@ async function compareWithCommit(c: FileCommit & { path: string }): Promise<void
   const text = await desktop.gitFileAt(c.path, c.id);
   if (review.active) review.finish();
   const started = review.start(text, {
-    title: `與提交 ${c.short}（${c.summary}）的版本比較`,
-    hint: "「採用這一版」會把那一段換回這次提交時的內容，可以用 Ctrl+Z 復原；處理完記得存檔",
-    acceptLabel: "採用這一版",
-    rejectLabel: "保留目前",
+    title: t("與提交 {commit}（{summary}）的版本比較", { commit: c.short, summary: c.summary }),
+    hint: t("「採用這一版」會把那一段換回這次提交時的內容，可以用 Ctrl+Z 復原；處理完記得存檔"),
+    acceptLabel: t("採用這一版"),
+    rejectLabel: t("保留目前"),
   });
-  if (!started) toast("這次提交時的內容和目前相同。");
+  if (!started) toast(t("這次提交時的內容和目前相同。"));
 }
 
 /** 目前檔案在 GitHub／Azure DevOps 網頁上的網址；有選取文字時標示那幾行。 */
@@ -3365,7 +3401,7 @@ async function webLink(): Promise<string | null> {
 
 async function openOnWeb(): Promise<void> {
   if (fileHandle && !active.dirty && gitPanel?.status?.branch?.ahead) {
-    toast("這個檔案還有提交沒有推送，網頁上看到的可能是舊的內容。");
+    toast(t("這個檔案還有提交沒有推送，網頁上看到的可能是舊的內容。"));
   }
   const url = await webLink();
   if (url) await desktop!.openExternal(url);
@@ -3375,7 +3411,7 @@ async function copyWebLink(): Promise<void> {
   const url = await webLink();
   if (!url) return;
   await navigator.clipboard.writeText(url);
-  toast(url.includes("#L") || url.includes("&line=") ? "已複製連結（含選取的行號）" : "已複製連結");
+  toast(url.includes("#L") || url.includes("&line=") ? t("已複製連結（含選取的行號）") : t("已複製連結"));
 }
 
 // ---- Git：合併衝突、分支、Pull Request；GitHub Pages、Gist ---------------------
@@ -3392,12 +3428,12 @@ async function resolveMergeConflict(path: string, theirs: string): Promise<void>
   if (fileHandle?.path !== path) return;
   if (review.active) review.finish();
   const started = review.start(theirs, {
-    title: `合併衝突：「${basename(path)}」`,
-    hint: "每一段選「採用遠端」或「保留本機」，處理完存檔，再到原始碼控制按「完成合併」",
-    acceptLabel: "採用遠端",
-    rejectLabel: "保留本機",
+    title: t("合併衝突：「{name}」", { name: basename(path) }),
+    hint: t("每一段選「採用遠端」或「保留本機」，處理完存檔，再到原始碼控制按「完成合併」"),
+    acceptLabel: t("採用遠端"),
+    rejectLabel: t("保留本機"),
   });
-  if (!started) toast("這個檔案已經處理好了，存檔後按「完成合併」。");
+  if (!started) toast(t("這個檔案已經處理好了，存檔後按「完成合併」。"));
   showPanel("git", false);
 }
 
@@ -3412,19 +3448,19 @@ async function switchBranch(): Promise<void> {
     ...b.remote.map((name) => ({ name, kind: "remote" as const })),
   ];
   new Picker<BranchChoice>({
-    label: "切換分支",
-    placeholder: `目前在「${b.current ?? "（未知）"}」，選要切換的分支`,
-    empty: "找不到符合的分支",
+    label: t("切換分支"),
+    placeholder: t("目前在「{branch}」，選要切換的分支", { branch: b.current ?? t("（未知）") }),
+    empty: t("找不到符合的分支"),
     query: (q) => {
       const needle = q.trim().toLowerCase();
       return items.filter((i) => i.kind === "new" || !needle || i.name.toLowerCase().includes(needle));
     },
     render: (i) =>
       i.kind === "new"
-        ? { title: "建立新分支…", detail: "從目前的提交建立，並切換過去", icon: "plus" }
+        ? { title: t("建立新分支…"), detail: t("從目前的提交建立，並切換過去"), icon: "plus" }
         : {
             title: i.name,
-            detail: i.name === b.current ? "目前的分支" : i.kind === "remote" ? "遠端的分支（會在本機建立）" : "",
+            detail: i.name === b.current ? t("目前的分支") : i.kind === "remote" ? t("遠端的分支（會在本機建立）") : "",
             icon: "git-branch",
           },
     pick: (i) => void (i.kind === "new" ? createBranch() : checkoutBranch(i.name)).catch(reportError),
@@ -3434,7 +3470,7 @@ async function switchBranch(): Promise<void> {
 async function checkoutBranch(name: string): Promise<void> {
   if (!desktop) return;
   if (docs.some((d) => d.dirty)) {
-    toast("有分頁還沒存檔，請先存檔再切換分支。", { tone: "error" });
+    toast(t("有分頁還沒存檔，請先存檔再切換分支。"), { tone: "error" });
     return;
   }
   toast(await desktop.gitCheckout(name), { tone: "success" });
@@ -3444,7 +3480,7 @@ async function checkoutBranch(name: string): Promise<void> {
 
 async function createBranch(): Promise<string | null> {
   if (!desktop) return null;
-  const name = await askText("建立新分支", "分支名稱（例如 draft、fix-typo，不能有空白）：", "", "建立");
+  const name = await askText(t("建立新分支"), t("分支名稱（例如 draft、fix-typo，不能有空白）："), "", t("建立"));
   if (!name?.trim()) return null;
   toast(await desktop.gitCreateBranch(name.trim()), { tone: "success" });
   await gitPanel?.refresh();
@@ -3456,7 +3492,7 @@ async function createPullRequest(): Promise<void> {
   const status = gitPanel?.status;
   if (!desktop || !status?.repo) return;
   if (status.changes.length) {
-    toast("還有未提交的變更，請先提交再建立 Pull Request。");
+    toast(t("還有未提交的變更，請先提交再建立 Pull Request。"));
     showPanel("git");
     return;
   }
@@ -3465,23 +3501,23 @@ async function createPullRequest(): Promise<void> {
   if (/^(main|master|develop|trunk)$/i.test(branch)) {
     const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     newBranch = await askText(
-      "建立 Pull Request",
-      `目前在「${branch}」。Pull Request 需要另一個分支，會用這個名稱建立新分支並推送：`,
+      t("建立 Pull Request"),
+      t("目前在「{branch}」。Pull Request 需要另一個分支，會用這個名稱建立新分支並推送：", { branch }),
       `update-${stamp}`,
-      "下一步",
+      t("下一步"),
     );
     if (!newBranch?.trim()) return;
   }
-  const title = await askText("建立 Pull Request", "標題：", "", "建立");
+  const title = await askText(t("建立 Pull Request"), t("標題："), "", t("建立"));
   if (!title?.trim()) return;
-  const wait = toast("正在推送並建立 Pull Request…", { duration: 600000 });
+  const wait = toast(t("正在推送並建立 Pull Request…"), { duration: 600000 });
   try {
-    const url = await desktop.gitCreatePr(title.trim(), "由 oMarker 建立", newBranch?.trim() || null);
+    const url = await desktop.gitCreatePr(title.trim(), t("由 oMarker 建立"), newBranch?.trim() || null);
     wait.dismiss();
-    toast("已建立 Pull Request", {
+    toast(t("已建立 Pull Request"), {
       tone: "success",
       duration: 15000,
-      action: { label: "在瀏覽器開啟", run: () => void desktop!.openExternal(url) },
+      action: { label: t("在瀏覽器開啟"), run: () => void desktop!.openExternal(url) },
     });
   } catch (e) {
     wait.dismiss();
@@ -3495,22 +3531,22 @@ async function createPullRequest(): Promise<void> {
 async function publishPages(): Promise<void> {
   if (!desktop) return;
   const ok = await choose(
-    "發佈成網站（GitHub Pages）",
-    "會把這個儲存庫預設分支的內容發佈成網站，所有人都看得到（就算儲存庫是私人的）。Markdown 會自動轉成網頁，README.md 或 index.md 是首頁。第一次發佈大約要一兩分鐘才看得到。",
+    t("發佈成網站（GitHub Pages）"),
+    t("會把這個儲存庫預設分支的內容發佈成網站，所有人都看得到（就算儲存庫是私人的）。Markdown 會自動轉成網頁，README.md 或 index.md 是首頁。第一次發佈大約要一兩分鐘才看得到。"),
     [
-      { id: "cancel", label: "取消" },
-      { id: "go", label: "發佈", primary: true },
+      { id: "cancel", label: t("取消") },
+      { id: "go", label: t("發佈"), primary: true },
     ],
   );
   if (ok !== "go") return;
-  const wait = toast("正在設定 GitHub Pages…", { duration: 60000 });
+  const wait = toast(t("正在設定 GitHub Pages…"), { duration: 60000 });
   try {
     const url = await desktop.githubPages();
     wait.dismiss();
-    toast(`網站網址：${url.replace(/^https:\/\//, "")}（之後推送就會自動更新）`, {
+    toast(t("網站網址：{url}（之後推送就會自動更新）", { url: url.replace(/^https:\/\//, "") }), {
       tone: "success",
       duration: 20000,
-      action: { label: "開啟網站", run: () => void desktop!.openExternal(url) },
+      action: { label: t("開啟網站"), run: () => void desktop!.openExternal(url) },
     });
   } catch (e) {
     wait.dismiss();
@@ -3524,28 +3560,30 @@ async function shareGist(): Promise<void> {
   const sel = editor.view.state.selection.main;
   const content = sel.empty ? editor.text : editor.view.state.sliceDoc(sel.from, sel.to);
   if (!content.trim()) {
-    toast("沒有內容可以分享。");
+    toast(t("沒有內容可以分享。"));
     return;
   }
   const visibility = await choose(
-    "分享成 Gist",
-    `會把${sel.empty ? `整份「${fileName}」` : "選取的內容"}上傳到你的 GitHub Gist，產生一個可以分享的網址。`,
+    t("分享成 Gist"),
+    sel.empty
+      ? t("會把整份「{name}」上傳到你的 GitHub Gist，產生一個可以分享的網址。", { name: fileName })
+      : t("會把選取的內容上傳到你的 GitHub Gist，產生一個可以分享的網址。"),
     [
-      { id: "cancel", label: "取消" },
-      { id: "public", label: "公開（所有人都找得到）" },
-      { id: "secret", label: "秘密（知道網址的人才看得到）", primary: true },
+      { id: "cancel", label: t("取消") },
+      { id: "public", label: t("公開（所有人都找得到）") },
+      { id: "secret", label: t("秘密（知道網址的人才看得到）"), primary: true },
     ],
   );
   if (visibility !== "public" && visibility !== "secret") return;
-  const wait = toast("正在上傳…", { duration: 60000 });
+  const wait = toast(t("正在上傳…"), { duration: 60000 });
   try {
     const url = await desktop.githubGist(fileName, content, stem(fileName), visibility === "public");
     wait.dismiss();
     await navigator.clipboard.writeText(url).catch(() => {});
-    toast("已分享成 Gist，網址已複製", {
+    toast(t("已分享成 Gist，網址已複製"), {
       tone: "success",
       duration: 15000,
-      action: { label: "在瀏覽器開啟", run: () => void desktop!.openExternal(url) },
+      action: { label: t("在瀏覽器開啟"), run: () => void desktop!.openExternal(url) },
     });
   } catch (e) {
     wait.dismiss();
@@ -3558,18 +3596,18 @@ function showExternalChanges(original: string, current: string): boolean {
   return review.start(current, {
     original,
     source: "external",
-    title: `「${fileName}」被外部程式修改了`,
-    hint: "逐段檢查改了哪裡；選「還原」後記得存檔",
-    acceptLabel: "保留",
-    rejectLabel: "還原",
+    title: t("「{name}」被外部程式修改了", { name: fileName }),
+    hint: t("逐段檢查改了哪裡；選「還原」後記得存檔"),
+    acceptLabel: t("保留"),
+    rejectLabel: t("還原"),
   });
 }
 
 commands.register(
   {
     id: "toggle-terminal",
-    title: "顯示／隱藏終端機",
-    group: "檢視",
+    title: t("顯示／隱藏終端機"),
+    group: t("檢視"),
     icon: "square-terminal",
     keys: "Mod-`",
     when: () => !!terminal,
@@ -3577,14 +3615,14 @@ commands.register(
   },
   {
     id: "ai-actions",
-    title: "AI：處理選取的文字…",
-    group: "編輯",
+    title: t("AI：處理選取的文字…"),
+    group: t("編輯"),
     icon: "sparkles",
     keys: "Mod-j",
     when: () => !!ai?.enabled && view !== "preview",
     run() {
       const { from, to } = editor.view.state.selection.main;
-      if (from === to) toast("請先選取要處理的文字。");
+      if (from === to) toast(t("請先選取要處理的文字。"));
       else aiPicker.open();
     },
   },
@@ -3592,21 +3630,21 @@ commands.register(
     [
       [
         "git-commit",
-        "Git：提交變更…",
+        t("Git：提交變更…"),
         "git-commit-horizontal",
         () => {
           showPanel("git");
           gitPanel?.focusMessage();
         },
       ],
-      ["git-pull", "Git：拉取", "arrow-down-to-line", () => gitPanel?.pull()],
-      ["git-push", "Git：推送", "arrow-up-from-line", () => gitPanel?.push()],
+      ["git-pull", t("Git：拉取"), "arrow-down-to-line", () => gitPanel?.pull()],
+      ["git-push", t("Git：推送"), "arrow-up-from-line", () => gitPanel?.push()],
     ] as const
   ).map(
     ([id, title, iconName, run]): Command => ({
       id,
       title,
-      group: "檔案",
+      group: t("檔案"),
       icon: iconName,
       when: () => !!gitPanel?.status?.repo,
       run: () => void run(),
@@ -3614,24 +3652,24 @@ commands.register(
   ),
   ...(
     [
-      ["github-open", "GitHub：從 GitHub 開啟儲存庫…", "git-branch", () => github?.openRepo(), () => true],
-      ["github-publish", "GitHub：把這個資料夾上傳到 GitHub…", "arrow-up-from-line", () => github?.publish(), () => !!workspaceRoot && !isRemote(workspaceRoot.path)],
-      ["github-login", "GitHub：登入", "shield-check", () => github?.login(), () => !github?.account],
-      ["github-logout", "GitHub：登出", "x", () => github?.logout(), () => !!github?.account],
-      ["git-branch-switch", "Git：切換或建立分支…", "git-branch", () => void switchBranch().catch(reportError), () => !!gitPanel?.status?.repo && !gitPanel.status.merging],
-      ["git-create-pr", "Git：建立 Pull Request…", "git-pull-request", () => void createPullRequest().catch(reportError), () => !!gitPanel?.status?.remote],
-      ["git-merge-finish", "Git：完成合併", "git-merge", () => void gitPanel?.finishMerge(), () => !!gitPanel?.status?.merging],
-      ["github-pages", "GitHub：發佈成網站（GitHub Pages）…", "globe", () => void publishPages(), () => !!github?.account && !!issuesRepo],
-      ["github-gist", "GitHub：分享成 Gist…", "share-2", () => void shareGist(), () => !!github?.account],
-      ["ado-open", "Azure DevOps：開啟儲存庫或 Wiki…", "server", () => ado?.openRepo(), () => !!ado],
-      ["ado-items", "Azure DevOps：工作項目", "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
-      ["ado-connect", "Azure DevOps：連線設定…", "shield-check", () => settingsDialog.open("Git"), () => !!ado],
+      ["github-open", t("GitHub：從 GitHub 開啟儲存庫…"), "git-branch", () => github?.openRepo(), () => true],
+      ["github-publish", t("GitHub：把這個資料夾上傳到 GitHub…"), "arrow-up-from-line", () => github?.publish(), () => !!workspaceRoot && !isRemote(workspaceRoot.path)],
+      ["github-login", t("GitHub：登入"), "shield-check", () => github?.login(), () => !github?.account],
+      ["github-logout", t("GitHub：登出"), "x", () => github?.logout(), () => !!github?.account],
+      ["git-branch-switch", t("Git：切換或建立分支…"), "git-branch", () => void switchBranch().catch(reportError), () => !!gitPanel?.status?.repo && !gitPanel.status.merging],
+      ["git-create-pr", t("Git：建立 Pull Request…"), "git-pull-request", () => void createPullRequest().catch(reportError), () => !!gitPanel?.status?.remote],
+      ["git-merge-finish", t("Git：完成合併"), "git-merge", () => void gitPanel?.finishMerge(), () => !!gitPanel?.status?.merging],
+      ["github-pages", t("GitHub：發佈成網站（GitHub Pages）…"), "globe", () => void publishPages(), () => !!github?.account && !!issuesRepo],
+      ["github-gist", t("GitHub：分享成 Gist…"), "share-2", () => void shareGist(), () => !!github?.account],
+      ["ado-open", t("Azure DevOps：開啟儲存庫或 Wiki…"), "server", () => ado?.openRepo(), () => !!ado],
+      ["ado-items", t("Azure DevOps：工作項目"), "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
+      ["ado-connect", t("Azure DevOps：連線設定…"), "shield-check", () => settingsDialog.open("Git"), () => !!ado],
     ] as const
   ).map(
     ([id, title, iconName, run, when]): Command => ({
       id,
       title,
-      group: "檔案",
+      group: t("檔案"),
       icon: iconName,
       when: () => !!github && when(),
       run: () => void run(),
@@ -3639,56 +3677,56 @@ commands.register(
   ),
   {
     id: "open-recent",
-    title: "最近開啟…",
-    group: "檔案",
+    title: t("最近開啟…"),
+    group: t("檔案"),
     icon: "clock",
     when: () => !!desktop,
     run: () => recentPicker.open(),
   },
   {
     id: "git-file-history",
-    title: "Git：這個檔案的提交歷史…",
-    group: "檔案",
+    title: t("Git：這個檔案的提交歷史…"),
+    group: t("檔案"),
     icon: "git-commit-horizontal",
     when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.repo,
     run: () => commitPicker.open(),
   },
   {
     id: "git-open-web",
-    title: "Git：在網頁上開啟這個檔案（GitHub／Azure DevOps）",
-    group: "檔案",
+    title: t("Git：在網頁上開啟這個檔案（GitHub／Azure DevOps）"),
+    group: t("檔案"),
     icon: "external-link",
     when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.remote,
     run: () => void openOnWeb().catch(reportError),
   },
   {
     id: "git-copy-link",
-    title: "Git：複製這個檔案的網頁連結",
-    group: "檔案",
+    title: t("Git：複製這個檔案的網頁連結"),
+    group: t("檔案"),
     icon: "link",
     when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.remote,
     run: () => void copyWebLink().catch(reportError),
   },
   {
     id: "history",
-    title: "版本記錄…",
-    group: "檔案",
+    title: t("版本記錄…"),
+    group: t("檔案"),
     icon: "history",
     when: () => !!desktop && !!fileHandle?.path,
     run: () => historyPicker.open(),
   },
   {
     id: "check-update",
-    title: "檢查更新",
-    group: "說明",
+    title: t("檢查更新"),
+    group: t("說明"),
     icon: "refresh-cw",
     when: () => !!updater,
     run: () => updater?.check(),
   },
   {
     id: "ai-cancel",
-    title: "AI：取消處理中的動作",
-    group: "編輯",
+    title: t("AI：取消處理中的動作"),
+    group: t("編輯"),
     icon: "circle-stop",
     when: () => !!ai?.running,
     run: () => ai?.cancel(),
@@ -3696,8 +3734,8 @@ commands.register(
   ...(["claude", "codex"] as const).map(
     (tool): Command => ({
       id: `start-${tool}`,
-      title: `AI：在終端機啟動 ${tool === "claude" ? "Claude Code" : "Codex"}`,
-      group: "檢視",
+      title: t("AI：在終端機啟動 {tool}", { tool: tool === "claude" ? "Claude Code" : "Codex" }),
+      group: t("檢視"),
       icon: "sparkles",
       when: () => !!terminal && !!ai?.enabled && !!aiFound[tool],
       run: () => void terminal?.start(tool),
@@ -3705,8 +3743,8 @@ commands.register(
   ),
   {
     id: "insert-symbol",
-    title: "插入符號…",
-    group: "編輯",
+    title: t("插入符號…"),
+    group: t("編輯"),
     icon: "omega",
     keys: "Mod-Alt-s",
     when: () => view !== "preview",
@@ -3714,19 +3752,19 @@ commands.register(
   },
   ...(
     [
-      ["cut", "剪下", "scissors", "Mod-x", () => copySelection(true)],
-      ["copy", "複製", "copy", "Mod-c", () => copySelection(false)],
-      ["paste", "貼上", "clipboard-paste", "Mod-v", () => pasteFromClipboard(false)],
-      ["paste-plain", "貼上純文字", "clipboard-type", "Mod-Shift-v", () => pasteFromClipboard(true)],
-      ["select-all", "全選", "text-cursor", "Mod-a", () => editor.exec(selectAll)],
-      ["indent-more", "增加縮排", "list-indent-increase", "Tab", () => editor.exec(indentMore)],
-      ["indent-less", "減少縮排", "list-indent-decrease", "Shift-Tab", () => editor.exec(indentLess)],
+      ["cut", t("剪下"), "scissors", "Mod-x", () => copySelection(true)],
+      ["copy", t("複製"), "copy", "Mod-c", () => copySelection(false)],
+      ["paste", t("貼上"), "clipboard-paste", "Mod-v", () => pasteFromClipboard(false)],
+      ["paste-plain", t("貼上純文字"), "clipboard-type", "Mod-Shift-v", () => pasteFromClipboard(true)],
+      ["select-all", t("全選"), "text-cursor", "Mod-a", () => editor.exec(selectAll)],
+      ["indent-more", t("增加縮排"), "list-indent-increase", "Tab", () => editor.exec(indentMore)],
+      ["indent-less", t("減少縮排"), "list-indent-decrease", "Shift-Tab", () => editor.exec(indentLess)],
     ] as const
   ).map(
     ([id, title, iconName, shownKeys, run]): Command => ({
       id,
       title,
-      group: "編輯",
+      group: t("編輯"),
       icon: iconName,
       shownKeys,
       when: () =>
@@ -3736,8 +3774,8 @@ commands.register(
   ),
   {
     id: "send-to-terminal-ai",
-    title: "AI：把選取範圍傳給終端機中的 Claude Code／Codex",
-    group: "編輯",
+    title: t("AI：把選取範圍傳給終端機中的 Claude Code／Codex"),
+    group: t("編輯"),
     icon: "square-terminal",
     keys: "Mod-Alt-j",
     when: () => terminalAiReady() && view !== "preview",
@@ -3745,16 +3783,16 @@ commands.register(
   },
   {
     id: "ai-settings",
-    title: "AI 協作設定…",
-    group: "說明",
+    title: t("AI 協作設定…"),
+    group: t("說明"),
     icon: "sparkles",
     when: () => !!desktop,
-    run: () => settingsDialog.open("AI 協作"),
+    run: () => settingsDialog.open(t("AI 協作")),
   },
   {
     id: "git-claude-workflow",
-    title: "Git：加入 Claude Code 自動校對（GitHub Actions）…",
-    group: "檔案",
+    title: t("Git：加入 Claude Code 自動校對（GitHub Actions）…"),
+    group: t("檔案"),
     icon: "git-branch",
     when: () => !!gitPanel?.status?.repo && !!workspaceRoot && !isRemote(workspaceRoot.path),
     run: () => addClaudeWorkflow(),
@@ -3773,7 +3811,7 @@ window.addEventListener(
     if (target.closest(".terminal-panel") && !TERMINAL_KEYS.has(cmd.id)) return;
     const inField =
       (target.matches("input, select, textarea") && !target.closest(".cm-editor")) || target.isContentEditable && !!target.closest(".cm-lp-table");
-    if (inField && cmd.group === "格式") return;
+    if (inField && cmd.group === t("格式")) return;
     e.preventDefault();
     e.stopPropagation();
     commands.run(cmd.id).catch(reportError);
@@ -3783,13 +3821,13 @@ window.addEventListener(
 
 function reportError(e: unknown): void {
   console.error(e);
-  toast(`操作失敗：${e instanceof Error ? e.message : e}`, { tone: "error" });
+  toast(t("操作失敗：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });
 }
 
 // ---- 工具列 -------------------------------------------------------------
 
 function withKeys(title: string, keys?: string): string {
-  return keys ? `${title}（${formatKeys(keys)}）` : title;
+  return keys ? t("{title}（{keys}）", { title, keys: formatKeys(keys) }) : title;
 }
 
 document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => {
@@ -3811,13 +3849,13 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "history",
   "git-file-history",
   "-",
-  { label: "匯出", icon: "download", items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich"] },
+  { label: t("匯出"), icon: "download", items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich"] },
   "fix-terms",
   "s2t",
   "slideshow",
   "-",
-  { label: "AI 與終端機", icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
-  { label: "主題", icon: "sun", items: ["theme-system", "theme-light", "theme-dark"] },
+  { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
+  { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark"] },
   "palette",
   "settings",
 ]);
@@ -3854,8 +3892,8 @@ function formatMenuButton(id: string, label: string, iconName: string, entries: 
   setupMenu(b, commands, entries);
   return b;
 }
-const headingMenu = formatMenuButton("fmt-heading", "標題", "heading", ["h1", "h2", "h3"]);
-const insertMenu = formatMenuButton("fmt-insert", "插入", "plus", [
+const headingMenu = formatMenuButton("fmt-heading", t("標題"), "heading", ["h1", "h2", "h3"]);
+const insertMenu = formatMenuButton("fmt-insert", t("插入"), "plus", [
   "table",
   "code-block",
   "math-block",
@@ -3891,13 +3929,13 @@ function separator(className: string): HTMLElement {
 function formatBubble(): HTMLElement {
   const bar = document.createElement("div");
   bar.setAttribute("role", "toolbar");
-  bar.setAttribute("aria-label", "格式");
+  bar.setAttribute("aria-label", t("格式"));
   bar.append(...["bold", "italic", "underline", "strike", "highlight", "code", "link"].map((id) => commandButton(id)));
   const more = document.createElement("button");
   more.type = "button";
   more.className = "btn icon-only";
-  more.title = "更多格式（上標、下標、清除格式、符號）";
-  more.setAttribute("aria-label", "更多格式");
+  more.title = t("更多格式（上標、下標、清除格式、符號）");
+  more.setAttribute("aria-label", t("更多格式"));
   more.append(icon("ellipsis"));
   more.addEventListener("mousedown", (e) => e.preventDefault());
   more.addEventListener("click", () => moreFormatMenu.open(more.getBoundingClientRect()));
@@ -3960,28 +3998,28 @@ const insertMenuUi = floatingMenu("insert-anchor", [
 ]);
 const openInsertMenu = (at: DOMRect) => insertMenuUi.open(at);
 
-/** 斜線指令的項目：插入選單的內容，加上篩選用的英文與別名。 */
+/** 斜線指令的項目：插入選單的內容，加上篩選用的英文與別名（中文別名不是介面文字，兩種語言都能用來篩選）。 */
 const SLASH_KEYWORDS: Record<string, string> = {
-  h1: "h1 heading 大標題",
+  h1: "h1 heading 大標題", // i18n-ignore
   h2: "h2 heading",
   h3: "h3 heading",
-  bullet: "ul list bullet 清單",
-  ordered: "ol list number 數字 編號",
-  task: "todo task checkbox 待辦 勾選",
-  quote: "quote blockquote 引言",
-  table: "table 表",
-  "code-block": "code 程式",
-  "math-block": "math latex 數學 公式",
-  "mermaid-block": "mermaid diagram flow 圖",
-  "insert-image": "image img picture 照片",
-  hr: "hr line divider 分隔",
-  "insert-toc": "toc 目錄",
-  "insert-symbol": "symbol 符號 特殊",
-  "insert-today": "date today 日期 今天",
+  bullet: "ul list bullet 清單", // i18n-ignore
+  ordered: "ol list number 數字 編號", // i18n-ignore
+  task: "todo task checkbox 待辦 勾選", // i18n-ignore
+  quote: "quote blockquote 引言", // i18n-ignore
+  table: "table 表", // i18n-ignore
+  "code-block": "code 程式", // i18n-ignore
+  "math-block": "math latex 數學 公式", // i18n-ignore
+  "mermaid-block": "mermaid diagram flow 圖", // i18n-ignore
+  "insert-image": "image img picture 照片", // i18n-ignore
+  hr: "hr line divider 分隔", // i18n-ignore
+  "insert-toc": "toc 目錄", // i18n-ignore
+  "insert-symbol": "symbol 符號 特殊", // i18n-ignore
+  "insert-today": "date today 日期 今天", // i18n-ignore
 };
 function slashItems(): SlashItem[] {
   return Object.entries(SLASH_KEYWORDS).flatMap(([id, keywords]) => {
-    if (id === "insert-today") return [{ id, title: "今天的日期", keywords }];
+    if (id === "insert-today") return [{ id, title: t("今天的日期"), keywords }];
     const cmd = commands.get(id);
     if (!cmd || !(cmd.when?.() ?? true)) return [];
     const keys = cmd.keys ?? cmd.shownKeys;
@@ -4008,7 +4046,7 @@ const tabMenu = floatingMenu(
     "tab-close-right",
     "tab-close-saved",
     "-",
-    { label: "固定分頁", icon: "pin", checked: () => !!menuTab().pinned, run: () => setPinned(menuTab(), !menuTab().pinned) },
+    { label: t("固定分頁"), icon: "pin", checked: () => !!menuTab().pinned, run: () => setPinned(menuTab(), !menuTab().pinned) },
     "-",
     "tab-copy-path",
     "tab-reveal",
@@ -4060,14 +4098,14 @@ async function startSlideshow(fromCursor: boolean): Promise<void> {
   await new Promise((r) => setTimeout(r, 120));
   const slides = splitSlides(previewEl);
   if (!slides.length) {
-    toast("文件是空的，沒有可以播放的內容。");
+    toast(t("文件是空的，沒有可以播放的內容。"));
     return;
   }
   slideshow ??= new Slideshow();
   const line = editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number;
   slideshow.open(slides, fromCursor ? slideAtLine(slides, line) : 0, () => editor.view.focus());
   if (slides.length === 1 && !editor.text.includes("\n---")) {
-    toast("用一行 --- 把內容分成多頁；沒有分隔線時，每個一級、二級標題各一頁。", { duration: 6000 });
+    toast(t("用一行 --- 把內容分成多頁；沒有分隔線時，每個一級、二級標題各一頁。"), { duration: 6000 });
   }
 }
 
@@ -4109,7 +4147,7 @@ async function importDocx(): Promise<void> {
   let file: File | null = null;
   if (window.showOpenFilePicker) {
     try {
-      const [handle] = await window.showOpenFilePicker({ types: [{ description: "Word 文件", accept: { [DOCX_TYPE]: [".docx"] } }] });
+      const [handle] = await window.showOpenFilePicker({ types: [{ description: t("Word 文件"), accept: { [DOCX_TYPE]: [".docx"] } }] });
       file = await handle.getFile();
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
@@ -4123,7 +4161,7 @@ const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingm
 
 /** 轉換 Word 檔：`mdPath` 是要存成的 Markdown 檔（桌面版選檔匯入），null 時開成未存檔的新分頁、圖片內嵌。 */
 async function importDocxData(name: string, data: ArrayBuffer, mdPath: string | null): Promise<void> {
-  toast(`正在轉換「${name}」…`);
+  toast(t("正在轉換「{name}」…", { name }));
   const { docxToMarkdown, imageExtension } = await import("./docx-import.ts");
   let skipped = 0;
   const result = await docxToMarkdown(data, async (bytes, type) => {
@@ -4145,8 +4183,8 @@ async function importDocxData(name: string, data: ArrayBuffer, mdPath: string | 
     return `data:${type};base64,${bytesToBase64(bytes)}`;
   });
   const notes = [
-    skipped ? `${skipped} 張圖片的格式不支援（例如 EMF 向量圖），沒有匯入` : "",
-    result.warnings.length ? `有 ${result.warnings.length} 處格式沒辦法完整轉換` : "",
+    skipped ? t("{n} 張圖片的格式不支援（例如 EMF 向量圖），沒有匯入", { n: skipped }) : "",
+    result.warnings.length ? t("有 {n} 處格式沒辦法完整轉換", { n: result.warnings.length }) : "",
   ].filter(Boolean);
   if (mdPath) {
     const out = await saveFile(result.markdown, basename(mdPath), "markdown", desktopHandle(mdPath, basename(mdPath)));
@@ -4155,10 +4193,10 @@ async function importDocxData(name: string, data: ArrayBuffer, mdPath: string | 
     indexStale = true;
     await openPath(mdPath);
     void fileTree?.refresh([dirname(mdPath)]);
-    toast(`已匯入「${name}」，存成「${basename(mdPath)}」。${notes.join("；")}`, { tone: "success", duration: notes.length ? 10000 : undefined });
+    toast(t("已匯入「{name}」，存成「{file}」。{notes}", { name, file: basename(mdPath), notes: notes.join(t("；")) }), { tone: "success", duration: notes.length ? 10000 : undefined });
   } else {
     openDocument(replaceExtension(name, ".md"), result.markdown, null, { kind: "markdown", fromFile: false });
-    toast(`已匯入「${name}」，存檔時再選擇位置。${notes.join("；")}`, { tone: "success", duration: notes.length ? 10000 : undefined });
+    toast(t("已匯入「{name}」，存檔時再選擇位置。{notes}", { name, notes: notes.join(t("；")) }), { tone: "success", duration: notes.length ? 10000 : undefined });
   }
 }
 
@@ -4184,9 +4222,9 @@ async function exportDocx(): Promise<void> {
     name,
     new Uint8Array(await blob.arrayBuffer()),
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "Word 文件",
+    t("Word 文件"),
   );
-  if (saved && desktop) toast(`已匯出「${basename(saved)}」`, { tone: "success" });
+  if (saved && desktop) toast(t("已匯出「{name}」", { name: basename(saved) }), { tone: "success" });
 }
 
 /** 文件有目錄區塊（<!-- toc -->）時，依目前的標題更新（存檔前呼叫）。 */
@@ -4205,31 +4243,31 @@ function insertToc(): void {
   if (text.includes(TOC_START)) {
     const next = updateToc(text, headings);
     if (next !== null) editor.replaceAll(next, { userEvent: "input.toc", isolate: true });
-    toast(next === null ? "目錄已經是最新的。" : "已更新目錄。");
+    toast(next === null ? t("目錄已經是最新的。") : t("已更新目錄。"));
     return;
   }
   editor.exec(insertBlock(tocBlock(headings)));
-  toast("已插入目錄，存檔時會自動更新。");
+  toast(t("已插入目錄，存檔時會自動更新。"));
 }
 
 type TemplateItem = Template & { custom: boolean };
 
 const templatePicker = new Picker<TemplateItem>({
-  label: "從範本新增文件",
-  placeholder: "選擇範本",
-  empty: "沒有符合的範本。",
+  label: t("從範本新增文件"),
+  placeholder: t("選擇範本"),
+  empty: t("沒有符合的範本。"),
   query(q) {
     const all: TemplateItem[] = [
-      ...settings.value.templates.map((t) => ({ ...t, custom: true })),
-      ...BUILTIN_TEMPLATES.map((t) => ({ ...t, custom: false })),
+      ...settings.value.templates.map((tpl) => ({ ...tpl, custom: true })),
+      ...BUILTIN_TEMPLATES.map((tpl) => ({ ...tpl, custom: false })),
     ];
     const needle = q.trim().toLowerCase();
-    return needle ? all.filter((t) => t.name.toLowerCase().includes(needle)) : all;
+    return needle ? all.filter((tpl) => tpl.name.toLowerCase().includes(needle)) : all;
   },
-  render: (t) => ({ title: t.name, detail: t.custom ? "自訂範本" : "內建範本", icon: "layout-template" }),
-  pick(t) {
-    const body = fillTemplate(t.body);
-    const doc = makeDoc({ name: templateFileName(t.name), kind: "markdown", baseline: hash(body) });
+  render: (tpl) => ({ title: tpl.name, detail: tpl.custom ? t("自訂範本") : t("內建範本"), icon: "layout-template" }),
+  pick(tpl) {
+    const body = fillTemplate(tpl.body);
+    const doc = makeDoc({ name: templateFileName(tpl.name), kind: "markdown", baseline: hash(body) });
     saveDraft(doc.id, body);
     addTab(doc);
     editor.view.focus();
@@ -4237,38 +4275,43 @@ const templatePicker = new Picker<TemplateItem>({
 });
 
 const deleteTemplatePicker = new Picker<Template>({
-  label: "刪除自訂範本",
-  placeholder: "選擇要刪除的範本",
-  empty: "還沒有自訂範本。",
-  query: (q) => settings.value.templates.filter((t) => t.name.includes(q.trim())),
-  render: (t) => ({ title: t.name, icon: "x" }),
-  async pick(t) {
-    const ok = await choose("刪除範本？", `要刪除自訂範本「${t.name}」嗎？`, [
-      { id: "delete", label: "刪除", danger: true },
-      { id: "cancel", label: "取消", primary: true },
+  label: t("刪除自訂範本"),
+  placeholder: t("選擇要刪除的範本"),
+  empty: t("還沒有自訂範本。"),
+  query: (q) => settings.value.templates.filter((tpl) => tpl.name.includes(q.trim())),
+  render: (tpl) => ({ title: tpl.name, icon: "x" }),
+  async pick(tpl) {
+    const ok = await choose(t("刪除範本？"), t("要刪除自訂範本「{name}」嗎？", { name: tpl.name }), [
+      { id: "delete", label: t("刪除"), danger: true },
+      { id: "cancel", label: t("取消"), primary: true },
     ]);
     if (ok !== "delete") return;
-    settings.update({ templates: settings.value.templates.filter((x) => x.name !== t.name) });
-    toast(`已刪除範本「${t.name}」`);
+    settings.update({ templates: settings.value.templates.filter((x) => x.name !== tpl.name) });
+    toast(t("已刪除範本「{name}」", { name: tpl.name }));
   },
 });
 
 /** 把目前的文件存成自訂範本（同名時取代）。 */
 async function saveAsTemplate(): Promise<void> {
-  const name = await askText("存成範本", "範本名稱（可以在內容中使用 {{日期}}、{{週次}} 等變數）：", stem(fileName));
+  const name = await askText(
+    t("存成範本"),
+    // 範本變數的名稱是固定的中文，不翻譯。
+    t("範本名稱（可以在內容中使用 {date}、{week} 等變數）：", { date: "{{日期}}", week: "{{週次}}" }), // i18n-ignore
+    stem(fileName),
+  );
   if (!name) return;
   const body = editor.text;
   if (body.length > TEMPLATE_LIMITS.body) {
-    toast("文件太長，無法存成範本。", { tone: "error" });
+    toast(t("文件太長，無法存成範本。"), { tone: "error" });
     return;
   }
-  const others = settings.value.templates.filter((t) => t.name !== name);
+  const others = settings.value.templates.filter((tpl) => tpl.name !== name);
   if (others.length >= TEMPLATE_LIMITS.count) {
-    toast(`自訂範本最多 ${TEMPLATE_LIMITS.count} 個，請先刪除一些。`, { tone: "error" });
+    toast(t("自訂範本最多 {n} 個，請先刪除一些。", { n: TEMPLATE_LIMITS.count }), { tone: "error" });
     return;
   }
   settings.update({ templates: [{ name, body }, ...others] });
-  toast(`已存成範本「${name}」，可以從「⋯」→「從範本新增…」使用`, { tone: "success" });
+  toast(t("已存成範本「{name}」，可以從「⋯」→「從範本新增…」使用", { name }), { tone: "success" });
 }
 
 /**
@@ -4292,10 +4335,15 @@ async function copyRich(): Promise<void> {
       }),
     ]);
   } catch {
-    toast("無法寫入剪貼簿。", { tone: "error" });
+    toast(t("無法寫入剪貼簿。"), { tone: "error" });
     return;
   }
-  toast(`已複製${selected ? "選取範圍" : "整份文件"}的格式文字，可以貼到 Word、Outlook、Teams`, { tone: "success" });
+  toast(
+    selected
+      ? t("已複製選取範圍的格式文字，可以貼到 Word、Outlook、Teams")
+      : t("已複製整份文件的格式文字，可以貼到 Word、Outlook、Teams"),
+    { tone: "success" },
+  );
   editor.view.focus();
 }
 
@@ -4309,7 +4357,7 @@ function diagramImageOptions(): SvgImageOptions {
 /** 放大檢視流程圖（即時預覽中的圖可以從這裡回到原始碼）。 */
 function openDiagram(svg: string, editSource?: () => void): void {
   const image = standaloneSvg(svg, diagramImageOptions());
-  if (image) openLightbox(svgDataUrl(image.svg), "流程圖", editSource);
+  if (image) openLightbox(svgDataUrl(image.svg), t("流程圖"), editSource);
 }
 
 /** 預覽中程式碼區塊的「複製」。 */
@@ -4318,7 +4366,7 @@ async function copyCode(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    toast("無法寫入剪貼簿。", { tone: "error" });
+    toast(t("無法寫入剪貼簿。"), { tone: "error" });
     return false;
   }
 }
@@ -4329,10 +4377,10 @@ async function copyDiagram(svg: string): Promise<void> {
     const png = svgToPng(svg, diagramImageOptions());
     await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
   } catch {
-    toast("無法把流程圖複製成圖片。", { tone: "error" });
+    toast(t("無法把流程圖複製成圖片。"), { tone: "error" });
     return;
   }
-  toast("已把流程圖複製成圖片", { tone: "success" });
+  toast(t("已把流程圖複製成圖片"), { tone: "success" });
 }
 
 /** 選取範圍的文字（多重選取用換行連接）。 */
@@ -4350,7 +4398,7 @@ async function copySelection(cut: boolean): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    toast(`無法寫入剪貼簿，請按 Ctrl+${cut ? "X" : "C"}。`);
+    toast(t("無法寫入剪貼簿，請按 Ctrl+{key}。", { key: cut ? "X" : "C" }));
     return;
   }
   if (cut) editor.view.dispatch(editor.view.state.replaceSelection(""), { userEvent: "delete.cut" });
@@ -4373,7 +4421,7 @@ async function pasteFromClipboard(plain: boolean): Promise<void> {
     }
     if (!data.getData("text/plain")) data.setData("text/plain", await navigator.clipboard.readText());
   } catch {
-    toast(`無法從選單讀取剪貼簿，請按 ${plain ? "Ctrl+Shift+V" : "Ctrl+V"} 貼上。`);
+    toast(t("無法從選單讀取剪貼簿，請按 {keys} 貼上。", { keys: plain ? "Ctrl+Shift+V" : "Ctrl+V" }));
     return;
   }
   if (plain) plainPasteUntil = Date.now() + 1000;
@@ -4517,8 +4565,8 @@ const PREVIEW_WIDTH: Record<Settings["previewWidth"], string> = { narrow: "680px
 const DOC_FONT: Record<Settings["docFont"], string> = {
   sans: "",
   serif:
-    'Georgia, "Times New Roman", "Noto Serif TC", "Source Han Serif TC", "思源宋體", "PMingLiU", "新細明體", "Songti TC", serif',
-  kai: 'Georgia, "Times New Roman", "BiauKai", "DFKai-SB", "標楷體", "TW-Kai", "Kaiti TC", "AR PL UKai TW", serif',
+    'Georgia, "Times New Roman", "Noto Serif TC", "Source Han Serif TC", "思源宋體", "PMingLiU", "新細明體", "Songti TC", serif', // i18n-ignore
+  kai: 'Georgia, "Times New Roman", "BiauKai", "DFKai-SB", "標楷體", "TW-Kai", "Kaiti TC", "AR PL UKai TW", serif', // i18n-ignore
   mono: "var(--font-mono)",
   // 由 docFontCustom 決定（見 applySettings）。
   custom: "",
@@ -4528,14 +4576,14 @@ const DOC_LINE_HEIGHT: Record<Settings["docLineHeight"], string> = { compact: "1
 function toggleSetting(key: "focusMode" | "typewriterMode", label: string): void {
   const on = !settings.value[key];
   settings.update({ [key]: on });
-  toast(`${label}已${on ? "開啟" : "關閉"}`);
+  toast(on ? t("{label}已開啟", { label }) : t("{label}已關閉", { label }));
   editor.view.focus();
 }
 
 function changeFontSize(delta: number): void {
   const size = Math.min(FONT_SIZE_RANGE.max, Math.max(FONT_SIZE_RANGE.min, settings.value.editorFontSize + delta));
   if (size === settings.value.editorFontSize) {
-    toast(delta > 0 ? `已經是最大的字級（${size}px）` : `已經是最小的字級（${size}px）`);
+    toast(delta > 0 ? t("已經是最大的字級（{size}px）", { size }) : t("已經是最小的字級（{size}px）", { size }));
     return;
   }
   settings.update({ editorFontSize: size });
@@ -4586,7 +4634,7 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
 /** 簡體轉繁體：有選取時只轉選取範圍，否則轉整份文件。程式碼與網址不轉。 */
 async function convertToTraditional(ranges?: readonly { from: number; to: number }[]): Promise<void> {
   const doc = active;
-  const loading = window.setTimeout(() => toast("正在載入簡繁轉換詞庫…"), 300);
+  const loading = window.setTimeout(() => toast(t("正在載入簡繁轉換詞庫…")), 300);
   let convert: Convert;
   try {
     convert = await loadConverter();
@@ -4599,13 +4647,16 @@ async function convertToTraditional(ranges?: readonly { from: number; to: number
   const list = targets.length ? targets : [{ from: 0, to: state.doc.length }];
   const changes = list.flatMap((r) => conversionChanges(state.sliceDoc(r.from, r.to), convert, r.from));
   if (!changes.length) {
-    toast("沒有需要轉換的簡體字。", { tone: "success" });
+    toast(t("沒有需要轉換的簡體字。"), { tone: "success" });
     return;
   }
   editor.view.dispatch({ changes, userEvent: "input.s2t" });
-  toast(`已轉成繁體（${targets.length ? "選取範圍" : "整份文件"}，${changes.length} 處；可以按 Ctrl+Z 復原）。`, {
-    tone: "success",
-  });
+  toast(
+    targets.length
+      ? t("已轉成繁體（選取範圍，{n} 處；可以按 Ctrl+Z 復原）。", { n: changes.length })
+      : t("已轉成繁體（整份文件，{n} 處；可以按 Ctrl+Z 復原）。", { n: changes.length }),
+    { tone: "success" },
+  );
 }
 
 /** 貼上的內容看起來是簡體時，提示可以轉成繁體。 */
@@ -4619,10 +4670,10 @@ function onSimplifiedPaste(u: ViewUpdate): void {
   });
   if (!looksSimplified(inserted)) return;
   const doc = active;
-  toast("貼上的內容看起來是簡體中文。", {
+  toast(t("貼上的內容看起來是簡體中文。"), {
     duration: 10000,
     action: {
-      label: "轉成繁體",
+      label: t("轉成繁體"),
       run: () => {
         // 貼上的內容還在原處就只轉它；之後又改過內容時改為轉換整份文件（或選取範圍）。
         const state = editor.view.state;
@@ -4639,15 +4690,19 @@ function fixTerms(): void {
   const fixes = sureFixes(matches);
   const left = matches.length - fixes.length;
   if (fixes.length) editor.view.dispatch({ changes: fixes, userEvent: "input.proofread" });
-  if (!matches.length) toast("沒有找到中國用語、常見錯字或半形標點。", { tone: "success" });
+  if (!matches.length) toast(t("沒有找到中國用語、常見錯字或半形標點。"), { tone: "success" });
   else {
+    const parts = [
+      fixes.length ? t("已修正 {n} 處（可以按 Ctrl+Z 復原）。", { n: fixes.length }) : "",
+      left
+        ? settings.value.termCheck
+          ? t("另有 {n} 處要依文意判斷，已畫上波浪底線，滑鼠移上去可以選擇。", { n: left })
+          : t("另有 {n} 處要依文意判斷；打開設定的「檢查兩國用語與錯字」就會標示出來。", { n: left })
+        : "",
+    ];
+    // 英文的句子之間要空一格。
     toast(
-      (fixes.length ? `已修正 ${fixes.length} 處（可以按 Ctrl+Z 復原）。` : "") +
-        (left
-          ? settings.value.termCheck
-            ? `另有 ${left} 處要依文意判斷，已畫上波浪底線，滑鼠移上去可以選擇。`
-            : `另有 ${left} 處要依文意判斷；打開設定的「檢查兩國用語與錯字」就會標示出來。`
-          : ""),
+      parts.filter(Boolean).join(currentLang() === "en" ? " " : ""),
       { tone: fixes.length ? "success" : "info", duration: left ? 8000 : undefined },
     );
   }
@@ -4796,7 +4851,7 @@ function insertAtCursor(text: string): void {
  */
 async function insertImages(original: File[]): Promise<void> {
   if (kind !== "markdown") {
-    toast("只有 Markdown 文件可以插入圖片。");
+    toast(t("只有 Markdown 文件可以插入圖片。"));
     return;
   }
   let files = original;
@@ -4807,20 +4862,20 @@ async function insertImages(original: File[]): Promise<void> {
     if (changed.length) {
       const before = changed.reduce((n, c) => n + c.before, 0);
       const after = changed.reduce((n, c) => n + c.file.size, 0);
-      toast(`已自動縮小圖片（${formatBytes(before)} → ${formatBytes(after)}）。不想壓縮可以在設定的「編輯」關閉。`, {
+      toast(t("已自動縮小圖片（{before} → {after}）。不想壓縮可以在設定的「編輯」關閉。", { before: formatBytes(before), after: formatBytes(after) }), {
         duration: 6000,
       });
     }
   }
   if (!desktop) {
     if (files.reduce((n, f) => n + f.size, 0) > EMBED_LIMIT) {
-      toast("圖片超過 2 MB，網頁版無法內嵌。桌面版會把圖片另存成檔案，沒有這個限制。", { tone: "error", duration: 8000 });
+      toast(t("圖片超過 2 MB，網頁版無法內嵌。桌面版會把圖片另存成檔案，沒有這個限制。"), { tone: "error", duration: 8000 });
       return;
     }
-    toast("網頁版無法把圖片另存成檔案。要直接內嵌在文件裡嗎？（文件會變大）", {
+    toast(t("網頁版無法把圖片另存成檔案。要直接內嵌在文件裡嗎？（文件會變大）"), {
       duration: 10000,
       action: {
-        label: "內嵌圖片",
+        label: t("內嵌圖片"),
         run: () =>
           void Promise.all(files.map(readDataUrl))
             .then((urls) => insertAtCursor(urls.map((url, i) => `![${altText(files[i].name)}](${url})`).join("\n")))
@@ -4831,10 +4886,10 @@ async function insertImages(original: File[]): Promise<void> {
   }
   const docPath = fileHandle?.path;
   if (!docPath) {
-    toast("請先存檔：圖片會存到文件所在資料夾的 assets 資料夾裡。", {
+    toast(t("請先存檔：圖片會存到文件所在資料夾的 assets 資料夾裡。"), {
       duration: 8000,
       action: {
-        label: "儲存",
+        label: t("儲存"),
         run: () =>
           void save(false)
             .then(() => (fileHandle?.path ? insertImages(files) : undefined))
@@ -4852,7 +4907,7 @@ async function insertImages(original: File[]): Promise<void> {
   }
   if (active !== doc) return; // 存圖片時使用者切換了分頁
   insertAtCursor(links.join("\n"));
-  toast(files.length > 1 ? `已把 ${files.length} 張圖片存到 assets 資料夾` : "已把圖片存到 assets 資料夾", {
+  toast(files.length > 1 ? t("已把 {n} 張圖片存到 assets 資料夾", { n: files.length }) : t("已把圖片存到 assets 資料夾"), {
     tone: "success",
   });
 }
@@ -4890,13 +4945,13 @@ window.addEventListener("drop", async (e) => {
     return;
   }
   if (file.size > 20 * 1024 * 1024) {
-    toast("檔案超過 20 MB，可能不是文字檔。", { tone: "error" });
+    toast(t("檔案超過 20 MB，可能不是文字檔。"), { tone: "error" });
     return;
   }
   const text = await readTextFile(file).catch(reportError);
   if (text === undefined) return;
   openDocument(file.name, text, null);
-  toast(`已開啟「${file.name}」`);
+  toast(t("已開啟「{name}」", { name: file.name }));
 });
 
 // ---- 初始狀態 -----------------------------------------------------------
@@ -4906,7 +4961,7 @@ view = savedView === "editor" || savedView === "live" || savedView === "preview"
 kindSelect.value = kind;
 setTheme(themePref);
 applySettings(settings.value);
-if (settingsRecovered) toast("設定檔有無法讀取的內容，相關選項已恢復成預設值。", { tone: "error", duration: 8000 });
+if (settingsRecovered) toast(t("設定檔有無法讀取的內容，相關選項已恢復成預設值。"), { tone: "error", duration: 8000 });
 buildFormatBar();
 showPanel(sidePanel, false);
 void renderFilesEmpty();
@@ -4932,7 +4987,7 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
       if (!doc || doc.missing) return;
       doc.missing = true;
       renderTabs();
-      toast(`「${doc.name}」已從磁碟刪除或移走。內容仍保留在分頁中，存檔會重新建立檔案。`, { duration: 8000 });
+      toast(t("「{name}」已從磁碟刪除或移走。內容仍保留在分頁中，存檔會重新建立檔案。", { name: doc.name }), { duration: 8000 });
     }),
     d.onTreeChanged(({ dirs }) => {
       fileListCache = null;
@@ -4962,7 +5017,7 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
           // 遠端連線沒有記住密碼：提示使用者輸入，不自動跳出對話框打斷。
           if (isRemote(last) && String(e instanceof Error ? e.message : e) === "NEED_PASSWORD") {
             needPassword = true;
-            void suggestReconnect(last, (name) => `要重新連線到「${name}」，需要輸入密碼。`, "輸入密碼");
+            void suggestReconnect(last, (name) => t("要重新連線到「{name}」，需要輸入密碼。", { name }), t("輸入密碼"));
           }
           return null;
         })
@@ -5022,9 +5077,9 @@ async function reloadDoc(doc: Doc, path: string): Promise<void> {
       renderNow();
     }
   } else if (!clean && hash(file.text) !== doc.baseline) {
-    toast(`「${doc.name}」在上次關閉後被${otherWriter(path)}修改過，你也有未存檔的變更。`, {
+    toast(t("「{name}」在上次關閉後被{who}修改過，你也有未存檔的變更。", { name: doc.name, who: otherWriter(path) }), {
       duration: 12000,
-      action: { label: "比較差異", run: () => void compareDoc(doc).catch(reportError) },
+      action: { label: t("比較差異"), run: () => void compareDoc(doc).catch(reportError) },
     });
   }
 }
@@ -5058,9 +5113,9 @@ async function onExternalChange(path: string): Promise<void> {
     const now = Date.now();
     if (now - (changeNoticeAt.get(doc.id) ?? 0) < 15_000) return;
     changeNoticeAt.set(doc.id, now);
-    toast(`「${doc.name}」被${otherWriter(path)}修改了，你也有未存檔的變更。`, {
+    toast(t("「{name}」被{who}修改了，你也有未存檔的變更。", { name: doc.name, who: otherWriter(path) }), {
       duration: 12000,
-      action: { label: "比較差異", run: () => void compareDoc(doc).catch(reportError) },
+      action: { label: t("比較差異"), run: () => void compareDoc(doc).catch(reportError) },
     });
     return;
   }
@@ -5082,15 +5137,16 @@ async function onExternalChange(path: string): Promise<void> {
       }
     } else if (file.text !== editor.text) {
       editor.replaceAll(file.text);
-      toast(`「${doc.name}」已被${otherWriter(path)}更新，已重新載入。`, {
-        action: { label: "復原", run: () => void undo(editor.view) },
+      toast(t("「{name}」已被{who}更新，已重新載入。", { name: doc.name, who: otherWriter(path) }), {
+        action: { label: t("復原"), run: () => void undo(editor.view) },
       });
     }
   } else {
     doc.state = null;
     doc.dirty = false;
     if (markChanges && doc.externalOriginal === file.text) doc.externalOriginal = undefined;
-    toast(`「${doc.name}」已被${otherWriter(path)}更新${markChanges ? "，切換過去可以看到改了哪裡" : "，已重新載入"}。`);
+    const params = { name: doc.name, who: otherWriter(path) };
+    toast(markChanges ? t("「{name}」已被{who}更新，切換過去可以看到改了哪裡。", params) : t("「{name}」已被{who}更新，已重新載入。", params));
   }
   persistSession();
   renderTabs();
@@ -5113,12 +5169,12 @@ function compareWithDisk(diskText: string): void {
   setBaseline(diskText, true);
   renderSaveState();
   const started = review.start(diskText, {
-    title: `與${storeName()}上的版本比較`,
-    hint: "逐段選擇要採用哪個版本，處理完記得存檔。",
-    acceptLabel: `採用${storeName()}版本`,
-    rejectLabel: "保留我的版本",
+    title: t("與{store}上的版本比較", { store: storeName() }),
+    hint: t("逐段選擇要採用哪個版本，處理完記得存檔。"),
+    acceptLabel: isRemote(fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
+    rejectLabel: t("保留我的版本"),
   });
-  if (!started) toast(`目前內容和${storeName()}上的版本相同。`);
+  if (!started) toast(t("目前內容和{store}上的版本相同。", { store: storeName() }));
 }
 
 // 關閉視窗或重新整理前，把還沒寫入的草稿存起來。

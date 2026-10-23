@@ -32,22 +32,22 @@ pub fn split_https(url: &str) -> Option<(String, u16, String)> {
 /// WinHTTP 錯誤碼的說明。
 pub fn describe(code: u32) -> String {
     let what = match code {
-        12002 => "連線逾時",
-        12007 => "找不到伺服器（DNS）",
-        12029 => "無法連線到伺服器",
-        12030 | 12031 => "連線被中斷",
+        12002 => tr!("連線逾時"),
+        12007 => tr!("找不到伺服器（DNS）"),
+        12029 => tr!("無法連線到伺服器"),
+        12030 | 12031 => tr!("連線被中斷"),
         12038 | 12037 | 12045 | 12169 | 12175 => {
-            "憑證有問題（公司網路的憑證可能沒有安裝到 Windows）"
+            tr!("憑證有問題（公司網路的憑證可能沒有安裝到 Windows）")
         }
-        12166 => "Proxy 的自動設定指令碼有錯誤",
-        12167 => "無法下載 Proxy 的自動設定指令碼",
-        12180 => "找不到 Proxy 的自動設定",
-        _ => "",
+        12166 => tr!("Proxy 的自動設定指令碼有錯誤"),
+        12167 => tr!("無法下載 Proxy 的自動設定指令碼"),
+        12180 => tr!("找不到 Proxy 的自動設定"),
+        _ => String::new(),
     };
     if what.is_empty() {
-        format!("WinHTTP 錯誤 {code}")
+        tr!("WinHTTP 錯誤 {code}", code = code)
     } else {
-        format!("{what}（WinHTTP {code}）")
+        tr!("{what}（WinHTTP {code}）", what = what, code = code)
     }
 }
 
@@ -154,7 +154,7 @@ mod imp {
     /// 以 GET 下載 `url`（只接受 HTTPS）。WinHTTP 會自己處理轉址；
     /// Proxy 要求驗證（407）時用目前登入的 Windows 帳號（NTLM、Kerberos）。
     pub fn get(url: &str, timeout: Duration, user_agent: &str) -> Result<Response, String> {
-        let (host, port, path) = split_https(url).ok_or("只能下載 HTTPS 網址")?;
+        let (host, port, path) = split_https(url).ok_or_else(|| tr!("只能下載 HTTPS 網址"))?;
         let agent = wide(user_agent);
         // 自動 Proxy（Windows 8.1 以後）：系統與使用者的 Proxy 設定、自動設定指令碼、WPAD。
         let session = handle(unsafe {
@@ -210,7 +210,7 @@ mod imp {
             let code = status(&request)?;
             if code != 407 {
                 if !(200..300).contains(&code) {
-                    return Err(format!("伺服器回應 {code}"));
+                    return Err(tr!("伺服器回應 {code}", code = code));
                 }
                 return Ok(Response {
                     request,
@@ -225,7 +225,7 @@ mod imp {
             let scheme = [WINHTTP_AUTH_SCHEME_NEGOTIATE, WINHTTP_AUTH_SCHEME_NTLM]
                 .into_iter()
                 .find(|s| supported & s != 0)
-                .ok_or("公司的 Proxy 需要輸入帳號密碼才能連外，請手動下載新版")?;
+                .ok_or_else(|| tr!("公司的 Proxy 需要輸入帳號密碼才能連外，請手動下載新版"))?;
             check(unsafe {
                 WinHttpSetCredentials(
                     request.0,
@@ -238,7 +238,7 @@ mod imp {
             })?;
             drain(&request);
         }
-        Err("公司的 Proxy 拒絕了這台電腦的 Windows 帳號（407）".into())
+        Err(tr!("公司的 Proxy 拒絕了這台電腦的 Windows 帳號（407）"))
     }
 }
 

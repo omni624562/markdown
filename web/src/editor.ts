@@ -25,30 +25,31 @@ import {
   lineNumbers,
   placeholder,
 } from "@codemirror/view";
-import { tags as t } from "@lezer/highlight";
+import { tags } from "@lezer/highlight";
 import type { SourceError } from "../pkg/md_wasm.js";
 import { bracketPairing } from "./brackets.ts";
 import type { DocKind } from "./kinds.ts";
 import { type Formatter, newRow, nextCell, previousCell } from "./table.ts";
+import { currentLang, t } from "./i18n.ts";
 import { cjkWords } from "./words.ts";
 import { focusMode, typewriterMode } from "./writing-modes.ts";
 import { createFindPanel } from "./ui/find-panel.ts";
 
 /** 顏色全部走 CSS 變數，深淺色主題只要在 styles.css 切換變數即可。 */
 const syntaxColors = HighlightStyle.define([
-  { tag: t.heading, fontWeight: "700", color: "var(--syn-heading)" },
-  { tag: t.strong, fontWeight: "700" },
-  { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strikethrough, textDecoration: "line-through" },
-  { tag: [t.link, t.url], color: "var(--syn-link)" },
-  { tag: t.monospace, color: "var(--syn-code)" },
-  { tag: [t.processingInstruction, t.contentSeparator, t.quote], color: "var(--syn-meta)" },
-  { tag: [t.keyword, t.operatorKeyword], color: "var(--syn-keyword)" },
-  { tag: [t.string, t.special(t.string)], color: "var(--syn-string)" },
-  { tag: [t.number, t.bool, t.atom, t.null], color: "var(--syn-number)" },
-  { tag: t.propertyName, color: "var(--syn-function)" },
-  { tag: t.comment, color: "var(--syn-comment)", fontStyle: "italic" },
-  { tag: [t.function(t.variableName), t.typeName, t.className], color: "var(--syn-function)" },
+  { tag: tags.heading, fontWeight: "700", color: "var(--syn-heading)" },
+  { tag: tags.strong, fontWeight: "700" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: tags.strikethrough, textDecoration: "line-through" },
+  { tag: [tags.link, tags.url], color: "var(--syn-link)" },
+  { tag: tags.monospace, color: "var(--syn-code)" },
+  { tag: [tags.processingInstruction, tags.contentSeparator, tags.quote], color: "var(--syn-meta)" },
+  { tag: [tags.keyword, tags.operatorKeyword], color: "var(--syn-keyword)" },
+  { tag: [tags.string, tags.special(tags.string)], color: "var(--syn-string)" },
+  { tag: [tags.number, tags.bool, tags.atom, tags.null], color: "var(--syn-number)" },
+  { tag: tags.propertyName, color: "var(--syn-function)" },
+  { tag: tags.comment, color: "var(--syn-comment)", fontStyle: "italic" },
+  { tag: [tags.function(tags.variableName), tags.typeName, tags.className], color: "var(--syn-function)" },
 ]);
 
 const theme = EditorView.theme({
@@ -104,41 +105,46 @@ export interface EditorHandlers {
   getError(): SourceError | null;
 }
 
-const PLACEHOLDER: Record<DocKind, string> = {
-  markdown: "開始寫 Markdown…（按 Ctrl+Shift+P 開啟指令面板）",
-  text: "開始輸入純文字…",
-  json: '貼上或輸入 JSON，例如 {"name": "值"}',
-};
+function placeholderText(kind: DocKind): string {
+  switch (kind) {
+    case "markdown":
+      return t("開始寫 Markdown…（按 Ctrl+Shift+P 開啟指令面板）");
+    case "text":
+      return t("開始輸入純文字…");
+    case "json":
+      return t('貼上或輸入 JSON，例如 {"name": "值"}');
+  }
+}
 
-/** CodeMirror 內建介面（搜尋與取代列、跳到行、摺疊）的中文字串。 */
+/** CodeMirror 內建介面（搜尋與取代列、跳到行、摺疊）的中文字串；英文介面直接用 CodeMirror 內建的英文。 */
 const PHRASES = {
-  Find: "尋找",
-  Replace: "取代",
-  next: "下一個",
-  previous: "上一個",
-  all: "全選",
-  "match case": "大小寫須相符",
-  regexp: "正規表示式",
-  "by word": "全字拼寫須相符",
-  replace: "取代",
-  "replace all": "全部取代",
-  close: "關閉",
-  "current match": "目前的符合項目",
-  "replaced $ matches": "已取代 $ 處",
-  "replaced match on line $": "已取代第 $ 行的符合項目",
-  "on line": "在第",
-  "Go to line": "跳到第幾行",
-  go: "前往",
-  "Selection deleted": "已刪除選取範圍",
-  "Control character": "控制字元",
-  "folded code": "摺疊的內容",
-  unfold: "展開",
-  "Fold line": "摺疊",
-  "Unfold line": "展開",
-  "Folded lines": "已摺疊",
-  "Unfolded lines": "已展開",
-  Completions: "自動完成",
-  to: "到",
+  Find: "尋找", // i18n-ignore
+  Replace: "取代", // i18n-ignore
+  next: "下一個", // i18n-ignore
+  previous: "上一個", // i18n-ignore
+  all: "全選", // i18n-ignore
+  "match case": "大小寫須相符", // i18n-ignore
+  regexp: "正規表示式", // i18n-ignore
+  "by word": "全字拼寫須相符", // i18n-ignore
+  replace: "取代", // i18n-ignore
+  "replace all": "全部取代", // i18n-ignore
+  close: "關閉", // i18n-ignore
+  "current match": "目前的符合項目", // i18n-ignore
+  "replaced $ matches": "已取代 $ 處", // i18n-ignore
+  "replaced match on line $": "已取代第 $ 行的符合項目", // i18n-ignore
+  "on line": "在第", // i18n-ignore
+  "Go to line": "跳到第幾行", // i18n-ignore
+  go: "前往", // i18n-ignore
+  "Selection deleted": "已刪除選取範圍", // i18n-ignore
+  "Control character": "控制字元", // i18n-ignore
+  "folded code": "摺疊的內容", // i18n-ignore
+  unfold: "展開", // i18n-ignore
+  "Fold line": "摺疊", // i18n-ignore
+  "Unfold line": "展開", // i18n-ignore
+  "Folded lines": "已摺疊", // i18n-ignore
+  "Unfolded lines": "已展開", // i18n-ignore
+  Completions: "自動完成", // i18n-ignore
+  to: "到", // i18n-ignore
 };
 
 export class Editor {
@@ -170,8 +176,8 @@ export class Editor {
       highlightSelectionMatches(),
       search({ createPanel: createFindPanel }),
       EditorView.lineWrapping,
-      EditorState.phrases.of(PHRASES),
-      EditorView.contentAttributes.of({ "aria-label": "文件內容", spellcheck: "false" }),
+      EditorState.phrases.of(currentLang() === "en" ? {} : PHRASES),
+      EditorView.contentAttributes.of({ "aria-label": t("文件內容"), spellcheck: "false" }),
       cjkWords(),
       folding(),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, indentWithTab]),
@@ -220,7 +226,7 @@ export class Editor {
   }
 
   #languageFor(kind: DocKind): Extension {
-    const common = placeholder(PLACEHOLDER[kind]);
+    const common = placeholder(placeholderText(kind));
     const brackets = this.#options.autoPairBrackets ? bracketPairing() : [];
     switch (kind) {
       case "markdown": {
@@ -413,8 +419,8 @@ function folding(): Extension {
         const el = document.createElement("span");
         el.className = "cm-foldPlaceholder";
         el.textContent = "⋯";
-        el.title = "已摺疊，按一下展開";
-        el.setAttribute("aria-label", "已摺疊的內容，按一下展開");
+        el.title = t("已摺疊，按一下展開");
+        el.setAttribute("aria-label", t("已摺疊的內容，按一下展開"));
         el.onclick = onclick;
         return el;
       },
@@ -424,7 +430,7 @@ function folding(): Extension {
         const el = document.createElement("span");
         el.className = `cm-fold-marker${open ? "" : " folded"}`;
         el.textContent = "›";
-        el.title = open ? "摺疊這個章節" : "展開";
+        el.title = open ? t("摺疊這個章節") : t("展開");
         return el;
       },
     }),

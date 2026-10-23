@@ -171,7 +171,7 @@ pub fn read_at(root: &Path, path: &Path, id: u64) -> io::Result<String> {
     let (_, file) = versions(&file_dir(root, path))
         .into_iter()
         .find(|(v, _)| v.id == id)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "找不到這個版本"))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, tr!("找不到這個版本")))?;
     Ok(decode(&fs::read(file)?).0)
 }
 
@@ -227,11 +227,13 @@ pub fn on_save(app: &AppHandle, path: &Path, disk_before: Option<&[u8]>, text: &
         let (before, _, _) = decode(bytes);
         if before != text {
             if let Err(e) = record_at(&root, path, &before, Kind::Disk, now) {
+                // i18n-ignore：記錄檔
                 eprintln!("無法保存版本記錄：{e}");
             }
         }
     }
     if let Err(e) = record_at(&root, path, text, Kind::Save, now) {
+        // i18n-ignore：記錄檔
         eprintln!("無法保存版本記錄：{e}");
     }
 }
@@ -256,7 +258,7 @@ fn allowed(
     if remote || known.contains(path) || trust.allows(path) || workspace.contains(path) {
         Ok(())
     } else {
-        Err("無法查看這個檔案的版本記錄".into())
+        Err(tr!("無法查看這個檔案的版本記錄"))
     }
 }
 
@@ -288,8 +290,8 @@ pub async fn history_read(app: AppHandle, path: String, id: u64) -> Result<Strin
             &app.state::<Trust>(),
             &app.state::<Workspace>(),
         )?;
-        let root = root(&app).ok_or("找不到版本記錄資料夾")?;
-        read_at(&root, &path, id).map_err(|e| format!("無法讀取版本：{e}"))
+        let root = root(&app).ok_or_else(|| tr!("找不到版本記錄資料夾"))?;
+        read_at(&root, &path, id).map_err(|e| tr!("無法讀取版本：{e}", e = e))
     })
     .await
 }

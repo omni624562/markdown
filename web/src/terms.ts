@@ -2,6 +2,7 @@
  * 兩國用語與錯別字檢查：找出中國用語（建議台灣的說法）與台灣常見的錯別字。
  * 只比對詞語，不猜文意；同一個詞在台灣也有別的意思時標成「依文意」，不會在整份修正時自動換掉。
  */
+import { t } from "./i18n.ts";
 import { rangeChecker } from "./ranges.ts";
 
 export type TermKind = "cn" | "typo" | "punct";
@@ -23,7 +24,9 @@ export interface Term {
 /**
  * 每行一個詞：`中國用語=台灣用語/另一種說法`。
  * 開頭 `?` 表示依文意；`#` 後面是說明；`~` 後面是不算的詞（用逗號分隔）。
+ * 詞庫與說明是中文內容，不翻譯。
  */
+// i18n-ignore
 const CN = `
 視頻=影片
 短視頻=短影音
@@ -138,6 +141,7 @@ U盤=隨身碟
 `;
 
 /** 台灣常見的錯別字（只收不會誤判的詞）。 */
+// i18n-ignore
 const TYPO = `
 即然=既然
 既使=即使
@@ -233,12 +237,17 @@ function covers(text: string, from: number, to: number, e: string): boolean {
 }
 
 /** 提示文字，例如「「視頻」是中國用語，台灣說「影片」」。 */
-export function termMessage(t: Term): string {
-  const to = t.to.map((w) => `「${w}」`).join("或");
-  if (t.kind === "punct") return `${t.note}：改成${to}`;
-  if (t.kind === "typo") return `「${t.word}」可能是錯字，應該是${to}${t.note ? `（${t.note}）` : ""}`;
-  if (t.context) return `「${t.word}」${t.note ? `${t.note}，` : "在這裡如果是中國用語，"}台灣說${to}`;
-  return `「${t.word}」是中國用語，台灣說${to}`;
+export function termMessage(term: Term): string {
+  const to = term.to.map((w) => t("「{word}」", { word: w })).reduce((a, b) => t("{a}或{b}", { a, b }));
+  const { word, note } = term;
+  if (term.kind === "punct") return t("{note}：改成{to}", { note: note ?? "", to });
+  if (term.kind === "typo") {
+    return note ? t("「{word}」可能是錯字，應該是{to}（{note}）", { word, to, note }) : t("「{word}」可能是錯字，應該是{to}", { word, to });
+  }
+  if (term.context) {
+    return note ? t("「{word}」{note}，台灣說{to}", { word, note, to }) : t("「{word}」在這裡如果是中國用語，台灣說{to}", { word, to });
+  }
+  return t("「{word}」是中國用語，台灣說{to}", { word, to });
 }
 
 /** 整份修正：只換不需要判斷文意的詞，回傳修改清單（由後往前套用不會影響位置）。 */

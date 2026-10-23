@@ -2,6 +2,7 @@
  * 符號面板：依分類瀏覽、用中文或英文搜尋，記得最近用過的符號。
  * 點一下插入並關閉；按住 Ctrl（或 Shift）點可以連續插入好幾個。
  */
+import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
 import { SYMBOL_CATEGORIES, type SymbolEntry, searchSymbols, symbolName } from "../symbols.ts";
 
@@ -22,11 +23,17 @@ export class SymbolPicker {
     this.#insert = insert;
     this.#dialog = document.createElement("dialog");
     this.#dialog.className = "symbol-picker";
-    this.#dialog.setAttribute("aria-label", "插入符號");
+    this.#dialog.setAttribute("aria-label", t("插入符號"));
+    const tr = {
+      placeholder: t("搜尋符號，例如「小於等於」「箭頭」「攝氏」"),
+      search: t("搜尋符號"),
+      categories: t("符號分類"),
+      symbols: t("符號"),
+    };
     this.#dialog.innerHTML = `
-      <input type="search" placeholder="搜尋符號，例如「小於等於」「箭頭」「攝氏」" aria-label="搜尋符號" spellcheck="false" autocomplete="off" />
-      <div class="symbol-tabs" role="tablist" aria-label="符號分類"></div>
-      <div class="symbol-grid" role="listbox" aria-label="符號"></div>
+      <input type="search" placeholder="${tr.placeholder}" aria-label="${tr.search}" spellcheck="false" autocomplete="off" />
+      <div class="symbol-tabs" role="tablist" aria-label="${tr.categories}"></div>
+      <div class="symbol-grid" role="listbox" aria-label="${tr.symbols}"></div>
       <p class="symbol-hint"></p>`;
     document.body.append(this.#dialog);
     this.#input = this.#dialog.querySelector("input")!;
@@ -50,7 +57,7 @@ export class SymbolPicker {
     });
     const describe = (e: Event) => {
       const cell = (e.target as HTMLElement).closest<HTMLElement>("[data-char]");
-      if (cell) this.#hint.textContent = `${cell.dataset.char}　${symbolName(cell.dataset.char!)}`;
+      if (cell) this.#hint.textContent = `${cell.dataset.char}\u3000${symbolName(cell.dataset.char!)}`;
     };
     this.#grid.addEventListener("focusin", describe);
     this.#grid.addEventListener("mouseover", describe);
@@ -80,7 +87,7 @@ export class SymbolPicker {
     storage.save(RECENT_KEY, JSON.stringify([char, ...this.#recent().filter((c) => c !== char)].slice(0, RECENT_LIMIT)));
     if (!keepOpen) this.#dialog.close();
     this.#insert(char);
-    if (keepOpen) this.#hint.textContent = `已插入 ${char}（按住 Ctrl 點可以繼續插入）`;
+    if (keepOpen) this.#hint.textContent = t("已插入 {char}（按住 Ctrl 點可以繼續插入）", { char });
   }
 
   #cells(): HTMLElement[] {
@@ -90,7 +97,7 @@ export class SymbolPicker {
   #render(): void {
     const query = this.#input.value.trim();
     const tabs = [
-      ...(this.#recent().length ? [{ id: "recent", label: "最近使用" }] : []),
+      ...(this.#recent().length ? [{ id: "recent", label: t("最近使用") }] : []),
       ...SYMBOL_CATEGORIES.map((c) => ({ id: c.id, label: c.label })),
     ];
     this.#tabs.hidden = !!query;
@@ -114,9 +121,9 @@ export class SymbolPicker {
     else entries = SYMBOL_CATEGORIES.find((c) => c.id === this.#category)?.symbols ?? [];
     this.#grid.replaceChildren(...entries.map((s) => this.#cell(s)));
     this.#hint.textContent = entries.length
-      ? "點一下插入；按住 Ctrl 點可以連續插入好幾個"
+      ? t("點一下插入；按住 Ctrl 點可以連續插入好幾個")
       : query
-        ? `找不到「${query}」`
+        ? t("找不到「{name}」", { name: query })
         : "";
   }
 

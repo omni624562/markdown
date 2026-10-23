@@ -3,6 +3,8 @@
  * 這兩行是 HTML 註解，預覽與匯出時不會顯示；存檔時自動更新。
  */
 
+import { t } from "./i18n.ts";
+
 export const TOC_START = "<!-- toc -->";
 export const TOC_END = "<!-- /toc -->";
 
@@ -30,8 +32,8 @@ export function tocList(headings: TocHeading[]): string {
 
 /** 插入用的完整目錄區塊。 */
 export function tocBlock(headings: TocHeading[]): string {
-  const list = tocList(headings);
-  return `${TOC_START}\n${list || "（文件中還沒有標題）"}\n${TOC_END}`;
+  const list = tocList(headings) || t("（文件中還沒有標題）");
+  return `${TOC_START}\n${list}\n${TOC_END}`;
 }
 
 /** 文件中有目錄區塊時，換成最新的目錄；沒有目錄或已經是最新時回傳 null。 */

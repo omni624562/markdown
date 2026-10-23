@@ -16,6 +16,7 @@ import {
   WidgetType,
   showTooltip,
 } from "@codemirror/view";
+import { t } from "./i18n.ts";
 
 const setPointer = StateEffect.define<boolean>();
 const setFocus = StateEffect.define<boolean>();
@@ -146,8 +147,8 @@ class HandleWidget extends WidgetType {
     wrap.className = "cm-insert-handle";
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.title = "插入（Ctrl+Shift+Enter）";
-    btn.setAttribute("aria-label", "插入");
+    btn.title = t("插入（Ctrl+Shift+Enter）");
+    btn.setAttribute("aria-label", t("插入"));
     btn.tabIndex = -1;
     btn.textContent = "+";
     // 不要讓編輯器失去焦點或移動游標。

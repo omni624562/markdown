@@ -1,4 +1,5 @@
 import type { PreviewPlugin } from "../preview.ts";
+import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 
 /** 程式碼區塊標示的語言（`language-js` → `js`）；沒有標語言時回傳空字串。 */
@@ -25,7 +26,7 @@ export function codeToolsPlugin(opts: {
     const ok = await opts.copy((pre.querySelector("code") ?? pre).textContent ?? "");
     if (!ok) return;
     button.classList.add("copied");
-    button.replaceChildren(icon("check"), "已複製");
+    button.replaceChildren(icon("check"), t("已複製"));
     setTimeout(() => {
       button.classList.remove("copied");
       button.replaceChildren(icon("copy"));
@@ -60,8 +61,8 @@ export function codeToolsPlugin(opts: {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "code-copy";
-        button.title = "複製程式碼";
-        button.setAttribute("aria-label", "複製程式碼");
+        button.title = t("複製程式碼");
+        button.setAttribute("aria-label", t("複製程式碼"));
         button.append(icon("copy"));
         tools.append(button);
         pre.replaceWith(block);

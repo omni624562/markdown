@@ -176,6 +176,7 @@ impl Watcher {
             Ok(w)
         }) {
             Ok(w) => *slot = Some(w),
+            // i18n-ignore：記錄檔
             Err(e) => eprintln!("無法監看資料夾 {}：{e}", root.display()),
         }
     }
@@ -223,6 +224,7 @@ impl Watcher {
             match create(app, poll) {
                 Ok(w) => *slot = Some(w),
                 Err(e) => {
+                    // i18n-ignore：記錄檔
                     eprintln!("無法建立檔案監看：{e}");
                     return;
                 }
@@ -230,6 +232,7 @@ impl Watcher {
         }
         if let Some(w) = slot.as_mut() {
             if let Err(e) = w.watch(dir, RecursiveMode::NonRecursive) {
+                // i18n-ignore：記錄檔
                 eprintln!("無法監看 {}：{e}", dir.display());
             }
         }

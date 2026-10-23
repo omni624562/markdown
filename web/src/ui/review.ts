@@ -8,6 +8,7 @@
 import { getChunks, getOriginalDoc, unifiedMergeView } from "@codemirror/merge";
 import { Compartment, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
+import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 
 export interface ReviewOptions {
@@ -34,8 +35,8 @@ function chunkButton(opts: ReviewOptions) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = `review-chunk-${type}`;
-    b.textContent = type === "accept" ? (opts.acceptLabel ?? "保留新內容") : (opts.rejectLabel ?? "還原");
-    b.title = type === "accept" ? "這一段採用新的內容" : "這一段維持原本的內容";
+    b.textContent = type === "accept" ? (opts.acceptLabel ?? t("保留新內容")) : (opts.rejectLabel ?? t("還原"));
+    b.title = type === "accept" ? t("這一段採用新的內容") : t("這一段維持原本的內容");
     b.addEventListener("mousedown", (e) => {
       e.preventDefault();
       action(e);
@@ -144,7 +145,7 @@ export class Review {
     const strong = document.createElement("strong");
     strong.textContent = active.title;
     const count = document.createElement("span");
-    count.textContent = `還有 ${chunks.length} 處差異`;
+    count.textContent = t("還有 {n} 處差異", { n: chunks.length });
     msg.append(strong, count);
     if (active.hint) {
       const hint = document.createElement("span");
@@ -162,8 +163,8 @@ export class Review {
       b.addEventListener("click", run);
       actions.append(b);
     };
-    mk(`全部${active.rejectLabel ?? "還原"}`, () => this.rejectAll());
-    mk(`全部${active.acceptLabel ?? "保留新內容"}`, () => this.acceptAll(), true);
+    mk(t("全部{label}", { label: active.rejectLabel ?? t("還原") }), () => this.rejectAll());
+    mk(t("全部{label}", { label: active.acceptLabel ?? t("保留新內容") }), () => this.acceptAll(), true);
     this.#bar.replaceChildren(msg, actions);
     this.#bar.hidden = false;
   }

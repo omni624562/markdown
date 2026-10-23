@@ -4,6 +4,7 @@
  */
 import mammoth from "mammoth";
 import { htmlToMarkdown } from "./html-paste.ts";
+import { t } from "./i18n.ts";
 import { zipUncompressedSize } from "./zip-size.ts";
 
 /** 解壓縮後超過這個大小就不匯入（正常的 Word 檔，連圖片也很少超過幾百 MB）。 */
@@ -12,15 +13,15 @@ const MAX_UNCOMPRESSED = 500 * 1024 * 1024;
 /** 圖片：回傳要寫進 Markdown 的網址（例如存好的 `assets/…png`，或 data: 網址）。 */
 export type SaveImage = (data: Uint8Array, contentType: string) => Promise<string>;
 
-/** Word 的樣式名稱（英文版與中文版）對應到 HTML。 */
+/** Word 的樣式名稱（英文版與中文版）對應到 HTML。中文樣式名稱是 Word 的資料，不翻譯。 */
 const STYLE_MAP = [
   "p[style-name='Title'] => h1:fresh",
-  "p[style-name='標題'] => h1:fresh",
+  "p[style-name='標題'] => h1:fresh", // i18n-ignore
   "p[style-name='Subtitle'] => h2:fresh",
-  "p[style-name='副標題'] => h2:fresh",
-  ...[1, 2, 3, 4, 5, 6].map((n) => `p[style-name='標題 ${n}'] => h${n}:fresh`),
+  "p[style-name='副標題'] => h2:fresh", // i18n-ignore
+  ...[1, 2, 3, 4, 5, 6].map((n) => `p[style-name='標題 ${n}'] => h${n}:fresh`), // i18n-ignore
   "p[style-name='Quote'] => blockquote:fresh",
-  "p[style-name='引文'] => blockquote:fresh",
+  "p[style-name='引文'] => blockquote:fresh", // i18n-ignore
   "p[style-name='Intense Quote'] => blockquote:fresh",
   "u => u",
   "highlight => mark",
@@ -42,8 +43,8 @@ function base64ToBytes(b64: string): Uint8Array {
 
 export async function docxToMarkdown(data: ArrayBuffer, saveImage: SaveImage): Promise<ImportResult> {
   const size = zipUncompressedSize(data);
-  if (size === null) throw new Error("這不是有效的 Word（.docx）檔案");
-  if (size > MAX_UNCOMPRESSED) throw new Error("這個 Word 檔解壓縮後太大，可能是損毀或惡意的檔案，已取消匯入");
+  if (size === null) throw new Error(t("這不是有效的 Word（.docx）檔案"));
+  if (size > MAX_UNCOMPRESSED) throw new Error(t("這個 Word 檔解壓縮後太大，可能是損毀或惡意的檔案，已取消匯入"));
   const result = await mammoth.convertToHtml(
     { arrayBuffer: data },
     {

@@ -4,6 +4,8 @@
 //!
 //! 只綁定 127.0.0.1，每個請求都要帶 `Authorization: Bearer <權杖>`。
 //! 權杖存在 app 設定資料夾，優先使用固定的連接埠，這樣手動註冊過的設定下次啟動仍然有效。
+//!
+//! 工具的說明與回傳結果是給 AI 看的，維持中文（標 `i18n-ignore`）；回給介面的錯誤才用 `tr!`。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -119,7 +121,7 @@ fn tail(text: &str, max: usize) -> String {
         return text.to_string();
     }
     let skip: String = text.chars().skip(count - max).collect();
-    format!("…（前面省略 {} 個字元）\n{skip}", count - max)
+    format!("…（前面省略 {} 個字元）\n{skip}", count - max) // i18n-ignore
 }
 
 /// 使用者對提議的決定（由前端回報）。
@@ -201,38 +203,38 @@ struct EditorTools {
 
 fn describe(doc: &ActiveDoc) -> String {
     format!(
-        "檔名：{}\n路徑：{}\n有未存檔的變更：{}",
+        "檔名：{}\n路徑：{}\n有未存檔的變更：{}", // i18n-ignore
         doc.name,
-        doc.path.as_deref().unwrap_or("（尚未存檔）"),
-        if doc.dirty { "是" } else { "否" }
+        doc.path.as_deref().unwrap_or("（尚未存檔）"), // i18n-ignore
+        if doc.dirty { "是" } else { "否" }            // i18n-ignore
     )
 }
 
 #[tool_router]
 impl EditorTools {
     #[tool(
-        description = "取得使用者目前在 oMarker（Markdown 編輯器）中正在看的文件：檔名、路徑與編輯器中的完整內容（包含尚未存檔的變更）。"
+        description = "取得使用者目前在 oMarker（Markdown 編輯器）中正在看的文件：檔名、路徑與編輯器中的完整內容（包含尚未存檔的變更）。" // i18n-ignore
     )]
     fn get_active_document(&self) -> Result<String, String> {
         let snap = self.snapshot.read().unwrap();
-        let doc = snap.active.as_ref().ok_or("編輯器目前沒有開啟文件")?;
+        let doc = snap.active.as_ref().ok_or("編輯器目前沒有開啟文件")?; // i18n-ignore
         Ok(format!("{}\n\n---\n{}", describe(doc), doc.text))
     }
 
-    #[tool(description = "取得使用者目前在編輯器中選取的文字與所在行號。")]
+    #[tool(description = "取得使用者目前在編輯器中選取的文字與所在行號。")] // i18n-ignore
     fn get_selection(&self) -> Result<String, String> {
         let snap = self.snapshot.read().unwrap();
-        let doc = snap.active.as_ref().ok_or("編輯器目前沒有開啟文件")?;
+        let doc = snap.active.as_ref().ok_or("編輯器目前沒有開啟文件")?; // i18n-ignore
         match &doc.selection {
             Some(sel) if !sel.text.is_empty() => Ok(format!(
-                "文件：{}\n選取範圍：第 {} 行到第 {} 行\n\n---\n{}",
+                "文件：{}\n選取範圍：第 {} 行到第 {} 行\n\n---\n{}", // i18n-ignore
                 doc.name, sel.from_line, sel.to_line, sel.text
             )),
-            _ => Ok("使用者目前沒有選取任何文字。".into()),
+            _ => Ok("使用者目前沒有選取任何文字。".into()), // i18n-ignore
         }
     }
 
-    #[tool(description = "列出編輯器中所有已開啟的分頁（檔名、路徑、是否有未存檔的變更）。")]
+    #[tool(description = "列出編輯器中所有已開啟的分頁（檔名、路徑、是否有未存檔的變更）。")] // i18n-ignore
     fn list_open_documents(&self) -> String {
         let snap = self.snapshot.read().unwrap();
         let active = snap.active.as_ref().and_then(|d| d.path.clone());
@@ -241,27 +243,27 @@ impl EditorTools {
             .iter()
             .map(|d| {
                 format!(
-                    "- {}{}{}：{}",
+                    "- {}{}{}：{}", // i18n-ignore
                     d.name,
-                    if d.dirty { "（未存檔）" } else { "" },
+                    if d.dirty { "（未存檔）" } else { "" }, // i18n-ignore
                     if d.path.is_some() && d.path == active {
-                        "（目前分頁）"
+                        "（目前分頁）" // i18n-ignore
                     } else {
                         ""
                     },
-                    d.path.as_deref().unwrap_or("尚未存檔")
+                    d.path.as_deref().unwrap_or("尚未存檔") // i18n-ignore
                 )
             })
             .collect();
         if lines.is_empty() {
-            "沒有已開啟的分頁。".into()
+            "沒有已開啟的分頁。".into() // i18n-ignore
         } else {
             lines.join("\n")
         }
     }
 
     #[tool(
-        description = "讀取一份文件的內容。可以讀取已開啟的分頁（會包含尚未存檔的變更），或使用者開啟的資料夾中的 .md／.txt／.json 檔。"
+        description = "讀取一份文件的內容。可以讀取已開啟的分頁（會包含尚未存檔的變更），或使用者開啟的資料夾中的 .md／.txt／.json 檔。" // i18n-ignore
     )]
     fn read_document(&self, Parameters(args): Parameters<ReadArgs>) -> Result<String, String> {
         {
@@ -277,23 +279,23 @@ impl EditorTools {
         let path = self.allowed_path(&args.path)?;
         let limit = crate::workspace::PEEK_LIMIT;
         let bytes = crate::files::read_capped(&path, limit)
-            .map_err(|e| format!("無法讀取：{e}"))?
-            .ok_or_else(|| format!("檔案超過 {} MB，無法讀取", limit / 1024 / 1024))?;
+            .map_err(|e| format!("無法讀取：{e}"))? // i18n-ignore
+            .ok_or_else(|| format!("檔案超過 {} MB，無法讀取", limit / 1024 / 1024))?; // i18n-ignore
         if let Some(why) = crate::files::not_text_reason(&bytes) {
-            return Err(format!("這個檔案{why}"));
+            return Err(format!("這個檔案{why}")); // i18n-ignore
         }
         Ok(crate::files::decode(&bytes).0)
     }
 
     #[tool(
-        description = "向使用者提出修改一份文件。修改不會直接寫入：編輯器會逐段標示差異，由使用者決定接受或拒絕，結果會回覆給你。每一處修改用 old_text（必須與文件內容完全相同且只出現一次）與 new_text 表示。"
+        description = "向使用者提出修改一份文件。修改不會直接寫入：編輯器會逐段標示差異，由使用者決定接受或拒絕，結果會回覆給你。每一處修改用 old_text（必須與文件內容完全相同且只出現一次）與 new_text 表示。" // i18n-ignore
     )]
     async fn propose_edit(
         &self,
         Parameters(args): Parameters<ProposeArgs>,
     ) -> Result<String, String> {
         if args.edits.is_empty() {
-            return Err("edits 不能是空的".into());
+            return Err("edits 不能是空的".into()); // i18n-ignore
         }
         let path = match args.path {
             Some(p) => Some(self.allowed_path(&p)?.to_string_lossy().into_owned()),
@@ -311,12 +313,12 @@ impl EditorTools {
     }
 
     #[tool(
-        description = "在使用者的編輯器內嵌終端機執行一個指令，並回傳結束代碼與輸出。每次執行前編輯器都會請使用者同意；使用者會在終端機分頁看到執行過程。適合跑 git、建置、轉檔等需要讓使用者看到的指令。"
+        description = "在使用者的編輯器內嵌終端機執行一個指令，並回傳結束代碼與輸出。每次執行前編輯器都會請使用者同意；使用者會在終端機分頁看到執行過程。適合跑 git、建置、轉檔等需要讓使用者看到的指令。" // i18n-ignore
     )]
     async fn run_command(&self, Parameters(args): Parameters<RunArgs>) -> Result<String, String> {
         let command = args.command.trim().to_string();
         if command.is_empty() {
-            return Err("command 不能是空的".into());
+            return Err("command 不能是空的".into()); // i18n-ignore
         }
         let cwd = self
             .app
@@ -346,17 +348,17 @@ impl EditorTools {
         let wait = Duration::from_secs(args.wait_seconds.unwrap_or(40).clamp(1, 300));
         let started = tokio::time::Instant::now();
         loop {
-            let log = terms.log(term).ok_or("終端機已被使用者關閉")?;
+            let log = terms.log(term).ok_or("終端機已被使用者關閉")?; // i18n-ignore
             if let Some(code) = log.exit {
-                let code = code.map_or("未知".to_string(), |c| c.to_string());
+                let code = code.map_or("未知".to_string(), |c| c.to_string()); // i18n-ignore
                 return Ok(format!(
-                    "終端機編號：{term}\n結束代碼：{code}\n\n輸出：\n{}",
+                    "終端機編號：{term}\n結束代碼：{code}\n\n輸出：\n{}", // i18n-ignore
                     tail(&strip_ansi(&log.text), OUTPUT_CHARS)
                 ));
             }
             if started.elapsed() >= wait {
                 return Ok(format!(
-                    "終端機編號：{term}\n指令還在執行中（已等 {} 秒）。之後可以用 read_terminal_output 查看。\n\n目前的輸出：\n{}",
+                    "終端機編號：{term}\n指令還在執行中（已等 {} 秒）。之後可以用 read_terminal_output 查看。\n\n目前的輸出：\n{}", // i18n-ignore
                     wait.as_secs(),
                     tail(&strip_ansi(&log.text), OUTPUT_CHARS)
                 ));
@@ -365,27 +367,27 @@ impl EditorTools {
         }
     }
 
-    #[tool(description = "列出編輯器中的終端機分頁（編號、名稱、是否還在執行）。")]
+    #[tool(description = "列出編輯器中的終端機分頁（編號、名稱、是否還在執行）。")] // i18n-ignore
     fn list_terminals(&self) -> String {
         let list = self.app.state::<Terminals>().list();
         if list.is_empty() {
-            return "目前沒有開啟的終端機。".into();
+            return "目前沒有開啟的終端機。".into(); // i18n-ignore
         }
         list.iter()
             .map(|(id, log)| {
                 let state = match log.exit {
-                    None => "執行中".to_string(),
-                    Some(Some(c)) => format!("已結束（代碼 {c}）"),
-                    Some(None) => "已結束".to_string(),
+                    None => "執行中".to_string(),                   // i18n-ignore
+                    Some(Some(c)) => format!("已結束（代碼 {c}）"), // i18n-ignore
+                    Some(None) => "已結束".to_string(),             // i18n-ignore
                 };
-                format!("- {id}：{}｜{state}", log.label)
+                format!("- {id}：{}｜{state}", log.label) // i18n-ignore
             })
             .collect::<Vec<_>>()
             .join("\n")
     }
 
     #[tool(
-        description = "讀取編輯器中某個終端機分頁最近的輸出（已去掉顏色等控制碼）。可以用來查看使用者在終端機看到的錯誤訊息，或 run_command 還沒跑完的指令。"
+        description = "讀取編輯器中某個終端機分頁最近的輸出（已去掉顏色等控制碼）。可以用來查看使用者在終端機看到的錯誤訊息，或 run_command 還沒跑完的指令。" // i18n-ignore
     )]
     fn read_terminal_output(
         &self,
@@ -395,14 +397,14 @@ impl EditorTools {
             .app
             .state::<Terminals>()
             .log(args.id)
-            .ok_or("沒有這個終端機（可能已被關閉），可以用 list_terminals 查看")?;
+            .ok_or("沒有這個終端機（可能已被關閉），可以用 list_terminals 查看")?; // i18n-ignore
         let state = match log.exit {
-            None => "執行中".to_string(),
-            Some(Some(c)) => format!("已結束（代碼 {c}）"),
-            Some(None) => "已結束".to_string(),
+            None => "執行中".to_string(),                   // i18n-ignore
+            Some(Some(c)) => format!("已結束（代碼 {c}）"), // i18n-ignore
+            Some(None) => "已結束".to_string(),             // i18n-ignore
         };
         Ok(format!(
-            "{}｜{state}\n\n{}",
+            "{}｜{state}\n\n{}", // i18n-ignore
             log.label,
             tail(
                 &strip_ansi(&log.text),
@@ -412,7 +414,7 @@ impl EditorTools {
     }
 
     #[tool(
-        description = "向使用者提出用新文字取代目前的選取範圍。編輯器會標示差異，由使用者決定是否套用，結果會回覆給你。"
+        description = "向使用者提出用新文字取代目前的選取範圍。編輯器會標示差異，由使用者決定是否套用，結果會回覆給你。" // i18n-ignore
     )]
     async fn propose_replace_selection(
         &self,
@@ -448,9 +450,10 @@ impl EditorTools {
             .app
             .state::<Workspace>()
             .root()
-            .ok_or("只能存取已開啟的分頁，或使用者開啟的資料夾中的文件")?;
+            .ok_or("只能存取已開啟的分頁，或使用者開啟的資料夾中的文件")?; // i18n-ignore
         resolve_inside(&root, &p)?;
         if !is_doc(&p) {
+            // i18n-ignore
             return Err("只能存取 Markdown、純文字、JSON、YAML、CSV、HTML、程式碼等文字檔".into());
         }
         Ok(p)
@@ -463,12 +466,12 @@ impl EditorTools {
         self.app.emit(event, payload).map_err(|e| e.to_string())?;
         match tokio::time::timeout(DECISION_WAIT, rx).await {
             Ok(Ok(d)) => Ok(d),
-            Ok(Err(_)) => Err("編輯器已取消這個要求".into()),
+            Ok(Err(_)) => Err("編輯器已取消這個要求".into()), // i18n-ignore
             Err(_) => {
                 self.pending.lock().unwrap().remove(&id);
                 let _ = self.app.emit("ai-command-expired", id);
                 Err(
-                    "使用者沒有在時間內同意，指令沒有執行。需要的話可以請使用者準備好後再試一次。"
+                    "使用者沒有在時間內同意，指令沒有執行。需要的話可以請使用者準備好後再試一次。" // i18n-ignore
                         .into(),
                 )
             }
@@ -486,9 +489,10 @@ impl EditorTools {
         match tokio::time::timeout(DECISION_WAIT, rx).await {
             Ok(Ok(d)) if d.ok => Ok(d.message),
             Ok(Ok(d)) => Err(d.message),
-            Ok(Err(_)) => Err("編輯器已關閉這個提議".into()),
+            Ok(Err(_)) => Err("編輯器已關閉這個提議".into()), // i18n-ignore
             Err(_) => {
                 self.pending.lock().unwrap().remove(&id);
+                // i18n-ignore
                 Ok("修改已顯示在使用者的編輯器中，使用者還沒做出決定。不需要重複提出，使用者會自行接受或拒絕；之後可以用 get_active_document 確認結果。".into())
             }
         }
@@ -501,7 +505,7 @@ impl ServerHandler for EditorTools {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
             .with_instructions(
-            "oMarker（Markdown 編輯器）：可以讀取使用者正在編輯的文件與選取範圍。要修改文件時請使用 propose_edit 或 propose_replace_selection，由使用者在編輯器中確認，不要直接寫入檔案。需要讓使用者看到執行過程的指令可以用 run_command（每次都會請使用者同意），用 read_terminal_output 讀取終端機的輸出。",
+            "oMarker（Markdown 編輯器）：可以讀取使用者正在編輯的文件與選取範圍。要修改文件時請使用 propose_edit 或 propose_replace_selection，由使用者在編輯器中確認，不要直接寫入檔案。需要讓使用者看到執行過程的指令可以用 run_command（每次都會請使用者同意），用 read_terminal_output 讀取終端機的輸出。", // i18n-ignore
         )
     }
 }
@@ -519,7 +523,7 @@ async fn require_token(
     if given.is_some_and(|t| constant_time_eq(t.as_bytes(), token.as_bytes())) {
         next.run(req).await
     } else {
-        (StatusCode::UNAUTHORIZED, "需要正確的權杖").into_response()
+        (StatusCode::UNAUTHORIZED, "需要正確的權杖").into_response() // i18n-ignore
     }
 }
 
@@ -591,7 +595,7 @@ pub async fn mcp_start(app: AppHandle, mcp: State<'_, Mcp>) -> Result<McpInfo, S
         Ok(l) => l,
         Err(_) => tokio::net::TcpListener::bind(("127.0.0.1", 0))
             .await
-            .map_err(|e| format!("無法啟動 MCP 伺服器：{e}"))?,
+            .map_err(|e| tr!("無法啟動 MCP 伺服器：{e}", e = e))?,
     };
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     let url = format!("http://127.0.0.1:{port}/mcp");

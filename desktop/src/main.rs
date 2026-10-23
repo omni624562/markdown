@@ -10,6 +10,8 @@
 // 正式版不要跳出命令提示字元視窗。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[macro_use]
+mod i18n;
 mod ado;
 mod ai;
 mod dav;
@@ -24,6 +26,7 @@ mod history;
 mod image_protocol;
 mod images;
 mod io;
+mod locales;
 mod navigation;
 mod pdf;
 mod projects;
@@ -164,7 +167,7 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
         .iter()
         .any(|p| lower.starts_with(p))
     {
-        return Err("只能開啟網頁或電子郵件連結".into());
+        return Err(tr!("只能開啟網頁或電子郵件連結"));
     }
     app.opener()
         .open_url(url.trim(), None::<&str>)
@@ -199,7 +202,7 @@ fn window_control(window: WebviewWindow, action: String) -> Result<bool, String>
         // 在頂端列按住滑鼠拖曳視窗（和拖曳系統標題列一樣，可以拖到螢幕邊緣貼齊）。
         "drag" => window.start_dragging(),
         "state" => Ok(()),
-        _ => return Err(format!("未知的視窗動作：{action}")),
+        _ => return Err(tr!("未知的視窗動作：{action}", action = action)),
     };
     r.map_err(|e| e.to_string())?;
     // 回傳是否最大化，按鈕圖示跟著切換。
@@ -285,6 +288,7 @@ fn main() {
             workspace::reopen_folder,
             workspace::current_folder,
             workspace::recent,
+            i18n::set_language,
             projects::projects_list,
             projects::project_update,
             projects::project_forget,
@@ -350,7 +354,7 @@ fn main() {
             update::update_restart,
         ])
         .build(tauri::generate_context!())
-        .expect("無法啟動應用程式")
+        .expect("無法啟動應用程式") // i18n-ignore：程式錯誤，不是介面文字
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 // 關閉 app 時，終端機裡的程式（含 Claude Code、Codex）一併結束。

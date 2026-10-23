@@ -3,6 +3,7 @@
  * 空白處按住拖曳可以移動視窗（拖到螢幕邊緣會貼齊）、連按兩下最大化或還原，
  * 右邊是和 Windows 一樣的最小化、最大化、關閉按鈕。
  */
+import { t } from "../i18n.ts";
 
 type Action = "minimize" | "toggle-maximize" | "close" | "drag" | "state";
 
@@ -36,9 +37,9 @@ export function setupWindowControls(topbar: HTMLElement, control: (action: Actio
     box.append(b);
     return b;
   };
-  const min = button("window-min", "最小化", "minimize");
-  const max = button("window-max", "最大化", "toggle-maximize");
-  const close = button("window-close", "關閉", "close");
+  const min = button("window-min", t("最小化"), "minimize");
+  const max = button("window-max", t("最大化"), "toggle-maximize");
+  const close = button("window-close", t("關閉"), "close");
   min.innerHTML = glyph("minimize");
   close.innerHTML = glyph("close");
   topbar.append(box);
@@ -46,7 +47,7 @@ export function setupWindowControls(topbar: HTMLElement, control: (action: Actio
   /** 依視窗是否最大化切換圖示。 */
   function show(maximized: boolean): void {
     max.innerHTML = glyph(maximized ? "restore" : "maximize");
-    const label = maximized ? "還原" : "最大化";
+    const label = maximized ? t("還原") : t("最大化");
     max.title = label;
     max.setAttribute("aria-label", label);
     document.documentElement.classList.toggle("window-maximized", maximized);

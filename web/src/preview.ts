@@ -83,7 +83,7 @@ export class Preview {
       try {
         await plugin.exportTransform?.(body);
       } catch (e) {
-        console.error(`[${plugin.name}] 匯出失敗`, e);
+        console.error(`[${plugin.name}] 匯出失敗`, e); // i18n-ignore（開發者訊息）
       }
     }
     return `<!doctype html>\n${doc.documentElement.outerHTML}\n`;

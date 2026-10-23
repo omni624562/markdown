@@ -89,23 +89,25 @@ pub async fn scan_docs(
 /// 磁碟上的內容和 `expected` 不同時不寫入，避免蓋掉剛被其他程式改過的內容。
 /// 保留原本的換行與 BOM；改之前的內容記到版本記錄。
 pub fn update(path: &Path, expected: &str, text: &str) -> Result<Vec<u8>, String> {
-    let before = fs::read(path)
-        .map_err(|e| crate::io::describe(&e, &format!("無法讀取「{}」", display_name(path))))?;
+    let before = fs::read(path).map_err(|e| {
+        crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(path)))
+    })?;
     let (disk, format, encoding) = decode(&before);
     if encoding != "utf-8" {
-        return Err(format!(
-            "「{}」不是 UTF-8 編碼，請先開啟並存檔",
-            display_name(path)
+        return Err(tr!(
+            "「{name}」不是 UTF-8 編碼，請先開啟並存檔",
+            name = display_name(path)
         ));
     }
     if disk != expected {
-        return Err(format!(
-            "「{}」剛被修改過，請重新整理後再試",
-            display_name(path)
+        return Err(tr!(
+            "「{name}」剛被修改過，請重新整理後再試",
+            name = display_name(path)
         ));
     }
-    write_atomic(path, &encode(text, format))
-        .map_err(|e| crate::io::describe(&e, &format!("無法寫入「{}」", display_name(path))))?;
+    write_atomic(path, &encode(text, format)).map_err(|e| {
+        crate::io::describe(&e, &tr!("無法寫入「{name}」", name = display_name(path)))
+    })?;
     Ok(before)
 }
 

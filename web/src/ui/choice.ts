@@ -2,6 +2,8 @@
  * 有多個選項的確認對話框（原生 confirm() 只能「確定／取消」）。
  * 回傳使用者選的選項 id；按 Esc 或點外面則回傳 null。
  */
+import { t } from "../i18n.ts";
+
 export interface ChoiceOption {
   id: string;
   label: string;
@@ -19,12 +21,13 @@ export interface ChoiceExtra {
 }
 
 /** 請使用者輸入一行文字（例如範本名稱）。取消時回傳 null。 */
-export function askText(title: string, message: string, value = "", okLabel = "確定"): Promise<string | null> {
+export function askText(title: string, message: string, value = "", okLabel = t("確定")): Promise<string | null> {
   const dialog = document.createElement("dialog");
   dialog.className = "choice";
   dialog.setAttribute("aria-labelledby", "ask-title");
+  const cancel = t("取消");
   dialog.innerHTML = `<h2 id="ask-title"></h2><p></p><form method="dialog"><input class="choice-input" type="text" />
-    <div class="choice-actions"><button type="button" class="btn" value="cancel">取消</button><button class="btn btn-primary" value="ok"></button></div></form>`;
+    <div class="choice-actions"><button type="button" class="btn" value="cancel">${cancel}</button><button class="btn btn-primary" value="ok"></button></div></form>`;
   dialog.querySelector("h2")!.textContent = title;
   dialog.querySelector("p")!.textContent = message;
   const input = dialog.querySelector("input")!;

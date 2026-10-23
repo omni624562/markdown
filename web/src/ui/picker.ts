@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 
 export interface PickerItem {
@@ -42,11 +43,12 @@ export class Picker<T> {
     this.#dialog.className = "palette";
     this.#dialog.setAttribute("aria-label", opts.label);
     const id = `picker-${Math.random().toString(36).slice(2, 8)}`;
+    const tr = { select: t("選擇"), open: t("開啟"), close: t("關閉") };
     this.#dialog.innerHTML = `
       <input type="text" role="combobox" aria-expanded="true" aria-controls="${id}"
         aria-autocomplete="list" autocomplete="off" spellcheck="false" />
       <ul id="${id}" role="listbox"></ul>
-      <p class="palette-hint"><kbd>↑</kbd><kbd>↓</kbd> 選擇　<kbd>Enter</kbd> 開啟　<kbd>Esc</kbd> 關閉</p>`;
+      <p class="palette-hint"><kbd>↑</kbd><kbd>↓</kbd> ${tr.select}\u3000<kbd>Enter</kbd> ${tr.open}\u3000<kbd>Esc</kbd> ${tr.close}</p>`;
     document.body.append(this.#dialog);
     this.#input = this.#dialog.querySelector("input")!;
     this.#input.placeholder = opts.placeholder;

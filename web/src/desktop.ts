@@ -2,6 +2,7 @@
  * 桌面版（Tauri）專用的橋接：原生對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、AI 協作。
  * 在一般瀏覽器裡 `desktop` 為 null，其餘程式碼照常走網頁 API。
  */
+import { t } from "./i18n.ts";
 
 interface TauriCore {
   invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
@@ -364,7 +365,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       }
       return list;
     });
-  const unsupported = (what: string) => Promise.reject(new Error(`遠端（WebDAV）資料夾不支援${what}`));
+  /** WebDAV 資料夾不支援的功能：`message` 是完整的說明。 */
+  const unsupported = (message: string) => Promise.reject(new Error(message));
   return {
     startupTarget: () => core.invoke<StartupTarget | null>("startup_target"),
     openFile: () => core.invoke<DesktopFile | null>("open_file"),
@@ -410,6 +412,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       ),
     currentFolder: () => core.invoke<Folder | null>("current_folder"),
     recent: () => core.invoke<Recent>("recent"),
+    /** 後端回給使用者的訊息用哪個語言。 */
+    setLanguage: (lang: string) => core.invoke<void>("set_language", { lang }),
     projects: () => core.invoke<Project[]>("projects_list"),
     projectUpdate: (path: string, change: ProjectChange) => core.invoke<Project>("project_update", { path, change }),
     projectForget: (path: string) => core.invoke<void>("project_forget", { path }),
@@ -449,7 +453,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<void>("dav_delete", { path }),
       ),
     revealEntry: (path: string) =>
-      route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported("在檔案總管中顯示")),
+      route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported(t("遠端（WebDAV）資料夾不支援在檔案總管中顯示"))),
     /** 選擇 PDF 的存檔位置；取消時回傳 null。 */
     pickPdfPath: (suggestedName: string) => core.invoke<string | null>("pick_pdf_path", { suggestedName }),
     /** 把主視窗目前的內容（列印樣式）直接存成 PDF。 */
@@ -464,27 +468,27 @@ function bridge(core: TauriCore, event: TauriEvent) {
       route(
         root,
         () => core.invoke<DocText[]>("scan_docs", { known }),
-        () => unsupported("待辦總覽、標籤與反向連結"),
+        () => unsupported(t("遠端（WebDAV）資料夾不支援待辦總覽、標籤與反向連結")),
       ),
     /** 改寫一份沒有開啟的文件；磁碟上的內容和 `expected` 不同時拒絕。 */
     updateDoc: (path: string, expected: string, text: string) =>
       route(
         path,
         () => core.invoke<void>("update_doc", { path, expected, text }),
-        () => unsupported("直接修改沒有開啟的檔案"),
+        () => unsupported(t("遠端（WebDAV）資料夾不支援直接修改沒有開啟的檔案")),
       ),
     /** 資料夾全文取代；`skip` 是有未存檔變更的已開啟檔案。 */
     replaceInFolder: (query: string, replacement: string, caseSensitive: boolean, regex: boolean, skip: string[], root: string) =>
       route(
         root,
         () => core.invoke<ReplaceResult>("replace_in_folder", { query, replacement, caseSensitive, regex, skip }),
-        () => unsupported("全文取代"),
+        () => unsupported(t("遠端（WebDAV）資料夾不支援全文取代")),
       ),
     search: (query: string, caseSensitive: boolean, regex: boolean, root: string) =>
       route(
         root,
         () => core.invoke<SearchResult>("search", { query, caseSensitive, regex }),
-        () => unsupported("全文搜尋"),
+        () => unsupported(t("遠端（WebDAV）資料夾不支援全文搜尋")),
       ),
     saveImage: (docPath: string, dataBase64: string, ext: string) =>
       route(

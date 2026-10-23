@@ -192,13 +192,13 @@ fn classify(s: git2::Status) -> Option<FileStatus> {
 }
 
 pub(crate) fn open(dir: &Path) -> Result<Repository, String> {
-    Repository::discover(dir).map_err(|_| "這個資料夾不是 Git 儲存庫".to_string())
+    Repository::discover(dir).map_err(|_| tr!("這個資料夾不是 Git 儲存庫"))
 }
 
 pub(crate) fn workdir(repo: &Repository) -> Result<PathBuf, String> {
     let dir = repo
         .workdir()
-        .ok_or_else(|| "這個儲存庫沒有工作目錄（bare）".to_string())?;
+        .ok_or_else(|| tr!("這個儲存庫沒有工作目錄（bare）"))?;
     Ok(dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()))
 }
 
@@ -323,10 +323,9 @@ pub(crate) fn require_clean_state(repo: &Repository) -> Result<(), String> {
     if repo.state() == RepositoryState::Clean {
         Ok(())
     } else {
-        Err(
+        Err(tr!(
             "這個儲存庫正在合併：請先在原始碼控制面板處理完衝突並按「完成合併」，或按「放棄合併」"
-                .into(),
-        )
+        ))
     }
 }
 
@@ -339,10 +338,9 @@ pub(crate) fn signature(
     }
     match who {
         Some(id) => Signature::now(&id.name, &id.email).map_err(err),
-        None => Err(
+        None => Err(tr!(
             "提交需要你的名字與 Email：請先到設定的 Git 頁「用 GitHub 登入」或連線到 Azure DevOps"
-                .into(),
-        ),
+        )),
     }
 }
 
@@ -350,7 +348,7 @@ pub(crate) fn signature(
 pub fn commit_at(dir: &Path, message: &str, who: Option<&Identity>) -> Result<String, String> {
     let message = message.trim();
     if message.is_empty() {
-        return Err("請輸入提交說明".into());
+        return Err(tr!("請輸入提交說明"));
     }
     let repo = open(dir)?;
     require_clean_state(&repo)?;
@@ -374,14 +372,14 @@ pub fn commit_at(dir: &Path, message: &str, who: Option<&Identity>) -> Result<St
         None => index.is_empty(),
     };
     if unchanged {
-        return Err("沒有需要提交的變更".into());
+        return Err(tr!("沒有需要提交的變更"));
     }
     let sig = signature(&repo, who)?;
     let tree = repo.find_tree(tree_id).map_err(err)?;
     let parents: Vec<&git2::Commit> = parent.iter().collect();
     let oid = repo
         .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
-        .map_err(|e| format!("提交失敗：{}", e.message()))?;
+        .map_err(|e| tr!("提交失敗：{e}", e = e.message()))?;
     let first = message.lines().next().unwrap_or_default();
     Ok(format!("{} {first}", &oid.to_string()[..7]))
 }
@@ -397,8 +395,9 @@ fn require_https(url: &str) -> Result<(), String> {
     if lower.starts_with("https://") || lower.starts_with("http://") || Path::new(url).exists() {
         Ok(())
     } else {
-        Err(format!(
-            "目前只支援 HTTPS 的遠端網址（例如 https://github.com/…）。這個儲存庫的遠端是：{url}"
+        Err(tr!(
+            "目前只支援 HTTPS 的遠端網址（例如 https://github.com/…）。這個儲存庫的遠端是：{url}",
+            url = url
         ))
     }
 }
@@ -450,7 +449,7 @@ impl<'a> Session<'a> {
                 }
             }
             self.refused.set(true);
-            Err(git2::Error::from_str("需要登入"))
+            Err(git2::Error::from_str(&tr!("需要登入")))
         });
         cb
     }
@@ -468,24 +467,35 @@ impl<'a> Session<'a> {
             if is_ado(self.auth, url) {
                 let has_token = self.auth.ado.as_ref().is_some_and(|a| a.pat.is_some());
                 if has_token {
-                    format!("{what}失敗：Azure DevOps 拒絕存取。可能沒有這個儲存庫的權限，或個人存取權杖已過期，請到設定的 Git 頁重新連線。")
+                    tr!("{what}失敗：Azure DevOps 拒絕存取。可能沒有這個儲存庫的權限，或個人存取權杖已過期，請到設定的 Git 頁重新連線。", what = what)
                 } else {
-                    format!("{what}失敗：需要登入 Azure DevOps。請到設定的 Git 頁輸入個人存取權杖並連線。")
+                    tr!("{what}失敗：需要登入 Azure DevOps。請到設定的 Git 頁輸入個人存取權杖並連線。", what = what)
                 }
             } else if is_github(url) && self.auth.github_token.is_none() {
-                format!("{what}失敗：需要登入 GitHub。請到設定的 Git 頁按「用 GitHub 登入」。")
+                tr!(
+                    "{what}失敗：需要登入 GitHub。請到設定的 Git 頁按「用 GitHub 登入」。",
+                    what = what
+                )
             } else if is_github(url) {
-                format!("{what}失敗：GitHub 拒絕存取。可能沒有這個儲存庫的權限，或登入已過期，請重新登入 GitHub。")
+                tr!("{what}失敗：GitHub 拒絕存取。可能沒有這個儲存庫的權限，或登入已過期，請重新登入 GitHub。", what = what)
             } else {
-                format!("{what}失敗：需要登入遠端儲存庫（{url}）。")
+                tr!(
+                    "{what}失敗：需要登入遠端儲存庫（{url}）。",
+                    what = what,
+                    url = url
+                )
             }
         } else if matches!(
             e.class(),
             ErrorClass::Net | ErrorClass::Http | ErrorClass::Ssl
         ) {
-            format!("{what}失敗：無法連線到遠端儲存庫（{}）", e.message())
+            tr!(
+                "{what}失敗：無法連線到遠端儲存庫（{e}）",
+                what = what,
+                e = e.message()
+            )
         } else {
-            format!("{what}失敗：{}", e.message())
+            tr!("{what}失敗：{e}", what = what, e = e.message())
         }
     }
 }
@@ -501,7 +511,7 @@ pub(crate) fn tracking(repo: &Repository) -> Result<(String, String, String), St
     let head = repo.head().ok();
     let branch = match &head {
         Some(h) if h.is_branch() => h.shorthand().unwrap_or("main").to_string(),
-        Some(_) => return Err("目前不在任何分支上（detached HEAD），請先切換到分支".into()),
+        Some(_) => return Err(tr!("目前不在任何分支上（detached HEAD），請先切換到分支")),
         None => branch_of(repo).name,
     };
     let cfg = repo.config().map_err(err)?;
@@ -513,7 +523,7 @@ pub(crate) fn tracking(repo: &Repository) -> Result<(String, String, String), St
                 .ok()
                 .map(|_| "origin".to_string())
         })
-        .ok_or_else(|| "這個資料夾還沒有連到 GitHub 或其他遠端儲存庫".to_string())?;
+        .ok_or_else(|| tr!("這個資料夾還沒有連到 GitHub 或其他遠端儲存庫"))?;
     let merge = cfg
         .get_string(&format!("branch.{branch}.merge"))
         .unwrap_or_else(|_| format!("refs/heads/{branch}"));
@@ -545,15 +555,16 @@ fn count_between(repo: &Repository, from: Option<Oid>, to: Oid) -> usize {
 }
 
 /// 拉取遇到衝突時的訊息（前端看到這段文字會提供「逐段處理」）。
-pub const CONFLICT_MESSAGE: &str =
-    "遠端和本機改到了同樣的地方。已經取消拉取，檔案都維持原樣；可以按「逐段處理」決定每一段要用哪一邊。";
+pub fn conflict_message() -> String {
+    tr!("遠端和本機改到了同樣的地方。已經取消拉取，檔案都維持原樣；可以按「逐段處理」決定每一段要用哪一邊。")
+}
 
 /// 拉取遠端的新提交。有未提交的變更時不做；遇到衝突時放棄，不動任何檔案。
 pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String, String> {
     let repo = open(dir)?;
     require_clean_state(&repo)?;
     if has_changes(&repo)? {
-        return Err("還有未提交的變更，請先提交再拉取".into());
+        return Err(tr!("還有未提交的變更，請先提交再拉取"));
     }
     let (branch, remote_name, merge) = tracking(&repo)?;
     let url = remote_url(&repo, &remote_name)?;
@@ -561,16 +572,16 @@ pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String
     repo.find_remote(&remote_name)
         .map_err(err)?
         .fetch::<&str>(&[], Some(&mut session.fetch_options()), None)
-        .map_err(|e| session.describe(&e, &url, "拉取"))?;
+        .map_err(|e| session.describe(&e, &url, &tr!("拉取")))?;
 
     let short = merge.trim_start_matches("refs/heads/");
     let Ok(theirs_id) = repo.refname_to_id(&format!("refs/remotes/{remote_name}/{short}")) else {
-        return Ok("遠端還沒有這個分支，不需要拉取".into());
+        return Ok(tr!("遠端還沒有這個分支，不需要拉取"));
     };
     let theirs = repo.find_annotated_commit(theirs_id).map_err(err)?;
     let (analysis, _) = repo.merge_analysis(&[&theirs]).map_err(err)?;
     if analysis.is_up_to_date() {
-        return Ok("已經是最新的".into());
+        return Ok(tr!("已經是最新的"));
     }
     let local_ref = format!("refs/heads/{branch}");
     let before = repo.head().ok().and_then(|h| h.target());
@@ -579,7 +590,7 @@ pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String
     if analysis.is_fast_forward() || analysis.is_unborn() {
         let target = repo.find_commit(theirs_id).map_err(err)?;
         repo.checkout_tree(target.as_object(), Some(CheckoutBuilder::new().safe()))
-            .map_err(|e| format!("拉取失敗：{}", e.message()))?;
+            .map_err(|e| tr!("拉取失敗：{e}", e = e.message()))?;
         match repo.find_reference(&local_ref) {
             Ok(mut r) => {
                 r.set_target(theirs_id, "pull: fast-forward").map_err(err)?;
@@ -590,19 +601,19 @@ pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String
             }
         }
         repo.set_head(&local_ref).map_err(err)?;
-        return Ok(format!("已拉取 {count} 個新的提交"));
+        return Ok(tr!("已拉取 {count} 個新的提交", count = count));
     }
 
     // 兩邊都有新提交：先在記憶體裡合併，沒有衝突才寫到磁碟。
     let ours = repo
-        .find_commit(before.ok_or("找不到目前的提交")?)
+        .find_commit(before.ok_or_else(|| tr!("找不到目前的提交"))?)
         .map_err(err)?;
     let theirs_commit = repo.find_commit(theirs_id).map_err(err)?;
     let mut merged = repo
         .merge_commits(&ours, &theirs_commit, None)
         .map_err(err)?;
     if merged.has_conflicts() {
-        return Err(CONFLICT_MESSAGE.into());
+        return Err(conflict_message());
     }
     let tree_id = merged.write_tree_to(&repo).map_err(err)?;
     let tree = repo.find_tree(tree_id).map_err(err)?;
@@ -612,18 +623,25 @@ pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String
             None,
             &sig,
             &sig,
-            &format!("合併 {remote_name}/{short} 的變更"),
+            &tr!(
+                "合併 {remote_name}/{short} 的變更",
+                remote_name = remote_name,
+                short = short
+            ),
             &tree,
             &[&ours, &theirs_commit],
         )
         .map_err(err)?;
     repo.checkout_tree(tree.as_object(), Some(CheckoutBuilder::new().safe()))
-        .map_err(|e| format!("拉取失敗：{}", e.message()))?;
+        .map_err(|e| tr!("拉取失敗：{e}", e = e.message()))?;
     repo.find_reference(&local_ref)
         .map_err(err)?
         .set_target(oid, "pull: merge")
         .map_err(err)?;
-    Ok(format!("已拉取 {count} 個新的提交，並和本機的提交合併"))
+    Ok(tr!(
+        "已拉取 {count} 個新的提交，並和本機的提交合併",
+        count = count
+    ))
 }
 
 /// 推送目前的分支。第一次推送時會記住對應的遠端分支。
@@ -633,7 +651,7 @@ pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
     let url = remote_url(&repo, &remote_name)?;
     let local = format!("refs/heads/{branch}");
     if repo.refname_to_id(&local).is_err() {
-        return Err("還沒有任何提交，請先提交再推送".into());
+        return Err(tr!("還沒有任何提交，請先提交再推送"));
     }
     let session = Session::new(auth);
     let rejected = RefCell::new(None::<String>);
@@ -647,7 +665,7 @@ pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
     let mut po = PushOptions::new();
     po.remote_callbacks(cb);
     po.proxy_options(proxy());
-    let behind = "遠端有你還沒拉取的提交，請先拉取再推送".to_string();
+    let behind = tr!("遠端有你還沒拉取的提交，請先拉取再推送");
     repo.find_remote(&remote_name)
         .map_err(err)?
         .push(&[format!("{local}:{merge}")], Some(&mut po))
@@ -655,7 +673,7 @@ pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
             if e.code() == ErrorCode::NotFastForward {
                 behind.clone()
             } else {
-                session.describe(&e, &url, "推送")
+                session.describe(&e, &url, &tr!("推送"))
             }
         })?;
     drop(po);
@@ -664,7 +682,7 @@ pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
             if msg.contains("fast-forward") || msg.contains("fetch first") {
                 behind
             } else {
-                format!("推送被遠端拒絕：{msg}")
+                tr!("推送被遠端拒絕：{msg}", msg = msg)
             },
         );
     }
@@ -676,7 +694,7 @@ pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
             )));
         }
     }
-    Ok("已推送".into())
+    Ok(tr!("已推送"))
 }
 
 /// 下載遠端儲存庫到 `dest`（不能已經存在檔案）。
@@ -687,7 +705,7 @@ pub fn clone_to(url: &str, dest: &Path, auth: &Auth) -> Result<(), String> {
     builder.fetch_options(session.fetch_options());
     let result = builder.clone(url, dest).map(|_| ());
     drop(builder);
-    result.map_err(|e| session.describe(&e, url, "下載"))
+    result.map_err(|e| session.describe(&e, url, &tr!("下載")))
 }
 
 /// 把資料夾變成連到 `url` 的儲存庫並上傳：還不是儲存庫就建立，設定遠端 origin，
@@ -704,7 +722,7 @@ pub fn publish_at(
             let mut opts = git2::RepositoryInitOptions::new();
             opts.initial_head("main");
             Repository::init_opts(dir, &opts)
-                .map_err(|e| format!("無法建立 Git 儲存庫：{}", e.message()))?
+                .map_err(|e| tr!("無法建立 Git 儲存庫：{e}", e = e.message()))?
         }
     };
     match repo.find_remote("origin") {
@@ -714,9 +732,9 @@ pub fn publish_at(
         }
     }
     drop(repo);
-    match commit_at(dir, "初始版本", who) {
+    match commit_at(dir, &tr!("初始版本"), who) {
         Ok(_) => {}
-        Err(e) if e == "沒有需要提交的變更" => {}
+        Err(e) if e == tr!("沒有需要提交的變更") => {}
         Err(e) => return Err(e),
     }
     push_at(dir, auth).map(|_| ())
@@ -727,7 +745,7 @@ pub fn publish_at(
 fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
     app.state::<Workspace>()
         .root()
-        .ok_or_else(|| "還沒有開啟資料夾".to_string())
+        .ok_or_else(|| tr!("還沒有開啟資料夾"))
 }
 
 #[tauri::command]
@@ -948,7 +966,7 @@ mod tests {
         assert!(push_at(&a, &none).unwrap_err().contains("先拉取"));
         assert_eq!(
             pull_at(&a, &none, Some(&me())).unwrap_err(),
-            CONFLICT_MESSAGE
+            conflict_message()
         );
         assert_eq!(read(a.join("週報.md")).unwrap(), "# 週報\n\na 也改了\n");
         assert!(status_at(&a).changes.is_empty());
