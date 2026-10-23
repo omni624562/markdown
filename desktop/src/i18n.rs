@@ -119,9 +119,9 @@ mod tests {
         )
         .contains("Resolve Chunk by Chunk"));
         assert_eq!(en("已取消登入"), "Sign-in canceled");
-        assert!(en("還沒有連線到 WebDAV 伺服器").starts_with("Not connected to a WebDAV server"));
-        assert!(en("這個檔案屬於另一個 WebDAV 連線，請先重新連線")
-            .starts_with("This file belongs to another WebDAV connection"));
+        assert!(en("還沒有連線到遠端資料夾").starts_with("Not connected to a remote folder"));
+        assert!(en("這個檔案屬於另一個遠端連線，請先重新連線")
+            .starts_with("This file belongs to another remote connection"));
         assert_eq!(en("網路磁碟無法連線"), "Network drive unreachable");
     }
 

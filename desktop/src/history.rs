@@ -312,7 +312,7 @@ pub fn maintain(app: &AppHandle) {
         std::thread::sleep(Duration::from_secs(60));
         let gone = |p: &Path| {
             let s = p.to_string_lossy();
-            !s.starts_with(crate::dav::SCHEME) && !crate::io::is_network_path(p) && !p.exists()
+            !crate::dav::is_remote_path(&s) && !crate::io::is_network_path(p) && !p.exists()
         };
         maintain_at(&root, now_ms(), QUOTA_BYTES, &gone);
     });
@@ -383,9 +383,9 @@ fn allowed(
     trust: &Trust,
     workspace: &Workspace,
 ) -> Result<(), String> {
-    let remote = path.to_str().is_some_and(|p| {
-        p.starts_with(crate::dav::SCHEME) && app.state::<crate::dav::Dav>().allows(p)
-    });
+    let remote = path
+        .to_str()
+        .is_some_and(|p| crate::dav::is_remote_path(p) && app.state::<crate::dav::Dav>().allows(p));
     if remote || known.contains(path) || trust.allows(path) || workspace.contains(path) {
         Ok(())
     } else {

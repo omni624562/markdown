@@ -32,6 +32,8 @@ import {
   desktop,
   displayPath,
   isRemote,
+  remoteId,
+  remoteRoot,
 } from "./desktop.ts";
 import type { EditorState } from "@codemirror/state";
 import {
@@ -130,6 +132,7 @@ import { SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
 import { TerminalPanel } from "./ui/terminal-panel.ts";
 import { WebDavDialog } from "./ui/webdav-dialog.ts";
+import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
 import type { AdoWorkItem, AdoWorkItemFilter, FileVersion } from "./desktop.ts";
@@ -2062,7 +2065,7 @@ function openDocsForIndex(): OpenDoc[] {
     }));
 }
 
-/** 資料夾（本機）中的所有文件加上已開啟的分頁；網頁版與 WebDAV 只有已開啟的分頁。 */
+/** 資料夾（本機）中的所有文件加上已開啟的分頁；網頁版與遠端資料夾只有已開啟的分頁。 */
 async function indexedDocs(): Promise<IndexedDoc[]> {
   const root = desktop && workspaceRoot && !isRemote(workspaceRoot.path) ? workspaceRoot.path : null;
   if (indexStale || !root) {
@@ -2322,9 +2325,14 @@ async function renderFilesEmpty(): Promise<void> {
   remote.className = "btn";
   remote.append(icon("cloud"), t("連線到 WebDAV"));
   remote.addEventListener("click", () => void commands.run("connect-webdav").catch(reportError));
+  const ssh = document.createElement("button");
+  ssh.type = "button";
+  ssh.className = "btn";
+  ssh.append(icon("server"), t("用 SSH 連線"));
+  ssh.addEventListener("click", () => void commands.run("connect-ssh").catch(reportError));
   const actions = document.createElement("div");
   actions.className = "side-buttons";
-  actions.append(open, remote);
+  actions.append(open, remote, ssh);
   box.replaceChildren(p, actions);
   const [projects, conns] = await Promise.all([projectUi!.refresh(), desktop.davConnections().catch(() => [])]);
   const folders = projectSections(projects).flatMap((s) => s.items).slice(0, 10);
@@ -2355,7 +2363,8 @@ async function renderFilesEmpty(): Promise<void> {
   };
   for (const p of folders) add("folder", p.label, displayPath(p.path), () => void openRecentFolder(p.path));
   for (const c of conns) {
-    add("cloud", c.name, t("{url}（{user}）", { url: c.url, user: c.username }), () => void openRemote(c), () =>
+    const where = c.kind === "ssh" ? c.url : t("{url}（{user}）", { url: c.url, user: c.username });
+    add(c.kind === "ssh" ? "server" : "cloud", c.name, where, () => void openRemote(c), () =>
       void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError),
     );
   }
@@ -2371,13 +2380,14 @@ async function renderFilesEmpty(): Promise<void> {
 }
 
 const davDialog = desktop ? new WebDavDialog(desktop) : null;
+const sshDialog = desktop ? new SshDialog(desktop) : null;
 
 /** 原生端在遠端檔案的連線沒有連上時回傳的錯誤開頭。 */
-const NOT_CONNECTED = [t("還沒有連線到 WebDAV 伺服器"), t("這個檔案屬於另一個 WebDAV 連線")];
+const NOT_CONNECTED = [t("還沒有連線到遠端資料夾"), t("這個檔案屬於另一個遠端連線")];
 
 /** 遠端檔案所屬的連線目前沒有連上：提示重新連線（不自動跳出對話框打斷）。 */
 async function suggestReconnect(path: string, message: (name: string) => string, label = t("重新連線")): Promise<boolean> {
-  const id = path.slice("webdav://".length).split("/")[0];
+  const id = remoteId(path);
   const c = (await desktop?.davConnections().catch(() => []))?.find((x) => x.id === id);
   if (!c) return false;
   toast(message(c.name), {
@@ -2387,15 +2397,31 @@ async function suggestReconnect(path: string, message: (name: string) => string,
   return true;
 }
 
-/** 開啟已儲存的 WebDAV 連線；沒有記住密碼時先詢問。 */
-async function openRemote(c: Pick<DavConnection, "id" | "url" | "username">): Promise<void> {
-  if (!desktop || !davDialog) return;
-  let folder: Folder | null;
-  try {
-    folder = await desktop.reopenFolder(`webdav://${c.id}`);
-  } catch (e) {
-    if (String(e instanceof Error ? e.message : e) !== "NEED_PASSWORD") throw e;
-    folder = await davDialog.open({ passwordOnly: true, url: c.url, username: c.username, id: c.id });
+/** 開啟已儲存的遠端連線（WebDAV 或 SSH）；沒有記住密碼時先詢問。 */
+async function openRemote(c: Pick<DavConnection, "id" | "kind" | "name" | "url" | "username">): Promise<void> {
+  if (!desktop || !davDialog || !sshDialog) return;
+  const root = remoteRoot(c);
+  let folder: Folder | null = null;
+  let trust: string | undefined;
+  for (;;) {
+    try {
+      folder = await desktop.reopenFolder(root, undefined, undefined, trust);
+    } catch (e) {
+      const message = String(e instanceof Error ? e.message : e);
+      if (message.startsWith("HOSTKEY_UNKNOWN") && !trust) {
+        // 主機金鑰不在 known_hosts 裡（例如被刪掉了）：再確認一次。
+        const fp = await confirmHostKey(message, c.url);
+        if (!fp) return;
+        trust = fp;
+        continue;
+      }
+      if (message !== "NEED_PASSWORD") throw e;
+      folder =
+        c.kind === "ssh"
+          ? await sshDialog.open({ passwordOnly: true, host: c.url, username: c.username, root, name: c.name })
+          : await davDialog.open({ passwordOnly: true, url: c.url, username: c.username, id: c.id });
+    }
+    break;
   }
   if (!folder) return;
   await setWorkspace(folder);
@@ -2527,10 +2553,10 @@ async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
       const affected = docs.filter((doc) => doc.path && isInside(doc.path, entry.path));
       const what = entry.isDir ? t("資料夾「{name}」和裡面所有的檔案", { name: entry.name }) : t("「{name}」", { name: entry.name });
       const note = affected.some((doc) => doc.dirty) ? t("已開啟的分頁會保留內容，但有尚未存檔的變更。") : "";
-      // WebDAV 沒有資源回收筒：講清楚是永久刪除。
+      // 遠端資料夾沒有資源回收筒：講清楚是永久刪除。
       const remote = isRemote(entry.path);
       const choice = remote
-        ? await choose(t("永久刪除？"), t("要刪除{what}嗎？遠端（WebDAV）沒有資源回收筒，刪除後無法復原。{note}", { what, note }), [
+        ? await choose(t("永久刪除？"), t("要刪除{what}嗎？遠端資料夾沒有資源回收筒，刪除後無法復原。{note}", { what, note }), [
             { id: "trash", label: t("永久刪除"), danger: true },
             { id: "cancel", label: t("取消"), primary: true },
           ])
@@ -2938,7 +2964,7 @@ async function probeOffline(): Promise<void> {
   if (fileHandle?.path !== offline.path) {
     toast(
       isRemote(offline.path)
-        ? t("WebDAV 伺服器已恢復連線，記得回到那份文件存檔。")
+        ? t("遠端伺服器已恢復連線，記得回到那份文件存檔。")
         : t("網路磁碟已恢復連線，記得回到那份文件存檔。"),
     );
   }
@@ -2962,12 +2988,12 @@ function renderOffline(): void {
   button.type = "button";
   button.className = "btn";
   if (offline.back) {
-    msg.append(remote ? t("WebDAV 伺服器已恢復連線。") : t("網路磁碟已恢復連線。"));
+    msg.append(remote ? t("遠端伺服器已恢復連線。") : t("網路磁碟已恢復連線。"));
     button.textContent = t("立即存檔");
     button.addEventListener("click", () => void save(false).catch(reportError));
   } else {
     msg.append(
-      Object.assign(document.createElement("strong"), { textContent: remote ? t("WebDAV 伺服器無法連線") : t("網路磁碟無法連線") }),
+      Object.assign(document.createElement("strong"), { textContent: remote ? t("遠端伺服器無法連線") : t("網路磁碟無法連線") }),
       Object.assign(document.createElement("span"), {
         textContent: t("這次沒有存到檔案。內容會保留在編輯器裡（草稿也已自動保存），連線恢復後會提醒你。"),
       }),
@@ -3224,6 +3250,19 @@ commands.register(
     when: () => !!desktop,
     async run() {
       const folder = await davDialog?.open();
+      if (!folder) return;
+      await setWorkspace(folder);
+      showPanel("files");
+    },
+  },
+  {
+    id: "connect-ssh",
+    title: t("用 SSH 連線到 Linux 主機…"),
+    group: t("檔案"),
+    icon: "server",
+    when: () => !!desktop,
+    async run() {
+      const folder = await sshDialog?.open();
       if (!folder) return;
       await setWorkspace(folder);
       showPanel("files");
@@ -3683,7 +3722,7 @@ async function sendSelectionToAi(): Promise<void> {
   const state = editor.view.state;
   const { from, to } = state.selection.main;
   let path = fileHandle?.path ?? null;
-  // WebDAV 上的檔案終端機讀不到，改成直接貼上文字。
+  // 遠端資料夾的檔案本機的 AI 讀不到，改成直接貼上文字。
   if (path && isRemote(path)) path = null;
   if (path && active.dirty) {
     // AI 讀的是磁碟上的檔案，先存檔行號才會對。
@@ -4348,6 +4387,7 @@ setupMenu($<HTMLButtonElement>("#files-more"), commands, [
   "project-settings",
   "open-folder",
   "connect-webdav",
+  "connect-ssh",
   "open-recent",
 ]);
 for (const el of document.querySelectorAll<HTMLButtonElement>(".project-switch, #activity-project")) {
@@ -4683,7 +4723,7 @@ async function importDocxData(name: string, data: ArrayBuffer, mdPath: string | 
   }
 }
 
-/** 匯出 Word：圖片從本機、WebDAV 或網址讀取，讀不到的改成文字說明。 */
+/** 匯出 Word：圖片從本機、遠端資料夾或網址讀取，讀不到的改成文字說明。 */
 async function exportDocx(): Promise<void> {
   refreshToc();
   const docDir = fileHandle?.path ? dirname(fileHandle.path) : null;
@@ -5557,7 +5597,7 @@ function docPath(doc: Doc): string | null {
 }
 
 /**
- * 重新讀取分頁的檔案（啟動時、重新連線到 WebDAV 後）：沒有未存檔的變更就直接採用最新內容，
+ * 重新讀取分頁的檔案（啟動時、重新連線到遠端資料夾後）：沒有未存檔的變更就直接採用最新內容，
  * 有的話提示比較差異。
  */
 async function reloadDoc(doc: Doc, path: string): Promise<void> {
@@ -5590,7 +5630,7 @@ async function reloadDoc(doc: Doc, path: string): Promise<void> {
   }
 }
 
-/** 重新連線到 WebDAV 後，重新讀取屬於這個連線的分頁（圖片也重新載入）。 */
+/** 重新連線到遠端資料夾後，重新讀取屬於這個連線的分頁（圖片也重新載入）。 */
 async function reloadRemoteDocs(root: string): Promise<void> {
   for (const doc of docs) {
     const path = docPath(doc);

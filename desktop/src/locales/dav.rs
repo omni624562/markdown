@@ -1,4 +1,4 @@
-//! WebDAV 連線與遠端檔案。
+//! 遠端資料夾（WebDAV、SSH）的連線與檔案。
 
 pub static EN: &[(&str, &str)] = &[
     ("{what}：帳號或密碼不正確，或沒有權限", "{what}: The user name or password is incorrect, or you don't have permission."),
@@ -10,7 +10,7 @@ pub static EN: &[(&str, &str)] = &[
     ("只能用 HTTPS 連線到網際網路上的伺服器（HTTP 不加密，密碼可能被看到）", "Servers on the internet can only be reached over HTTPS (HTTP isn't encrypted, so your password could be exposed)."),
     ("網址要以 https:// 開頭", "The URL must start with https://."),
     ("遠端路徑不正確", "Invalid remote path."),
-    ("找不到這個 WebDAV 連線，請重新設定", "Couldn't find this WebDAV connection. Set it up again."),
+    ("找不到這個遠端連線，請重新設定", "Couldn't find this remote connection. Set it up again."),
     ("這個網址不是資料夾", "This URL isn't a folder."),
     ("這個網址不是 WebDAV 伺服器（請確認 NAS 已開啟 WebDAV 服務與連接埠）", "This URL isn't a WebDAV server (make sure the WebDAV service and port are enabled on the NAS)."),
     ("無法連線", "Couldn't connect"),
@@ -20,4 +20,19 @@ pub static EN: &[(&str, &str)] = &[
     ("無法刪除", "Couldn't delete"),
     ("不是圖片", "Not an image."),
     ("無法讀取圖片", "Couldn't read the image"),
+    ("{what}：沒有權限", "{what}: Permission denied."),
+    // SSH
+    ("SSH：{host}", "SSH: {host}"),
+    ("{host} 的主機金鑰和上次連線時不同：可能是伺服器重新安裝過，也可能有人在攔截連線。確定沒問題的話，請在終端機執行 ssh-keygen -R {host} 刪掉舊的記錄，再重新連線。", "The host key of {host} is different from last time. The server may have been reinstalled, or someone may be intercepting the connection. If you're sure it's fine, run ssh-keygen -R {host} in a terminal to remove the old record, then connect again."),
+    ("這台主機使用憑證驗證主機金鑰，目前不支援", "This host uses a certificate for its host key, which isn't supported yet."),
+    ("這台主機沒有開啟 SFTP：{e}", "SFTP isn't enabled on this host: {e}"),
+    ("無法讀取金鑰檔「{path}」：{e}", "Couldn't read the key file \"{path}\": {e}"),
+    ("無法登入：帳號、密碼或金鑰不正確", "Couldn't sign in: the user name, password or key is incorrect."),
+    ("找不到遠端資料夾「{root}」", "Couldn't find the remote folder \"{root}\""),
+    ("「{root}」不是資料夾", "\"{root}\" isn't a folder."),
+    ("這是資料夾", "This is a folder."),
+    ("資料夾裡的項目超過 {n} 個，請改用終端機刪除", "The folder has more than {n} items. Delete it from a terminal instead."),
+    ("主機名稱不正確", "Invalid host name."),
+    ("連接埠不正確", "Invalid port."),
+    ("請輸入帳號", "Enter a user name."),
 ];

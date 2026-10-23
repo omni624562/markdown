@@ -342,35 +342,62 @@ export type AiRunEvent =
   | { kind: "done"; id: number; text: string; costUsd: number | null; tokens: number | null }
   | { kind: "error"; id: number; message: string };
 
-/** WebDAV 遠端檔案的路徑開頭（`webdav://<連線代號>/路徑`）。 */
-export const REMOTE = "webdav://";
+/** 遠端檔案的路徑開頭：WebDAV 是 `webdav://<連線代號>/路徑`，SSH 是 `ssh://<連線代號>/路徑`。 */
+const REMOTE_SCHEMES = ["webdav://", "ssh://"] as const;
 
 export function isRemote(path: string | null | undefined): path is string {
-  return !!path && path.startsWith(REMOTE);
+  return !!path && REMOTE_SCHEMES.some((s) => path.startsWith(s));
+}
+
+/** 遠端路徑的連線代號（不是遠端路徑時回傳 null）。 */
+export function remoteId(path: string | null | undefined): string | null {
+  if (!isRemote(path)) return null;
+  return path.slice(path.indexOf("://") + 3).split("/")[0] || null;
+}
+
+/** 連線的根目錄路徑（`webdav://代號` 或 `ssh://代號`）。 */
+export function remoteRoot(c: Pick<DavConnection, "id" | "kind">): string {
+  return `${c.kind === "ssh" ? "ssh" : "webdav"}://${c.id}`;
 }
 
 const davUrls = new Map<string, string>();
 
 /** 給人看的路徑：遠端檔案換成「伺服器網址/路徑」，不顯示內部的連線代號。 */
 export function displayPath(path: string): string {
-  if (!isRemote(path)) return path;
-  const [id, ...rest] = path.slice(REMOTE.length).split("/");
+  const id = remoteId(path);
+  if (!id) return path;
   const base = davUrls.get(id);
   if (!base) return path;
+  const rest = path.slice(path.indexOf("://") + 3).split("/").slice(1);
   return [base.replace(/\/+$/, ""), ...rest].join("/");
 }
 
-/** 已儲存的 WebDAV 連線（密碼不會傳到前端）。 */
+/** 已儲存的遠端連線（WebDAV 或 SSH；密碼不會傳到前端）。 */
 export interface DavConnection {
   id: string;
+  kind: "webdav" | "ssh";
   name: string;
   url: string;
   username: string;
   hasPassword: boolean;
 }
 
+/** 連線到 SSH 主機的設定。 */
+export interface SshConnectRequest {
+  host: string;
+  port: number | null;
+  username: string;
+  /** 密碼或金鑰的密語；空白就只用金鑰登入。 */
+  password: string;
+  keyPath: string;
+  root: string;
+  remember: boolean;
+  /** 使用者確認過的主機金鑰指紋。 */
+  trust?: string;
+}
+
 function bridge(core: TauriCore, event: TauriEvent) {
-  // 遠端（WebDAV）路徑改用 dav_* 指令；其他照舊。
+  // 遠端（WebDAV、SSH）路徑改用 dav_* 指令；其他照舊。
   const route = <T>(path: string | null | undefined, local: () => Promise<T>, remote: () => Promise<T>) =>
     isRemote(path) ? remote() : local();
   const davConnections = () =>
@@ -386,7 +413,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
       }
       return list;
     });
-  /** WebDAV 資料夾不支援的功能：`message` 是完整的說明。 */
+  /** 遠端資料夾不支援的功能：`message` 是完整的說明。 */
   const unsupported = (message: string) => Promise.reject(new Error(message));
   return {
     startupTarget: () => core.invoke<StartupTarget | null>("startup_target"),
@@ -419,16 +446,20 @@ function bridge(core: TauriCore, event: TauriEvent) {
     saveSettings: (json: string) => core.invoke<void>("save_settings", { json }),
 
     openFolder: () => core.invoke<Folder | null>("open_folder"),
-    /** 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員。 */
-    reopenFolder: (path: string, password?: string, remember?: boolean) =>
+    /**
+     * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
+     * `trust` 是使用者確認過的 SSH 主機金鑰指紋。
+     */
+    reopenFolder: (path: string, password?: string, remember?: boolean, trust?: string) =>
       route(
         path,
         () => core.invoke<Folder>("reopen_folder", { path }),
         () =>
           core.invoke<Folder>("dav_reconnect", {
-            id: path.slice(REMOTE.length).split("/")[0],
+            id: remoteId(path),
             password,
             remember: remember ?? false,
+            trust,
           }),
       ),
     currentFolder: () => core.invoke<Folder | null>("current_folder"),
@@ -466,7 +497,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<string>("rename_entry", { path, newName }),
         () => core.invoke<string>("dav_rename", { path, newName }),
       ),
-    /** 本機移到資源回收筒；WebDAV 沒有資源回收筒，會直接刪除。 */
+    /** 本機移到資源回收筒；遠端資料夾沒有資源回收筒，會直接刪除。 */
     trashEntry: (path: string) =>
       route(
         path,
@@ -474,7 +505,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<void>("dav_delete", { path }),
       ),
     revealEntry: (path: string) =>
-      route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported(t("遠端（WebDAV）資料夾不支援在檔案總管中顯示"))),
+      route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported(t("遠端資料夾不支援在檔案總管中顯示"))),
     /** 選擇 PDF 的存檔位置；取消時回傳 null。 */
     pickPdfPath: (suggestedName: string) => core.invoke<string | null>("pick_pdf_path", { suggestedName }),
     /** 把主視窗目前的內容（列印樣式）直接存成 PDF。 */
@@ -489,27 +520,27 @@ function bridge(core: TauriCore, event: TauriEvent) {
       route(
         root,
         () => core.invoke<DocText[]>("scan_docs", { known }),
-        () => unsupported(t("遠端（WebDAV）資料夾不支援待辦總覽、標籤與反向連結")),
+        () => unsupported(t("遠端資料夾不支援待辦總覽、標籤與反向連結")),
       ),
     /** 改寫一份沒有開啟的文件；磁碟上的內容和 `expected` 不同時拒絕。 */
     updateDoc: (path: string, expected: string, text: string) =>
       route(
         path,
         () => core.invoke<void>("update_doc", { path, expected, text }),
-        () => unsupported(t("遠端（WebDAV）資料夾不支援直接修改沒有開啟的檔案")),
+        () => unsupported(t("遠端資料夾不支援直接修改沒有開啟的檔案")),
       ),
     /** 資料夾全文取代；`skip` 是有未存檔變更的已開啟檔案。 */
     replaceInFolder: (query: string, replacement: string, caseSensitive: boolean, regex: boolean, skip: string[], root: string) =>
       route(
         root,
         () => core.invoke<ReplaceResult>("replace_in_folder", { query, replacement, caseSensitive, regex, skip }),
-        () => unsupported(t("遠端（WebDAV）資料夾不支援全文取代")),
+        () => unsupported(t("遠端資料夾不支援全文取代")),
       ),
     search: (query: string, caseSensitive: boolean, regex: boolean, root: string) =>
       route(
         root,
         () => core.invoke<SearchResult>("search", { query, caseSensitive, regex }),
-        () => unsupported(t("遠端（WebDAV）資料夾不支援全文搜尋")),
+        () => unsupported(t("遠端資料夾不支援全文搜尋")),
       ),
     saveImage: (docPath: string, dataBase64: string, ext: string) =>
       route(
@@ -530,6 +561,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     davConnect: (url: string, username: string, password: string, remember: boolean, allowHttp: boolean) =>
       core
         .invoke<Folder>("dav_connect", { url, username, password, remember, allowHttp })
+        .then(async (f) => (await davConnections().catch(() => []), f)),
+    sshConnect: (req: SshConnectRequest) =>
+      core
+        .invoke<Folder>("ssh_connect", { ...req, keyPath: req.keyPath || null, password: req.password || null })
         .then(async (f) => (await davConnections().catch(() => []), f)),
     davForget: (id: string) => core.invoke<void>("dav_forget", { id }),
     /** 遠端圖片（預覽用），回傳 data: 網址。 */

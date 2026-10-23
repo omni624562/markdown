@@ -32,6 +32,7 @@ mod pdf;
 mod projects;
 mod secrets;
 mod settings;
+mod ssh;
 mod trust;
 mod update;
 mod watch;
@@ -328,6 +329,7 @@ fn main() {
             dav::dav_image,
             dav::dav_peek,
             dav::dav_probe,
+            ssh::ssh_connect,
             git::git_status,
             git::git_commit,
             git::git_pull,
