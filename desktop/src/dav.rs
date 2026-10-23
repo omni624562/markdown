@@ -723,6 +723,7 @@ async fn open_session(
     dav.notified.lock().unwrap().clear();
     // 遠端工作區開著時，本機的工作區關閉。
     app.state::<crate::workspace::Workspace>().clear();
+    app.state::<crate::watch::Watcher>().stop_workspace();
     start_polling(app);
     Ok(())
 }
