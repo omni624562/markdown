@@ -159,6 +159,8 @@ export const sync: Record<string, Translation> = {
   "這個版本是自行編譯的，不支援自動更新。": "This is a self-built version and doesn't support automatic updates.",
   "已經是最新版本（{version}）。": "You're on the latest version ({version}).",
   "無法檢查更新：{error}": "Couldn't check for updates: {error}",
+  "正在檢查更新…": "Checking for updates…",
+  "正在連線到 GitHub…公司網路可能要等比較久": "Connecting to GitHub… This can take a while on a corporate network.",
   "下載 {size}": "{size} download",
   "更新時未存檔的內容會保留": "Unsaved changes are kept during the update",
   "略過這一版": "Skip This Version",

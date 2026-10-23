@@ -14,6 +14,8 @@ import { toast } from "./ui/toast.ts";
 
 const CHECK_INTERVAL = 20 * 60 * 60 * 1000;
 const FIRST_CHECK_DELAY = 8000;
+/** 手動檢查超過這個時間還沒結果，就說明還在連線（公司網路可能要等比較久）。 */
+const SLOW_CHECK = 3000;
 
 /** 給人看的版本號（例如「1.2.0」）。 */
 export function versionLabel(v: AppVersion): string {
@@ -45,6 +47,8 @@ export class Updater {
   /** 重新啟動前要做的事（例如保存草稿）。 */
   #beforeRestart: () => void;
   #state: UpdateState = { kind: "idle" };
+  /** 手動檢查進行中（連按時不重複檢查）。 */
+  #checking = false;
   #listeners = new Set<(s: UpdateState) => void>();
 
   constructor(d: Desktop, settings: SettingsStore, status: HTMLElement, beforeRestart: () => void) {
@@ -70,10 +74,19 @@ export class Updater {
     return this.#state;
   }
 
+  /** 是否正在手動檢查（設定頁的按鈕暫時不能按）。 */
+  get checking(): boolean {
+    return this.#checking;
+  }
+
   /** 狀態改變時通知（設定頁的版本列用）。回傳取消訂閱的函式。 */
   subscribe(fn: (s: UpdateState) => void): () => void {
     this.#listeners.add(fn);
     return () => this.#listeners.delete(fn);
+  }
+
+  #notify(): void {
+    for (const fn of this.#listeners) fn(this.#state);
   }
 
   #setState(s: UpdateState): void {
@@ -81,7 +94,7 @@ export class Updater {
     this.#status.hidden = s.kind === "idle";
     if (s.kind === "downloading") this.#status.textContent = t("正在下載 {version}　{percent}%", { version: s.version, percent: s.percent });
     else if (s.kind === "ready") this.#status.textContent = t("{version} 已下載，重新啟動即可更新", { version: s.version });
-    for (const fn of this.#listeners) fn(s);
+    this.#notify();
   }
 
   /**
@@ -137,8 +150,25 @@ export class Updater {
       toast(t("正在下載 {version}（{percent}%）…", { version: this.#state.version, percent: this.#state.percent }));
       return;
     }
+    // 上一次檢查還沒結果時不再送出（連按、指令面板重複執行）。
+    if (this.#checking) {
+      toast(t("正在檢查更新…"));
+      return;
+    }
+    this.#checking = true;
+    this.#notify();
+    let slow: { dismiss(): void } | null = null;
+    const timer = setTimeout(() => {
+      slow = toast(t("正在連線到 GitHub…公司網路可能要等比較久"), { duration: 60000 });
+    }, SLOW_CHECK);
+    const done = () => {
+      clearTimeout(timer);
+      slow?.dismiss();
+      this.#checking = false;
+      this.#notify();
+    };
     try {
-      const { current, latest } = await this.#d.updateCheck();
+      const { current, latest } = await this.#d.updateCheck().finally(done);
       storage.save("update-checked", String(Date.now()));
       if (!current.updatable) {
         toast(t("這個版本是自行編譯的，不支援自動更新。"), { duration: 6000 });
