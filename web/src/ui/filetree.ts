@@ -11,6 +11,8 @@ export interface FileTreeHandlers {
   list(dir: string): Promise<Entry[]>;
   open(path: string): void;
   action(action: TreeAction, entry: Entry): void;
+  /** 展開或收合了資料夾（記住每個專案展開到哪裡）。 */
+  expandedChanged?(): void;
 }
 
 const MENU: { action: TreeAction; label: string; dirOnly?: boolean; key?: string }[] = [
@@ -58,12 +60,20 @@ export class FileTree {
     return this.#root;
   }
 
-  /** 換一個工作區（null 代表沒有開啟資料夾）。 */
-  async setRoot(path: string | null, name = ""): Promise<void> {
+  /** 換一個工作區（null 代表沒有開啟資料夾）；`expanded` 是要展開的資料夾（上次的狀態）。 */
+  async setRoot(path: string | null, name = "", expanded: string[] = []): Promise<void> {
     this.#expanded.clear();
     this.#root = path ? { path, name, isDir: true } : null;
-    if (path) this.#expanded.add(path);
+    if (path) {
+      this.#expanded.add(path);
+      for (const dir of expanded) if (isInside(dir, path)) this.#expanded.add(dir);
+    }
     await this.#renderAll();
+  }
+
+  /** 目前展開的資料夾（不含根目錄）。 */
+  get expanded(): string[] {
+    return [...this.#expanded].filter((d) => d !== this.#root?.path);
   }
 
   /** 重新列出指定的資料夾（檔案監看通知有變動時呼叫）；不指定時全部重新整理。 */
@@ -283,6 +293,7 @@ export class FileTree {
       item.querySelector(":scope > [role=group]")?.remove();
     }
     row.setAttribute("aria-expanded", String(open));
+    this.#handlers.expandedChanged?.();
   }
 
   #entryOf(row: HTMLElement): Entry {

@@ -64,7 +64,9 @@
       <aside class="sidebar" id="sidebar" aria-label="側邊欄內容">
         <section class="side-panel" id="panel-files" role="tabpanel" aria-labelledby="side-tab-files" hidden>
           <div class="side-head">
-            <h2 id="folder-name">檔案</h2>
+            <h2 class="project-head">
+              <button type="button" class="project-switch"><span class="project-dot" hidden></span><span id="folder-name">檔案</span><i data-icon="chevron-down"></i></button>
+            </h2>
             <div class="side-actions" id="files-head" hidden>
               <button type="button" class="btn icon-only" id="tree-new-file" title="新增檔案" aria-label="新增檔案"><i data-icon="file-plus"></i></button>
               <button type="button" class="btn icon-only" id="tree-new-folder" title="新增資料夾" aria-label="新增資料夾"><i data-icon="folder-plus"></i></button>
@@ -167,6 +169,7 @@
         <button type="button" role="radio" data-view="split" class="split-only"><i data-icon="columns-2"></i><span class="label">分割</span></button>
         <button type="button" role="radio" data-view="preview"><i data-icon="eye"></i><span class="label">預覽</span></button>
       </div>
+      <button type="button" id="status-project" class="status-btn" hidden><span class="project-dot"></span><span class="label"></span></button>
       <span id="status-cursor"></span>
       <span id="status-stats"></span>
       <select id="doc-kind" class="status-select" aria-label="文件類型" title="文件類型（依副檔名自動判斷，也可以在這裡切換）">

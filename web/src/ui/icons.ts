@@ -114,6 +114,8 @@ import {
   Undo2,
   WandSparkles,
   X,
+  LayoutGrid,
+  FolderKanban,
   createElement,
   type IconNode,
 } from "lucide";
@@ -134,6 +136,8 @@ const ICONS: Record<string, IconNode> = {
   "sliders-horizontal": SlidersHorizontal,
   "rotate-ccw": RotateCcw,
   pin: Pin,
+  "layout-grid": LayoutGrid,
+  "folder-kanban": FolderKanban,
   "chevrons-down-up": ChevronsDownUp,
   "chevrons-up-down": ChevronsUpDown,
   "pin-off": PinOff,

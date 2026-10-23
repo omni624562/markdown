@@ -1,6 +1,6 @@
 /**
- * 分頁的保存與還原：每個分頁的基本資料存在 `tabs`，內容草稿各自存在 `draft:<id>`。
- * 重新開啟時依此還原分頁，未存檔的內容也不會遺失。
+ * 分頁的保存與還原：每個分頁的基本資料存在 `tabs`（各專案存在 `tabs@資料夾路徑`），
+ * 內容草稿各自存在 `draft:<id>`。重新開啟時依此還原分頁，未存檔的內容也不會遺失。
  */
 import { type DocKind, isKind } from "./kinds.ts";
 import * as storage from "./storage.ts";
@@ -34,27 +34,52 @@ function validMeta(m: unknown): m is DocMeta {
   return typeof d.id === "string" && typeof d.name === "string" && isKind(d.kind);
 }
 
-/** 讀取保存的分頁；第一次使用新版時，把舊版「單一文件」的資料轉成一個分頁。 */
-export function loadSession(): Session | null {
-  const raw = storage.load("tabs");
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as { docs?: unknown[]; activeId?: string };
-      const docs = (parsed.docs ?? []).filter(validMeta).map((d) => ({
-        ...d,
-        path: typeof d.path === "string" ? d.path : null,
-        baseline: typeof d.baseline === "string" && d.baseline ? d.baseline : null,
-        fileBacked: d.fileBacked === true,
-        pinned: d.pinned === true,
-      }));
-      if (docs.length) {
-        const activeId = docs.some((d) => d.id === parsed.activeId) ? parsed.activeId! : docs[0].id;
-        return { docs, activeId };
-      }
-    } catch {
-      // 損毀時當作沒有保存的分頁。
+/** 分頁存在哪個鍵：沒有開啟資料夾時的分頁存在 `tabs`，各專案存在 `tabs@資料夾路徑`。 */
+export function sessionKey(scope: string | null): string {
+  return scope ? `tabs@${scope}` : "tabs";
+}
+
+function parseSession(raw: string | null): Session | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { docs?: unknown[]; activeId?: string };
+    const docs = (parsed.docs ?? []).filter(validMeta).map((d) => ({
+      ...d,
+      path: typeof d.path === "string" ? d.path : null,
+      baseline: typeof d.baseline === "string" && d.baseline ? d.baseline : null,
+      fileBacked: d.fileBacked === true,
+      pinned: d.pinned === true,
+    }));
+    if (!docs.length) return null;
+    const activeId = docs.some((d) => d.id === parsed.activeId) ? parsed.activeId! : docs[0].id;
+    return { docs, activeId };
+  } catch {
+    // 損毀時當作沒有保存的分頁。
+    return null;
+  }
+}
+
+/** 只讀取專案保存的分頁（不接手共用的分頁，也不改任何資料）。 */
+export function peekSession(scope: string): Session | null {
+  return parseSession(storage.load(sessionKey(scope)));
+}
+
+/**
+ * 讀取保存的分頁；第一次使用新版時，把舊版「單一文件」的資料轉成一個分頁。
+ * 專案還沒有自己的分頁時，接手 `tabs`（舊版所有分頁共用的清單，或開資料夾前開著的分頁）。
+ */
+export function loadSession(scope: string | null = null): Session | null {
+  let raw = storage.load(sessionKey(scope));
+  if (raw === null && scope) {
+    raw = storage.load("tabs");
+    if (raw !== null) {
+      storage.save(sessionKey(scope), raw);
+      storage.remove("tabs");
     }
   }
+  const session = parseSession(raw);
+  if (session) return session;
+  if (scope) return null;
   const oldDoc = storage.load("doc");
   if (oldDoc === null) return null;
   const kind = storage.load("kind");
@@ -75,8 +100,29 @@ export function loadSession(): Session | null {
   };
 }
 
-export function saveSession(session: Session): void {
-  storage.save("tabs", JSON.stringify(session));
+export function saveSession(session: Session, scope: string | null = null): void {
+  storage.save(sessionKey(scope), JSON.stringify(session));
+}
+
+/** 專案的檔案樹展開到哪裡。 */
+export interface ProjectView {
+  expanded: string[];
+}
+
+/** 最多記住幾個展開的資料夾。 */
+const MAX_EXPANDED = 300;
+
+export function loadProjectView(scope: string): ProjectView {
+  try {
+    const v = JSON.parse(storage.load(`view@${scope}`) ?? "{}") as Partial<ProjectView>;
+    return { expanded: Array.isArray(v.expanded) ? v.expanded.filter((x): x is string => typeof x === "string") : [] };
+  } catch {
+    return { expanded: [] };
+  }
+}
+
+export function saveProjectView(scope: string, view: ProjectView): void {
+  storage.save(`view@${scope}`, JSON.stringify({ expanded: view.expanded.slice(0, MAX_EXPANDED) }));
 }
 
 export function loadDraft(id: string): string | null {

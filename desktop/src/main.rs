@@ -26,6 +26,7 @@ mod images;
 mod io;
 mod navigation;
 mod pdf;
+mod projects;
 mod secrets;
 mod settings;
 mod trust;
@@ -283,6 +284,11 @@ fn main() {
             workspace::reopen_folder,
             workspace::current_folder,
             workspace::recent,
+            projects::projects_list,
+            projects::project_update,
+            projects::project_forget,
+            projects::project_relocate,
+            projects::project_reveal,
             workspace::list_dir,
             workspace::list_files,
             workspace::create_entry,

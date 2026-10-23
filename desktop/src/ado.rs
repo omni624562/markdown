@@ -485,7 +485,10 @@ pub async fn ado_clone(
         crate::git::clone_to(&clone_url, &target, &auth)
     })
     .await?;
-    Ok(Some(crate::workspace::open_folder_from_cli(&app, dest)))
+    let folder = crate::workspace::open_folder_from_cli(&app, dest.clone());
+    app.state::<crate::trust::Trust>()
+        .set_default_group(&app, &dest, "Azure DevOps");
+    Ok(Some(folder))
 }
 
 /// `url` 和 `base` 是不是同一台伺服器（通訊協定、主機與連接埠都相同）。

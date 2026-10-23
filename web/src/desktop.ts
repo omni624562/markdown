@@ -94,6 +94,26 @@ export interface Recent {
   files: string[];
 }
 
+/** 專案：開過的資料夾，加上自訂名稱、顏色、群組與釘選。 */
+export interface Project {
+  path: string;
+  /** 顯示用的名稱：自訂名稱，沒有就是資料夾名稱。 */
+  label: string;
+  name: string | null;
+  color: string | null;
+  group: string | null;
+  pinned: boolean;
+  /** 上次開啟的時間（Unix 毫秒）；0 代表不知道。 */
+  lastOpened: number;
+}
+
+export interface ProjectChange {
+  name: string | null;
+  color: string | null;
+  group: string | null;
+  pinned: boolean;
+}
+
 export type AiTool = "claude" | "codex";
 export type TermProgram = "shell" | AiTool;
 
@@ -390,6 +410,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
       ),
     currentFolder: () => core.invoke<Folder | null>("current_folder"),
     recent: () => core.invoke<Recent>("recent"),
+    projects: () => core.invoke<Project[]>("projects_list"),
+    projectUpdate: (path: string, change: ProjectChange) => core.invoke<Project>("project_update", { path, change }),
+    projectForget: (path: string) => core.invoke<void>("project_forget", { path }),
+    /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
+    projectRelocate: (path: string) => core.invoke<Project | null>("project_relocate", { path }),
+    projectReveal: (path: string) => core.invoke<void>("project_reveal", { path }),
     listDir: (path: string) =>
       route(
         path,
