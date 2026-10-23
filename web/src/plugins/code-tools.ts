@@ -34,12 +34,12 @@ export function codeToolsPlugin(opts: {
   };
   return {
     name: "code-tools",
-    apply(root) {
+    apply(root, scope) {
       if (!bound.has(root)) {
         root.addEventListener("click", onClick);
         bound.add(root);
       }
-      for (const pre of root.querySelectorAll<HTMLElement>("pre")) {
+      for (const pre of scope.querySelectorAll<HTMLElement>("pre")) {
         if (pre.parentElement?.classList.contains("code-block")) continue;
         const code = pre.querySelector(":scope > code");
         const lang = languageOf(code?.className ?? "");

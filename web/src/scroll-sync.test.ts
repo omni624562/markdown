@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Block, offsetForLine, parseSourcepos } from "./scroll-sync.ts";
+import { type Block, type BlockRef, offsetForLine, offsetForLineLazy, parseSourcepos } from "./scroll-sync.ts";
 
 test("parseSourcepos 解析起訖行", () => {
   assert.deepEqual(parseSourcepos("3:1-5:10"), { start: 3, end: 5 });
@@ -32,4 +32,20 @@ test("區塊之間的空行在兩區塊間內插", () => {
 
 test("最後一個區塊之後停在其底部", () => {
   assert.equal(offsetForLine(blocks, 99), 220);
+});
+
+test("只量用得到的區塊，結果和全部量一樣", () => {
+  const refs: BlockRef[] = blocks.map((b, i) => ({ start: b.start, end: b.end, el: { i } as unknown as Element }));
+  const measured: number[] = [];
+  const measure = (el: Element) => {
+    const i = (el as unknown as { i: number }).i;
+    measured.push(i);
+    return { top: blocks[i].top, bottom: blocks[i].bottom };
+  };
+  for (const line of [1, 2, 3, 5, 8, 10, 12]) {
+    measured.length = 0;
+    assert.equal(offsetForLineLazy(refs, line, measure), offsetForLine(blocks, line));
+    assert.ok(measured.length <= 2);
+  }
+  assert.equal(offsetForLineLazy([], 3, measure), 0);
 });

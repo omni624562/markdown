@@ -1,5 +1,5 @@
 import type { HLJSApi } from "highlight.js";
-import type { PreviewPlugin } from "../preview.ts";
+import type { PreviewPlugin, Scope } from "../preview.ts";
 
 const CACHE_LIMIT = 500;
 
@@ -19,8 +19,8 @@ function load(): Promise<HLJSApi> {
 export function highlightPlugin(): PreviewPlugin {
   const cache = new Map<string, string>();
 
-  const paint = (api: HLJSApi, root: HTMLElement) => {
-    for (const code of root.querySelectorAll<HTMLElement>("pre > code[class^='language-']:not(.hljs)")) {
+  const paint = (api: HLJSApi, scope: Scope) => {
+    for (const code of scope.querySelectorAll<HTMLElement>("pre > code[class^='language-']:not(.hljs)")) {
       const lang = code.className.slice("language-".length);
       if (!api.getLanguage(lang)) continue;
 
@@ -38,10 +38,10 @@ export function highlightPlugin(): PreviewPlugin {
 
   return {
     name: "highlight",
-    apply(root) {
-      if (!root.querySelector("pre > code[class^='language-']")) return;
-      if (hljs) return paint(hljs, root);
-      return load().then((api) => paint(api, root));
+    apply(_root, scope) {
+      if (!scope.querySelector("pre > code[class^='language-']")) return;
+      if (hljs) return paint(hljs, scope);
+      return load().then((api) => paint(api, scope));
     },
   };
 }

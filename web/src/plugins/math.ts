@@ -1,4 +1,4 @@
-import type { PreviewPlugin } from "../preview.ts";
+import type { PreviewPlugin, Queryable } from "../preview.ts";
 
 type Katex = typeof import("katex").default;
 
@@ -19,7 +19,7 @@ const CACHE_LIMIT = 500;
 export function mathPlugin(enabled: () => boolean): PreviewPlugin {
   const cache = new Map<string, string>();
 
-  const renderAll = (katex: Katex, root: ParentNode, output: "htmlAndMathml" | "mathml") => {
+  const renderAll = (katex: Katex, root: Queryable, output: "htmlAndMathml" | "mathml") => {
     for (const el of root.querySelectorAll<HTMLElement>("[data-math-style]")) {
       const tex = el.textContent ?? "";
       const display = el.dataset.mathStyle === "display";
@@ -44,11 +44,11 @@ export function mathPlugin(enabled: () => boolean): PreviewPlugin {
 
   return {
     name: "math",
-    async apply(root) {
-      if (!enabled() || !root.querySelector("[data-math-style]")) return;
+    async apply(root, scope) {
+      if (!enabled() || !scope.querySelector("[data-math-style]")) return;
       const katex = await loadKatex();
       // 下載期間預覽可能已經重新渲染過，元素仍在頁面上才處理。
-      if (root.isConnected) renderAll(katex, root, "htmlAndMathml");
+      if (root.isConnected) renderAll(katex, scope, "htmlAndMathml");
     },
     async exportTransform(root) {
       if (!enabled() || !root.querySelector("[data-math-style]")) return;

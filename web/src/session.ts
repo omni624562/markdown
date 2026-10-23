@@ -134,6 +134,38 @@ export function saveDraft(id: string, text: string): boolean {
   return storage.save(`draft:${id}`, text);
 }
 
+/**
+ * 沒有任何分頁清單（`tabs`、`tabs@…`）用到的草稿 id：分頁關掉、專案移除後留下的。
+ * 有分頁清單讀不懂時一律不清（寧可留著，也不要誤刪別人的草稿）。
+ */
+export function orphanDraftIds(sessions: (string | null)[], draftIds: string[]): string[] {
+  const used = new Set<string>();
+  for (const raw of sessions) {
+    if (!raw) continue;
+    let parsed: { docs?: { id?: unknown }[] };
+    try {
+      parsed = JSON.parse(raw) as typeof parsed;
+    } catch {
+      return [];
+    }
+    if (!parsed || !Array.isArray(parsed.docs)) return [];
+    for (const d of parsed.docs) if (typeof d?.id === "string") used.add(d.id);
+  }
+  return draftIds.filter((id) => !used.has(id));
+}
+
+/** 清掉沒有分頁用到的草稿，回傳清掉幾個。 */
+export function dropOrphanDrafts(): number {
+  const sessions = storage
+    .keys("tabs")
+    .filter((k) => k === "tabs" || k.startsWith("tabs@"))
+    .map((k) => storage.load(k));
+  const drafts = storage.keys("draft:").map((k) => k.slice("draft:".length));
+  const orphans = orphanDraftIds(sessions, drafts);
+  for (const id of orphans) dropDraft(id);
+  return orphans.length;
+}
+
 export function dropDraft(id: string): void {
   storage.remove(`draft:${id}`);
 }

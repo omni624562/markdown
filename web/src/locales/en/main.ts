@@ -68,6 +68,8 @@ export const main: Record<string, Translation> = {
   "「{name}」被{who}改過，已暫停自動存檔。按 Ctrl+S 比較差異後再存。":
     "\"{name}\" was changed by {who}. Auto Save is paused; press Ctrl+S to compare the changes before saving.",
   "自動存檔失敗，已暫停：{error}": "Auto Save failed and is paused: {error}",
+  "「{name}」的內容還沒從檔案讀進來，先不存檔，免得把檔案蓋成空白。":
+    "“{name}” hasn't been loaded from its file yet, so it wasn't saved (saving now would overwrite the file with an empty document).",
   "瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。":
     "The browser blocked storage, so drafts can't be saved automatically. Remember to save manually.",
   "已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。":
