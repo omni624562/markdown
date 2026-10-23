@@ -255,7 +255,6 @@ export const editing: Record<string, Translation> = {
   "括號四": "Parenthesized Ideograph Four",
   "括號五": "Parenthesized Ideograph Five",
   "（不明）": "(Unknown)",
-  "區域": "Area",
   "反覆項目": "Iteration",
   "優先順序": "Priority",
   "{label}：{title}": "{label}: {title}",

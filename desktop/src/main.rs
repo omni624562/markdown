@@ -282,6 +282,7 @@ fn main() {
             ado::ado_work_item,
             ado::ado_image,
             ado::ado_work_item_filters,
+            ado::ado_work_item_scope,
             pdf::pick_pdf_path,
             pdf::print_to_pdf,
             settings::load_settings,

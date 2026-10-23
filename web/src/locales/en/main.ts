@@ -549,4 +549,11 @@ export const main: Record<string, Translation> = {
   "搜尋標題或內容，或輸入編號": "Search titles and content, or enter an ID",
   "符合篩選條件的工作項目（{n}）": "Work items matching the filters ({n})",
   "沒有符合篩選條件的工作項目": "No work items match the filters.",
+  "人": "Person",
+  "我建立的": "Created by Me",
+  "指派給…": "Assigned to…",
+  "建立者是…": "Created by…",
+  "名字": "Name",
+  "輸入名字（部分即可）": "Type a name (partial is fine)",
+  "所有區域": "All Areas",
 };

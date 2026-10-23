@@ -115,4 +115,6 @@ export const common: Record<string, Translation> = {
   "狀態": "State",
   "類型": "Type",
   "所有人": "Everyone",
+  // 好幾個區域共用的字。
+  "區域": "Area",
 };

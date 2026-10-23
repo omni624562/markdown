@@ -1689,7 +1689,10 @@ button.git-info:disabled { cursor: default; }
 .workitem[aria-current="true"] { background: var(--accent-soft); }
 .workitem[aria-current="true"] .workitem-title { color: var(--accent); }
 .workitems-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 6px; }
-.workitems-filters select { width: 100%; min-width: 0; height: 26px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); }
+.workitems-filters select, .workitems-filters input { width: 100%; min-width: 0; height: 26px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: inherit; }
+.workitems-filters input { padding: 0 6px; }
+.workitems-filters .workitems-person, .workitems-filters .workitems-area { grid-column: 1 / -1; }
+.workitems-filters [hidden] { display: none; }
 .tasks-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
 .tasks-filters .segmented button[aria-pressed="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
 .tasks-filters select { height: 28px; max-width: 110px; padding: 0 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 12px var(--font-ui); }

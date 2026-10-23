@@ -631,6 +631,8 @@ pub struct WorkItem {
     state: String,
     kind: String,
     project: String,
+    /// 指派給誰（清單上看所有人的工作項目時顯示）。
+    assigned_to: Option<String>,
     changed: Option<String>,
     web_url: String,
 }
@@ -640,7 +642,6 @@ pub struct WorkItem {
 pub struct WorkItemDetail {
     #[serde(flatten)]
     item: WorkItem,
-    assigned_to: Option<String>,
     created_by: Option<String>,
     /// 區域與反覆項目（例如「產品\前端」「產品\Sprint 3」）。
     area: Option<String>,
@@ -680,35 +681,43 @@ const CLOSED_STATES: &[&str] = &[
     "關閉",   // i18n-ignore
     "完成",   // i18n-ignore
 ];
-const FIELDS: &str =
-    "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.ChangedDate";
+const FIELDS: &str = "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.AssignedTo,System.ChangedDate";
 
 fn wiql_string(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-/// 依搜尋文字決定查詢：空白是「指派給我」，數字是工作項目編號，其他搜尋標題。
 /// 工作項目清單的篩選條件（前端的篩選列）。
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WorkItemFilter {
-    /// 只列出指派給我的。
-    pub mine: bool,
+    /// 依 `assigned`（指派給）或 `created`（建立者）篩選人。
+    pub role: String,
+    /// `@me`（我）、空字串（不限）或名字（部分符合即可）。
+    pub person: String,
     /// `open`（還沒結束）、`closed`（已結束）或 `all`。
     pub state: String,
     pub kind: Option<String>,
     pub project: Option<String>,
+    /// 區域路徑（例如 `產品\前端`），包含底下的區域。
+    pub area: Option<String>,
 }
 
 impl Default for WorkItemFilter {
     fn default() -> Self {
         WorkItemFilter {
-            mine: true,
+            role: "assigned".into(),
+            person: "@me".into(),
             state: "open".into(),
             kind: None,
             project: None,
+            area: None,
         }
     }
+}
+
+fn filled(v: &Option<String>) -> Option<&str> {
+    v.as_deref().map(str::trim).filter(|v| !v.is_empty())
 }
 
 /// 搜尋內容時一併搜尋的長文字欄位（全文搜尋）。伺服器沒有全文索引、或流程範本沒有某個欄位時
@@ -730,8 +739,15 @@ fn wiql_for(search: &str, f: &WorkItemFilter, content: &[&str]) -> Option<String
         return None;
     }
     let mut cond: Vec<String> = vec![];
-    if f.mine {
-        cond.push("[System.AssignedTo] = @Me".into());
+    let role = if f.role == "created" {
+        "System.CreatedBy"
+    } else {
+        "System.AssignedTo"
+    };
+    match f.person.trim() {
+        "" => {}
+        "@me" => cond.push(format!("[{role}] = @Me")),
+        name => cond.push(format!("[{role}] CONTAINS {}", wiql_string(name))),
     }
     let closed: Vec<String> = CLOSED_STATES.iter().map(|s| wiql_string(s)).collect();
     match f.state.as_str() {
@@ -739,11 +755,14 @@ fn wiql_for(search: &str, f: &WorkItemFilter, content: &[&str]) -> Option<String
         "closed" => cond.push(format!("[System.State] IN ({})", closed.join(", "))),
         _ => {}
     }
-    if let Some(k) = f.kind.as_deref().filter(|k| !k.trim().is_empty()) {
-        cond.push(format!("[System.WorkItemType] = {}", wiql_string(k.trim())));
+    if let Some(k) = filled(&f.kind) {
+        cond.push(format!("[System.WorkItemType] = {}", wiql_string(k)));
     }
-    if let Some(p) = f.project.as_deref().filter(|p| !p.trim().is_empty()) {
-        cond.push(format!("[System.TeamProject] = {}", wiql_string(p.trim())));
+    if let Some(p) = filled(&f.project) {
+        cond.push(format!("[System.TeamProject] = {}", wiql_string(p)));
+    }
+    if let Some(a) = filled(&f.area) {
+        cond.push(format!("[System.AreaPath] UNDER {}", wiql_string(a)));
     }
     if !q.is_empty() {
         let mut any = vec![format!("[System.Title] CONTAINS {}", wiql_string(q))];
@@ -786,6 +805,7 @@ fn item_of(base: &str, v: &Value) -> Option<WorkItem> {
         kind: field_str(v, "System.WorkItemType"),
         web_url: work_item_url(base, &project, id),
         project,
+        assigned_to: person(field(v, "System.AssignedTo")),
         changed: field(v, "System.ChangedDate")
             .and_then(Value::as_str)
             .map(str::to_string),
@@ -881,6 +901,7 @@ pub async fn ado_work_items(
                 state: w.state.clone(),
                 kind: w.kind.clone(),
                 project: w.project.clone(),
+                assigned_to: w.assigned_to.clone(),
                 changed: w.changed.clone(),
                 web_url: w.web_url.clone(),
             })
@@ -935,6 +956,122 @@ pub async fn ado_work_item_filters(app: AppHandle) -> Result<WorkItemFilterOptio
         }
         kinds.sort_by_key(|k| k.to_lowercase());
         Ok(WorkItemFilterOptions { projects, kinds })
+    })
+    .await
+}
+
+/// 一個專案（或所有專案）可以篩選的區域與人。
+#[derive(Serialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemScopeOptions {
+    /// 區域路徑（不含專案本身），依樹狀順序。
+    areas: Vec<String>,
+    /// 團隊成員的顯示名稱。
+    people: Vec<String>,
+}
+
+const MAX_AREAS: usize = 500;
+const MAX_TEAMS: usize = 20;
+
+/// 把區域樹攤平成路徑（`產品\前端\登入`）；最上層是專案本身，不列出。
+fn area_paths(root: &Value) -> Vec<String> {
+    fn walk(node: &Value, path: &str, out: &mut Vec<String>) {
+        for child in node
+            .get("children")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
+            if out.len() >= MAX_AREAS {
+                return;
+            }
+            let Some(name) = str_of(child, "name") else {
+                continue;
+            };
+            let p = format!("{path}\\{name}");
+            out.push(p.clone());
+            walk(child, &p, out);
+        }
+    }
+    let mut out = vec![];
+    if let Some(name) = str_of(root, "name") {
+        walk(root, name, &mut out);
+    }
+    out
+}
+
+/// 團隊成員的名字：新版在 `identity` 裡，舊版直接是成員；群組不列出。
+fn member_names(res: &Value) -> Vec<String> {
+    values(res)
+        .iter()
+        .map(|m| m.get("identity").unwrap_or(m))
+        .filter(|m| m.get("isContainer").and_then(Value::as_bool) != Some(true))
+        .filter_map(|m| str_of(m, "displayName"))
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// 篩選列的區域與人：有選專案時讀那個專案的區域與團隊成員；沒選時只讀前幾個專案的成員。
+#[tauri::command]
+pub async fn ado_work_item_scope(
+    app: AppHandle,
+    project: Option<String>,
+) -> Result<WorkItemScopeOptions, String> {
+    let (a, pat) = require(&app)?;
+    let project = project.filter(|p| !p.trim().is_empty());
+    crate::io::blocking_for(TIMEOUT, move || {
+        let mut areas = vec![];
+        let projects: Vec<String> = match &project {
+            Some(p) => {
+                let path = format!(
+                    "/{}/_apis/wit/classificationnodes/areas?$depth=10",
+                    encode_segment(p)
+                );
+                areas = area_paths(&get(&a.url, &pat, &path, &tr!("讀取區域"))?);
+                vec![p.clone()]
+            }
+            None => {
+                let res = get(&a.url, &pat, "/_apis/projects?$top=10", &tr!("讀取專案"))?;
+                values(&res)
+                    .iter()
+                    .filter_map(|p| str_of(p, "name").map(str::to_string))
+                    .collect()
+            }
+        };
+        let mut people: Vec<String> = vec![];
+        let mut teams = 0;
+        // 讀不到成員（權限不足、舊版伺服器）時只是沒有建議名字，仍可自己輸入。
+        'projects: for p in &projects {
+            let path = format!("/_apis/projects/{}/teams?$top=100", encode_segment(p));
+            let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取團隊")) else {
+                continue;
+            };
+            for team in values(&res) {
+                if teams >= MAX_TEAMS {
+                    break 'projects;
+                }
+                let Some(id) = str_of(team, "id") else {
+                    continue;
+                };
+                teams += 1;
+                let path = format!(
+                    "/_apis/projects/{}/teams/{}/members?$top=1000",
+                    encode_segment(p),
+                    encode_segment(id)
+                );
+                if let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取團隊成員")) {
+                    for name in member_names(&res) {
+                        if !people.contains(&name) {
+                            people.push(name);
+                        }
+                    }
+                }
+            }
+        }
+        people.sort_by_key(|n| n.to_lowercase());
+        Ok(WorkItemScopeOptions { areas, people })
     })
     .await
 }
@@ -1041,7 +1178,6 @@ fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
     let text = |name: &str| Some(field_str(v, name)).filter(|s| !s.trim().is_empty());
     Some(WorkItemDetail {
         item: item_of(base, v)?,
-        assigned_to: person(field(v, "System.AssignedTo")),
         created_by: person(field(v, "System.CreatedBy")),
         area: text("System.AreaPath"),
         iteration: text("System.IterationPath"),
@@ -1267,10 +1403,11 @@ mod tests {
         assert!(wiql_for("", &mine, &[]).unwrap().contains("'已關閉'"));
         assert_eq!(wiql_for("#123", &mine, &[]), None);
         let all = WorkItemFilter {
-            mine: false,
+            person: "".into(),
             state: "all".into(),
             kind: Some("Bug".into()),
             project: Some("產品".into()),
+            ..Default::default()
         };
         let q = wiql_for("登入 bug", &all, CONTENT_FIELDS[0]).unwrap();
         assert!(!q.contains("@Me") && !q.contains("[System.State]"));
@@ -1281,10 +1418,9 @@ mod tests {
         ));
         assert!(q.contains("[Microsoft.VSTS.Common.AcceptanceCriteria] CONTAINS WORDS"));
         let closed = WorkItemFilter {
-            mine: false,
+            person: " ".into(),
             state: "closed".into(),
-            kind: None,
-            project: None,
+            ..Default::default()
         };
         assert!(wiql_for("", &closed, &[])
             .unwrap()
@@ -1297,6 +1433,43 @@ mod tests {
             .unwrap()
             .contains("WHERE [System.Id] > 0"));
         assert!(wiql_for("it's", &mine, &[]).unwrap().contains("'it''s'"));
+        // 依人與區域。
+        let by = WorkItemFilter {
+            role: "created".into(),
+            person: "王小明".into(),
+            area: Some(" 產品\\前端 ".into()),
+            ..Default::default()
+        };
+        let q = wiql_for("", &by, &[]).unwrap();
+        assert!(q.contains("[System.CreatedBy] CONTAINS '王小明'"));
+        assert!(!q.contains("AssignedTo"));
+        assert!(q.contains("[System.AreaPath] UNDER '產品\\前端'"));
+        let me = WorkItemFilter {
+            role: "created".into(),
+            ..Default::default()
+        };
+        assert!(wiql_for("", &me, &[])
+            .unwrap()
+            .contains("[System.CreatedBy] = @Me"));
+    }
+
+    #[test]
+    fn flattens_areas_and_members() {
+        let tree = json!({"name": "產品", "children": [
+            {"name": "前端", "children": [{"name": "登入"}]},
+            {"name": "後端"}
+        ]});
+        assert_eq!(
+            area_paths(&tree),
+            ["產品\\前端", "產品\\前端\\登入", "產品\\後端"]
+        );
+        let members = json!({"value": [
+            {"identity": {"displayName": "王小明"}},
+            {"displayName": "Amy Lin"},
+            {"identity": {"displayName": "[產品]\\Contributors", "isContainer": true}},
+            {"identity": {"displayName": " "}}
+        ]});
+        assert_eq!(member_names(&members), ["王小明", "Amy Lin"]);
     }
 
     #[test]
@@ -1326,7 +1499,7 @@ mod tests {
         assert_eq!(d.area.as_deref(), Some("產品\\前端"));
         assert_eq!(d.iteration, None);
         assert_eq!(d.item.title, "修正登入");
-        assert_eq!(d.assigned_to.as_deref(), Some("王小明"));
+        assert_eq!(d.item.assigned_to.as_deref(), Some("王小明"));
         assert_eq!(d.details.as_deref(), Some("<div>步驟</div>"));
         assert_eq!(
             d.item.web_url,

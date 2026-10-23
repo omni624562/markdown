@@ -3,6 +3,9 @@
 pub static EN: &[(&str, &str)] = &[
     ("讀取留言", "Loading comments"),
     ("讀取工作項目類型", "Loading work item types"),
+    ("讀取區域", "Loading areas"),
+    ("讀取團隊", "Loading teams"),
+    ("讀取團隊成員", "Loading team members"),
     ("只能讀取 Azure DevOps 伺服器上的圖片", "Only images on the Azure DevOps server can be loaded."),
     ("無法讀取圖片：{e}", "Couldn't load the image: {e}"),
     ("無法讀取圖片：不是圖片", "Couldn't load the image: It isn't an image."),

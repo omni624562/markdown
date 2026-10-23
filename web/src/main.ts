@@ -1528,30 +1528,55 @@ const issueView = new IssueView($(".workspace"), {
 });
 
 /** 工作項目的篩選條件（記住上次的選擇）。 */
-const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = { mine: true, state: "open", kind: null, project: null };
+const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {
+  role: "assigned",
+  person: "@me",
+  state: "open",
+  kind: null,
+  project: null,
+  area: null,
+};
 const workItemFilter: AdoWorkItemFilter = (() => {
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   try {
     const v = JSON.parse(storage.load("workitem-filter") ?? "{}") as Partial<AdoWorkItemFilter>;
+    const project = text(v.project);
     return {
-      mine: typeof v.mine === "boolean" ? v.mine : true,
+      role: v.role === "created" ? "created" : "assigned",
+      person: typeof v.person === "string" ? v.person : "@me",
       state: v.state === "closed" || v.state === "all" ? v.state : "open",
-      kind: typeof v.kind === "string" && v.kind ? v.kind : null,
-      project: typeof v.project === "string" && v.project ? v.project : null,
+      kind: text(v.kind),
+      project,
+      area: project ? text(v.area) : null,
     };
   } catch {
     return { ...DEFAULT_WORK_ITEM_FILTER };
   }
 })();
 const isDefaultFilter = () =>
-  workItemFilter.mine && workItemFilter.state === "open" && !workItemFilter.kind && !workItemFilter.project;
+  workItemFilter.role === "assigned" &&
+  workItemFilter.person === "@me" &&
+  workItemFilter.state === "open" &&
+  !workItemFilter.kind &&
+  !workItemFilter.project &&
+  !workItemFilter.area;
+/** 清單上要不要顯示指派給誰（只看自己的就不必）。 */
+const showAssignee = () => !(workItemFilter.role === "assigned" && workItemFilter.person === "@me");
 
-/** 讀取篩選列的類型與專案選項（第一次列出工作項目時）。 */
+/** 讀取篩選列的選項（第一次列出工作項目時）。 */
 let loadWorkItemFilterOptions = (): void => {};
 
-/** 工作項目的篩選列：指派給誰、狀態、類型、專案。類型與專案的選項第一次列出工作項目時才讀取。 */
+/**
+ * 工作項目的篩選列：人（指派給、建立者）、狀態、類型、專案、區域。
+ * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
+ */
 function workItemFilterBar(): HTMLElement {
   const bar = document.createElement("div");
   bar.className = "workitems-filters";
+  const changed = () => {
+    storage.save("workitem-filter", JSON.stringify(workItemFilter));
+    void workItemsPanel?.refresh();
+  };
   const select = (label: string, options: [string, string][], value: string, change: (v: string) => void) => {
     const sel = document.createElement("select");
     sel.className = "status-select";
@@ -1560,43 +1585,115 @@ function workItemFilterBar(): HTMLElement {
     for (const [v, text] of options) sel.append(new Option(text, v, false, v === value));
     sel.addEventListener("change", () => {
       change(sel.value);
-      storage.save("workitem-filter", JSON.stringify(workItemFilter));
-      void workItemsPanel?.refresh();
+      changed();
     });
     return sel;
   };
-  const scope = select(t("指派給"), [["mine", t("指派給我")], ["all", t("所有人")]], workItemFilter.mine ? "mine" : "all", (v) => {
-    workItemFilter.mine = v === "mine";
+  const fill = (sel: HTMLSelectElement, values: [string, string][], current: string | null) => {
+    sel.length = 1;
+    for (const [v, text] of values) sel.append(new Option(text, v, false, v === current));
+    if (current && !values.some(([v]) => v === current)) sel.append(new Option(current, current, true, true));
+    sel.value = current ?? "";
+  };
+  const pairs = (values: string[]): [string, string][] => values.map((v) => [v, v]);
+
+  // 人：指派給我、我建立的、所有人，或指定某個人（輸入名字）。
+  const f = workItemFilter;
+  const personValue = f.person === "@me" ? `${f.role}:@me` : f.person ? `${f.role}:` : "any";
+  const name = document.createElement("input");
+  name.type = "search";
+  name.className = "workitems-person";
+  name.value = f.person === "@me" ? "" : f.person;
+  name.placeholder = t("輸入名字（部分即可）");
+  name.setAttribute("aria-label", t("名字"));
+  name.setAttribute("list", "workitem-people");
+  name.hidden = !personValue.endsWith(":");
+  const people = document.createElement("datalist");
+  people.id = "workitem-people";
+  let timer = 0;
+  name.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      if (f.person === name.value.trim()) return;
+      f.person = name.value.trim();
+      changed();
+    }, 500);
   });
+  const person = select(
+    t("人"),
+    [
+      ["assigned:@me", t("指派給我")],
+      ["created:@me", t("我建立的")],
+      ["any", t("所有人")],
+      ["assigned:", t("指派給…")],
+      ["created:", t("建立者是…")],
+    ],
+    personValue,
+    (v) => {
+      clearTimeout(timer);
+      const [role, who] = v === "any" ? ["assigned", ""] : v.split(":");
+      f.role = role as AdoWorkItemFilter["role"];
+      name.hidden = !v.endsWith(":");
+      f.person = who === "@me" ? "@me" : name.hidden ? "" : name.value.trim();
+      if (!name.hidden) name.focus();
+    },
+  );
   const state = select(
     t("狀態"),
     [["open", t("進行中")], ["closed", t("已結束")], ["all", t("全部狀態")]],
-    workItemFilter.state,
-    (v) => (workItemFilter.state = v as AdoWorkItemFilter["state"]),
+    f.state,
+    (v) => (f.state = v as AdoWorkItemFilter["state"]),
   );
-  const kind = select(t("類型"), [["", t("所有類型")]], workItemFilter.kind ?? "", (v) => (workItemFilter.kind = v || null));
-  const project = select(t("專案"), [["", t("所有專案")]], workItemFilter.project ?? "", (v) => (workItemFilter.project = v || null));
+  const kind = select(t("類型"), [["", t("所有類型")]], "", (v) => (f.kind = v || null));
+  const area = select(t("區域"), [["", t("所有區域")]], "", (v) => (f.area = v || null));
+  area.classList.add("workitems-area");
+  const project = select(t("專案"), [["", t("所有專案")]], "", (v) => {
+    f.project = v || null;
+    f.area = null;
+    loadScope();
+  });
   // 還沒讀到選項前，先放上目前選的值，免得顯示成「所有類型」。
-  if (workItemFilter.kind) kind.append(new Option(workItemFilter.kind, workItemFilter.kind, true, true));
-  if (workItemFilter.project) project.append(new Option(workItemFilter.project, workItemFilter.project, true, true));
+  fill(kind, f.kind ? [[f.kind, f.kind]] : [], f.kind);
+  fill(project, f.project ? [[f.project, f.project]] : [], f.project);
+  fill(area, [], f.area);
+  area.hidden = !f.project;
+
+  /** 區域（選了專案時）與人名建議；同一個專案只讀一次。 */
+  const scopes = new Map<string, Promise<{ areas: string[]; people: string[] }>>();
+  const loadScope = () => {
+    const key = f.project ?? "";
+    area.hidden = !key;
+    fill(area, [], f.area);
+    if (!desktop) return;
+    let p = scopes.get(key);
+    if (!p) {
+      p = desktop.adoWorkItemScope(f.project);
+      scopes.set(key, p);
+      p.catch(() => scopes.delete(key));
+    }
+    void p
+      .then(({ areas, people: names }) => {
+        if ((f.project ?? "") !== key) return;
+        // 區域路徑的第一層是專案本身，顯示時省略。
+        fill(area, areas.map((a) => [a, a.slice(key.length + 1)]), f.area);
+        people.replaceChildren(...names.map((n) => new Option(n)));
+      })
+      .catch(() => {});
+  };
   let loaded = false;
   loadWorkItemFilterOptions = () => {
     if (loaded || !desktop) return;
     loaded = true;
+    loadScope();
     void desktop
       .adoWorkItemFilters()
       .then(({ projects, kinds }) => {
-        const fill = (sel: HTMLSelectElement, values: string[], current: string | null) => {
-          sel.length = 1;
-          for (const v of values) sel.append(new Option(v, v, false, v === current));
-          if (current && !values.includes(current)) sel.append(new Option(current, current, true, true));
-        };
-        fill(kind, kinds, workItemFilter.kind);
-        fill(project, projects, workItemFilter.project);
+        fill(kind, pairs(kinds), f.kind);
+        fill(project, pairs(projects), f.project);
       })
       .catch(() => (loaded = false));
   };
-  bar.append(scope, state, kind, project);
+  bar.append(person, state, name, kind, project, area, people);
   return bar;
 }
 
@@ -1608,7 +1705,9 @@ const workItemsPanel = desktop
         loadWorkItemFilterOptions();
         return (await desktop!.adoWorkItems(search, workItemFilter)).map((w) => ({
           ...w,
-          meta: [`${w.kind} ${w.id}`, w.state, shortDate(w.changed)].filter(Boolean).join("・"),
+          meta: [`${w.kind} ${w.id}`, w.state, showAssignee() ? w.assignedTo : "", shortDate(w.changed)]
+            .filter(Boolean)
+            .join("・"),
         }));
       },
       view: (item) =>
