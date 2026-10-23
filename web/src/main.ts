@@ -69,7 +69,7 @@ import { blockRemoteImages, blockRemoteImagesInHtml } from "./remote-images.ts";
 import { Preview, type PreviewPlugin } from "./preview.ts";
 import sampleEn from "./sample.en.md?raw";
 import sampleZh from "./sample.md?raw";
-import { type Block, collectBlocks, offsetForLine } from "./scroll-sync.ts";
+import { type BlockRef, collectBlocks, offsetForLineLazy } from "./scroll-sync.ts";
 import {
   DEFAULTS as DEFAULT_SETTINGS,
   FONT_SIZE_RANGE,
@@ -84,6 +84,7 @@ import { type HeadingRef, encodeLinkPath, linkCompletion } from "./link-complete
 import {
   type DocMeta,
   dropDraft,
+  dropOrphanDrafts,
   loadDraft,
   loadProjectView,
   loadSession,
@@ -199,6 +200,11 @@ interface Doc extends DocMeta {
   dirty: boolean;
   /** 檔案已從磁碟刪除。 */
   missing?: boolean;
+  /**
+   * 沒有草稿（儲存空間滿了被清掉，或沒存成功），內容還沒從檔案讀進來。
+   * 這時編輯器是空的，不能存檔，否則會把檔案蓋成空白。
+   */
+  unloaded?: boolean;
   /** 在背景被外部修改時，修改前的內容；切換到這個分頁時逐段標示差異（A4）。 */
   externalOriginal?: string;
 }
@@ -225,8 +231,15 @@ function docsFrom(session: Session | null): Doc[] {
     ...m,
     // 只有桌面版會記下路徑；先建立控制代碼，否則第一次保存分頁狀態時路徑會被清掉。
     handle: m.path && desktop ? desktopHandle(m.path, m.name) : null,
-    dirty: hash(loadDraft(m.id) ?? "") !== m.baseline,
+    ...draftState(m),
   }));
+}
+
+/** 分頁的草稿狀態：桌面版存成檔案的分頁沒有草稿時，等一下從檔案讀取，不算有未存檔的變更。 */
+function draftState(m: DocMeta): { dirty: boolean; unloaded: boolean } {
+  const draft = loadDraft(m.id);
+  if (draft === null && m.path && desktop) return { dirty: false, unloaded: true };
+  return { dirty: hash(draft ?? "") !== m.baseline, unloaded: false };
 }
 
 /**
@@ -270,7 +283,7 @@ let indexStale = true;
 let liveApplied = false;
 let splitRatio = Number(storage.load("split")) || 0.5;
 let themePref: ThemePref = (storage.load("theme") as ThemePref | null) ?? "system";
-let blocks: Block[] | null = null;
+let blocks: BlockRef[] | null = null;
 let editorTopLine = 1;
 
 // ---- 編輯器與預覽 -------------------------------------------------------
@@ -482,8 +495,10 @@ function updateCursor(v: EditorView): void {
   status.cursor.hidden = liveApplied && !selected;
 }
 
-/** 超過這個長度的文件，預覽改成停止輸入一下子再更新，打字不會被預覽拖慢。 */
+/** 超過這個長度的文件，預覽、大綱與字數改成隔一小段時間才更新，打字不會被拖慢。 */
 const LARGE_DOC = 150_000;
+/** 上一次更新預覽、大綱與字數花的時間（毫秒）。 */
+let lastRenderMs = 0;
 let renderQueued = false;
 let renderTimer: number | undefined;
 function scheduleRender(): void {
@@ -493,9 +508,11 @@ function scheduleRender(): void {
     renderQueued = false;
     renderNow();
   };
-  if (previewVisible() && editor.view.state.doc.length > LARGE_DOC) {
+  // 更新一次要花不少時間（大文件、慢的電腦）：打字期間每隔一段時間才更新一次，
+  // 間隔依上次花的時間調整，停手後一樣會很快更新到最新。
+  if (lastRenderMs > 25 || editor.view.state.doc.length > LARGE_DOC) {
     clearTimeout(renderTimer);
-    renderTimer = window.setTimeout(run, 250);
+    renderTimer = window.setTimeout(run, Math.min(400, Math.max(120, lastRenderMs * 2)));
   } else {
     requestAnimationFrame(run);
   }
@@ -506,6 +523,7 @@ function scheduleRender(): void {
  * 切換到預覽時才補畫；`full` 強制產生預覽畫面（簡報、複製 HTML 等要用到）。
  */
 function renderNow(full = false): void {
+  const started = performance.now();
   const text = editor.text;
   const result = preview.update(text, kind, !full && !previewVisible());
   blocks = null;
@@ -517,6 +535,7 @@ function renderNow(full = false): void {
   editor.relint();
   syncPreview();
   updateActiveHeading();
+  lastRenderMs = performance.now() - started;
 }
 
 function renderError({ error }: RenderResult): void {
@@ -1259,9 +1278,14 @@ function syncPreview(): void {
     // 編輯器捲到底時，預覽也捲到底，避免最後幾行對不上。
     previewScroller.scrollTop = previewScroller.scrollHeight;
   } else {
-    blocks ??= collectBlocks(previewEl, previewScroller);
+    blocks ??= collectBlocks(previewEl);
+    const base = previewScroller.getBoundingClientRect().top - previewScroller.scrollTop;
+    const measure = (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      return { top: rect.top - base, bottom: rect.bottom - base };
+    };
     previewScroller.scrollTop = blocks.length
-      ? offsetForLine(blocks, editorTopLine)
+      ? offsetForLineLazy(blocks, editorTopLine, measure)
       : // JSON 樹狀檢視沒有行號對應，改用捲動比例。
         (scroller.scrollTop / max) * (previewScroller.scrollHeight - previewScroller.clientHeight);
   }
@@ -1323,7 +1347,7 @@ async function autoSaveNow(): Promise<void> {
   if (path && !editor.view.composing) refreshToc();
   const text = editor.text;
   if (!path || !settings.value.autoSave || saving || diskSaveBlocked === path) return;
-  if (hash(text) === baseline || doc.missing || review.active || offline?.path === path) return;
+  if (hash(text) === baseline || doc.missing || doc.unloaded || review.active || offline?.path === path) return;
   // 注音、倉頡選字中先不存，等組字結束。
   if (editor.view.composing) {
     scheduleDiskSave();
@@ -1376,8 +1400,34 @@ function flushDraft(): void {
   pendingDraft = null;
   if (!docs.some((d) => d.id === id)) return; // 分頁已經關閉
   draftSaved = saveDraft(id, text);
-  if (!draftSaved) toast(t("瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。"), { tone: "error" });
+  // 儲存空間滿了：先清掉其他「已存檔、沒改過」分頁的草稿（之後從檔案讀回），再試一次。
+  if (!draftSaved && freeDraftSpace(id)) draftSaved = saveDraft(id, text);
+  if (!draftSaved && !draftWarned) {
+    draftWarned = true;
+    toast(t("瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。"), { tone: "error" });
+  }
   renderSaveState();
+}
+
+/** 草稿存不進去的提示只顯示一次（每次停手都跳出來太吵）。 */
+let draftWarned = false;
+
+/**
+ * 清掉不需要草稿的分頁（桌面版、已存成檔案、沒有未存檔的變更）的草稿，騰出儲存空間。
+ * 這些分頁之後切換過去時從檔案讀回內容。有清掉任何草稿就回傳 true。
+ */
+function freeDraftSpace(keepId: string): boolean {
+  if (!desktop) return false;
+  let freed = false;
+  for (const doc of docs) {
+    if (doc.id === keepId || doc === active || doc.dirty || doc.unloaded || !doc.path) continue;
+    if (loadDraft(doc.id) === null) continue;
+    dropDraft(doc.id);
+    // 已經有編輯器狀態的分頁內容還在記憶體裡，不必重新讀檔。
+    if (!doc.state) doc.unloaded = true;
+    freed = true;
+  }
+  return freed;
 }
 
 // ---- 文件操作 -----------------------------------------------------------
@@ -1511,7 +1561,7 @@ const projectUi = desktop
       openRemote: (c) => void openRemote(c).catch(reportError),
       changed: () => void renderProjectName().then(renderFilesEmpty),
       unsaved: (path) =>
-        (peekSession(path)?.docs ?? []).some((m) => m.baseline !== null && hash(loadDraft(m.id) ?? "") !== m.baseline),
+        (peekSession(path)?.docs ?? []).some((m) => m.baseline !== null && draftState(m).dirty),
     })
   : null;
 
@@ -1605,8 +1655,8 @@ const adoImagesPlugin: PreviewPlugin = {
       img.removeAttribute("src");
     }
   },
-  apply(root) {
-    for (const img of root.querySelectorAll<HTMLImageElement>("img[data-ado-src]")) {
+  apply(_root, scope) {
+    for (const img of scope.querySelectorAll<HTMLImageElement>("img[data-ado-src]")) {
       void desktop!
         .adoImage(img.dataset.adoSrc!)
         .then((url) => (img.src = url))
@@ -2611,6 +2661,16 @@ function activate(doc: Doc): void {
   kindSelect.value = kind;
   if (doc.state) editor.restore(doc.state, kind, doc.scrollTop);
   else editor.load(loadDraft(doc.id) ?? "", kind);
+  // 草稿被清掉的分頁：從檔案讀回內容。
+  const path = docPath(doc);
+  if (doc.unloaded && !doc.state && path && desktop) {
+    void reloadDoc(doc, path)
+      .then(() => renderTabs())
+      .catch(() => {
+        if (!isRemote(path)) doc.missing = true;
+        renderTabs();
+      });
+  }
   editorTopLine = 1;
   preview.clear();
   previewScroller.scrollTop = 0;
@@ -2770,6 +2830,10 @@ function openOpenedFile(file: OpenedFile): void {
 }
 
 async function save(saveAs: boolean, force = false): Promise<void> {
+  if (active.unloaded && !saveAs) {
+    toast(t("「{name}」的內容還沒從檔案讀進來，先不存檔，免得把檔案蓋成空白。", { name: active.name }), { tone: "error" });
+    return;
+  }
   if (review.active) review.finish();
   refreshToc();
   clearTimeout(diskSaveTimer);
@@ -2798,6 +2862,9 @@ async function save(saveAs: boolean, force = false): Promise<void> {
   }
   fileHandle = out.handle;
   active.missing = false;
+  // 換了位置：相對路徑的圖片、[[連結]] 要重新對應。
+  preview.invalidate();
+  scheduleRender();
   if (offline && offline.path === fileHandle?.path) clearOffline();
   gitPanel?.refreshSoon(300);
   setBaseline(text, true);
@@ -4934,6 +5001,7 @@ function setTheme(pref: ThemePref): void {
   else document.documentElement.dataset.theme = pref;
   // 流程圖的配色跟著主題，需要重畫。
   if (settings.value.mermaid) {
+    preview.invalidate();
     scheduleRender();
     refreshLivePreview(editor.view);
   }
@@ -4944,6 +5012,7 @@ function setTheme(pref: ThemePref): void {
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (themePref === "system") terminal?.applyTheme();
   if (themePref === "system" && settings.value.mermaid) {
+    preview.invalidate();
     scheduleRender();
     refreshLivePreview(editor.view);
   }
@@ -5368,6 +5437,8 @@ renderNow();
 renderTabs();
 persistSession();
 updateCursor(editor.view);
+// 分頁關掉、專案移除後留下的草稿會一直佔著儲存空間：啟動一陣子後（分頁都存好了）清掉。
+setTimeout(() => dropOrphanDrafts(), 10_000);
 
 if (desktop) void startDesktop(desktop).catch(reportError);
 
@@ -5459,7 +5530,13 @@ function docPath(doc: Doc): string | null {
 async function reloadDoc(doc: Doc, path: string): Promise<void> {
   const file = fromDesktop(await desktop!.reopenFile(path));
   const draft = doc === active ? editor.text : (loadDraft(doc.id) ?? "");
-  const clean = hash(draft) === doc.baseline;
+  // 沒有草稿的分頁：直接採用檔案的內容。
+  const clean = doc.unloaded || hash(draft) === doc.baseline;
+  if (doc.unloaded) {
+    doc.unloaded = false;
+    doc.dirty = false;
+    if (file.text === draft) saveDraft(doc.id, file.text);
+  }
   if (doc === active) fileHandle = file.handle;
   doc.handle = file.handle;
   doc.missing = false;

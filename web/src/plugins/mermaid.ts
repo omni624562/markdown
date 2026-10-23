@@ -1,4 +1,4 @@
-import type { PreviewPlugin } from "../preview.ts";
+import type { PreviewPlugin, Queryable } from "../preview.ts";
 import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 
@@ -86,7 +86,7 @@ function diagramTools(svg: string, actions: DiagramActions): HTMLElement {
  * 預覽中的圖加上工具列（匯出的 HTML、PDF 不加）。
  */
 export function mermaidPlugin(enabled: () => boolean, actions?: DiagramActions): PreviewPlugin {
-  const replace = async (root: ParentNode, keepAttrs: boolean) => {
+  const replace = async (root: Queryable, keepAttrs: boolean) => {
     const blocks = [...root.querySelectorAll<HTMLElement>("pre > code.language-mermaid")];
     for (const code of blocks) {
       const pre = code.parentElement!;
@@ -113,9 +113,9 @@ export function mermaidPlugin(enabled: () => boolean, actions?: DiagramActions):
 
   return {
     name: "mermaid",
-    async apply(root) {
-      if (!enabled() || !root.querySelector("code.language-mermaid")) return;
-      await replace(root, true);
+    async apply(_root, scope) {
+      if (!enabled() || !scope.querySelector("code.language-mermaid")) return;
+      await replace(scope, true);
     },
     async exportTransform(root) {
       if (!enabled() || !root.querySelector("code.language-mermaid")) return;

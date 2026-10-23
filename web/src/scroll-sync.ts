@@ -48,15 +48,45 @@ export function offsetForLine(blocks: readonly Block[], line: number): number {
   return b.bottom + (next.top - b.bottom) * ratio;
 }
 
-/** 從預覽 DOM 收集可用於捲動同步的區塊：最外層區塊與所有清單項目。 */
-export function collectBlocks(root: HTMLElement, scroller: HTMLElement): Block[] {
-  const base = scroller.getBoundingClientRect().top - scroller.scrollTop;
-  const blocks: Block[] = [];
-  for (const el of root.querySelectorAll<HTMLElement>(":scope > [data-sourcepos], li[data-sourcepos]")) {
+/** 預覽中可用於捲動同步的元素（還沒量位置）。 */
+export interface BlockRef {
+  start: number;
+  end: number;
+  el: Element;
+}
+
+/** 從預覽 DOM 收集可用於捲動同步的區塊：最外層區塊與所有清單項目。只讀屬性，不需要排版。 */
+export function collectBlocks(root: HTMLElement): BlockRef[] {
+  const blocks: BlockRef[] = [];
+  for (const el of root.querySelectorAll(":scope > [data-sourcepos], li[data-sourcepos]")) {
     const pos = parseSourcepos(el.getAttribute("data-sourcepos"));
-    if (!pos) continue;
-    const rect = el.getBoundingClientRect();
-    blocks.push({ ...pos, top: rect.top - base, bottom: rect.bottom - base });
+    if (pos) blocks.push({ ...pos, el });
   }
   return blocks;
+}
+
+/**
+ * 和 `offsetForLine` 相同，但只量用得到的一兩個區塊：
+ * 一次量全部會讓瀏覽器排版整個預覽，大文件每次按鍵都要好幾秒。
+ */
+export function offsetForLineLazy(
+  blocks: readonly BlockRef[],
+  line: number,
+  measure: (el: Element) => { top: number; bottom: number },
+): number {
+  let lo = 0;
+  let hi = blocks.length - 1;
+  let idx = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (blocks[mid].start <= line) {
+      idx = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  if (idx < 0) return 0;
+  const near = blocks.slice(idx, idx + 2).map((b) => ({ start: b.start, end: b.end, ...measure(b.el) }));
+  return offsetForLine(near, line);
 }

@@ -28,3 +28,17 @@ export function remove(key: string): void {
     // 無法存取儲存空間時忽略。
   }
 }
+
+/** 以 `prefix` 開頭的所有鍵（不含共用的前綴）。 */
+export function keys(prefix = ""): string[] {
+  const out: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(PREFIX + prefix)) out.push(key.slice(PREFIX.length));
+    }
+  } catch {
+    // 無法存取儲存空間時當作沒有。
+  }
+  return out;
+}

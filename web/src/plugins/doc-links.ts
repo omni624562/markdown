@@ -66,8 +66,8 @@ export interface DocLinksOptions {
 export function docLinksPlugin(opts: DocLinksOptions): PreviewPlugin {
   return {
     name: "doc-links",
-    apply(root) {
-      for (const a of root.querySelectorAll<HTMLAnchorElement>("a[data-wikilink]")) {
+    apply(_root, scope) {
+      for (const a of scope.querySelectorAll<HTMLAnchorElement>("a[data-wikilink]")) {
         a.classList.add("wikilink");
         const target = wikiTarget(a).split("#")[0];
         if (target && opts.wikiExists(target) === false) {
@@ -75,8 +75,11 @@ export function docLinksPlugin(opts: DocLinksOptions): PreviewPlugin {
           a.title = t("還沒有「{target}」這份文件，點一下建立", { target });
         }
       }
-      markTags(root);
-      sizeImages(root);
+      for (const el of scope.elements) {
+        if (!(el instanceof HTMLElement)) continue;
+        markTags(el);
+        sizeImages(el);
+      }
     },
     exportTransform(root) {
       markTags(root);

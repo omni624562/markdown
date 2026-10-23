@@ -18,11 +18,11 @@ export function localImagesPlugin(
   const cache = new Map<string, Promise<string>>();
   return {
     name: "local-images",
-    apply(root) {
+    apply(_root, scope) {
       const dir = docDir();
       if (!dir) return;
       const remote = dir.startsWith(REMOTE);
-      for (const img of root.querySelectorAll<HTMLImageElement>("img[src]")) {
+      for (const img of scope.querySelectorAll<HTMLImageElement>("img[src]")) {
         const path = localImagePath(img.getAttribute("src")!, dir);
         if (!path) continue;
         if (!remote) {
