@@ -111,7 +111,10 @@ export class GitPanel {
       }
     });
     window.addEventListener("focus", () => this.refreshSoon());
-    setInterval(() => this.refreshSoon(), 60_000);
+    // 視窗沒在前面時不用輪詢；切回來時 focus 事件會更新。
+    setInterval(() => {
+      if (!document.hidden) this.refreshSoon();
+    }, 60_000);
   }
 
   get status(): GitStatus | null {

@@ -80,9 +80,10 @@ pub async fn scan_docs(
     workspace: State<'_, Workspace>,
 ) -> Result<Vec<DocText>, String> {
     let root = workspace.require_root()?;
-    tauri::async_runtime::spawn_blocking(move || scan(&root, &known))
-        .await
-        .map_err(|e| e.to_string())
+    crate::io::blocking_for(std::time::Duration::from_secs(120), move || {
+        Ok(scan(&root, &known))
+    })
+    .await
 }
 
 /// 改寫一份沒有開啟的文件（例如在待辦總覽勾選、檔案改名後更新連結）。

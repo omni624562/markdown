@@ -5,7 +5,9 @@
 use std::cmp::Ordering;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{sinks::UTF8, BinaryDetection, SearcherBuilder};
@@ -401,8 +403,9 @@ pub(crate) fn rel_path(root: &Path, path: &Path) -> String {
 #[tauri::command]
 pub async fn list_files(workspace: State<'_, Workspace>) -> Result<Vec<FileItem>, String> {
     let root = workspace.require_root()?;
-    tauri::async_runtime::spawn_blocking(move || {
-        walker(&root)
+    // 網路磁碟斷線時不要永遠等下去。
+    crate::io::blocking_for(Duration::from_secs(60), move || {
+        Ok(walker(&root)
             .build()
             .filter_map(Result::ok)
             .filter(|e| e.file_type().is_some_and(|t| t.is_file()) && is_doc(e.path()))
@@ -411,10 +414,9 @@ pub async fn list_files(workspace: State<'_, Workspace>) -> Result<Vec<FileItem>
                 rel: rel_path(&root, e.path()),
                 path: path_string(e.path()),
             })
-            .collect()
+            .collect())
     })
     .await
-    .map_err(|e| e.to_string())
 }
 
 /// 新增檔案或資料夾；檔案會建立成空白檔。回傳新路徑。
@@ -646,11 +648,13 @@ fn shift_ranges(ranges: Vec<(usize, usize)>, by: usize) -> Vec<(usize, usize)> {
 }
 
 /// 在指定資料夾中搜尋文字（遵守 .gitignore，只搜尋文件檔）。
+/// `cancelled()` 回傳 true 時停下來，回傳空的結果（已經有新的搜尋了）。
 pub fn search_dir(
     root: &Path,
     query: &str,
     case_sensitive: bool,
     regex: bool,
+    cancelled: &dyn Fn() -> bool,
 ) -> Result<SearchResult, String> {
     if query.is_empty() {
         return Ok(SearchResult {
@@ -674,6 +678,13 @@ pub fn search_dir(
     let mut truncated = false;
 
     for entry in walker(root).build().filter_map(Result::ok) {
+        if cancelled() {
+            return Ok(SearchResult {
+                files: vec![],
+                total: 0,
+                truncated: false,
+            });
+        }
         if !entry.file_type().is_some_and(|t| t.is_file()) || !is_doc(entry.path()) {
             continue;
         }
@@ -695,7 +706,7 @@ pub fn search_dir(
                     ranges,
                     column,
                 });
-                Ok(total + matches.len() < MAX_MATCHES)
+                Ok(total + matches.len() < MAX_MATCHES && !cancelled())
             }),
         );
         if !matches.is_empty() {
@@ -726,10 +737,19 @@ pub async fn search(
     workspace: State<'_, Workspace>,
 ) -> Result<SearchResult, String> {
     let root = workspace.require_root()?;
-    tauri::async_runtime::spawn_blocking(move || search_dir(&root, &query, case_sensitive, regex))
-        .await
-        .map_err(|e| e.to_string())?
+    // 邊打字邊搜尋時，舊的搜尋還沒做完就有新的：舊的停下來，不要在背景越積越多。
+    let id = SEARCH_GEN.fetch_add(1, AtomicOrdering::SeqCst) + 1;
+    let cancelled = move || SEARCH_GEN.load(AtomicOrdering::SeqCst) != id;
+    crate::io::blocking_for(SEARCH_TIMEOUT, move || {
+        search_dir(&root, &query, case_sensitive, regex, &cancelled)
+    })
+    .await
 }
+
+/// 每次搜尋的編號（見 `search`）。
+static SEARCH_GEN: AtomicU64 = AtomicU64::new(0);
+/// 大資料夾、網路磁碟上的搜尋可能要一陣子，但斷線時不要永遠等下去。
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Serialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
@@ -910,7 +930,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("壞掉.txt"), "\0\0\0季度報告").unwrap();
         fs::write(dir.join("正常.txt"), "季度報告").unwrap();
-        let found = search_dir(&dir, "季度報告", false, false).unwrap();
+        let found = search_dir(&dir, "季度報告", false, false, &|| false).unwrap();
         let names: Vec<_> = found.files.iter().map(|f| f.rel.as_str()).collect();
         assert_eq!(names, ["正常.txt"]);
         let _ = fs::remove_dir_all(&dir);
@@ -990,7 +1010,10 @@ mod tests {
     #[test]
     fn searches_docs_respecting_gitignore() {
         let dir = temp_ws("search");
-        let result = search_dir(&dir, "季度報告", false, false).unwrap();
+        let result = search_dir(&dir, "季度報告", false, false, &|| false).unwrap();
+        // 已經有新的搜尋：停下來，回傳空的結果。
+        let stale = search_dir(&dir, "季度報告", false, false, &|| true).unwrap();
+        assert_eq!(stale.total, 0);
         let mut rels: Vec<&str> = result.files.iter().map(|f| f.rel.as_str()).collect();
         rels.sort();
         assert_eq!(rels, ["README.md", "第2章/筆記.md"]);
@@ -1007,7 +1030,7 @@ mod tests {
             &"季度報告".encode_utf16().collect::<Vec<_>>()[..]
         );
         assert!(
-            search_dir(&dir, "(", false, true).is_err(),
+            search_dir(&dir, "(", false, true, &|| false).is_err(),
             "無效的正規表示式"
         );
         fs::remove_dir_all(&dir).unwrap();

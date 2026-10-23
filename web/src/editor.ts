@@ -404,7 +404,13 @@ export function cursorInfo(view: EditorView): { line: number; column: number; se
     }
     selected += n;
   }
-  return { line: line.number, column: [...line.text.slice(0, sel.head - line.from)].length + 1, selected };
+  // 欄位以字元（code point）計算；長行也不必為了數字切出新陣列。
+  let column = 1;
+  for (let i = 0, end = sel.head - line.from; i < end; i++) {
+    const c = line.text.charCodeAt(i);
+    if (!(c >= 0xdc00 && c <= 0xdfff)) column++;
+  }
+  return { line: line.number, column, selected };
 }
 
 /**
