@@ -79,7 +79,7 @@ import {
   SettingsStore,
 } from "./settings.ts";
 import { pasteAsMarkdown } from "./html-paste.ts";
-import { moveSection, sectionRange, swapSection } from "./sections.ts";
+import { hiddenByCollapse, moveSection, sectionRange, subtreeEnd, swapSection } from "./sections.ts";
 import { type HeadingRef, encodeLinkPath, linkCompletion } from "./link-complete.ts";
 import {
   type DocMeta,
@@ -568,6 +568,74 @@ function renderEmptyState(text: string): void {
 }
 
 let outlineKey = "";
+/** 大綱收合的標題（每個分頁各自記住，以「層級 標題文字」辨認，編輯後仍維持）。 */
+const outlineCollapsed = new Map<string, Set<string>>();
+const collapseKey = (h: Heading) => `${h.level} ${h.text}`;
+function collapsedSet(): Set<string> {
+  let set = outlineCollapsed.get(active.id);
+  if (!set) outlineCollapsed.set(active.id, (set = new Set()));
+  return set;
+}
+
+/** 「全部收合／全部展開」按鈕（放在大綱的標題列）。 */
+const outlineCollapseAll = document.createElement("button");
+outlineCollapseAll.type = "button";
+outlineCollapseAll.className = "btn icon-only";
+outlineCollapseAll.addEventListener("click", () => {
+  const set = collapsedSet();
+  const levels = outlineHeadings.map((h) => h.level);
+  if (set.size) set.clear();
+  else outlineHeadings.forEach((h, i) => subtreeEnd(levels, i) > i + 1 && set.add(collapseKey(h)));
+  applyOutlineCollapse();
+});
+{
+  const actions = document.createElement("div");
+  actions.className = "side-actions";
+  actions.append(outlineCollapseAll);
+  $("#panel-outline .side-head").append(actions);
+}
+
+/** 依收合狀態隱藏子標題，更新三角形與「全部收合／展開」按鈕。 */
+function applyOutlineCollapse(): void {
+  const set = collapsedSet();
+  const levels = outlineHeadings.map((h) => h.level);
+  const isCollapsed = (i: number) => set.has(collapseKey(outlineHeadings[i]));
+  const hidden = hiddenByCollapse(levels, isCollapsed);
+  outlineList.querySelectorAll<HTMLLIElement>(":scope > li").forEach((li, i) => {
+    li.hidden = hidden[i];
+    const toggle = li.querySelector<HTMLButtonElement>(".outline-toggle");
+    if (!toggle) return;
+    const collapsed = isCollapsed(i);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.title = collapsed ? t("展開") : t("收合");
+    toggle.setAttribute("aria-label", toggle.title);
+  });
+  const any = [...set].some((k) => outlineHeadings.some((h) => collapseKey(h) === k));
+  if (!any) set.clear();
+  const canCollapse = outlineHeadings.some((_, i) => subtreeEnd(levels, i) > i + 1);
+  outlineCollapseAll.hidden = !canCollapse;
+  const label = any ? t("全部展開") : t("全部收合");
+  outlineCollapseAll.title = label;
+  outlineCollapseAll.setAttribute("aria-label", label);
+  outlineCollapseAll.replaceChildren(icon(any ? "chevrons-up-down" : "chevrons-down-up"));
+  updateActiveHeading();
+}
+
+/** 收合或展開第 `index` 個標題；`collapse` 省略時切換。 */
+function toggleOutline(index: number, collapse?: boolean): boolean {
+  const h = outlineHeadings[index];
+  const levels = outlineHeadings.map((o) => o.level);
+  if (!h || subtreeEnd(levels, index) <= index + 1) return false;
+  const set = collapsedSet();
+  const key = collapseKey(h);
+  const next = collapse ?? !set.has(key);
+  if (next === set.has(key)) return false;
+  if (next) set.add(key);
+  else set.delete(key);
+  applyOutlineCollapse();
+  return true;
+}
+
 function renderOutline(headings: Heading[]): void {
   outlineEmpty.hidden = headings.length > 0;
   outlineEmpty.textContent =
@@ -575,15 +643,18 @@ function renderOutline(headings: Heading[]): void {
   outlineHeadings = headings;
   const movable = kind === "markdown";
   // 標題沒有變（大多數按鍵都是這樣）就不重建，大文件可能有上千個標題。
-  const key = `${movable}\n${headings.map((h) => `${h.level} ${h.line} ${h.id} ${h.text}`).join("\n")}`;
+  const key = `${active.id}\n${movable}\n${headings.map((h) => `${h.level} ${h.line} ${h.id} ${h.text}`).join("\n")}`;
   if (key === outlineKey && outlineList.childElementCount === headings.length) return;
   outlineKey = key;
   // 重新產生大綱時保留鍵盤焦點（例如用 Alt+↑／↓ 連續搬移章節）。
   const focused = document.activeElement as HTMLElement | null;
   const focusedIndex = focused && outlineList.contains(focused) ? Number(focused.dataset.index) : -1;
+  const levels = headings.map((h) => h.level);
+  const top = Math.min(...levels);
   outlineList.replaceChildren(
     ...headings.map((h, i) => {
       const li = document.createElement("li");
+      li.style.setProperty("--depth", String(h.level - top));
       const a = document.createElement("a");
       a.href = `#${encodeURIComponent(h.id)}`;
       a.dataset.id = h.id;
@@ -595,10 +666,21 @@ function renderOutline(headings: Heading[]): void {
         a.draggable = true;
         a.title = t("拖曳可以搬移整個章節；也可以按 Alt+↑／↓");
       }
+      // 有子標題的才有收合的三角形（不在 Tab 順序裡，鍵盤用 ←／→）。
+      if (subtreeEnd(levels, i) > i + 1) {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "outline-toggle";
+        toggle.tabIndex = -1;
+        toggle.dataset.index = String(i);
+        toggle.append(icon("chevron-down"));
+        li.append(toggle);
+      }
       li.append(a);
       return li;
     }),
   );
+  applyOutlineCollapse();
   if (focusedIndex >= 0) outlineList.querySelectorAll<HTMLElement>("a")[focusedIndex]?.focus({ preventScroll: true });
 }
 
@@ -1007,11 +1089,20 @@ function dropTarget(e: DragEvent): { li: HTMLElement; before: number; after: boo
   const li = link.parentElement!;
   const rect = link.getBoundingClientRect();
   const after = e.clientY > rect.top + rect.height / 2;
-  return { li, before: Number(link.dataset.index) + (after ? 1 : 0), after };
+  const index = Number(link.dataset.index);
+  // 收合的標題底下的子標題看不到，放在它下面就是放在整個章節後面。
+  const collapsed = li.querySelector(".outline-toggle[aria-expanded='false']");
+  const next = collapsed ? subtreeEnd(outlineHeadings.map((h) => h.level), index) : index + 1;
+  return { li, before: after ? next : index, after };
 }
 
 // 點大綱的標題：跳到那一段。整個清單共用一個處理（大文件可能有上千個標題）。
 outlineList.addEventListener("click", (e) => {
+  const toggle = (e.target as Element).closest<HTMLButtonElement>(".outline-toggle");
+  if (toggle) {
+    toggleOutline(Number(toggle.dataset.index));
+    return;
+  }
   const a = (e.target as Element).closest<HTMLAnchorElement>("a[data-index]");
   const h = a && outlineHeadings[Number(a.dataset.index)];
   if (!h) return;
@@ -1061,6 +1152,22 @@ outlineList.addEventListener("dragend", () => {
   draggingSection = null;
 });
 outlineList.addEventListener("keydown", (e) => {
+  // ←／→：收合、展開（已收合或沒有子標題時，← 跳到上一層標題）。
+  if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
+    if (!link) return;
+    e.preventDefault();
+    const index = Number(link.dataset.index);
+    if (toggleOutline(index, e.key === "ArrowLeft") || e.key === "ArrowRight") return;
+    const level = outlineHeadings[index].level;
+    for (let i = index - 1; i >= 0; i--) {
+      if (outlineHeadings[i].level < level) {
+        outlineList.querySelectorAll<HTMLElement>("a")[i]?.focus();
+        break;
+      }
+    }
+    return;
+  }
   if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
   const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
   if (!link || kind !== "markdown") return;
@@ -1084,6 +1191,8 @@ function updateActiveHeading(): void {
     for (const a of links) if (Number(a.dataset.line) <= editorTopLine + 1) active = a;
   }
   active ??= links[0];
+  // 目前的段落在收合的標題底下時，標示那個收合的標題。
+  for (let i = links.indexOf(active); i > 0 && active.parentElement!.hidden; i--) active = links[i - 1];
   for (const a of links) {
     if (a === active) {
       if (a.getAttribute("aria-current") !== "location") {
@@ -1579,7 +1688,7 @@ function workItemFilterBar(): HTMLElement {
   };
   const select = (label: string, options: [string, string][], value: string, change: (v: string) => void) => {
     const sel = document.createElement("select");
-    sel.className = "status-select";
+    sel.className = "workitems-select";
     sel.setAttribute("aria-label", label);
     sel.title = label;
     for (const [v, text] of options) sel.append(new Option(text, v, false, v === value));

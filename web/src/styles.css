@@ -362,7 +362,7 @@ kbd {
 /* 面板標題列的按鈕平常淡出，滑鼠移到側邊欄或用鍵盤操作時才明顯。 */
 .side-actions { display: flex; gap: 0; opacity: 0; transition: opacity 0.12s; }
 .side-actions[hidden] { display: none; }
-.sidebar:hover .side-actions, .side-actions:focus-within { opacity: 1; }
+.sidebar:hover .side-actions, .outline-right:hover .side-actions, .side-actions:focus-within { opacity: 1; }
 .side-actions .btn { width: 26px; min-height: 26px; height: 26px; color: var(--muted); }
 .side-actions .btn:hover { color: var(--fg); border-color: transparent; }
 .side-actions .btn .icon { width: 16px; height: 16px; }
@@ -487,7 +487,7 @@ kbd {
 #outline-list a {
   display: block;
   overflow: hidden;
-  padding: 4px 10px 4px calc(10px + (var(--level) - 1) * 14px);
+  padding: 4px 10px 4px calc(22px + var(--depth, 0) * 14px);
   border-radius: 6px;
   color: var(--muted);
   text-decoration: none;
@@ -499,6 +499,28 @@ kbd {
 #outline-list a[aria-current="location"] { background: var(--accent-soft); color: var(--accent); }
 /* 大綱拖曳重排章節：插入線畫在標題上緣或下緣。 */
 #outline-list li { position: relative; }
+#outline-list li[hidden] { display: none; }
+/* 收合的三角形：放在標題文字左邊的縮排裡。 */
+.outline-toggle {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: calc(4px + var(--depth, 0) * 14px);
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--subtle);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.outline-toggle:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
+.outline-toggle .icon { width: 13px; height: 13px; transition: transform 0.12s; }
+.outline-toggle[aria-expanded="false"] .icon { transform: rotate(-90deg); }
 #outline-list li.dragging a { opacity: 0.45; }
 #outline-list li.drop-before::before, #outline-list li.drop-after::after {
   content: "";
@@ -1688,9 +1710,35 @@ button.git-info:disabled { cursor: default; }
 .workitem-title { overflow-wrap: anywhere; }
 .workitem[aria-current="true"] { background: var(--accent-soft); }
 .workitem[aria-current="true"] .workitem-title { color: var(--accent); }
-.workitems-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 6px; }
-.workitems-filters select, .workitems-filters input { width: 100%; min-width: 0; height: 26px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: inherit; }
-.workitems-filters input { padding: 0 6px; }
+.workitems-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0 0 8px; }
+.workitems-filters .workitems-select, .workitems-filters .workitems-person {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--bg);
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+}
+.workitems-filters .workitems-select {
+  overflow: hidden;
+  padding: 0 24px 0 8px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238c959f' stroke-width='1.5'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  appearance: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.workitems-filters .workitems-person { padding: 0 8px; }
+/* 名字的建議清單打字時就會出現，不需要旁邊的下拉箭頭。 */
+.workitems-filters .workitems-person::-webkit-calendar-picker-indicator { display: none !important; }
+.workitems-filters .workitems-select:hover, .workitems-filters .workitems-person:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
+.workitems-filters .workitems-select:focus-visible, .workitems-filters .workitems-person:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filters .workitems-person, .workitems-filters .workitems-area { grid-column: 1 / -1; }
 .workitems-filters [hidden] { display: none; }
 .tasks-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
