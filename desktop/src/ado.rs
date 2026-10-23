@@ -137,8 +137,10 @@ fn candidates(input: &str) -> Result<Vec<String>, String> {
     let url = url.trim_end_matches('/').to_string();
     let scheme_end = url.find("://").map_or(0, |i| i + 3);
     let mut out = vec![url.clone()];
-    if let Some(i) = url.rfind('/').filter(|&i| i > scheme_end) {
-        out.push(url[..i].to_string());
+    match url.rfind('/').filter(|&i| i > scheme_end) {
+        Some(i) => out.push(url[..i].to_string()),
+        // 只有主機名稱：TFS 2019 以前預設裝在 /tfs 底下。
+        None => out.push(format!("{url}/tfs")),
     }
     Ok(out)
 }
@@ -180,10 +182,27 @@ fn read(
 
 /// `path` 以 `/_apis/` 開頭，會自動加上 api-version。
 fn get(base: &str, pat: &str, path: &str, what: &str) -> Result<Value, String> {
-    let sep = if path.contains('?') { '&' } else { '?' };
+    get_version(base, pat, path, Some(API_VERSION), what)
+}
+
+/// 指定 api-version（None 代表不帶，由伺服器決定）。
+fn get_version(
+    base: &str,
+    pat: &str,
+    path: &str,
+    version: Option<&str>,
+    what: &str,
+) -> Result<Value, String> {
+    let url = match version {
+        Some(v) => {
+            let sep = if path.contains('?') { '&' } else { '?' };
+            format!("{base}{path}{sep}api-version={v}")
+        }
+        None => format!("{base}{path}"),
+    };
     read(
         crate::update::agent()
-            .get(&format!("{base}{path}{sep}api-version={API_VERSION}"))
+            .get(&url)
             .header("Authorization", &basic(pat))
             .header("Accept", "application/json")
             .call(),
@@ -238,6 +257,71 @@ fn user_of(data: &Value) -> Option<(String, Option<String>)> {
     Some((name, account))
 }
 
+fn is_not_found(e: &str) -> bool {
+    e.contains("（404）")
+}
+
+/// 讀取登入資訊。connectionData 是預覽版的 API，伺服器可能不接受正式版號（5.0），
+/// 所以用預覽版號；還是被拒絕時（舊版伺服器）不帶版號再試一次。
+fn connection_data(base: &str, pat: &str) -> Result<Value, String> {
+    let path = "/_apis/connectionData";
+    get_version(base, pat, path, Some("5.0-preview"), "連線").or_else(|e| {
+        if e.contains("伺服器回應 400") || is_not_found(&e) {
+            get_version(base, pat, path, None, "連線").map_err(|_| e)
+        } else {
+            Err(e)
+        }
+    })
+}
+
+/// 確認 `base` 是可以使用的集合。網址是伺服器（例如 https://伺服器/tfs）而不是集合時，
+/// 伺服器上只有一個集合就自動使用它，有好幾個就請使用者指定。
+fn connect_at(base: &str, pat: &str) -> Result<Account, String> {
+    let data = connection_data(base, pat)?;
+    let (name, account) = user_of(&data).ok_or("連線失敗：個人存取權杖無效或已過期")?;
+    let check = |url: &str| get(url, pat, "/_apis/projects?$top=1", "連線");
+    let url = match check(base) {
+        Ok(_) => base.to_string(),
+        Err(e) if is_not_found(&e) => {
+            let list = get(base, pat, "/_apis/projectCollections", "連線").map_err(|_| e)?;
+            let names: Vec<&str> = values(&list)
+                .iter()
+                .filter_map(|c| str_of(c, "name"))
+                .collect();
+            match names.as_slice() {
+                [] => return Err("連線失敗：這台伺服器上沒有可以使用的集合".into()),
+                [one] => {
+                    let url = format!("{base}/{}", encode_segment(one));
+                    check(&url)?;
+                    url
+                }
+                many => {
+                    return Err(format!(
+                        "這台伺服器上有好幾個集合（{}），請在網址後面加上集合名稱，例如 {base}/{}",
+                        many.join("、"),
+                        encode_segment(many[0])
+                    ))
+                }
+            }
+        }
+        Err(e) => return Err(e),
+    };
+    Ok(Account { url, name, account })
+}
+
+/// 每個網址都連不上時，挑最有用的錯誤：先看不是 404 的（例如權杖錯誤），
+/// 全部都是 404 就說明要輸入哪一種網址。
+fn connect_error(tries: &[String], errors: Vec<String>) -> String {
+    if let Some(e) = errors.iter().find(|e| !is_not_found(e)) {
+        return e.clone();
+    }
+    format!(
+        "連線失敗：找不到 Azure DevOps（404）。已試過：{}。請輸入集合的網址，\
+         例如 https://伺服器/tfs/DefaultCollection（在瀏覽器打開 TFS，網址裡專案名稱前面的那一段）",
+        tries.join("、")
+    )
+}
+
 /// 用網址與個人存取權杖連線：確認可以登入後記住（權杖存在 Windows 認證管理員）。
 #[tauri::command]
 pub async fn ado_connect(app: AppHandle, url: String, pat: String) -> Result<Account, String> {
@@ -248,23 +332,14 @@ pub async fn ado_connect(app: AppHandle, url: String, pat: String) -> Result<Acc
     let tries = candidates(&url)?;
     let token = pat.clone();
     let account = crate::io::blocking_for(TIMEOUT, move || {
-        let mut last = String::new();
-        for base in tries {
-            match get(&base, &token, "/_apis/connectionData", "連線") {
-                Ok(data) => match user_of(&data) {
-                    Some((name, account)) => {
-                        return Ok(Account {
-                            url: base,
-                            name,
-                            account,
-                        })
-                    }
-                    None => last = "連線失敗：個人存取權杖無效或已過期".into(),
-                },
-                Err(e) => last = e,
+        let mut errors = Vec::new();
+        for base in &tries {
+            match connect_at(base, &token) {
+                Ok(a) => return Ok(a),
+                Err(e) => errors.push(e),
             }
         }
-        Err(last)
+        Err(connect_error(&tries, errors))
     })
     .await?;
     let path = account_file(&app).ok_or("找不到設定資料夾")?;
@@ -724,6 +799,77 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// 模擬一台 TFS：只有 /tfs/DefaultCollection 一個集合，connectionData 只接受預覽版號。
+    fn fake_tfs() -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let target = req.split(' ').nth(1).unwrap_or("");
+                let (status, body) = match target {
+                    t if t.contains("/_apis/connectionData?api-version=5.0-preview") => (
+                        "200 OK",
+                        r#"{"authenticatedUser":{"providerDisplayName":"王小明"}}"#,
+                    ),
+                    t if t.contains("/_apis/connectionData") => ("400 Bad Request", "{}"),
+                    "/tfs/_apis/projectCollections?api-version=5.0" => {
+                        ("200 OK", r#"{"value":[{"name":"DefaultCollection"}]}"#)
+                    }
+                    "/tfs/DefaultCollection/_apis/projects?$top=1&api-version=5.0" => {
+                        ("200 OK", r#"{"value":[]}"#)
+                    }
+                    _ => ("404 Not Found", "{}"),
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        base
+    }
+
+    #[test]
+    fn connects_to_the_only_collection_when_given_the_server_url() {
+        let host = fake_tfs();
+        let a = connect_at(&format!("{host}/tfs"), "pat").unwrap();
+        assert_eq!(a.url, format!("{host}/tfs/DefaultCollection"));
+        assert_eq!(a.name, "王小明");
+        // 只輸入主機名稱：自動試 /tfs。
+        let tries = candidates(&host).unwrap();
+        let ok = tries
+            .iter()
+            .find_map(|b| connect_at(b, "pat").ok())
+            .unwrap();
+        assert_eq!(ok.url, format!("{host}/tfs/DefaultCollection"));
+    }
+
+    #[test]
+    fn explains_not_found_after_trying_every_url() {
+        let tries = vec!["https://tfs/a".to_string(), "https://tfs".to_string()];
+        let e = connect_error(
+            &tries,
+            vec!["連線失敗：找不到（404），請確認網址".into(); 2],
+        );
+        assert!(e.contains("https://tfs/a、https://tfs"));
+        assert!(e.contains("DefaultCollection"));
+        // 有其他錯誤（例如權杖不對）時優先顯示，不要被 404 蓋掉。
+        let e = connect_error(
+            &tries,
+            vec![
+                "連線失敗：個人存取權杖無效或已過期".into(),
+                "連線失敗：找不到（404），請確認網址".into(),
+            ],
+        );
+        assert_eq!(e, "連線失敗：個人存取權杖無效或已過期");
+    }
+
     #[test]
     fn finds_collection_url_from_pasted_links() {
         assert_eq!(
@@ -740,7 +886,10 @@ mod tests {
                 "https://dev.azure.com/org"
             ]
         );
-        assert_eq!(candidates("http://tfs:8080").unwrap(), ["http://tfs:8080"]);
+        assert_eq!(
+            candidates("http://tfs:8080").unwrap(),
+            ["http://tfs:8080", "http://tfs:8080/tfs"]
+        );
         assert!(candidates("tfs.corp.com").is_err());
     }
 
