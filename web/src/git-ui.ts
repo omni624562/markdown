@@ -7,6 +7,7 @@ import type { Desktop, GitChange, GitStatus } from "./desktop.ts";
 import type { GitHub } from "./github-ui.ts";
 import type { SettingsStore } from "./settings.ts";
 import type { FileTree } from "./ui/filetree.ts";
+import { currentLang, t } from "./i18n.ts";
 import { icon } from "./ui/icons.ts";
 import { choose } from "./ui/choice.ts";
 import { toast } from "./ui/toast.ts";
@@ -20,24 +21,36 @@ const MARK: Record<GitChange["status"], string> = {
   conflicted: "!",
 };
 
-const LABEL: Record<GitChange["status"], string> = {
-  modified: "修改",
-  added: "新增",
-  deleted: "刪除",
-  renamed: "改名",
-  untracked: "新檔案",
-  conflicted: "衝突",
+/** 變更清單上的說明（滑鼠提示）。 */
+const LABEL: Record<GitChange["status"], (path: string) => string> = {
+  modified: (path) => t("修改：{path}", { path }),
+  added: (path) => t("新增：{path}", { path }),
+  deleted: (path) => t("刪除：{path}", { path }),
+  renamed: (path) => t("改名：{path}", { path }),
+  untracked: (path) => t("新檔案：{path}", { path }),
+  conflicted: (path) => t("衝突：{path}", { path }),
+};
+
+/** 只有一個檔案時的預設提交說明。 */
+const SUMMARY: Record<GitChange["status"], (name: string) => string> = {
+  modified: (name) => t("修改 {name}", { name }),
+  added: (name) => t("新增 {name}", { name }),
+  deleted: (name) => t("刪除 {name}", { name }),
+  renamed: (name) => t("改名 {name}", { name }),
+  untracked: (name) => t("新檔案 {name}", { name }),
+  conflicted: (name) => t("衝突 {name}", { name }),
 };
 
 /** 預設的提交說明。 */
 export function defaultMessage(changes: GitChange[], name: (path: string) => string): string {
-  if (changes.length === 1) return `${LABEL[changes[0].status]} ${name(changes[0].path)}`;
-  return `更新 ${changes.length} 個檔案`;
+  if (changes.length === 1) return SUMMARY[changes[0].status](name(changes[0].path));
+  return t("更新 {n} 個檔案", { n: changes.length });
 }
 
 export function syncMessage(date = new Date()): string {
-  const f = new Intl.DateTimeFormat("zh-TW", { dateStyle: "short", timeStyle: "short", hour12: false });
-  return `自動同步 ${f.format(date)}`;
+  const locale = currentLang() === "en" ? "en-US" : "zh-TW";
+  const f = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short", hour12: false });
+  return t("自動同步 {time}", { time: f.format(date) });
 }
 
 const baseName = (p: string) => p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1);
@@ -84,7 +97,7 @@ export class GitPanel {
     this.#message = document.createElement("textarea");
     this.#message.className = "git-message";
     this.#message.rows = 3;
-    this.#message.setAttribute("aria-label", "提交說明");
+    this.#message.setAttribute("aria-label", t("提交說明"));
     this.#message.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing) {
         e.preventDefault();
@@ -149,20 +162,22 @@ export class GitPanel {
     const info = document.createElement("button");
     info.type = "button";
     info.className = "git-info";
-    info.title = `${b?.upstream ? `追蹤 ${b.upstream}` : "這個分支還沒有設定遠端"}；按一下切換或建立分支`;
+    info.title = b?.upstream
+      ? t("追蹤 {upstream}；按一下切換或建立分支", { upstream: b.upstream })
+      : t("這個分支還沒有設定遠端；按一下切換或建立分支");
     info.disabled = this.#busy || s.merging;
     info.addEventListener("click", () => this.#hooks.switchBranch());
-    info.append(icon("git-branch"), Object.assign(document.createElement("strong"), { textContent: b?.name ?? "（未知分支）" }));
-    if (b?.ahead) info.append(Object.assign(document.createElement("small"), { textContent: `↑${b.ahead}`, title: `${b.ahead} 個提交還沒推送` }));
-    if (b?.behind) info.append(Object.assign(document.createElement("small"), { textContent: `↓${b.behind}`, title: `遠端有 ${b.behind} 個新提交` }));
+    info.append(icon("git-branch"), Object.assign(document.createElement("strong"), { textContent: b?.name ?? t("（未知分支）") }));
+    if (b?.ahead) info.append(Object.assign(document.createElement("small"), { textContent: `↑${b.ahead}`, title: t("{n} 個提交還沒推送", { n: b.ahead }) }));
+    if (b?.behind) info.append(Object.assign(document.createElement("small"), { textContent: `↓${b.behind}`, title: t("遠端有 {n} 個新提交", { n: b.behind }) }));
     const sync = document.createElement("div");
     sync.className = "git-sync";
     const pr = this.#button("", "git-pull-request", async () => this.#hooks.createPr());
-    pr.title = "建立 Pull Request";
-    pr.setAttribute("aria-label", "建立 Pull Request");
+    pr.title = t("建立 Pull Request");
+    pr.setAttribute("aria-label", t("建立 Pull Request"));
     sync.append(
-      this.#button("拉取", "arrow-down-to-line", () => this.pull()),
-      this.#button("推送", "arrow-up-from-line", () => this.push()),
+      this.#button(t("拉取"), "arrow-down-to-line", () => this.pull()),
+      this.#button(t("推送"), "arrow-up-from-line", () => this.push()),
       ...(s.remote ? [pr] : []),
     );
     branch.append(info, sync);
@@ -170,23 +185,23 @@ export class GitPanel {
     // 提交
     const root = this.#hooks.root() ?? "";
     this.#message.placeholder = changes.length
-      ? `提交說明（留空就用「${defaultMessage(changes, baseName)}」）`
-      : "沒有需要提交的變更";
+      ? t("提交說明（留空就用「{message}」）", { message: defaultMessage(changes, baseName) })
+      : t("沒有需要提交的變更");
     this.#message.disabled = this.#busy || !changes.length || s.merging;
     const actions = document.createElement("div");
     actions.className = "git-actions";
-    const commit = this.#button("提交", "git-commit-horizontal", () => this.commit(false));
-    const commitPush = this.#button("提交並推送", "arrow-up-from-line", () => this.commit(true));
+    const commit = this.#button(t("提交"), "git-commit-horizontal", () => this.commit(false));
+    const commitPush = this.#button(t("提交並推送"), "arrow-up-from-line", () => this.commit(true));
     commitPush.classList.add("btn-primary");
     for (const el of [commit, commitPush]) el.disabled = this.#busy || !changes.length || s.merging;
-    commit.title = "提交（Ctrl+Enter）";
+    commit.title = t("提交（Ctrl+Enter）");
     actions.append(commit, commitPush);
 
     // 變更清單
     const head = document.createElement("h3");
     head.className = "git-changes-head";
-    head.textContent = changes.length ? `變更（${changes.length}）` : "沒有變更";
-    if (changes.some((c) => c.status === "conflicted")) head.textContent += "・有衝突";
+    head.textContent = changes.length ? t("變更（{n}）", { n: changes.length }) : t("沒有變更");
+    if (changes.some((c) => c.status === "conflicted")) head.textContent += t("・有衝突");
     const list = document.createElement("ul");
     list.className = "git-files";
     list.append(
@@ -197,11 +212,11 @@ export class GitPanel {
         btn.dataset.status = c.status;
         const rel = c.path.startsWith(root) ? c.path.slice(root.length + 1) : c.path;
         const dir = rel.includes("/") || rel.includes("\\") ? rel.slice(0, rel.length - baseName(rel).length - 1) : "";
-        btn.title = `${LABEL[c.status]}：${rel}`;
+        btn.title = LABEL[c.status](rel);
         btn.append(
           Object.assign(document.createElement("span"), { className: "git-file-name", textContent: baseName(rel) }),
           Object.assign(document.createElement("span"), { className: "git-file-dir", textContent: dir }),
-          Object.assign(document.createElement("b"), { textContent: MARK[c.status], title: LABEL[c.status] }),
+          Object.assign(document.createElement("b"), { textContent: MARK[c.status], title: LABEL[c.status](rel) }),
         );
         btn.disabled = c.status === "deleted";
         btn.addEventListener("click", () => {
@@ -224,16 +239,16 @@ export class GitPanel {
     box.className = "git-hint git-merge";
     const left = changes.filter((c) => c.status === "conflicted").length;
     box.append(
-      Object.assign(document.createElement("strong"), { textContent: "正在合併遠端的變更" }),
+      Object.assign(document.createElement("strong"), { textContent: t("正在合併遠端的變更") }),
       Object.assign(document.createElement("span"), {
         textContent: left
-          ? `下面標「!」的 ${left} 個檔案兩邊改到同一個地方。點檔案逐段選「採用遠端」或「保留本機」，存檔後按「完成合併」。`
-          : "處理完了，按「完成合併」建立合併提交。",
+          ? t("下面標「!」的 {n} 個檔案兩邊改到同一個地方。點檔案逐段選「採用遠端」或「保留本機」，存檔後按「完成合併」。", { n: left })
+          : t("處理完了，按「完成合併」建立合併提交。"),
       }),
     );
-    const finish = this.#button("完成合併", "git-merge", () => this.finishMerge());
+    const finish = this.#button(t("完成合併"), "git-merge", () => this.finishMerge());
     finish.classList.add("btn-primary");
-    const abort = this.#button("放棄合併", "x", () => this.abortMerge());
+    const abort = this.#button(t("放棄合併"), "x", () => this.abortMerge());
     const row = document.createElement("div");
     row.className = "git-merge-actions";
     row.append(finish, abort);
@@ -250,16 +265,16 @@ export class GitPanel {
     const text = document.createElement("p");
     const actions = document.createElement("div");
     actions.className = "git-setup-actions";
-    const open = this.#button("從 GitHub 開啟儲存庫", "git-branch", () => this.#github.openRepo());
+    const open = this.#button(t("從 GitHub 開啟儲存庫"), "git-branch", () => this.#github.openRepo());
     if (root) {
-      title.textContent = "這個資料夾還沒有同步到 GitHub";
-      text.textContent = "上傳到 GitHub 之後，可以在其他電腦下載同一個資料夾，每次的修改都會留下紀錄，也可以自動同步。不需要安裝 Git。";
-      const publish = this.#button("上傳到 GitHub", "arrow-up-from-line", () => this.#github.publish());
+      title.textContent = t("這個資料夾還沒有同步到 GitHub");
+      text.textContent = t("上傳到 GitHub 之後，可以在其他電腦下載同一個資料夾，每次的修改都會留下紀錄，也可以自動同步。不需要安裝 Git。");
+      const publish = this.#button(t("上傳到 GitHub"), "arrow-up-from-line", () => this.#github.publish());
       publish.classList.add("btn-primary");
       actions.append(publish, open);
     } else {
-      title.textContent = "用 GitHub 同步你的筆記";
-      text.textContent = "從 GitHub 下載儲存庫到電腦，編輯後一鍵同步；或先開啟資料夾，再上傳到 GitHub。不需要安裝 Git。";
+      title.textContent = t("用 GitHub 同步你的筆記");
+      text.textContent = t("從 GitHub 下載儲存庫到電腦，編輯後一鍵同步；或先開啟資料夾，再上傳到 GitHub。不需要安裝 Git。");
       open.classList.add("btn-primary");
       actions.append(open);
     }
@@ -273,11 +288,11 @@ export class GitPanel {
     line.className = "git-account";
     const a = this.#github.account;
     if (a) {
-      line.append(Object.assign(document.createElement("span"), { textContent: `已登入 GitHub：${a.login}` }));
+      line.append(Object.assign(document.createElement("span"), { textContent: t("已登入 GitHub：{login}", { login: a.login }) }));
     } else {
       line.append(
-        Object.assign(document.createElement("span"), { textContent: "還沒有登入 GitHub" }),
-        this.#button("用 GitHub 登入", "shield-check", async () => {
+        Object.assign(document.createElement("span"), { textContent: t("還沒有登入 GitHub") }),
+        this.#button(t("用 GitHub 登入"), "shield-check", async () => {
           await this.#github.login();
           this.#render();
         }),
@@ -292,8 +307,8 @@ export class GitPanel {
       const box = document.createElement("div");
       box.className = "git-hint";
       box.append(
-        Object.assign(document.createElement("span"), { textContent: "這個儲存庫還沒有連到 GitHub。" }),
-        this.#button("上傳到 GitHub", "arrow-up-from-line", () => this.#github.publish()),
+        Object.assign(document.createElement("span"), { textContent: t("這個儲存庫還沒有連到 GitHub。") }),
+        this.#button(t("上傳到 GitHub"), "arrow-up-from-line", () => this.#github.publish()),
       );
       return box;
     }
@@ -301,8 +316,8 @@ export class GitPanel {
       const box = document.createElement("div");
       box.className = "git-hint";
       box.append(
-        Object.assign(document.createElement("span"), { textContent: "登入 GitHub 才能拉取與推送。" }),
-        this.#button("用 GitHub 登入", "shield-check", async () => {
+        Object.assign(document.createElement("span"), { textContent: t("登入 GitHub 才能拉取與推送。") }),
+        this.#button(t("用 GitHub 登入"), "shield-check", async () => {
           await this.#github.login();
           this.#render();
         }),
@@ -331,7 +346,7 @@ export class GitPanel {
       if (!quiet) toast(message, { tone: "success" });
       return true;
     } catch (e) {
-      toast(`${label}：${e instanceof Error ? e.message : e}`, { tone: "error", duration: 12000 });
+      toast(t("{label}：{error}", { label, error: e instanceof Error ? e.message : String(e) }), { tone: "error", duration: 12000 });
       return false;
     } finally {
       this.#busy = false;
@@ -348,14 +363,14 @@ export class GitPanel {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       // 兩邊改到同一個地方：讓使用者選擇逐段處理。
-      if (message.includes("逐段處理")) {
+      if (message.includes(t("逐段處理"))) {
         toast(message, {
           tone: "error",
           duration: 20000,
-          action: { label: "逐段處理", run: () => void this.startMerge() },
+          action: { label: t("逐段處理"), run: () => void this.startMerge() },
         });
       } else {
-        toast(`Git：${message}`, { tone: "error", duration: 12000 });
+        toast(t("Git：{message}", { message }), { tone: "error", duration: 12000 });
       }
     } finally {
       this.#busy = false;
@@ -367,7 +382,7 @@ export class GitPanel {
   async startMerge(): Promise<void> {
     let conflicts: Awaited<ReturnType<Desktop["gitMergeStart"]>> = [];
     const ok = await this.#run(
-      "合併失敗",
+      t("合併失敗"),
       async () => {
         conflicts = await this.#d.gitMergeStart();
         return "";
@@ -377,15 +392,15 @@ export class GitPanel {
     if (!ok) return;
     this.#theirs.clear();
     for (const c of conflicts) if (c.theirs !== null) this.#theirs.set(c.path, c.theirs);
-    const notes = conflicts.filter((c) => c.note).map((c) => `${baseName(c.path)}：${c.note}`);
-    if (notes.length) toast(notes.join("；"), { duration: 12000 });
+    const notes = conflicts.filter((c) => c.note).map((c) => t("{name}：{note}", { name: baseName(c.path), note: c.note ?? "" }));
+    if (notes.length) toast(notes.join(t("；")), { duration: 12000 });
     const first = conflicts.find((c) => c.theirs !== null);
     if (first) this.#hooks.resolve(first.path, first.theirs!);
-    else toast("沒有需要逐段處理的檔案，按「完成合併」就好。");
+    else toast(t("沒有需要逐段處理的檔案，按「完成合併」就好。"));
   }
 
   finishMerge(): Promise<void> {
-    return this.#run("完成合併失敗", async () => {
+    return this.#run(t("完成合併失敗"), async () => {
       const message = await this.#d.gitMergeFinish();
       this.#theirs.clear();
       return message;
@@ -394,15 +409,15 @@ export class GitPanel {
 
   async abortMerge(): Promise<void> {
     const ok = await choose(
-      "放棄合併",
-      "會回到拉取前的狀態，剛才逐段處理的內容會被丟掉。遠端的變更之後還可以再拉取一次。",
+      t("放棄合併"),
+      t("會回到拉取前的狀態，剛才逐段處理的內容會被丟掉。遠端的變更之後還可以再拉取一次。"),
       [
-        { id: "cancel", label: "取消" },
-        { id: "abort", label: "放棄合併", danger: true },
+        { id: "cancel", label: t("取消") },
+        { id: "abort", label: t("放棄合併"), danger: true },
       ],
     );
     if (ok !== "abort") return;
-    await this.#run("放棄合併失敗", async () => {
+    await this.#run(t("放棄合併失敗"), async () => {
       const message = await this.#d.gitMergeAbort();
       this.#theirs.clear();
       return message;
@@ -416,13 +431,13 @@ export class GitPanel {
   async commit(push: boolean): Promise<void> {
     const changes = this.#status?.changes ?? [];
     if (!changes.length) {
-      toast("沒有需要提交的變更。");
+      toast(t("沒有需要提交的變更。"));
       return;
     }
     const message = this.#message.value.trim() || defaultMessage(changes, baseName);
-    const ok = await this.#run("提交失敗", async () => {
+    const ok = await this.#run(t("提交失敗"), async () => {
       const summary = await this.#d.gitCommit(message);
-      return `已提交：${summary}`;
+      return t("已提交：{summary}", { summary });
     });
     if (!ok) return;
     this.#message.value = "";
@@ -442,14 +457,14 @@ export class GitPanel {
   async #sync(): Promise<void> {
     if (this.#busy || !this.#status?.repo) return this.#scheduleSync();
     const ok = await this.#run(
-      "自動同步失敗，已暫停",
+      t("自動同步失敗，已暫停"),
       async () => {
         if (this.#status?.changes.length) await this.#d.gitCommit(syncMessage());
         if (this.#status?.branch?.upstream) {
           await this.#d.gitPull();
           await this.#d.gitPush();
         }
-        return "已自動同步";
+        return t("已自動同步");
       },
       true,
     );

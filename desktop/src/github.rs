@@ -92,13 +92,22 @@ fn read(
         Ok(mut r) => r
             .body_mut()
             .read_to_string()
-            .map_err(|e| format!("{what}失敗：{e}")),
-        Err(ureq::Error::StatusCode(401)) => Err("GitHub 登入已過期，請重新登入".into()),
-        Err(ureq::Error::StatusCode(422)) => Err(format!(
-            "{what}失敗：名稱已經被使用，或不符合 GitHub 的規定"
+            .map_err(|e| tr!("{what}失敗：{e}", what = what, e = e)),
+        Err(ureq::Error::StatusCode(401)) => Err(tr!("GitHub 登入已過期，請重新登入")),
+        Err(ureq::Error::StatusCode(422)) => Err(tr!(
+            "{what}失敗：名稱已經被使用，或不符合 GitHub 的規定",
+            what = what
         )),
-        Err(ureq::Error::StatusCode(code)) => Err(format!("{what}失敗：GitHub 回應 {code}")),
-        Err(e) => Err(format!("{what}失敗：無法連線到 GitHub（{e}）")),
+        Err(ureq::Error::StatusCode(code)) => Err(tr!(
+            "{what}失敗：GitHub 回應 {code}",
+            what = what,
+            code = code
+        )),
+        Err(e) => Err(tr!(
+            "{what}失敗：無法連線到 GitHub（{e}）",
+            what = what,
+            e = e
+        )),
     }
 }
 
@@ -122,7 +131,7 @@ fn form(url: &str, body: &str, what: &str) -> Result<serde_json::Value, String> 
             .send(body),
         what,
     )?;
-    serde_json::from_str(&text).map_err(|e| format!("{what}失敗：{e}"))
+    serde_json::from_str(&text).map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))
 }
 
 // ---- 登入 -------------------------------------------------------------------
@@ -152,15 +161,15 @@ pub async fn github_login_start(app: AppHandle) -> Result<DeviceCode, String> {
             "https://github.com/login/device/code",
             // repo：儲存庫、issue、PR、Pages；gist：分享成 Gist。
             &format!("client_id={id}&scope=repo%20gist"),
-            "登入",
+            &tr!("登入"),
         )
     })
     .await?;
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
     let n = |k: &str, d: u64| v.get(k).and_then(|x| x.as_u64()).unwrap_or(d);
     let code = DeviceCode {
-        device_code: s("device_code").ok_or("登入失敗：GitHub 沒有回傳代碼")?,
-        user_code: s("user_code").ok_or("登入失敗：GitHub 沒有回傳代碼")?,
+        device_code: s("device_code").ok_or_else(|| tr!("登入失敗：GitHub 沒有回傳代碼"))?,
+        user_code: s("user_code").ok_or_else(|| tr!("登入失敗：GitHub 沒有回傳代碼"))?,
         verification_uri: s("verification_uri")
             .unwrap_or_else(|| "https://github.com/login/device".into()),
         interval: n("interval", 5),
@@ -191,19 +200,19 @@ pub async fn github_login_wait(
             // 每秒檢查一次有沒有按「取消」。
             for _ in 0..wait {
                 if CANCEL.load(Ordering::SeqCst) {
-                    return Err("已取消登入".to_string());
+                    return Err(tr!("已取消登入"));
                 }
                 std::thread::sleep(Duration::from_secs(1));
             }
             if start.elapsed() > limit {
-                return Err("代碼已過期，請重新登入".into());
+                return Err(tr!("代碼已過期，請重新登入"));
             }
             let v = form(
                 "https://github.com/login/oauth/access_token",
                 &format!(
                     "client_id={id}&device_code={device_code}&grant_type=urn:ietf:params:oauth:grant-type:device_code"
                 ),
-                "登入",
+                &tr!("登入"),
             )?;
             if let Some(t) = v.get("access_token").and_then(|x| x.as_str()) {
                 return Ok(t.to_string());
@@ -211,26 +220,27 @@ pub async fn github_login_wait(
             match v.get("error").and_then(|x| x.as_str()) {
                 Some("authorization_pending") => {}
                 Some("slow_down") => wait += 5,
-                Some("expired_token") => return Err("代碼已過期，請重新登入".into()),
-                Some("access_denied") => return Err("你在 GitHub 拒絕了授權".into()),
-                Some(other) => return Err(format!("登入失敗：{other}")),
-                None => return Err("登入失敗：GitHub 的回應不正確".into()),
+                Some("expired_token") => return Err(tr!("代碼已過期，請重新登入")),
+                Some("access_denied") => return Err(tr!("你在 GitHub 拒絕了授權")),
+                Some(other) => return Err(tr!("登入失敗：{other}", other = other)),
+                None => return Err(tr!("登入失敗：GitHub 的回應不正確")),
             }
         }
     })
     .await?;
     let t = token.clone();
     let text = crate::io::blocking_for(Duration::from_secs(30), move || {
-        api_get(&t, "/user", "讀取帳號")
+        api_get(&t, "/user", &tr!("讀取帳號"))
     })
     .await?;
-    let account: Account = serde_json::from_str(&text).map_err(|e| format!("讀取帳號失敗：{e}"))?;
-    let path = account_file(&app).ok_or("找不到設定資料夾")?;
+    let account: Account =
+        serde_json::from_str(&text).map_err(|e| tr!("讀取帳號失敗：{e}", e = e))?;
+    let path = account_file(&app).ok_or_else(|| tr!("找不到設定資料夾"))?;
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("無法建立設定資料夾：{e}"))?;
+        fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
     }
     let json = serde_json::to_string_pretty(&account).unwrap_or_default();
-    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| format!("無法儲存：{e}"))?;
+    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存：{e}", e = e))?;
     crate::secrets::set(SERVICE, "token", &token);
     if let Ok(mut t) = TOKEN.lock() {
         *t = Some(token);
@@ -271,7 +281,7 @@ pub struct Repo {
 }
 
 fn require_token(app: &AppHandle) -> Result<String, String> {
-    token(app).ok_or_else(|| "請先用 GitHub 登入".to_string())
+    token(app).ok_or_else(|| tr!("請先用 GitHub 登入"))
 }
 
 /// 自己的、參與的、組織的儲存庫，最近更新的在前面（最多 300 個）。
@@ -284,10 +294,10 @@ pub async fn github_repos(app: AppHandle) -> Result<Vec<Repo>, String> {
             let text = api_get(
                 &token,
                 &format!("/user/repos?per_page=100&sort=updated&page={page}"),
-                "讀取儲存庫清單",
+                &tr!("讀取儲存庫清單"),
             )?;
             let list: Vec<Repo> =
-                serde_json::from_str(&text).map_err(|e| format!("讀取儲存庫清單失敗：{e}"))?;
+                serde_json::from_str(&text).map_err(|e| tr!("讀取儲存庫清單失敗：{e}", e = e))?;
             let done = list.len() < 100;
             out.extend(list);
             if done {
@@ -314,10 +324,10 @@ pub async fn github_clone(
         .rsplit('/')
         .next()
         .filter(|n| !n.is_empty() && !n.starts_with('.') && !n.contains(['\\', ':']))
-        .ok_or("儲存庫名稱不正確")?
+        .ok_or_else(|| tr!("儲存庫名稱不正確"))?
         .to_string();
     if full_name.split('/').count() != 2 {
-        return Err("儲存庫名稱不正確".into());
+        return Err(tr!("儲存庫名稱不正確"));
     }
     let Some(dest) = pick_clone_dest(&app, &window, &name).await? else {
         return Ok(None);
@@ -341,11 +351,11 @@ pub(crate) async fn pick_clone_dest(
     name: &str,
 ) -> Result<Option<PathBuf>, String> {
     if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', ':']) {
-        return Err("儲存庫名稱不正確".into());
+        return Err(tr!("儲存庫名稱不正確"));
     }
     let mut dialog = rfd::AsyncFileDialog::new()
         .set_parent(window)
-        .set_title(format!("選擇要把「{name}」放在哪個資料夾"));
+        .set_title(tr!("選擇要把「{name}」放在哪個資料夾", name = name));
     if let Ok(docs) = app.path().document_dir() {
         dialog = dialog.set_directory(docs);
     }
@@ -358,9 +368,9 @@ pub(crate) async fn pick_clone_dest(
             .map(|mut d| d.next().is_some())
             .unwrap_or(true)
     {
-        return Err(format!(
-            "「{}」已經存在而且不是空的，請換一個位置",
-            path_string(&dest)
+        return Err(tr!(
+            "「{path}」已經存在而且不是空的，請換一個位置",
+            path = path_string(&dest)
         ));
     }
     Ok(Some(dest))
@@ -381,11 +391,11 @@ pub async fn github_publish(
     private: bool,
 ) -> Result<String, String> {
     let token = require_token(&app)?;
-    let dir = workspace.root().ok_or("還沒有開啟資料夾")?;
+    let dir = workspace.root().ok_or_else(|| tr!("還沒有開啟資料夾"))?;
     let who = identity(&app);
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err("請輸入儲存庫名稱".into());
+        return Err(tr!("請輸入儲存庫名稱"));
     }
     crate::io::blocking_for(crate::git::NETWORK_TIMEOUT, move || {
         let body = serde_json::json!({ "name": name, "private": private }).to_string();
@@ -396,10 +406,10 @@ pub async fn github_publish(
                 .header("Accept", "application/vnd.github+json")
                 .header("Content-Type", "application/json")
                 .send(&body),
-            "建立儲存庫",
+            &tr!("建立儲存庫"),
         )?;
         let created: Created =
-            serde_json::from_str(&text).map_err(|e| format!("建立儲存庫失敗：{e}"))?;
+            serde_json::from_str(&text).map_err(|e| tr!("建立儲存庫失敗：{e}", e = e))?;
         let auth = Auth {
             github_token: Some(token),
             ..Auth::default()
@@ -443,7 +453,11 @@ fn api_send(
                 serde_json::from_str(&text).unwrap_or(serde_json::Value::Null),
             ))
         }
-        Err(e) => Err(format!("{what}失敗：無法連線到 GitHub（{e}）")),
+        Err(e) => Err(tr!(
+            "{what}失敗：無法連線到 GitHub（{e}）",
+            what = what,
+            e = e
+        )),
     }
 }
 
@@ -462,7 +476,7 @@ fn github_message(v: &serde_json::Value) -> String {
         .into_iter()
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
-        .join("：")
+        .join(&tr!("："))
 }
 
 /// 儲存庫的預設分支（通常是 main）。
@@ -470,9 +484,9 @@ pub(crate) fn default_branch(token: &str, owner: &str, name: &str) -> Result<Str
     let v: serde_json::Value = serde_json::from_str(&api_get(
         token,
         &format!("/repos/{owner}/{name}"),
-        "讀取儲存庫",
+        &tr!("讀取儲存庫"),
     )?)
-    .map_err(|e| format!("讀取儲存庫失敗：{e}"))?;
+    .map_err(|e| tr!("讀取儲存庫失敗：{e}", e = e))?;
     Ok(v.get("default_branch")
         .and_then(|x| x.as_str())
         .unwrap_or("main")
@@ -490,11 +504,12 @@ pub(crate) fn create_pull(
 ) -> Result<String, String> {
     let base = default_branch(token, owner, name)?;
     if branch == base {
-        return Err(format!(
-            "目前在預設分支「{base}」上，請先建立新分支再建立 Pull Request"
+        return Err(tr!(
+            "目前在預設分支「{base}」上，請先建立新分支再建立 Pull Request",
+            base = base
         ));
     }
-    let what = "建立 Pull Request";
+    let what = &tr!("建立 Pull Request");
     let (code, v) = api_send(
         token,
         "POST",
@@ -507,7 +522,7 @@ pub(crate) fn create_pull(
             .get("html_url")
             .and_then(|x| x.as_str())
             .map(str::to_string)
-            .ok_or_else(|| format!("{what}失敗：GitHub 的回應不正確"));
+            .ok_or_else(|| tr!("{what}失敗：GitHub 的回應不正確", what = what));
     }
     if code == 422 {
         // 已經有 PR，或兩個分支沒有差異。
@@ -531,14 +546,19 @@ pub(crate) fn create_pull(
         if let Some(url) = existing {
             return Ok(url);
         }
-        return Err(format!(
-            "{what}失敗：「{branch}」和「{base}」沒有差異，或 GitHub 不接受（{}）",
-            github_message(&v)
+        return Err(tr!(
+            "{what}失敗：「{branch}」和「{base}」沒有差異，或 GitHub 不接受（{msg}）",
+            msg = github_message(&v),
+            what = what,
+            branch = branch,
+            base = base
         ));
     }
-    Err(format!(
-        "{what}失敗：GitHub 回應 {code}（{}）",
-        github_message(&v)
+    Err(tr!(
+        "{what}失敗：GitHub 回應 {code}（{msg}）",
+        msg = github_message(&v),
+        what = what,
+        code = code
     ))
 }
 
@@ -548,7 +568,7 @@ pub async fn github_pages(app: AppHandle) -> Result<String, String> {
     let token = require_token(&app)?;
     let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
     crate::io::blocking_for(Duration::from_secs(60), move || {
-        let what = "發佈網站";
+        let what = &tr!("發佈網站");
         let branch = default_branch(&token, &owner, &name)?;
         let (code, v) = api_send(
             &token,
@@ -568,21 +588,25 @@ pub async fn github_pages(app: AppHandle) -> Result<String, String> {
                 .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
                 .and_then(|p| p.get("html_url")?.as_str().map(str::to_string)),
             422 => {
-                return Err(format!(
-                    "{what}失敗：私人儲存庫需要 GitHub 付費方案才能使用 GitHub Pages（{}）",
-                    github_message(&v)
+                return Err(tr!(
+                    "{what}失敗：私人儲存庫需要 GitHub 付費方案才能使用 GitHub Pages（{msg}）",
+                    msg = github_message(&v),
+                    what = what
                 ))
             }
             403 | 404 => {
-                return Err(format!(
-                    "{what}失敗：沒有權限設定這個儲存庫的 GitHub Pages（{}）",
-                    github_message(&v)
+                return Err(tr!(
+                    "{what}失敗：沒有權限設定這個儲存庫的 GitHub Pages（{msg}）",
+                    msg = github_message(&v),
+                    what = what
                 ))
             }
             _ => {
-                return Err(format!(
-                    "{what}失敗：GitHub 回應 {code}（{}）",
-                    github_message(&v)
+                return Err(tr!(
+                    "{what}失敗：GitHub 回應 {code}（{msg}）",
+                    msg = github_message(&v),
+                    what = what,
+                    code = code
                 ))
             }
         };
@@ -602,7 +626,7 @@ pub async fn github_gist(
 ) -> Result<String, String> {
     let token = require_token(&app)?;
     if content.trim().is_empty() {
-        return Err("沒有內容可以分享".into());
+        return Err(tr!("沒有內容可以分享"));
     }
     let file_name = file_name
         .trim()
@@ -611,12 +635,12 @@ pub async fn github_gist(
         .take(100)
         .collect::<String>();
     let file_name = if file_name.is_empty() {
-        "筆記.md".to_string()
+        tr!("筆記.md")
     } else {
         file_name
     };
     crate::io::blocking_for(Duration::from_secs(60), move || {
-        let what = "分享成 Gist";
+        let what = &tr!("分享成 Gist");
         let (code, v) = api_send(
             &token,
             "POST",
@@ -633,12 +657,10 @@ pub async fn github_gist(
                 .get("html_url")
                 .and_then(|x| x.as_str())
                 .map(str::to_string)
-                .ok_or_else(|| format!("{what}失敗：GitHub 的回應不正確")),
+                .ok_or_else(|| tr!("{what}失敗：GitHub 的回應不正確", what = what)),
             // 1.8.0 以前登入的權杖沒有 gist 權限。
-            403 | 404 => Err(format!(
-                "{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 Git 頁登出 GitHub 再重新登入一次"
-            )),
-            _ => Err(format!("{what}失敗：GitHub 回應 {code}（{}）", github_message(&v))),
+            403 | 404 => Err(tr!("{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 Git 頁登出 GitHub 再重新登入一次", what = what)),
+            _ => Err(tr!("{what}失敗：GitHub 回應 {code}（{msg}）", msg = github_message(&v), what = what, code = code)),
         }
     })
     .await
@@ -711,7 +733,7 @@ fn issue_of(v: &serde_json::Value) -> Option<Issue> {
 }
 
 fn json(text: &str, what: &str) -> Result<serde_json::Value, String> {
-    serde_json::from_str(text).map_err(|e| format!("{what}失敗：{e}"))
+    serde_json::from_str(text).map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))
 }
 
 /// 目前資料夾的 GitHub 儲存庫的 issue：搜尋文字空白時是還沒關閉的，數字是編號，其他搜尋標題與內容。
@@ -721,7 +743,7 @@ pub async fn github_issues(app: AppHandle, search: String) -> Result<Vec<Issue>,
     let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
     crate::io::blocking_for(Duration::from_secs(60), move || {
         let q = search.trim().trim_start_matches('#').to_string();
-        let what = "讀取 issue";
+        let what = &tr!("讀取 issue");
         if !q.is_empty() && q.chars().all(|c| c.is_ascii_digit()) {
             let v = json(
                 &api_get(&token, &format!("/repos/{owner}/{name}/issues/{q}"), what).or_else(
@@ -774,7 +796,7 @@ pub async fn github_issue(app: AppHandle, number: u64) -> Result<IssueDetail, St
     let token = require_token(&app)?;
     let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
     crate::io::blocking_for(Duration::from_secs(60), move || {
-        let what = "讀取 issue";
+        let what = &tr!("讀取 issue");
         let v = json(
             &api_get(
                 &token,
@@ -783,7 +805,7 @@ pub async fn github_issue(app: AppHandle, number: u64) -> Result<IssueDetail, St
             )?,
             what,
         )?;
-        let issue = issue_of(&v).ok_or("讀取 issue 失敗：這個編號是 Pull Request")?;
+        let issue = issue_of(&v).ok_or_else(|| tr!("讀取 issue 失敗：這個編號是 Pull Request"))?;
         let comments = if issue.comments > 0 {
             json(
                 &api_get(

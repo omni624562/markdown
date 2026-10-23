@@ -4,6 +4,7 @@
  */
 import { type Task, isoDate, plainTaskText } from "../doc-index.ts";
 import type { IndexedDoc } from "../workspace-index.ts";
+import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 import { collator } from "../collator.ts";
 
@@ -37,16 +38,26 @@ export class TasksPanel {
   constructor(el: HTMLElement, handlers: TasksHandlers) {
     this.#el = el;
     this.#handlers = handlers;
+    const tr = {
+      show: t("顯示"),
+      open: t("未完成"),
+      all: t("全部"),
+      owner: t("負責人"),
+      everyone: t("所有人"),
+      order: t("排列方式"),
+      byFile: t("依檔案"),
+      byDue: t("依截止日"),
+    };
     el.innerHTML = `
       <div class="tasks-filters">
-        <div class="segmented" role="group" aria-label="顯示">
-          <button type="button" data-show="open" aria-pressed="true">未完成</button>
-          <button type="button" data-show="all" aria-pressed="false">全部</button>
+        <div class="segmented" role="group" aria-label="${tr.show}">
+          <button type="button" data-show="open" aria-pressed="true">${tr.open}</button>
+          <button type="button" data-show="all" aria-pressed="false">${tr.all}</button>
         </div>
-        <select class="tasks-owner" aria-label="負責人"><option value="">所有人</option></select>
-        <select class="tasks-order" aria-label="排列方式">
-          <option value="file">依檔案</option>
-          <option value="due">依截止日</option>
+        <select class="tasks-owner" aria-label="${tr.owner}"><option value="">${tr.everyone}</option></select>
+        <select class="tasks-order" aria-label="${tr.order}">
+          <option value="file">${tr.byFile}</option>
+          <option value="due">${tr.byDue}</option>
         </select>
       </div>
       <p class="search-summary tasks-summary" role="status"></p>
@@ -75,14 +86,14 @@ export class TasksPanel {
     try {
       docs = await this.#handlers.docs();
     } catch (e) {
-      this.#summary.textContent = `無法讀取待辦：${e instanceof Error ? e.message : e}`;
+      this.#summary.textContent = t("無法讀取待辦：{error}", { error: e instanceof Error ? e.message : String(e) });
       return;
     }
     if (seq !== this.#seq) return;
     this.#items = docs.flatMap((doc) => doc.info.tasks.map((t) => ({ ...t, doc })));
     const owners = [...new Set(this.#items.flatMap((t) => t.owners))].sort(collator.compare);
     const current = this.#owner.value;
-    this.#owner.replaceChildren(new Option("所有人", ""), ...owners.map((o) => new Option(`@${o}`, o)));
+    this.#owner.replaceChildren(new Option(t("所有人"), ""), ...owners.map((o) => new Option(`@${o}`, o)));
     this.#owner.value = owners.includes(current) ? current : "";
     this.#owner.hidden = owners.length === 0;
     this.#render();
@@ -95,7 +106,9 @@ export class TasksPanel {
     const open = this.#items.filter((t) => !t.done && (!owner || t.owners.includes(owner)));
     const overdue = open.filter((t) => t.due && t.due < today).length;
     this.#summary.textContent = this.#items.length
-      ? `${open.length} 項未完成` + (overdue ? `，${overdue} 項已過截止日` : "") + (this.#show === "all" ? `，共 ${items.length} 項` : "")
+      ? t("{n} 項未完成", { n: open.length }) +
+        (overdue ? t("，{n} 項已過截止日", { n: overdue }) : "") +
+        (this.#show === "all" ? t("，共 {n} 項", { n: items.length }) : "")
       : this.#handlers.emptyHint();
     this.#list.replaceChildren();
     if (this.#order === "due") {
@@ -127,21 +140,21 @@ export class TasksPanel {
     }
   }
 
-  #row(t: TaskItem, today: string, showFile: boolean): HTMLLIElement {
+  #row(item: TaskItem, today: string, showFile: boolean): HTMLLIElement {
     const li = document.createElement("li");
     li.className = "task-row";
-    li.classList.toggle("done", t.done);
+    li.classList.toggle("done", item.done);
     const box = document.createElement("input");
     box.type = "checkbox";
-    box.checked = t.done;
-    box.setAttribute("aria-label", t.done ? "標成未完成" : "標成完成");
+    box.checked = item.done;
+    box.setAttribute("aria-label", item.done ? t("標成未完成") : t("標成完成"));
     box.addEventListener("change", () => {
       box.disabled = true;
       this.#handlers
-        .toggle(t, box.checked)
+        .toggle(item, box.checked)
         .then(() => this.refresh())
         .catch((e) => {
-          box.checked = t.done;
+          box.checked = item.done;
           box.disabled = false;
           this.#summary.textContent = e instanceof Error ? e.message : String(e);
         });
@@ -149,8 +162,8 @@ export class TasksPanel {
     const text = document.createElement("button");
     text.type = "button";
     text.className = "task-text";
-    text.title = `${t.doc.rel}：第 ${t.line} 行`;
-    const plain = plainTaskText(t.text);
+    text.title = t("{file}：第 {line} 行", { file: item.doc.rel, line: item.line });
+    const plain = plainTaskText(item.text);
     // @負責人另外上色
     for (const part of plain.split(/((?<=^|[\s，、：:（(])@[\p{L}\p{N}_-]+)/u)) {
       if (!part) continue;
@@ -161,23 +174,23 @@ export class TasksPanel {
         text.append(s);
       } else text.append(part);
     }
-    text.addEventListener("click", () => this.#handlers.open(t.doc, t.line));
+    text.addEventListener("click", () => this.#handlers.open(item.doc, item.line));
     li.append(box, text);
     const meta = document.createElement("span");
     meta.className = "task-meta";
-    if (t.due) {
+    if (item.due) {
       const due = document.createElement("span");
       due.className = "task-due";
-      if (!t.done && t.due < today) due.classList.add("overdue");
-      else if (!t.done && t.due === today) due.classList.add("today");
-      due.textContent = t.due === today ? "今天" : t.due.slice(5).replace("-", "/");
-      due.title = `截止日 ${t.due}`;
+      if (!item.done && item.due < today) due.classList.add("overdue");
+      else if (!item.done && item.due === today) due.classList.add("today");
+      due.textContent = item.due === today ? t("今天") : item.due.slice(5).replace("-", "/");
+      due.title = t("截止日 {date}", { date: item.due });
       meta.append(due);
     }
     if (showFile) {
       const file = document.createElement("span");
       file.className = "task-file";
-      file.textContent = t.doc.rel.replace(/\.(md|markdown)$/i, "");
+      file.textContent = item.doc.rel.replace(/\.(md|markdown)$/i, "");
       meta.append(file);
     }
     if (meta.childElementCount) li.append(meta);

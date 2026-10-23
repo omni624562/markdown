@@ -6,6 +6,7 @@ import { syntaxTree } from "@codemirror/language";
 import { type Action, type Diagnostic, linter } from "@codemirror/lint";
 import { type EditorState, type Extension, StateEffect } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { t } from "./i18n.ts";
 import { findPunctuation } from "./punct.ts";
 import { type TermMatch, findTerms, termMessage } from "./terms.ts";
 import { rangeChecker } from "./ranges.ts";
@@ -38,7 +39,7 @@ export function scanDocument(state: EditorState, ignore: ReadonlySet<string>): T
   const skip = skipRanges(state);
   const terms = findTerms(text, skip, ignore);
   // 標點和用語重疊時以用語為準。
-  const onTerm = rangeChecker(terms.map((t) => [t.from, t.to]));
+  const onTerm = rangeChecker(terms.map((m) => [m.from, m.to]));
   const marks = findPunctuation(text, skip, ignore).filter((p) => !onTerm(p.from, p.to));
   return [...terms, ...marks].sort((a, b) => a.from - b.from);
 }
@@ -63,17 +64,17 @@ export function proofread(opts: ProofreadOptions): Extension {
       if (!opts.enabled()) return [];
       return scanDocument(view.state, opts.ignored()).map((m): Diagnostic => {
         const actions: Action[] = m.term.to.map((to) => ({
-          name: m.term.kind === "punct" && to.length > 2 ? "改成全形括號" : `改成「${to}」`,
+          name: m.term.kind === "punct" && to.length > 2 ? t("改成全形括號") : t("改成「{to}」", { to }),
           apply(v: EditorView, from: number, end: number) {
             v.dispatch({ changes: { from, to: end, insert: to }, userEvent: "input.proofread" });
           },
         }));
-        actions.push({ name: "不再提示", apply: () => opts.ignore(m.term.word) });
+        actions.push({ name: t("不再提示"), apply: () => opts.ignore(m.term.word) });
         return {
           from: m.from,
           to: m.to,
           severity: m.term.context ? "info" : "warning",
-          source: m.term.kind === "typo" ? "錯字" : m.term.kind === "punct" ? "標點" : "兩國用語",
+          source: m.term.kind === "typo" ? t("錯字") : m.term.kind === "punct" ? t("標點") : t("兩國用語"),
           message: termMessage(m.term),
           actions,
         };

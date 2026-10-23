@@ -126,11 +126,11 @@ impl Terminals {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("無法建立終端機：{e}"))?;
+            .map_err(|e| tr!("無法建立終端機：{e}", e = e))?;
         let mut child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| format!("無法啟動程式：{e}"))?;
+            .map_err(|e| tr!("無法啟動程式：{e}", e = e))?;
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
@@ -206,7 +206,7 @@ impl Terminals {
 
     /// 執行 AI 要求、使用者同意過的指令：開一個新的終端機分頁讓使用者看到過程。
     pub fn run_command(&self, app: &AppHandle, command: &str) -> Result<u32, String> {
-        let label = format!("AI：{}", shorten(command, 24));
+        let label = tr!("AI：{command}", command = shorten(command, 24));
         let id = self.spawn(app, command_line(command), 120, 30, label.clone())?;
         let _ = app.emit("term-attached", Attached { id, label });
         Ok(id)
@@ -458,12 +458,11 @@ pub async fn term_open(
 ) -> Result<u32, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let (cmd, label) = match program {
-            Program::Shell => (default_shell(), "終端機"),
-            Program::Claude => (tool_command(&app, Tool::Claude)?, "Claude Code"),
-            Program::Codex => (tool_command(&app, Tool::Codex)?, "Codex"),
+            Program::Shell => (default_shell(), tr!("終端機")),
+            Program::Claude => (tool_command(&app, Tool::Claude)?, "Claude Code".into()),
+            Program::Codex => (tool_command(&app, Tool::Codex)?, "Codex".into()),
         };
-        app.state::<Terminals>()
-            .spawn(&app, cmd, cols, rows, label.into())
+        app.state::<Terminals>().spawn(&app, cmd, cols, rows, label)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -472,7 +471,7 @@ pub async fn term_open(
 #[tauri::command]
 pub fn term_write(id: u32, data: String, terms: State<'_, Terminals>) -> Result<(), String> {
     let mut sessions = terms.sessions.lock().unwrap();
-    let s = sessions.get_mut(&id).ok_or("終端機已經結束")?;
+    let s = sessions.get_mut(&id).ok_or_else(|| tr!("終端機已經結束"))?;
     s.writer
         .write_all(data.as_bytes())
         .and_then(|_| s.writer.flush())
@@ -487,7 +486,7 @@ pub fn term_resize(
     terms: State<'_, Terminals>,
 ) -> Result<(), String> {
     let sessions = terms.sessions.lock().unwrap();
-    let s = sessions.get(&id).ok_or("終端機已經結束")?;
+    let s = sessions.get(&id).ok_or_else(|| tr!("終端機已經結束"))?;
     s.master
         .resize(PtySize {
             rows: rows.max(2),

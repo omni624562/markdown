@@ -2,6 +2,7 @@
  * Markdown 格式指令：只操作 CodeMirror 的 EditorState，不碰 DOM，方便單元測試。
  */
 import { EditorSelection, type EditorState, type StateCommand, type TransactionSpec } from "@codemirror/state";
+import { t } from "./i18n.ts";
 
 function apply(state: EditorState, dispatch: Parameters<StateCommand>[0]["dispatch"], spec: TransactionSpec) {
   dispatch(state.update(spec, { scrollIntoView: true, userEvent: "input" }));
@@ -181,7 +182,7 @@ export const insertLink: StateCommand = ({ state, dispatch }) => {
   const tr = state.changeByRange((range) => {
     const selected = state.sliceDoc(range.from, range.to);
     const isUrl = /^https?:\/\/\S+$/.test(selected);
-    const label = isUrl ? "連結文字" : selected || "連結文字";
+    const label = isUrl ? t("連結文字") : selected || t("連結文字");
     const url = isUrl ? selected : "https://";
     const insert = `[${label}](${url})`;
     // 選取的是網址時，選取標籤讓使用者輸入；否則選取網址。
@@ -192,7 +193,7 @@ export const insertLink: StateCommand = ({ state, dispatch }) => {
   return apply(state, dispatch, tr);
 };
 
-export const TABLE_TEMPLATE = "| 欄位 1 | 欄位 2 |\n| --- | --- |\n| 內容 | 內容 |";
+export const TABLE_TEMPLATE = t("| 欄位 1 | 欄位 2 |\n| --- | --- |\n| 內容 | 內容 |");
 
 /** 清除格式時會拿掉的成對標記（由長到短比對）。 */
 const INLINE_MARKERS: [string, string][] = [

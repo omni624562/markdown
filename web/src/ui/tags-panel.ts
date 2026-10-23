@@ -1,6 +1,7 @@
 /**
  * 標籤面板：列出資料夾中所有文件的 `#標籤`（依使用次數排列），點標籤展開有這個標籤的文件。
  */
+import { t } from "../i18n.ts";
 import type { IndexedDoc } from "../workspace-index.ts";
 import { icon } from "./icons.ts";
 import { collator } from "../collator.ts";
@@ -14,6 +15,7 @@ export interface TagsHandlers {
 /** 標籤第一次出現在第幾行。 */
 export function tagLine(text: string, tag: string): number {
   const lines = text.split("\n");
+  // i18n-ignore：比對中文標點的正規表示式
   const re = new RegExp(`(^|[\\s，、。；：（「『【])#${tag.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&")}(?![\\p{L}\\p{N}_/-])`, "u");
   const i = lines.findIndex((l) => re.test(l));
   return i < 0 ? 1 : i + 1;
@@ -30,8 +32,9 @@ export class TagsPanel {
 
   constructor(el: HTMLElement, handlers: TagsHandlers) {
     this.#handlers = handlers;
+    const filter = t("篩選標籤");
     el.innerHTML = `
-      <div class="search-box"><input type="search" placeholder="篩選標籤" aria-label="篩選標籤" autocomplete="off" spellcheck="false" /></div>
+      <div class="search-box"><input type="search" placeholder="${filter}" aria-label="${filter}" autocomplete="off" spellcheck="false" /></div>
       <p class="search-summary tags-summary" role="status"></p>
       <ul class="tags-list"></ul>`;
     this.#filter = el.querySelector("input")!;
@@ -46,7 +49,7 @@ export class TagsPanel {
     try {
       docs = await this.#handlers.docs();
     } catch (e) {
-      this.#summary.textContent = `無法讀取標籤：${e instanceof Error ? e.message : e}`;
+      this.#summary.textContent = t("無法讀取標籤：{error}", { error: e instanceof Error ? e.message : String(e) });
       return;
     }
     if (seq !== this.#seq) return;
@@ -76,8 +79,8 @@ export class TagsPanel {
       .sort(([a, x], [b, y]) => y.length - x.length || collator.compare(a, b));
     this.#summary.textContent = this.#tags.size
       ? q
-        ? `${tags.length} 個標籤符合`
-        : `${this.#tags.size} 個標籤`
+        ? t("{n} 個標籤符合", { n: tags.length })
+        : t("{n} 個標籤", { n: this.#tags.size })
       : this.#handlers.emptyHint();
     this.#list.replaceChildren(
       ...tags.map(([tag, docs]) => {

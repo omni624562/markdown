@@ -8,6 +8,7 @@ import { type EditorState, type Extension, type Range, StateEffect, StateField }
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { TAG } from "./doc-index.ts";
+import { t } from "./i18n.ts";
 import { rangeChecker } from "./ranges.ts";
 import { editorFocused, focusChanged, focusTracking } from "./inline-tools.ts";
 import { EditableTableWidget } from "./table-widget.ts";
@@ -115,7 +116,7 @@ class CheckboxWidget extends WidgetType {
     box.type = "checkbox";
     box.className = "cm-lp-checkbox";
     box.checked = this.checked;
-    box.setAttribute("aria-label", this.checked ? "已完成，按一下取消" : "按一下標示完成");
+    box.setAttribute("aria-label", this.checked ? t("已完成，按一下取消") : t("按一下標示完成"));
     box.addEventListener("mousedown", (e) => e.preventDefault());
     box.addEventListener("click", (e) => {
       e.preventDefault();
@@ -191,7 +192,7 @@ class ImageWidget extends WidgetType {
       if (size.width) img.style.width = `${size.width}px`;
       img.addEventListener("error", () => show(null), { once: true });
       img.addEventListener("load", () => view.requestMeasure(), { once: true });
-      img.title = "按一下放大；拖曳右下角調整大小";
+      img.title = t("按一下放大；拖曳右下角調整大小");
       img.addEventListener("mousedown", (e) => {
         if (e.button !== 0) return;
         e.preventDefault();
@@ -200,7 +201,7 @@ class ImageWidget extends WidgetType {
       });
       const handle = document.createElement("span");
       handle.className = "cm-lp-image-handle";
-      handle.title = "拖曳調整大小";
+      handle.title = t("拖曳調整大小");
       handle.addEventListener("pointerdown", (e) => this.#resize(e, view, wrap, img));
       wrap.replaceChildren(img, handle);
     };
@@ -341,17 +342,17 @@ class MermaidWidget extends WidgetType {
       return b;
     };
     tools.append(
-      button("pen-line", "編輯原始碼", () => editDiagram(view, el), "cm-lp-diagram-edit"),
-      button("maximize-2", "放大", (st) => {
+      button("pen-line", t("編輯原始碼"), () => editDiagram(view, el), "cm-lp-diagram-edit"),
+      button("maximize-2", t("放大"), (st) => {
         if (st.svg && st.widget.opts.openDiagram) st.widget.opts.openDiagram(st.svg, () => editDiagram(view, el));
       }),
-      button("copy", "複製成圖片", (st) => {
+      button("copy", t("複製成圖片"), (st) => {
         if (st.svg) st.widget.opts.copyDiagram?.(st.svg);
       }),
     );
     const diagram = document.createElement("div");
     diagram.className = "cm-lp-diagram";
-    diagram.textContent = "流程圖繪製中…";
+    diagram.textContent = t("流程圖繪製中…");
     const error = document.createElement("div");
     error.className = "cm-lp-diagram-error";
     error.hidden = true;
@@ -377,7 +378,7 @@ class MermaidWidget extends WidgetType {
   /** `delay` 是 -1 時只更新外觀，不重畫。 */
   #apply(el: HTMLElement, view: EditorView, delay: number): void {
     el.classList.toggle("cm-lp-mermaid-editing", this.editing);
-    el.title = this.editing ? "" : "按一下編輯流程圖";
+    el.title = this.editing ? "" : t("按一下編輯流程圖");
     if (delay < 0) return;
     const st = diagramStates.get(el)!;
     clearTimeout(st.timer);
@@ -398,7 +399,7 @@ class MermaidWidget extends WidgetType {
         error.hidden = err === undefined;
         if (err !== undefined) {
           const message = err instanceof Error ? err.message : String(err);
-          error.textContent = `流程圖語法錯誤：${message.split("\n").find((l) => l.trim()) ?? ""}`;
+          error.textContent = t("流程圖語法錯誤：{message}", { message: message.split("\n").find((l) => l.trim()) ?? "" });
           error.title = message;
         }
         el.classList.toggle("cm-lp-mermaid-stale", err !== undefined && st.svg !== null);
@@ -740,7 +741,7 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
         class: `cm-lp-link cm-lp-wiki${exists === false ? " cm-lp-wiki-missing" : ""}`,
         attributes: {
           "data-wiki": target + (m[2] ?? ""),
-          title: `${target}${exists === false ? "（還沒有這份文件，Ctrl＋點一下建立）" : "\n（Ctrl＋點一下開啟）"}`,
+          title: exists === false ? t("{target}（還沒有這份文件，Ctrl＋點一下建立）", { target }) : t("{href}\n（Ctrl＋點一下開啟）", { href: target }),
         },
       });
       if (active.has(l)) {
@@ -761,7 +762,7 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
       decos.push(
         Decoration.mark({
           class: "cm-lp-tag",
-          attributes: { "data-tag": tag, title: `標籤「${tag}」（Ctrl＋點一下列出同標籤的文件）` },
+          attributes: { "data-tag": tag, title: t("標籤「{tag}」（Ctrl＋點一下列出同標籤的文件）", { tag }) },
         }).range(from, from + 1 + tag.length),
       );
     }
@@ -822,7 +823,7 @@ function taskMarker(item: SyntaxNode | null): SyntaxNode | null {
 function linkMark(href: string): Decoration {
   return Decoration.mark({
     class: "cm-lp-link",
-    attributes: { "data-href": href, title: `${href}\n（Ctrl＋點一下開啟）` },
+    attributes: { "data-href": href, title: t("{href}\n（Ctrl＋點一下開啟）", { href }) },
   });
 }
 

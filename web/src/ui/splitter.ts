@@ -1,6 +1,7 @@
 /**
  * 編輯器與預覽之間的分隔線：可拖曳、可用方向鍵調整，雙擊恢復一半一半。
  */
+import { t } from "../i18n.ts";
 export function setupSplitter(
   handle: HTMLElement,
   container: HTMLElement,
@@ -19,7 +20,7 @@ export function setupSplitter(
   handle.role = "separator";
   handle.tabIndex = 0;
   handle.setAttribute("aria-orientation", "vertical");
-  handle.setAttribute("aria-label", "調整編輯區與預覽的寬度（方向鍵調整，雙擊恢復）");
+  handle.setAttribute("aria-label", t("調整編輯區與預覽的寬度（方向鍵調整，雙擊恢復）"));
   handle.setAttribute("aria-valuemin", "20");
   handle.setAttribute("aria-valuemax", "80");
 

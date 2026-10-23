@@ -2,6 +2,7 @@
  * 資料夾全文搜尋面板：輸入後稍候自動搜尋，結果依檔案分組，點擊即開檔並跳到該行。
  */
 import type { ReplaceResult, SearchResult } from "../desktop.ts";
+import { t } from "../i18n.ts";
 import { choose } from "./choice.ts";
 import { icon } from "./icons.ts";
 
@@ -28,16 +29,26 @@ export class SearchPanel {
 
   constructor(el: HTMLElement, handlers: SearchHandlers) {
     this.#handlers = handlers;
+    const tr = {
+      showReplace: t("顯示取代"),
+      placeholder: t("在資料夾中搜尋"),
+      text: t("搜尋文字"),
+      matchCase: t("區分大小寫"),
+      regex: t("使用正規表示式"),
+      replaceWith: t("取代為"),
+      replaceInFiles: t("在所有檔案中取代"),
+      replaceAll: t("全部取代"),
+    };
     el.innerHTML = `
       <div class="search-box">
-        <button type="button" class="search-toggle" aria-expanded="false" title="顯示取代" aria-label="顯示取代">›</button>
-        <input type="search" id="search-input" placeholder="在資料夾中搜尋" aria-label="搜尋文字" autocomplete="off" spellcheck="false" />
-        <button type="button" class="search-opt" aria-pressed="false" title="區分大小寫" aria-label="區分大小寫">Aa</button>
-        <button type="button" class="search-opt" aria-pressed="false" title="使用正規表示式" aria-label="使用正規表示式">.*</button>
+        <button type="button" class="search-toggle" aria-expanded="false" title="${tr.showReplace}" aria-label="${tr.showReplace}">›</button>
+        <input type="search" id="search-input" placeholder="${tr.placeholder}" aria-label="${tr.text}" autocomplete="off" spellcheck="false" />
+        <button type="button" class="search-opt" aria-pressed="false" title="${tr.matchCase}" aria-label="${tr.matchCase}">Aa</button>
+        <button type="button" class="search-opt" aria-pressed="false" title="${tr.regex}" aria-label="${tr.regex}">.*</button>
       </div>
       <div class="search-box replace-row" hidden>
-        <input type="text" placeholder="取代為" aria-label="取代為" autocomplete="off" spellcheck="false" />
-        <button type="button" class="btn replace-all" title="在所有檔案中取代">全部取代</button>
+        <input type="text" placeholder="${tr.replaceWith}" aria-label="${tr.replaceWith}" autocomplete="off" spellcheck="false" />
+        <button type="button" class="btn replace-all" title="${tr.replaceInFiles}">${tr.replaceAll}</button>
       </div>
       <p class="search-summary" role="status"></p>
       <div class="search-results"></div>`;
@@ -102,21 +113,25 @@ export class SearchPanel {
     if (!found?.total) return;
     const replacement = this.#replaceInput.value;
     const ok = await choose(
-      "全部取代？",
-      `要把 ${found.files.length} 個檔案中的 ${found.total} 處「${query}」取代為「${replacement}」嗎？` +
-        "取代前的內容會記在每個檔案的版本記錄中，可以還原；有未存檔變更的分頁會略過。",
+      t("全部取代？"),
+      t("要把 {files}中的 {n} 處「{query}」取代為「{replacement}」嗎？取代前的內容會記在每個檔案的版本記錄中，可以還原；有未存檔變更的分頁會略過。", {
+        files: t("{n} 個檔案", { n: found.files.length }),
+        n: found.total,
+        query,
+        replacement,
+      }),
       [
-        { id: "replace", label: "全部取代", primary: true },
-        { id: "cancel", label: "取消" },
+        { id: "replace", label: t("全部取代"), primary: true },
+        { id: "cancel", label: t("取消") },
       ],
     );
     if (ok !== "replace") return;
     try {
       const r = await this.#handlers.replace(query, replacement, this.#flag(this.#case), this.#flag(this.#regex));
       this.#summary.textContent =
-        `已在 ${r.files} 個檔案中取代 ${r.replacements} 處` +
-        (r.skipped.length ? `；${r.skipped.length} 個有未存檔變更的檔案已略過` : "") +
-        (r.failed.length ? `；${r.failed.length} 個檔案無法處理：${r.failed.join("、")}` : "");
+        t("已在 {files}中取代 {n} 處", { files: t("{n} 個檔案", { n: r.files }), n: r.replacements }) +
+        (r.skipped.length ? t("；{n} 個有未存檔變更的檔案已略過", { n: r.skipped.length }) : "") +
+        (r.failed.length ? t("；{n} 個檔案無法處理：{files}", { n: r.failed.length, files: r.failed.join(t("、")) }) : "");
     } catch (e) {
       this.#summary.textContent = e instanceof Error ? e.message : String(e);
       return;
@@ -151,7 +166,7 @@ export class SearchPanel {
       this.#results.replaceChildren();
       return;
     }
-    this.#summary.textContent = "搜尋中…";
+    this.#summary.textContent = t("搜尋中…");
     let result: SearchResult;
     try {
       result = await this.#handlers.search(
@@ -168,8 +183,9 @@ export class SearchPanel {
     if (seq !== this.#seq) return; // 已經有新的搜尋
     this.#last = result;
     this.#summary.textContent = result.total
-      ? `${result.files.length} 個檔案中有 ${result.total} 處符合${result.truncated ? "（結果太多，只顯示前面的部分）" : ""}`
-      : "找不到符合的內容";
+      ? t("{files}中有 {n} 處符合", { files: t("{n} 個檔案", { n: result.files.length }), n: result.total }) +
+        (result.truncated ? t("（結果太多，只顯示前面的部分）") : "")
+      : t("找不到符合的內容");
     this.#results.replaceChildren(
       ...result.files.map((f) => {
         const group = document.createElement("section");

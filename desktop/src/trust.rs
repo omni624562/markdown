@@ -167,7 +167,7 @@ impl Trust {
         let meta = {
             let mut r = self.0.lock().unwrap();
             if !r.folders.iter().any(|p| p == path) {
-                return Err("這個資料夾不在專案清單中".into());
+                return Err(tr!("這個資料夾不在專案清單中"));
             }
             change(r.meta_mut(path));
             let meta = r.meta_mut(path).clone();

@@ -12,16 +12,19 @@ export interface FontChoice {
 /** 字型名稱最長幾個字。 */
 export const FONT_NAME_LIMIT = 80;
 
-/** 沒辦法讀取電腦字型清單時（網頁版）提供的常見字型。 */
+/**
+ * 沒辦法讀取電腦字型清單時（網頁版）提供的常見字型。
+ * `label` 是字型本身的中文名稱（專有名詞，和系統字型清單的顯示一致），英文介面也不翻譯。
+ */
 export const COMMON_FONTS: readonly FontChoice[] = [
-  { name: "Microsoft JhengHei", label: "微軟正黑體" },
-  { name: "PMingLiU", label: "新細明體" },
-  { name: "DFKai-SB", label: "標楷體" },
-  { name: "Noto Sans TC", label: "思源黑體" },
-  { name: "Noto Serif TC", label: "思源宋體" },
-  { name: "LXGW WenKai TC", label: "霞鶩文楷" },
-  { name: "PingFang TC", label: "蘋方" },
-  { name: "Sarasa Mono TC", label: "更紗黑體（等寬）", mono: true },
+  { name: "Microsoft JhengHei", label: "微軟正黑體" }, // i18n-ignore
+  { name: "PMingLiU", label: "新細明體" }, // i18n-ignore
+  { name: "DFKai-SB", label: "標楷體" }, // i18n-ignore
+  { name: "Noto Sans TC", label: "思源黑體" }, // i18n-ignore
+  { name: "Noto Serif TC", label: "思源宋體" }, // i18n-ignore
+  { name: "LXGW WenKai TC", label: "霞鶩文楷" }, // i18n-ignore
+  { name: "PingFang TC", label: "蘋方" }, // i18n-ignore
+  { name: "Sarasa Mono TC", label: "更紗黑體", mono: true }, // i18n-ignore
   { name: "Cascadia Code", mono: true },
   { name: "Consolas", mono: true },
   { name: "JetBrains Mono", mono: true },

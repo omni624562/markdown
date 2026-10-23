@@ -36,9 +36,9 @@ pub async fn pick_pdf_path(
 ) -> Result<Option<String>, String> {
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
-        .set_title("匯出 PDF")
+        .set_title(tr!("匯出 PDF"))
         .set_file_name(&suggested_name)
-        .add_filter("PDF 文件", &["pdf"])
+        .add_filter(tr!("PDF 文件"), &["pdf"])
         .save_file()
         .await
         .map(|h| h.path().to_path_buf());
@@ -51,7 +51,7 @@ fn take_target(target: &PdfTarget, path: &str) -> Result<PathBuf, String> {
     let mut slot = target.0.lock().unwrap();
     match slot.as_ref() {
         Some(p) if p.as_os_str() == std::ffi::OsStr::new(path) => Ok(slot.take().unwrap()),
-        _ => Err("請重新選擇 PDF 的存檔位置".into()),
+        _ => Err(tr!("請重新選擇 PDF 的存檔位置")),
     }
 }
 
@@ -68,7 +68,7 @@ pub async fn print_to_pdf(
     start(&window, path, layout, tx)?;
     tauri::async_runtime::spawn_blocking(move || {
         rx.recv_timeout(Duration::from_secs(120))
-            .unwrap_or_else(|_| Err("匯出 PDF 逾時".into()))
+            .unwrap_or_else(|_| Err(tr!("匯出 PDF 逾時")))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -111,8 +111,8 @@ fn start(
                         PrintToPdfCompletedHandler::create(Box::new(move |result, ok| {
                             let _ = done.send(match result {
                                 Ok(()) if ok => Ok(()),
-                                Ok(()) => Err("無法寫入 PDF（檔案可能正被其他程式開著）".into()),
-                                Err(e) => Err(format!("匯出 PDF 失敗：{e}")),
+                                Ok(()) => Err(tr!("無法寫入 PDF（檔案可能正被其他程式開著）")),
+                                Err(e) => Err(tr!("匯出 PDF 失敗：{e}", e = e)),
                             });
                             Ok(())
                         }));
@@ -124,7 +124,7 @@ fn start(
                 }
             };
             if let Err(e) = run() {
-                let _ = fail.send(Err(format!("匯出 PDF 失敗：{e}")));
+                let _ = fail.send(Err(tr!("匯出 PDF 失敗：{e}", e = e)));
             }
         })
         .map_err(|e| e.to_string())
@@ -168,7 +168,7 @@ fn start(
             });
             let failed = tx.clone();
             op.connect_failed(move |_, err| {
-                let _ = failed.send(Err(format!("匯出 PDF 失敗：{err}")));
+                let _ = failed.send(Err(tr!("匯出 PDF 失敗：{e}", e = err)));
             });
             op.print();
         })
@@ -182,7 +182,7 @@ fn start(
     _layout: PageLayout,
     _tx: mpsc::Sender<Result<(), String>>,
 ) -> Result<(), String> {
-    Err("這個平台不支援直接匯出 PDF".into())
+    Err(tr!("這個平台不支援直接匯出 PDF"))
 }
 
 #[cfg(test)]

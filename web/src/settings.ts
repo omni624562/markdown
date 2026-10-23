@@ -5,6 +5,7 @@
  */
 import { desktop } from "./desktop.ts";
 import { cleanFontName } from "./fonts.ts";
+import { t } from "./i18n.ts";
 import * as storage from "./storage.ts";
 import { TEMPLATE_LIMITS, type Template } from "./templates.ts";
 
@@ -83,12 +84,13 @@ export interface Settings {
   gitSyncMinutes: 5 | 10 | 30 | 60;
 }
 
+/** 內建的快捷動作（第一次使用時存進設定；英文介面用英文的名稱與指示）。 */
 export const DEFAULT_QUICK_ACTIONS: readonly QuickAction[] = Object.freeze([
-  { name: "改寫得更精簡", prompt: "把這段文字改寫得更精簡、通順，保留原意與所有重要資訊。" },
-  { name: "修正錯字與語病", prompt: "修正這段文字的錯字、標點與語病，盡量不要改動原本的用字與語氣。" },
-  { name: "翻譯成英文", prompt: "把這段文字翻譯成自然流暢的英文。" },
-  { name: "翻譯成繁體中文", prompt: "把這段文字翻譯成自然流暢的繁體中文（台灣用語）。" },
-  { name: "摘要重點", prompt: "用條列式整理這段文字的重點，最多五點。" },
+  { name: t("改寫得更精簡"), prompt: t("把這段文字改寫得更精簡、通順，保留原意與所有重要資訊。") },
+  { name: t("修正錯字與語病"), prompt: t("修正這段文字的錯字、標點與語病，盡量不要改動原本的用字與語氣。") },
+  { name: t("翻譯成英文"), prompt: t("把這段文字翻譯成自然流暢的英文。") },
+  { name: t("翻譯成繁體中文"), prompt: t("把這段文字翻譯成自然流暢的繁體中文（台灣用語）。") },
+  { name: t("摘要重點"), prompt: t("用條列式整理這段文字的重點，最多五點。") },
 ]);
 
 /** 快捷動作的數量與長度上限。 */
@@ -266,7 +268,7 @@ export class SettingsStore {
     try {
       raw = desktop ? await desktop.loadSettings() : storage.load("settings");
     } catch (e) {
-      console.error("讀取設定失敗", e);
+      console.error("讀取設定失敗", e); // i18n-ignore（開發者主控台）
     }
     if (!raw) return { store: new SettingsStore({ ...DEFAULTS }), recovered: false };
     try {
@@ -302,7 +304,7 @@ export class SettingsStore {
 
   #persist(): void {
     const json = JSON.stringify(this.#value, null, 2);
-    if (desktop) desktop.saveSettings(json).catch((e) => console.error("儲存設定失敗", e));
+    if (desktop) desktop.saveSettings(json).catch((e) => console.error("儲存設定失敗", e)); // i18n-ignore（開發者主控台）
     else storage.save("settings", json);
   }
 }

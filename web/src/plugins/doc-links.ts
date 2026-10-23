@@ -3,6 +3,7 @@
  * 圖片說明文字結尾的 `|400` 當成寬度（和 Obsidian 的寫法相同，例如 `![截圖|400](a.png)`）。
  */
 import { TAG } from "../doc-index.ts";
+import { t } from "../i18n.ts";
 import type { PreviewPlugin } from "../preview.ts";
 
 /** 這些元素裡的文字不找標籤。 */
@@ -71,7 +72,7 @@ export function docLinksPlugin(opts: DocLinksOptions): PreviewPlugin {
         const target = wikiTarget(a).split("#")[0];
         if (target && opts.wikiExists(target) === false) {
           a.classList.add("missing");
-          a.title = `還沒有「${target}」這份文件，點一下建立`;
+          a.title = t("還沒有「{target}」這份文件，點一下建立", { target });
         }
       }
       markTags(root);

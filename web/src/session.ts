@@ -3,6 +3,7 @@
  * 內容草稿各自存在 `draft:<id>`。重新開啟時依此還原分頁，未存檔的內容也不會遺失。
  */
 import { type DocKind, isKind } from "./kinds.ts";
+import { t } from "./i18n.ts";
 import * as storage from "./storage.ts";
 
 export interface DocMeta {
@@ -90,7 +91,7 @@ export function loadSession(scope: string | null = null): Session | null {
     docs: [
       {
         id,
-        name: storage.load("name") ?? "未命名.md",
+        name: storage.load("name") ?? t("未命名.md"),
         kind: isKind(kind) ? kind : "markdown",
         path: null,
         baseline: storage.load("baseline") || null,

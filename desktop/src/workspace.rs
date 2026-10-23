@@ -58,7 +58,7 @@ impl Workspace {
     }
 
     pub(crate) fn require_root(&self) -> Result<PathBuf, String> {
-        self.root().ok_or_else(|| "還沒有開啟資料夾".to_string())
+        self.root().ok_or_else(|| tr!("還沒有開啟資料夾"))
     }
 }
 
@@ -75,16 +75,16 @@ pub fn is_doc(path: &Path) -> bool {
 /// 解析符號連結後的實際位置（檔案可以還不存在：往上找到第一個存在的資料夾解析，再接上其餘部分）。
 pub fn real_path(path: &Path) -> Result<PathBuf, String> {
     if !path.is_absolute() || path.components().any(|c| matches!(c, Component::ParentDir)) {
-        return Err("路徑無效".into());
+        return Err(tr!("路徑無效"));
     }
     let mut existing = path;
     let mut rest = Vec::new();
     while !existing.exists() {
-        rest.push(existing.file_name().ok_or("路徑無效")?);
-        existing = existing.parent().ok_or("路徑無效")?;
+        rest.push(existing.file_name().ok_or_else(|| tr!("路徑無效"))?);
+        existing = existing.parent().ok_or_else(|| tr!("路徑無效"))?;
     }
-    let mut real =
-        dunce::canonicalize(existing).map_err(|e| crate::io::describe(&e, "無法存取這個位置"))?;
+    let mut real = dunce::canonicalize(existing)
+        .map_err(|e| crate::io::describe(&e, &tr!("無法存取這個位置")))?;
     for part in rest.into_iter().rev() {
         real.push(part);
     }
@@ -104,12 +104,12 @@ fn entry_location(path: &Path) -> Option<PathBuf> {
 /// 必須在工作區內，而且不是工作區資料夾本身（大小寫不同、結尾多了 `\.` 也認得出來）。
 fn check_entry(root: &Path, path: &Path, root_message: &str) -> Result<(), String> {
     let real_root =
-        dunce::canonicalize(root).map_err(|e| crate::io::describe(&e, "無法存取資料夾"))?;
-    let entry = entry_location(path).ok_or("路徑無效")?;
+        dunce::canonicalize(root).map_err(|e| crate::io::describe(&e, &tr!("無法存取資料夾")))?;
+    let entry = entry_location(path).ok_or_else(|| tr!("路徑無效"))?;
     if path == root || entry == real_root {
         Err(root_message.into())
     } else if !entry.starts_with(&real_root) {
-        Err("只能存取目前開啟的資料夾內的檔案".into())
+        Err(tr!("只能存取目前開啟的資料夾內的檔案"))
     } else {
         Ok(())
     }
@@ -118,11 +118,12 @@ fn check_entry(root: &Path, path: &Path, root_message: &str) -> Result<(), Strin
 /// 確認 `path` 位於 `root` 之內（檔案可以還不存在，例如新增時）。
 pub fn resolve_inside(root: &Path, path: &Path) -> Result<PathBuf, String> {
     let real = real_path(path)?;
-    let root = dunce::canonicalize(root).map_err(|e| crate::io::describe(&e, "無法存取資料夾"))?;
+    let root =
+        dunce::canonicalize(root).map_err(|e| crate::io::describe(&e, &tr!("無法存取資料夾")))?;
     if real.starts_with(&root) {
         Ok(path.to_path_buf())
     } else {
-        Err("只能存取目前開啟的資料夾內的檔案".into())
+        Err(tr!("只能存取目前開啟的資料夾內的檔案"))
     }
 }
 
@@ -130,15 +131,15 @@ pub fn resolve_inside(root: &Path, path: &Path) -> Result<PathBuf, String> {
 pub fn validate_name(name: &str) -> Result<&str, String> {
     let name = name.trim();
     if name.is_empty() || name == "." || name == ".." {
-        return Err("請輸入名稱".into());
+        return Err(tr!("請輸入名稱"));
     }
     if let Some(c) = name.chars().find(|c| {
         matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control()
     }) {
-        return Err(format!("名稱不能包含「{c}」"));
+        return Err(tr!("名稱不能包含「{c}」", c = c));
     }
     if name.ends_with('.') {
-        return Err("名稱不能以「.」結尾".into());
+        return Err(tr!("名稱不能以「.」結尾"));
     }
     Ok(name)
 }
@@ -274,7 +275,7 @@ pub async fn open_folder(
 ) -> Result<Option<FolderInfo>, String> {
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
-        .set_title("開啟資料夾")
+        .set_title(tr!("開啟資料夾"))
         .pick_folder()
         .await;
     Ok(picked.map(|h| activate(&app, h.path().to_path_buf(), &workspace, &trust)))
@@ -290,27 +291,27 @@ pub async fn reopen_folder(
 ) -> Result<FolderInfo, String> {
     let path = PathBuf::from(path);
     if !trust.allows_folder(&path) {
-        return Err("這個資料夾不在最近開啟的清單中".into());
+        return Err(tr!("這個資料夾不在最近開啟的清單中"));
     }
     let p = path.clone();
     let exists = crate::io::blocking(move || match fs::metadata(&p) {
         Ok(m) => Ok(m.is_dir()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(crate::io::describe(&e, "無法開啟資料夾")),
+        Err(e) => Err(crate::io::describe(&e, &tr!("無法開啟資料夾"))),
     })
     .await?;
     if !exists {
         // 釘選或有群組的專案留在清單上，讓使用者重新指定位置（例如網路磁碟還沒接上）。
         if trust.project(&path).is_some_and(|m| m.kept()) {
-            return Err(format!(
-                "找不到資料夾「{}」。如果搬到別的地方了，可以在專案總覽重新指定位置",
-                path.display()
+            return Err(tr!(
+                "找不到資料夾「{path}」。如果搬到別的地方了，可以在專案總覽重新指定位置",
+                path = path.display()
             ));
         }
         trust.remove(&app, &path);
-        return Err(format!(
-            "找不到資料夾「{}」，可能已被移動或刪除",
-            path.display()
+        return Err(tr!(
+            "找不到資料夾「{path}」，可能已被移動或刪除",
+            path = path.display()
         ));
     }
     Ok(activate(&app, path, &workspace, &trust))
@@ -344,17 +345,17 @@ pub async fn peek_text(app: AppHandle, path: String) -> Result<String, String> {
         let root = app.state::<Workspace>().require_root()?;
         let real = resolve_inside(&root, Path::new(&path))?;
         if !is_doc(&real) {
-            return Err("只能讀取文件".into());
+            return Err(tr!("只能讀取文件"));
         }
         let size = fs::metadata(&real)
-            .map_err(|e| crate::io::describe(&e, "無法讀取"))?
+            .map_err(|e| crate::io::describe(&e, &tr!("無法讀取")))?
             .len();
         if size > PEEK_LIMIT {
-            return Err("檔案太大".into());
+            return Err(tr!("檔案太大"));
         }
-        let bytes = fs::read(&real).map_err(|e| crate::io::describe(&e, "無法讀取"))?;
+        let bytes = fs::read(&real).map_err(|e| crate::io::describe(&e, &tr!("無法讀取")))?;
         if crate::files::not_text_reason(&bytes).is_some() {
-            return Err("不是文字檔".into());
+            return Err(tr!("不是文字檔"));
         }
         Ok(crate::files::decode(&bytes).0)
     })
@@ -368,7 +369,7 @@ pub async fn list_dir(app: AppHandle, path: String) -> Result<Vec<Entry>, String
         let root = app.state::<Workspace>().require_root()?;
         let dir = resolve_inside(&root, Path::new(&path))?;
         // 先確認讀得到（列出內容時會略過個別項目的錯誤，斷線時要明確回報）。
-        fs::read_dir(&dir).map_err(|e| crate::io::describe(&e, "無法讀取資料夾"))?;
+        fs::read_dir(&dir).map_err(|e| crate::io::describe(&e, &tr!("無法讀取資料夾")))?;
         Ok(list_children(&dir))
     })
     .await
@@ -437,7 +438,7 @@ fn create_entry_now(
     let parent = resolve_inside(&root, Path::new(parent))?;
     let target = parent.join(validate_name(name)?);
     if target.exists() {
-        return Err(format!("「{}」已經存在", display_name(&target)));
+        return Err(tr!("「{name}」已經存在", name = display_name(&target)));
     }
     if is_dir {
         fs::create_dir(&target)
@@ -448,7 +449,9 @@ fn create_entry_now(
             .open(&target)
             .map(|_| ())
     }
-    .map_err(|e| crate::io::describe(&e, &format!("無法建立「{}」", display_name(&target))))?;
+    .map_err(|e| {
+        crate::io::describe(&e, &tr!("無法建立「{name}」", name = display_name(&target)))
+    })?;
     Ok(path_string(&target))
 }
 
@@ -459,17 +462,20 @@ pub async fn create_workflow(app: AppHandle, name: String, text: String) -> Resu
         let root = app.state::<Workspace>().require_root()?;
         let name = validate_name(&name)?;
         if !name.ends_with(".yml") {
-            return Err("工作流程檔名必須是 .yml".into());
+            return Err(tr!("工作流程檔名必須是 .yml"));
         }
         let dir = root.join(".github").join("workflows");
         let target = dir.join(name);
         // `.github` 或 `workflows` 可能是指向工作區外的符號連結：建立前後都確認實際位置。
         resolve_inside(&root, &target)?;
         if target.exists() {
-            return Err(format!("「.github/workflows/{name}」已經存在，沒有覆蓋"));
+            return Err(tr!(
+                "「.github/workflows/{name}」已經存在，沒有覆蓋",
+                name = name
+            ));
         }
         fs::create_dir_all(&dir)
-            .map_err(|e| crate::io::describe(&e, "無法建立 .github/workflows 資料夾"))?;
+            .map_err(|e| crate::io::describe(&e, &tr!("無法建立 .github/workflows 資料夾")))?;
         resolve_inside(&root, &target)?;
         let mut f = fs::OpenOptions::new()
             .write(true)
@@ -477,13 +483,16 @@ pub async fn create_workflow(app: AppHandle, name: String, text: String) -> Resu
             .open(&target)
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::AlreadyExists {
-                    format!("「.github/workflows/{name}」已經存在，沒有覆蓋")
+                    tr!(
+                        "「.github/workflows/{name}」已經存在，沒有覆蓋",
+                        name = name
+                    )
                 } else {
-                    crate::io::describe(&e, "無法寫入工作流程檔")
+                    crate::io::describe(&e, &tr!("無法寫入工作流程檔"))
                 }
             })?;
         std::io::Write::write_all(&mut f, text.as_bytes())
-            .map_err(|e| crate::io::describe(&e, "無法寫入工作流程檔"))?;
+            .map_err(|e| crate::io::describe(&e, &tr!("無法寫入工作流程檔")))?;
         Ok(path_string(&target))
     })
     .await
@@ -502,17 +511,17 @@ pub async fn rename_entry(
 fn rename_entry_now(app: &AppHandle, path: &str, new_name: &str) -> Result<String, String> {
     let root = app.state::<Workspace>().require_root()?;
     let from = resolve_inside(&root, Path::new(path))?;
-    check_entry(&root, &from, "不能重新命名工作區資料夾本身")?;
+    check_entry(&root, &from, &tr!("不能重新命名工作區資料夾本身"))?;
     let to = from
         .parent()
-        .ok_or("路徑無效")?
+        .ok_or_else(|| tr!("路徑無效"))?
         .join(validate_name(new_name)?);
     // 只改大小寫時（Windows 不分大小寫），目標「存在」其實就是自己。
     let same_file = from.to_string_lossy().to_lowercase() == to.to_string_lossy().to_lowercase();
     if to.exists() && !same_file {
-        return Err(format!("「{}」已經存在", display_name(&to)));
+        return Err(tr!("「{name}」已經存在", name = display_name(&to)));
     }
-    fs::rename(&from, &to).map_err(|e| crate::io::describe(&e, "無法重新命名"))?;
+    fs::rename(&from, &to).map_err(|e| crate::io::describe(&e, &tr!("無法重新命名")))?;
     app.state::<KnownFiles>().rename(&from, &to);
     crate::history::on_rename(app, &from, &to);
     app.state::<Trust>().rename(app, &from, &to);
@@ -525,9 +534,9 @@ pub async fn trash_entry(app: AppHandle, path: String) -> Result<(), String> {
     crate::io::blocking(move || {
         let root = app.state::<Workspace>().require_root()?;
         let path = resolve_inside(&root, Path::new(&path))?;
-        check_entry(&root, &path, "不能刪除工作區資料夾本身")?;
+        check_entry(&root, &path, &tr!("不能刪除工作區資料夾本身"))?;
         // 網路磁碟上的檔案通常沒有資源回收筒，系統會回報錯誤。
-        trash::delete(&path).map_err(|e| format!("無法移到資源回收筒：{e}"))?;
+        trash::delete(&path).map_err(|e| tr!("無法移到資源回收筒：{e}", e = e))?;
         app.state::<Trust>().remove(&app, &path);
         Ok(())
     })
@@ -568,7 +577,7 @@ pub(crate) fn reveal_path(path: &Path) -> Result<(), String> {
         .spawn();
     result
         .map(|_| ())
-        .map_err(|e| format!("無法開啟檔案總管：{e}"))
+        .map_err(|e| tr!("無法開啟檔案總管：{e}", e = e))
 }
 
 #[derive(Serialize)]
@@ -654,7 +663,7 @@ pub fn search_dir(
         .case_insensitive(!case_sensitive)
         .fixed_strings(!regex)
         .build(query)
-        .map_err(|e| format!("搜尋條件無效：{e}"))?;
+        .map_err(|e| tr!("搜尋條件無效：{e}", e = e))?;
     // 副檔名對但內容是二進位的檔案（例如損壞或改錯副檔名）直接略過。
     let mut searcher = SearcherBuilder::new()
         .line_number(true)
@@ -746,7 +755,7 @@ pub fn replace_dir(
     mut on_write: impl FnMut(&Path, &[u8], &str),
 ) -> Result<ReplaceResult, String> {
     if query.is_empty() {
-        return Err("請輸入要取代的文字".into());
+        return Err(tr!("請輸入要取代的文字"));
     }
     let pattern = if regex {
         query.to_string()
@@ -757,7 +766,7 @@ pub fn replace_dir(
         .case_insensitive(!case_sensitive)
         .multi_line(true)
         .build()
-        .map_err(|e| format!("搜尋條件無效：{e}"))?;
+        .map_err(|e| tr!("搜尋條件無效：{e}", e = e))?;
     let mut result = ReplaceResult::default();
     for entry in walker(root).build().filter_map(Result::ok) {
         let path = entry.path();
@@ -769,13 +778,13 @@ pub fn replace_dir(
             Ok(None) => {
                 result
                     .failed
-                    .push(format!("{}：檔案太大，已略過", display_name(path)));
+                    .push(tr!("{name}：檔案太大，已略過", name = display_name(path)));
                 continue;
             }
             Err(_) => {
                 result
                     .failed
-                    .push(format!("{}：無法讀取", display_name(path)));
+                    .push(tr!("{name}：無法讀取", name = display_name(path)));
                 continue;
             }
         };
@@ -785,9 +794,9 @@ pub fn replace_dir(
         }
         let Ok(text) = std::str::from_utf8(&bytes) else {
             if re.is_match(&String::from_utf8_lossy(&bytes)) {
-                result.failed.push(format!(
-                    "{}：不是 UTF-8 編碼，請先開啟並存檔",
-                    display_name(path)
+                result.failed.push(tr!(
+                    "{name}：不是 UTF-8 編碼，請先開啟並存檔",
+                    name = display_name(path)
                 ));
             }
             continue;
@@ -811,10 +820,10 @@ pub fn replace_dir(
                 result.files += 1;
                 result.replacements += count;
             }
-            Err(e) => result.failed.push(format!(
-                "{}：{}",
-                display_name(path),
-                crate::io::describe(&e, "無法寫入")
+            Err(e) => result.failed.push(tr!(
+                "{name}：{e}",
+                name = display_name(path),
+                e = crate::io::describe(&e, &tr!("無法寫入"))
             )),
         }
     }

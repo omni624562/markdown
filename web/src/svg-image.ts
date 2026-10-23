@@ -3,6 +3,8 @@
  * 畫面上的 SVG 寬度跟著版面、字型繼承自頁面，單獨顯示時要補上實際大小、字型與背景色。
  */
 
+import { t } from "./i18n.ts";
+
 export interface SvgImageOptions {
   /** 取代 `font-family: inherit` 的字型。 */
   font: string;
@@ -44,7 +46,7 @@ export function svgDataUrl(svg: string): string {
 /** SVG 轉成 PNG（預設兩倍解析度，貼到文件裡放大也清楚）。 */
 export async function svgToPng(markup: string, opts: SvgImageOptions, scale = 2): Promise<Blob> {
   const image = standaloneSvg(markup, opts);
-  if (!image) throw new Error("沒有圖片");
+  if (!image) throw new Error(t("沒有圖片"));
   const img = new Image();
   img.src = svgDataUrl(image.svg);
   await img.decode();
@@ -56,6 +58,6 @@ export async function svgToPng(markup: string, opts: SvgImageOptions, scale = 2)
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (!blob) throw new Error("無法轉成圖片");
+  if (!blob) throw new Error(t("無法轉成圖片"));
   return blob;
 }

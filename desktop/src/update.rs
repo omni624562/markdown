@@ -100,10 +100,10 @@ impl Manifest {
         let key = b64.decode(public_key).map_err(|e| e.to_string())?;
         let sig = b64
             .decode(self.signature.trim())
-            .map_err(|_| "更新資訊沒有正確的簽章，已取消更新".to_string())?;
+            .map_err(|_| tr!("更新資訊沒有正確的簽章，已取消更新"))?;
         ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
             .verify(self.signed_message().as_bytes(), &sig)
-            .map_err(|_| "更新資訊的簽章不符，可能被竄改，已取消更新".to_string())
+            .map_err(|_| tr!("更新資訊的簽章不符，可能被竄改，已取消更新"))
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -113,13 +113,13 @@ impl Manifest {
 
     fn check_fields(&self) -> Result<(), String> {
         if !self.url.starts_with(DOWNLOAD_PREFIX) {
-            return Err("更新資訊中的下載網址不正確".into());
+            return Err(tr!("更新資訊中的下載網址不正確"));
         }
         if self.sha256.len() != 64 || !self.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err("更新資訊中的檢查碼格式不正確".into());
+            return Err(tr!("更新資訊中的檢查碼格式不正確"));
         }
         if self.size == 0 || self.size > MAX_SIZE {
-            return Err("更新資訊中的檔案大小不正確".into());
+            return Err(tr!("更新資訊中的檔案大小不正確"));
         }
         Ok(())
     }
@@ -172,7 +172,7 @@ fn get(
             .and_then(|v| v.to_str().ok())
             .filter(|l| l.starts_with("https://"))
             .map(str::to_string)
-            .ok_or_else(|| ureq::Error::BadUri("轉址的網址不正確".into()))?;
+            .ok_or_else(|| ureq::Error::BadUri(tr!("轉址的網址不正確")))?;
         // 讀完轉址回應的內容，連線才能重複使用。
         let _ = res.body_mut().read_to_string();
         url = next;
@@ -202,7 +202,7 @@ fn fallback(
     let agent = concat!("md-editor/", env!("CARGO_PKG_VERSION"));
     crate::winhttp::get(url, wait, agent)
         .map(|r| Box::new(r) as Box<dyn Read>)
-        .map_err(|e| format!("{e}（另一種連線方式的錯誤：{first}）"))
+        .map_err(|e| tr!("{e}（另一種連線方式的錯誤：{first}）", e = e, first = first))
 }
 
 #[cfg(not(windows))]
@@ -217,12 +217,12 @@ fn fallback(
 fn fetch_manifest() -> Result<Manifest, String> {
     let mut text = String::new();
     open(MANIFEST_URL, Some(Duration::from_secs(30)))
-        .map_err(|e| format!("無法連線到 GitHub：{e}"))?
+        .map_err(|e| tr!("無法連線到 GitHub：{e}", e = e))?
         .take(64 * 1024)
         .read_to_string(&mut text)
-        .map_err(|e| format!("無法讀取更新資訊：{e}"))?;
+        .map_err(|e| tr!("無法讀取更新資訊：{e}", e = e))?;
     let manifest: Manifest =
-        serde_json::from_str(&text).map_err(|e| format!("更新資訊格式不正確：{e}"))?;
+        serde_json::from_str(&text).map_err(|e| tr!("更新資訊格式不正確：{e}", e = e))?;
     manifest.validate()?;
     Ok(manifest)
 }
@@ -260,9 +260,9 @@ fn hex(bytes: &[u8]) -> String {
 /// 下載到暫存檔，邊下載邊算 SHA-256；大小或檢查碼不符就刪掉暫存檔並回報錯誤。
 fn download(m: &Manifest, dest: &PathBuf, mut progress: impl FnMut(u64)) -> Result<(), String> {
     let mut reader = open(&m.url, None)
-        .map_err(|e| format!("無法下載新版：{e}"))?
+        .map_err(|e| tr!("無法下載新版：{e}", e = e))?
         .take(MAX_SIZE);
-    let mut file = std::fs::File::create(dest).map_err(|e| format!("無法建立暫存檔：{e}"))?;
+    let mut file = std::fs::File::create(dest).map_err(|e| tr!("無法建立暫存檔：{e}", e = e))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     let mut downloaded = 0u64;
@@ -270,13 +270,13 @@ fn download(m: &Manifest, dest: &PathBuf, mut progress: impl FnMut(u64)) -> Resu
     loop {
         let n = reader
             .read(&mut buf)
-            .map_err(|e| format!("下載中斷：{e}"))?;
+            .map_err(|e| tr!("下載中斷：{e}", e = e))?;
         if n == 0 {
             break;
         }
         hasher.update(&buf[..n]);
         file.write_all(&buf[..n])
-            .map_err(|e| format!("無法寫入暫存檔：{e}"))?;
+            .map_err(|e| tr!("無法寫入暫存檔：{e}", e = e))?;
         downloaded += n as u64;
         if downloaded - last_emit >= 512 * 1024 {
             last_emit = downloaded;
@@ -285,13 +285,16 @@ fn download(m: &Manifest, dest: &PathBuf, mut progress: impl FnMut(u64)) -> Resu
     }
     file.sync_all().map_err(|e| e.to_string())?;
     if downloaded != m.size {
-        return Err(format!(
-            "下載的檔案大小不符（{downloaded} / {} 位元組）",
-            m.size
+        return Err(tr!(
+            "下載的檔案大小不符（{downloaded} / {expected} 位元組）",
+            downloaded = downloaded,
+            expected = m.size
         ));
     }
     if !hex(&hasher.finalize()).eq_ignore_ascii_case(&m.sha256) {
-        return Err("下載的檔案檢查碼不符，可能下載不完整或被竄改，已取消更新".into());
+        return Err(tr!(
+            "下載的檔案檢查碼不符，可能下載不完整或被竄改，已取消更新"
+        ));
     }
     Ok(())
 }
@@ -301,28 +304,25 @@ fn download(m: &Manifest, dest: &PathBuf, mut progress: impl FnMut(u64)) -> Resu
 pub async fn update_install(app: AppHandle) -> Result<(), String> {
     let current = current();
     if !current.updatable {
-        return Err("這個版本不支援自動更新".into());
+        return Err(tr!("這個版本不支援自動更新"));
     }
     tauri::async_runtime::spawn_blocking(move || {
         let manifest = fetch_manifest()?;
         if !current.build.is_some_and(|b| manifest.build > b) {
-            return Err("已經是最新版本".into());
+            return Err(tr!("已經是最新版本"));
         }
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let dir = exe.parent().ok_or("找不到執行檔所在的資料夾")?;
+        let dir = exe.parent().ok_or_else(|| tr!("找不到執行檔所在的資料夾"))?;
         let tmp = dir.join(".md-editor.update.tmp");
         let no_permission = || {
-            format!(
-                "沒有權限更新「{}」裡的執行檔。請把 oMarker 的執行檔放到自己的資料夾（例如桌面或文件），或改為手動下載新版。",
-                dir.display()
-            )
+            tr!("沒有權限更新「{dir}」裡的執行檔。請把 oMarker 的執行檔放到自己的資料夾（例如桌面或文件），或改為手動下載新版。", dir = dir.display())
         };
         // 先確認能在執行檔旁邊寫入，避免下載完才發現沒有權限。
         if let Err(e) = std::fs::File::create(&tmp) {
             return Err(if e.kind() == std::io::ErrorKind::PermissionDenied {
                 no_permission()
             } else {
-                format!("無法建立暫存檔：{e}")
+                tr!("無法建立暫存檔：{e}", e = e)
             });
         }
         let total = manifest.size;
@@ -334,7 +334,7 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
                 if e.kind() == std::io::ErrorKind::PermissionDenied {
                     no_permission()
                 } else {
-                    format!("無法取代執行檔：{e}")
+                    tr!("無法取代執行檔：{e}", e = e)
                 }
             })
         });

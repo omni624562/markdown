@@ -2,6 +2,7 @@
  * 側邊欄的議題清單：Azure DevOps 的工作項目、GitHub 的 Issues 共用。
  * 可以搜尋標題或輸入編號；點一下看內容，再插入連結到文件或在瀏覽器開啟。
  */
+import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 
 export interface IssueSummary {
@@ -109,7 +110,7 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#showList();
     const seq = ++this.#seq;
     const search = this.#input.value.trim();
-    this.#status.textContent = "讀取中…";
+    this.#status.textContent = t("讀取中…");
     try {
       const items = await this.#h.list(search);
       if (seq !== this.#seq) return;
@@ -127,7 +128,7 @@ export class IssuesPanel<T extends IssueSummary> {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "workitem";
-    b.title = `#${item.id}：${item.title}`;
+    b.title = t("#{id}：{title}", { id: item.id, title: item.title });
     const top = document.createElement("span");
     top.className = "workitem-meta";
     top.textContent = item.meta;
@@ -158,7 +159,7 @@ export class IssuesPanel<T extends IssueSummary> {
     const back = document.createElement("button");
     back.type = "button";
     back.className = "btn btn-small workitems-back";
-    back.append(icon("arrow-left"), "返回清單");
+    back.append(icon("arrow-left"), t("返回清單"));
     back.addEventListener("click", () => {
       this.#seq++;
       this.#showList();
@@ -174,18 +175,18 @@ export class IssuesPanel<T extends IssueSummary> {
     const insert = document.createElement("button");
     insert.type = "button";
     insert.className = "btn btn-small btn-primary";
-    insert.append(icon("link"), "插入連結");
-    insert.title = `在文件的游標位置插入 [#${item.id} 標題](網址)`;
+    insert.append(icon("link"), t("插入連結"));
+    insert.title = t("在文件的游標位置插入 [#{id} 標題](網址)", { id: item.id });
     insert.addEventListener("click", () => this.#h.insert(item));
     const open = document.createElement("button");
     open.type = "button";
     open.className = "btn btn-small";
-    open.append(icon("external-link"), "在瀏覽器開啟");
+    open.append(icon("external-link"), t("在瀏覽器開啟"));
     open.addEventListener("click", () => this.#h.open(item.webUrl));
     actions.append(insert, open);
     const body = document.createElement("div");
     body.className = "workitem-body";
-    body.textContent = "讀取中…";
+    body.textContent = t("讀取中…");
     this.#detail.replaceChildren(back, h, meta, actions, body);
     back.focus();
 
@@ -196,17 +197,17 @@ export class IssuesPanel<T extends IssueSummary> {
       const parts: HTMLElement[] = [];
       for (const s of d.sections) {
         if (!s.text.trim()) continue;
-        const t = document.createElement("h4");
-        t.textContent = s.title;
+        const heading = document.createElement("h4");
+        heading.textContent = s.title;
         const p = document.createElement("p");
         p.className = "workitem-text";
         p.textContent = s.text.trim();
-        parts.push(t, p);
+        parts.push(heading, p);
       }
       if (!parts.length) {
         const p = document.createElement("p");
         p.className = "workitems-status";
-        p.textContent = "沒有說明";
+        p.textContent = t("沒有說明");
         parts.push(p);
       }
       body.replaceChildren(...parts);

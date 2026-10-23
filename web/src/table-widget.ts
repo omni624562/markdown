@@ -5,6 +5,7 @@
  * 每次修改都改寫整個表格的 Markdown，再交給核心依中文字寬對齊。
  */
 import { type EditorView, WidgetType } from "@codemirror/view";
+import { t } from "./i18n.ts";
 import {
   type Align,
   type TableModel,
@@ -241,7 +242,7 @@ export class EditableTableWidget extends WidgetType {
     const tools = document.createElement("div");
     tools.className = "cm-lp-table-tools";
     tools.setAttribute("role", "toolbar");
-    tools.setAttribute("aria-label", "表格");
+    tools.setAttribute("aria-label", t("表格"));
     const button = (label: string, title: string, run: () => void) => {
       const b = document.createElement("button");
       b.type = "button";
@@ -258,20 +259,20 @@ export class EditableTableWidget extends WidgetType {
     };
     const align = (a: Align) => commit(setAlign(model(), current.col, a), editing ? current : null);
     tools.append(
-      button("＋列", "在下方插入一列", () => {
+      button(t("＋列"), t("在下方插入一列"), () => {
         const row = Math.max(1, current.row + 1);
         commit(insertRow(model(), row - 1), { row, col: current.col });
       }),
-      button("＋欄", "在右側插入一欄", () => commit(insertColumn(model(), current.col), { row: current.row, col: current.col + 1 })),
-      button("－列", "刪除這一列", () => {
+      button(t("＋欄"), t("在右側插入一欄"), () => commit(insertColumn(model(), current.col), { row: current.row, col: current.col + 1 })),
+      button(t("－列"), t("刪除這一列"), () => {
         if (current.row < 1) return;
         commit(deleteRow(model(), current.row), null);
       }),
-      button("－欄", "刪除這一欄", () => commit(deleteColumn(model(), current.col), null)),
-      button("⇤", "這一欄靠左", () => align("left")),
-      button("⇔", "這一欄置中", () => align("center")),
-      button("⇥", "這一欄靠右", () => align("right")),
-      button("原始碼", "顯示表格的 Markdown 原始碼", () => leave(true)),
+      button(t("－欄"), t("刪除這一欄"), () => commit(deleteColumn(model(), current.col), null)),
+      button("⇤", t("這一欄靠左"), () => align("left")),
+      button("⇔", t("這一欄置中"), () => align("center")),
+      button("⇥", t("這一欄靠右"), () => align("right")),
+      button(t("原始碼"), t("顯示表格的 Markdown 原始碼"), () => leave(true)),
     );
     wrap.prepend(tools);
 

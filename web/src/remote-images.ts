@@ -4,6 +4,8 @@
  * 開啟這個設定時，遠端圖片在放進畫面「之前」就拿掉網址，所以完全不會發出連線。
  */
 
+import { t } from "./i18n.ts";
+
 /** `http:`、`https:` 或 `//主機/…` 的圖片網址。 */
 export function isRemoteImage(src: string): boolean {
   return /^\s*(https?:)?\/\//i.test(src);
@@ -18,8 +20,8 @@ export function blockRemoteImages(root: ParentNode): void {
     img.removeAttribute("srcset");
     img.dataset.blockedSrc = src;
     img.classList.add("remote-blocked");
-    img.alt = `🖼 ${img.alt || "圖片"}（已封鎖遠端圖片）`;
-    img.title = `已封鎖遠端圖片：${src}\n可以在「設定 → 外觀」關閉「封鎖遠端圖片」`;
+    img.alt = img.alt ? t("🖼 {alt}（已封鎖遠端圖片）", { alt: img.alt }) : t("🖼 圖片（已封鎖遠端圖片）");
+    img.title = t("已封鎖遠端圖片：{src}\n可以在「設定 → 外觀」關閉「封鎖遠端圖片」", { src });
   }
 }
 

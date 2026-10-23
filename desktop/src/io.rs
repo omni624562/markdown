@@ -1,14 +1,16 @@
 //! 檔案操作一律在背景執行緒進行並設逾時：網路磁碟（NAS）斷線時，介面不會卡住。
 //!
-//! 和網路有關的錯誤訊息都以 [`OFFLINE`] 開頭，前端看到就顯示「網路磁碟無法連線」的提示，
+//! 和網路有關的錯誤訊息都以 [`offline`] 開頭，前端看到就顯示「網路磁碟無法連線」的提示，
 //! 保留未存檔的內容，等連線恢復再存檔。
 
 use std::io;
 use std::path::Path;
 use std::time::Duration;
 
-/// 網路錯誤訊息的開頭（前端用它判斷）。
-pub const OFFLINE: &str = "網路磁碟無法連線";
+/// 網路錯誤訊息的開頭（前端用它判斷；英文要和前端的翻譯一致）。
+pub fn offline() -> String {
+    tr!("網路磁碟無法連線")
+}
 const TIMEOUT: Duration = Duration::from_secs(20);
 
 /// 在背景執行緒執行檔案操作；超過時間沒有回應就當成網路斷線。
@@ -29,7 +31,11 @@ where
     match tokio::time::timeout(timeout, tauri::async_runtime::spawn_blocking(f)).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => Err(e.to_string()),
-        Err(_) => Err(format!("{OFFLINE}：等了 {} 秒沒有回應", timeout.as_secs())),
+        Err(_) => Err(tr!(
+            "{offline}：等了 {timeout} 秒沒有回應",
+            offline = offline(),
+            timeout = timeout.as_secs()
+        )),
     }
 }
 
@@ -60,9 +66,14 @@ pub fn is_network_error(e: &io::Error) -> bool {
 /// 把 I/O 錯誤轉成給使用者看的訊息；網路錯誤加上固定的開頭。
 pub fn describe(e: &io::Error, what: &str) -> String {
     if is_network_error(e) {
-        format!("{OFFLINE}：{what}（{e}）")
+        tr!(
+            "{offline}：{what}（{e}）",
+            offline = offline(),
+            what = what,
+            e = e
+        )
     } else {
-        format!("{what}：{e}")
+        tr!("{what}：{e}", what = what, e = e)
     }
 }
 
@@ -136,12 +147,12 @@ mod tests {
             &io::Error::from(io::ErrorKind::TimedOut),
             "無法讀取「週報.md」",
         );
-        assert!(msg.starts_with(OFFLINE), "{msg}");
+        assert!(msg.starts_with(&offline()), "{msg}");
         let msg = describe(
             &io::Error::from(io::ErrorKind::PermissionDenied),
             "無法讀取",
         );
-        assert!(!msg.starts_with(OFFLINE));
+        assert!(!msg.starts_with(&offline()));
     }
 
     #[tokio::test]
@@ -151,7 +162,7 @@ mod tests {
             Ok(())
         })
         .await;
-        assert!(r.unwrap_err().starts_with(OFFLINE));
+        assert!(r.unwrap_err().starts_with(&offline()));
         assert_eq!(blocking(|| Ok::<_, String>(7)).await, Ok(7));
     }
 }

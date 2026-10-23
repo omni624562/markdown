@@ -1,6 +1,7 @@
 /**
  * 匯出 PDF 的選項：頁首文字、頁碼、封面、紙張大小。上次的選擇會記住（頁首文字除外，每份文件不同）。
  */
+import { t } from "../i18n.ts";
 import { PAPERS, type Paper, type PdfOptions } from "../pdf-print.ts";
 
 /** `direct` 為 true 時按鈕是「匯出 PDF」（桌面版直接存檔），否則是「列印…」（開啟列印對話框）。 */
@@ -8,18 +9,31 @@ export function askPdfOptions(initial: PdfOptions, direct: boolean): Promise<Pdf
   const dialog = document.createElement("dialog");
   dialog.className = "choice pdf-dialog";
   dialog.setAttribute("aria-labelledby", "pdf-title");
+  const tr = {
+    title: direct ? t("匯出 PDF") : t("列印／匯出 PDF"),
+    header: t("頁首文字"),
+    noHeader: t("不顯示頁首"),
+    pageNumbers: t("頁尾顯示頁碼（第 1 頁，共 N 頁）"),
+    cover: t("加上封面（標題與日期）"),
+    subtitle: t("封面副標題"),
+    subtitleHint: t("例如：業務部 王小明"),
+    paper: t("紙張"),
+    hint: direct ? "" : t("在列印對話框中選「另存為 PDF」就能存成 PDF；頁首與頁碼需要較新的瀏覽器（Chrome、Edge）。"),
+    cancel: t("取消"),
+    ok: direct ? t("匯出 PDF") : t("列印…"),
+  };
   dialog.innerHTML = `
-    <h2 id="pdf-title">${direct ? "匯出 PDF" : "列印／匯出 PDF"}</h2>
+    <h2 id="pdf-title">${tr.title}</h2>
     <form method="dialog" class="pdf-form">
-      <label class="pdf-field"><span>頁首文字</span><input name="header" type="text" placeholder="不顯示頁首" /></label>
-      <label class="pdf-check"><input name="pageNumbers" type="checkbox" /> 頁尾顯示頁碼（第 1 頁，共 N 頁）</label>
-      <label class="pdf-check"><input name="cover" type="checkbox" /> 加上封面（標題與日期）</label>
-      <label class="pdf-field pdf-subtitle-field"><span>封面副標題</span><input name="subtitle" type="text" placeholder="例如：業務部 王小明" /></label>
-      <label class="pdf-field"><span>紙張</span><select name="paper"></select></label>
-      ${direct ? "" : '<p class="pdf-hint">在列印對話框中選「另存為 PDF」就能存成 PDF；頁首與頁碼需要較新的瀏覽器（Chrome、Edge）。</p>'}
+      <label class="pdf-field"><span>${tr.header}</span><input name="header" type="text" placeholder="${tr.noHeader}" /></label>
+      <label class="pdf-check"><input name="pageNumbers" type="checkbox" /> ${tr.pageNumbers}</label>
+      <label class="pdf-check"><input name="cover" type="checkbox" /> ${tr.cover}</label>
+      <label class="pdf-field pdf-subtitle-field"><span>${tr.subtitle}</span><input name="subtitle" type="text" placeholder="${tr.subtitleHint}" /></label>
+      <label class="pdf-field"><span>${tr.paper}</span><select name="paper"></select></label>
+      ${tr.hint ? `<p class="pdf-hint">${tr.hint}</p>` : ""}
       <div class="choice-actions">
-        <button type="button" class="btn" value="cancel">取消</button>
-        <button class="btn btn-primary" value="ok">${direct ? "匯出 PDF" : "列印…"}</button>
+        <button type="button" class="btn" value="cancel">${tr.cancel}</button>
+        <button class="btn btn-primary" value="ok">${tr.ok}</button>
       </div>
     </form>`;
   const form = dialog.querySelector("form")!;

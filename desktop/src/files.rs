@@ -149,16 +149,18 @@ pub fn decode(bytes: &[u8]) -> (String, FileFormat, &'static str) {
 }
 
 /// 內容看起來不是能編輯的文字時回傳原因（接在檔名後面顯示）；是文字時回傳 `None`。
-pub fn not_text_reason(bytes: &[u8]) -> Option<&'static str> {
+pub fn not_text_reason(bytes: &[u8]) -> Option<String> {
     if bytes.starts_with(b"\xFF\xFE") || bytes.starts_with(b"\xFE\xFF") {
         return Some(
-            "是 UTF-16 編碼，目前只能開啟 UTF-8 或 Big5 的文字檔。可以用記事本「另存新檔」，編碼選 UTF-8 後再開啟",
+            tr!("是 UTF-16 編碼，目前只能開啟 UTF-8 或 Big5 的文字檔。可以用記事本「另存新檔」，編碼選 UTF-8 後再開啟"),
         );
     }
     // 和 Git 一樣：開頭一段裡有 NUL 字元就當成二進位檔。
     let head = &bytes[..bytes.len().min(8192)];
     if head.starts_with(b"%PDF-") || head.contains(&0) {
-        return Some("不是文字檔（可能是圖片、PDF、壓縮檔或執行檔），無法開啟");
+        return Some(tr!(
+            "不是文字檔（可能是圖片、PDF、壓縮檔或執行檔），無法開啟"
+        ));
     }
     None
 }
@@ -192,16 +194,22 @@ pub fn read_capped(path: &Path, limit: u64) -> std::io::Result<Option<Vec<u8>>> 
 /// 讀取檔案、登記為已知檔案，並允許預覽顯示同資料夾的圖片。
 pub fn read_file(app: &AppHandle, path: PathBuf, known: &KnownFiles) -> Result<OpenedFile, String> {
     let bytes = read_capped(&path, MAX_OPEN_BYTES)
-        .map_err(|e| crate::io::describe(&e, &format!("無法讀取「{}」", display_name(&path))))?
+        .map_err(|e| {
+            crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(&path)))
+        })?
         .ok_or_else(|| {
-            format!(
-                "「{}」超過 {} MB，無法開啟",
-                display_name(&path),
-                MAX_OPEN_BYTES / 1024 / 1024
+            tr!(
+                "「{name}」超過 {mb} MB，無法開啟",
+                name = display_name(&path),
+                mb = MAX_OPEN_BYTES / 1024 / 1024
             )
         })?;
     if let Some(why) = not_text_reason(&bytes) {
-        return Err(format!("「{}」{why}", display_name(&path)));
+        return Err(tr!(
+            "「{name}」{why}",
+            name = display_name(&path),
+            why = why
+        ));
     }
     let (text, format, encoding) = decode(&bytes);
     known.0.lock().unwrap().insert(
@@ -277,7 +285,7 @@ fn write_atomic_with(path: &Path, bytes: &[u8], private: bool) -> std::io::Resul
     let mut opts = open_options(private);
     opts.create_new(true);
     // 亂數撞名的機率極低，還是重試幾次。
-    let mut created = Err(std::io::Error::other("無法建立暫存檔"));
+    let mut created = Err(std::io::Error::other(tr!("無法建立暫存檔")));
     for _ in 0..3 {
         let tmp = dir.join(temp_name(&name));
         match opts.open(&tmp) {
@@ -317,7 +325,7 @@ fn overwrite_in_place(path: &Path, bytes: &[u8], private: bool) -> std::io::Resu
     if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            "這個檔案是符號連結，不直接覆寫",
+            tr!("這個檔案是符號連結，不直接覆寫"),
         ));
     }
     let mut opts = open_options(private);
@@ -330,8 +338,9 @@ fn overwrite_in_place(path: &Path, bytes: &[u8], private: bool) -> std::io::Resu
 /// 寫入檔案，回傳寫入內容的雜湊。
 fn write_file(path: &Path, text: &str, format: FileFormat) -> Result<u64, String> {
     let bytes = encode(text, format);
-    write_atomic(path, &bytes)
-        .map_err(|e| crate::io::describe(&e, &format!("無法寫入「{}」", display_name(path))))?;
+    write_atomic(path, &bytes).map_err(|e| {
+        crate::io::describe(&e, &tr!("無法寫入「{name}」", name = display_name(path)))
+    })?;
     Ok(hash_bytes(&bytes))
 }
 
@@ -356,9 +365,9 @@ pub async fn open_file(
 ) -> Result<Option<OpenedFile>, String> {
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
-        .set_title("開啟檔案")
-        .add_filter("文件與程式碼", crate::workspace::DOC_EXTENSIONS)
-        .add_filter("所有檔案", &["*"])
+        .set_title(tr!("開啟檔案"))
+        .add_filter(tr!("文件與程式碼"), crate::workspace::DOC_EXTENSIONS)
+        .add_filter(tr!("所有檔案"), &["*"])
         .pick_file()
         .await;
     let Some(handle) = picked else {
@@ -388,7 +397,9 @@ pub async fn reopen_file(
             || app2.state::<Trust>().allows(&p)
             || app2.state::<crate::workspace::Workspace>().contains(&p);
         if !allowed {
-            return Err("這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。".into());
+            return Err(tr!(
+                "這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。"
+            ));
         }
         read_file(&app2, p, &app2.state::<KnownFiles>())
     })
@@ -415,14 +426,14 @@ pub async fn export_binary(
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_base64.as_bytes())
-        .map_err(|e| format!("匯出的資料無效：{e}"))?;
+        .map_err(|e| tr!("匯出的資料無效：{e}", e = e))?;
     let exts: Vec<&str> = extensions
         .iter()
         .map(|e| e.trim_start_matches('.'))
         .collect();
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
-        .set_title("匯出")
+        .set_title(tr!("匯出"))
         .set_file_name(&suggested_name)
         .add_filter(&filter_name, &exts)
         .save_file()
@@ -433,7 +444,7 @@ pub async fn export_binary(
     let path = handle.path().to_path_buf();
     let p = path.clone();
     crate::io::blocking(move || {
-        write_atomic(&p, &bytes).map_err(|e| crate::io::describe(&e, "無法寫入檔案"))
+        write_atomic(&p, &bytes).map_err(|e| crate::io::describe(&e, &tr!("無法寫入檔案")))
     })
     .await?;
     Ok(Some(path.to_string_lossy().into_owned()))
@@ -457,7 +468,7 @@ pub fn unique_md_path(path: &Path) -> PathBuf {
     let stem = path
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "匯入".into());
+        .unwrap_or_else(|| tr!("匯入"));
     let mut candidate = dir.join(format!("{stem}.md"));
     let mut n = 2;
     while candidate.exists() {
@@ -479,8 +490,8 @@ pub async fn import_docx(
     use base64::Engine;
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
-        .set_title("匯入 Word 文件")
-        .add_filter("Word 文件", &["docx"])
+        .set_title(tr!("匯入 Word 文件"))
+        .add_filter(tr!("Word 文件"), &["docx"])
         .pick_file()
         .await;
     let Some(handle) = picked else {
@@ -491,10 +502,14 @@ pub async fn import_docx(
     let bytes = crate::io::blocking(move || {
         let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
         if size > MAX_DOCX_BYTES {
-            return Err(format!("「{}」超過 100 MB，無法匯入", display_name(&p)));
+            return Err(tr!(
+                "「{name}」超過 100 MB，無法匯入",
+                name = display_name(&p)
+            ));
         }
-        fs::read(&p)
-            .map_err(|e| crate::io::describe(&e, &format!("無法讀取「{}」", display_name(&p))))
+        fs::read(&p).map_err(|e| {
+            crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(&p)))
+        })
     })
     .await?;
     let md = unique_md_path(&path);
@@ -543,7 +558,7 @@ pub async fn save_file(
         .collect();
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
-        .set_title("另存新檔")
+        .set_title(tr!("另存新檔"))
         .set_file_name(&suggested_name)
         .add_filter(&filter_name, &exts)
         .save_file()

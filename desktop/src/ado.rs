@@ -126,7 +126,7 @@ fn candidates(input: &str) -> Result<Vec<String>, String> {
     let mut url = input.trim().trim_end_matches('/').to_string();
     let lower = url.to_ascii_lowercase();
     if !(lower.starts_with("https://") || lower.starts_with("http://")) {
-        return Err("請輸入 https:// 或 http:// 開頭的網址".into());
+        return Err(tr!("請輸入 https:// 或 http:// 開頭的網址"));
     }
     if let Some(q) = url.find(['?', '#']) {
         url.truncate(q);
@@ -163,20 +163,34 @@ fn read(
             let text = r
                 .body_mut()
                 .read_to_string()
-                .map_err(|e| format!("{what}失敗：{e}"))?;
+                .map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))?;
             // 權杖不對時，雲端版會回傳登入網頁（HTML）而不是錯誤碼。
             serde_json::from_str(&text).map_err(|_| {
-                format!("{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖")
+                tr!(
+                    "{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖",
+                    what = what
+                )
             })
         }
-        Err(ureq::Error::StatusCode(401)) => Err(format!(
-            "{what}失敗：個人存取權杖無效或已過期，請到設定的 Git 頁重新連線"
+        Err(ureq::Error::StatusCode(401)) => Err(tr!(
+            "{what}失敗：個人存取權杖無效或已過期，請到設定的 Git 頁重新連線",
+            what = what
         )),
-        Err(ureq::Error::StatusCode(403)) => Err(format!("{what}失敗：沒有權限")),
-        Err(ureq::Error::StatusCode(404)) => Err(format!("{what}失敗：找不到（404），請確認網址")),
-        Err(ureq::Error::StatusCode(code)) => Err(format!("{what}失敗：伺服器回應 {code}")),
+        Err(ureq::Error::StatusCode(403)) => Err(tr!("{what}失敗：沒有權限", what = what)),
+        Err(ureq::Error::StatusCode(404)) => {
+            Err(tr!("{what}失敗：找不到（404），請確認網址", what = what))
+        }
+        Err(ureq::Error::StatusCode(code)) => Err(tr!(
+            "{what}失敗：伺服器回應 {code}",
+            what = what,
+            code = code
+        )),
         // 409（例如 PR 已經存在）由呼叫端說明。
-        Err(e) => Err(format!("{what}失敗：無法連線到 Azure DevOps（{e}）")),
+        Err(e) => Err(tr!(
+            "{what}失敗：無法連線到 Azure DevOps（{e}）",
+            what = what,
+            e = e
+        )),
     }
 }
 
@@ -258,16 +272,19 @@ fn user_of(data: &Value) -> Option<(String, Option<String>)> {
 }
 
 fn is_not_found(e: &str) -> bool {
-    e.contains("（404）")
+    e.contains("（404）") || e.contains("(404)") // i18n-ignore：比對中英文的訊息
 }
 
 /// 讀取登入資訊。connectionData 是預覽版的 API，伺服器可能不接受正式版號（5.0），
 /// 所以用預覽版號；還是被拒絕時（舊版伺服器）不帶版號再試一次。
 fn connection_data(base: &str, pat: &str) -> Result<Value, String> {
     let path = "/_apis/connectionData";
-    get_version(base, pat, path, Some("5.0-preview"), "連線").or_else(|e| {
-        if e.contains("伺服器回應 400") || is_not_found(&e) {
-            get_version(base, pat, path, None, "連線").map_err(|_| e)
+    let what = tr!("連線");
+    get_version(base, pat, path, Some("5.0-preview"), &what).or_else(|e| {
+        // i18n-ignore：比對中英文的訊息
+        if e.contains("伺服器回應 400") || e.contains("responded with 400") || is_not_found(&e)
+        {
+            get_version(base, pat, path, None, &what).map_err(|_| e)
         } else {
             Err(e)
         }
@@ -278,28 +295,31 @@ fn connection_data(base: &str, pat: &str) -> Result<Value, String> {
 /// 伺服器上只有一個集合就自動使用它，有好幾個就請使用者指定。
 fn connect_at(base: &str, pat: &str) -> Result<Account, String> {
     let data = connection_data(base, pat)?;
-    let (name, account) = user_of(&data).ok_or("連線失敗：個人存取權杖無效或已過期")?;
-    let check = |url: &str| get(url, pat, "/_apis/projects?$top=1", "連線");
+    let (name, account) =
+        user_of(&data).ok_or_else(|| tr!("連線失敗：個人存取權杖無效或已過期"))?;
+    let what = tr!("連線");
+    let check = |url: &str| get(url, pat, "/_apis/projects?$top=1", &what);
     let url = match check(base) {
         Ok(_) => base.to_string(),
         Err(e) if is_not_found(&e) => {
-            let list = get(base, pat, "/_apis/projectCollections", "連線").map_err(|_| e)?;
+            let list = get(base, pat, "/_apis/projectCollections", &what).map_err(|_| e)?;
             let names: Vec<&str> = values(&list)
                 .iter()
                 .filter_map(|c| str_of(c, "name"))
                 .collect();
             match names.as_slice() {
-                [] => return Err("連線失敗：這台伺服器上沒有可以使用的集合".into()),
+                [] => return Err(tr!("連線失敗：這台伺服器上沒有可以使用的集合")),
                 [one] => {
                     let url = format!("{base}/{}", encode_segment(one));
                     check(&url)?;
                     url
                 }
                 many => {
-                    return Err(format!(
-                        "這台伺服器上有好幾個集合（{}），請在網址後面加上集合名稱，例如 {base}/{}",
-                        many.join("、"),
-                        encode_segment(many[0])
+                    return Err(tr!(
+                        "這台伺服器上有好幾個集合（{many}），請在網址後面加上集合名稱，例如 {base}/{first}",
+                        many = many.join(&tr!("、")),
+                        base = base,
+                        first = encode_segment(many[0])
                     ))
                 }
             }
@@ -315,10 +335,9 @@ fn connect_error(tries: &[String], errors: Vec<String>) -> String {
     if let Some(e) = errors.iter().find(|e| !is_not_found(e)) {
         return e.clone();
     }
-    format!(
-        "連線失敗：找不到 Azure DevOps（404）。已試過：{}。請輸入集合的網址，\
-         例如 https://伺服器/tfs/DefaultCollection（在瀏覽器打開 TFS，網址裡專案名稱前面的那一段）",
-        tries.join("、")
+    tr!(
+        "連線失敗：找不到 Azure DevOps（404）。已試過：{tries}。請輸入集合的網址，例如 https://伺服器/tfs/DefaultCollection（在瀏覽器打開 TFS，網址裡專案名稱前面的那一段）",
+        tries = tries.join(&tr!("、"))
     )
 }
 
@@ -327,7 +346,7 @@ fn connect_error(tries: &[String], errors: Vec<String>) -> String {
 pub async fn ado_connect(app: AppHandle, url: String, pat: String) -> Result<Account, String> {
     let pat = pat.trim().to_string();
     if pat.is_empty() {
-        return Err("請輸入個人存取權杖".into());
+        return Err(tr!("請輸入個人存取權杖"));
     }
     let tries = candidates(&url)?;
     let token = pat.clone();
@@ -342,12 +361,12 @@ pub async fn ado_connect(app: AppHandle, url: String, pat: String) -> Result<Acc
         Err(connect_error(&tries, errors))
     })
     .await?;
-    let path = account_file(&app).ok_or("找不到設定資料夾")?;
+    let path = account_file(&app).ok_or_else(|| tr!("找不到設定資料夾"))?;
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("無法建立設定資料夾：{e}"))?;
+        fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
     }
     let json = serde_json::to_string_pretty(&account).unwrap_or_default();
-    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| format!("無法儲存：{e}"))?;
+    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存：{e}", e = e))?;
     crate::secrets::set(SERVICE, "pat", &pat);
     if let Ok(mut t) = TOKEN.lock() {
         *t = Some(pat);
@@ -367,7 +386,7 @@ pub fn ado_disconnect(app: AppHandle) {
 }
 
 fn require(app: &AppHandle) -> Result<(Account, String), String> {
-    connection(app).ok_or_else(|| "請先到設定的 Git 頁連線到 Azure DevOps".to_string())
+    connection(app).ok_or_else(|| tr!("請先到設定的 Git 頁連線到 Azure DevOps"))
 }
 
 // ---- 儲存庫 -----------------------------------------------------------------
@@ -444,13 +463,18 @@ pub async fn ado_repos(app: AppHandle) -> Result<Vec<Repo>, String> {
     let (a, pat) = require(&app)?;
     crate::io::blocking_for(TIMEOUT, move || {
         let base = a.url;
-        let repos = get(&base, &pat, "/_apis/git/repositories", "讀取儲存庫清單")?;
+        let repos = get(
+            &base,
+            &pat,
+            "/_apis/git/repositories",
+            &tr!("讀取儲存庫清單"),
+        )?;
         // 讀不到 Wiki（例如沒有權限）時仍然列出儲存庫。
-        let wikis = get(&base, &pat, "/_apis/wiki/wikis", "讀取 Wiki").unwrap_or(Value::Null);
+        let wikis = get(&base, &pat, "/_apis/wiki/wikis", &tr!("讀取 Wiki")).unwrap_or(Value::Null);
         let projects = if values(&wikis).is_empty() {
             Value::Null
         } else {
-            get(&base, &pat, "/_apis/projects?$top=1000", "讀取專案").unwrap_or(Value::Null)
+            get(&base, &pat, "/_apis/projects?$top=1000", &tr!("讀取專案")).unwrap_or(Value::Null)
         };
         Ok(repos_from(&base, &repos, &wikis, &projects))
     })
@@ -468,7 +492,7 @@ pub async fn ado_clone(
     let (a, _) = require(&app)?;
     // 只下載這台伺服器上的儲存庫，避免前端傳來任意網址時把權杖送到別的地方。
     if !starts_with_base(&clone_url, &a.url) {
-        return Err("儲存庫網址不在目前連線的 Azure DevOps 上".into());
+        return Err(tr!("儲存庫網址不在目前連線的 Azure DevOps 上"));
     }
     let folder = name.trim().trim_end_matches(".wiki").to_string();
     let folder = if name.trim().ends_with(".wiki") {
@@ -544,22 +568,25 @@ pub fn create_pull(
 ) -> Result<String, String> {
     let (a, pat) = require(app)?;
     let base = a.url;
-    let (project, repo) =
-        project_and_repo(remote, &base).ok_or("這個儲存庫不在目前連線的 Azure DevOps 上")?;
-    let what = "建立 Pull Request";
+    let (project, repo) = project_and_repo(remote, &base)
+        .ok_or_else(|| tr!("這個儲存庫不在目前連線的 Azure DevOps 上"))?;
+    let what = &tr!("建立 Pull Request");
     let info = get(
         &base,
         &pat,
         &format!("/{project}/_apis/git/repositories/{repo}"),
         what,
     )?;
-    let id = str_of(&info, "id").ok_or("讀取儲存庫失敗")?.to_string();
+    let id = str_of(&info, "id")
+        .ok_or_else(|| tr!("讀取儲存庫失敗"))?
+        .to_string();
     let target = str_of(&info, "defaultBranch")
         .unwrap_or("refs/heads/main")
         .to_string();
     if target == format!("refs/heads/{branch}") {
-        return Err(format!(
-            "目前在預設分支「{branch}」上，請先建立新分支再建立 Pull Request"
+        return Err(tr!(
+            "目前在預設分支「{branch}」上，請先建立新分支再建立 Pull Request",
+            branch = branch
         ));
     }
     let web = str_of(&info, "webUrl")
@@ -579,7 +606,10 @@ pub fn create_pull(
     )
     .map_err(|e| {
         if e.contains("409") {
-            format!("{what}失敗：這個分支已經有一個開著的 Pull Request")
+            tr!(
+                "{what}失敗：這個分支已經有一個開著的 Pull Request",
+                what = what
+            )
         } else {
             e
         }
@@ -587,7 +617,7 @@ pub fn create_pull(
     let number = res
         .get("pullRequestId")
         .and_then(Value::as_u64)
-        .ok_or("建立 Pull Request 失敗：回應的格式不正確")?;
+        .ok_or_else(|| tr!("建立 Pull Request 失敗：回應的格式不正確"))?;
     Ok(format!("{web}/pullrequest/{number}"))
 }
 
@@ -625,12 +655,13 @@ const CLOSED_STATES: &[&str] = &[
     "Completed",
     "Cut",
     "Inactive",
-    "已關閉",
-    "已完成",
-    "已移除",
-    "已刪除",
-    "關閉",
-    "完成",
+    // 中文的流程範本（不是介面文字）。
+    "已關閉", // i18n-ignore
+    "已完成", // i18n-ignore
+    "已移除", // i18n-ignore
+    "已刪除", // i18n-ignore
+    "關閉",   // i18n-ignore
+    "完成",   // i18n-ignore
 ];
 const FIELDS: &str =
     "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.ChangedDate";
@@ -716,7 +747,7 @@ pub async fn ado_work_items(app: AppHandle, search: String) -> Result<Vec<WorkIt
                     &pat,
                     "/_apis/wit/wiql?$top=100",
                     &serde_json::json!({ "query": query }),
-                    "查詢工作項目",
+                    &tr!("查詢工作項目"),
                 )?;
                 res.get("workItems")
                     .and_then(Value::as_array)
@@ -741,7 +772,7 @@ pub async fn ado_work_items(app: AppHandle, search: String) -> Result<Vec<WorkIt
                 "/_apis/wit/workitems?ids={}&fields={FIELDS}&errorPolicy=omit",
                 list.join(",")
             ),
-            "讀取工作項目",
+            &tr!("讀取工作項目"),
         )?;
         let items: Vec<WorkItem> = values(&res)
             .iter()
@@ -774,9 +805,9 @@ pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, St
             &a.url,
             &pat,
             &format!("/_apis/wit/workitems/{id}"),
-            "讀取工作項目",
+            &tr!("讀取工作項目"),
         )?;
-        detail_of(&a.url, &v).ok_or_else(|| "讀取工作項目失敗：回應的格式不正確".to_string())
+        detail_of(&a.url, &v).ok_or_else(|| tr!("讀取工作項目失敗：回應的格式不正確"))
     })
     .await
 }

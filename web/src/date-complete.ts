@@ -2,17 +2,20 @@
  * 快速輸入日期：打「@今天」「@明天」「@下週一」「@月底」……自動完成成日期，
  * 可以選「2026-10-22（星期四）」「2026-10-22」「民國 115 年 10 月 22 日」「10/22」。
  * 待辦總覽認得這些寫法（截止日）。
+ * 關鍵字是中文詞（文件內容），英文介面也一樣；英文介面插入的是英文寫法（2026-10-22 (Thursday)），不提供民國年。
  */
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { currentLang, t } from "./i18n.ts";
 
-const WEEKDAYS = "日一二三四五六";
+const WEEKDAYS = "日一二三四五六"; // i18n-ignore
+// 中文的日期關鍵字是輸入的內容，不是介面文字。
 const DAY_WORDS: [string, number][] = [
-  ["今天", 0],
-  ["明天", 1],
-  ["後天", 2],
-  ["大後天", 3],
-  ["昨天", -1],
-  ["前天", -2],
+  ["今天", 0], // i18n-ignore
+  ["明天", 1], // i18n-ignore
+  ["後天", 2], // i18n-ignore
+  ["大後天", 3], // i18n-ignore
+  ["昨天", -1], // i18n-ignore
+  ["前天", -2], // i18n-ignore
 ];
 
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
@@ -29,30 +32,42 @@ export function dateWords(today: Date): [string, Date][] {
     const thisWeek = addDays(monday, i);
     // 「週五」：今天以後最近的星期五（今天就是星期五時是今天）。
     const upcoming = thisWeek < today ? addDays(thisWeek, 7) : thisWeek;
-    out.push([`週${name}`, upcoming], [`這週${name}`, thisWeek], [`下週${name}`, addDays(thisWeek, 7)]);
+    out.push([`週${name}`, upcoming], [`這週${name}`, thisWeek], [`下週${name}`, addDays(thisWeek, 7)]); // i18n-ignore
   }
-  out.push(["下週", addDays(monday, 7)]);
-  out.push(["月底", new Date(today.getFullYear(), today.getMonth() + 1, 0)]);
-  out.push(["下個月", new Date(today.getFullYear(), today.getMonth() + 1, 1)]);
+  out.push(["下週", addDays(monday, 7)]); // i18n-ignore
+  out.push(["月底", new Date(today.getFullYear(), today.getMonth() + 1, 0)]); // i18n-ignore
+  out.push(["下個月", new Date(today.getFullYear(), today.getMonth() + 1, 1)]); // i18n-ignore
   return out;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-/** 一個日期可以插入的寫法，第一個是預設。 */
+/**
+ * 一個日期可以插入的寫法，第一個是預設。英文介面用英文的星期名稱，不提供民國年；
+ * 每一種寫法待辦總覽都認得（截止日）。
+ */
 export function dateFormats(d: Date): { text: string; label: string }[] {
-  const weekday = `星期${WEEKDAYS[d.getDay()]}`;
+  if (currentLang() === "en") {
+    const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
+    return [
+      { text: `${iso(d)} (${weekday})`, label: t("日期與星期") },
+      { text: iso(d), label: t("日期") },
+      { text: `${d.getMonth() + 1}/${d.getDate()}`, label: t("月／日") },
+    ];
+  }
+  // 中文介面插入的中文日期寫法是文件內容。
+  const weekday = `星期${WEEKDAYS[d.getDay()]}`; // i18n-ignore
   return [
-    { text: `${iso(d)}（${weekday}）`, label: "日期與星期" },
-    { text: iso(d), label: "日期" },
-    { text: `民國 ${d.getFullYear() - 1911} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日（${weekday}）`, label: "民國年" },
-    { text: `${d.getMonth() + 1}/${d.getDate()}`, label: "月／日" },
+    { text: `${iso(d)}（${weekday}）`, label: t("日期與星期") }, // i18n-ignore
+    { text: iso(d), label: t("日期") },
+    { text: `民國 ${d.getFullYear() - 1911} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日（${weekday}）`, label: t("民國年") }, // i18n-ignore
+    { text: `${d.getMonth() + 1}/${d.getDate()}`, label: t("月／日") },
   ];
 }
 
 /** 把「週」的別名統一：周、星期、禮拜。 */
-const normalize = (s: string) => s.replace(/周|星期|禮拜/g, "週").replace("本週", "這週");
+const normalize = (s: string) => s.replace(/周|星期|禮拜/g, "週").replace("本週", "這週"); // i18n-ignore
 
 export function dateCompletion(ctx: CompletionContext, today = new Date()): CompletionResult | null {
   const m = ctx.matchBefore(/@[一-鿿]{1,5}/);

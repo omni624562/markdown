@@ -7,6 +7,7 @@ import { PROJECT_COLORS, projectGroups, projectSections, samePath } from "../pro
 import { choose } from "./choice.ts";
 import { icon } from "./icons.ts";
 import { Picker } from "./picker.ts";
+import { t } from "../i18n.ts";
 import { toast } from "./toast.ts";
 
 export interface ProjectHooks {
@@ -66,18 +67,18 @@ export class ProjectUi {
     this.#d = d;
     this.#h = hooks;
     this.#switcher = new Picker<SwitchItem>({
-      label: "切換專案",
-      placeholder: "搜尋專案（名稱、群組或路徑）…",
-      empty: "找不到符合的專案",
+      label: t("切換專案"),
+      placeholder: t("搜尋專案（名稱、群組或路徑）…"),
+      empty: t("找不到符合的專案"),
       query: (text) => this.#switchItems(text),
       render: (item) => {
         if (item.kind === "project") {
           const p = item.project;
           const here = this.#isCurrent(p);
-          const dirty = !here && this.#h.unsaved(p.path) ? "● 有沒存檔的分頁　" : "";
+          const dirty = !here && this.#h.unsaved(p.path) ? t("● 有沒存檔的分頁") + "\u3000" : "";
           return {
             title: p.label,
-            detail: here ? "目前的專案" : dirty + displayPath(p.path),
+            detail: here ? t("目前的專案") : dirty + displayPath(p.path),
             color: p.color,
             section: item.section,
           };
@@ -85,7 +86,7 @@ export class ProjectUi {
         if (item.kind === "remote") {
           return { title: item.remote.name, detail: item.remote.url, icon: "cloud", section: "WebDAV" };
         }
-        return { title: item.title, icon: item.icon, section: "動作" };
+        return { title: item.title, icon: item.icon, section: t("動作") };
       },
       pick: (item) => {
         if (item.kind === "project") void this.#open(item.project);
@@ -133,10 +134,10 @@ export class ProjectUi {
       if (!q || `${remote.name} ${remote.url}`.toLowerCase().includes(q)) items.push({ kind: "remote", remote });
     }
     const actions: SwitchItem[] = [
-      { kind: "action", id: "open-folder", title: "開啟資料夾…", icon: "folder-open" },
-      { kind: "action", id: "overview", title: "專案總覽", icon: "layout-grid" },
+      { kind: "action", id: "open-folder", title: t("開啟資料夾…"), icon: "folder-open" },
+      { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-grid" },
     ];
-    if (this.current) actions.push({ kind: "action", id: "edit", title: "目前專案的設定…", icon: "pencil" });
+    if (this.current) actions.push({ kind: "action", id: "edit", title: t("目前專案的設定…"), icon: "pencil" });
     for (const a of actions) if (a.kind === "action" && (!q || a.title.toLowerCase().includes(q))) items.push(a);
     return items;
   }
@@ -163,19 +164,20 @@ export class ProjectUi {
     const dialog = document.createElement("dialog");
     dialog.className = "choice project-overview";
     dialog.setAttribute("aria-labelledby", "po-title");
+    const tr = { title: t("專案總覽"), placeholder: t("搜尋專案（名稱、群組或路徑）…"), search: t("搜尋專案") };
     dialog.innerHTML = `
       <div class="po-head">
-        <h2 id="po-title">專案總覽</h2>
-        <input type="search" class="po-search" placeholder="搜尋專案（名稱、群組或路徑）…" aria-label="搜尋專案" spellcheck="false" />
+        <h2 id="po-title">${tr.title}</h2>
+        <input type="search" class="po-search" placeholder="${tr.placeholder}" aria-label="${tr.search}" spellcheck="false" />
       </div>
       <div class="po-body"></div>`;
     const head = dialog.querySelector(".po-head")!;
-    const open = button("開啟資料夾…", "folder-open", () => {
+    const open = button(t("開啟資料夾…"), "folder-open", () => {
       dialog.close();
       this.#h.openFolder();
     }, "btn");
-    open.append("開啟資料夾…");
-    head.append(open, button("關閉", "x", () => dialog.close()));
+    open.append(t("開啟資料夾…"));
+    head.append(open, button(t("關閉"), "x", () => dialog.close()));
     const search = dialog.querySelector<HTMLInputElement>(".po-search")!;
     search.addEventListener("input", () => {
       this.#query = search.value;
@@ -196,7 +198,7 @@ export class ProjectUi {
     if (!sections.length) {
       const p = document.createElement("p");
       p.className = "po-empty";
-      p.textContent = this.#list.length ? "找不到符合的專案" : "還沒有專案。開啟一個資料夾，它就會出現在這裡。";
+      p.textContent = this.#list.length ? t("找不到符合的專案") : t("還沒有專案。開啟一個資料夾，它就會出現在這裡。");
       body.replaceChildren(p);
       return;
     }
@@ -205,7 +207,7 @@ export class ProjectUi {
         const section = document.createElement("section");
         section.className = "po-section";
         const h = document.createElement("h3");
-        h.textContent = `${s.title}（${s.items.length}）`;
+        h.textContent = t("{title}（{n}）", { title: s.title, n: s.items.length });
         const grid = document.createElement("ul");
         grid.className = "po-grid";
         grid.append(...s.items.map((p) => this.#card(p)));
@@ -223,26 +225,26 @@ export class ProjectUi {
     const main = document.createElement("button");
     main.type = "button";
     main.className = "po-open";
-    main.title = here ? "目前的專案" : `開啟「${p.label}」`;
+    main.title = here ? t("目前的專案") : t("開啟「{name}」", { name: p.label });
     const name = document.createElement("span");
     name.className = "po-name";
     name.append(dot(p.color), Object.assign(document.createElement("span"), { textContent: p.label }));
-    if (here) name.append(Object.assign(document.createElement("span"), { className: "po-badge", textContent: "目前" }));
+    if (here) name.append(Object.assign(document.createElement("span"), { className: "po-badge", textContent: t("目前") }));
     const path = Object.assign(document.createElement("span"), { className: "po-path", textContent: displayPath(p.path) });
     const meta: string[] = [];
     if (p.pinned && p.group) meta.push(p.group);
-    meta.push(p.lastOpened ? `${timeAgo(p.lastOpened)}開啟` : "很久以前開啟");
-    if (!here && this.#h.unsaved(p.path)) meta.push("● 有沒存檔的分頁");
+    meta.push(p.lastOpened ? t("{time}開啟", { time: timeAgo(p.lastOpened) }) : t("很久以前開啟"));
+    if (!here && this.#h.unsaved(p.path)) meta.push(t("● 有沒存檔的分頁"));
     const info = Object.assign(document.createElement("span"), { className: "po-meta", textContent: meta.join(" · ") });
     main.append(name, path, info);
     main.addEventListener("click", () => void this.#open(p).catch((e) => toast(message(e), { tone: "error", duration: 10000 })));
     const actions = document.createElement("div");
     actions.className = "po-actions";
     actions.append(
-      button(p.pinned ? "取消釘選" : "釘選", p.pinned ? "pin-off" : "pin", () => void this.#save(p, { ...this.#changeOf(p), pinned: !p.pinned })),
-      button("專案設定…", "pencil", () => void this.edit(p)),
-      button("在檔案總管中顯示", "folder-open", () => void this.#d.projectReveal(p.path).catch((e) => toast(message(e), { tone: "error" }))),
-      button("從清單移除", "x", () => void this.#forget(p)),
+      button(p.pinned ? t("取消釘選") : t("釘選"), p.pinned ? "pin-off" : "pin", () => void this.#save(p, { ...this.#changeOf(p), pinned: !p.pinned })),
+      button(t("專案設定…"), "pencil", () => void this.edit(p)),
+      button(t("在檔案總管中顯示"), "folder-open", () => void this.#d.projectReveal(p.path).catch((e) => toast(message(e), { tone: "error" }))),
+      button(t("從清單移除"), "x", () => void this.#forget(p)),
     );
     li.append(main, actions);
     return li;
@@ -267,11 +269,14 @@ export class ProjectUi {
 
   async #forget(p: Project): Promise<void> {
     const ok = await choose(
-      "從清單移除",
-      `「${p.label}」會從專案清單移除（名稱、顏色、群組的設定也會一起清掉）。資料夾和裡面的檔案都不會動，之後再開啟這個資料夾就會重新加入。`,
+      t("從清單移除"),
+      t(
+        "「{name}」會從專案清單移除（名稱、顏色、群組的設定也會一起清掉）。資料夾和裡面的檔案都不會動，之後再開啟這個資料夾就會重新加入。",
+        { name: p.label },
+      ),
       [
-        { id: "cancel", label: "取消" },
-        { id: "go", label: "移除", danger: true },
+        { id: "cancel", label: t("取消") },
+        { id: "go", label: t("移除"), danger: true },
       ],
     );
     if (ok !== "go") return;
@@ -289,27 +294,38 @@ export class ProjectUi {
     const dialog = document.createElement("dialog");
     dialog.className = "choice project-edit";
     dialog.setAttribute("aria-labelledby", "pe-title");
-    const colors = [{ id: "", label: "不設定" }, ...PROJECT_COLORS]
+    const colors = [{ id: "", label: t("不設定") }, ...PROJECT_COLORS]
       .map(
         (c) =>
           `<label class="pe-color" title="${c.label}"><input type="radio" name="color" value="${c.id}" aria-label="${c.label}" /><span class="project-dot"${c.id ? ` data-color="${c.id}"` : ""}></span></label>`,
       )
       .join("");
+    const tr = {
+      title: t("專案設定"),
+      name: t("名稱"),
+      group: t("群組"),
+      groupHint: t("例如：公司 TFS、個人（留白就是不分組）"),
+      color: t("顏色"),
+      pin: t("釘選在清單最上面"),
+      relocate: t("重新指定位置…"),
+      cancel: t("取消"),
+      save: t("儲存"),
+    };
     dialog.innerHTML = `
       <form method="dialog">
-        <h2 id="pe-title">專案設定</h2>
+        <h2 id="pe-title">${tr.title}</h2>
         <p class="pe-path"></p>
-        <label>名稱<input name="name" maxlength="80" spellcheck="false" /></label>
-        <label>群組<input name="group" maxlength="40" list="pe-groups" spellcheck="false" placeholder="例如：公司 TFS、個人（留白就是不分組）" /></label>
+        <label>${tr.name}<input name="name" maxlength="80" spellcheck="false" /></label>
+        <label>${tr.group}<input name="group" maxlength="40" list="pe-groups" spellcheck="false" placeholder="${tr.groupHint}" /></label>
         <datalist id="pe-groups"></datalist>
-        <fieldset class="pe-colors"><legend>顏色</legend>${colors}</fieldset>
-        <label class="pe-check"><input type="checkbox" name="pinned" /> 釘選在清單最上面</label>
+        <fieldset class="pe-colors"><legend>${tr.color}</legend>${colors}</fieldset>
+        <label class="pe-check"><input type="checkbox" name="pinned" /> ${tr.pin}</label>
         <p class="dav-error" role="alert" hidden></p>
         <div class="choice-actions">
-          <button type="button" class="btn pe-relocate">重新指定位置…</button>
+          <button type="button" class="btn pe-relocate">${tr.relocate}</button>
           <span class="pe-spacer"></span>
-          <button type="button" class="btn" value="cancel">取消</button>
-          <button type="submit" class="btn btn-primary">儲存</button>
+          <button type="button" class="btn" value="cancel">${tr.cancel}</button>
+          <button type="submit" class="btn btn-primary">${tr.save}</button>
         </div>
       </form>`;
     const q = <T extends HTMLElement>(sel: string) => dialog.querySelector<T>(sel)!;
@@ -336,7 +352,7 @@ export class ProjectUi {
           await this.refresh();
           this.#renderOverview();
           this.#h.changed();
-          toast(`已把「${moved.label}」改到 ${displayPath(moved.path)}`, { tone: "success" });
+          toast(t("已把「{name}」改到 {path}", { name: moved.label, path: displayPath(moved.path) }), { tone: "success" });
         } catch (e) {
           error.hidden = false;
           error.textContent = message(e);

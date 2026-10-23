@@ -4,6 +4,7 @@
  * 這個模組只在匯出時才載入（docx 套件不小）。
  */
 import { sizeImages } from "./plugins/doc-links.ts";
+import { t } from "./i18n.ts";
 import {
   AlignmentType,
   Bookmark,
@@ -168,7 +169,7 @@ export async function htmlToDocx(html: string, opts: DocxOptions): Promise<Blob>
       case "img": {
         const src = node.getAttribute("src") ?? "";
         const img = images.get(src);
-        if (!img) return [run(`［圖片：${node.getAttribute("alt") || src}］`, { ...s, italics: true })];
+        if (!img) return [run(t("［圖片：{alt}］", { alt: node.getAttribute("alt") || src }), { ...s, italics: true })];
         // `![說明|400](…)` 指定的寬度（高度依比例）。
         const width = Number(node.getAttribute("width")) || img.width;
         const height = Number(node.getAttribute("height")) || Math.round((img.height * width) / img.width);

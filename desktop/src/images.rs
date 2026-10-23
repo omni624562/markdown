@@ -29,13 +29,13 @@ pub fn unique_name(dir: &Path, stem: &str, stamp: &str, ext: &str) -> PathBuf {
 pub fn decode_image(data_base64: &str, ext: &str) -> Result<Vec<u8>, String> {
     let ext = ext.trim_start_matches('.').to_ascii_lowercase();
     if !ALLOWED.contains(&ext.as_str()) {
-        return Err(format!("不支援的圖片格式：{ext}"));
+        return Err(tr!("不支援的圖片格式：{ext}", ext = ext));
     }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_base64)
-        .map_err(|_| "圖片資料無效".to_string())?;
+        .map_err(|_| tr!("圖片資料無效"))?;
     if bytes.len() > MAX_BYTES {
-        return Err("圖片超過 30 MB".into());
+        return Err(tr!("圖片超過 30 MB"));
     }
     Ok(bytes)
 }
@@ -51,12 +51,12 @@ pub async fn save_image(
     let doc = PathBuf::from(&doc_path);
     // 只允許存在已開啟的文件旁邊。
     if !known.contains(&doc) {
-        return Err("請先存檔，圖片會存在文件旁的 assets 資料夾".into());
+        return Err(tr!("請先存檔，圖片會存在文件旁的 assets 資料夾"));
     }
     let bytes = decode_image(&data_base64, &ext)?;
     let ext = ext.trim_start_matches('.').to_ascii_lowercase();
     crate::io::blocking(move || {
-        let doc_dir = doc.parent().ok_or("路徑無效")?;
+        let doc_dir = doc.parent().ok_or_else(|| tr!("路徑無效"))?;
         let dir = assets_dir(doc_dir)?;
         let stem = doc
             .file_stem()
@@ -74,12 +74,14 @@ pub async fn save_image(
 /// `assets` 是指向別處的符號連結時拒絕，免得圖片被寫到其他地方。
 fn assets_dir(doc_dir: &Path) -> Result<PathBuf, String> {
     let dir = doc_dir.join("assets");
-    fs::create_dir_all(&dir).map_err(|e| crate::io::describe(&e, "無法建立 assets 資料夾"))?;
-    let real_doc = dunce::canonicalize(doc_dir).map_err(|e| crate::io::describe(&e, "路徑無效"))?;
-    let real = dunce::canonicalize(&dir).map_err(|e| crate::io::describe(&e, "路徑無效"))?;
+    fs::create_dir_all(&dir)
+        .map_err(|e| crate::io::describe(&e, &tr!("無法建立 assets 資料夾")))?;
+    let real_doc =
+        dunce::canonicalize(doc_dir).map_err(|e| crate::io::describe(&e, &tr!("路徑無效")))?;
+    let real = dunce::canonicalize(&dir).map_err(|e| crate::io::describe(&e, &tr!("路徑無效")))?;
     // 比較上一層就好（Windows 上資料夾可能叫 `Assets`，大小寫不同）。
     if real.parent() != Some(real_doc.as_path()) {
-        return Err("assets 資料夾指向文件資料夾以外的位置，無法存放圖片".into());
+        return Err(tr!("assets 資料夾指向文件資料夾以外的位置，無法存放圖片"));
     }
     Ok(dir)
 }
@@ -103,14 +105,14 @@ fn write_new(
                 return f
                     .write_all(bytes)
                     .map(|_| target)
-                    .map_err(|e| crate::io::describe(&e, "無法儲存圖片"));
+                    .map_err(|e| crate::io::describe(&e, &tr!("無法儲存圖片")));
             }
             // 剛好有同名檔案出現（例如符號連結）：換下一個名稱。
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(crate::io::describe(&e, "無法儲存圖片")),
+            Err(e) => return Err(crate::io::describe(&e, &tr!("無法儲存圖片"))),
         }
     }
-    Err("無法儲存圖片：同名檔案太多".into())
+    Err(tr!("無法儲存圖片：同名檔案太多"))
 }
 
 #[cfg(test)]

@@ -3,21 +3,23 @@
  */
 import { collator } from "./collator.ts";
 import type { Project } from "./desktop.ts";
+import { currentLang, t } from "./i18n.ts";
 
 export const PROJECT_COLORS: { id: string; label: string }[] = [
-  { id: "red", label: "紅" },
-  { id: "orange", label: "橘" },
-  { id: "yellow", label: "黃" },
-  { id: "green", label: "綠" },
-  { id: "teal", label: "青" },
-  { id: "blue", label: "藍" },
-  { id: "purple", label: "紫" },
-  { id: "pink", label: "粉紅" },
-  { id: "gray", label: "灰" },
+  { id: "red", label: t("紅") },
+  { id: "orange", label: t("橘") },
+  { id: "yellow", label: t("黃") },
+  { id: "green", label: t("綠") },
+  { id: "teal", label: t("青") },
+  { id: "blue", label: t("藍") },
+  { id: "purple", label: t("紫") },
+  { id: "pink", label: t("粉紅") },
+  { id: "gray", label: t("灰") },
 ];
 
-export const PINNED_SECTION = "釘選";
-export const RECENT_SECTION = "最近開啟";
+// 「釘選」在專案清單的按鈕是動詞（英文 Pin），這裡是分區標題（英文 Pinned），同一句中文只能有一種翻譯，所以分開寫。
+export const PINNED_SECTION = currentLang() === "en" ? "Pinned" : "釘選"; // i18n-ignore
+export const RECENT_SECTION = t("最近開啟");
 
 export interface ProjectSection {
   title: string;

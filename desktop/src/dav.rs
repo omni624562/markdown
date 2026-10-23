@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::files::{decode, OpenedFile, SaveOutcome};
-use crate::io::OFFLINE;
+use crate::io::offline;
 use crate::workspace::{is_doc, natural_cmp, validate_name, Entry, FileItem, FolderInfo};
 
 pub const SCHEME: &str = "webdav://";
@@ -51,13 +51,18 @@ pub enum DavError {
 impl DavError {
     fn message(&self, what: &str) -> String {
         match self {
-            DavError::Unauthorized => format!("{what}：帳號或密碼不正確，或沒有權限"),
-            DavError::NotFound => format!("{what}：遠端找不到這個項目"),
-            DavError::Changed => format!("{what}：遠端的檔案已被其他人修改"),
-            DavError::Exists => format!("{what}：已經有同名的項目"),
+            DavError::Unauthorized => tr!("{what}：帳號或密碼不正確，或沒有權限", what = what),
+            DavError::NotFound => tr!("{what}：遠端找不到這個項目", what = what),
+            DavError::Changed => tr!("{what}：遠端的檔案已被其他人修改", what = what),
+            DavError::Exists => tr!("{what}：已經有同名的項目", what = what),
             // 和本機網路磁碟一樣的開頭，前端會顯示「無法連線」的提示並保留內容。
-            DavError::Network(e) => format!("{OFFLINE}：{what}（{e}）"),
-            DavError::Http(code) => format!("{what}：伺服器回應 {code}"),
+            DavError::Network(e) => tr!(
+                "{offline}：{what}（{e}）",
+                offline = offline(),
+                what = what,
+                e = e
+            ),
+            DavError::Http(code) => tr!("{what}：伺服器回應 {code}", what = what, code = code),
         }
     }
 }
@@ -164,19 +169,19 @@ pub fn normalize_url(input: &str, allow_http: bool) -> Result<String, String> {
     let lower = url.to_ascii_lowercase();
     let host = host_of(url);
     if host.is_empty() {
-        return Err("網址格式不正確，例如：https://nas.local:5006/筆記/".into());
+        return Err(tr!("網址格式不正確，例如：https://nas.local:5006/筆記/"));
     }
     if lower.starts_with("http://") {
         if !is_private_host(host) {
-            return Err(
-                "只能用 HTTPS 連線到網際網路上的伺服器（HTTP 不加密，密碼可能被看到）".into(),
-            );
+            return Err(tr!(
+                "只能用 HTTPS 連線到網際網路上的伺服器（HTTP 不加密，密碼可能被看到）"
+            ));
         }
         if !allow_http {
             return Err("HTTP_CONFIRM".into());
         }
     } else if !lower.starts_with("https://") {
-        return Err("網址要以 https:// 開頭".into());
+        return Err(tr!("網址要以 https:// 開頭"));
     }
     Ok(if url.ends_with('/') {
         url.to_string()
@@ -555,15 +560,15 @@ impl Dav {
     }
 
     fn resolve(&self, path: &str) -> Result<(std::sync::Arc<Session>, String), String> {
-        let (id, rel) = split(path).ok_or("遠端路徑不正確")?;
+        let (id, rel) = split(path).ok_or_else(|| tr!("遠端路徑不正確"))?;
         let session = self
             .session
             .lock()
             .unwrap()
             .clone()
-            .ok_or("還沒有連線到 WebDAV 伺服器")?;
+            .ok_or_else(|| tr!("還沒有連線到 WebDAV 伺服器"))?;
         if session.conn.id != id {
-            return Err("這個檔案屬於另一個 WebDAV 連線，請先重新連線".into());
+            return Err(tr!("這個檔案屬於另一個 WebDAV 連線，請先重新連線"));
         }
         Ok((session, rel.to_string()))
     }
@@ -678,7 +683,7 @@ pub async fn dav_reconnect(
     let conn = load_conns(&app)
         .into_iter()
         .find(|c| c.id == id)
-        .ok_or("找不到這個 WebDAV 連線，請重新設定")?;
+        .ok_or_else(|| tr!("找不到這個 WebDAV 連線，請重新設定"))?;
     let password = password
         .or_else(|| dav.passwords.lock().unwrap().get(&id).cloned())
         .or_else(|| saved_password(&id))
@@ -704,11 +709,11 @@ async fn open_session(
         let client = Client::new(&base, &user, &password);
         match client.stat("") {
             Ok(item) if item.is_dir => Ok((client, conn)),
-            Ok(_) => Err("這個網址不是資料夾".to_string()),
-            Err(DavError::Http(code)) if code == 405 || code == 501 => {
-                Err("這個網址不是 WebDAV 伺服器（請確認 NAS 已開啟 WebDAV 服務與連接埠）".into())
-            }
-            Err(e) => Err(e.message("無法連線")),
+            Ok(_) => Err(tr!("這個網址不是資料夾")),
+            Err(DavError::Http(code)) if code == 405 || code == 501 => Err(tr!(
+                "這個網址不是 WebDAV 伺服器（請確認 NAS 已開啟 WebDAV 服務與連接埠）"
+            )),
+            Err(e) => Err(e.message(&tr!("無法連線"))),
         }
     })
     .await?;
@@ -747,7 +752,7 @@ pub async fn dav_list(path: String, dav: State<'_, Dav>) -> Result<Vec<Entry>, S
         let items = session
             .client
             .propfind(&rel, 1)
-            .map_err(|e| e.message("無法讀取資料夾"))?;
+            .map_err(|e| e.message(&tr!("無法讀取資料夾")))?;
         let mut entries: Vec<Entry> = items
             .into_iter()
             .filter(|i| i.rel != rel && !i.rel.is_empty())
@@ -788,7 +793,7 @@ fn parallel_map<T: Sync, R: Send>(
         .into_inner()
         .unwrap()
         .into_iter()
-        .map(|r| r.expect("每個項目都處理過"))
+        .map(|r| r.expect("每個項目都處理過")) // i18n-ignore：程式錯誤
         .collect()
 }
 
@@ -841,7 +846,7 @@ pub async fn dav_list_files(dav: State<'_, Dav>) -> Result<Vec<FileItem>, String
         .lock()
         .unwrap()
         .clone()
-        .ok_or("還沒有連線到 WebDAV 伺服器")?;
+        .ok_or_else(|| tr!("還沒有連線到 WebDAV 伺服器"))?;
     crate::io::blocking_for(Duration::from_secs(60), move || {
         let id = session.conn.id.clone();
         let rels = walk_remote(&|dir: &str| session.client.propfind(dir, 1).ok());
@@ -856,11 +861,15 @@ pub async fn dav_list_files(dav: State<'_, Dav>) -> Result<Vec<FileItem>, String
 #[tauri::command]
 pub async fn dav_read(path: String, dav: State<'_, Dav>) -> Result<OpenedFile, String> {
     let (session, rel) = dav.resolve(&path)?;
-    let (bytes, etag) =
-        crate::io::blocking(move || session.client.get(&rel).map_err(|e| e.message("無法讀取")))
-            .await?;
+    let (bytes, etag) = crate::io::blocking(move || {
+        session
+            .client
+            .get(&rel)
+            .map_err(|e| e.message(&tr!("無法讀取")))
+    })
+    .await?;
     if let Some(why) = crate::files::not_text_reason(&bytes) {
-        return Err(format!("「{}」{why}", name_of(&path)));
+        return Err(tr!("「{name}」{why}", name = name_of(&path), why = why));
     }
     let (text, _, encoding) = decode(&bytes);
     if let Some(etag) = etag {
@@ -915,7 +924,7 @@ pub async fn dav_write(
                     .unwrap_or_default();
                 Ok(Err(disk))
             }
-            Err(e) => Err(e.message(&format!("無法儲存「{}」", name_of(&rel)))),
+            Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
         }
     })
     .await?;
@@ -966,8 +975,8 @@ pub async fn dav_create(
             session.client.put(&t, b"", None).map(|_| ())
         }
         .map_err(|e| match e {
-            DavError::Changed => DavError::Exists.message(&format!("無法建立「{name}」")),
-            e => e.message(&format!("無法建立「{name}」")),
+            DavError::Changed => DavError::Exists.message(&tr!("無法建立「{name}」", name = name)),
+            e => e.message(&tr!("無法建立「{name}」", name = name)),
         })
     })
     .await?;
@@ -983,7 +992,7 @@ pub async fn dav_rename(
 ) -> Result<String, String> {
     let (session, rel) = dav.resolve(&path)?;
     if rel.is_empty() {
-        return Err("不能重新命名遠端資料夾本身".into());
+        return Err(tr!("不能重新命名遠端資料夾本身"));
     }
     let new_name = validate_name(&new_name)?.to_string();
     let parent = rel.rsplit_once('/').map(|(p, _)| p).unwrap_or("");
@@ -998,7 +1007,7 @@ pub async fn dav_rename(
         session
             .client
             .move_to(&from, &to)
-            .map_err(|e| e.message("無法重新命名"))
+            .map_err(|e| e.message(&tr!("無法重新命名")))
     })
     .await?;
     let new_path = join(&id, &target);
@@ -1026,13 +1035,13 @@ pub async fn dav_rename(
 pub async fn dav_delete(path: String, dav: State<'_, Dav>) -> Result<(), String> {
     let (session, rel) = dav.resolve(&path)?;
     if rel.is_empty() {
-        return Err("不能刪除遠端資料夾本身".into());
+        return Err(tr!("不能刪除遠端資料夾本身"));
     }
     crate::io::blocking(move || {
         session
             .client
             .delete(&rel)
-            .map_err(|e| e.message("無法刪除"))
+            .map_err(|e| e.message(&tr!("無法刪除")))
     })
     .await?;
     dav.etags.lock().unwrap().remove(&path);
@@ -1068,7 +1077,7 @@ pub async fn dav_save_image(
         };
         match session.client.mkcol(&assets) {
             Ok(()) | Err(DavError::Exists) => {}
-            Err(e) => return Err(e.message("無法建立 assets 資料夾")),
+            Err(e) => return Err(e.message(&tr!("無法建立 assets 資料夾"))),
         }
         let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         for n in 1..100 {
@@ -1083,10 +1092,10 @@ pub async fn dav_save_image(
             {
                 Ok(_) => return Ok(format!("assets/{name}")),
                 Err(DavError::Changed) => continue, // 同名檔案已存在
-                Err(e) => return Err(e.message("無法儲存圖片")),
+                Err(e) => return Err(e.message(&tr!("無法儲存圖片"))),
             }
         }
-        Err("無法儲存圖片：同名檔案太多".into())
+        Err(tr!("無法儲存圖片：同名檔案太多"))
     })
     .await
 }
@@ -1096,13 +1105,17 @@ pub async fn dav_save_image(
 pub async fn dav_peek(path: String, dav: State<'_, Dav>) -> Result<String, String> {
     let (session, rel) = dav.resolve(&path)?;
     if !is_doc(std::path::Path::new(&rel)) {
-        return Err("只能讀取文件".into());
+        return Err(tr!("只能讀取文件"));
     }
-    let (bytes, _) =
-        crate::io::blocking(move || session.client.get(&rel).map_err(|e| e.message("無法讀取")))
-            .await?;
+    let (bytes, _) = crate::io::blocking(move || {
+        session
+            .client
+            .get(&rel)
+            .map_err(|e| e.message(&tr!("無法讀取")))
+    })
+    .await?;
     if bytes.len() as u64 > crate::workspace::PEEK_LIMIT {
-        return Err("檔案太大".into());
+        return Err(tr!("檔案太大"));
     }
     Ok(decode(&bytes).0)
 }
@@ -1120,13 +1133,13 @@ pub async fn dav_image(path: String, dav: State<'_, Dav>) -> Result<String, Stri
         "svg" => "image/svg+xml",
         "avif" => "image/avif",
         "bmp" => "image/bmp",
-        _ => return Err("不是圖片".into()),
+        _ => return Err(tr!("不是圖片")),
     };
     let (bytes, _) = crate::io::blocking(move || {
         session
             .client
             .get(&rel)
-            .map_err(|e| e.message("無法讀取圖片"))
+            .map_err(|e| e.message(&tr!("無法讀取圖片")))
     })
     .await?;
     Ok(format!(

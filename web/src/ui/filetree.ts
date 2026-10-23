@@ -2,6 +2,7 @@
  * 工作區的檔案樹：延遲載入子資料夾、鍵盤操作（WAI-ARIA tree 模式）、右鍵選單、原地改名。
  */
 import { displayPath, type Entry } from "../desktop.ts";
+import { t } from "../i18n.ts";
 import { dirname, isInside } from "../paths.ts";
 import { icon } from "./icons.ts";
 
@@ -16,12 +17,12 @@ export interface FileTreeHandlers {
 }
 
 const MENU: { action: TreeAction; label: string; dirOnly?: boolean; key?: string }[] = [
-  { action: "new-file", label: "新增檔案", dirOnly: true },
-  { action: "new-folder", label: "新增資料夾", dirOnly: true },
-  { action: "rename", label: "重新命名", key: "F2" },
-  { action: "trash", label: "移到資源回收筒", key: "Delete" },
-  { action: "reveal", label: "在檔案總管中顯示" },
-  { action: "copy-path", label: "複製路徑" },
+  { action: "new-file", label: t("新增檔案"), dirOnly: true },
+  { action: "new-folder", label: t("新增資料夾"), dirOnly: true },
+  { action: "rename", label: t("重新命名"), key: "F2" },
+  { action: "trash", label: t("移到資源回收筒"), key: "Delete" },
+  { action: "reveal", label: t("在檔案總管中顯示") },
+  { action: "copy-path", label: t("複製路徑") },
 ];
 
 export class FileTree {
@@ -147,7 +148,7 @@ export class FileTree {
       const input = document.createElement("input");
       input.className = "tree-input";
       input.value = initial;
-      input.setAttribute("aria-label", kind === "rename" ? "新名稱" : kind === "folder" ? "資料夾名稱" : "檔案名稱");
+      input.setAttribute("aria-label", kind === "rename" ? t("新名稱") : kind === "folder" ? t("資料夾名稱") : t("檔案名稱"));
       let done = false;
       const finish = (value: string | null) => {
         if (done) return;
@@ -208,7 +209,7 @@ export class FileTree {
     } catch (e) {
       const err = document.createElement("p");
       err.className = "tree-empty";
-      err.textContent = `無法讀取資料夾：${e instanceof Error ? e.message : e}`;
+      err.textContent = t("無法讀取資料夾：{error}", { error: e instanceof Error ? e.message : String(e) });
       container.replaceChildren(err);
       return;
     }
@@ -228,7 +229,7 @@ export class FileTree {
     if (!entries.length && container === this.#el) {
       const empty = document.createElement("p");
       empty.className = "tree-empty";
-      empty.textContent = "這個資料夾裡沒有 Markdown、純文字或 JSON 檔案。";
+      empty.textContent = t("這個資料夾裡沒有 Markdown、純文字或 JSON 檔案。");
       items.push(empty);
     }
     container.replaceChildren(...items);

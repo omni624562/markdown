@@ -59,7 +59,7 @@ pub fn branches_at(dir: &Path) -> Result<Branches, String> {
 fn require_clean(repo: &Repository) -> Result<(), String> {
     require_clean_state(repo)?;
     if has_changes(repo)? {
-        return Err("還有未提交的變更，請先提交再切換分支".into());
+        return Err(tr!("還有未提交的變更，請先提交再切換分支"));
     }
     Ok(())
 }
@@ -73,7 +73,7 @@ pub fn checkout_at(dir: &Path, name: &str) -> Result<String, String> {
         Err(_) => {
             let remote = repo
                 .find_branch(&format!("origin/{name}"), BranchType::Remote)
-                .map_err(|_| format!("找不到分支「{name}」"))?;
+                .map_err(|_| tr!("找不到分支「{name}」", name = name))?;
             let commit = remote.get().peel_to_commit().map_err(err)?;
             let mut b = repo.branch(name, &commit, false).map_err(err)?;
             b.set_upstream(Some(&format!("origin/{name}")))
@@ -83,29 +83,29 @@ pub fn checkout_at(dir: &Path, name: &str) -> Result<String, String> {
     };
     let target = branch.get().peel_to_commit().map_err(err)?;
     repo.checkout_tree(target.as_object(), Some(CheckoutBuilder::new().safe()))
-        .map_err(|e| format!("切換分支失敗：{}", e.message()))?;
+        .map_err(|e| tr!("切換分支失敗：{e}", e = e.message()))?;
     repo.set_head(&format!("refs/heads/{name}")).map_err(err)?;
-    Ok(format!("已切換到「{name}」"))
+    Ok(tr!("已切換到「{name}」", name = name))
 }
 
 /// 從目前的提交建立新分支並切換過去（檔案不會變動）。
 pub fn create_branch_at(dir: &Path, name: &str) -> Result<String, String> {
     let name = name.trim();
     if !git2::Branch::name_is_valid(name).unwrap_or(false) || name.starts_with('-') {
-        return Err("分支名稱不正確：不能有空白與 ~ ^ : ? * [ \\ 等符號".into());
+        return Err(tr!("分支名稱不正確：不能有空白與 ~ ^ : ? * [ \\ 等符號"));
     }
     let repo = open(dir)?;
     require_clean_state(&repo)?;
     if repo.find_branch(name, BranchType::Local).is_ok() {
-        return Err(format!("已經有「{name}」這個分支"));
+        return Err(tr!("已經有「{name}」這個分支", name = name));
     }
     let head = repo
         .head()
         .and_then(|h| h.peel_to_commit())
-        .map_err(|_| "還沒有任何提交，請先提交一次".to_string())?;
+        .map_err(|_| tr!("還沒有任何提交，請先提交一次"))?;
     repo.branch(name, &head, false).map_err(err)?;
     repo.set_head(&format!("refs/heads/{name}")).map_err(err)?;
-    Ok(format!("已建立並切換到「{name}」"))
+    Ok(tr!("已建立並切換到「{name}」", name = name))
 }
 
 // ---- 合併衝突 -----------------------------------------------------------------
@@ -150,13 +150,13 @@ pub fn merge_start_at(dir: &Path) -> Result<Vec<Conflict>, String> {
     let repo = open(dir)?;
     require_clean_state(&repo)?;
     if has_changes(&repo)? {
-        return Err("還有未提交的變更，請先提交".into());
+        return Err(tr!("還有未提交的變更，請先提交"));
     }
     let (_, remote_name, merge) = tracking(&repo)?;
     let short = merge.trim_start_matches("refs/heads/");
     let theirs_id = repo
         .refname_to_id(&format!("refs/remotes/{remote_name}/{short}"))
-        .map_err(|_| "找不到遠端的分支，請先拉取".to_string())?;
+        .map_err(|_| tr!("找不到遠端的分支，請先拉取"))?;
     let annotated = repo.find_annotated_commit(theirs_id).map_err(err)?;
     let mut checkout = CheckoutBuilder::new();
     checkout
@@ -164,7 +164,7 @@ pub fn merge_start_at(dir: &Path) -> Result<Vec<Conflict>, String> {
         .allow_conflicts(true)
         .conflict_style_merge(true);
     repo.merge(&[&annotated], None, Some(&mut checkout))
-        .map_err(|e| format!("合併失敗：{}", e.message()))?;
+        .map_err(|e| tr!("合併失敗：{e}", e = e.message()))?;
 
     let root = workdir(&repo)?;
     let index = repo.index().map_err(err)?;
@@ -187,7 +187,7 @@ pub fn merge_start_at(dir: &Path) -> Result<Vec<Conflict>, String> {
             if let Some(dir) = abs.parent() {
                 let _ = fs::create_dir_all(dir);
             }
-            fs::write(&abs, bytes).map_err(|e| format!("無法寫入「{rel}」：{e}"))
+            fs::write(&abs, bytes).map_err(|e| tr!("無法寫入「{rel}」：{e}", rel = rel, e = e))
         };
         let (theirs_text, note) = match (&ours, &theirs) {
             (Some(o), Some(t))
@@ -200,15 +200,15 @@ pub fn merge_start_at(dir: &Path) -> Result<Vec<Conflict>, String> {
             }
             (Some(o), Some(_)) => {
                 write(o)?;
-                (None, Some("不是文字檔，保留本機的版本".to_string()))
+                (None, Some(tr!("不是文字檔，保留本機的版本")))
             }
             (Some(o), None) => {
                 write(o)?;
-                (None, Some("遠端刪除了這個檔案，保留本機的版本".to_string()))
+                (None, Some(tr!("遠端刪除了這個檔案，保留本機的版本")))
             }
             (None, Some(_)) => {
                 let _ = fs::remove_file(&abs);
-                (None, Some("本機刪除了這個檔案，維持刪除".to_string()))
+                (None, Some(tr!("本機刪除了這個檔案，維持刪除")))
             }
             (None, None) => continue,
         };
@@ -246,7 +246,7 @@ pub fn merge_conflicts_at(dir: &Path) -> Result<Vec<String>, String> {
 pub fn merge_finish_at(dir: &Path, who: Option<&Identity>) -> Result<String, String> {
     let mut repo = open(dir)?;
     if repo.state() != RepositoryState::Merge {
-        return Err("目前沒有正在進行的合併".into());
+        return Err(tr!("目前沒有正在進行的合併"));
     }
     let mut heads = Vec::new();
     repo.mergehead_foreach(|oid| {
@@ -269,8 +269,9 @@ pub fn merge_finish_at(dir: &Path, who: Option<&Identity>) -> Result<String, Str
         let abs = root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
         if abs.exists() {
             if fs::read(&abs).is_ok_and(|b| has_markers(&b)) {
-                return Err(format!(
-                    "「{rel}」裡還有 <<<<<<< 衝突標記，請先處理完再完成合併"
+                return Err(tr!(
+                    "「{rel}」裡還有 <<<<<<< 衝突標記，請先處理完再完成合併",
+                    rel = rel
                 ));
             }
             index.add_path(Path::new(rel)).map_err(err)?;
@@ -284,20 +285,21 @@ pub fn merge_finish_at(dir: &Path, who: Option<&Identity>) -> Result<String, Str
         .map_err(err)?;
     let ours = repo.head().and_then(|h| h.peel_to_commit()).map_err(err)?;
     let theirs = repo
-        .find_commit(*heads.first().ok_or("找不到要合併的提交")?)
+        .find_commit(*heads.first().ok_or_else(|| tr!("找不到要合併的提交"))?)
         .map_err(err)?;
     let sig = signature(&repo, who)?;
     let message = match tracking(&repo) {
-        Ok((_, remote, merge)) => format!(
-            "合併 {remote}/{} 的變更",
-            merge.trim_start_matches("refs/heads/")
+        Ok((_, remote, merge)) => tr!(
+            "合併 {remote_name}/{short} 的變更",
+            remote_name = remote,
+            short = merge.trim_start_matches("refs/heads/")
         ),
-        Err(_) => "合併遠端的變更".into(),
+        Err(_) => tr!("合併遠端的變更"),
     };
     repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&ours, &theirs])
-        .map_err(|e| format!("完成合併失敗：{}", e.message()))?;
+        .map_err(|e| tr!("完成合併失敗：{e}", e = e.message()))?;
     repo.cleanup_state().map_err(err)?;
-    Ok("已完成合併，記得推送".into())
+    Ok(tr!("已完成合併，記得推送"))
 }
 
 fn has_markers(bytes: &[u8]) -> bool {
@@ -310,13 +312,13 @@ fn has_markers(bytes: &[u8]) -> bool {
 pub fn merge_abort_at(dir: &Path) -> Result<String, String> {
     let repo = open(dir)?;
     if repo.state() != RepositoryState::Merge {
-        return Ok("目前沒有正在進行的合併".into());
+        return Ok(tr!("目前沒有正在進行的合併"));
     }
     let head = repo.head().and_then(|h| h.peel_to_commit()).map_err(err)?;
     repo.reset(head.as_object(), git2::ResetType::Hard, None)
-        .map_err(|e| format!("放棄合併失敗：{}", e.message()))?;
+        .map_err(|e| tr!("放棄合併失敗：{e}", e = e.message()))?;
     repo.cleanup_state().map_err(err)?;
-    Ok("已放棄合併，回到合併前的狀態".into())
+    Ok(tr!("已放棄合併，回到合併前的狀態"))
 }
 
 // ---- Pull Request -------------------------------------------------------------
@@ -331,32 +333,32 @@ fn create_pr(
 ) -> Result<String, String> {
     let title = title.trim();
     if title.is_empty() {
-        return Err("請輸入 Pull Request 的標題".into());
+        return Err(tr!("請輸入 Pull Request 的標題"));
     }
     if let Some(name) = new_branch.filter(|n| !n.trim().is_empty()) {
         create_branch_at(dir, name)?;
     }
     let repo = open(dir)?;
     if has_changes(&repo)? {
-        return Err("還有未提交的變更，請先提交".into());
+        return Err(tr!("還有未提交的變更，請先提交"));
     }
     let branch = repo
         .head()
         .ok()
         .filter(|h| h.is_branch())
         .and_then(|h| h.shorthand().ok().map(str::to_string))
-        .ok_or("目前不在任何分支上")?;
+        .ok_or_else(|| tr!("目前不在任何分支上"))?;
     let remote = repo
         .find_remote("origin")
         .ok()
         .and_then(|r| r.url().ok().map(str::to_string))
-        .ok_or("這個資料夾還沒有連到 GitHub 或 Azure DevOps")?;
+        .ok_or_else(|| tr!("這個資料夾還沒有連到 GitHub 或 Azure DevOps"))?;
     drop(repo);
     crate::git::push_at(dir, &crate::git::auth(app))?;
     if let Some((owner, name)) = crate::git_files::github_repo(&remote) {
         let token = crate::github::auth(app)
             .github_token
-            .ok_or("請先用 GitHub 登入")?;
+            .ok_or_else(|| tr!("請先用 GitHub 登入"))?;
         return crate::github::create_pull(&token, &owner, &name, &branch, title, body);
     }
     crate::ado::create_pull(app, &remote, &branch, title, body)
@@ -367,7 +369,7 @@ fn create_pr(
 fn root(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     app.state::<Workspace>()
         .root()
-        .ok_or_else(|| "還沒有開啟資料夾".to_string())
+        .ok_or_else(|| tr!("還沒有開啟資料夾"))
 }
 
 #[tauri::command]

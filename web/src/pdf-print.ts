@@ -4,6 +4,8 @@
  * 桌面版接著請 WebView 直接存成 PDF，網頁版開啟列印對話框。
  */
 
+import { t } from "./i18n.ts";
+
 export type Paper = "A4" | "A5" | "Letter";
 
 export interface PdfOptions {
@@ -19,7 +21,7 @@ export interface PdfOptions {
 export const PAPERS: Record<Paper, { label: string; width: number; height: number }> = {
   A4: { label: "A4", width: 210, height: 297 },
   A5: { label: "A5", width: 148, height: 210 },
-  Letter: { label: "Letter（美規）", width: 215.9, height: 279.4 },
+  Letter: { label: t("Letter（美規）"), width: 215.9, height: 279.4 },
 };
 
 export interface PageLayout {
@@ -52,7 +54,9 @@ export function pageCss(o: PdfOptions): string {
   const l = pageLayout(o);
   const box = "font: 9pt -apple-system, 'Segoe UI', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif; color: #888;";
   const header = o.header.trim() ? `@top-left { content: ${cssString(o.header.trim())}; ${box} }` : "";
-  const numbers = o.pageNumbers ? `@bottom-center { content: "第 " counter(page) " 頁，共 " counter(pages) " 頁"; ${box} }` : "";
+  // CSS 的 content：頁碼的文字依介面語言。
+  const pageOf = t('"第 " counter(page) " 頁，共 " counter(pages) " 頁"');
+  const numbers = o.pageNumbers ? `@bottom-center { content: ${pageOf}; ${box} }` : "";
   const first = o.cover ? "@page :first { @top-left { content: none; } @bottom-center { content: none; } }" : "";
   return `@page { size: ${l.widthMm}mm ${l.heightMm}mm; margin: ${l.marginTopMm}mm ${l.marginSideMm}mm ${l.marginBottomMm}mm; ${header} ${numbers} }\n${first}`;
 }

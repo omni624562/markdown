@@ -9,6 +9,7 @@
 import { applyEdits, buildPrompt, cleanResult } from "./ai-text.ts";
 import type { AiCommand, AiProposal, AiRunEvent, Desktop, EditorSnapshot } from "./desktop.ts";
 import type { Editor } from "./editor.ts";
+import { t } from "./i18n.ts";
 import type { QuickAction, Settings, SettingsStore } from "./settings.ts";
 import { icon } from "./ui/icons.ts";
 import { choose } from "./ui/choice.ts";
@@ -79,14 +80,14 @@ export class AiController {
     if (!this.#mcpRunning) return;
     clearTimeout(this.#syncTimer);
     this.#syncTimer = window.setTimeout(() => {
-      void this.#d.mcpSync(this.#host.snapshot()).catch((e) => console.error("同步編輯器狀態失敗", e));
+      void this.#d.mcpSync(this.#host.snapshot()).catch((e) => console.error("同步編輯器狀態失敗", e)); // i18n-ignore（開發者主控台）
     }, 250);
   }
 
   /** 設定面板「複製註冊指令」用。 */
   async registration(): Promise<{ claudeAdd: string; codexAdd: string }> {
     const s = this.#settings.value;
-    if (!s.aiEnabled || !s.mcpServer) throw new Error("請先開啟「啟用 AI 協作」與「讓 AI 讀取目前的文件」");
+    if (!s.aiEnabled || !s.mcpServer) throw new Error(t("請先開啟「啟用 AI 協作」與「讓 AI 讀取目前的文件」"));
     return this.#d.mcpStart();
   }
 
@@ -103,7 +104,7 @@ export class AiController {
         await this.#d.mcpStop();
       }
     } catch (e) {
-      toast(`無法啟動編輯器的 MCP 伺服器：${e instanceof Error ? e.message : e}`, { tone: "error" });
+      toast(t("無法啟動編輯器的 MCP 伺服器：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });
     }
   }
 
@@ -132,7 +133,8 @@ export class AiController {
     try {
       await this.#host.showDocument(p.path);
     } catch (e) {
-      this.#respond(p.id, false, `無法開啟文件：${e instanceof Error ? e.message : e}`);
+      // 回覆給 AI 的訊息（不是介面），維持中文。
+      this.#respond(p.id, false, `無法開啟文件：${e instanceof Error ? e.message : e}`); // i18n-ignore
       return;
     }
     const before = editor.text;
@@ -149,25 +151,27 @@ export class AiController {
       return;
     }
     if (proposed === before) {
-      this.#respond(p.id, true, "提議的內容和目前的文件相同，沒有需要修改的地方。");
+      this.#respond(p.id, true, "提議的內容和目前的文件相同，沒有需要修改的地方。"); // i18n-ignore（回覆給 AI）
       return;
     }
     await new Promise<void>((resolve) => {
       const started = review.start(proposed, {
-        title: "AI 提出的修改",
-        hint: p.summary || "逐段選擇要不要採用；接受後記得存檔。",
-        acceptLabel: "接受",
-        rejectLabel: "拒絕",
+        title: t("AI 提出的修改"),
+        hint: p.summary || t("逐段選擇要不要採用；接受後記得存檔。"),
+        acceptLabel: t("接受"),
+        rejectLabel: t("拒絕"),
         onFinish: () => {
           const after = editor.text;
+          // 下面三句是回覆給 AI 的訊息（不是介面）。
+          // i18n-ignore
           if (after === proposed) this.#respond(p.id, true, "使用者接受了全部修改（已套用到編輯器，使用者稍後會自己存檔）。");
-          else if (after === before) this.#respond(p.id, true, "使用者拒絕了這次修改，文件維持原樣。");
-          else this.#respond(p.id, true, "使用者接受了部分修改。最新內容可以用 get_active_document 查看。");
+          else if (after === before) this.#respond(p.id, true, "使用者拒絕了這次修改，文件維持原樣。"); // i18n-ignore
+          else this.#respond(p.id, true, "使用者接受了部分修改。最新內容可以用 get_active_document 查看。"); // i18n-ignore
           resolve();
         },
       });
       if (!started) {
-        this.#respond(p.id, true, "提議的內容和目前的文件相同。");
+        this.#respond(p.id, true, "提議的內容和目前的文件相同。"); // i18n-ignore（回覆給 AI）
         resolve();
       }
     });
@@ -178,40 +182,44 @@ export class AiController {
   async #onCommand(c: AiCommand): Promise<void> {
     const reply = async (ok: boolean, message: string) => {
       const waiting = await this.#d.mcpRespond(c.id, { ok, message }).catch(() => false);
-      if (ok && !waiting) toast("AI 已經不再等待這個指令，所以沒有執行。", { tone: "error" });
+      if (ok && !waiting) toast(t("AI 已經不再等待這個指令，所以沒有執行。"), { tone: "error" });
     };
     const s = this.#settings.value;
     if (!s.aiEnabled || !s.aiTerminal) {
-      await reply(false, "使用者沒有開放讓 AI 在終端機執行指令（設定 → AI 協作 →「讓 AI 在終端機執行指令」）。");
+      // 回覆給 AI 的訊息（不是介面）。
+      await reply(false, "使用者沒有開放讓 AI 在終端機執行指令（設定 → AI 協作 →「讓 AI 在終端機執行指令」）。"); // i18n-ignore
       return;
     }
     if (this.#allowCommands) {
-      await reply(true, "使用者已同意。");
+      await reply(true, "使用者已同意。"); // i18n-ignore（回覆給 AI）
       return;
     }
     const ctl = new AbortController();
     this.#asking.set(c.id, ctl);
     const choice = await choose(
-      "AI 要在終端機執行指令",
-      `${c.reason ? `${c.reason}。` : ""}執行位置：${c.cwd}。執行過程會顯示在下方的終端機。`,
+      t("AI 要在終端機執行指令"),
+      c.reason
+        ? t("{reason}。執行位置：{cwd}。執行過程會顯示在下方的終端機。", { reason: c.reason, cwd: c.cwd })
+        : t("執行位置：{cwd}。執行過程會顯示在下方的終端機。", { cwd: c.cwd }),
       [
-        { id: "run", label: "執行", primary: true },
-        { id: "always", label: "這次開啟期間都直接執行" },
-        { id: "deny", label: "拒絕" },
+        { id: "run", label: t("執行"), primary: true },
+        { id: "always", label: t("這次開啟期間都直接執行") },
+        { id: "deny", label: t("拒絕") },
       ],
       // 對話框可能在使用者打字時跳出來：預設聚焦「拒絕」，按 Enter 不會誤執行。
       { code: c.command, signal: ctl.signal, focus: "deny" },
     );
     this.#asking.delete(c.id);
     if (ctl.signal.aborted) {
-      toast("AI 等太久已經放棄，指令沒有執行。", { duration: 6000 });
+      toast(t("AI 等太久已經放棄，指令沒有執行。"), { duration: 6000 });
       return;
     }
     if (choice === "run" || choice === "always") {
       if (choice === "always") this.#allowCommands = true;
-      await reply(true, "使用者已同意。");
+      await reply(true, "使用者已同意。"); // i18n-ignore（回覆給 AI）
     } else {
-      await reply(false, "使用者拒絕執行這個指令。請不要再要求執行相同的指令，可以改問使用者想怎麼做。");
+      // 回覆給 AI 的訊息（不是介面）。
+      await reply(false, "使用者拒絕執行這個指令。請不要再要求執行相同的指令，可以改問使用者想怎麼做。"); // i18n-ignore
     }
   }
 
@@ -225,12 +233,12 @@ export class AiController {
   async runAction(action: QuickAction): Promise<void> {
     const { editor, review } = this.#host;
     if (this.#run) {
-      toast("上一個 AI 動作還在處理中。");
+      toast(t("上一個 AI 動作還在處理中。"));
       return;
     }
     const { from, to } = editor.view.state.selection.main;
     if (from === to) {
-      toast("請先選取要處理的文字。");
+      toast(t("請先選取要處理的文字。"));
       return;
     }
     if (review.active) review.finish();
@@ -265,7 +273,7 @@ export class AiController {
     this.#run = null;
     this.#renderBar();
     if (e.kind === "error") {
-      toast(`AI 處理失敗：${e.message}`, { tone: "error", duration: 12000 });
+      toast(t("AI 處理失敗：{error}", { error: e.message }), { tone: "error", duration: 12000 });
       return;
     }
     this.#apply(run, cleanResult(e.text || run.text, run.original), e.costUsd, e.tokens);
@@ -279,7 +287,7 @@ export class AiController {
     if (text.slice(run.from, run.to) !== run.original) {
       const at = text.indexOf(run.original);
       if (at < 0 || text.indexOf(run.original, at + 1) >= 0) {
-        toast("原本選取的文字已經改變，無法套用 AI 的結果。已把結果複製到剪貼簿。", { tone: "error", duration: 10000 });
+        toast(t("原本選取的文字已經改變，無法套用 AI 的結果。已把結果複製到剪貼簿。"), { tone: "error", duration: 10000 });
         void navigator.clipboard.writeText(result);
         return;
       }
@@ -287,15 +295,19 @@ export class AiController {
     }
     const proposed = text.slice(0, from) + result + text.slice(from + run.original.length);
     const usage =
-      costUsd != null ? `用量約 US$${costUsd < 0.01 ? costUsd.toFixed(4) : costUsd.toFixed(2)}` : tokens ? `用了 ${tokens.toLocaleString()} 個 token` : "";
+      costUsd != null
+        ? t("用量約 US${cost}", { cost: costUsd < 0.01 ? costUsd.toFixed(4) : costUsd.toFixed(2) })
+        : tokens
+          ? t("用了 {n} 個 token", { n: tokens.toLocaleString() })
+          : "";
     if (review.active) review.finish();
     const started = review.start(proposed, {
-      title: `AI：${run.name}`,
-      hint: [usage, "逐段選擇要不要採用"].filter(Boolean).join(" · "),
-      acceptLabel: "採用",
-      rejectLabel: "保留原文",
+      title: t("AI：{name}", { name: run.name }),
+      hint: [usage, t("逐段選擇要不要採用")].filter(Boolean).join(" · "),
+      acceptLabel: t("採用"),
+      rejectLabel: t("保留原文"),
     });
-    if (!started) toast("AI 的結果和原文相同。");
+    if (!started) toast(t("AI 的結果和原文相同。"));
   }
 
   #renderBar(): void {
@@ -304,20 +316,20 @@ export class AiController {
     if (!run) return;
     const head = document.createElement("p");
     head.append(icon("sparkles"));
-    head.append(Object.assign(document.createElement("strong"), { textContent: `AI：${run.name}` }));
+    head.append(Object.assign(document.createElement("strong"), { textContent: t("AI：{name}", { name: run.name }) }));
     head.append(
       Object.assign(document.createElement("span"), {
-        textContent: `${TOOL_LABEL[this.#settings.value.aiTool]} 處理中…`,
+        textContent: t("{tool} 處理中…", { tool: TOOL_LABEL[this.#settings.value.aiTool] }),
       }),
     );
     const stop = document.createElement("button");
     stop.type = "button";
     stop.className = "btn";
-    stop.append(icon("circle-stop"), "取消");
+    stop.append(icon("circle-stop"), t("取消"));
     stop.addEventListener("click", () => this.cancel());
     const preview = document.createElement("div");
     preview.className = "ai-stream";
-    preview.textContent = run.text.slice(-400) || "等待回應…";
+    preview.textContent = run.text.slice(-400) || t("等待回應…");
     this.#bar.replaceChildren(head, stop, preview);
   }
 }

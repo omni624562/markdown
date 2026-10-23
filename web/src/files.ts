@@ -4,6 +4,7 @@
  * 其他瀏覽器則退回「選擇檔案」與「下載」。
  */
 import { type DesktopFile, desktop } from "./desktop.ts";
+import { t } from "./i18n.ts";
 import { type DocKind, KINDS, OPEN_ACCEPT, notTextReason } from "./kinds.ts";
 
 export interface FileHandle {
@@ -56,8 +57,9 @@ export function desktopHandle(path: string, name: string): FileHandle {
   return {
     name,
     path,
-    getFile: () => Promise.reject(new Error("桌面版不支援 getFile")),
-    createWritable: () => Promise.reject(new Error("桌面版不支援 createWritable")),
+    // 不會走到這裡（桌面版的讀寫都交給原生程式），只是開發時的保險。
+    getFile: () => Promise.reject(new Error("桌面版不支援 getFile")), // i18n-ignore
+    createWritable: () => Promise.reject(new Error("桌面版不支援 createWritable")), // i18n-ignore
   };
 }
 
@@ -74,7 +76,7 @@ function isAbort(e: unknown): boolean {
 export async function readTextFile(file: File): Promise<string> {
   const text = await file.text();
   const why = notTextReason(text);
-  if (why) throw new Error(`「${file.name}」${why}`);
+  if (why) throw new Error(t("「{name}」{reason}", { name: file.name, reason: why }));
   return text;
 }
 

@@ -55,7 +55,7 @@ fn clean(text: Option<String>, max: usize, what: &str) -> Result<Option<String>,
         return Ok(None);
     }
     if text.chars().count() > max {
-        return Err(format!("{what}最多 {max} 個字"));
+        return Err(tr!("{what}最多 {max} 個字", what = what, max = max));
     }
     Ok(Some(text.to_string()))
 }
@@ -71,12 +71,12 @@ pub struct ProjectChange {
 
 /// 檢查後套用到專案設定（整組取代可以修改的欄位）。
 fn apply(meta: &mut ProjectMeta, change: ProjectChange) -> Result<(), String> {
-    let name = clean(change.name, MAX_NAME, "名稱")?;
-    let group = clean(change.group, MAX_GROUP, "群組名稱")?;
+    let name = clean(change.name, MAX_NAME, &tr!("名稱"))?;
+    let group = clean(change.group, MAX_GROUP, &tr!("群組名稱"))?;
     let color = match change.color.as_deref() {
         None | Some("") => None,
         Some(c) if COLORS.contains(&c) => Some(c.to_string()),
-        Some(_) => return Err("不支援這個顏色".into()),
+        Some(_) => return Err(tr!("不支援這個顏色")),
     };
     // 跟資料夾名稱一樣就不必另外記。
     meta.name = name.filter(|n| *n != display_name(&meta.path));
@@ -136,12 +136,12 @@ pub async fn project_relocate(
 ) -> Result<Option<ProjectInfo>, String> {
     let from = PathBuf::from(&path);
     let Some(meta) = trust.project(&from) else {
-        return Err("這個資料夾不在專案清單中".into());
+        return Err(tr!("這個資料夾不在專案清單中"));
     };
     let label = ProjectInfo::from(meta).label;
     let Some(picked) = rfd::AsyncFileDialog::new()
         .set_parent(&window)
-        .set_title(format!("重新指定「{label}」的位置"))
+        .set_title(tr!("重新指定「{label}」的位置", label = label))
         .pick_folder()
         .await
     else {
@@ -157,11 +157,11 @@ pub async fn project_relocate(
 pub async fn project_reveal(trust: State<'_, Trust>, path: String) -> Result<(), String> {
     let path = PathBuf::from(path);
     if !trust.allows_folder(&path) {
-        return Err("這個資料夾不在專案清單中".into());
+        return Err(tr!("這個資料夾不在專案清單中"));
     }
     crate::io::blocking(move || {
         if !path.is_dir() {
-            return Err(format!("找不到資料夾「{}」", path.display()));
+            return Err(tr!("找不到資料夾「{path}」", path = path.display()));
         }
         crate::workspace::reveal_path(&path)
     })
