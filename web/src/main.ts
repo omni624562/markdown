@@ -262,6 +262,8 @@ if (storage.load("layout") !== "minimal") {
   if (storage.load("view") !== "preview") storage.save("view", "live");
 }
 let outlineShown = storage.load("outline") !== "hidden";
+/** 大綱放在右邊時，右邊那一欄是否顯示（可以整個收起來）。 */
+let rightOutlineShown = storage.load("outline-right") !== "hidden";
 /** 資料夾內容可能變了，下次用到索引時重新讀取。 */
 let indexStale = true;
 /** 編輯器目前是否套用了即時預覽（Markdown 且檢視為「即時預覽」）。 */
@@ -2114,15 +2116,29 @@ function refreshIndexPanels(delay = 0): void {
 
 /** 視窗夠寬時，大綱可以固定放在內文右邊（設定「大綱放在右邊」）。 */
 const wideQuery = matchMedia("(min-width: 1100px)");
-function outlineOnRight(): boolean {
+function outlinePlacedRight(): boolean {
   return settings.value.outlineRight && wideQuery.matches && !narrowQuery.matches;
+}
+/** 大綱在右邊、而且沒有收起來。 */
+function outlineOnRight(): boolean {
+  return outlinePlacedRight() && rightOutlineShown;
+}
+
+function setRightOutline(shown: boolean): void {
+  rightOutlineShown = shown;
+  storage.save("outline-right", shown ? "shown" : "hidden");
+  applyLayout();
+  if (shown) {
+    void renderBacklinks();
+    updateActiveHeading();
+  }
 }
 
 /** 依設定把大綱面板移到右邊或放回左邊的側邊欄。 */
 function placeOutline(): void {
   const panel = $("#panel-outline");
   const right = $("#outline-right");
-  const onRight = outlineOnRight();
+  const onRight = outlinePlacedRight();
   const outlineTab = $<HTMLButtonElement>("#side-tab-outline");
   if (onRight && panel.parentElement !== right) {
     right.append(panel);
@@ -2136,7 +2152,7 @@ function placeOutline(): void {
     outlineTab.hidden = false;
     panel.hidden = sidePanel !== "outline";
   }
-  right.hidden = !onRight;
+  right.hidden = !outlineOnRight();
 }
 
 function showPanel(panel: SidePanel, reveal = true): void {
@@ -2144,8 +2160,9 @@ function showPanel(panel: SidePanel, reveal = true): void {
   if (panel === "workitems" && $("#side-tab-workitems").hidden) panel = "files";
   if (panel === "issues" && $("#side-tab-issues").hidden) panel = "files";
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
-  if (panel === "outline" && outlineOnRight()) {
-    updateActiveHeading();
+  if (panel === "outline" && outlinePlacedRight()) {
+    if (!rightOutlineShown) setRightOutline(true);
+    else updateActiveHeading();
     return;
   }
   sidePanel = panel;
@@ -2154,7 +2171,7 @@ function showPanel(panel: SidePanel, reveal = true): void {
     const on = tab.dataset.panel === panel;
     tab.setAttribute("aria-selected", String(on));
     tab.tabIndex = on ? 0 : -1;
-    if (tab.dataset.panel === "outline" && outlineOnRight()) continue;
+    if (tab.dataset.panel === "outline" && outlinePlacedRight()) continue;
     $(`#panel-${tab.dataset.panel}`).hidden = !on;
   }
   if (reveal && !outlineShown) setOutline(true);
@@ -3467,6 +3484,15 @@ commands.register(
     icon: "panel-left",
     keys: "Mod-Shift-o",
     run: () => setOutline(!outlineShown),
+  },
+  {
+    id: "toggle-outline-right",
+    title: t("顯示／隱藏右邊的大綱"),
+    group: t("檢視"),
+    icon: "panel-right",
+    keys: "Mod-Alt-b",
+    when: () => outlinePlacedRight(),
+    run: () => setRightOutline(!rightOutlineShown),
   },
   ...(["system", "light", "dark"] as const).map(
     (pref): Command => ({
@@ -4856,6 +4882,13 @@ function applyLayout(): void {
   });
   // 側邊欄打開時，分頁從編輯區的左緣開始，和下面的欄位對齊。
   $(".topbar").classList.toggle("with-sidebar", outlineShown && !narrow);
+  // 右上角的按鈕：大綱放在右邊時，收起或打開右邊那一欄。
+  const rightToggle = $("[data-command='toggle-outline-right']");
+  rightToggle.hidden = !outlinePlacedRight();
+  if (rightToggle.getAttribute("aria-pressed") !== String(rightOutlineShown)) {
+    rightToggle.setAttribute("aria-pressed", String(rightOutlineShown));
+    rightToggle.replaceChildren(icon(rightOutlineShown ? "panel-right-close" : "panel-right"));
+  }
   const navToggle = $("[data-command='toggle-outline']");
   if (navToggle.getAttribute("aria-pressed") !== String(outlineShown)) {
     navToggle.setAttribute("aria-pressed", String(outlineShown));
@@ -4977,7 +5010,11 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
     refreshLivePreview(editor.view);
   }
   if (changed.includes("termCheck") || changed.includes("termIgnore")) recheckTerms(editor.view);
-  if (changed.includes("outlineRight")) applyLayout();
+  if (changed.includes("outlineRight")) {
+    // 打開「大綱放在右邊」時，一定讓它顯示出來。
+    if (settings.value.outlineRight) rightOutlineShown = true;
+    applyLayout();
+  }
 }
 
 /** 整份文件的兩國用語與錯字：不需要判斷文意的直接換掉，其他的留著波浪底線。 */

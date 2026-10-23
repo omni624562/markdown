@@ -289,6 +289,7 @@ export const main: Record<string, Translation> = {
   "縮小編輯區文字": "Decrease Editor Font Size",
   "編輯區文字恢復預設大小": "Reset Editor Font Size",
   "顯示／隱藏側邊欄": "Show/Hide Sidebar",
+  "顯示／隱藏右邊的大綱": "Show/Hide Right Outline",
   "主題：跟隨系統": "Theme: Follow System",
   "主題：淺色": "Theme: Light",
   "主題：深色": "Theme: Dark",
