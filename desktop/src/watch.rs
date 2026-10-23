@@ -1,7 +1,9 @@
 //! 監看檔案變動：工作區資料夾，以及工作區外已開啟檔案所在的資料夾。
 //!
 //! 只在內容真的和編輯器最後一次同步時不同才通知前端（自己存檔不會觸發）。
-//! 網路磁碟（UNC 路徑、對應的網路磁碟機）不保證會發出變動通知，改用每 5 秒輪詢。
+//! 網路磁碟（UNC 路徑、對應的網路磁碟機）不保證會發出變動通知，改用每 10 秒輪詢。
+//! 輪詢每次都要列出監看的資料夾，所以只監看檔案樹會顯示的資料夾（依 .gitignore，
+//! 略過 `.git`、`node_modules` 等），而且有數量上限。
 //!
 //! 資料夾結構的變動（`tree-changed`）會讓前端重新列出檔案、重新搜尋、重新查 git 狀態，
 //! 所以這些不算：自己存檔用的暫存檔、`.git`、`node_modules` 等檔案樹本來就不顯示的資料夾，
@@ -23,7 +25,11 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::files::{decode, hash_bytes, is_temp_name, path_string, KnownFiles, MAX_OPEN_BYTES};
 
 const DEBOUNCE: Duration = Duration::from_millis(300);
-const POLL_INTERVAL: Duration = Duration::from_secs(5);
+const POLL_INTERVAL: Duration = Duration::from_secs(10);
+/// 輪詢最多監看幾個資料夾（淺的優先）。每個資料夾每次輪詢都要列出內容。
+const MAX_POLL_DIRS: usize = 2000;
+/// 找要輪詢的資料夾時最多看幾個（避免在很深、很大的資料夾裡走訪太久）。
+const MAX_POLL_SCAN: usize = 20_000;
 
 // 不用 notify 建議的 FileIdMap 快取：它在 Windows、macOS 上開始監看時會走訪整個資料夾
 // （包括 node_modules），每次重新掃描也一樣。快取只用來把改名的前後兩個事件接起來，
@@ -45,8 +51,9 @@ impl Active {
 #[derive(Default)]
 pub struct Watcher {
     workspace: Mutex<Option<Active>>,
-    /// 用輪詢監看的工作區（網路磁碟）。只監看第一層與不忽略的子資料夾，見 `watch_workspace`。
+    /// 用輪詢監看的工作區（網路磁碟）與監看中的資料夾數，見 `watch_workspace`。
     poll_root: Mutex<Option<PathBuf>>,
+    poll_count: Mutex<usize>,
     /// 工作區外檔案所在資料夾的監看（不遞迴）。網路資料夾另外用輪詢的方式監看。
     outside: Mutex<Option<Active>>,
     outside_poll: Mutex<Option<Active>>,
@@ -151,24 +158,57 @@ fn classify<'a>(
     (tree_dirs, touched)
 }
 
+/// 輪詢要監看的資料夾（含 `root` 本身）：依 .gitignore 走訪，略過隱藏資料夾、`node_modules`
+/// 與建置資料夾；淺的優先，最多 `max` 個。
+fn poll_dirs(root: &Path, max: usize) -> Vec<PathBuf> {
+    let mut walk = crate::workspace::walker(root);
+    // 會取代 walker 原本只略過 node_modules 的條件，所以這裡一併略過。
+    walk.filter_entry(|e| {
+        e.depth() == 0
+            || !e.file_type().is_some_and(|t| t.is_dir())
+            || !is_ignored_dir(
+                e.path().parent().unwrap_or(Path::new("")),
+                e.file_name(),
+                &|p| p.exists(),
+            )
+    });
+    let mut dirs: Vec<(usize, PathBuf)> = walk
+        .build()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_some_and(|t| t.is_dir()))
+        .take(MAX_POLL_SCAN)
+        .map(|e| (e.depth(), e.into_path()))
+        .collect();
+    dirs.sort_by_key(|(depth, _)| *depth);
+    dirs.truncate(max);
+    dirs.into_iter().map(|(_, p)| p).collect()
+}
+
 impl Watcher {
     /// 監看整個工作區（取代先前的工作區）。
     pub fn watch_workspace(&self, app: &AppHandle, root: &Path) {
-        let mut slot = self.workspace.lock().unwrap();
-        *slot = None; // 先停止舊的監看
         let poll = crate::io::is_network_path(root);
+        // 網路磁碟：先列出要輪詢的資料夾（可能要一陣子），不佔著鎖。
+        let dirs = if poll {
+            poll_dirs(root, MAX_POLL_DIRS)
+        } else {
+            vec![]
+        };
+        let mut slot = self.workspace.lock().unwrap();
+        // 這段期間又開了別的資料夾（各自在背景執行）：不要用舊資料夾蓋掉新的監看。
+        if app.state::<crate::workspace::Workspace>().root().as_deref() != Some(root) {
+            return;
+        }
+        *slot = None; // 先停止舊的監看
         *self.poll_root.lock().unwrap() = poll.then(|| root.to_path_buf());
+        *self.poll_count.lock().unwrap() = dirs.len();
         match create(app, poll).and_then(|mut w| {
             if poll {
-                // 輪詢每次都要列出所有檔案：網路磁碟上很慢，所以跳過 .git、node_modules 等資料夾，
-                // 只監看第一層與其他子資料夾。之後新增的第一層資料夾在 `handle_events` 補上。
+                // 每個資料夾各自不遞迴地監看，略過的資料夾（.git、node_modules…）就不會被輪詢。
+                // 之後新增的資料夾在 `handle_events` 補上。
                 w.watch(root, RecursiveMode::NonRecursive)?;
-                for dir in fs::read_dir(root).into_iter().flatten().flatten() {
-                    if dir.file_type().is_ok_and(|t| t.is_dir())
-                        && !is_ignored_dir(root, &dir.file_name(), &|p| p.exists())
-                    {
-                        let _ = w.watch(&dir.path(), RecursiveMode::Recursive);
-                    }
+                for dir in dirs.iter().filter(|d| d.as_path() != root) {
+                    let _ = w.watch(dir, RecursiveMode::NonRecursive);
                 }
             } else {
                 w.watch(root, RecursiveMode::Recursive)?;
@@ -181,26 +221,36 @@ impl Watcher {
         }
     }
 
-    /// 輪詢監看的工作區新增了第一層資料夾：開始監看它。
-    fn watch_new_top_dirs(&self, paths: &BTreeSet<PathBuf>) {
+    /// 停止監看工作區（改開遠端的 WebDAV 工作區時）。
+    pub fn stop_workspace(&self) {
+        *self.workspace.lock().unwrap() = None;
+        *self.poll_root.lock().unwrap() = None;
+        *self.poll_count.lock().unwrap() = 0;
+    }
+
+    /// 輪詢監看的工作區新增了資料夾（任何一層）：開始監看它。
+    fn watch_new_dirs(&self, paths: &BTreeSet<PathBuf>) {
         let Some(root) = self.poll_root.lock().unwrap().clone() else {
             return;
         };
         let new_dirs: Vec<&PathBuf> = paths
             .iter()
-            .filter(|p| p.parent() == Some(root.as_path()))
-            .filter(|p| {
-                p.file_name()
-                    .is_some_and(|n| !is_ignored_dir(&root, n, &|p| p.exists()))
-            })
+            .filter(|p| p.starts_with(&root) && p.as_path() != root)
+            .filter(|p| !is_noise(p, Some(&root), &|p| p.exists()))
             .filter(|p| p.is_dir())
             .collect();
         if new_dirs.is_empty() {
             return;
         }
+        let mut count = self.poll_count.lock().unwrap();
         if let Some(Active::Poll(w)) = self.workspace.lock().unwrap().as_mut() {
             for dir in new_dirs {
-                let _ = w.watch(dir, RecursiveMode::Recursive);
+                if *count >= MAX_POLL_DIRS {
+                    break;
+                }
+                if w.watch(dir, RecursiveMode::NonRecursive).is_ok() {
+                    *count += 1;
+                }
             }
         }
     }
@@ -274,14 +324,14 @@ fn handle_events(app: &AppHandle, events: Vec<notify_debouncer_full::DebouncedEv
         &|p| known.contains(p),
         &|p| p.exists(),
     );
-    // 輪詢的工作區新增了第一層資料夾時要補上監看（只看新增事件的路徑）。
+    // 輪詢的工作區新增了資料夾時要補上監看（只看新增事件的路徑）。
     let created: BTreeSet<PathBuf> = events
         .iter()
         .filter(|e| matches!(e.kind, EventKind::Create(_)))
         .flat_map(|e| e.paths.iter().cloned())
         .collect();
     if !created.is_empty() {
-        app.state::<Watcher>().watch_new_top_dirs(&created);
+        app.state::<Watcher>().watch_new_dirs(&created);
     }
     for path in touched.into_iter().filter(|p| known.contains(p)) {
         // 太大的檔案不比對（編輯器本來就開不了）。
@@ -326,6 +376,57 @@ fn handle_events(app: &AppHandle, events: Vec<notify_debouncer_full::DebouncedEv
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn polls_only_visible_folders_shallow_first() {
+        let root = std::env::temp_dir().join(format!("md-poll-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for d in [
+            "筆記/2026/十月",
+            "node_modules/pkg/lib",
+            ".git/objects",
+            "app/node_modules/x",
+            "app/.git/refs",
+            "proj/target/debug",
+            "build/out",
+            "src",
+        ] {
+            fs::create_dir_all(root.join(d)).unwrap();
+        }
+        fs::write(root.join("proj/target/CACHEDIR.TAG"), "").unwrap();
+        fs::write(root.join(".gitignore"), "build/\n").unwrap();
+        let rel = |dirs: Vec<PathBuf>| -> Vec<String> {
+            dirs.iter()
+                .map(|d| {
+                    d.strip_prefix(&root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect()
+        };
+        let all = rel(poll_dirs(&root, 100));
+        let mut sorted = all.clone();
+        sorted.sort();
+        assert_eq!(
+            sorted,
+            [
+                "",
+                "app",
+                "proj",
+                "src",
+                "筆記",
+                "筆記/2026",
+                "筆記/2026/十月"
+            ]
+        );
+        // 淺的優先：數量有上限時保留上層的資料夾。
+        assert_eq!(all[0], "");
+        let few = rel(poll_dirs(&root, 3));
+        assert_eq!(few.len(), 3);
+        assert!(few.iter().all(|d| !d.contains('/')), "{few:?}");
+        let _ = fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn ignores_reads_and_metadata() {

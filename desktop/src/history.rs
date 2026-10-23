@@ -6,6 +6,11 @@
 //! - `disk`：存檔前磁碟上的內容（和上一個版本不同時才記，例如被其他程式改過）
 //!
 //! 保留規則：最多 50 版；超過 30 天的會刪掉，但每個檔案至少留最新的 10 版。
+//! 超過 5 MB 的檔案不保存版本。所有版本加起來超過 300 MB 時，從最舊的開始刪（每個檔案至少留最新的一版）；
+//! 已經不存在的檔案，最新的版本超過 90 天後整個刪掉。這些清理在啟動後於背景進行。
+//!
+//! 版本記錄在背景執行緒依序寫入，不會拖慢存檔。`meta.json` 記下最新版本的雜湊，
+//! 判斷「和上一版相同」時不必讀出上一版的內容。
 //!
 //! 自動存檔每隔一兩秒就存一次，每次都留一版的話，50 版很快就只剩最近幾分鐘。
 //! 存檔指令分不出是自動存檔還是使用者按的（前端的 API 沒有這個資訊），所以單純依時間合併：
@@ -15,7 +20,9 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::mpsc::{channel, Sender};
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -30,6 +37,12 @@ const KEEP_AT_LEAST: usize = 10;
 const MAX_AGE_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 /// 連續的存檔版本至少間隔多久（見模組說明）。
 const COALESCE_MS: u64 = 2 * 60 * 1000;
+/// 超過這個大小的檔案不保存版本。
+const MAX_FILE_BYTES: usize = 5 * 1024 * 1024;
+/// 所有版本加起來的上限。
+const QUOTA_BYTES: u64 = 300 * 1024 * 1024;
+/// 檔案已經不存在、最新的版本超過這麼久，整個版本資料夾就刪掉。
+const ORPHAN_AGE_MS: u64 = 90 * 24 * 60 * 60 * 1000;
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -85,6 +98,26 @@ fn parse_name(name: &str) -> Option<(u64, Kind)> {
     Some((id.parse().ok()?, kind))
 }
 
+fn text_hash(text: &str) -> String {
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// `meta.json`：原始路徑與最新版本內容的雜湊（舊版沒有雜湊）。
+fn read_meta(dir: &Path) -> Option<serde_json::Value> {
+    serde_json::from_str(&fs::read_to_string(dir.join("meta.json")).ok()?).ok()
+}
+
+fn write_meta(dir: &Path, path: &str, latest: Option<&str>) -> io::Result<()> {
+    let mut json = serde_json::json!({ "path": path });
+    if let Some(h) = latest {
+        json["latest"] = serde_json::Value::from(h);
+    }
+    fs::write(dir.join("meta.json"), json.to_string())
+}
+
 /// 版本清單（由新到舊）與各自的檔案路徑。
 fn versions(dir: &Path) -> Vec<(Version, PathBuf)> {
     let mut out: Vec<(Version, PathBuf)> = fs::read_dir(dir)
@@ -112,18 +145,27 @@ fn prune(dir: &Path, now: u64) {
     }
 }
 
-/// 保存一個版本；和最新的版本內容相同時不重複保存。
+/// 保存一個版本；和最新的版本內容相同時不重複保存。太大的檔案不保存。
 pub fn record_at(root: &Path, path: &Path, text: &str, kind: Kind, now: u64) -> io::Result<()> {
+    if text.len() > MAX_FILE_BYTES {
+        return Ok(());
+    }
     let dir = file_dir(root, path);
     fs::create_dir_all(&dir)?;
-    let meta = dir.join("meta.json");
-    let meta_json = serde_json::json!({ "path": path.to_string_lossy() }).to_string();
-    if fs::read_to_string(&meta).ok().as_deref() != Some(meta_json.as_str()) {
-        fs::write(&meta, meta_json)?;
-    }
+    let path_str = path.to_string_lossy();
+    let hash = text_hash(text);
+    let meta = read_meta(&dir);
+    let latest_hash = meta
+        .as_ref()
+        .and_then(|m| m["latest"].as_str().map(str::to_string));
     let existing = versions(&dir);
     if let Some((latest, file)) = existing.first() {
-        if fs::read_to_string(file).ok().as_deref() == Some(text) {
+        // 有記雜湊就比對雜湊；舊版的資料沒有，才讀出上一版比對。
+        let same = match &latest_hash {
+            Some(h) => *h == hash,
+            None => fs::read_to_string(file).ok().as_deref() == Some(text),
+        };
+        if same {
             return Ok(());
         }
         // 同一毫秒內存兩次（例如先記磁碟版本再記存檔內容）時，編號往後推。
@@ -142,6 +184,7 @@ pub fn record_at(root: &Path, path: &Path, text: &str, kind: Kind, now: u64) -> 
             text.as_bytes(),
         )?;
     }
+    write_meta(&dir, &path_str, Some(&hash))?;
     prune(&dir, now);
     Ok(())
 }
@@ -203,8 +246,8 @@ pub fn rename_at(root: &Path, from: &Path, to: &Path) {
             continue;
         }
         if fs::rename(entry.path(), &target).is_ok() {
-            let json = serde_json::json!({ "path": new_path.to_string_lossy() }).to_string();
-            let _ = fs::write(target.join("meta.json"), json);
+            let latest = read_meta(&target).and_then(|m| m["latest"].as_str().map(str::to_string));
+            let _ = write_meta(&target, &new_path.to_string_lossy(), latest.as_deref());
         }
     }
 }
@@ -216,26 +259,114 @@ fn root(app: &AppHandle) -> Option<PathBuf> {
         .map(|d| d.join("history"))
 }
 
-/// 存檔時呼叫：先記下存檔前磁碟上的內容（若和上一版不同），再記下新內容。
-/// 版本記錄失敗不影響存檔。
-pub fn on_save(app: &AppHandle, path: &Path, disk_before: Option<&[u8]>, text: &str) {
+/// 依總量上限與檔案是否還在，清理版本記錄（見模組說明）。`gone` 判斷原始檔案是否確定不在了
+/// （網路磁碟、遠端的檔案可能只是暫時連不上，一律當作還在）。回傳刪掉的位元組數。
+pub fn maintain_at(root: &Path, now: u64, quota: u64, gone: &dyn Fn(&Path) -> bool) -> u64 {
+    let mut freed = 0;
+    // (版本編號, 大小, 檔案路徑)：每個檔案最新的一版不列入，總量超過時從最舊的刪起。
+    let mut deletable: Vec<(u64, u64, PathBuf)> = vec![];
+    let mut total = 0;
+    for entry in fs::read_dir(root).into_iter().flatten().flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let list = versions(&dir);
+        let original = read_meta(&dir).and_then(|m| m["path"].as_str().map(PathBuf::from));
+        let newest = list.first().map(|(v, _)| v.id).unwrap_or(0);
+        let orphan = match &original {
+            Some(p) => gone(p) && now.saturating_sub(newest) > ORPHAN_AGE_MS,
+            None => list.is_empty(),
+        };
+        if orphan {
+            freed += list.iter().map(|(v, _)| v.size).sum::<u64>();
+            let _ = fs::remove_dir_all(&dir);
+            continue;
+        }
+        for (i, (v, file)) in list.into_iter().enumerate() {
+            total += v.size;
+            if i > 0 {
+                deletable.push((v.id, v.size, file));
+            }
+        }
+    }
+    deletable.sort_by_key(|(id, _, _)| *id);
+    for (_, size, file) in deletable {
+        if total <= quota {
+            break;
+        }
+        if fs::remove_file(&file).is_ok() {
+            total -= size;
+            freed += size;
+        }
+    }
+    freed
+}
+
+/// 啟動一陣子後在背景清理版本記錄（不影響開啟速度）。
+pub fn maintain(app: &AppHandle) {
     let Some(root) = root(app) else {
         return;
     };
-    let now = now_ms();
-    if let Some(bytes) = disk_before {
-        let (before, _, _) = decode(bytes);
-        if before != text {
-            if let Err(e) = record_at(&root, path, &before, Kind::Disk, now) {
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(60));
+        let gone = |p: &Path| {
+            let s = p.to_string_lossy();
+            !s.starts_with(crate::dav::SCHEME) && !crate::io::is_network_path(p) && !p.exists()
+        };
+        maintain_at(&root, now_ms(), QUOTA_BYTES, &gone);
+    });
+}
+
+struct Job {
+    root: PathBuf,
+    path: PathBuf,
+    before: Option<String>,
+    text: String,
+    now: u64,
+}
+
+/// 版本記錄的寫入佇列：一個背景執行緒依序處理，存檔不必等版本記錄寫完。
+static QUEUE: LazyLock<Mutex<Sender<Job>>> = LazyLock::new(|| {
+    let (tx, rx) = channel::<Job>();
+    std::thread::spawn(move || {
+        for job in rx {
+            if let Some(before) = &job.before {
+                if let Err(e) = record_at(&job.root, &job.path, before, Kind::Disk, job.now) {
+                    // i18n-ignore：記錄檔
+                    eprintln!("無法保存版本記錄：{e}");
+                }
+            }
+            if let Err(e) = record_at(&job.root, &job.path, &job.text, Kind::Save, job.now) {
                 // i18n-ignore：記錄檔
                 eprintln!("無法保存版本記錄：{e}");
             }
         }
+    });
+    Mutex::new(tx)
+});
+
+/// 存檔時呼叫：先記下存檔前磁碟上的內容（若和上一版不同），再記下新內容。
+/// 在背景寫入；版本記錄失敗不影響存檔。
+pub fn on_save(app: &AppHandle, path: &Path, disk_before: Option<&[u8]>, text: &str) {
+    let Some(root) = root(app) else {
+        return;
+    };
+    if text.len() > MAX_FILE_BYTES {
+        return;
     }
-    if let Err(e) = record_at(&root, path, text, Kind::Save, now) {
-        // i18n-ignore：記錄檔
-        eprintln!("無法保存版本記錄：{e}");
-    }
+    let before = disk_before
+        .filter(|b| b.len() <= MAX_FILE_BYTES)
+        .map(|b| decode(b).0)
+        .filter(|before| before != text);
+    let job = Job {
+        root,
+        path: path.to_path_buf(),
+        before,
+        text: text.to_string(),
+        now: now_ms(),
+    };
+    let _ = QUEUE.lock().unwrap().send(job);
 }
 
 pub fn on_rename(app: &AppHandle, from: &Path, to: &Path) {
@@ -397,6 +528,69 @@ mod tests {
         assert_eq!(read_at(&root, Path::new("/w/新/a.md"), 1).unwrap(), "A");
         assert_eq!(read_at(&root, Path::new("/w/c.md"), 1).unwrap(), "B");
         assert!(list_at(&root, Path::new("/w/舊/a.md")).is_empty());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn skips_big_files_and_compares_by_hash() {
+        let root = temp("big");
+        let file = Path::new("/筆記/大.md");
+        record_at(&root, file, &"字".repeat(MAX_FILE_BYTES), Kind::Save, 1).unwrap();
+        assert!(list_at(&root, file).is_empty());
+        // 有記雜湊時，即使上一版的檔案內容被動過，也以雜湊判斷相同。
+        let small = Path::new("/筆記/小.md");
+        record_at(&root, small, "內容", Kind::Save, 1).unwrap();
+        let dir = file_dir(&root, small);
+        assert!(read_meta(&dir).unwrap()["latest"].is_string());
+        record_at(&root, small, "內容", Kind::Save, 2).unwrap();
+        assert_eq!(list_at(&root, small).len(), 1);
+        // 舊版沒有雜湊：讀出上一版比對。
+        write_meta(&dir, "/筆記/小.md", None).unwrap();
+        record_at(&root, small, "內容", Kind::Save, 3).unwrap();
+        assert_eq!(list_at(&root, small).len(), 1);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn maintains_quota_and_removes_orphans() {
+        let root = temp("maintain");
+        let day = 24 * 60 * 60 * 1000;
+        let now = 200 * day;
+        let gap = COALESCE_MS;
+        // a.md：5 版，每版 100 位元組；b.md：已經刪掉的檔案，最新一版在 100 天前；c.md：刪掉但最近才改過。
+        for i in 0..5u64 {
+            record_at(
+                &root,
+                Path::new("/w/a.md"),
+                &format!("{i}{}", "a".repeat(99)),
+                Kind::Save,
+                now - 10 * gap + i * gap,
+            )
+            .unwrap();
+        }
+        record_at(
+            &root,
+            Path::new("/w/b.md"),
+            "B",
+            Kind::Save,
+            now - 100 * day,
+        )
+        .unwrap();
+        record_at(&root, Path::new("/w/c.md"), "C", Kind::Save, now - day).unwrap();
+        let gone = |p: &Path| p != Path::new("/w/a.md");
+        // 上限 250 位元組：a.md 刪到剩 2 版（含最新一版）；b.md 整個刪掉；c.md 留著。
+        let freed = maintain_at(&root, now, 250, &gone);
+        assert_eq!(freed, 301);
+        let a = list_at(&root, Path::new("/w/a.md"));
+        assert_eq!(a.len(), 2);
+        assert_eq!(a[0].id, now - 10 * gap + 4 * gap);
+        assert!(list_at(&root, Path::new("/w/b.md")).is_empty());
+        assert!(!file_dir(&root, Path::new("/w/b.md")).exists());
+        assert_eq!(list_at(&root, Path::new("/w/c.md")).len(), 1);
+        // 最新的一版永遠保留，就算超過上限。
+        maintain_at(&root, now, 0, &|_| false);
+        assert_eq!(list_at(&root, Path::new("/w/a.md")).len(), 1);
+        assert_eq!(list_at(&root, Path::new("/w/c.md")).len(), 1);
         fs::remove_dir_all(&root).unwrap();
     }
 

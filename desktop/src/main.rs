@@ -234,6 +234,7 @@ fn main() {
         )
         .setup(|app| {
             app.manage(Trust::load(app.handle()));
+            history::maintain(app.handle());
             create_main_window(app)?;
             if CUSTOM_TITLE_BAR {
                 if let Some(window) = app.get_webview_window("main") {
