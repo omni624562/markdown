@@ -293,14 +293,40 @@ let editorTopLine = 1;
  * 失敗的不快取，下次再試。
  */
 const davImages = new Map<string, Promise<string>>();
+/** 已下載圖片的大小（字元數）；總量超過上限就從最久沒用到的開始丟。 */
+const davImageSizes = new Map<string, number>();
+let davImageBytes = 0;
+const DAV_IMAGE_LIMIT = 64 * 1024 * 1024;
+function dropDavImage(path: string): void {
+  davImages.delete(path);
+  davImageBytes -= davImageSizes.get(path) ?? 0;
+  davImageSizes.delete(path);
+}
 function davImageCached(path: string): Promise<string> {
   let p = davImages.get(path);
-  if (!p) {
-    if (davImages.size >= 200) davImages.delete(davImages.keys().next().value!);
-    p = desktop!.davImage(path);
-    p.catch(() => davImages.delete(path));
+  if (p) {
+    // 移到最後面，代表最近用過。
+    davImages.delete(path);
     davImages.set(path, p);
+    return p;
   }
+  if (davImages.size >= 200) dropDavImage(davImages.keys().next().value!);
+  p = desktop!.davImage(path);
+  davImages.set(path, p);
+  p.then(
+    (url) => {
+      if (davImages.get(path) !== p) return;
+      davImageSizes.set(path, url.length);
+      davImageBytes += url.length;
+      for (const old of davImages.keys()) {
+        if (davImageBytes <= DAV_IMAGE_LIMIT || old === path) break;
+        dropDavImage(old);
+      }
+    },
+    () => {
+      if (davImages.get(path) === p) dropDavImage(path);
+    },
+  );
   return p;
 }
 
@@ -353,7 +379,13 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   onScroll(line) {
     editorTopLine = line;
     syncPreview();
-    updateActiveHeading();
+    // 大綱的目前位置不必每個捲動事件都算，一個畫面算一次就好。
+    if (!headingFrame) {
+      headingFrame = requestAnimationFrame(() => {
+        headingFrame = 0;
+        updateActiveHeading();
+      });
+    }
   },
   getError: () => preview.result?.error ?? null,
 }, {
@@ -2719,6 +2751,8 @@ async function closeTab(id: string): Promise<void> {
   const i = docs.indexOf(doc);
   docs.splice(i, 1);
   dropDraft(doc.id);
+  outlineCollapsed.delete(doc.id);
+  changeNoticeAt.delete(doc.id);
   if (!docs.length) {
     const blank = makeDoc({ name: t("未命名{ext}", { ext: KINDS[kind].ext }), kind });
     docs.push(blank);
@@ -3265,14 +3299,13 @@ commands.register(
     group: t("檔案"),
     icon: "copy",
     async run() {
-      if (preview.stale) renderNow(true);
-      const result = preview.result;
-      if (!result || result.error) {
+      // 複製出去的 HTML 不需要捲動同步用的 data-sourcepos，直接重新渲染一份。
+      const result = renderMarkdown(editor.text, { kind });
+      if (result.error) {
         toast(t("文件有格式錯誤，修正後才能複製。"), { tone: "error" });
         return;
       }
-      // 複製出去的 HTML 不需要捲動同步用的 data-sourcepos。
-      await navigator.clipboard.writeText(result.html.replace(/ data-sourcepos="[^"]*"/g, ""));
+      await navigator.clipboard.writeText(result.html);
       toast(t("已複製 HTML 到剪貼簿"), { tone: "success" });
     },
   },

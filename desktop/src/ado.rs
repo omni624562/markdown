@@ -1040,6 +1040,7 @@ pub async fn ado_work_item_scope(
                     .collect()
             }
         };
+        let mut seen = std::collections::HashSet::new();
         let mut people: Vec<String> = vec![];
         let mut teams = 0;
         // 讀不到成員（權限不足、舊版伺服器）時只是沒有建議名字，仍可自己輸入。
@@ -1063,7 +1064,7 @@ pub async fn ado_work_item_scope(
                 );
                 if let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取團隊成員")) {
                     for name in member_names(&res) {
-                        if !people.contains(&name) {
+                        if seen.insert(name.clone()) {
                             people.push(name);
                         }
                     }

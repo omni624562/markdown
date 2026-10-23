@@ -133,7 +133,9 @@ pub struct CheckResult {
     latest: Option<Manifest>,
 }
 
-pub(crate) fn agent() -> ureq::Agent {
+/// 共用的 HTTP 連線（GitHub、Azure DevOps、更新）：連線可以重複使用，
+/// 不必每次重新 TLS 交握、重新載入系統憑證。
+static AGENT: std::sync::LazyLock<ureq::Agent> = std::sync::LazyLock::new(|| {
     ureq::Agent::config_builder()
         // 使用系統的憑證（公司網路常有自己的憑證）與系統的 Proxy 設定。
         .tls_config(
@@ -142,9 +144,16 @@ pub(crate) fn agent() -> ureq::Agent {
                 .build(),
         )
         .timeout_connect(Some(Duration::from_secs(15)))
+        // 伺服器一直不回應時不要永遠等：等回應最多 60 秒，下載內容（例如新版程式）最多 30 分鐘。
+        .timeout_recv_response(Some(Duration::from_secs(60)))
+        .timeout_recv_body(Some(Duration::from_secs(30 * 60)))
         .user_agent(concat!("md-editor/", env!("CARGO_PKG_VERSION")))
         .build()
         .new_agent()
+});
+
+pub(crate) fn agent() -> ureq::Agent {
+    AGENT.clone()
 }
 
 /// GET，自己處理轉址（GitHub 的下載會轉到另一個網域）。

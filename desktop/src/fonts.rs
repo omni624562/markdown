@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use fontdb::{Database, Language};
 use serde::Serialize;
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct FontFamily {
     /// 寫進 CSS `font-family` 的名稱（字型的英文名稱）。
     pub name: String,
@@ -43,7 +43,12 @@ fn family_of(names: &[(String, Language)], mono: bool) -> Option<FontFamily> {
 /// 列出安裝的字型家族（同名的只留一個，依名稱排序）。
 #[tauri::command]
 pub async fn list_fonts() -> Result<Vec<FontFamily>, String> {
-    crate::io::blocking(|| {
+    // 載入所有系統字型要一兩秒，結果記下來（裝了新字型要重新開啟程式才會看到）。
+    static FONTS: std::sync::OnceLock<Vec<FontFamily>> = std::sync::OnceLock::new();
+    if let Some(fonts) = FONTS.get() {
+        return Ok(fonts.clone());
+    }
+    let fonts = crate::io::blocking(|| {
         let mut db = Database::new();
         db.load_system_fonts();
         let mut families: BTreeMap<String, FontFamily> = BTreeMap::new();
@@ -55,9 +60,10 @@ pub async fn list_fonts() -> Result<Vec<FontFamily>, String> {
             // 同一家族有一個字重是等寬的就算等寬。
             entry.mono |= face.monospaced;
         }
-        Ok(families.into_values().collect())
+        Ok(families.into_values().collect::<Vec<_>>())
     })
-    .await
+    .await?;
+    Ok(FONTS.get_or_init(|| fonts).clone())
 }
 
 #[cfg(test)]

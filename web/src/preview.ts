@@ -70,6 +70,7 @@ export class Preview {
     this.#plugins = plugins;
   }
 
+  /** 上次渲染的結果（大綱、統計、錯誤）；`html` 一律是空字串，需要 HTML 請自己呼叫 `render`。 */
   get result(): RenderResult | null {
     return this.#last;
   }
@@ -92,7 +93,8 @@ export class Preview {
       return result;
     }
     const result = render(text, { kind, sourcepos: true });
-    this.#last = result;
+    // 留著的結果不含 HTML：大文件的 HTML 字串可能好幾 MB，畫面上已經有一份了。
+    this.#last = { ...result, html: "" };
     this.#stale = false;
     if (result.error) return result;
 
