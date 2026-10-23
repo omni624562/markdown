@@ -58,6 +58,8 @@ windows-native-keyring-store = "1.1.0"
 # 直接匯出 PDF（WebView2 的 PrintToPdf）；版本和 Tauri 使用的一致。
 webview2-com = "0.39.1"
 windows-core = "0.62.2"
+# 自動更新在公司網路上的備援：WinHTTP 會用系統的 Proxy 自動設定與 Windows 帳號驗證。
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Networking_WinHttp"] }
 
 # 直接匯出 PDF（WebKitGTK 的列印到檔案）；版本和 Tauri 使用的一致。
 [target.'cfg(target_os = "linux")'.dependencies]

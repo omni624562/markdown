@@ -32,6 +32,7 @@ mod settings;
 mod trust;
 mod update;
 mod watch;
+mod winhttp;
 mod workspace;
 
 use std::ffi::OsString;

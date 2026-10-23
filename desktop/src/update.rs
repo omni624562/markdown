@@ -180,13 +180,46 @@ fn get(
     Err(ureq::Error::TooManyRedirects)
 }
 
+/// 開始下載 `url`，回傳內容的讀取器。Windows 上 ureq 連不上（例如公司的 Proxy 用自動設定指令碼，
+/// 或要用 Windows 帳號驗證）時，改用 WinHTTP 再試一次。
+fn open(url: &str, timeout: Option<Duration>) -> Result<Box<dyn Read>, String> {
+    match get(url, timeout) {
+        Ok(res) => Ok(Box::new(res.into_body().into_reader())),
+        // 檔案不存在不必換方式再試。
+        Err(e @ ureq::Error::StatusCode(404)) => Err(e.to_string()),
+        Err(e) => fallback(url, timeout, e),
+    }
+}
+
+#[cfg(windows)]
+fn fallback(
+    url: &str,
+    timeout: Option<Duration>,
+    first: ureq::Error,
+) -> Result<Box<dyn Read>, String> {
+    // 下載執行檔時沒有整體的時間限制，WinHTTP 的逾時是每一次連線、讀取的等待時間。
+    let wait = timeout.unwrap_or(Duration::from_secs(60));
+    let agent = concat!("md-editor/", env!("CARGO_PKG_VERSION"));
+    crate::winhttp::get(url, wait, agent)
+        .map(|r| Box::new(r) as Box<dyn Read>)
+        .map_err(|e| format!("{e}（另一種連線方式的錯誤：{first}）"))
+}
+
+#[cfg(not(windows))]
+fn fallback(
+    _url: &str,
+    _timeout: Option<Duration>,
+    first: ureq::Error,
+) -> Result<Box<dyn Read>, String> {
+    Err(first.to_string())
+}
+
 fn fetch_manifest() -> Result<Manifest, String> {
-    let text = get(MANIFEST_URL, Some(Duration::from_secs(30)))
+    let mut text = String::new();
+    open(MANIFEST_URL, Some(Duration::from_secs(30)))
         .map_err(|e| format!("無法連線到 GitHub：{e}"))?
-        .body_mut()
-        .with_config()
-        .limit(64 * 1024)
-        .read_to_string()
+        .take(64 * 1024)
+        .read_to_string(&mut text)
         .map_err(|e| format!("無法讀取更新資訊：{e}"))?;
     let manifest: Manifest =
         serde_json::from_str(&text).map_err(|e| format!("更新資訊格式不正確：{e}"))?;
@@ -226,8 +259,9 @@ fn hex(bytes: &[u8]) -> String {
 
 /// 下載到暫存檔，邊下載邊算 SHA-256；大小或檢查碼不符就刪掉暫存檔並回報錯誤。
 fn download(m: &Manifest, dest: &PathBuf, mut progress: impl FnMut(u64)) -> Result<(), String> {
-    let mut response = get(&m.url, None).map_err(|e| format!("無法下載新版：{e}"))?;
-    let mut reader = response.body_mut().with_config().limit(MAX_SIZE).reader();
+    let mut reader = open(&m.url, None)
+        .map_err(|e| format!("無法下載新版：{e}"))?
+        .take(MAX_SIZE);
     let mut file = std::fs::File::create(dest).map_err(|e| format!("無法建立暫存檔：{e}"))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
