@@ -300,6 +300,13 @@ pub async fn reopen_folder(
     })
     .await?;
     if !exists {
+        // 釘選或有群組的專案留在清單上，讓使用者重新指定位置（例如網路磁碟還沒接上）。
+        if trust.project(&path).is_some_and(|m| m.kept()) {
+            return Err(format!(
+                "找不到資料夾「{}」。如果搬到別的地方了，可以在專案總覽重新指定位置",
+                path.display()
+            ));
+        }
         trust.remove(&app, &path);
         return Err(format!(
             "找不到資料夾「{}」，可能已被移動或刪除",
@@ -536,6 +543,11 @@ pub async fn reveal_entry(app: AppHandle, path: String) -> Result<(), String> {
 fn reveal_now(app: &AppHandle, path: &str) -> Result<(), String> {
     let root = app.state::<Workspace>().require_root()?;
     let path = resolve_inside(&root, Path::new(path))?;
+    reveal_path(&path)
+}
+
+/// 在檔案總管中選取 `path`（呼叫端要先確認可以讓使用者看這個位置）。
+pub(crate) fn reveal_path(path: &Path) -> Result<(), String> {
     // explorer 不接受整個被引號包住的 `"/select,路徑"`（Rust 遇到空白會自動加引號），
     // 所以自己組參數，只把路徑放進引號。用完整路徑啟動，免得執行到放在本程式旁邊的同名程式。
     #[cfg(target_os = "windows")]
@@ -548,11 +560,11 @@ fn reveal_now(app: &AppHandle, path: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("open")
         .arg("-R")
-        .arg(&path)
+        .arg(path)
         .spawn();
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let result = std::process::Command::new("xdg-open")
-        .arg(path.parent().unwrap_or(&path))
+        .arg(path.parent().unwrap_or(path))
         .spawn();
     result
         .map(|_| ())

@@ -80,7 +80,19 @@ import {
 import { pasteAsMarkdown } from "./html-paste.ts";
 import { moveSection, sectionRange, swapSection } from "./sections.ts";
 import { type HeadingRef, encodeLinkPath, linkCompletion } from "./link-complete.ts";
-import { type DocMeta, dropDraft, loadDraft, loadSession, newId, saveDraft, saveSession } from "./session.ts";
+import {
+  type DocMeta,
+  dropDraft,
+  loadDraft,
+  loadProjectView,
+  loadSession,
+  newId,
+  peekSession,
+  saveDraft,
+  saveProjectView,
+  saveSession,
+  type Session,
+} from "./session.ts";
 import * as storage from "./storage.ts";
 import { editTable } from "./table.ts";
 import { choose } from "./ui/choice.ts";
@@ -89,6 +101,8 @@ import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type MenuEntry, setupMenu } from "./ui/menu.ts";
 import { Palette } from "./ui/palette.ts";
 import { Picker } from "./ui/picker.ts";
+import { ProjectUi } from "./ui/project-ui.ts";
+import { projectSections, samePath } from "./projects.ts";
 import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
@@ -194,14 +208,26 @@ function makeDoc(meta: Partial<DocMeta> & { name: string; kind: DocKind }): Doc 
   };
 }
 
-const restored = loadSession();
-let docs: Doc[] = (restored?.docs ?? []).map((m) => ({
-  ...makeDoc(m),
-  ...m,
-  // 只有桌面版會記下路徑；先建立控制代碼，否則第一次保存分頁狀態時路徑會被清掉。
-  handle: m.path && desktop ? desktopHandle(m.path, m.name) : null,
-  dirty: hash(loadDraft(m.id) ?? "") !== m.baseline,
-}));
+/** 從保存的分頁資料建立分頁。 */
+function docsFrom(session: Session | null): Doc[] {
+  return (session?.docs ?? []).map((m) => ({
+    ...makeDoc(m),
+    ...m,
+    // 只有桌面版會記下路徑；先建立控制代碼，否則第一次保存分頁狀態時路徑會被清掉。
+    handle: m.path && desktop ? desktopHandle(m.path, m.name) : null,
+    dirty: hash(loadDraft(m.id) ?? "") !== m.baseline,
+  }));
+}
+
+/**
+ * 目前的分頁屬於哪個專案（資料夾路徑）；null 是沒有開啟資料夾時的分頁。
+ * 和「上次開啟的資料夾」分開記：資料夾暫時打不開（例如網路磁碟還沒接上）時，分頁仍然留在原本的專案。
+ */
+let tabScope: string | null = desktop ? (storage.load("tab-scope") ?? storage.load("workspace")) : null;
+/** 啟動時已經重新讀過分頁的檔案（之後切換專案時，換進來的分頁也要重新讀）。 */
+let docsLoaded = false;
+const restored = loadSession(tabScope);
+let docs: Doc[] = docsFrom(restored);
 if (!docs.length) {
   // 第一次使用：開啟範例文件，並以它為基準（不顯示未存檔）。
   const first = makeDoc({ name: "未命名.md", kind: "markdown", baseline: hash(sample) });
@@ -1336,8 +1362,45 @@ const fileTree = desktop
       list: (dir) => desktop!.listDir(dir),
       open: (path) => void openPath(path).catch(reportError),
       action: (action, entry) => void treeAction(action, entry).catch(reportError),
+      expandedChanged: () => {
+        if (workspaceRoot && fileTree) saveProjectView(workspaceRoot.path, { expanded: fileTree.expanded });
+      },
     })
   : null;
+
+/** 專案（開過的資料夾）：切換器、專案總覽、專案設定。 */
+const projectUi = desktop
+  ? new ProjectUi(desktop, {
+      current: () => workspaceRoot?.path ?? null,
+      open: (path) => openRecentFolder(path),
+      openFolder: () => void commands.run("open-folder").catch(reportError),
+      remotes: () => desktop!.davConnections(),
+      openRemote: (c) => void openRemote(c).catch(reportError),
+      changed: () => void renderProjectName().then(renderFilesEmpty),
+      unsaved: (path) =>
+        (peekSession(path)?.docs ?? []).some((m) => m.baseline !== null && hash(loadDraft(m.id) ?? "") !== m.baseline),
+    })
+  : null;
+
+/** 側邊欄上方與狀態列的專案名稱（自訂名稱與顏色）。 */
+async function renderProjectName(): Promise<void> {
+  if (workspaceRoot && !isRemote(workspaceRoot.path)) await projectUi?.refresh();
+  const project = workspaceRoot ? projectUi?.current : undefined;
+  const label = project?.label ?? workspaceRoot?.name ?? "檔案";
+  const color = project?.color ?? null;
+  const hint = `切換專案（${formatKeys("Mod-Alt-p")}）`;
+  $("#folder-name").textContent = label;
+  for (const el of document.querySelectorAll<HTMLElement>(".project-switch, #status-project")) {
+    el.title = workspaceRoot ? `${displayPath(workspaceRoot.path)}\n${hint}` : hint;
+    const dot = el.querySelector<HTMLElement>(".project-dot")!;
+    dot.hidden = !workspaceRoot;
+    if (color) dot.dataset.color = color;
+    else delete dot.dataset.color;
+  }
+  const status = $("#status-project");
+  status.hidden = !workspaceRoot;
+  status.querySelector(".label")!.textContent = label;
+}
 
 /** 用 GitHub 帳號同步（桌面版）：登入、從 GitHub 開啟儲存庫、上傳資料夾。 */
 const github = desktop
@@ -1789,7 +1852,8 @@ async function renderFilesEmpty(): Promise<void> {
   actions.className = "side-buttons";
   actions.append(open, remote);
   box.replaceChildren(p, actions);
-  const [{ folders }, conns] = await Promise.all([desktop.recent(), desktop.davConnections().catch(() => [])]);
+  const [projects, conns] = await Promise.all([projectUi!.refresh(), desktop.davConnections().catch(() => [])]);
+  const folders = projectSections(projects).flatMap((s) => s.items).slice(0, 10);
   if ((!folders.length && !conns.length) || workspaceRoot) return;
   const h = document.createElement("h3");
   h.textContent = "最近開啟";
@@ -1815,13 +1879,21 @@ async function renderFilesEmpty(): Promise<void> {
     }
     list.append(li);
   };
-  for (const path of folders) add("folder", basename(path) || path, path, () => void openRecentFolder(path));
+  for (const p of folders) add("folder", p.label, displayPath(p.path), () => void openRecentFolder(p.path));
   for (const c of conns) {
     add("cloud", c.name, `${c.url}（${c.username}）`, () => void openRemote(c), () =>
       void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError),
     );
   }
   box.append(h, list);
+  if (projects.length > folders.length) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "btn";
+    more.append(icon("layout-grid"), `全部 ${projects.length} 個專案…`);
+    more.addEventListener("click", () => void commands.run("project-overview").catch(reportError));
+    box.append(more);
+  }
 }
 
 const davDialog = desktop ? new WebDavDialog(desktop) : null;
@@ -1858,19 +1930,55 @@ async function openRemote(c: Pick<DavConnection, "id" | "url" | "username">): Pr
 }
 
 async function setWorkspace(folder: Folder | null): Promise<void> {
+  // 換到另一個專案：分頁也換成那個專案的（關掉資料夾時分頁留著）。
+  if (folder && (tabScope === null || !samePath(tabScope, folder.path))) await switchTabs(folder.path);
   workspaceRoot = folder;
   fileListCache = null;
   if (folder) storage.save("workspace", folder.path);
   else storage.remove("workspace");
-  const name = $("#folder-name");
-  name.textContent = folder?.name ?? "檔案";
-  name.title = folder ? displayPath(folder.path) : "";
-  await fileTree?.setRoot(folder?.path ?? null, folder?.name);
+  await renderProjectName();
+  await fileTree?.setRoot(folder?.path ?? null, folder?.name, folder ? loadProjectView(folder.path).expanded : []);
   treeActive = fileHandle?.path ?? null;
   await fileTree?.setActive(treeActive);
   await renderFilesEmpty();
   void gitPanel?.refresh();
   void renderIssuesTab();
+}
+
+/**
+ * 換成另一個專案的分頁：先記下目前的分頁（沒存的內容留在草稿裡，切回來還在），
+ * 再還原那個專案上次開著的分頁。從「沒有開啟資料夾」換過去時，開著的檔案和沒存的分頁一起帶過去。
+ */
+async function switchTabs(scope: string): Promise<void> {
+  flushDraft();
+  if (diskSaveTimer) await autoSaveNow();
+  if (review.active) review.finish();
+  persistSession();
+  const carry = tabScope === null ? docs.filter((d) => d.dirty || d.fileBacked) : [];
+  if (tabScope === null) {
+    for (const d of docs) if (!carry.includes(d)) dropDraft(d.id);
+    storage.remove("tabs");
+  }
+  tabScope = scope;
+  storage.save("tab-scope", scope);
+  const saved = loadSession(scope);
+  const next = docsFrom(saved);
+  const fresh = [...next];
+  for (const d of carry) {
+    const path = docPath(d);
+    if (!next.some((n) => n.id === d.id || (path && n.path && samePath(n.path, path)))) next.push(d);
+  }
+  if (!next.length) next.push(makeDoc({ name: "未命名.md", kind: "markdown" }));
+  const target = next.find((d) => d.id === saved?.activeId) ?? (next.includes(active) ? active : next[0]);
+  docs = next;
+  if (target === active) {
+    persistSession();
+    renderTabs();
+  } else {
+    activate(target);
+  }
+  // 分頁收起來的期間檔案可能被改過：重新讀一次（和啟動時一樣）。
+  if (docsLoaded) void reloadDocs(fresh);
 }
 
 async function openRecentFolder(path: string): Promise<void> {
@@ -2066,10 +2174,13 @@ function stash(): void {
 
 function persistSession(): void {
   stash();
-  saveSession({
-    activeId: active.id,
-    docs: docs.map(({ id, name, kind, path, baseline, fileBacked, pinned }) => ({ id, name, kind, path, baseline, fileBacked, pinned })),
-  });
+  saveSession(
+    {
+      activeId: active.id,
+      docs: docs.map(({ id, name, kind, path, baseline, fileBacked, pinned }) => ({ id, name, kind, path, baseline, fileBacked, pinned })),
+    },
+    tabScope,
+  );
 }
 
 function renderTabs(): void {
@@ -2573,6 +2684,31 @@ commands.register(
       await setWorkspace(folder);
       showPanel("files");
     },
+  },
+  {
+    id: "switch-project",
+    title: "切換專案…",
+    group: "專案",
+    icon: "folder-kanban",
+    keys: "Mod-Alt-p",
+    when: () => !!projectUi,
+    run: () => projectUi!.openSwitcher(),
+  },
+  {
+    id: "project-overview",
+    title: "專案總覽",
+    group: "專案",
+    icon: "layout-grid",
+    when: () => !!projectUi,
+    run: () => projectUi!.openOverview(),
+  },
+  {
+    id: "project-settings",
+    title: "目前專案的設定（名稱、顏色、群組）…",
+    group: "專案",
+    icon: "pencil",
+    when: () => !!projectUi?.current,
+    run: () => projectUi!.edit(projectUi!.current!),
   },
   {
     id: "connect-webdav",
@@ -3685,7 +3821,18 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "palette",
   "settings",
 ]);
-setupMenu($<HTMLButtonElement>("#files-more"), commands, ["open-folder", "connect-webdav", "open-recent"]);
+setupMenu($<HTMLButtonElement>("#files-more"), commands, [
+  "switch-project",
+  "project-overview",
+  "project-settings",
+  "open-folder",
+  "connect-webdav",
+  "open-recent",
+]);
+for (const el of document.querySelectorAll<HTMLButtonElement>(".project-switch, #status-project")) {
+  el.disabled = !desktop;
+  el.addEventListener("click", () => void commands.run("switch-project").catch(reportError));
+}
 // Windows 桌面版：頂端列兼當標題列。
 void desktop
   ?.customTitleBar()
@@ -4825,7 +4972,15 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
     if (needPassword && last) storage.save("workspace", last);
   }
 
-  for (const doc of docs) {
+  await reloadDocs(docs);
+  docsLoaded = true;
+
+  if (target?.kind === "file") openOpenedFile(fromDesktop(target));
+}
+
+/** 重新讀取分頁的檔案；讀不到的標成「已刪除或移走」。 */
+async function reloadDocs(list: Doc[]): Promise<void> {
+  for (const doc of list) {
     const path = docPath(doc);
     if (!path) continue;
     try {
@@ -4840,8 +4995,6 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
   // 有了檔案路徑，預覽中的相對路徑圖片才能顯示。
   preview.clear();
   renderNow();
-
-  if (target?.kind === "file") openOpenedFile(fromDesktop(target));
 }
 
 function docPath(doc: Doc): string | null {

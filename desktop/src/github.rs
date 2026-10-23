@@ -328,7 +328,10 @@ pub async fn github_clone(
         crate::git::clone_to(&url, &target, &auth)
     })
     .await?;
-    Ok(Some(crate::workspace::open_folder_from_cli(&app, dest)))
+    let folder = crate::workspace::open_folder_from_cli(&app, dest.clone());
+    app.state::<crate::trust::Trust>()
+        .set_default_group(&app, &dest, "GitHub");
+    Ok(Some(folder))
 }
 
 /// 選擇下載到哪個資料夾：回傳「選的資料夾／名稱」；使用者取消時回傳 None。

@@ -1,4 +1,4 @@
-//! 最近開啟的資料夾與檔案。
+//! 最近開啟的資料夾與檔案，以及專案（開過的資料夾）的名稱、顏色、群組與釘選。
 //!
 //! 這份清單同時是「信任清單」：重新開啟 app 時還原分頁、從「最近開啟」開檔，
 //! 都只允許清單裡的路徑（或位於清單中資料夾內的檔案），
@@ -11,13 +11,110 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-const MAX_FOLDERS: usize = 10;
+/// 沒有釘選、也沒有群組的專案最多保留幾個（釘選或有群組的不限）。
+const MAX_FOLDERS: usize = 30;
 const MAX_FILES: usize = 30;
+
+/// 專案（開過的資料夾）的設定。`folders` 裡沒有對應項目的資料夾就是全部用預設值。
+#[derive(Default, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMeta {
+    pub path: PathBuf,
+    /// 自訂的顯示名稱；沒有就用資料夾名稱。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    #[serde(default)]
+    pub pinned: bool,
+    /// 上次開啟的時間（Unix 毫秒）；0 代表不知道（舊版留下的資料夾）。
+    #[serde(default)]
+    pub last_opened: u64,
+}
+
+impl ProjectMeta {
+    fn new(path: &Path) -> Self {
+        ProjectMeta {
+            path: path.to_path_buf(),
+            ..Default::default()
+        }
+    }
+
+    /// 釘選或放進群組的專案不會因為太久沒開而從清單消失。
+    pub fn kept(&self) -> bool {
+        self.pinned || self.group.is_some()
+    }
+}
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Recent {
     pub folders: Vec<PathBuf>,
     pub files: Vec<PathBuf>,
+    #[serde(default)]
+    pub projects: Vec<ProjectMeta>,
+}
+
+impl Recent {
+    /// 依最近開啟的順序列出所有專案。
+    pub fn project_list(&self) -> Vec<ProjectMeta> {
+        self.folders
+            .iter()
+            .map(|f| {
+                self.projects
+                    .iter()
+                    .find(|m| &m.path == f)
+                    .cloned()
+                    .unwrap_or_else(|| ProjectMeta::new(f))
+            })
+            .collect()
+    }
+
+    fn open_folder(&mut self, path: &Path, now: u64) {
+        self.folders.retain(|p| p != path);
+        self.folders.insert(0, path.to_path_buf());
+        self.meta_mut(path).last_opened = now;
+        self.prune();
+    }
+
+    fn meta_mut(&mut self, path: &Path) -> &mut ProjectMeta {
+        let i = match self.projects.iter().position(|m| m.path == path) {
+            Some(i) => i,
+            None => {
+                self.projects.push(ProjectMeta::new(path));
+                self.projects.len() - 1
+            }
+        };
+        &mut self.projects[i]
+    }
+
+    /// 釘選或有群組的專案全部保留，其他的只留最近的 `MAX_FOLDERS` 個。
+    fn prune(&mut self) {
+        let kept: Vec<PathBuf> = self
+            .projects
+            .iter()
+            .filter(|m| m.kept())
+            .map(|m| m.path.clone())
+            .collect();
+        let mut others = 0;
+        self.folders.retain(|p| {
+            if kept.contains(p) {
+                return true;
+            }
+            others += 1;
+            others <= MAX_FOLDERS
+        });
+        let folders = &self.folders;
+        self.projects.retain(|m| folders.contains(&m.path));
+    }
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 #[derive(Default)]
@@ -56,8 +153,58 @@ impl Trust {
     }
 
     pub fn add_folder(&self, app: &AppHandle, path: &Path) {
-        push_front(&mut self.0.lock().unwrap().folders, path, MAX_FOLDERS);
+        self.0.lock().unwrap().open_folder(path, now_millis());
         self.save(app);
+    }
+
+    /// 修改專案的設定；專案必須在清單中。
+    pub fn update_project(
+        &self,
+        app: &AppHandle,
+        path: &Path,
+        change: impl FnOnce(&mut ProjectMeta),
+    ) -> Result<ProjectMeta, String> {
+        let meta = {
+            let mut r = self.0.lock().unwrap();
+            if !r.folders.iter().any(|p| p == path) {
+                return Err("這個資料夾不在專案清單中".into());
+            }
+            change(r.meta_mut(path));
+            let meta = r.meta_mut(path).clone();
+            r.prune();
+            meta
+        };
+        self.save(app);
+        Ok(meta)
+    }
+
+    /// 從專案清單移除（只移除資料夾本身，不動最近開啟的檔案）。
+    pub fn forget_folder(&self, app: &AppHandle, path: &Path) {
+        {
+            let mut r = self.0.lock().unwrap();
+            r.folders.retain(|p| p != path);
+            r.projects.retain(|m| m.path != path);
+        }
+        self.save(app);
+    }
+
+    /// 專案還沒有群組時放進 `group`（例如從 GitHub 下載的儲存庫）。
+    pub fn set_default_group(&self, app: &AppHandle, path: &Path, group: &str) {
+        let _ = self.update_project(app, path, |m| {
+            m.group.get_or_insert_with(|| group.to_string());
+        });
+    }
+
+    /// 專案的設定（不在清單中時回傳 None）。
+    pub fn project(&self, path: &Path) -> Option<ProjectMeta> {
+        let r = self.0.lock().unwrap();
+        r.folders.iter().any(|p| p == path).then(|| {
+            r.projects
+                .iter()
+                .find(|m| m.path == path)
+                .cloned()
+                .unwrap_or_else(|| ProjectMeta::new(path))
+        })
     }
 
     pub fn add_file(&self, app: &AppHandle, path: &Path) {
@@ -70,11 +217,30 @@ impl Trust {
         {
             let mut guard = self.0.lock().unwrap();
             let r = &mut *guard;
-            for p in r.files.iter_mut().chain(r.folders.iter_mut()) {
+            let projects = r.projects.iter_mut().map(|m| &mut m.path);
+            for p in r
+                .files
+                .iter_mut()
+                .chain(r.folders.iter_mut())
+                .chain(projects)
+            {
                 if let Ok(rest) = p.strip_prefix(from) {
                     *p = to.join(rest);
                 }
             }
+            // 改到和另一個專案同一個位置時，只留第一個。
+            let mut seen = Vec::new();
+            r.folders.retain(|p| {
+                let new = !seen.contains(p);
+                seen.push(p.clone());
+                new
+            });
+            let mut seen = Vec::new();
+            r.projects.retain(|m| {
+                let new = !seen.contains(&m.path);
+                seen.push(m.path.clone());
+                new
+            });
         }
         self.save(app);
     }
@@ -84,6 +250,7 @@ impl Trust {
             let mut r = self.0.lock().unwrap();
             r.files.retain(|p| !p.starts_with(path));
             r.folders.retain(|p| p != path);
+            r.projects.retain(|m| m.path != path);
         }
         self.save(app);
     }
@@ -143,10 +310,46 @@ mod tests {
     }
 
     #[test]
+    fn keeps_pinned_and_grouped_projects_beyond_the_cap() {
+        let mut r = Recent::default();
+        r.open_folder(Path::new("/釘選"), 1);
+        r.meta_mut(Path::new("/釘選")).pinned = true;
+        r.open_folder(Path::new("/群組"), 2);
+        r.meta_mut(Path::new("/群組")).group = Some("公司".into());
+        for i in 0..MAX_FOLDERS + 5 {
+            r.open_folder(Path::new(&format!("/p/{i}")), 10 + i as u64);
+        }
+        assert_eq!(r.folders.len(), MAX_FOLDERS + 2);
+        assert!(r.folders.contains(&PathBuf::from("/釘選")));
+        assert!(r.folders.contains(&PathBuf::from("/群組")));
+        assert!(!r.folders.contains(&PathBuf::from("/p/0")));
+        // 設定只留給還在清單中的資料夾。
+        assert_eq!(r.projects.len(), r.folders.len());
+        let list = r.project_list();
+        assert_eq!(
+            list[0].path,
+            PathBuf::from(format!("/p/{}", MAX_FOLDERS + 4))
+        );
+        assert_eq!(list[0].last_opened, 10 + MAX_FOLDERS as u64 + 4);
+        let pinned = list.iter().find(|m| m.path == Path::new("/釘選")).unwrap();
+        assert!(pinned.pinned);
+        assert_eq!(pinned.last_opened, 1);
+    }
+
+    #[test]
+    fn old_recent_files_become_projects() {
+        let r: Recent = serde_json::from_str(r#"{"folders":["/a","/b"],"files":[]}"#).unwrap();
+        let list = r.project_list();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[1], ProjectMeta::new(Path::new("/b")));
+    }
+
+    #[test]
     fn allows_files_inside_recent_folders_only() {
         let r = Recent {
             folders: vec!["/筆記".into()],
             files: vec!["/其他/單一.md".into()],
+            ..Default::default()
         };
         let same = |p: &Path| Some(p.to_path_buf());
         assert!(allowed(&r, Path::new("/筆記/子/a.md"), same));
@@ -178,7 +381,7 @@ mod tests {
         std::os::unix::fs::symlink(dir.join("祕密"), dir.join("筆記/notes.md")).unwrap();
         let t = Trust(Mutex::new(Recent {
             folders: vec![dir.join("筆記")],
-            files: vec![],
+            ..Default::default()
         }));
         assert!(t.allows(&dir.join("筆記/a.md")));
         assert!(!t.allows(&dir.join("筆記/notes.md")));

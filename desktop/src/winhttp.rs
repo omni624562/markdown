@@ -1,0 +1,278 @@
+//! 用 Windows 內建的 WinHTTP 下載（自動更新在公司網路上的備援）。
+//!
+//! 公司網路常用自動設定指令碼（PAC、WPAD）指定 Proxy，Proxy 又要用 Windows 帳號驗證
+//! （NTLM、Kerberos）。瀏覽器和 Git（libgit2 也用 WinHTTP）都會自動處理，ureq 不會，
+//! 所以 ureq 連不上時改用 WinHTTP：Proxy 設定、帳號驗證與憑證都和系統一致。
+
+// 其他平台只有測試會用到網址拆解與錯誤說明。
+#![cfg_attr(not(windows), allow(dead_code))]
+
+/// 拆開 `https://主機[:連接埠]/路徑`；只接受 HTTPS。
+pub fn split_https(url: &str) -> Option<(String, u16, String)> {
+    let rest = url.strip_prefix("https://")?;
+    let (authority, path) = match rest.find(['/', '?']) {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, "/"),
+    };
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((h, p)) => (h, p.parse().ok()?),
+        None => (authority, 443),
+    };
+    let path = if path.starts_with('?') {
+        format!("/{path}")
+    } else {
+        path.to_string()
+    };
+    Some((host.to_string(), port, path))
+}
+
+/// WinHTTP 錯誤碼的說明。
+pub fn describe(code: u32) -> String {
+    let what = match code {
+        12002 => "連線逾時",
+        12007 => "找不到伺服器（DNS）",
+        12029 => "無法連線到伺服器",
+        12030 | 12031 => "連線被中斷",
+        12038 | 12037 | 12045 | 12169 | 12175 => {
+            "憑證有問題（公司網路的憑證可能沒有安裝到 Windows）"
+        }
+        12166 => "Proxy 的自動設定指令碼有錯誤",
+        12167 => "無法下載 Proxy 的自動設定指令碼",
+        12180 => "找不到 Proxy 的自動設定",
+        _ => "",
+    };
+    if what.is_empty() {
+        format!("WinHTTP 錯誤 {code}")
+    } else {
+        format!("{what}（WinHTTP {code}）")
+    }
+}
+
+#[cfg(windows)]
+pub use imp::get;
+
+#[cfg(windows)]
+mod imp {
+    use std::ffi::c_void;
+    use std::io::Read;
+    use std::ptr::{null, null_mut};
+    use std::time::Duration;
+
+    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::Networking::WinHttp::*;
+
+    use super::{describe, split_https};
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn last_error() -> String {
+        describe(unsafe { GetLastError() })
+    }
+
+    /// WinHTTP 的控制代碼，離開時自動關閉。
+    struct Handle(*mut c_void);
+
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe { WinHttpCloseHandle(self.0) };
+            }
+        }
+    }
+
+    fn handle(h: *mut c_void) -> Result<Handle, String> {
+        if h.is_null() {
+            Err(last_error())
+        } else {
+            Ok(Handle(h))
+        }
+    }
+
+    fn check(ok: windows_sys::core::BOOL) -> Result<(), String> {
+        if ok == 0 {
+            Err(last_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// 回應內容（`Read`）。控制代碼的順序：先關請求，再關連線與工作階段。
+    pub struct Response {
+        request: Handle,
+        _connect: Handle,
+        _session: Handle,
+    }
+
+    impl Read for Response {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut n = 0u32;
+            let len = buf.len().min(u32::MAX as usize) as u32;
+            let ok =
+                unsafe { WinHttpReadData(self.request.0, buf.as_mut_ptr().cast(), len, &mut n) };
+            if ok == 0 {
+                return Err(std::io::Error::other(last_error()));
+            }
+            Ok(n as usize)
+        }
+    }
+
+    fn status(request: &Handle) -> Result<u32, String> {
+        let mut code = 0u32;
+        let mut size = std::mem::size_of::<u32>() as u32;
+        check(unsafe {
+            WinHttpQueryHeaders(
+                request.0,
+                WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                null(),
+                (&mut code as *mut u32).cast(),
+                &mut size,
+                null_mut(),
+            )
+        })?;
+        Ok(code)
+    }
+
+    /// 丟掉這次回應剩下的內容（重送請求前要先讀完）。
+    fn drain(request: &Handle) {
+        let mut buf = [0u8; 8192];
+        loop {
+            let mut n = 0u32;
+            let ok = unsafe {
+                WinHttpReadData(request.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n)
+            };
+            if ok == 0 || n == 0 {
+                break;
+            }
+        }
+    }
+
+    /// 以 GET 下載 `url`（只接受 HTTPS）。WinHTTP 會自己處理轉址；
+    /// Proxy 要求驗證（407）時用目前登入的 Windows 帳號（NTLM、Kerberos）。
+    pub fn get(url: &str, timeout: Duration, user_agent: &str) -> Result<Response, String> {
+        let (host, port, path) = split_https(url).ok_or("只能下載 HTTPS 網址")?;
+        let agent = wide(user_agent);
+        // 自動 Proxy（Windows 8.1 以後）：系統與使用者的 Proxy 設定、自動設定指令碼、WPAD。
+        let session = handle(unsafe {
+            WinHttpOpen(
+                agent.as_ptr(),
+                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                null(),
+                null(),
+                0,
+            )
+        })
+        .or_else(|_| {
+            handle(unsafe {
+                WinHttpOpen(
+                    agent.as_ptr(),
+                    WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                    null(),
+                    null(),
+                    0,
+                )
+            })
+        })?;
+        let ms = timeout.as_millis().min(i32::MAX as u128) as i32;
+        check(unsafe { WinHttpSetTimeouts(session.0, ms, ms, ms, ms) })?;
+        let host_w = wide(&host);
+        let connect = handle(unsafe { WinHttpConnect(session.0, host_w.as_ptr(), port, 0) })?;
+        let verb = wide("GET");
+        let path_w = wide(&path);
+        let request = handle(unsafe {
+            WinHttpOpenRequest(
+                connect.0,
+                verb.as_ptr(),
+                path_w.as_ptr(),
+                null(),
+                null(),
+                null(),
+                WINHTTP_FLAG_SECURE,
+            )
+        })?;
+        // 允許自動送出 Windows 帳號（只送給 Proxy；GitHub 不會要求）。
+        let policy = WINHTTP_AUTOLOGON_SECURITY_LEVEL_LOW;
+        unsafe {
+            WinHttpSetOption(
+                request.0,
+                WINHTTP_OPTION_AUTOLOGON_POLICY,
+                (&policy as *const u32).cast(),
+                std::mem::size_of::<u32>() as u32,
+            )
+        };
+        for _ in 0..3 {
+            check(unsafe { WinHttpSendRequest(request.0, null(), 0, null(), 0, 0, 0) })?;
+            check(unsafe { WinHttpReceiveResponse(request.0, null_mut()) })?;
+            let code = status(&request)?;
+            if code != 407 {
+                if !(200..300).contains(&code) {
+                    return Err(format!("伺服器回應 {code}"));
+                }
+                return Ok(Response {
+                    request,
+                    _connect: connect,
+                    _session: session,
+                });
+            }
+            let (mut supported, mut first, mut target) = (0u32, 0u32, 0u32);
+            check(unsafe {
+                WinHttpQueryAuthSchemes(request.0, &mut supported, &mut first, &mut target)
+            })?;
+            let scheme = [WINHTTP_AUTH_SCHEME_NEGOTIATE, WINHTTP_AUTH_SCHEME_NTLM]
+                .into_iter()
+                .find(|s| supported & s != 0)
+                .ok_or("公司的 Proxy 需要輸入帳號密碼才能連外，請手動下載新版")?;
+            check(unsafe {
+                WinHttpSetCredentials(
+                    request.0,
+                    WINHTTP_AUTH_TARGET_PROXY,
+                    scheme,
+                    null(),
+                    null(),
+                    null_mut(),
+                )
+            })?;
+            drain(&request);
+        }
+        Err("公司的 Proxy 拒絕了這台電腦的 Windows 帳號（407）".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_https_urls() {
+        assert_eq!(
+            split_https("https://github.com/o/r/releases/download/latest/version.json"),
+            Some((
+                "github.com".into(),
+                443,
+                "/o/r/releases/download/latest/version.json".into()
+            ))
+        );
+        assert_eq!(
+            split_https("https://example.com:8443?x=1"),
+            Some(("example.com".into(), 8443, "/?x=1".into()))
+        );
+        assert_eq!(
+            split_https("https://example.com"),
+            Some(("example.com".into(), 443, "/".into()))
+        );
+        assert_eq!(split_https("http://example.com/a"), None);
+        assert_eq!(split_https("https://user@example.com/a"), None);
+        assert_eq!(split_https("https:///a"), None);
+    }
+
+    #[test]
+    fn explains_common_errors() {
+        assert!(describe(12007).contains("DNS"));
+        assert!(describe(12167).contains("自動設定"));
+        assert_eq!(describe(99999), "WinHTTP 錯誤 99999");
+    }
+}

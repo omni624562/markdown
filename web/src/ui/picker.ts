@@ -7,6 +7,10 @@ export interface PickerItem {
   icon?: string;
   /** 右側顯示的快速鍵。 */
   keys?: string;
+  /** 分區標題：和上一個項目不同時，在前面顯示標題。 */
+  section?: string;
+  /** 名稱前面的顏色圓點（專案的顏色）。 */
+  color?: string | null;
 }
 
 export interface PickerOptions<T> {
@@ -76,14 +80,30 @@ export class Picker<T> {
     this.#items = items;
     this.#active = 0;
     const listId = this.#list.id;
+    let section: string | undefined;
     this.#list.replaceChildren(
-      ...items.map((item, i) => {
+      ...items.flatMap((item, i) => {
         const view = this.#opts.render(item);
+        const out: HTMLLIElement[] = [];
+        if (view.section && view.section !== section) {
+          const head = document.createElement("li");
+          head.className = "palette-section";
+          head.role = "presentation";
+          head.textContent = view.section;
+          out.push(head);
+        }
+        section = view.section;
         const li = document.createElement("li");
         li.id = `${listId}-${i}`;
         li.role = "option";
         li.dataset.index = String(i);
         if (view.icon) li.append(icon(view.icon));
+        if (view.color !== undefined) {
+          const dot = document.createElement("span");
+          dot.className = "project-dot";
+          if (view.color) dot.dataset.color = view.color;
+          li.append(dot);
+        }
         const title = document.createElement("span");
         title.className = "palette-title";
         title.textContent = view.title;
@@ -99,7 +119,8 @@ export class Picker<T> {
           kbd.textContent = view.keys;
           li.append(kbd);
         }
-        return li;
+        out.push(li);
+        return out;
       }),
     );
     if (!items.length) {
