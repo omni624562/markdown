@@ -9,7 +9,6 @@ export const editing: Record<string, Translation> = {
   "已摺疊，按一下展開": "Folded. Click to expand.",
   "已摺疊的內容，按一下展開": "Folded content. Click to expand.",
   "摺疊這個章節": "Fold Section",
-  "展開": "Expand",
   // terms.ts、punct.ts、proofread.ts
   "「{word}」": "\"{word}\"",
   "{a}或{b}": "{a} or {b}",

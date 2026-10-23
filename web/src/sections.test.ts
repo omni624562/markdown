@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type HeadingLine, moveSection, sectionRange, swapSection } from "./sections.ts";
+import { type HeadingLine, hiddenByCollapse, moveSection, sectionRange, subtreeEnd, swapSection } from "./sections.ts";
 
 /** 從文字找出 ATX 標題（測試用；實際由 md-core 提供）。 */
 function headingsOf(text: string): HeadingLine[] {
@@ -118,4 +118,21 @@ test("Alt+↑／↓ 和同級章節交換", () => {
   assert.equal(up.index, 1);
   assert.equal(swapSection(DOC, h, 4, 1), null); // 已經是最後
   assert.equal(swapSection(DOC, h, 2, -1), null); // 1.1 前面沒有同級章節
+});
+
+test("大綱收合：子標題跟著隱藏，收合的標題本身仍顯示", () => {
+  //            0  1  2  3  4  5
+  const levels = [1, 2, 3, 2, 1, 2];
+  assert.equal(subtreeEnd(levels, 0), 4);
+  assert.equal(subtreeEnd(levels, 1), 3);
+  assert.equal(subtreeEnd(levels, 2), 3);
+  assert.equal(subtreeEnd(levels, 5), 6);
+  const collapsed = (set: number[]) => hiddenByCollapse(levels, (i) => set.includes(i));
+  assert.deepEqual(collapsed([]), [false, false, false, false, false, false]);
+  assert.deepEqual(collapsed([1]), [false, false, true, false, false, false]);
+  assert.deepEqual(collapsed([0]), [false, true, true, true, false, false]);
+  // 外層收合時，裡面的收合不影響外面。
+  assert.deepEqual(collapsed([0, 1]), [false, true, true, true, false, false]);
+  // 沒有子標題的標題收合也沒有作用。
+  assert.deepEqual(collapsed([2, 5]), [false, false, false, false, false, false]);
 });

@@ -117,4 +117,6 @@ export const common: Record<string, Translation> = {
   "所有人": "Everyone",
   // 好幾個區域共用的字。
   "區域": "Area",
+  // 好幾個區域共用的字。
+  "展開": "Expand",
 };

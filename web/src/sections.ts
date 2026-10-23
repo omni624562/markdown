@@ -79,3 +79,22 @@ export function swapSection(
   const childCount = headings.filter((o) => o.line >= end && o.line < end + nextSize).length;
   return { text: out, index: index + childCount };
 }
+
+// ---- 大綱收合 ----------------------------------------------------------------
+
+/** 第 `index` 個標題的子標題結束在哪裡：下一個同級或更高級標題的索引（沒有就是標題數量）。 */
+export function subtreeEnd(levels: number[], index: number): number {
+  for (let j = index + 1; j < levels.length; j++) if (levels[j] <= levels[index]) return j;
+  return levels.length;
+}
+
+/** 收合後哪些標題要隱藏：在某個收合的標題底下（子標題、孫標題…）的都隱藏。 */
+export function hiddenByCollapse(levels: number[], collapsed: (i: number) => boolean): boolean[] {
+  const hidden = levels.map(() => false);
+  for (let i = 0; i < levels.length; i++) {
+    if (hidden[i] || !collapsed(i)) continue;
+    const end = subtreeEnd(levels, i);
+    for (let j = i + 1; j < end; j++) hidden[j] = true;
+  }
+  return hidden;
+}

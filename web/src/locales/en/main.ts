@@ -556,4 +556,7 @@ export const main: Record<string, Translation> = {
   "名字": "Name",
   "輸入名字（部分即可）": "Type a name (partial is fine)",
   "所有區域": "All Areas",
+  "收合": "Collapse",
+  "全部收合": "Collapse All",
+  "全部展開": "Expand All",
 };
