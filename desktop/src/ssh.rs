@@ -9,6 +9,8 @@
 //!   `HOSTKEY_UNKNOWN`，請使用者確認指紋後再連一次；和記錄的不同時拒絕連線。
 //! - SFTP 沒有 ETag：用「修改時間-大小」判斷檔案在開啟後有沒有被改過。
 //! - 連線斷掉（電腦睡眠、換網路）時，下一個操作會自動重新連線。
+//! - 跳板主機（ProxyJump）：先連到跳板主機，再從那裡開一條通道連到目標主機（兩台的主機金鑰都會檢查）。
+//!   跳板主機用金鑰或 ssh-agent 登入；需要密碼時用和目標主機相同的密碼。
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -50,6 +52,30 @@ pub struct SshTarget {
     pub root: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_path: Option<String>,
+    /// 跳板主機（ProxyJump）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jump: Option<JumpHost>,
+}
+
+/// 跳板主機：先連到這裡，再從這裡連到目標主機。
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct JumpHost {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+}
+
+impl JumpHost {
+    /// 給 ssh 指令 `-J` 用的寫法（`帳號@主機:連接埠`，IPv6 加中括號）。
+    fn spec(&self) -> String {
+        let host = if self.host.contains(':') {
+            format!("[{}]", self.host)
+        } else {
+            self.host.clone()
+        };
+        format!("{}@{host}:{}", self.user, self.port)
+    }
 }
 
 // ---- 主機金鑰 ---------------------------------------------------------------
@@ -126,6 +152,8 @@ impl client::Handler for Checker {
 struct Live {
     handle: client::Handle<Checker>,
     sftp: SftpSession,
+    /// 經由跳板主機時，跳板的連線要一直開著。
+    _jump: Option<client::Handle<Checker>>,
 }
 
 fn net(e: impl std::fmt::Display) -> DavError {
@@ -171,6 +199,45 @@ async fn connect(
     }
 }
 
+fn checker(host: &str, port: u16, trust: Option<String>) -> (Checker, Arc<Mutex<Option<HostKey>>>) {
+    let seen = Arc::new(Mutex::new(None));
+    let c = Checker {
+        host: host.to_string(),
+        port,
+        trust,
+        seen: seen.clone(),
+    };
+    (c, seen)
+}
+
+/// 等 SSH 交握完成；主機金鑰沒看過或不相符時，換成給前端的訊息。
+async fn handshake(
+    fut: impl Future<Output = Result<client::Handle<Checker>, russh::Error>>,
+    seen: &Mutex<Option<HostKey>>,
+    host: &str,
+) -> Result<client::Handle<Checker>, DavError> {
+    match fut.await {
+        Ok(handle) => Ok(handle),
+        Err(e) => {
+            let seen = seen.lock().unwrap().clone();
+            Err(match seen {
+                // 第四行是主機名稱：經由跳板主機時，前端才知道是在確認哪一台。
+                Some(HostKey::Unknown(algo, fp)) => {
+                    DavError::Other(format!("HOSTKEY_UNKNOWN\n{algo}\n{fp}\n{host}"))
+                }
+                Some(HostKey::Changed) => DavError::Other(tr!(
+                    "{host} 的主機金鑰和上次連線時不同：可能是伺服器重新安裝過，也可能有人在攔截連線。確定沒問題的話，請在終端機執行 ssh-keygen -R {host} 刪掉舊的記錄，再重新連線。",
+                    host = host
+                )),
+                Some(HostKey::Certificate) => {
+                    DavError::Other(tr!("這台主機使用憑證驗證主機金鑰，目前不支援"))
+                }
+                _ => net(e),
+            })
+        }
+    }
+}
+
 async fn connect_inner(
     target: &SshTarget,
     user: &str,
@@ -183,34 +250,55 @@ async fn connect_inner(
         keepalive_max: 3,
         ..Default::default()
     });
-    let seen = Arc::new(Mutex::new(None));
-    let checker = Checker {
-        host: target.host.clone(),
-        port: target.port,
-        trust,
-        seen: seen.clone(),
-    };
-    let addr = (target.host.as_str(), target.port);
-    let mut handle = match client::connect(config, addr, checker).await {
-        Ok(handle) => handle,
-        Err(e) => {
-            let seen = seen.lock().unwrap().clone();
-            return Err(match seen {
-                Some(HostKey::Unknown(algo, fp)) => {
-                    DavError::Other(format!("HOSTKEY_UNKNOWN\n{algo}\n{fp}"))
-                }
-                Some(HostKey::Changed) => DavError::Other(tr!(
-                    "{host} 的主機金鑰和上次連線時不同：可能是伺服器重新安裝過，也可能有人在攔截連線。確定沒問題的話，請在終端機執行 ssh-keygen -R {host} 刪掉舊的記錄，再重新連線。",
-                    host = target.host
-                )),
-                Some(HostKey::Certificate) => {
-                    DavError::Other(tr!("這台主機使用憑證驗證主機金鑰，目前不支援"))
-                }
-                _ => net(e),
-            });
+    let (mut handle, jump) = match &target.jump {
+        None => {
+            let (c, seen) = checker(&target.host, target.port, trust);
+            let addr = (target.host.as_str(), target.port);
+            let h = handshake(client::connect(config, addr, c), &seen, &target.host).await?;
+            (h, None)
+        }
+        Some(j) => {
+            let (c, seen) = checker(&j.host, j.port, trust.clone());
+            let addr = (j.host.as_str(), j.port);
+            let mut jh =
+                handshake(client::connect(config.clone(), addr, c), &seen, &j.host).await?;
+            authenticate(&mut jh, target.key_path.as_deref(), &j.user, secret)
+                .await
+                .map_err(|e| match e {
+                    DavError::Other(m) if m == "NEED_PASSWORD" => DavError::Other(m),
+                    e => DavError::Other(tr!(
+                        "無法登入跳板主機 {host}：{e}",
+                        host = j.host,
+                        e = e.message(&tr!("無法連線"))
+                    )),
+                })?;
+            let channel = jh
+                .channel_open_direct_tcpip(
+                    target.host.clone(),
+                    u32::from(target.port),
+                    "127.0.0.1",
+                    0,
+                )
+                .await
+                .map_err(|e| {
+                    DavError::Other(tr!(
+                        "跳板主機 {jump} 無法連到 {host}：{e}",
+                        jump = j.host,
+                        host = target.host,
+                        e = e
+                    ))
+                })?;
+            let (c, seen) = checker(&target.host, target.port, trust);
+            let h = handshake(
+                client::connect_stream(config, channel.into_stream(), c),
+                &seen,
+                &target.host,
+            )
+            .await?;
+            (h, Some(jh))
         }
     };
-    authenticate(&mut handle, target, user, secret).await?;
+    authenticate(&mut handle, target.key_path.as_deref(), user, secret).await?;
     let channel = handle.channel_open_session().await.map_err(net)?;
     channel.request_subsystem(true, "sftp").await.map_err(net)?;
     let config = russh_sftp::client::Config {
@@ -220,7 +308,11 @@ async fn connect_inner(
     let sftp = SftpSession::new_with_config(channel.into_stream(), config)
         .await
         .map_err(|e| DavError::Other(tr!("這台主機沒有開啟 SFTP：{e}", e = e)))?;
-    Ok(Live { handle, sftp })
+    Ok(Live {
+        handle,
+        sftp,
+        _jump: jump,
+    })
 }
 
 async fn try_key(
@@ -355,12 +447,12 @@ fn load_key(
 
 async fn authenticate(
     h: &mut client::Handle<Checker>,
-    target: &SshTarget,
+    key_path: Option<&str>,
     user: &str,
     secret: Option<&str>,
 ) -> Result<(), DavError> {
     let rsa_hash = h.best_supported_rsa_hash().await.ok().flatten().flatten();
-    if let Some(path) = target.key_path.as_deref().filter(|p| !p.trim().is_empty()) {
+    if let Some(path) = key_path.filter(|p| !p.trim().is_empty()) {
         let path = expand_home(path.trim());
         match load_key(&path, secret).map_err(DavError::Other)? {
             Some(key) => {
@@ -446,6 +538,57 @@ fn sftp_err(e: SftpError) -> DavError {
 /// 「修改時間-大小」當作版本標記（SFTP 沒有 ETag）。
 fn version(meta: &Metadata) -> String {
     format!("\"{}-{}\"", meta.mtime.unwrap_or(0), meta.size.unwrap_or(0))
+}
+
+/// 檔案大小給人看的寫法。
+fn size_label(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut v = bytes as f64 / 1024.0;
+    let mut unit = 0;
+    while v >= 1024.0 && unit < UNITS.len() - 1 {
+        v /= 1024.0;
+        unit += 1;
+    }
+    format!("{v:.1} {}", UNITS[unit])
+}
+
+/// Unix 權限（例如 `rw-r--r--`）。
+fn permission_label(mode: u32) -> String {
+    let bits = ['r', 'w', 'x'];
+    (0..9)
+        .map(|i| {
+            if mode & (1 << (8 - i)) != 0 {
+                bits[i % 3]
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+/// 檔案樹上滑鼠停留時顯示：大小（資料夾不顯示）、權限、修改時間。
+fn describe(meta: &Metadata) -> String {
+    let mut parts = Vec::new();
+    if !meta.is_dir() {
+        parts.push(size_label(meta.size.unwrap_or(0)));
+    }
+    if let Some(mode) = meta.permissions {
+        parts.push(permission_label(mode));
+    }
+    if let Some(t) = meta
+        .mtime
+        .and_then(|m| chrono::DateTime::from_timestamp(i64::from(m), 0))
+    {
+        parts.push(
+            t.with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M")
+                .to_string(),
+        );
+    }
+    parts.join(" · ")
 }
 
 fn child(rel: &str, name: &str) -> String {
@@ -650,11 +793,11 @@ impl RemoteFs for SshFs {
                             Err(_) => continue,
                         }
                     }
-                    items.push(Item::new(
-                        child(rel, &name),
-                        meta.is_dir(),
-                        Some(version(&meta)),
-                    ));
+                    let info = describe(&meta);
+                    items.push(
+                        Item::new(child(rel, &name), meta.is_dir(), Some(version(&meta)))
+                            .with_detail(info),
+                    );
                 }
                 Ok(items)
             }
@@ -899,9 +1042,19 @@ pub async fn ssh_connect(
     root: String,
     remember: bool,
     trust: Option<String>,
+    jump: Option<String>,
     dav: State<'_, Dav>,
 ) -> Result<FolderInfo, String> {
     let (user, host, port) = parse_host(&host, &username, port)?;
+    // 跳板主機可以只寫主機名稱：帳號沿用目標主機的帳號。
+    let jump = match jump.as_deref().map(str::trim).filter(|j| !j.is_empty()) {
+        Some(j) => {
+            let (user, host, port) = parse_host(j, if j.contains('@') { "" } else { &user }, None)
+                .map_err(|e| tr!("跳板主機：{e}", e = e))?;
+            Some(JumpHost { host, port, user })
+        }
+        None => None,
+    };
     let secret = password.filter(|p| !p.is_empty());
     let key_path = key_path
         .map(|k| k.trim().to_string())
@@ -911,6 +1064,7 @@ pub async fn ssh_connect(
         port,
         root: String::new(),
         key_path,
+        jump,
     };
     let live = connect(&target, &user, secret.as_deref(), trust)
         .await
@@ -986,7 +1140,12 @@ pub(crate) async fn reconnect(
 /// 登入後切換到遠端資料夾。找不到 ssh 時回傳 `None`。
 pub fn terminal_command(user: &str, t: &SshTarget) -> Option<portable_pty::CommandBuilder> {
     // 連線清單是設定檔，可能被改過：這裡再檢查一次。
-    if !safe_word(user) || !safe_word(&t.host) {
+    if !safe_word(user)
+        || !safe_word(&t.host)
+        || t.jump
+            .as_ref()
+            .is_some_and(|j| !safe_word(&j.user) || !safe_word(&j.host))
+    {
         return None;
     }
     let ssh = which::which("ssh").ok()?;
@@ -1001,6 +1160,10 @@ pub fn terminal_command(user: &str, t: &SshTarget) -> Option<portable_pty::Comma
     if let Some(key) = t.key_path.as_deref() {
         cmd.arg("-i");
         cmd.arg(expand_home(key));
+    }
+    if let Some(j) = &t.jump {
+        cmd.arg("-J");
+        cmd.arg(j.spec());
     }
     // `--` 之後一定是目的地，不會被當成選項。
     cmd.arg("--");
@@ -1093,6 +1256,7 @@ mod tests {
             port: 22,
             root: "/".into(),
             key_path: None,
+            jump: None,
         };
         assert!(terminal_command("-oProxyCommand=x", &t).is_none());
     }
@@ -1104,6 +1268,7 @@ mod tests {
             port: 2222,
             root: "/home/eric/筆記".into(),
             key_path: None,
+            jump: None,
         };
         assert_eq!(
             display_url("eric", &t),
@@ -1131,12 +1296,64 @@ mod tests {
     }
 
     #[test]
+    fn describes_remote_files() {
+        assert_eq!(size_label(512), "512 B");
+        assert_eq!(size_label(1536), "1.5 KB");
+        assert_eq!(size_label(5 * 1024 * 1024), "5.0 MB");
+        assert_eq!(permission_label(0o644), "rw-r--r--");
+        assert_eq!(permission_label(0o100755), "rwxr-xr-x");
+        assert_eq!(crate::dav::numbered("a.md", 1), "a.md");
+        assert_eq!(crate::dav::numbered("a.md", 2), "a (2).md");
+        assert_eq!(crate::dav::numbered("README", 3), "README (3)");
+        assert_eq!(crate::dav::numbered(".env", 2), ".env (2)");
+    }
+
+    #[test]
+    fn terminal_goes_through_the_jump_host() {
+        let mut t = SshTarget {
+            host: "10.0.0.5".into(),
+            port: 22,
+            root: "/srv".into(),
+            key_path: None,
+            jump: Some(JumpHost {
+                host: "bastion.example.com".into(),
+                port: 2200,
+                user: "eric".into(),
+            }),
+        };
+        assert_eq!(
+            t.jump.as_ref().unwrap().spec(),
+            "eric@bastion.example.com:2200"
+        );
+        if let Some(cmd) = terminal_command("eric", &t) {
+            let argv: Vec<String> = cmd
+                .get_argv()
+                .iter()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
+            let j = argv.iter().position(|a| a == "-J").unwrap();
+            assert_eq!(argv[j + 1], "eric@bastion.example.com:2200");
+            assert!(j < argv.iter().position(|a| a == "--").unwrap());
+        }
+        // 跳板主機的帳號或主機名稱不能被當成選項。
+        t.jump.as_mut().unwrap().user = "-oProxyCommand=x".into();
+        assert!(terminal_command("eric", &t).is_none());
+        let v6 = JumpHost {
+            host: "fe80::1".into(),
+            port: 22,
+            user: "a".into(),
+        };
+        assert_eq!(v6.spec(), "a@[fe80::1]:22");
+    }
+
+    #[test]
     fn terminal_opens_the_remote_folder() {
         let t = SshTarget {
             host: "srv".into(),
             port: 2222,
             root: "/home/eric/it's 筆記".into(),
             key_path: Some("/keys/id".into()),
+            jump: None,
         };
         let Some(cmd) = terminal_command("eric", &t) else {
             return; // 這台電腦沒有 ssh
@@ -1174,6 +1391,7 @@ mod tests {
             port: env("MD_SSH_PORT").parse().unwrap(),
             root: String::new(),
             key_path: None,
+            jump: None,
         };
         let user = env("MD_SSH_USER");
         let pass = std::env::var("MD_SSH_PASS").ok();
@@ -1199,6 +1417,23 @@ mod tests {
             assert!(wrong.is_err());
         }
         target.root = tauri::async_runtime::block_on(resolve_root(&live.sftp, "~")).unwrap();
+        // 經由跳板主機（MD_SSH_JUMP，例如「帳號@主機:連接埠」；測試時可以跳回同一台）。
+        if let Ok(spec) = std::env::var("MD_SSH_JUMP") {
+            let (ju, jh, jp) = parse_host(&spec, &user, None).unwrap();
+            let via = SshTarget {
+                jump: Some(JumpHost {
+                    host: jh,
+                    port: jp,
+                    user: ju,
+                }),
+                ..target.clone()
+            };
+            let hop = tauri::async_runtime::block_on(connect(&via, &user, pass.as_deref(), None))
+                .unwrap();
+            assert!(hop._jump.is_some());
+            let home = tauri::async_runtime::block_on(resolve_root(&hop.sftp, "~")).unwrap();
+            assert_eq!(home, target.root);
+        }
         let fs = SshFs {
             target,
             user,

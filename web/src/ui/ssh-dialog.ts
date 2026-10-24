@@ -18,12 +18,14 @@ export interface SshPrefill {
 }
 
 /**
- * 原生端回傳 `HOSTKEY_UNKNOWN\n演算法\n指紋` 時，請使用者確認第一次連線的主機。
+ * 原生端回傳 `HOSTKEY_UNKNOWN\n演算法\n指紋\n主機` 時，請使用者確認第一次連線的主機。
  * 確認時回傳指紋，取消或不是這種錯誤時回傳 null。
  */
 export async function confirmHostKey(message: string, host: string): Promise<string | null> {
-  const [tag, algo, fp] = message.split("\n");
+  const [tag, algo, fp, which] = message.split("\n");
   if (tag !== "HOSTKEY_UNKNOWN" || !fp) return null;
+  // 第四行是在確認哪一台（經由跳板主機時可能是跳板主機）。
+  if (which) host = which;
   const ok = await choose(
     t("第一次連線到這台主機"),
     t("無法確認「{host}」的身分。請核對下面的主機金鑰指紋和伺服器上的一致（在伺服器上執行 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 可以看到）。信任之後會記在 ~/.ssh/known_hosts，下次不再詢問。", { host }),
@@ -61,6 +63,9 @@ export class SshDialog {
       advanced: t("進階"),
       keyPath: t("金鑰檔"),
       keyExample: t("~/.ssh/id_ed25519（留空會自動尋找）"),
+      jump: t("跳板主機（ProxyJump）"),
+      jumpExample: t("帳號@跳板主機:連接埠（不需要就留空）"),
+      jumpHint: t("要先連到一台跳板主機才能連到目標主機時填寫。跳板主機用金鑰或 ssh-agent 登入；需要密碼時用上面的密碼。"),
       remember: t("記住密碼（存在 Windows 認證管理員）"),
       cancel: t("取消"),
       connect: t("連線"),
@@ -79,6 +84,8 @@ export class SshDialog {
         <details class="dav-advanced">
           <summary>${tr.advanced}</summary>
           <label>${tr.keyPath}<input name="keyPath" placeholder="${tr.keyExample}" spellcheck="false" /></label>
+          <label>${tr.jump}<input name="jump" placeholder="${tr.jumpExample}" autocomplete="off" spellcheck="false" /></label>
+          <p class="dav-hint">${tr.jumpHint}</p>
         </details>
         <label class="dav-remember"><input name="remember" type="checkbox" checked /> ${tr.remember}</label>
         <p class="dav-error" role="alert" hidden></p>
@@ -125,6 +132,7 @@ export class SshDialog {
       password: q("password"),
       root: q("root"),
       keyPath: q("keyPath"),
+      jump: q("jump"),
       remember: q("remember"),
     };
   }
@@ -151,6 +159,7 @@ export class SshDialog {
               username: f.username.value.trim(),
               password: f.password.value,
               keyPath: f.keyPath.value.trim(),
+              jump: f.jump.value.trim(),
               root: f.root.value.trim(),
               remember: f.remember.checked,
               trust,

@@ -188,11 +188,24 @@ pub struct Entry {
     name: String,
     path: String,
     is_dir: bool,
+    /// 滑鼠停留時顯示的資訊（遠端檔案的大小、權限、修改時間）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
 }
 
 impl Entry {
     pub fn new(name: String, path: String, is_dir: bool) -> Self {
-        Entry { name, path, is_dir }
+        Entry {
+            name,
+            path,
+            is_dir,
+            detail: None,
+        }
+    }
+
+    pub fn with_detail(mut self, detail: Option<String>) -> Self {
+        self.detail = detail;
+        self
     }
 
     pub fn name(&self) -> &str {
@@ -228,6 +241,7 @@ fn list_children(dir: &Path) -> Vec<Entry> {
                 name: e.file_name().to_string_lossy().into_owned(),
                 path: path_string(e.path()),
                 is_dir,
+                detail: None,
             })
         })
         .collect();

@@ -2517,3 +2517,6 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 @media (prefers-reduced-motion: reduce) {
   .gh-graph path, .gh-graph circle, .gh-file-head > .icon { transition: none; }
 }
+
+/* 從電腦拖曳檔案到遠端資料夾：標示會上傳到哪個資料夾 */
+#file-tree.tree-drop, #file-tree .tree-row.tree-drop { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); }

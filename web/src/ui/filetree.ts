@@ -6,7 +6,7 @@ import { t } from "../i18n.ts";
 import { dirname, isInside } from "../paths.ts";
 import { icon } from "./icons.ts";
 
-export type TreeAction = "new-file" | "new-folder" | "rename" | "trash" | "reveal" | "copy-path";
+export type TreeAction = "new-file" | "new-folder" | "upload" | "download" | "rename" | "trash" | "reveal" | "copy-path";
 
 export interface FileTreeHandlers {
   list(dir: string): Promise<Entry[]>;
@@ -14,11 +14,17 @@ export interface FileTreeHandlers {
   action(action: TreeAction, entry: Entry): void;
   /** 展開或收合了資料夾（記住每個專案展開到哪裡）。 */
   expandedChanged?(): void;
+  /** 是不是遠端資料夾（SSH、WebDAV）：可以上傳、下載，不能在檔案總管中顯示。 */
+  remote?(): boolean;
+  /** 從電腦拖曳檔案到資料夾（只有遠端資料夾會用到）。 */
+  dropFiles?(dir: string, files: File[]): void;
 }
 
-const MENU: { action: TreeAction; label: string; dirOnly?: boolean; key?: string }[] = [
+const MENU: { action: TreeAction; label: string; dirOnly?: boolean; fileOnly?: boolean; remote?: boolean; key?: string }[] = [
   { action: "new-file", label: t("新增檔案"), dirOnly: true },
   { action: "new-folder", label: t("新增資料夾"), dirOnly: true },
+  { action: "upload", label: t("從電腦上傳檔案…"), dirOnly: true, remote: true },
+  { action: "download", label: t("下載到電腦…"), fileOnly: true, remote: true },
   { action: "rename", label: t("重新命名"), key: "F2" },
   { action: "trash", label: t("移到資源回收筒"), key: "Delete" },
   { action: "reveal", label: t("在檔案總管中顯示") },
@@ -41,6 +47,7 @@ export class FileTree {
     this.#handlers = handlers;
     el.role = "tree";
     el.addEventListener("keydown", (e) => this.#onKey(e));
+    this.#setupDrop();
 
     this.#menu = document.createElement("div");
     this.#menu.className = "menu";
@@ -55,6 +62,46 @@ export class FileTree {
       e.preventDefault();
     });
     document.body.append(this.#menu);
+  }
+
+  /** 遠端資料夾：從電腦拖曳檔案到資料夾（或檔案所在的資料夾）就上傳。 */
+  #setupDrop(): void {
+    const target = (e: DragEvent): HTMLElement | null => {
+      if (!this.#root || !this.#handlers.remote?.() || !e.dataTransfer?.types.includes("Files")) return null;
+      return (e.target as HTMLElement).closest<HTMLElement>(".tree-row") ?? this.#el;
+    };
+    const dirOf = (el: HTMLElement): string => {
+      const path = el.dataset.path;
+      if (!path) return this.#root!.path;
+      return el.dataset.dir ? path : dirname(path);
+    };
+    const clear = () => this.#el.querySelectorAll(".tree-drop").forEach((n) => n.classList.remove("tree-drop"));
+    this.#el.addEventListener("dragover", (e) => {
+      const el = target(e);
+      if (!el) return;
+      e.preventDefault();
+      // 不要讓整個視窗的「拖曳開檔」接手。
+      e.stopPropagation();
+      e.dataTransfer!.dropEffect = "copy";
+      clear();
+      const dir = dirOf(el);
+      const row = dir === this.#root!.path ? this.#el : this.#el.querySelector<HTMLElement>(`.tree-row[data-path="${CSS.escape(dir)}"]`);
+      row?.classList.add("tree-drop");
+    });
+    this.#el.addEventListener("dragleave", (e) => {
+      if (!this.#el.contains(e.relatedTarget as Node)) clear();
+    });
+    this.#el.addEventListener("drop", (e) => {
+      const el = target(e);
+      clear();
+      if (!el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // 視窗層的拖曳開檔也在數 dragenter／dragleave：讓它收起覆蓋層。
+      window.dispatchEvent(new DragEvent("dragleave"));
+      const files = [...(e.dataTransfer?.files ?? [])];
+      if (files.length) this.#handlers.dropFiles?.(dirOf(el), files);
+    });
   }
 
   get root(): Entry | null {
@@ -250,7 +297,7 @@ export class FileTree {
     row.tabIndex = -1;
     row.dataset.path = entry.path;
     row.dataset.dir = entry.isDir ? "1" : "";
-    row.title = displayPath(entry.path);
+    row.title = entry.detail ? `${displayPath(entry.path)}\n${entry.detail}` : displayPath(entry.path);
     row.style.setProperty("--level", String(level));
     if (entry.isDir) {
       row.setAttribute("aria-expanded", String(this.#expanded.has(entry.path)));
@@ -371,7 +418,12 @@ export class FileTree {
 
   #showMenu(entry: Entry, x: number, y: number): void {
     this.#menu.replaceChildren(
-      ...MENU.filter((m) => !m.dirOnly || entry.isDir).map((m) => {
+      ...MENU.filter((m) => {
+        const remote = !!this.#handlers.remote?.();
+        if ((m.dirOnly && !entry.isDir) || (m.fileOnly && entry.isDir)) return false;
+        // 遠端資料夾才能上傳、下載；遠端的檔案不在這台電腦上，不能在檔案總管中顯示。
+        return m.remote ? remote : !(remote && m.action === "reveal");
+      }).map((m) => {
         const b = document.createElement("button");
         b.type = "button";
         b.role = "menuitem";

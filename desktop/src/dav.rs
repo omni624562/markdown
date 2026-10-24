@@ -215,11 +215,23 @@ pub struct Item {
     pub(crate) rel: String,
     pub(crate) is_dir: bool,
     pub(crate) etag: Option<String>,
+    /// 檔案樹上滑鼠停留時顯示的資訊（大小、權限、修改時間）。
+    pub(crate) detail: Option<String>,
 }
 
 impl Item {
     pub(crate) fn new(rel: String, is_dir: bool, etag: Option<String>) -> Self {
-        Item { rel, is_dir, etag }
+        Item {
+            rel,
+            is_dir,
+            etag,
+            detail: None,
+        }
+    }
+
+    pub(crate) fn with_detail(mut self, detail: String) -> Self {
+        self.detail = Some(detail);
+        self
     }
 }
 
@@ -522,6 +534,7 @@ fn parse_multistatus(xml: &str, base_path: &str) -> Vec<Item> {
                             rel: rest.trim_matches('/').to_string(),
                             is_dir,
                             etag: etag.as_deref().and_then(norm_etag),
+                            detail: None,
                         });
                     }
                 }
@@ -886,7 +899,7 @@ pub async fn dav_list(path: String, dav: State<'_, Dav>) -> Result<Vec<Entry>, S
             .filter(|i| i.rel != rel && !i.rel.is_empty())
             .filter(|i| !name_of(&i.rel).starts_with('.'))
             .filter(|i| i.is_dir || is_doc(std::path::Path::new(&i.rel)))
-            .map(|i| Entry::new(name_of(&i.rel), join(&id, &i.rel), i.is_dir))
+            .map(|i| Entry::new(name_of(&i.rel), join(&id, &i.rel), i.is_dir).with_detail(i.detail))
             .collect();
         entries.sort_by(|a, b| {
             b.is_dir()
@@ -1121,6 +1134,94 @@ pub async fn dav_create(
     })
     .await?;
     Ok(join(&id, &target))
+}
+
+/// 上傳檔案最大的大小。
+const MAX_UPLOAD: usize = 200 * 1024 * 1024;
+
+/// 檔名已經存在時，改用「名稱 (2).副檔名」。
+pub(crate) fn numbered(name: &str, n: u32) -> String {
+    if n < 2 {
+        return name.to_string();
+    }
+    match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => format!("{stem} ({n}).{ext}"),
+        _ => format!("{name} ({n})"),
+    }
+}
+
+/// 從電腦上傳檔案到遠端資料夾（拖曳到檔案樹，或「從電腦上傳檔案…」）。
+/// 原始位元組放在請求本文，資料夾與檔名放在標頭（百分比編碼）；同名時自動加上編號，不覆蓋。
+#[tauri::command]
+pub async fn dav_upload(
+    request: tauri::ipc::Request<'_>,
+    dav: State<'_, Dav>,
+) -> Result<String, String> {
+    let header = |key: &str| {
+        request
+            .headers()
+            .get(key)
+            .and_then(|v| v.to_str().ok())
+            .map(decode_percent)
+            .ok_or_else(|| tr!("上傳的資料不正確"))
+    };
+    let dir = header("x-dir")?;
+    let name = validate_name(&header("x-name")?)?.to_string();
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(tr!("上傳的資料不正確"));
+    };
+    if bytes.len() > MAX_UPLOAD {
+        return Err(tr!(
+            "「{name}」超過 200 MB，請改用其他方式傳送",
+            name = name
+        ));
+    }
+    let bytes = bytes.clone();
+    let (session, rel) = dav.resolve(&dir)?;
+    let id = session.conn.prefix();
+    let target = crate::io::blocking(move || {
+        for n in 1..100 {
+            let file = numbered(&name, n);
+            let target = if rel.is_empty() {
+                file
+            } else {
+                format!("{rel}/{file}")
+            };
+            match session.client.put(&target, &bytes, None) {
+                Ok(_) => return Ok(target),
+                Err(DavError::Changed) | Err(DavError::Exists) => continue,
+                Err(e) => return Err(e.message(&tr!("無法上傳「{name}」", name = name))),
+            }
+        }
+        Err(tr!("無法上傳「{name}」：同名的檔案太多", name = name))
+    })
+    .await?;
+    Ok(join(&id, &target))
+}
+
+/// 把遠端檔案下載到電腦：選好存放位置後寫入。取消時回傳 null。
+#[tauri::command]
+pub async fn dav_download(path: String, dav: State<'_, Dav>) -> Result<Option<String>, String> {
+    let (session, rel) = dav.resolve(&path)?;
+    let name = name_of(&rel);
+    let Some(dest) = rfd::AsyncFileDialog::new()
+        .set_title(tr!("下載到電腦"))
+        .set_file_name(&name)
+        .save_file()
+        .await
+    else {
+        return Ok(None);
+    };
+    let dest = dest.path().to_path_buf();
+    crate::io::blocking(move || {
+        let (bytes, _) = session
+            .client
+            .get(&rel)
+            .map_err(|e| e.message(&tr!("無法下載「{name}」", name = name)))?;
+        std::fs::write(&dest, bytes).map_err(|e| crate::io::describe(&e, &tr!("無法存檔")))?;
+        Ok(Some(crate::files::path_string(&dest)))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1432,11 +1533,7 @@ mod tests {
     use super::*;
 
     fn item(rel: &str, is_dir: bool, etag: Option<&str>) -> Item {
-        Item {
-            rel: rel.into(),
-            is_dir,
-            etag: etag.map(Into::into),
-        }
+        Item::new(rel.into(), is_dir, etag.map(Into::into))
     }
 
     #[test]
@@ -1609,26 +1706,10 @@ mod tests {
         assert_eq!(
             items,
             vec![
-                Item {
-                    rel: "".into(),
-                    is_dir: true,
-                    etag: Some("\"dir\"".into())
-                },
-                Item {
-                    rel: "週報.md".into(),
-                    is_dir: false,
-                    etag: Some("\"abc-123\"".into())
-                },
-                Item {
-                    rel: "sub dir".into(),
-                    is_dir: true,
-                    etag: None
-                },
-                Item {
-                    rel: "a&b.md".into(),
-                    is_dir: false,
-                    etag: Some("\"x&y\"".into())
-                },
+                Item::new("".into(), true, Some("\"dir\"".into())),
+                Item::new("週報.md".into(), false, Some("\"abc-123\"".into())),
+                Item::new("sub dir".into(), true, None),
+                Item::new("a&b.md".into(), false, Some("\"x&y\"".into())),
             ]
         );
         // Nextcloud 風格：小寫前綴 d:。
@@ -1639,11 +1720,7 @@ mod tests {
         let items = parse_multistatus(xml, "/remote.php/dav/files/eric/");
         assert_eq!(
             items[1],
-            Item {
-                rel: "x.md".into(),
-                is_dir: false,
-                etag: Some("\"e1\"".into())
-            }
+            Item::new("x.md".into(), false, Some("\"e1\"".into()))
         );
     }
 

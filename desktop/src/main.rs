@@ -342,6 +342,8 @@ fn main() {
             dav::dav_read,
             dav::dav_write,
             dav::dav_create,
+            dav::dav_upload,
+            dav::dav_download,
             dav::dav_rename,
             dav::dav_delete,
             dav::dav_save_image,

@@ -5,7 +5,8 @@
 import { t } from "./i18n.ts";
 
 interface TauriCore {
-  invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
+  /** `args` 是位元組時當成請求本文直接傳送（大檔案不用轉成 base64），其他資料放在標頭。 */
+  invoke<T>(cmd: string, args?: Record<string, unknown> | Uint8Array, options?: { headers: Record<string, string> }): Promise<T>;
   convertFileSrc(path: string, protocol?: string): string;
 }
 
@@ -51,6 +52,8 @@ export interface Entry {
   name: string;
   path: string;
   isDir: boolean;
+  /** 滑鼠停留時顯示的資訊（遠端檔案的大小、權限、修改時間）。 */
+  detail?: string;
 }
 
 /** 匯入 Word：選到的檔案與要轉存的 Markdown 檔位置。 */
@@ -473,6 +476,8 @@ export interface SshConnectRequest {
   /** 密碼或金鑰的密語；空白就只用金鑰登入。 */
   password: string;
   keyPath: string;
+  /** 跳板主機（`帳號@主機:連接埠`），不需要時是空字串。 */
+  jump: string;
   root: string;
   remember: boolean;
   /** 使用者確認過的主機金鑰指紋。 */
@@ -588,6 +593,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<string>("rename_entry", { path, newName }),
         () => core.invoke<string>("dav_rename", { path, newName }),
       ),
+    /** 從電腦上傳檔案到遠端資料夾；同名時自動加上編號，回傳上傳後的路徑。 */
+    davUpload: (dir: string, name: string, data: ArrayBuffer) =>
+      core.invoke<string>("dav_upload", new Uint8Array(data), {
+        headers: { "x-dir": encodeURIComponent(dir), "x-name": encodeURIComponent(name) },
+      }),
+    /** 把遠端檔案下載到電腦（選存放位置）；取消時回傳 null。 */
+    davDownload: (path: string) => core.invoke<string | null>("dav_download", { path }),
     /** 本機移到資源回收筒；遠端資料夾沒有資源回收筒，會直接刪除。 */
     trashEntry: (path: string) =>
       route(
@@ -659,7 +671,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
         .then(async (f) => (await davConnections().catch(() => []), f)),
     sshConnect: (req: SshConnectRequest) =>
       core
-        .invoke<Folder>("ssh_connect", { ...req, keyPath: req.keyPath || null, password: req.password || null })
+        .invoke<Folder>("ssh_connect", { ...req, keyPath: req.keyPath || null, password: req.password || null, jump: req.jump || null })
         .then(async (f) => (await davConnections().catch(() => []), f)),
     davForget: (id: string) => core.invoke<void>("dav_forget", { id }),
     /** 遠端圖片（預覽用），回傳 data: 網址。 */

@@ -432,4 +432,9 @@ export const ui: Record<string, Translation> = {
   "顯示哪些分支": "Which branches to show",
   "顯示所有提交": "Show all commits",
   "，": ", ",
+  "跳板主機（ProxyJump）": "Jump host (ProxyJump)",
+  "帳號@跳板主機:連接埠（不需要就留空）": "user@jump-host:port (leave empty if not needed)",
+  "要先連到一台跳板主機才能連到目標主機時填寫。跳板主機用金鑰或 ssh-agent 登入；需要密碼時用上面的密碼。": "Fill this in when you must go through a jump host to reach the target. The jump host signs in with a key or ssh-agent; if it needs a password, the password above is used.",
+  "從電腦上傳檔案…": "Upload Files from Computer…",
+  "下載到電腦…": "Download to Computer…",
 };

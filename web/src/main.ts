@@ -1618,6 +1618,8 @@ const fileTree = desktop
       list: (dir) => desktop!.listDir(dir),
       open: (path) => void openPath(path).catch(reportError),
       action: (action, entry) => void treeAction(action, entry).catch(reportError),
+      remote: () => !!workspaceRoot && isRemote(workspaceRoot.path),
+      dropFiles: (dir, files) => void uploadFiles(dir, files).catch(reportError),
       expandedChanged: () => {
         if (workspaceRoot && fileTree) saveProjectView(workspaceRoot.path, { expanded: fileTree.expanded });
       },
@@ -2619,10 +2621,45 @@ async function openPath(path: string, line?: number, column?: number): Promise<v
 }
 
 /** 檔案樹右鍵選單與快速鍵的動作。 */
+/** 從電腦上傳檔案到遠端資料夾（SSH、WebDAV）。 */
+async function uploadFiles(dir: string, files: File[]): Promise<void> {
+  if (!desktop || !fileTree || !files.length) return;
+  const progress = toast(t("上傳中…（{n} 個檔案）", { n: files.length }), { duration: 600_000 });
+  let done = 0;
+  try {
+    for (const f of files) {
+      await desktop.davUpload(dir, f.name, await f.arrayBuffer());
+      done++;
+    }
+  } finally {
+    progress.dismiss();
+    fileListCache = null;
+    await fileTree.refresh([dir]);
+  }
+  toast(done === 1 ? t("已上傳「{name}」", { name: files[0].name }) : t("已上傳 {n} 個檔案", { n: done }), { tone: "success" });
+}
+
+/** 選電腦上的檔案上傳到遠端資料夾。 */
+function pickAndUpload(dir: string): void {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.addEventListener("change", () => void uploadFiles(dir, [...(input.files ?? [])]).catch(reportError));
+  input.click();
+}
+
 async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
   const d = desktop;
   if (!d || !fileTree) return;
   switch (action) {
+    case "upload":
+      pickAndUpload(entry.path);
+      break;
+    case "download": {
+      const saved = await d.davDownload(entry.path);
+      if (saved) toast(t("已下載到「{path}」", { path: saved }), { tone: "success" });
+      break;
+    }
     case "new-file":
     case "new-folder": {
       const isDir = action === "new-folder";
