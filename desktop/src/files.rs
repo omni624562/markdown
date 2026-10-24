@@ -62,7 +62,7 @@ pub struct OpenedFile {
     pub path: String,
     pub name: String,
     pub text: String,
-    /// 檔案不是 UTF-8、改用 Big5 解讀時為 `"big5"`。
+    /// 檔案不是 UTF-8、改用 Big5 解讀時為 `"big5"`；Big5 也解讀不了（會有亂碼）時為 `"unknown"`。
     pub encoding: &'static str,
 }
 
@@ -134,8 +134,10 @@ pub fn decode(bytes: &[u8]) -> (String, FileFormat, &'static str) {
     let (text, encoding) = match std::str::from_utf8(body) {
         Ok(s) => (s.to_owned(), "utf-8"),
         Err(_) => {
-            let (s, _, _) = encoding_rs::BIG5.decode(body);
-            (s.into_owned(), "big5")
+            // Big5 也解不乾淨（例如 Shift-JIS、GBK 或混了壞位元組）：標成 `unknown`，
+            // 前端不自動存檔，存檔前先問使用者，免得把原檔換成亂碼。
+            let (s, _, had_errors) = encoding_rs::BIG5.decode(body);
+            (s.into_owned(), if had_errors { "unknown" } else { "big5" })
         }
     };
     let crlf = text.contains("\r\n");
@@ -302,21 +304,30 @@ fn write_atomic_with(path: &Path, bytes: &[u8], private: bool) -> std::io::Resul
             }
         }
     }
-    let result = created.and_then(|(tmp, mut f)| {
-        let r = f.write_all(bytes).and_then(|_| f.sync_all()).and_then(|_| {
-            drop(f);
-            fs::rename(&tmp, path)
-        });
-        if r.is_err() {
+    let (tmp, mut f) = match created {
+        Ok(c) => c,
+        // 資料夾不能新增檔案（只有原檔可寫）時才退回直接覆寫；磁碟已滿之類的錯誤直接回報，
+        // 免得先截斷原檔再寫入失敗，把原檔弄壞。
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return overwrite_in_place(path, bytes, private).map_err(|_| e);
+        }
+        Err(e) => return Err(e),
+    };
+    if let Err(e) = f.write_all(bytes).and_then(|_| f.sync_all()) {
+        // 暫存檔沒寫完整（磁碟已滿、網路磁碟斷線）：原檔還是好的，不要動它。
+        drop(f);
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    drop(f);
+    match fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
             // 只刪自己建立的暫存檔。
             let _ = fs::remove_file(&tmp);
+            // 無法取代（例如原檔正被其他程式以不允許刪除的方式開著）：新內容確定寫得進去，才退回直接覆寫。
+            overwrite_in_place(path, bytes, private).map_err(|_| e)
         }
-        r
-    });
-    match result {
-        Ok(()) => Ok(()),
-        // 有些情況無法取代（例如原檔正被其他程式以不允許刪除的方式開著），退回直接覆寫。
-        Err(e) => overwrite_in_place(path, bytes, private).map_err(|_| e),
     }
 }
 
@@ -596,8 +607,21 @@ pub async fn save_file(
     Ok(saved(&path))
 }
 
+/// 同一個檔案的存檔一次只做一個：前一次存檔逾時（網路磁碟很慢）但背景還在寫時，
+/// 下一次存檔要等它寫完再檢查衝突，較舊的內容才不會比較新的晚寫進去。
+fn save_lock(path: &Path) -> std::sync::Arc<Mutex<()>> {
+    static LOCKS: std::sync::LazyLock<Mutex<HashMap<PathBuf, std::sync::Arc<Mutex<()>>>>> =
+        std::sync::LazyLock::new(Default::default);
+    let mut locks = LOCKS.lock().unwrap();
+    // 沒有人在用的鎖順便清掉。
+    locks.retain(|_, l| std::sync::Arc::strong_count(l) > 1);
+    locks.entry(path.to_path_buf()).or_default().clone()
+}
+
 /// 覆寫已開啟過的檔案。磁碟上的內容在開啟後被改過時回傳 `Conflict`（除非 `force`）。
 fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<SaveOutcome, String> {
+    let lock = save_lock(path);
+    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
     let known = app.state::<KnownFiles>();
     let state = known
         .0
@@ -662,6 +686,9 @@ mod tests {
         let (text, _, enc) = decode(b"\xA4\xA4\xA4\xE5");
         assert_eq!(text, "中文");
         assert_eq!(enc, "big5");
+        // Big5 也解不乾淨：標成 unknown，前端不會自動存檔蓋掉原檔。
+        let (_, _, enc) = decode(b"abc\xA4");
+        assert_eq!(enc, "unknown");
     }
 
     #[test]

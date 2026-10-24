@@ -564,4 +564,10 @@ export const main: Record<string, Translation> = {
   "全部收合": "Collapse All",
   "全部展開": "Expand All",
   "用 SSH 連線到 Linux 主機…": "Connect to a Linux Host with SSH…",
+  "「{name}」的編碼無法辨識（不是 UTF-8 也不是 Big5），畫面上可能有亂碼。為了保護原檔，這個檔案不會自動存檔。":
+    "The encoding of \"{name}\" can't be recognized (it isn't UTF-8 or Big5), so the text may look garbled. To protect the original, this file won't be saved automatically.",
+  "要覆蓋原檔嗎？": "Overwrite the Original?",
+  "「{name}」的編碼無法辨識，畫面上的內容可能有亂碼。存檔會改成 UTF-8 覆蓋原檔，原本的內容就無法還原。建議另存成新檔，保留原檔。":
+    "The encoding of \"{name}\" can't be recognized, so the text may look garbled. Saving converts it to UTF-8 and overwrites the original, which can't be restored. Save as a new file to keep the original.",
+  "仍要覆蓋原檔": "Overwrite Anyway",
 };
