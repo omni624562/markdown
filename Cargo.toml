@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/md-core", "crates/md-text", "crates/md-wasm", "crates/md-cli"]
+members = ["crates/md-core", "crates/md-text", "crates/md-docx", "crates/md-wasm", "crates/md-cli"]
 # 桌面版需要系統的 WebView 套件，獨立成另一個 workspace，避免影響核心的建置與測試。
 exclude = ["desktop"]
 
 [workspace.package]
-version = "1.23.8"
+version = "1.23.9"
 edition = "2021"
 license = "MIT"
 

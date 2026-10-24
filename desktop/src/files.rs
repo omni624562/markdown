@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 use crate::trust::Trust;
@@ -547,6 +547,62 @@ pub fn import_docx_data() -> Result<tauri::ipc::Response, String> {
         .unwrap()
         .take()
         .ok_or_else(|| tr!("沒有要匯入的 Word 檔"))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// 匯出 Word 用的圖片（前端讀好、需要時轉成 PNG；`data` 是 Base64）。
+#[derive(Deserialize)]
+pub struct DocxImageData {
+    url: String,
+    /// `png`、`jpg`、`gif` 或 `bmp`。
+    kind: String,
+    width: u32,
+    height: u32,
+    data: String,
+}
+
+/// 匯出 Word：把 Markdown 轉成 .docx，回傳檔案內容（原始位元組）。
+/// 圖片由前端先讀好（以 Markdown 裡寫的網址為鍵），因為 WebP、SVG 這類格式要靠瀏覽器轉成 PNG。
+#[tauri::command]
+pub async fn export_docx(
+    markdown: String,
+    title: String,
+    images: Vec<DocxImageData>,
+) -> Result<tauri::ipc::Response, String> {
+    use base64::Engine;
+    use md_docx::{Image, ImageKind};
+    let bytes = crate::io::blocking(move || {
+        let images = images
+            .into_iter()
+            .filter_map(|i| {
+                let kind = match i.kind.as_str() {
+                    "png" => ImageKind::Png,
+                    "jpg" => ImageKind::Jpeg,
+                    "gif" => ImageKind::Gif,
+                    "bmp" => ImageKind::Bmp,
+                    _ => return None,
+                };
+                let data = base64::engine::general_purpose::STANDARD
+                    .decode(i.data)
+                    .ok()?;
+                let image = Image {
+                    data,
+                    kind,
+                    width: i.width,
+                    height: i.height,
+                };
+                Some((i.url, image))
+            })
+            .collect();
+        let missing = |alt: &str| tr!("［圖片：{alt}］", alt = alt);
+        let opts = md_docx::Options {
+            title: &title,
+            images: &images,
+            missing_image: &missing,
+        };
+        Ok(md_docx::markdown_to_docx(&markdown, &opts))
+    })
+    .await?;
     Ok(tauri::ipc::Response::new(bytes))
 }
 

@@ -1,8 +1,9 @@
 /**
  * 匯出 Word（.docx）：把核心渲染的 HTML 轉成 Word 的段落、標題、清單、表格、連結與圖片。
  * 中文用微軟正黑體、英文用 Calibri；文件內的 #錨點 連結（例如目錄）轉成 Word 的書籤連結。
- * 這個模組只在匯出時才載入（docx 套件不小）。
+ * 這個模組只在網頁版匯出時才載入（docx 套件不小）；桌面版在後端產生（`crates/md-docx`）。
  */
+import type { DocxImage } from "./docx-image.ts";
 import { sizeImages } from "./plugins/doc-links.ts";
 import { t } from "./i18n.ts";
 import {
@@ -26,12 +27,6 @@ import {
   WidthType,
 } from "docx";
 
-export interface DocxImage {
-  data: Uint8Array;
-  type: "png" | "jpg" | "gif" | "bmp";
-  width: number;
-  height: number;
-}
 
 export interface DocxOptions {
   title: string;
@@ -383,33 +378,4 @@ export async function htmlToDocx(html: string, opts: DocxOptions): Promise<Blob>
     ],
   });
   return Packer.toBlob(doc);
-}
-
-/** 讀取圖片：PNG、JPEG、GIF、BMP 直接使用，其他格式（WebP、SVG 等）先畫成 PNG。 */
-export async function loadImage(url: string): Promise<DocxImage | null> {
-  const blob = await (await fetch(url)).blob();
-  const objectUrl = URL.createObjectURL(blob);
-  try {
-    const img = new Image();
-    img.src = objectUrl;
-    await img.decode();
-    const width = img.naturalWidth || 300;
-    const height = img.naturalHeight || 200;
-    const native: Record<string, DocxImage["type"]> = {
-      "image/png": "png",
-      "image/jpeg": "jpg",
-      "image/gif": "gif",
-      "image/bmp": "bmp",
-    };
-    const type = native[blob.type];
-    if (type) return { data: new Uint8Array(await blob.arrayBuffer()), type, width, height };
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    canvas.getContext("2d")!.drawImage(img, 0, 0);
-    const png = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
-    return png ? { data: new Uint8Array(await png.arrayBuffer()), type: "png", width, height } : null;
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
 }

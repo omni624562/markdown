@@ -11,8 +11,11 @@ mod spacing;
 mod stats;
 mod table;
 
+/// 匯出 Word 等需要直接走訪語法樹的地方用（和渲染同一個版本的 comrak）。
+pub use comrak;
 use html::escape_html;
 pub use json::format_json;
+pub use markdown::{image_urls, with_document};
 pub use spacing::{add_spacing, spacing_positions};
 pub use stats::{count_text, Stats};
 pub use table::{format_all_tables, format_table};
@@ -393,5 +396,15 @@ mod tests {
         assert_eq!(DocKind::from_file_name("data.json"), DocKind::Json);
         assert_eq!(DocKind::from_file_name("readme.txt"), DocKind::Text);
         assert_eq!(DocKind::from_file_name("LICENSE"), DocKind::Text);
+    }
+
+    #[test]
+    fn lists_image_urls() {
+        assert_eq!(
+            image_urls(
+                "![a](圖1.png) ![b](<x y.png>) ![c](圖1.png) ![d](圖 1.png)\n\n`![d](no.png)`"
+            ),
+            ["圖1.png", "x y.png"]
+        );
     }
 }

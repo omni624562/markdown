@@ -11,6 +11,7 @@ import init, {
   formatAllTables,
   formatJson,
   formatTable,
+  imageUrls,
   kindFromFileName,
   parseDoc,
   renameLinks,
@@ -5489,27 +5490,42 @@ async function importDocxData(name: string, data: ArrayBuffer, mdPath: string | 
   }
 }
 
-/** 匯出 Word：圖片從本機、遠端資料夾或網址讀取，讀不到的改成文字說明。 */
+/**
+ * 匯出 Word：圖片從本機、遠端資料夾或網址讀取，讀不到的改成文字說明。
+ * 桌面版在後端產生 .docx（Rust）；網頁版用 docx 套件。
+ */
 async function exportDocx(): Promise<void> {
   refreshToc();
   const docDir = fileHandle?.path ? dirname(fileHandle.path) : null;
-  const { htmlToDocx, loadImage } = await import("./docx-export.ts");
-  const blob = await htmlToDocx(renderMarkdown(editor.text, { kind: "markdown" }).html, {
-    title: stem(fileName),
-    async image(src) {
-      let url: string | null = null;
-      if (/^(https?:|data:image\/)/i.test(src)) url = src;
-      else if (desktop && docDir) {
-        const path = localImagePath(src, docDir);
-        if (path) url = isRemote(path) ? await desktop.davImage(path) : desktop.fileUrl(path);
-      }
-      return url ? loadImage(url) : null;
-    },
-  });
+  const { loadImage } = await import("./docx-image.ts");
+  const image = async (src: string) => {
+    let url: string | null = null;
+    if (/^(https?:|data:image\/)/i.test(src)) url = src;
+    else if (desktop && docDir) {
+      const path = localImagePath(src, docDir);
+      if (path) url = isRemote(path) ? await desktop.davImage(path) : desktop.fileUrl(path);
+    }
+    return url ? loadImage(url) : null;
+  };
+  const title = stem(fileName);
+  let bytes: Uint8Array;
+  if (desktop) {
+    const images = await Promise.all(
+      imageUrls(editor.text).map(async (url) => {
+        const img = await image(url).catch(() => null);
+        return img && { url, kind: img.type, width: img.width, height: img.height, data: bytesToBase64(img.data) };
+      }),
+    );
+    bytes = new Uint8Array(await desktop.exportDocx(editor.text, title, images.filter((i) => i !== null)));
+  } else {
+    const { htmlToDocx } = await import("./docx-export.ts");
+    const blob = await htmlToDocx(renderMarkdown(editor.text, { kind: "markdown" }).html, { title, image });
+    bytes = new Uint8Array(await blob.arrayBuffer());
+  }
   const name = replaceExtension(fileName, ".docx");
   const saved = await downloadBytes(
     name,
-    new Uint8Array(await blob.arrayBuffer()),
+    bytes,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     t("Word 文件"),
   );

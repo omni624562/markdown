@@ -239,6 +239,12 @@ pub fn parse_doc(text: &str, year: i32) -> Result<JsValue, JsError> {
     Ok(md_text::parse_doc(text, year).serialize(&json)?)
 }
 
+/// 文件中的圖片網址（照文件裡寫的，依出現順序、不重複）：匯出 Word 前先讀好這些圖片。
+#[wasm_bindgen(js_name = imageUrls)]
+pub fn image_urls(markdown: &str) -> Vec<String> {
+    md_core::image_urls(markdown)
+}
+
 /// 檔案或資料夾從 `from` 改名成 `to` 之後，更新 `docPath` 這份文件中指向它們的連結（和桌面版後端同一份程式）。
 /// `files` 是改名前資料夾中的檔案；沒有要改的時候回傳 `undefined`。
 #[wasm_bindgen(js_name = renameLinks)]
