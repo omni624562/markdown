@@ -26,6 +26,6 @@ pub static EN: &[(&str, &str)] = &[
     ("沒有內容可以分享", "There's no content to share."),
     ("筆記.md", "Note.md"),
     ("分享成 Gist", "Sharing as a Gist"),
-    ("{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 Git 頁登出 GitHub 再重新登入一次", "{what} failed: Your current GitHub sign-in doesn't have Gist permission. Sign out of GitHub on the Git page in Settings and sign in again."),
+    ("{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 GitHub 頁按「重新登入」", "{what} failed: Your current GitHub sign-in doesn't have Gist permission. Click \"Sign In Again\" on the GitHub page in Settings."),
     ("讀取 issue 失敗：這個編號是 Pull Request", "Couldn't load the issue: This number is a pull request."),
 ];

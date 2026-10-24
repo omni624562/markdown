@@ -8,6 +8,6 @@ export type AuthProblem = "github" | "ado";
 export function authProblem(message: string): AuthProblem | null {
   if (/已取消登入|sign-in was cancel/i.test(message)) return null; // i18n-ignore：比對後端訊息
   if (/GitHub/.test(message) && /登入|sign(?:ed)?[ -]in|log ?in/i.test(message)) return "github"; // i18n-ignore
-  if (/Azure DevOps/.test(message) && /重新連線|個人存取權杖|reconnect|personal access token/i.test(message)) return "ado"; // i18n-ignore
+  if (/個人存取權杖|personal access token/i.test(message)) return "ado"; // i18n-ignore
   return null;
 }

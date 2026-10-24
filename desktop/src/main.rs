@@ -311,6 +311,7 @@ fn main() {
             settings::save_settings,
             workspace::open_folder,
             workspace::reopen_folder,
+            workspace::close_folder,
             workspace::current_folder,
             workspace::recent,
             i18n::set_language,

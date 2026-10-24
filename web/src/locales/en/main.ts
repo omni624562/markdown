@@ -411,6 +411,8 @@ export const main: Record<string, Translation> = {
   "從 GitHub 下載儲存庫…": "Download Repository from GitHub…",
   "重新登入 GitHub": "Sign In to GitHub Again",
   "重新登入": "Sign In Again",
+  "關閉專案": "Close Project",
+  "已關閉「{name}」。分頁都記住了，下次開啟這個專案會還原": "Closed \"{name}\". Its tabs are remembered and will come back next time you open this project.",
   "開啟連線設定": "Open Connection Settings",
   "從 Azure DevOps／TFS 下載儲存庫…": "Download Repository from Azure DevOps/TFS…",
   "最近開啟…": "Open Recent…",

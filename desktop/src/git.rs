@@ -384,7 +384,7 @@ pub(crate) fn signature(
     match who {
         Some(id) => Signature::now(&id.name, &id.email).map_err(err),
         None => Err(tr!(
-            "提交需要你的名字與 Email：請先到設定的 Git 頁「用 GitHub 登入」或連線到 Azure DevOps"
+            "提交需要你的名字與 Email：請先到設定的 GitHub 頁「用 GitHub 登入」，或到 Azure DevOps／TFS 頁連線"
         )),
     }
 }
@@ -525,13 +525,13 @@ impl<'a> Session<'a> {
             if is_ado(self.auth, url) {
                 let has_token = self.auth.ado.as_ref().is_some_and(|a| a.pat.is_some());
                 if has_token {
-                    tr!("{what}失敗：Azure DevOps 拒絕存取。可能沒有這個儲存庫的權限，或個人存取權杖已過期，請到設定的 Git 頁重新連線。", what = what)
+                    tr!("{what}失敗：Azure DevOps 拒絕存取。可能沒有這個儲存庫的權限，或個人存取權杖已過期，請到設定的 Azure DevOps／TFS 頁更新權杖。", what = what)
                 } else {
-                    tr!("{what}失敗：需要登入 Azure DevOps。請到設定的 Git 頁輸入個人存取權杖並連線。", what = what)
+                    tr!("{what}失敗：需要登入 Azure DevOps。請到設定的 Azure DevOps／TFS 頁輸入個人存取權杖並連線。", what = what)
                 }
             } else if is_github(url) && self.auth.github_token.is_none() {
                 tr!(
-                    "{what}失敗：需要登入 GitHub。請到設定的 Git 頁按「用 GitHub 登入」。",
+                    "{what}失敗：需要登入 GitHub。請到設定的 GitHub 頁按「用 GitHub 登入」。",
                     what = what
                 )
             } else if is_github(url) {

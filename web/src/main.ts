@@ -1644,6 +1644,7 @@ const projectUi = desktop
       current: () => workspaceRoot?.path ?? null,
       open: (path) => openRecentFolder(path),
       openFolder: () => void commands.run("open-folder").catch(reportError),
+      close: () => void commands.run("close-folder").catch(reportError),
       remotes: () => desktop!.davConnections(),
       openRemote: (c) => void openRemote(c).catch(reportError),
       changed: () => void renderProjectName().then(renderFilesEmpty),
@@ -1714,7 +1715,7 @@ const ado = desktop
         settingsDialog.refresh();
         void gitPanel?.refresh();
       },
-      openSettings: () => settingsDialog.open("Git"),
+      openSettings: () => settingsDialog.open(t("Azure DevOps／TFS")),
     })
   : null;
 
@@ -2067,7 +2068,7 @@ $("#workitems-refresh").addEventListener("click", () => void workItemsPanel?.ref
 setErrorAction((message) => {
   const problem = authProblem(message);
   if (problem === "github" && github) return { label: t("重新登入 GitHub"), primary: true, run: () => void github.login() };
-  if (problem === "ado" && ado) return { label: t("開啟連線設定"), primary: true, run: () => settingsDialog.open("Git") };
+  if (problem === "ado" && ado) return { label: t("開啟連線設定"), primary: true, run: () => settingsDialog.open(t("Azure DevOps／TFS")) };
   return undefined;
 });
 
@@ -2647,6 +2648,31 @@ async function switchTabs(scope: string): Promise<void> {
   }
   // 分頁收起來的期間檔案可能被改過：重新讀一次（和啟動時一樣）。
   if (docsLoaded) void reloadDocs(fresh);
+}
+
+/**
+ * 關閉目前的專案：分頁收起來（和切換專案一樣記住，沒存的內容留在草稿裡，下次開啟這個專案時還原），
+ * 換成一個空白分頁，檔案樹回到「開啟資料夾」的畫面。
+ */
+async function closeProject(): Promise<void> {
+  const folder = workspaceRoot;
+  if (!folder || !desktop) return;
+  const name = projectUi?.current?.label ?? folder.name;
+  flushDraft();
+  if (diskSaveTimer) await autoSaveNow();
+  if (review.active) review.finish();
+  persistSession();
+  await desktop.closeFolder();
+  tabScope = null;
+  storage.remove("tab-scope");
+  storage.remove("tabs");
+  const blank = makeDoc({ name: t("未命名.md"), kind: "markdown" });
+  docs = [blank];
+  activate(blank);
+  persistSession();
+  renderTabs();
+  await setWorkspace(null);
+  toast(t("已關閉「{name}」。分頁都記住了，下次開啟這個專案會還原", { name }));
 }
 
 async function openRecentFolder(path: string): Promise<void> {
@@ -3484,6 +3510,14 @@ commands.register(
       await setWorkspace(folder);
       showPanel("files");
     },
+  },
+  {
+    id: "close-folder",
+    title: t("關閉專案"),
+    group: t("資料夾與專案"),
+    icon: "folder-x",
+    when: () => !!desktop && !!workspaceRoot,
+    run: () => closeProject(),
   },
   {
     id: "switch-project",
@@ -4518,7 +4552,7 @@ commands.register(
       ["github-gist", t("GitHub：分享成 Gist…"), "share-2", () => void shareGist(), () => !!github?.account],
       ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "server", () => ado?.openRepo(), () => !!ado],
       ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
-      ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open("Git"), () => !!ado],
+      ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open(t("Azure DevOps／TFS")), () => !!ado],
     ] as const
   ).map(
     ([id, title, iconName, run, when]): Command => ({
@@ -4731,6 +4765,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
       "switch-project",
       "project-overview",
       "project-settings",
+      "close-folder",
       "-",
       "open-folder",
       "github-open",
@@ -4769,6 +4804,7 @@ setupMenu($<HTMLButtonElement>("#files-more"), commands, [
   "switch-project",
   "project-overview",
   "project-settings",
+  "close-folder",
   "open-folder",
   "github-open",
   "ado-open",

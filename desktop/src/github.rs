@@ -720,8 +720,16 @@ pub async fn github_gist(
                 .map(str::to_string)
                 .ok_or_else(|| tr!("{what}失敗：GitHub 的回應不正確", what = what)),
             // 1.8.0 以前登入的權杖沒有 gist 權限。
-            403 | 404 => Err(tr!("{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 Git 頁登出 GitHub 再重新登入一次", what = what)),
-            _ => Err(tr!("{what}失敗：GitHub 回應 {code}（{msg}）", msg = github_message(&v), what = what, code = code)),
+            403 | 404 => Err(tr!(
+                "{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 GitHub 頁按「重新登入」",
+                what = what
+            )),
+            _ => Err(tr!(
+                "{what}失敗：GitHub 回應 {code}（{msg}）",
+                msg = github_message(&v),
+                what = what,
+                code = code
+            )),
         }
     })
     .await

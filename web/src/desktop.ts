@@ -554,6 +554,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
      * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
      * `trust` 是使用者確認過的 SSH 主機金鑰指紋。
      */
+    /** 關閉目前的專案（本機或遠端資料夾）。 */
+    closeFolder: () => core.invoke<void>("close_folder"),
     reopenFolder: (path: string, password?: string, remember?: boolean, trust?: string) =>
       route(
         path,

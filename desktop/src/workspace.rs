@@ -333,6 +333,14 @@ pub async fn reopen_folder(
     Ok(activate(&app, path, &workspace, &trust))
 }
 
+/// 關閉目前的專案（本機資料夾或遠端資料夾）：停止監看，之後的檔案操作都要先開啟資料夾。
+#[tauri::command]
+pub fn close_folder(app: AppHandle, workspace: State<'_, Workspace>) {
+    workspace.clear();
+    app.state::<Watcher>().stop_workspace();
+    app.state::<crate::dav::Dav>().disconnect();
+}
+
 /// 以命令列帶入的資料夾開啟工作區（例如把資料夾拖到 exe 上）。
 pub fn open_folder_from_cli(app: &AppHandle, path: PathBuf) -> FolderInfo {
     activate(app, path, &app.state::<Workspace>(), &app.state::<Trust>())
