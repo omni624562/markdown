@@ -30,7 +30,9 @@ use crate::workspace::FolderInfo;
 
 pub const SCHEME: &str = "ssh://";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
-const OP_TIMEOUT: Duration = Duration::from_secs(30);
+/// 單一操作的時間上限。要比前端等待原生端的 20 秒短：前端放棄時，背景的操作也已經停了，
+/// 使用者按「重試存檔」不會和還在寫的上一次重疊。
+const OP_TIMEOUT: Duration = Duration::from_secs(15);
 /// 讀取的檔案大小上限（和 WebDAV 相同）。
 const MAX_READ: u64 = 64 * 1024 * 1024;
 /// 刪除資料夾時最多處理的項目數。
@@ -111,8 +113,16 @@ struct Live {
     sftp: SftpSession,
 }
 
-fn net(e: impl std::fmt::Display) -> String {
-    DavError::Network(e.to_string()).message(&tr!("無法連線"))
+fn net(e: impl std::fmt::Display) -> DavError {
+    DavError::Network(e.to_string())
+}
+
+/// 給連線對話框的訊息：`NEED_PASSWORD`、`HOSTKEY_UNKNOWN…` 之類的代碼原樣交給前端。
+fn connect_message(e: DavError) -> String {
+    match e {
+        DavError::Other(m) => m,
+        e => e.message(&tr!("無法連線")),
+    }
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -130,12 +140,28 @@ fn expand_home(path: &str) -> PathBuf {
     }
 }
 
+/// 連線、登入、開啟 SFTP。整個過程有時間上限（伺服器在登入這一步沒有回應時也不會一直等）。
 async fn connect(
     target: &SshTarget,
     user: &str,
     secret: Option<&str>,
     trust: Option<String>,
-) -> Result<Live, String> {
+) -> Result<Live, DavError> {
+    match tokio::time::timeout(CONNECT_TIMEOUT, connect_inner(target, user, secret, trust)).await {
+        Ok(r) => r,
+        Err(_) => Err(net(tr!(
+            "等了 {s} 秒沒有回應",
+            s = CONNECT_TIMEOUT.as_secs()
+        ))),
+    }
+}
+
+async fn connect_inner(
+    target: &SshTarget,
+    user: &str,
+    secret: Option<&str>,
+    trust: Option<String>,
+) -> Result<Live, DavError> {
     let config = Arc::new(client::Config {
         inactivity_timeout: None,
         keepalive_interval: Some(Duration::from_secs(20)),
@@ -150,30 +176,23 @@ async fn connect(
         seen: seen.clone(),
     };
     let addr = (target.host.as_str(), target.port);
-    let mut handle = match tokio::time::timeout(
-        CONNECT_TIMEOUT,
-        client::connect(config, addr, checker),
-    )
-    .await
-    {
-        Err(_) => {
-            return Err(net(tr!(
-                "等了 {s} 秒沒有回應",
-                s = CONNECT_TIMEOUT.as_secs()
-            )))
-        }
-        Ok(Ok(handle)) => handle,
-        Ok(Err(e)) => {
+    let mut handle = match client::connect(config, addr, checker).await {
+        Ok(handle) => handle,
+        Err(e) => {
             let seen = seen.lock().unwrap().clone();
             return Err(match seen {
-                    Some(HostKey::Unknown(algo, fp)) => format!("HOSTKEY_UNKNOWN\n{algo}\n{fp}"),
-                    Some(HostKey::Changed) => tr!(
-                        "{host} 的主機金鑰和上次連線時不同：可能是伺服器重新安裝過，也可能有人在攔截連線。確定沒問題的話，請在終端機執行 ssh-keygen -R {host} 刪掉舊的記錄，再重新連線。",
-                        host = target.host
-                    ),
-                    Some(HostKey::Certificate) => tr!("這台主機使用憑證驗證主機金鑰，目前不支援"),
-                    _ => net(e),
-                });
+                Some(HostKey::Unknown(algo, fp)) => {
+                    DavError::Other(format!("HOSTKEY_UNKNOWN\n{algo}\n{fp}"))
+                }
+                Some(HostKey::Changed) => DavError::Other(tr!(
+                    "{host} 的主機金鑰和上次連線時不同：可能是伺服器重新安裝過，也可能有人在攔截連線。確定沒問題的話，請在終端機執行 ssh-keygen -R {host} 刪掉舊的記錄，再重新連線。",
+                    host = target.host
+                )),
+                Some(HostKey::Certificate) => {
+                    DavError::Other(tr!("這台主機使用憑證驗證主機金鑰，目前不支援"))
+                }
+                _ => net(e),
+            });
         }
     };
     authenticate(&mut handle, target, user, secret).await?;
@@ -185,7 +204,7 @@ async fn connect(
     };
     let sftp = SftpSession::new_with_config(channel.into_stream(), config)
         .await
-        .map_err(|e| tr!("這台主機沒有開啟 SFTP：{e}", e = e))?;
+        .map_err(|e| DavError::Other(tr!("這台主機沒有開啟 SFTP：{e}", e = e)))?;
     Ok(Live { handle, sftp })
 }
 
@@ -194,7 +213,7 @@ async fn try_key(
     user: &str,
     key: russh::keys::PrivateKey,
     rsa_hash: Option<HashAlg>,
-) -> Result<bool, String> {
+) -> Result<bool, DavError> {
     let key = PrivateKeyWithHashAlg::new(Arc::new(key), rsa_hash);
     Ok(h.authenticate_publickey(user, key)
         .await
@@ -206,7 +225,7 @@ async fn try_password(
     h: &mut client::Handle<Checker>,
     user: &str,
     password: &str,
-) -> Result<bool, String> {
+) -> Result<bool, DavError> {
     if h.authenticate_password(user, password)
         .await
         .map_err(net)?
@@ -324,17 +343,17 @@ async fn authenticate(
     target: &SshTarget,
     user: &str,
     secret: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), DavError> {
     let rsa_hash = h.best_supported_rsa_hash().await.ok().flatten().flatten();
     if let Some(path) = target.key_path.as_deref().filter(|p| !p.trim().is_empty()) {
         let path = expand_home(path.trim());
-        match load_key(&path, secret)? {
+        match load_key(&path, secret).map_err(DavError::Other)? {
             Some(key) => {
                 if try_key(h, user, key, rsa_hash).await? {
                     return Ok(());
                 }
             }
-            None if secret.is_none() => return Err("NEED_PASSWORD".into()),
+            None if secret.is_none() => return Err(DavError::Other("NEED_PASSWORD".into())),
             None => {}
         }
         if let Some(password) = secret {
@@ -366,9 +385,9 @@ async fn authenticate(
         }
     }
     if secret.is_none() {
-        Err("NEED_PASSWORD".into())
+        Err(DavError::Other("NEED_PASSWORD".into()))
     } else {
-        Err(tr!("無法登入：帳號、密碼或金鑰不正確"))
+        Err(DavError::Other(tr!("無法登入：帳號、密碼或金鑰不正確")))
     }
 }
 
@@ -429,6 +448,8 @@ pub struct SshFs {
     live: Mutex<Option<Arc<Live>>>,
     /// 同時只重新連線一次。
     reconnecting: Mutex<()>,
+    /// 寫入一次只做一個（自動存檔和手動存檔不會同時寫同一個檔案）。
+    writing: Mutex<()>,
 }
 
 impl SshFs {
@@ -461,17 +482,14 @@ impl SshFs {
         if let Some(live) = self.current() {
             return Ok(live);
         }
+        // 連不上是 `Network`（前端顯示斷線提示並定時檢查恢復）；登入或主機金鑰的問題是 `Other`。
         let live = tauri::async_runtime::block_on(connect(
             &self.target,
             &self.user,
             self.secret.as_deref(),
             None,
         ))
-        .map(Arc::new)
-        .map_err(|e| {
-            // 已經是完整的訊息：放在 Other 裡原樣顯示（連線問題仍以「無法連線」開頭，前端當作斷線）。
-            DavError::Other(e)
-        })?;
+        .map(Arc::new)?;
         *self.live.lock().unwrap() = Some(live.clone());
         Ok(live)
     }
@@ -518,6 +536,67 @@ async fn exists(sftp: &SftpSession, path: &str) -> Result<bool, DavError> {
             e => Err(e),
         },
     }
+}
+
+async fn write_file(
+    sftp: &SftpSession,
+    path: &str,
+    bytes: &[u8],
+    flags: OpenFlags,
+) -> Result<(), DavError> {
+    let mut file = sftp
+        .open_with_flags(path.to_string(), OpenFlags::WRITE | flags)
+        .await
+        .map_err(sftp_err)?;
+    file.write_all(bytes)
+        .await
+        .map_err(|e| DavError::Network(e.to_string()))?;
+    file.shutdown()
+        .await
+        .map_err(|e| DavError::Network(e.to_string()))
+}
+
+/// 暫存檔的名稱：`.<檔名>.omarker-<亂數>.<用途>`，放在同一個資料夾（改名才不會跨磁碟）。
+fn sibling(path: &str, what: &str) -> String {
+    let (dir, name) = path.rsplit_once('/').unwrap_or(("", path));
+    let mut b = [0u8; 4];
+    let _ = getrandom::fill(&mut b);
+    let tag: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    format!("{dir}/.{name}.omarker-{tag}.{what}")
+}
+
+/// 安全地換掉遠端檔案：先完整寫到暫存檔，再把原檔改名讓開、暫存檔改成原檔名，最後刪掉舊檔。
+/// 寫到一半斷線時原檔完全沒動；換名之間斷線時，原本的內容還在 `.omarker-….old`。
+/// 新檔沿用原檔的權限。
+async fn replace_file(
+    sftp: &SftpSession,
+    path: &str,
+    bytes: &[u8],
+    meta: &Metadata,
+) -> Result<(), DavError> {
+    let tmp = sibling(path, "tmp");
+    let old = sibling(path, "old");
+    if let Err(e) = write_file(sftp, &tmp, bytes, OpenFlags::CREATE | OpenFlags::EXCLUDE).await {
+        let _ = sftp.remove_file(tmp).await;
+        return Err(e);
+    }
+    if let Some(perm) = meta.permissions {
+        let mut attrs = russh_sftp::protocol::FileAttributes::empty();
+        attrs.permissions = Some(perm & 0o7777);
+        let _ = sftp.set_metadata(tmp.clone(), attrs).await;
+    }
+    if let Err(e) = sftp.rename(path.to_string(), old.clone()).await {
+        let _ = sftp.remove_file(tmp).await;
+        return Err(sftp_err(e));
+    }
+    if let Err(e) = sftp.rename(tmp.clone(), path.to_string()).await {
+        // 換不過去：把原檔改回來。
+        let _ = sftp.rename(old, path.to_string()).await;
+        let _ = sftp.remove_file(tmp).await;
+        return Err(sftp_err(e));
+    }
+    let _ = sftp.remove_file(old).await;
+    Ok(())
 }
 
 impl RemoteFs for SshFs {
@@ -593,37 +672,49 @@ impl RemoteFs for SshFs {
         if_match: Option<&str>,
     ) -> Result<Option<String>, DavError> {
         let path = self.abs(rel);
+        let _writing = self.writing.lock().unwrap_or_else(|e| e.into_inner());
         self.run(false, |live| {
             let path = path.clone();
             async move {
-                let flags = match if_match {
+                match if_match {
                     Some(expected) => {
-                        match live.sftp.metadata(path.clone()).await.map_err(sftp_err) {
-                            Ok(meta) if version(&meta) == expected => {}
-                            Ok(_) | Err(DavError::NotFound) => return Err(DavError::Changed),
-                            Err(e) => return Err(e),
+                        let meta = match live.sftp.symlink_metadata(path.clone()).await {
+                            Ok(m) => m,
+                            Err(e) => {
+                                return Err(match sftp_err(e) {
+                                    DavError::NotFound => DavError::Changed,
+                                    e => e,
+                                })
+                            }
+                        };
+                        let target = if meta.is_symlink() {
+                            live.sftp.metadata(path.clone()).await.map_err(sftp_err)?
+                        } else {
+                            meta.clone()
+                        };
+                        if expected != crate::dav::ANY_VERSION && version(&target) != expected {
+                            return Err(DavError::Changed);
                         }
-                        // 直接覆寫原檔：保留權限、擁有者與連結。
-                        OpenFlags::WRITE | OpenFlags::TRUNCATE
+                        if meta.is_symlink() {
+                            // 連結：寫到它指向的檔案（換掉連結本身會把連結變成一般檔案）。
+                            write_file(&live.sftp, &path, bytes, OpenFlags::TRUNCATE).await?;
+                        } else {
+                            replace_file(&live.sftp, &path, bytes, &meta).await?;
+                        }
                     }
                     None => {
                         if exists(&live.sftp, &path).await? {
                             return Err(DavError::Changed);
                         }
-                        OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE
+                        write_file(
+                            &live.sftp,
+                            &path,
+                            bytes,
+                            OpenFlags::CREATE | OpenFlags::EXCLUDE,
+                        )
+                        .await?;
                     }
-                };
-                let mut file = live
-                    .sftp
-                    .open_with_flags(path.clone(), flags)
-                    .await
-                    .map_err(sftp_err)?;
-                file.write_all(bytes)
-                    .await
-                    .map_err(|e| DavError::Network(e.to_string()))?;
-                file.shutdown()
-                    .await
-                    .map_err(|e| DavError::Network(e.to_string()))?;
+                }
                 let meta = live.sftp.metadata(path).await.map_err(sftp_err)?;
                 Ok(Some(version(&meta)))
             }
@@ -797,7 +888,9 @@ pub async fn ssh_connect(
         root: String::new(),
         key_path,
     };
-    let live = connect(&target, &user, secret.as_deref(), trust).await?;
+    let live = connect(&target, &user, secret.as_deref(), trust)
+        .await
+        .map_err(connect_message)?;
     target.root = resolve_root(&live.sftp, &root).await?;
     let conns = crate::dav::load_conns(&app);
     let id = conns
@@ -828,6 +921,7 @@ pub async fn ssh_connect(
         secret: secret.clone(),
         live: Mutex::new(Some(Arc::new(live))),
         reconnecting: Mutex::new(()),
+        writing: Mutex::new(()),
     };
     crate::dav::install(&app, &dav, conn.clone(), Box::new(fs));
     if let Some(secret) = secret {
@@ -848,7 +942,9 @@ pub(crate) async fn reconnect(
     trust: Option<String>,
 ) -> Result<(), String> {
     let target = conn.ssh.clone().ok_or_else(|| tr!("遠端路徑不正確"))?;
-    let live = connect(&target, &conn.username, secret.as_deref(), trust).await?;
+    let live = connect(&target, &conn.username, secret.as_deref(), trust)
+        .await
+        .map_err(connect_message)?;
     resolve_root(&live.sftp, &target.root).await?;
     let fs = SshFs {
         target,
@@ -856,6 +952,7 @@ pub(crate) async fn reconnect(
         secret,
         live: Mutex::new(Some(Arc::new(live))),
         reconnecting: Mutex::new(()),
+        writing: Mutex::new(()),
     };
     crate::dav::install(app, dav, conn, Box::new(fs));
     Ok(())
@@ -937,6 +1034,7 @@ mod tests {
             secret: None,
             live: Mutex::new(None),
             reconnecting: Mutex::new(()),
+            writing: Mutex::new(()),
         };
         assert_eq!(fs.abs(""), "/home/eric/筆記");
         assert_eq!(fs.abs("a/b.md"), "/home/eric/筆記/a/b.md");
@@ -998,7 +1096,9 @@ mod tests {
         let pass = std::env::var("MD_SSH_PASS").ok();
         // 第一次：不認識的主機，要使用者確認指紋。
         let fp =
-            match tauri::async_runtime::block_on(connect(&target, &user, pass.as_deref(), None)) {
+            match tauri::async_runtime::block_on(connect(&target, &user, pass.as_deref(), None))
+                .map_err(connect_message)
+            {
                 Err(e) if e.starts_with("HOSTKEY_UNKNOWN") => e.lines().nth(2).unwrap().to_string(),
                 Ok(_) => String::new(), // 已經在 known_hosts 裡
                 Err(e) => panic!("{e}"),
@@ -1022,6 +1122,7 @@ mod tests {
             secret: pass,
             live: Mutex::new(Some(Arc::new(live))),
             reconnecting: Mutex::new(()),
+            writing: Mutex::new(()),
         };
         let _ = fs.delete("測試 資料夾");
         fs.mkdir("測試 資料夾").unwrap();
@@ -1050,6 +1151,22 @@ mod tests {
             fs.put("測試 資料夾/週報.md", b"x", Some(&v1)).unwrap_err(),
             DavError::Changed
         );
+        // 換檔不留下暫存檔，並保留原檔的權限。
+        let live = fs.live().unwrap();
+        let p = fs.abs("測試 資料夾/週報.md");
+        let mut attrs = russh_sftp::protocol::FileAttributes::empty();
+        attrs.permissions = Some(0o640);
+        tauri::async_runtime::block_on(live.sftp.set_metadata(p.clone(), attrs)).unwrap();
+        let v3 = fs.stat("測試 資料夾/週報.md").unwrap().etag.unwrap();
+        fs.put("測試 資料夾/週報.md", "第三版".as_bytes(), Some(&v3))
+            .unwrap();
+        let meta = tauri::async_runtime::block_on(live.sftp.metadata(p)).unwrap();
+        assert_eq!(meta.permissions.unwrap() & 0o777, 0o640);
+        assert!(fs
+            .list("測試 資料夾")
+            .unwrap()
+            .iter()
+            .all(|i| !i.rel.contains(".omarker-")));
         fs.mkdir("測試 資料夾/子").unwrap();
         fs.put("測試 資料夾/子/a.md", b"a", None).unwrap();
         let list = fs.list("測試 資料夾").unwrap();

@@ -242,8 +242,10 @@ impl Watcher {
         if new_dirs.is_empty() {
             return;
         }
+        // 上鎖順序和 `watch_workspace`、`stop_workspace` 一樣：先 workspace 再 poll_count，才不會互等卡住。
+        let mut slot = self.workspace.lock().unwrap();
         let mut count = self.poll_count.lock().unwrap();
-        if let Some(Active::Poll(w)) = self.workspace.lock().unwrap().as_mut() {
+        if let Some(Active::Poll(w)) = slot.as_mut() {
             for dir in new_dirs {
                 if *count >= MAX_POLL_DIRS {
                     break;

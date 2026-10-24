@@ -26,6 +26,8 @@ use crate::io::offline;
 use crate::workspace::{is_doc, natural_cmp, validate_name, Entry, FileItem, FolderInfo};
 
 pub const SCHEME: &str = "webdav://";
+/// 版本標記未知（伺服器沒給 ETag）：存檔時只要求檔案還在，不比對版本。
+pub(crate) const ANY_VERSION: &str = "*";
 const KEYRING_SERVICE: &str = "md-editor-webdav";
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_FILES: usize = 5000;
@@ -205,7 +207,7 @@ pub struct Item {
     /// 相對於連線根目錄的路徑，以 `/` 分隔，不含開頭與結尾的 `/`。
     pub(crate) rel: String,
     pub(crate) is_dir: bool,
-    etag: Option<String>,
+    pub(crate) etag: Option<String>,
 }
 
 impl Item {
@@ -991,9 +993,12 @@ pub async fn dav_read(path: String, dav: State<'_, Dav>) -> Result<OpenedFile, S
         return Err(tr!("「{name}」{why}", name = name_of(&path), why = why));
     }
     let (text, _, encoding) = decode(&bytes);
-    if let Some(etag) = etag {
-        dav.etags.lock().unwrap().insert(path.clone(), etag);
-    }
+    // 伺服器沒給 ETag 時記成 `*`：存檔時改用 `If-Match: *`（檔案還在就覆蓋），
+    // 不然會被當成新檔案（`If-None-Match: *`），每次存檔都回報衝突。
+    dav.etags
+        .lock()
+        .unwrap()
+        .insert(path.clone(), etag.unwrap_or_else(|| ANY_VERSION.into()));
     dav.read.lock().unwrap().insert(path.clone(), text.clone());
     dav.notified.lock().unwrap().remove(&path);
     Ok(OpenedFile::new(
@@ -1025,7 +1030,9 @@ pub async fn dav_write(
             // 再用它的 ETag 覆蓋（檔案不存在時就建立）。
             match session.client.get(&rel) {
                 Ok((bytes, etag)) => {
-                    let etag = etag.or_else(|| session.client.stat(&rel).ok().and_then(|i| i.etag));
+                    let etag = etag
+                        .or_else(|| session.client.stat(&rel).ok().and_then(|i| i.etag))
+                        .or_else(|| Some(ANY_VERSION.into()));
                     (etag, Some(decode(&bytes).0))
                 }
                 Err(_) => (session.client.stat(&rel).ok().and_then(|i| i.etag), None),
@@ -1035,23 +1042,30 @@ pub async fn dav_write(
         };
         match session.client.put(&rel, t.as_bytes(), if_match.as_deref()) {
             Ok(etag) => Ok(Ok((etag, before))),
-            Err(DavError::Changed) => {
-                let disk = session
-                    .client
-                    .get(&rel)
-                    .map(|(b, _)| decode(&b).0)
-                    .unwrap_or_default();
-                Ok(Err(disk))
-            }
+            Err(DavError::Changed) => match session.client.get(&rel) {
+                Ok((bytes, _)) => Ok(Err(decode(&bytes).0)),
+                // 遠端的檔案被刪掉了：和本機檔案一樣直接重新建立（建立時有人搶先建了同名檔才算衝突）。
+                Err(DavError::NotFound) => match session.client.put(&rel, t.as_bytes(), None) {
+                    Ok(etag) => Ok(Ok((etag, None))),
+                    Err(DavError::Changed) => match session.client.get(&rel) {
+                        Ok((bytes, _)) => Ok(Err(decode(&bytes).0)),
+                        Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
+                    },
+                    Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
+                },
+                // 讀不到遠端的版本（例如網路不穩）：回報錯誤，不要拿空白的內容當成「伺服器版本」。
+                Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
+            },
             Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
         }
     })
     .await?;
     match result {
         Ok((etag, before)) => {
-            if let Some(etag) = etag {
-                dav.etags.lock().unwrap().insert(path.clone(), etag);
-            }
+            dav.etags
+                .lock()
+                .unwrap()
+                .insert(path.clone(), etag.unwrap_or_else(|| ANY_VERSION.into()));
             dav.notified.lock().unwrap().remove(&path);
             dav.read.lock().unwrap().remove(&path);
             // 遠端檔案也在本機留版本記錄（斷線時還能找回）。
@@ -1372,7 +1386,7 @@ fn start_polling(app: &AppHandle) {
                 Ok(remote) => {
                     let Some(remote) = remote else { continue };
                     let already = dav.notified.lock().unwrap().get(&path) == Some(&remote);
-                    if remote != etag && !already {
+                    if remote != etag && etag != ANY_VERSION && !already {
                         if let Ok((bytes, _)) = session.client.get(&rel) {
                             dav.notified.lock().unwrap().insert(path.clone(), remote);
                             let _ = app.emit(

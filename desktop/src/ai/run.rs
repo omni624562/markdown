@@ -190,16 +190,28 @@ pub async fn ai_run(
         let emit = |e: RunEvent| {
             let _ = app.emit("ai-run", e);
         };
-        let write = async move {
+        // 寫入提示、讀取錯誤輸出都和讀取結果同時進行：程式先輸出一大堆再讀輸入、
+        // 或把錯誤輸出寫滿時才不會互相等待卡住；寫入期間按「取消」也立刻有效。
+        let writer = tauri::async_runtime::spawn(async move {
             stdin.write_all(prompt.as_bytes()).await?;
             stdin.shutdown().await
-        };
-        if let Err(e) = write.await {
-            emit(RunEvent::Error {
-                id,
-                message: tr!("無法傳送內容給 {tool}：{e}", tool = tool.label(), e = e),
-            });
-        }
+        });
+        let errors = tauri::async_runtime::spawn(async move {
+            // 只留最後一段（錯誤訊息只顯示最後幾行）。
+            const KEEP: usize = 64 * 1024;
+            let mut kept: Vec<u8> = Vec::new();
+            let mut buf = [0u8; 8192];
+            while let Ok(n) = stderr.read(&mut buf).await {
+                if n == 0 {
+                    break;
+                }
+                kept.extend_from_slice(&buf[..n]);
+                if kept.len() > KEEP {
+                    kept.drain(..kept.len() - KEEP);
+                }
+            }
+            String::from_utf8_lossy(&kept).into_owned()
+        });
         let parse = match tool {
             Tool::Claude => parse_claude,
             Tool::Codex => parse_codex,
@@ -240,12 +252,17 @@ pub async fn ai_run(
         }
         let status = child.wait().await;
         if !finished {
-            let mut err = String::new();
-            let _ = stderr.read_to_string(&mut err).await;
+            let err = errors.await.unwrap_or_default();
             let detail = err.trim();
+            let write_error = match writer.await {
+                Ok(Err(e)) => Some(e),
+                _ => None,
+            };
             emit(RunEvent::Error {
                 id,
-                message: if detail.is_empty() {
+                message: if let Some(e) = write_error.filter(|_| detail.is_empty()) {
+                    tr!("無法傳送內容給 {tool}：{e}", tool = tool.label(), e = e)
+                } else if detail.is_empty() {
                     tr!(
                         "{tool} 沒有回傳結果（結束代碼 {status}）",
                         tool = tool.label(),

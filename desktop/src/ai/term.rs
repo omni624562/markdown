@@ -30,7 +30,9 @@ pub enum Program {
 
 struct Session {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    /// 送給程式的輸入。由專門的執行緒依序寫入：程式沒在讀輸入時（虛擬終端的緩衝區滿了），
+    /// 寫入會停住，不能讓前端的指令（以及握著的 `sessions` 鎖）跟著卡住。
+    input: std::sync::mpsc::Sender<Vec<u8>>,
     killer: Box<dyn ChildKiller + Send + Sync>,
 }
 
@@ -133,15 +135,28 @@ impl Terminals {
             .map_err(|e| tr!("無法啟動程式：{e}", e = e))?;
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-        let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+        let mut writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         let killer = child.clone_killer();
+        let (input, keys) = std::sync::mpsc::channel::<Vec<u8>>();
+        std::thread::spawn(move || {
+            // 終端機關閉（`Session` 被移除）時通道斷開，迴圈結束。
+            for data in keys {
+                if writer
+                    .write_all(&data)
+                    .and_then(|_| writer.flush())
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
 
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         self.sessions.lock().unwrap().insert(
             id,
             Session {
                 master: pair.master,
-                writer,
+                input,
                 killer,
             },
         );
@@ -478,12 +493,11 @@ pub async fn term_open(
 
 #[tauri::command]
 pub fn term_write(id: u32, data: String, terms: State<'_, Terminals>) -> Result<(), String> {
-    let mut sessions = terms.sessions.lock().unwrap();
-    let s = sessions.get_mut(&id).ok_or_else(|| tr!("終端機已經結束"))?;
-    s.writer
-        .write_all(data.as_bytes())
-        .and_then(|_| s.writer.flush())
-        .map_err(|e| e.to_string())
+    let sessions = terms.sessions.lock().unwrap();
+    let s = sessions.get(&id).ok_or_else(|| tr!("終端機已經結束"))?;
+    s.input
+        .send(data.into_bytes())
+        .map_err(|_| tr!("終端機已經結束"))
 }
 
 #[tauri::command]

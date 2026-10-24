@@ -210,6 +210,11 @@ interface Doc extends DocMeta {
   unloaded?: boolean;
   /** 在背景被外部修改時，修改前的內容；切換到這個分頁時逐段標示差異（A4）。 */
   externalOriginal?: string;
+  /**
+   * 檔案的編碼無法辨識（不是 UTF-8 也不是 Big5），畫面上的內容可能是亂碼。
+   * 不自動存檔；手動存檔前先確認，免得把原檔換成亂碼。
+   */
+  lossy?: boolean;
 }
 
 function makeDoc(meta: Partial<DocMeta> & { name: string; kind: DocKind }): Doc {
@@ -1382,7 +1387,7 @@ async function autoSaveNow(): Promise<void> {
   if (path && !editor.view.composing) refreshToc();
   const text = editor.text;
   if (!path || !settings.value.autoSave || saving || diskSaveBlocked === path) return;
-  if (hash(text) === baseline || doc.missing || doc.unloaded || review.active || offline?.path === path) return;
+  if (hash(text) === baseline || doc.missing || doc.unloaded || doc.lossy || review.active || offline?.path === path) return;
   // 注音、倉頡選字中先不存，等組字結束。
   if (editor.view.composing) {
     scheduleDiskSave();
@@ -2884,7 +2889,13 @@ function openDocument(
 
 function openOpenedFile(file: OpenedFile): void {
   openDocument(file.name, file.text, file.handle);
-  if (file.encoding === "big5") {
+  active.lossy = file.encoding === "unknown";
+  if (active.lossy) {
+    toast(t("「{name}」的編碼無法辨識（不是 UTF-8 也不是 Big5），畫面上可能有亂碼。為了保護原檔，這個檔案不會自動存檔。", { name: file.name }), {
+      tone: "error",
+      duration: 12000,
+    });
+  } else if (file.encoding === "big5") {
     toast(t("這個檔案是 Big5 編碼，已轉換後顯示；存檔時會改存成 UTF-8。"), { duration: 8000 });
   }
 }
@@ -2894,6 +2905,34 @@ async function save(saveAs: boolean, force = false): Promise<void> {
     toast(t("「{name}」的內容還沒從檔案讀進來，先不存檔，免得把檔案蓋成空白。", { name: active.name }), { tone: "error" });
     return;
   }
+  if (active.lossy && !saveAs && fileHandle?.path) {
+    const choice = await choose(
+      t("要覆蓋原檔嗎？"),
+      t("「{name}」的編碼無法辨識，畫面上的內容可能有亂碼。存檔會改成 UTF-8 覆蓋原檔，原本的內容就無法還原。建議另存成新檔，保留原檔。", { name: active.name }),
+      [
+        { id: "save-as", label: t("另存新檔…"), primary: true },
+        { id: "overwrite", label: t("仍要覆蓋原檔"), danger: true },
+        { id: "cancel", label: t("取消") },
+      ],
+    );
+    if (choice === "save-as") return save(true);
+    if (choice !== "overwrite") return;
+  }
+  // 自動存檔正在寫：等它寫完再存，兩次存檔不會同時寫同一個檔案。
+  while (saving) await new Promise((r) => setTimeout(r, 50));
+  saving = true;
+  let conflict: { name: string; diskText: string } | void;
+  try {
+    conflict = await saveNow(saveAs, force);
+  } finally {
+    saving = false;
+  }
+  // 衝突處理可能再存一次（覆蓋、另存），要在這次存檔結束之後。
+  if (conflict) await resolveConflict(conflict.name, conflict.diskText);
+}
+
+/** 實際存檔；遇到衝突時回傳伺服器（磁碟）上的版本，交給呼叫端處理。 */
+async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string; diskText: string } | void> {
   if (review.active) review.finish();
   refreshToc();
   clearTimeout(diskSaveTimer);
@@ -2916,12 +2955,11 @@ async function save(saveAs: boolean, force = false): Promise<void> {
     throw e;
   }
   if (!out) return;
-  if (out.status === "conflict") {
-    await resolveConflict(out.name, out.diskText);
-    return;
-  }
+  if (out.status === "conflict") return { name: out.name, diskText: out.diskText };
   fileHandle = out.handle;
   active.missing = false;
+  // 已經存成 UTF-8 了。
+  active.lossy = false;
   // 換了位置：相對路徑的圖片、[[連結]] 要重新對應。
   preview.invalidate();
   scheduleRender();
@@ -5602,6 +5640,7 @@ function docPath(doc: Doc): string | null {
  */
 async function reloadDoc(doc: Doc, path: string): Promise<void> {
   const file = fromDesktop(await desktop!.reopenFile(path));
+  doc.lossy = file.encoding === "unknown";
   const draft = doc === active ? editor.text : (loadDraft(doc.id) ?? "");
   // 沒有草稿的分頁：直接採用檔案的內容。
   const clean = doc.unloaded || hash(draft) === doc.baseline;
@@ -5666,7 +5705,19 @@ async function onExternalChange(path: string): Promise<void> {
     return;
   }
   // 沒有未存檔的變更：直接重新載入。重新讀取也會更新原生端記錄的內容，之後存檔才不會誤判為衝突。
+  const wasActive = doc === active;
+  const before = wasActive ? editor.text : loadDraft(doc.id);
   const file = await desktop.reopenFile(path);
+  // 讀檔期間（網路磁碟可能要等一陣子）又打了字或切換了分頁：不要蓋掉，改成提示比較差異。
+  if (!docs.includes(doc)) return;
+  const now = doc === active ? editor.text : loadDraft(doc.id);
+  if ((doc === active) !== wasActive || now !== before) {
+    toast(t("「{name}」被{who}修改了，你也有未存檔的變更。", { name: doc.name, who: otherWriter(path) }), {
+      duration: 12000,
+      action: { label: t("比較差異"), run: () => void compareDoc(doc).catch(reportError) },
+    });
+    return;
+  }
   if (markChanges && doc !== active) doc.externalOriginal ??= loadDraft(doc.id) ?? "";
   saveDraft(doc.id, file.text);
   doc.baseline = hash(file.text);
