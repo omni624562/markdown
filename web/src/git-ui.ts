@@ -68,6 +68,10 @@ export interface GitPanelHooks {
   createPr(): void;
   /** 開啟 Git 歷史。 */
   history(): void;
+  /** 切換專案或下載其他儲存庫（專案切換器）。 */
+  projects(): void;
+  /** 從 Azure DevOps／TFS 下載儲存庫（有這個功能時）。 */
+  openAdo: (() => void) | null;
   /** 儲存庫狀態改變（更新活動列圖示的變更數）。沒有開啟資料夾時是 null。 */
   changed(status: GitStatus | null): void;
 }
@@ -183,7 +187,11 @@ export class GitPanel {
     const history = this.#button("", "history", async () => this.#hooks.history());
     history.title = t("Git 歷史（線圖）");
     history.setAttribute("aria-label", t("Git 歷史（線圖）"));
+    const projects = this.#button("", "folder-kanban", async () => this.#hooks.projects());
+    projects.title = t("切換專案或下載其他儲存庫");
+    projects.setAttribute("aria-label", t("切換專案或下載其他儲存庫"));
     sync.append(
+      projects,
       history,
       this.#button(t("拉取"), "arrow-down-to-line", () => this.pull()),
       this.#button(t("推送"), "arrow-up-from-line", () => this.push()),
@@ -287,6 +295,8 @@ export class GitPanel {
       open.classList.add("btn-primary");
       actions.append(open);
     }
+    const ado = this.#hooks.openAdo;
+    if (ado) actions.append(this.#button(t("從 Azure DevOps／TFS 下載"), "server", async () => ado()));
     box.append(title, text, actions, this.#accountLine());
     this.#host.replaceChildren(box);
   }

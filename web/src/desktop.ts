@@ -49,6 +49,12 @@ export interface Folder {
   name: string;
 }
 
+/** 下載儲存庫的結果。 */
+export interface Cloned extends Folder {
+  /** 之前已經下載到這個位置，這次只是開啟。 */
+  existing: boolean;
+}
+
 export interface Entry {
   name: string;
   path: string;
@@ -712,7 +718,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     githubLogout: () => core.invoke<void>("github_logout"),
     githubRepos: () => core.invoke<GitHubRepo[]>("github_repos"),
     /** 選擇放在哪個資料夾後下載並開啟；取消時回傳 null。 */
-    githubClone: (fullName: string) => core.invoke<Folder | null>("github_clone", { fullName }),
+    /** 下載儲存庫並開啟；選的位置已經是同一個儲存庫時直接開啟（`existing`）。取消時回傳 null。 */
+    githubClone: (fullName: string) => core.invoke<Cloned | null>("github_clone", { fullName }),
     /** 把開啟的資料夾上傳成新的儲存庫，回傳儲存庫網址。 */
     githubPublish: (name: string, isPrivate: boolean) => core.invoke<string>("github_publish", { name, private: isPrivate }),
     gitFileHistory: (path: string) => core.invoke<FileCommit[]>("git_file_history", { path }),
@@ -757,7 +764,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
-    adoClone: (cloneUrl: string, name: string) => core.invoke<Folder | null>("ado_clone", { cloneUrl, name }),
+    adoClone: (cloneUrl: string, name: string) => core.invoke<Cloned | null>("ado_clone", { cloneUrl, name }),
     adoWorkItems: (search: string, filter?: AdoWorkItemFilter) => core.invoke<AdoWorkItem[]>("ado_work_items", { search, filter }),
     adoWorkItemFilters: () => core.invoke<{ projects: string[]; kinds: string[] }>("ado_work_item_filters"),
     adoWorkItemScope: (project: string | null) =>
