@@ -58,3 +58,17 @@ test("自訂字型名稱會去掉危險字元，型別錯誤時退回預設值",
   assert.equal(settings.codeFont, DEFAULTS.codeFont);
   assert.equal(problems, 1);
 });
+
+test("左側圖示列：只接受合法的 id，去掉重複", () => {
+  const { settings, problems } = sanitize({
+    activityOrder: ["git", "files", "git", "<script>"],
+    activityHidden: ["tags"],
+    activityCommands: ["git-history", 3, "toggle-terminal"],
+  });
+  assert.deepEqual(settings.activityOrder, ["git", "files"]);
+  assert.deepEqual(settings.activityHidden, ["tags"]);
+  assert.deepEqual(settings.activityCommands, ["git-history", "toggle-terminal"]);
+  assert.equal(problems, 2);
+  assert.deepEqual(sanitize({}).settings.activityCommands, ["git-history"]);
+  assert.deepEqual(sanitize({ activityCommands: "x" }).settings.activityCommands, DEFAULTS.activityCommands);
+});

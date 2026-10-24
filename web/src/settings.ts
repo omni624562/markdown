@@ -82,6 +82,12 @@ export interface Settings {
   /** 開啟的資料夾是 Git 儲存庫時，定時提交、拉取、推送。預設關閉。 */
   gitAutoSync: boolean;
   gitSyncMinutes: 5 | 10 | 30 | 60;
+  /** 左側圖示列：面板圖示的順序（沒列到的照預設順序排在後面）。 */
+  activityOrder: string[];
+  /** 左側圖示列：隱藏的面板圖示。 */
+  activityHidden: string[];
+  /** 左側圖示列：釘上去的指令按鈕（指令的 id），例如「Git：顯示歷史」。 */
+  activityCommands: string[];
 }
 
 /** 內建的快捷動作（第一次使用時存進設定；英文介面用英文的名稱與指示）。 */
@@ -130,7 +136,20 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   autoUpdate: true,
   gitAutoSync: false,
   gitSyncMinutes: 10,
+  activityOrder: [],
+  activityHidden: [],
+  // Git 歷史藏在選單裡不好找：預設放在圖示列（開啟的資料夾是 Git 儲存庫時才會出現）。
+  activityCommands: ["git-history"],
 });
+
+/** 圖示列最多釘幾個指令按鈕。 */
+export const ACTIVITY_LIMIT = 20;
+
+/** 圖示列設定的 id（面板或指令）：只接受英數字與連字號。 */
+function idList(v: unknown, limit = ACTIVITY_LIMIT): string[] | null {
+  if (!Array.isArray(v)) return null;
+  return [...new Set(v.filter((x): x is string => typeof x === "string" && /^[a-z0-9-]{1,60}$/.test(x)))].slice(0, limit);
+}
 
 /** 「不再提示」的詞最多記幾個。 */
 export const TERM_IGNORE_LIMIT = 500;
@@ -145,6 +164,9 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })),
     templates: [],
     termIgnore: [],
+    activityOrder: [],
+    activityHidden: [],
+    activityCommands: [...DEFAULTS.activityCommands],
   };
   let problems = raw && typeof raw === "object" ? 0 : 1;
   type BoolKey = {
@@ -211,6 +233,14 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
         .filter((t) => t.name)
         .slice(0, TEMPLATE_LIMITS.count);
       if (out.templates.length !== list.length) problems++;
+    } else problems++;
+  }
+  for (const key of ["activityOrder", "activityHidden", "activityCommands"] as const) {
+    if (!(key in input)) continue;
+    const list = idList(input[key]);
+    if (list) {
+      out[key] = list;
+      if (list.length !== (input[key] as unknown[]).length) problems++;
     } else problems++;
   }
   if ("termIgnore" in input) {

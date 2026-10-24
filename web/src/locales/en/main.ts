@@ -603,4 +603,10 @@ export const main: Record<string, Translation> = {
   "已上傳「{name}」": "Uploaded \"{name}\"",
   "已上傳 {n} 個檔案": "Uploaded {n} files",
   "已下載到「{path}」": "Downloaded to \"{path}\"",
+  "圖示列：新增按鈕…": "Icon Bar: Add Button…",
+  "圖示列：自訂…": "Icon Bar: Customize…",
+  "新增按鈕到圖示列": "Add a button to the icon bar",
+  "選一個指令，放到左邊的圖示列": "Choose a command to put on the left icon bar",
+  "圖示列最多放 {n} 個按鈕。": "The icon bar holds up to {n} buttons.",
+  "已把「{name}」放到圖示列，拖曳可以調整位置。": "Added \"{name}\" to the icon bar. Drag it to change its position.",
 };

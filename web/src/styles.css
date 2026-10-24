@@ -2520,3 +2520,19 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 
 /* 從電腦拖曳檔案到遠端資料夾：標示會上傳到哪個資料夾 */
 #file-tree.tree-drop, #file-tree .tree-row.tree-drop { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); }
+
+/* 左側圖示列：自訂（拖曳時半透明、隱藏的圖示、釘選的按鈕與面板圖示之間的分隔） */
+.activity-tabs button.user-hidden { display: none; }
+.activity-dragging { opacity: 0.4; }
+.activity-cmds { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.activity-cmds[hidden] { display: none; }
+.settings-row.settings-row-block { flex-direction: column; align-items: stretch; gap: 10px; }
+.activity-settings { display: flex; flex-direction: column; gap: 2px; }
+.activity-setting { display: flex; gap: 8px; align-items: center; min-height: 34px; padding: 0 4px; border-radius: 6px; }
+.activity-setting:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.activity-setting > .icon { flex: none; width: 18px; height: 18px; color: var(--muted); }
+.activity-setting-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.activity-setting .btn.icon-only { width: 28px; height: 28px; min-height: 28px; }
+.activity-setting input[type="checkbox"] { width: 16px; height: 16px; margin: 0 6px; }
+.activity-setting-sep { margin: 10px 4px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.activity-setting-actions { display: flex; gap: 8px; margin-top: 8px; }

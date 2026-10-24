@@ -24,6 +24,8 @@ export interface PickerOptions<T> {
   query(text: string): T[] | Promise<T[]>;
   render(item: T): PickerItem;
   pick(item: T): void;
+  /** 清單關閉時（選了項目之後，或取消）。 */
+  closed?(): void;
 }
 
 /**
@@ -63,6 +65,7 @@ export class Picker<T> {
       const li = (e.target as HTMLElement).closest<HTMLElement>("[data-index]");
       if (li) this.#run(Number(li.dataset.index));
     });
+    this.#dialog.addEventListener("close", () => opts.closed?.());
     // 點對話框外面（::backdrop）關閉。
     this.#dialog.addEventListener("click", (e) => {
       if (e.target === this.#dialog) this.#dialog.close();
