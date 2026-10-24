@@ -103,7 +103,7 @@ import { choose } from "./ui/choice.ts";
 import { FileTree, type TreeAction } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type MenuEntry, setupMenu } from "./ui/menu.ts";
-import { Palette } from "./ui/palette.ts";
+import { Palette, sortByGroup } from "./ui/palette.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
@@ -3145,8 +3145,8 @@ function insertPlaceholder(text: string, line: number): void {
   editor.exec(insertBlock(text, text.split("\n")[line]?.trim()));
 }
 
-function fmt(id: string, title: string, iconName: string, run: () => void, keys?: string): Command {
-  return { id, title, group: t("格式"), icon: iconName, keys, when: isMarkdown, run };
+function fmt(id: string, title: string, iconName: string, run: () => void, keys?: string, group = t("格式")): Command {
+  return { id, title, group, icon: iconName, keys, when: isMarkdown, run };
 }
 
 commands.register(
@@ -3167,7 +3167,7 @@ commands.register(
   {
     id: "reopen-closed-tab",
     title: t("重新開啟關閉的分頁"),
-    group: t("檔案"),
+    group: t("分頁"),
     icon: "history",
     // 網頁版的 Ctrl+W、Ctrl+Shift+T、Ctrl+Tab 會被瀏覽器拿去用（關掉整個瀏覽器分頁），改用其他按鍵。
     keys: desktop ? "Mod-Shift-t" : "Mod-Alt-Shift-t",
@@ -3199,7 +3199,8 @@ commands.register(
   {
     id: "tab-next",
     title: t("下一個分頁"),
-    group: t("檢視"),
+    group: t("分頁"),
+    icon: "arrow-right",
     keys: desktop ? "Ctrl-Tab" : "Alt-PageDown",
     when: () => docs.length > 1,
     run: () => cycleTab(1),
@@ -3207,7 +3208,8 @@ commands.register(
   {
     id: "tab-prev",
     title: t("上一個分頁"),
-    group: t("檢視"),
+    group: t("分頁"),
+    icon: "arrow-left",
     keys: desktop ? "Ctrl-Shift-Tab" : "Alt-PageUp",
     when: () => docs.length > 1,
     run: () => cycleTab(-1),
@@ -3215,7 +3217,7 @@ commands.register(
   {
     id: "tab-close",
     title: t("關閉分頁"),
-    group: t("檔案"),
+    group: t("分頁"),
     icon: "x",
     keys: desktop ? "Mod-w" : "Mod-Alt-w",
     run: () => closeTab(menuTab().id),
@@ -3239,7 +3241,8 @@ commands.register(
   {
     id: "tab-close-others",
     title: t("關閉其他分頁"),
-    group: t("檔案"),
+    group: t("分頁"),
+    icon: "x",
     when: () => docs.some((d) => d !== menuTab() && !d.pinned),
     run() {
       const keep = menuTab();
@@ -3249,7 +3252,8 @@ commands.register(
   {
     id: "tab-close-right",
     title: t("關閉右側的分頁"),
-    group: t("檔案"),
+    group: t("分頁"),
+    icon: "x",
     when: () => docs.slice(docs.indexOf(menuTab()) + 1).some((d) => !d.pinned),
     run() {
       return closeTabs(docs.slice(docs.indexOf(menuTab()) + 1).filter((d) => !d.pinned));
@@ -3258,14 +3262,15 @@ commands.register(
   {
     id: "tab-close-saved",
     title: t("關閉已儲存的分頁"),
-    group: t("檔案"),
+    group: t("分頁"),
+    icon: "x",
     when: () => docs.some((d) => !d.dirty && !d.pinned),
     run: () => closeTabs(docs.filter((d) => !d.dirty && !d.pinned)),
   },
   {
     id: "tab-pin",
     title: t("固定／取消固定分頁"),
-    group: t("檔案"),
+    group: t("分頁"),
     icon: "pin",
     run() {
       const doc = menuTab();
@@ -3305,7 +3310,7 @@ commands.register(
   {
     id: "open-folder",
     title: t("開啟資料夾…"),
-    group: t("檔案"),
+    group: t("資料夾與專案"),
     icon: "folder-open",
     when: () => !!desktop,
     async run() {
@@ -3318,7 +3323,7 @@ commands.register(
   {
     id: "switch-project",
     title: t("切換專案…"),
-    group: t("專案"),
+    group: t("資料夾與專案"),
     icon: "folder-kanban",
     keys: "Mod-Alt-p",
     when: () => !!projectUi,
@@ -3327,7 +3332,7 @@ commands.register(
   {
     id: "project-overview",
     title: t("專案總覽"),
-    group: t("專案"),
+    group: t("資料夾與專案"),
     icon: "layout-grid",
     when: () => !!projectUi,
     run: () => projectUi!.openOverview(),
@@ -3335,7 +3340,7 @@ commands.register(
   {
     id: "project-settings",
     title: t("目前專案的設定（名稱、顏色、群組）…"),
-    group: t("專案"),
+    group: t("資料夾與專案"),
     icon: "pencil",
     when: () => !!projectUi?.current,
     run: () => projectUi!.edit(projectUi!.current!),
@@ -3343,7 +3348,7 @@ commands.register(
   {
     id: "connect-webdav",
     title: t("連線到遠端資料夾（WebDAV）…"),
-    group: t("檔案"),
+    group: t("資料夾與專案"),
     icon: "cloud",
     when: () => !!desktop,
     async run() {
@@ -3400,7 +3405,7 @@ commands.register(
   {
     id: "connect-ssh",
     title: t("連線到遠端資料夾（SSH）…"),
-    group: t("檔案"),
+    group: t("資料夾與專案"),
     icon: "server",
     when: () => !!desktop,
     async run() {
@@ -3421,7 +3426,7 @@ commands.register(
   {
     id: "search-in-folder",
     title: t("在資料夾中搜尋"),
-    group: t("編輯"),
+    group: t("資料夾與專案"),
     icon: "search",
     keys: "Mod-Shift-f",
     when: () => !!desktop,
@@ -3436,7 +3441,7 @@ commands.register(
   {
     id: "replace-in-folder",
     title: t("在資料夾中取代…"),
-    group: t("檔案"),
+    group: t("資料夾與專案"),
     icon: "replace",
     when: () => !!searchPanel && !!workspaceRoot && !isRemote(workspaceRoot.path),
     run() {
@@ -3452,7 +3457,7 @@ commands.register(
   {
     id: "show-git",
     title: t("顯示原始碼控制（Git）"),
-    group: t("檢視"),
+    group: t("Git"),
     icon: "git-branch",
     keys: "Mod-Shift-g",
     when: () => !!gitPanel,
@@ -3463,7 +3468,7 @@ commands.register(
   {
     id: "export-html",
     title: t("匯出成 HTML…"),
-    group: t("檔案"),
+    group: t("匯入與匯出"),
     icon: "download",
     async run() {
       const html = await preview.exportDocument(editor.text, kind, stem(fileName));
@@ -3474,14 +3479,14 @@ commands.register(
   {
     id: "export-pdf",
     title: desktop ? t("匯出成 PDF…") : t("列印／匯出成 PDF…"),
-    group: t("檔案"),
+    group: t("匯入與匯出"),
     icon: desktop ? "file-down" : "printer",
     run: () => exportPdf(),
   },
   {
     id: "print",
     title: t("列印…"),
-    group: t("檔案"),
+    group: t("匯入與匯出"),
     icon: "printer",
     when: () => !!desktop,
     run: () => exportPdf(true),
@@ -3489,7 +3494,7 @@ commands.register(
   {
     id: "copy-html",
     title: t("複製 HTML"),
-    group: t("檔案"),
+    group: t("匯入與匯出"),
     icon: "copy",
     async run() {
       // 複製出去的 HTML 不需要捲動同步用的 data-sourcepos，直接重新渲染一份。
@@ -3505,7 +3510,7 @@ commands.register(
   {
     id: "export-docx",
     title: t("匯出成 Word（.docx）…"),
-    group: t("檔案"),
+    group: t("匯入與匯出"),
     icon: "file-type",
     when: () => kind === "markdown",
     run: () => exportDocx(),
@@ -3531,14 +3536,14 @@ commands.register(
   {
     id: "import-docx",
     title: t("匯入 Word 文件（.docx）…"),
-    group: t("檔案"),
+    group: t("匯入與匯出"),
     icon: "file-input",
     run: () => importDocx(),
   },
   {
     id: "copy-rich",
     title: t("複製為格式文字（貼到 Word、Outlook、Teams）"),
-    group: t("檔案"),
+    group: t("匯入與匯出"),
     icon: "clipboard-copy",
     keys: "Mod-Alt-c",
     when: () => kind === "markdown",
@@ -3591,6 +3596,7 @@ commands.register(
     id: "find",
     title: t("搜尋與取代"),
     group: t("編輯"),
+    icon: "search",
     keys: "Mod-f",
     when: () => view !== "preview",
     // 工作項目開在主要區域時，在它的內容裡找字。
@@ -3621,7 +3627,7 @@ commands.register(
   fmt("italic", t("斜體"), "italic", () => editor.exec(toggleWrap("*")), "Mod-i"),
   fmt("strike", t("刪除線"), "strikethrough", () => editor.exec(toggleWrap("~~")), "Mod-Shift-x"),
   fmt("code", t("行內程式碼"), "code", () => editor.exec(toggleWrap("`")), "Mod-e"),
-  fmt("link", t("插入連結"), "link", () => editor.exec(insertLink), "Mod-k"),
+  fmt("link", t("插入連結"), "link", () => editor.exec(insertLink), "Mod-k", t("插入")),
   fmt("underline", t("底線"), "underline", () => editor.exec(toggleWrap("<u>", "</u>")), "Mod-u"),
   fmt("highlight", t("螢光標記"), "highlighter", () => editor.exec(toggleWrap("<mark>", "</mark>")), "Mod-Shift-h"),
   fmt("superscript", t("上標（例如 m²）"), "superscript", () => editor.exec(toggleWrap("<sup>", "</sup>"))),
@@ -3646,19 +3652,21 @@ commands.register(
   fmt("task", t("待辦清單"), "list-checks", () => editor.exec(toggleLineStyle("task")), "Mod-Shift-9"),
   fmt("code-block", t("程式碼區塊"), "square-code", () => insertPlaceholder(t("```\n程式碼\n```"), 1)),
   // 插入後選取第一個欄位名稱，直接打字就能取代。
-  fmt("table", t("插入表格"), "table", () => editor.exec(insertBlock(TABLE_TEMPLATE, TABLE_TEMPLATE.split("|")[1].trim()))),
-  fmt("hr", t("分隔線"), "minus", () => editor.exec(insertBlock("---"))),
-  fmt("insert-toc", t("插入或更新目錄"), "toc", () => insertToc()),
-  fmt("math-block", t("數學公式區塊"), "sigma", () => insertPlaceholder(t("$$\n公式\n$$"), 1)),
+  fmt("table", t("插入表格"), "table", () => editor.exec(insertBlock(TABLE_TEMPLATE, TABLE_TEMPLATE.split("|")[1].trim())), undefined, t("插入")),
+  fmt("hr", t("分隔線"), "minus", () => editor.exec(insertBlock("---")), undefined, t("插入")),
+  fmt("insert-toc", t("插入或更新目錄"), "toc", () => insertToc(), undefined, t("插入")),
+  fmt("math-block", t("數學公式區塊"), "sigma", () => insertPlaceholder(t("$$\n公式\n$$"), 1), undefined, t("插入")),
   fmt("mermaid-block", t("流程圖"), "workflow", () =>
     insertPlaceholder(t("```mermaid\nflowchart LR\n  A[開始] --> B[結束]\n```"), 2),
+    undefined,
+    t("插入"),
   ),
-  fmt("insert-image", t("圖片…"), "image", () => imageInput.click()),
+  fmt("insert-image", t("圖片…"), "image", () => imageInput.click(), undefined, t("插入")),
   fmt("insert-menu", t("插入…"), "plus", () => {
     const pos = editor.view.state.selection.main.head;
     const at = editor.view.coordsAtPos(pos);
     if (at) openInsertMenu(new DOMRect(at.left, at.top, 0, at.bottom - at.top));
-  }, "Mod-Shift-Enter"),
+  }, "Mod-Shift-Enter", t("插入")),
   fmt("table-format", t("表格：對齊目前的表格"), "table", () => runTableEdit("format")),
   fmt("table-insert-row", t("表格：在下方插入一列"), "table", () => runTableEdit("insert-row")),
   fmt("table-insert-column", t("表格：在右側插入一欄"), "table", () => runTableEdit("insert-column")),
@@ -3809,6 +3817,7 @@ commands.register(
       id: `kind-${k}`,
       title: t("文件類型改為 {kind}", { kind: KINDS[k].label }),
       group: t("檢視"),
+      icon: "file-type",
       when: () => kind !== k,
       run: () => setKind(k),
     }),
@@ -4298,7 +4307,7 @@ commands.register(
   {
     id: "toggle-terminal",
     title: t("顯示／隱藏終端機"),
-    group: t("檢視"),
+    group: t("AI 與終端機"),
     icon: "square-terminal",
     keys: "Mod-`",
     when: () => !!terminal,
@@ -4307,7 +4316,7 @@ commands.register(
   {
     id: "ai-actions",
     title: t("AI：處理選取的文字…"),
-    group: t("編輯"),
+    group: t("AI 與終端機"),
     icon: "sparkles",
     keys: "Mod-j",
     when: () => !!ai?.enabled && view !== "preview",
@@ -4371,7 +4380,7 @@ commands.register(
     ([id, title, iconName, run, when]): Command => ({
       id,
       title,
-      group: t("檔案"),
+      group: "Git",
       icon: iconName,
       when: () => !!github && when(),
       run: () => void run(),
@@ -4388,7 +4397,7 @@ commands.register(
   {
     id: "git-file-history",
     title: t("Git：這個檔案的提交歷史…"),
-    group: t("檔案"),
+    group: t("Git"),
     icon: "git-commit-horizontal",
     when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.repo,
     run: () => commitPicker.open(),
@@ -4396,7 +4405,7 @@ commands.register(
   {
     id: "git-open-web",
     title: t("Git：在網頁上開啟這個檔案（GitHub／Azure DevOps）"),
-    group: t("檔案"),
+    group: t("Git"),
     icon: "external-link",
     when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.remote,
     run: () => void openOnWeb().catch(reportError),
@@ -4404,7 +4413,7 @@ commands.register(
   {
     id: "git-copy-link",
     title: t("Git：複製這個檔案的網頁連結"),
-    group: t("檔案"),
+    group: t("Git"),
     icon: "link",
     when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.remote,
     run: () => void copyWebLink().catch(reportError),
@@ -4428,7 +4437,7 @@ commands.register(
   {
     id: "ai-cancel",
     title: t("AI：取消處理中的動作"),
-    group: t("編輯"),
+    group: t("AI 與終端機"),
     icon: "circle-stop",
     when: () => !!ai?.running,
     run: () => ai?.cancel(),
@@ -4437,7 +4446,7 @@ commands.register(
     (tool): Command => ({
       id: `start-${tool}`,
       title: t("AI：在終端機啟動 {tool}", { tool: tool === "claude" ? "Claude Code" : "Codex" }),
-      group: t("檢視"),
+      group: t("AI 與終端機"),
       icon: "sparkles",
       // 沒開啟 AI 協作或沒安裝時也列出來，按下去說明怎麼開始，而不是找不到這個功能。
       when: () => !!terminal,
@@ -4447,7 +4456,7 @@ commands.register(
   {
     id: "insert-symbol",
     title: t("插入符號…"),
-    group: t("編輯"),
+    group: t("插入"),
     icon: "omega",
     keys: "Mod-Alt-s",
     when: () => view !== "preview",
@@ -4478,7 +4487,7 @@ commands.register(
   {
     id: "send-to-terminal-ai",
     title: t("AI：把選取範圍傳給終端機中的 Claude Code／Codex"),
-    group: t("編輯"),
+    group: t("AI 與終端機"),
     icon: "square-terminal",
     keys: "Mod-Alt-j",
     when: () => terminalAiReady() && view !== "preview",
@@ -4487,7 +4496,7 @@ commands.register(
   {
     id: "ai-settings",
     title: t("AI 協作設定…"),
-    group: t("說明"),
+    group: t("AI 與終端機"),
     icon: "sparkles",
     when: () => !!desktop,
     run: () => settingsDialog.open(t("AI 協作")),
@@ -4495,7 +4504,7 @@ commands.register(
   {
     id: "git-claude-workflow",
     title: t("Git：加入 Claude Code 自動校對（GitHub Actions）…"),
-    group: t("檔案"),
+    group: t("Git"),
     icon: "git-branch",
     when: () => !!gitPanel?.status?.repo && !!workspaceRoot && !isRemote(workspaceRoot.path),
     run: () => addClaudeWorkflow(),
@@ -4514,7 +4523,7 @@ window.addEventListener(
     if (target.closest(".terminal-panel") && !TERMINAL_KEYS.has(cmd.id)) return;
     const inField =
       (target.matches("input, select, textarea") && !target.closest(".cm-editor")) || target.isContentEditable && !!target.closest(".cm-lp-table");
-    if (inField && cmd.group === t("格式")) return;
+    if (inField && (cmd.group === t("格式") || cmd.group === t("插入"))) return;
     e.preventDefault();
     e.stopPropagation();
     commands.run(cmd.id).catch(reportError);
@@ -4669,7 +4678,7 @@ function showShortcuts(): void {
   const body = document.createElement("div");
   body.className = "shortcuts-body";
   const groups = new Map<string, [string, string][]>();
-  for (const c of commands.available()) {
+  for (const c of sortByGroup(commands.available())) {
     const keys = c.keys ?? c.shownKeys;
     if (!keys) continue;
     const list = groups.get(c.group ?? "") ?? [];

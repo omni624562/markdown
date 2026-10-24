@@ -714,6 +714,9 @@ kbd {
 .palette li[aria-selected="true"] .icon { color: var(--accent); }
 .palette-title { flex: 1; }
 .palette-group { color: var(--muted); font-size: 12px; }
+/* 指令面板：快速鍵固定寬度靠右，分類文字因此上下切齊 */
+.palette-columns .palette-keys { flex: none; width: 9.5rem; display: flex; justify-content: flex-end; }
+.palette-columns .palette-group { flex: none; text-align: right; }
 .palette-empty { justify-content: center; color: var(--muted); cursor: default !important; }
 .palette-hint { display: flex; gap: 4px; align-items: center; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 

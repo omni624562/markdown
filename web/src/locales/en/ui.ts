@@ -339,4 +339,7 @@ export const ui: Record<string, Translation> = {
   "在 GitHub 上留言；附上版本號會更容易找到原因": "Post on GitHub; including the version number makes problems easier to track down",
   "回報": "Report",
   "oMarker 以 MIT 授權開放原始碼": "oMarker is open source under the MIT License",
+  "分頁": "Tabs",
+  "資料夾與專案": "Folders and Projects",
+  "匯入與匯出": "Import and Export",
 };
