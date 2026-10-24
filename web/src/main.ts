@@ -13,6 +13,7 @@ import init, {
   formatTable,
   kindFromFileName,
   parseDoc,
+  renameLinks,
   render as renderMarkdown,
   spacingPositions,
 } from "../pkg/md_wasm.js";
@@ -127,7 +128,7 @@ import { setupWindowControls } from "./ui/window-controls.ts";
 import { askPdfOptions } from "./ui/pdf-dialog.ts";
 import { PAPERS, PRINT_ROOT_CSS, type PdfOptions, coverHtml, pageCss, pageLayout, shadowCss } from "./pdf-print.ts";
 import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
-import { type FileRef, backlinks, linkTarget, renameLinks, resolveWiki } from "./links.ts";
+import { type FileRef, backlinks, linkTarget, resolveWiki } from "./links.ts";
 import { type IndexedDoc, type OpenDoc, WorkspaceIndex } from "./workspace-index.ts";
 import { isoDate, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
 import { REPO_URL, SettingsDialog } from "./ui/settings-dialog.ts";
@@ -137,7 +138,7 @@ import { WebDavDialog } from "./ui/webdav-dialog.ts";
 import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
-import type { AdoWorkItem, AdoWorkItemFilter, FileVersion } from "./desktop.ts";
+import type { AdoWorkItem, AdoWorkItemFilter, FileVersion, LinkUpdate } from "./desktop.ts";
 import type { GitHistory } from "./ui/history-view.ts";
 import { clampSidebarWidth, setupSidebarResize } from "./ui/sidebar-resize.ts";
 import { setupSplitter } from "./ui/splitter.ts";
@@ -980,12 +981,15 @@ async function updateLinksAfterRename(from: string, to: string, docsBefore: Inde
       }),
   );
   if (!linking.length) return;
-  const texts = await docIndex.texts(linking);
-  const changes: { path: string; before: string; text: string }[] = [];
-  linking.forEach((doc, i) => {
-    const next = renameLinks(texts[i], doc.path!, files, moved);
-    if (next !== null) changes.push({ path: moved(doc.path!) ?? doc.path!, before: texts[i], text: next });
-  });
+  // 已開啟的分頁用編輯器裡的內容；沒開啟的檔案由後端讀取、改寫，只傳回有改到的。
+  const changes: LinkUpdate[] = [];
+  for (const doc of linking) {
+    if (doc.text === null) continue;
+    const next = renameLinks(doc.text, doc.path!, files, from, to);
+    if (next !== undefined) changes.push({ path: moved(doc.path!) ?? doc.path!, before: doc.text, text: next });
+  }
+  const closed = linking.filter((doc) => doc.text === null).map((doc) => doc.path!);
+  if (closed.length) changes.push(...(await desktop!.linkUpdates(closed, files, from, to)));
   if (!changes.length) return;
   const choice = await choose(
     t("更新連結？"),

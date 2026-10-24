@@ -330,6 +330,7 @@ fn main() {
             workspace::replace_in_folder,
             doc_index::scan_docs,
             doc_index::read_docs,
+            doc_index::link_updates,
             doc_index::update_doc,
             workspace::peek_text,
             images::save_image,
