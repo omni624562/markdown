@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
+import "./test-wasm.ts";
 import { scanDocument } from "./proofread.ts";
 
 test("只檢查一段時，位置和整份檢查的結果一致", () => {
