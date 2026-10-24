@@ -148,6 +148,7 @@ import { TOC_START, tocBlock, updateToc } from "./toc.ts";
 import { BUILTIN_TEMPLATES, TEMPLATE_LIMITS, type Template, fillTemplate, templateFileName } from "./templates.ts";
 import { askText } from "./ui/choice.ts";
 import { setErrorAction, toast } from "./ui/toast.ts";
+import { fieldMenu, selectionMenu, textField } from "./ui/input-menu.ts";
 import { authProblem } from "./auth-errors.ts";
 import { type SvgImageOptions, standaloneSvg, svgDataUrl, svgToPng } from "./svg-image.ts";
 
@@ -5231,6 +5232,33 @@ function floatingMenu(id: string, entries: MenuEntry[], onClose?: () => void): {
       if (!menu.matches(":popover-open")) anchor.click();
     },
   };
+}
+
+/**
+ * 桌面版：其他元件沒有處理的右鍵（搜尋框、設定欄位、預覽裡選取的文字等）改用自己的小選單，
+ * 不顯示 WebView2 內建的選單（裡面有重新整理、列印與 Windows 的語音輸入）。
+ */
+if (desktop) {
+  window.addEventListener("contextmenu", (e) => {
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    const field = textField(e.target as Element);
+    const entries = field ? fieldMenu(field) : selectionMenu();
+    if (!entries.length) return;
+    const at = new DOMRect(e.clientX, e.clientY, 0, 0);
+    const open = () => {
+      const ids = ["text-menu-anchor", "text-menu-anchor-popover"];
+      for (const id of ids) document.getElementById(id)?.remove();
+      const menu = floatingMenu("text-menu-anchor", entries, () => field?.focus());
+      // 開著對話框（例如設定）時，對話框以外的東西都不能點：選單要放進對話框裡。
+      const modal = [...document.querySelectorAll("dialog")].filter((d) => d.matches(":modal")).at(-1);
+      if (modal) for (const id of ids) modal.append(document.getElementById(id)!);
+      menu.open(at);
+    };
+    // Linux 按下右鍵就觸發 contextmenu：等放開再開，免得放開時被當成點在選單外。
+    if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(open), { once: true });
+    else open();
+  });
 }
 
 /** 插入選單：空白行左邊的「＋」或 Ctrl+Shift+Enter 開啟，位置跟著按鈕或游標。 */
