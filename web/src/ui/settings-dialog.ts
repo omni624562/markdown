@@ -310,7 +310,19 @@ export class SettingsDialog {
       const accountBtn = document.createElement("button");
       accountBtn.type = "button";
       accountBtn.id = "setting-github";
-      const accountRow = this.#row("github", t("GitHub 帳號"), t("讀取中…"), () => accountBtn);
+      // 登入過期（權杖被撤銷）時不用先登出：直接重新登入就會換成新的權杖。
+      const reloginBtn = document.createElement("button");
+      reloginBtn.type = "button";
+      reloginBtn.className = "btn";
+      reloginBtn.textContent = t("重新登入");
+      reloginBtn.addEventListener("click", () => github.login());
+      const accountRow = this.#row("github", t("GitHub 帳號"), t("讀取中…"), () => {
+        const box = document.createElement("span");
+        box.className = "setting-buttons";
+        box.id = "setting-github-buttons";
+        box.append(reloginBtn, accountBtn);
+        return box;
+      });
       const accountHint = accountRow.querySelector("small")!;
       accountBtn.addEventListener("click", () => (github.account() ? github.logout() : github.login()));
       const action = (id: string, label: string, run: () => void) => {
@@ -333,6 +345,7 @@ export class SettingsDialog {
         accountHint.textContent = a ? t("已登入：{name}", { name: a.login }) : t("登入後就能把資料夾同步到 GitHub，在其他電腦也能下載");
         accountBtn.className = a ? "btn" : "btn btn-primary";
         accountBtn.textContent = a ? t("登出") : t("用 GitHub 登入");
+        reloginBtn.hidden = !a;
         publishBtn.disabled = !github.canPublish();
         publishBtn.title = publishBtn.disabled ? t("請先開啟要上傳的資料夾") : "";
       };

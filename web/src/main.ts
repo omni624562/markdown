@@ -147,7 +147,8 @@ import { fileUrl as localFileUrl, richHtml } from "./rich-copy.ts";
 import { TOC_START, tocBlock, updateToc } from "./toc.ts";
 import { BUILTIN_TEMPLATES, TEMPLATE_LIMITS, type Template, fillTemplate, templateFileName } from "./templates.ts";
 import { askText } from "./ui/choice.ts";
-import { toast } from "./ui/toast.ts";
+import { setErrorAction, toast } from "./ui/toast.ts";
+import { authProblem } from "./auth-errors.ts";
 import { type SvgImageOptions, standaloneSvg, svgDataUrl, svgToPng } from "./svg-image.ts";
 
 type ViewMode = "editor" | "live" | "split" | "preview";
@@ -2061,6 +2062,14 @@ function renderAdoTab(): void {
   if (tab.hidden && sidePanel === "workitems") showPanel("files", false);
 }
 $("#workitems-refresh").addEventListener("click", () => void workItemsPanel?.refresh());
+
+// 登入過期、權杖失效的錯誤通知：直接附上重新登入的按鈕。
+setErrorAction((message) => {
+  const problem = authProblem(message);
+  if (problem === "github" && github) return { label: t("重新登入 GitHub"), primary: true, run: () => void github.login() };
+  if (problem === "ado" && ado) return { label: t("開啟連線設定"), primary: true, run: () => settingsDialog.open("Git") };
+  return undefined;
+});
 
 const gitPanel =
   desktop && fileTree && github
