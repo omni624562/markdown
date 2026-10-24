@@ -1,0 +1,9 @@
+[package]
+name = "md-docx"
+description = "Markdown 匯出成 Word（.docx）：桌面版後端使用"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+md-core = { path = "../md-core" }

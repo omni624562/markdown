@@ -18,6 +18,7 @@ pub static EN: &[(&str, &str)] = &[
     ("匯入", "Imported"),
     ("匯入 Word 文件", "Import Word Document"),
     ("Word 文件", "Word Documents"),
+    ("［圖片：{alt}］", "[Image: {alt}]"),
     ("「{name}」超過 100 MB，無法匯入", "\"{name}\" is larger than 100 MB and can't be imported."),
     ("另存新檔", "Save As"),
     ("提交編號不正確", "Invalid commit ID."),

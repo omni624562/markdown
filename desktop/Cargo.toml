@@ -14,6 +14,7 @@ tauri-build = { version = "2.7.3", features = [] }
 
 [dependencies]
 md-text = { path = "../crates/md-text" }
+md-docx = { path = "../crates/md-docx" }
 tauri = { version = "2.12.4", features = [] }
 tauri-plugin-opener = "2.7.0"
 tauri-plugin-single-instance = "2.5.2"

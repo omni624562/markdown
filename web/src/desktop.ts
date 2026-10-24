@@ -64,6 +64,15 @@ export interface Entry {
 }
 
 /** 匯入 Word：選到的檔案與要轉存的 Markdown 檔位置。 */
+/** 匯出 Word 用的圖片（`url` 是 Markdown 裡寫的網址，`data` 是 Base64）。 */
+export interface DocxImageData {
+  url: string;
+  kind: "png" | "jpg" | "gif" | "bmp";
+  width: number;
+  height: number;
+  data: string;
+}
+
 export interface DocxImport {
   name: string;
   mdPath: string;
@@ -626,6 +635,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
       path: string,
       layout: { widthMm: number; heightMm: number; marginTopMm: number; marginBottomMm: number; marginSideMm: number },
     ) => core.invoke<void>("print_to_pdf", { path, layout }),
+    /** 匯出 Word：在後端把 Markdown 轉成 .docx，回傳檔案內容。 */
+    exportDocx: (markdown: string, title: string, images: DocxImageData[]) =>
+      core.invoke<ArrayBuffer>("export_docx", { markdown, title, images }),
     /** 選擇 Word 檔並讀取；取消時回傳 null。 */
     importDocx: async (): Promise<DocxImport | null> => {
       const picked = await core.invoke<Omit<DocxImport, "data"> | null>("import_docx");

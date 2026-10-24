@@ -260,6 +260,7 @@ fn main() {
             files::export_binary,
             files::import_docx,
             files::import_docx_data,
+            files::export_docx,
             fonts::list_fonts,
             git_files::git_file_history,
             git_files::git_file_at,

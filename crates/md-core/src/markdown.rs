@@ -54,6 +54,30 @@ pub(crate) fn render(markdown: &str, opts: &RenderOptions) -> Rendered {
     }
 }
 
+/// 解析 Markdown（和渲染相同的設定，含允許的文字格式標籤），把文件的根節點交給 `f`。
+pub fn with_document<R>(markdown: &str, f: impl for<'a> FnOnce(Node<'a>) -> R) -> R {
+    let options = comrak_options(&RenderOptions::default());
+    let arena = Arena::new();
+    let root = parse_document(&arena, markdown, &options);
+    allow_formatting_tags(&arena, root);
+    f(root)
+}
+
+/// 文件中的圖片網址（照文件裡寫的，依出現順序、不重複）。
+pub fn image_urls(markdown: &str) -> Vec<String> {
+    with_document(markdown, |root| {
+        let mut out: Vec<String> = Vec::new();
+        for node in root.descendants() {
+            if let NodeValue::Image(ref link) = node.data().value {
+                if !out.contains(&link.url) {
+                    out.push(link.url.clone());
+                }
+            }
+        }
+        out
+    })
+}
+
 /// 允許的行內 HTML 標籤（不能帶屬性）與對應的節點。
 fn formatting_tag(name: &str) -> Option<NodeValue> {
     Some(match name {
