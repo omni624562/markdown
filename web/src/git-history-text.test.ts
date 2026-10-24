@@ -53,3 +53,17 @@ test("活動統計：依提交當地的日期分組，最右邊一欄是這一�
   assert.equal(level(5, 5), 4);
   assert.equal(level(1, 5), 1);
 });
+
+test("熱度圖從最早的提交那一週開始畫，最少 8 週、最多 53 週", () => {
+  const today = new Date(2026, 9, 24); // 星期六
+  const at = (iso: string) => Date.parse(iso) / 1000;
+  // 最早的提交在 10 週前的星期三：畫 11 欄（那一週到這一週）。
+  const recent = activity([{ author: "王", time: at("2026-08-12T02:00:00Z"), offset: 480 }], today);
+  assert.equal(recent.weeks.length, 11);
+  assert.equal(recent.weeks[0][3]?.date, "2026-08-12");
+  // 這幾天才開始：至少畫 8 週。
+  assert.equal(activity([{ author: "王", time: at("2026-10-23T02:00:00Z"), offset: 480 }], today).weeks.length, 8);
+  assert.equal(activity([], today).weeks.length, 8);
+  // 很久以前就有提交：最多一年。
+  assert.equal(activity([{ author: "王", time: at("2020-01-01T02:00:00Z"), offset: 480 }], today).weeks.length, 53);
+});

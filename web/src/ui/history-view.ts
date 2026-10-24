@@ -163,11 +163,23 @@ export class GitHistory {
     this.#pathChip = el("span", "gh-chip");
     this.#pathChip.hidden = true;
     const actions = el("div", "issue-actions");
+    // 活動統計：按鈕下方的浮動卡片（點外面或按 Esc 關閉），不會把提交清單往下推。
+    const statsButton = iconButton(t("活動統計"), "chart-column", () => {});
+    this.#statsBox = el("div", "gh-stats");
+    this.#statsBox.popover = "auto";
+    this.#statsBox.setAttribute("role", "dialog");
+    this.#statsBox.setAttribute("aria-label", t("活動統計"));
+    statsButton.popoverTargetElement = this.#statsBox;
+    this.#statsBox.addEventListener("toggle", (e) => {
+      const open = (e as ToggleEvent).newState === "open";
+      statsButton.setAttribute("aria-expanded", String(open));
+      if (open) void this.#showStats(statsButton);
+    });
     actions.append(
       this.#scope,
       this.#search,
       this.#pathChip,
-      iconButton(t("活動統計"), "chart-column", () => void this.#toggleStats()),
+      statsButton,
       iconButton(t("拉取"), "arrow-down", () => void this.#h.pull().then(() => this.reload())),
       iconButton(t("推送"), "arrow-up", () => void this.#h.push().then(() => this.reload())),
       iconButton(t("重新整理"), "refresh-cw", () => void this.reload()),
@@ -175,8 +187,6 @@ export class GitHistory {
     );
     head.append(heading, actions);
 
-    this.#statsBox = el("div", "gh-stats");
-    this.#statsBox.hidden = true;
 
     const body = el("div", "gh-body");
     this.#list = el("div", "gh-list");
@@ -206,7 +216,9 @@ export class GitHistory {
     pane.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !(e.target instanceof HTMLInputElement) && !e.defaultPrevented) {
         e.preventDefault();
-        this.close();
+        // 統計卡片開著時，Esc 只關卡片。
+        if (this.#statsBox.matches(":popover-open")) this.#statsBox.hidePopover();
+        else this.close();
       }
     });
     new ResizeObserver(() => this.#paint()).observe(this.#list);
@@ -293,6 +305,7 @@ export class GitHistory {
   }
 
   close(): void {
+    if (this.#statsBox.matches(":popover-open")) this.#statsBox.hidePopover();
     if (!this.isOpen) return;
     this.#seq++;
     this.#closeMenu();
@@ -1233,17 +1246,31 @@ export class GitHistory {
 
   // ---- 統計 ---------------------------------------------------------------
 
-  async #toggleStats(): Promise<void> {
+  /** 卡片放在按鈕下方，靠右對齊按鈕（按鈕在右上角），一律留在視窗內。 */
+  #placeStats(button: HTMLElement): void {
     const box = this.#statsBox;
-    if (!box.hidden) {
-      box.hidden = true;
-      return;
-    }
-    box.hidden = false;
+    const r = button.getBoundingClientRect();
+    // 先移到左上角再量：靠近右邊時，寬度會被視窗邊緣擠窄。
+    Object.assign(box.style, { left: "0px", top: "0px" });
+    const width = box.offsetWidth;
+    const p = placeMenu(
+      { left: r.right - width, top: r.top, right: r.right, bottom: r.bottom },
+      { width, height: box.offsetHeight },
+      { width: innerWidth, height: innerHeight },
+    );
+    Object.assign(box.style, { left: `${p.left}px`, top: `${p.top}px`, maxHeight: `${p.maxHeight}px` });
+  }
+
+  async #showStats(button: HTMLElement): Promise<void> {
+    const box = this.#statsBox;
     box.replaceChildren(el("p", "gh-loading", t("讀取中…")));
+    this.#placeStats(button);
     try {
       const a = activity(await this.#d.gitStats(), new Date());
       const grid = el("div", "gh-heat");
+      // 週數少（新的儲存庫）時格子放大一點。
+      const n = a.weeks.length;
+      grid.style.setProperty("--cell", n <= 16 ? "16px" : n <= 30 ? "13px" : "11px");
       grid.setAttribute("role", "img");
       grid.setAttribute("aria-label", t("最近一年有 {n} 個提交", { n: a.total }));
       for (const week of a.weeks) {
@@ -1267,12 +1294,19 @@ export class GitHistory {
         li.append(el("span", "gh-author-name", au.name), bar, el("span", "gh-author-count", String(au.count)));
         authors.append(li);
       }
-      const title = el("p", "gh-stats-title", t("最近一年有 {n} 個提交（目前的分支）", { n: a.total }));
+      const title = el(
+        "p",
+        "gh-stats-title",
+        n >= 53
+          ? t("最近一年有 {n} 個提交（目前的分支）", { n: a.total })
+          : t("最近 {weeks} 週有 {n} 個提交（目前的分支）", { weeks: n, n: a.total }),
+      );
       const row = el("div", "gh-stats-row");
       row.append(grid, authors);
       box.replaceChildren(title, row);
     } catch (e) {
       box.replaceChildren(el("p", "gh-loading gh-error", errorText(e)));
     }
+    if (box.matches(":popover-open")) this.#placeStats(button);
   }
 }

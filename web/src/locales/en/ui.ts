@@ -412,6 +412,7 @@ export const ui: Record<string, Translation> = {
   "最後一次提交還沒推送，可以修改說明：": "The last commit hasn't been pushed, so you can change its message:",
   "最近一年有 {n} 個提交": "{n} commit(s) in the past year",
   "最近一年有 {n} 個提交（目前的分支）": "{n} commit(s) in the past year (current branch)",
+  "最近 {weeks} 週有 {n} 個提交（目前的分支）": ["{n} commit in the last {weeks} weeks (current branch)", "{n} commits in the last {weeks} weeks (current branch)"],
   "有分頁還沒存檔，請先存檔。": "Some tabs have unsaved changes. Save them first.",
   "標籤名稱（例如 v1.0、初稿）：": "Tag name (for example v1.0 or first-draft):",
   "檔案內容不會變，拿掉的修改會變成「還沒提交的變更」，可以重新整理後再提交。已經推送的提交不能退回（請改用「撤銷這個提交」）。": " Your files won't change: the removed changes become uncommitted changes you can tidy up and commit again. Pushed commits can't be removed (use \"Revert This Commit\" instead).",

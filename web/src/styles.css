@@ -2499,13 +2499,25 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .gh-menu .gh-danger { color: var(--danger); }
 .gh-menu .gh-danger .icon { color: var(--danger); }
 .gh-menu button:disabled { opacity: 0.45; cursor: default; }
-.gh-stats { flex: none; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
-.gh-stats[hidden] { display: none; }
+/* 活動統計：按鈕下方的浮動卡片。 */
+.gh-stats {
+  position: fixed;
+  inset: auto;
+  max-width: calc(100vw - 16px);
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--surface-raised);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+}
 .gh-stats-title { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; }
 .gh-stats-row { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-start; }
 .gh-heat { display: flex; gap: 3px; overflow-x: auto; }
 .gh-heat-week { display: flex; flex-direction: column; gap: 3px; }
-.gh-heat-day { width: 11px; height: 11px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.gh-heat-day { width: var(--cell, 11px); height: var(--cell, 11px); border-radius: 2px; background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .gh-heat-day[data-level="1"] { background: color-mix(in srgb, var(--success) 35%, transparent); }
 .gh-heat-day[data-level="2"] { background: color-mix(in srgb, var(--success) 55%, transparent); }
 .gh-heat-day[data-level="3"] { background: color-mix(in srgb, var(--success) 78%, transparent); }
