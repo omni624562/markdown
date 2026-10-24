@@ -1,6 +1,6 @@
 [package]
 name = "md-text"
-description = "Markdown 文件的文字分析（待辦、標籤、連結）：桌面版後端與網頁版（WebAssembly）共用"
+description = "Markdown 文件的文字分析（待辦、標籤、連結；用語、錯字與標點檢查）：桌面版後端與網頁版（WebAssembly）共用"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

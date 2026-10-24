@@ -7,9 +7,7 @@ import { type Action, type Diagnostic, linter } from "@codemirror/lint";
 import { type EditorState, type Extension, StateEffect } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { t } from "./i18n.ts";
-import { findPunctuation } from "./punct.ts";
-import { type TermMatch, findTerms, termMessage } from "./terms.ts";
-import { rangeChecker } from "./ranges.ts";
+import { type TermMatch, checkText, termMessage } from "./terms.ts";
 
 /** 這些語法節點裡不檢查。 */
 const SKIP = /^(InlineCode|FencedCode|CodeBlock|HTMLTag|HTMLBlock|Comment|CommentBlock|URL|Autolink|ProcessingInstruction)$/;
@@ -50,11 +48,7 @@ export function scanDocument(
 ): TermMatch[] {
   const text = state.doc.sliceString(from, to);
   const skip = skipRanges(state, from, to);
-  const terms = findTerms(text, skip, ignore);
-  // 標點和用語重疊時以用語為準。
-  const onTerm = rangeChecker(terms.map((m) => [m.from, m.to]));
-  const marks = findPunctuation(text, skip, ignore).filter((p) => !onTerm(p.from, p.to));
-  const all = [...terms, ...marks].sort((a, b) => a.from - b.from);
+  const all = checkText(text, skip, ignore);
   if (from) for (const m of all) Object.assign(m, { from: m.from + from, to: m.to + from });
   return all;
 }

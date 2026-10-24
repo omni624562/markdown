@@ -63,6 +63,20 @@ export interface DocInfo {
   links: LinkRef[];
 }
 
+export type TermKind = "cn" | "typo" | "punct";
+
+export interface Term {
+  /** 要找的詞（標點是「不再提示」記下的名稱，例如「半形標點 ,」）。 */
+  word: string;
+  /** 建議的寫法（第一個是預設）。半形括號是空的：建議是把括號換成全形、內容照舊。 */
+  to: string[];
+  kind: TermKind;
+  /** 依文意判斷：在台灣也有其他意思，整份修正時不自動換。 */
+  context: boolean;
+  /** 說明（依文意的詞會寫什麼情況才要改）。 */
+  note: string | null;
+}
+
 export interface RenderOptions {
   kind?: DocKind;
   sourcepos?: boolean;
@@ -217,4 +231,76 @@ pub fn parse_doc(text: &str, year: i32) -> Result<JsValue, JsError> {
     // 沒有截止日要是 null（預設會變成 undefined）。
     let json = serde_wasm_bindgen::Serializer::json_compatible();
     Ok(md_text::parse_doc(text, year).serialize(&json)?)
+}
+
+/// 兩國用語、錯字與中文標點檢查。`skip` 是不檢查的範圍（起點、終點交錯排列），`ignore` 是不再提示的詞。
+/// 回傳每個結果的起點、終點與詞在 `termList()` 裡的位置（三個一組）；位置都是 UTF-16 位移（和 JavaScript 字串一致）。
+/// 不回傳物件：大文件可能有上萬個結果，逐一轉成 JavaScript 物件比檢查本身慢好幾倍。
+#[wasm_bindgen]
+pub fn proofread(text: &str, skip: &[u32], ignore: Vec<String>) -> Vec<u32> {
+    let points: Vec<usize> = skip.iter().map(|&p| p as usize).collect();
+    let bytes = convert(text, &points, true);
+    let skip: Vec<(usize, usize)> = (0..bytes.len() / 2)
+        .map(|i| (bytes[2 * i], bytes[2 * i + 1]))
+        .collect();
+    let found = md_text::proofread(text, &skip, &ignore.into_iter().collect());
+    let ends: Vec<usize> = found.iter().flat_map(|m| [m.from, m.to]).collect();
+    let ends = convert(text, &ends, false);
+    found
+        .iter()
+        .enumerate()
+        .flat_map(|(i, m)| [ends[2 * i] as u32, ends[2 * i + 1] as u32, m.id as u32])
+        .collect()
+}
+
+/// 詞表：用語、錯字與半形標點（`proofread` 回傳的位置對應這裡）。
+#[wasm_bindgen(js_name = termList, unchecked_return_type = "Term[]")]
+pub fn term_list() -> Result<JsValue, JsError> {
+    Ok(md_text::terms().serialize(&serde_wasm_bindgen::Serializer::json_compatible())?)
+}
+
+/// 位置換算：`from_utf16` 為真時 UTF-16 位移換成位元組位移，否則反過來。
+/// 落在字元中間的位置算到下一個字元開頭，超過結尾的算結尾。
+fn convert(text: &str, points: &[usize], from_utf16: bool) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..points.len()).collect();
+    order.sort_by_key(|&k| points[k]);
+    let mut order = order.into_iter().peekable();
+    let mut out = vec![0; points.len()];
+    let mut utf16 = 0;
+    for (byte, c) in text.char_indices() {
+        let (here, there) = if from_utf16 {
+            (utf16, byte)
+        } else {
+            (byte, utf16)
+        };
+        while let Some(&k) = order.peek() {
+            if points[k] > here {
+                break;
+            }
+            out[k] = there;
+            order.next();
+        }
+        utf16 += c.len_utf16();
+    }
+    let end = if from_utf16 { text.len() } else { utf16 };
+    for k in order {
+        out[k] = end;
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::convert;
+
+    #[test]
+    fn converts_positions() {
+        let text = "a中😀b";
+        // 位元組 0 1 4 8；UTF-16 0 1 2 4
+        assert_eq!(
+            convert(text, &[0, 1, 4, 8, 9, 30], false),
+            [0, 1, 2, 4, 5, 5]
+        );
+        assert_eq!(convert(text, &[4, 0, 2, 3, 5], true), [8, 0, 4, 8, 9]);
+    }
 }
