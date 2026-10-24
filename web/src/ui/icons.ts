@@ -136,6 +136,8 @@ import {
   ArrowDownUp,
   BriefcaseBusiness,
   GitGraph,
+  Eraser,
+  SquareDashedText,
   type IconNode,
 } from "lucide";
 
@@ -153,6 +155,8 @@ const GitHub: IconNode = [
 ];
 
 const ICONS: Record<string, IconNode> = {
+  eraser: Eraser,
+  "square-dashed-text": SquareDashedText,
   "arrow-down-up": ArrowDownUp,
   "briefcase-business": BriefcaseBusiness,
   "git-graph": GitGraph,

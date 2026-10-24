@@ -4029,7 +4029,15 @@ const TERMINAL_KEYS = new Set(["palette", "toggle-terminal"]);
 // ---- AI 協作與終端機（桌面版） ------------------------------------------------
 
 if (desktop) {
-  terminal = new TerminalPanel($("#terminal-panel"), desktop, () => editor.view.requestMeasure());
+  terminal = new TerminalPanel(
+    $("#terminal-panel"),
+    desktop,
+    () => editor.view.requestMeasure(),
+    (at, entries, closed) => {
+      for (const id of ["term-menu-anchor", "term-menu-anchor-popover"]) document.getElementById(id)?.remove();
+      floatingMenu("term-menu-anchor", entries, closed).open(at);
+    },
+  );
   ai = new AiController(
     desktop,
     settings,
