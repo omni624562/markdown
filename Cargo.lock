@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "md-cli"
-version = "1.23.5"
+version = "1.23.6"
 dependencies = [
  "clap",
  "md-core",
@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "md-core"
-version = "1.23.5"
+version = "1.23.6"
 dependencies = [
  "comrak",
  "serde",
@@ -271,10 +271,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "md-text"
+version = "1.23.6"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "md-wasm"
-version = "1.23.5"
+version = "1.23.6"
 dependencies = [
  "md-core",
+ "md-text",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",

@@ -4,7 +4,7 @@
  * 已開啟的分頁以編輯器中的內容為準（包含還沒存檔的變更）。
  */
 import type { DocText } from "./desktop.ts";
-import { type DocInfo, parseDoc } from "./doc-index.ts";
+import type { DocInfo } from "./doc-index.ts";
 import { collator } from "./collator.ts";
 import { t } from "./i18n.ts";
 
@@ -35,6 +35,8 @@ interface Entry {
 
 type Scan = (known: Record<string, number>, root: string) => Promise<DocText[]>;
 type Read = (paths: string[]) => Promise<(string | null)[]>;
+/** 解析一份文件（WebAssembly 版的 `parseDoc`，和後端同一份程式）。 */
+type Parse = (text: string) => DocInfo;
 
 export class WorkspaceIndex {
   #root: string | null = null;
@@ -44,10 +46,12 @@ export class WorkspaceIndex {
   #pending: Promise<void> | null = null;
   #scan: Scan;
   #read: Read;
+  #parse: Parse;
 
-  constructor(scan: Scan, read: Read) {
+  constructor(scan: Scan, read: Read, parse: Parse) {
     this.#scan = scan;
     this.#read = read;
+    this.#parse = parse;
   }
 
   /** 重新讀取資料夾（`root` 為 null 時清空）；同時呼叫多次只會讀一次。 */
@@ -80,7 +84,7 @@ export class WorkspaceIndex {
   /** 檔案已經寫入新的內容（例如在待辦總覽勾選）：下次重新整理前先用這份內容。 */
   remember(path: string, text: string): void {
     const e = this.#files.get(path);
-    if (e) this.#files.set(path, { rel: e.rel, mtime: -1, info: parseDoc(text) });
+    if (e) this.#files.set(path, { rel: e.rel, mtime: -1, info: this.#parse(text) });
   }
 
   /** 文件的內容：已開啟的分頁直接用，資料夾中的檔案從磁碟讀。 */
@@ -116,7 +120,7 @@ export class WorkspaceIndex {
       keep.add(key);
       let cached = this.#open.get(key);
       if (!cached || cached.text !== o.text) {
-        cached = { text: o.text, info: parseDoc(o.text) };
+        cached = { text: o.text, info: this.#parse(o.text) };
         this.#open.set(key, cached);
       }
       const rel = (o.path && this.#files.get(o.path)?.rel) || o.name;

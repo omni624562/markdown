@@ -2956,7 +2956,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "md-desktop"
-version = "1.23.5"
+version = "1.23.6"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -2972,6 +2972,7 @@ dependencies = [
  "gtk",
  "ignore",
  "keyring-core",
+ "md-text",
  "notify-debouncer-full",
  "portable-pty",
  "quick-xml 0.42.0",
@@ -2999,6 +3000,13 @@ dependencies = [
  "windows-core",
  "windows-native-keyring-store",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "md-text"
+version = "1.23.6"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

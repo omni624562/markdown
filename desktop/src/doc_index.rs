@@ -9,10 +9,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use chrono::Datelike;
+use md_text::{parse_doc, DocInfo};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::doc_info::{parse_doc, DocInfo};
 use crate::files::{
     decode, display_name, encode, hash_bytes, path_string, write_atomic, KnownFiles,
 };
@@ -51,7 +52,7 @@ fn mtime_ms(meta: &fs::Metadata) -> u64 {
 
 /// 列出 `root` 中的 Markdown 文件（遵守 .gitignore），只讀取修改時間和 `known` 不同的檔案。
 pub fn scan(root: &Path, known: &HashMap<String, u64>) -> Vec<DocText> {
-    let today = chrono::Local::now().date_naive();
+    let year = chrono::Local::now().year();
     let mut total = 0u64;
     walker(root)
         .build()
@@ -69,7 +70,7 @@ pub fn scan(root: &Path, known: &HashMap<String, u64>) -> Vec<DocText> {
             let info = if known.get(&path) == Some(&mtime) {
                 None
             } else {
-                Some(parse_doc(&decode(&fs::read(e.path()).ok()?).0, today))
+                Some(parse_doc(&decode(&fs::read(e.path()).ok()?).0, year))
             };
             Some(DocText {
                 rel: rel_path(root, e.path()),

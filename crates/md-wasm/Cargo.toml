@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 md-core = { path = "../md-core", features = ["serde"] }
+md-text = { path = "../md-text" }
 wasm-bindgen = "0.2.129"
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"

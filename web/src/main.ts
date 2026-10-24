@@ -12,6 +12,7 @@ import init, {
   formatJson,
   formatTable,
   kindFromFileName,
+  parseDoc,
   render as renderMarkdown,
   spacingPositions,
 } from "../pkg/md_wasm.js";
@@ -128,7 +129,7 @@ import { PAPERS, PRINT_ROOT_CSS, type PdfOptions, coverHtml, pageCss, pageLayout
 import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
 import { type FileRef, backlinks, linkTarget, renameLinks, resolveWiki } from "./links.ts";
 import { type IndexedDoc, type OpenDoc, WorkspaceIndex } from "./workspace-index.ts";
-import { isoDate, parseDoc, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
+import { isoDate, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
 import { REPO_URL, SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
 import { TerminalPanel } from "./ui/terminal-panel.ts";
@@ -2190,9 +2191,13 @@ window.addEventListener("focus", () => {
   refreshIndexPanels(200);
 });
 
+/** 文件中的待辦、標籤與連結（截止日沒寫年份就是今年）。 */
+const docInfo = (text: string) => parseDoc(text, new Date().getFullYear());
+
 const docIndex = new WorkspaceIndex(
   (known, root) => desktop!.scanDocs(known, root),
   (paths) => desktop!.readDocs(paths),
+  docInfo,
 );
 
 /** 已開啟的 Markdown 分頁（以編輯器中的內容為準）。 */
@@ -2244,7 +2249,7 @@ const tasksPanel = new TasksPanel($("#tasks-host"), {
     const path = item.doc.path!;
     const text = await docIndex.text(item.doc);
     // 索引之後檔案可能被改過：那一行還是同一個待辦才勾選。
-    const now = parseDoc(text).tasks.find((x) => x.line === item.line);
+    const now = docInfo(text).tasks.find((x) => x.line === item.line);
     const next = now?.text === item.text ? setTaskDone(text, item.line, done) : null;
     if (next === null) throw new Error(t("這一行已經不是待辦了，請重新整理"));
     await desktop!.updateDoc(path, text, next);
