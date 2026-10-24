@@ -18,6 +18,8 @@ export interface PickerOptions<T> {
   label: string;
   placeholder: string;
   empty: string;
+  /** 分類與快速鍵各佔固定寬度的一欄，上下對齊（指令面板）。 */
+  columns?: boolean;
   /** 依查詢字串回傳排序好的項目。 */
   query(text: string): T[] | Promise<T[]>;
   render(item: T): PickerItem;
@@ -40,7 +42,7 @@ export class Picker<T> {
   constructor(opts: PickerOptions<T>) {
     this.#opts = opts;
     this.#dialog = document.createElement("dialog");
-    this.#dialog.className = "palette";
+    this.#dialog.className = opts.columns ? "palette palette-columns" : "palette";
     this.#dialog.setAttribute("aria-label", opts.label);
     const id = `picker-${Math.random().toString(36).slice(2, 8)}`;
     const tr = { select: t("選擇"), open: t("開啟"), close: t("關閉") };
@@ -116,11 +118,14 @@ export class Picker<T> {
           detail.textContent = view.detail;
           li.append(detail);
         }
-        if (view.keys) {
-          const kbd = document.createElement("kbd");
-          kbd.textContent = view.keys;
-          li.append(kbd);
-        }
+        const kbd = view.keys ? Object.assign(document.createElement("kbd"), { textContent: view.keys }) : null;
+        if (this.#opts.columns) {
+          // 沒有快速鍵的項目也留一格空白，左邊的分類文字才會上下切齊。
+          const cell = document.createElement("span");
+          cell.className = "palette-keys";
+          if (kbd) cell.append(kbd);
+          li.append(cell);
+        } else if (kbd) li.append(kbd);
         out.push(li);
         return out;
       }),

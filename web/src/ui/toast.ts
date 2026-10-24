@@ -31,6 +31,14 @@ function raise(): void {
   if (typeof region.showPopover === "function" && region.isConnected) region.showPopover();
 }
 
+// 通知顯示中才開啟的對話框（例如先跳出「已下載新版」，再打開設定）：
+// 通知要跟著移到對話框裡，不然會被對話框的灰色遮罩蓋住、也點不到按鈕。
+new MutationObserver((records) => {
+  if (!region.childElementCount) return;
+  const opened = records.some((r) => r.target instanceof HTMLDialogElement && r.target.open);
+  if (opened) raise();
+}).observe(document.body, { subtree: true, attributeFilter: ["open"] });
+
 /** 顯示通知；回傳的 `dismiss()` 可以提早關掉（例如「正在下載…」完成時）。 */
 export function toast(message: string, opts: ToastOptions = {}): { dismiss(): void } {
   const el = document.createElement("div");

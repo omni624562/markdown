@@ -714,34 +714,34 @@ kbd {
 .palette li[aria-selected="true"] .icon { color: var(--accent); }
 .palette-title { flex: 1; }
 .palette-group { color: var(--muted); font-size: 12px; }
+/* 指令面板：快速鍵固定寬度靠右，分類文字因此上下切齊 */
+.palette-columns .palette-keys { flex: none; width: 9.5rem; display: flex; justify-content: flex-end; }
+.palette-columns .palette-group { flex: none; text-align: right; }
 .palette-empty { justify-content: center; color: var(--muted); cursor: default !important; }
 .palette-hint { display: flex; gap: 4px; align-items: center; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 
 /* ---- 通知 ---- */
 .toasts {
   position: fixed;
-  /* Popover 的預設樣式（置中、邊框、背景）拿掉，維持原本的位置。 */
-  inset: auto auto auto 50%;
+  /* Popover 的預設樣式（置中、邊框、背景）拿掉。放在右下角（狀態列上方），不擋住正在寫的內容。 */
+  inset: auto calc(16px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) auto;
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
   overflow: visible;
-  bottom: calc(40px + env(safe-area-inset-bottom));
-  left: 50%;
   z-index: 50;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  align-items: center;
-  transform: translateX(-50%);
+  align-items: flex-end;
   pointer-events: none;
 }
 .toast {
   display: flex;
   gap: 12px;
   align-items: center;
-  max-width: min(480px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
   padding: 10px 14px;
   border-radius: 10px;
   background: light-dark(#2c2e33, #d7dae0);
@@ -765,8 +765,8 @@ kbd {
 .toast button.primary { padding: 4px 12px; background: var(--accent); color: #ffffff; }
 .toast button.primary:hover { filter: brightness(1.1); }
 .toast.leaving { animation: toast-out 0.15s ease-in forwards; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
-@keyframes toast-out { to { opacity: 0; transform: translateY(8px); } }
+@keyframes toast-in { from { opacity: 0; transform: translateX(16px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(16px); } }
 
 /* ---- 拖曳 ---- */
 .drop-overlay {
@@ -2281,3 +2281,10 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .shortcuts-body td { padding: 4px 0; border-bottom: 1px solid var(--border); }
 .shortcuts-body td:last-child { text-align: right; white-space: nowrap; }
 .shortcuts-body kbd { font: 12px var(--font-mono); padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+
+/* 設定的「關於」頁 */
+.settings-about { display: flex; gap: 16px; align-items: center; margin: 4px 0 20px; }
+.settings-about img { width: 56px; height: 56px; flex: none; }
+.settings-about strong { display: block; font-size: 20px; font-weight: 600; }
+.settings-about span { color: var(--muted); font-size: 13px; }
+.settings-about p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }

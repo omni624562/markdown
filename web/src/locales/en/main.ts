@@ -593,4 +593,9 @@ export const main: Record<string, Translation> = {
   "歡迎使用 oMarker.md": "Welcome to oMarker.md",
   "快速鍵一覽": "Keyboard Shortcuts",
   "編輯區裡按 Tab 是縮排；要用鍵盤離開編輯區，先按 Esc 再按 Tab。所有功能都可以用 {keys} 搜尋。": "In the editor, Tab indents; to leave the editor with the keyboard, press Esc and then Tab. Every feature can be found with {keys}.",
+  "說明：更新紀錄": "Help: Release Notes",
+  "說明：回報問題或建議…": "Help: Report a Problem or Suggestion…",
+  "關於 oMarker": "About oMarker",
+  "oMarker 更新紀錄.md": "oMarker Release Notes.md",
+  "oMarker 更新紀錄": "oMarker Release Notes",
 };
