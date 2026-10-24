@@ -54,7 +54,7 @@ export interface ActivityDay {
 }
 
 export interface Activity {
-  /** 依週分欄（星期日開始），最右邊是這一週；每欄 7 天，未來的日子是 null。 */
+  /** 依週分欄（星期日開始），最右邊是這一週；每欄 7 天，未來的日子是 null。欄數見 `activity()`。 */
   weeks: (ActivityDay | null)[][];
   /** 一天最多幾個提交（決定顏色深淺）。 */
   max: number;
@@ -66,8 +66,11 @@ export interface Activity {
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 
-/** 最近 `weeks` 週每天的提交數，與提交最多的作者。`today` 是使用者這邊的今天。 */
-export function activity(commits: StatInput[], today: Date, weeks = 53, limit = 5): Activity {
+/**
+ * 每天的提交數，與提交最多的作者。`today` 是使用者這邊的今天。
+ * 從最早的提交那一週開始畫（新的儲存庫不用畫一整年的空格子），最少 `minWeeks` 週、最多 `maxWeeks` 週。
+ */
+export function activity(commits: StatInput[], today: Date, maxWeeks = 53, limit = 5, minWeeks = 8): Activity {
   const perDay = new Map<string, number>();
   const perAuthor = new Map<string, number>();
   for (const c of commits) {
@@ -77,6 +80,13 @@ export function activity(commits: StatInput[], today: Date, weeks = 53, limit = 
   }
   // 用 UTC 的日期計算，避免夏令時間讓某些天重複或消失。
   const end = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  const DAY = 86_400_000;
+  const thisWeek = end.getTime() - end.getUTCDay() * DAY;
+  const first = [...perDay.keys()].sort()[0];
+  const firstDay = first ? new Date(Date.parse(first)) : null;
+  const firstWeek = firstDay ? firstDay.getTime() - firstDay.getUTCDay() * DAY : thisWeek;
+  const span = first ? Math.round((thisWeek - firstWeek) / (7 * DAY)) + 1 : 0;
+  const weeks = Math.max(Math.min(minWeeks, maxWeeks), Math.min(maxWeeks, span));
   const start = new Date(end);
   start.setUTCDate(end.getUTCDate() - end.getUTCDay() - (weeks - 1) * 7);
   const grid: (ActivityDay | null)[][] = [];
