@@ -1,4 +1,5 @@
 import {
+  DEFAULTS,
   FONT_SIZE_RANGE,
   QUICK_ACTION_LIMITS,
   type QuickAction,
@@ -89,6 +90,15 @@ export interface AboutHooks {
   shortcuts(): void;
   welcome(): void;
   changelog(): void;
+}
+
+/** 「外觀」頁的左側圖示列：面板圖示的順序與顯示、釘上去的指令按鈕。 */
+export interface ActivityHooks {
+  /** 面板圖示（依目前的順序）。`available` 是這台電腦、這個資料夾能不能用。 */
+  panels(): { id: string; label: string; icon: string; available: boolean }[];
+  command(id: string): { title: string; icon: string } | null;
+  /** 選一個指令新增到圖示列。 */
+  add(): void;
 }
 
 /** 原始碼與問題回報。 */
@@ -198,6 +208,7 @@ export class SettingsDialog {
     github: GitHubHooks | null = null,
     ado: AdoSettingsHooks | null = null,
     about: AboutHooks | null = null,
+    activityHooks: ActivityHooks | null = null,
   ) {
     this.#ai = ai;
     this.#store = store;
@@ -286,6 +297,7 @@ export class SettingsDialog {
 
     const look = this.#section(t("外觀"), "palette", t("字型、版面與文件內容的顯示方式"));
     for (const g of LOOK_GROUPS) look.append(...this.#group(g.title, this.#rows(g.fields)));
+    if (activityHooks) look.append(...this.#activityGroup(activityHooks));
     body.append(look);
 
     const edit = this.#section(t("編輯"), "pen-line", t("寫作模式、輸入輔助與貼上"));
@@ -668,6 +680,111 @@ export class SettingsDialog {
       );
     }
     return section;
+  }
+
+  /** 左側圖示列：可以上下移動、隱藏面板圖示，新增或移除指令按鈕。 */
+  #activityGroup(h: ActivityHooks): HTMLElement[] {
+    const list = document.createElement("div");
+    list.className = "activity-settings";
+    const button = (label: string, iconName: string, run: () => void, disabled = false) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn icon-only";
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      b.disabled = disabled;
+      b.append(icon(iconName));
+      b.addEventListener("click", run);
+      return b;
+    };
+    const move = <T,>(arr: T[], i: number, d: number): T[] => {
+      const out = [...arr];
+      const [x] = out.splice(i, 1);
+      out.splice(i + d, 0, x);
+      return out;
+    };
+    const render = () => {
+      const v = this.#store.value;
+      const panels = h.panels();
+      const rows: HTMLElement[] = [];
+      panels.forEach((p, i) => {
+        const row = document.createElement("div");
+        row.className = "activity-setting";
+        const shown = !v.activityHidden.includes(p.id);
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.checked = shown;
+        check.setAttribute("aria-label", t("顯示「{name}」", { name: p.label }));
+        check.addEventListener("change", () =>
+          this.#store.update({
+            activityHidden: check.checked ? v.activityHidden.filter((x) => x !== p.id) : [...v.activityHidden, p.id],
+          }),
+        );
+        const name = document.createElement("span");
+        name.className = "activity-setting-name";
+        name.textContent = p.available ? p.label : t("{name}（目前用不到）", { name: p.label });
+        const ids = panels.map((x) => x.id);
+        row.append(
+          icon(p.icon),
+          name,
+          button(t("往上移"), "arrow-up", () => this.#store.update({ activityOrder: move(ids, i, -1) }), i === 0),
+          button(t("往下移"), "arrow-down", () => this.#store.update({ activityOrder: move(ids, i, 1) }), i === panels.length - 1),
+          check,
+        );
+        rows.push(row);
+      });
+      const cmds = v.activityCommands;
+      if (cmds.length) {
+        const sep = document.createElement("p");
+        sep.className = "activity-setting-sep";
+        sep.textContent = t("釘選的按鈕");
+        rows.push(sep);
+      }
+      cmds.forEach((id, i) => {
+        const c = h.command(id);
+        const row = document.createElement("div");
+        row.className = "activity-setting";
+        const name = document.createElement("span");
+        name.className = "activity-setting-name";
+        name.textContent = c?.title ?? id;
+        row.append(
+          icon(c?.icon ?? "command"),
+          name,
+          button(t("往上移"), "arrow-up", () => this.#store.update({ activityCommands: move(cmds, i, -1) }), i === 0),
+          button(t("往下移"), "arrow-down", () => this.#store.update({ activityCommands: move(cmds, i, 1) }), i === cmds.length - 1),
+          button(t("從圖示列移除"), "x", () => this.#store.update({ activityCommands: cmds.filter((x) => x !== id) })),
+        );
+        rows.push(row);
+      });
+      const actions = document.createElement("div");
+      actions.className = "activity-setting-actions";
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "btn";
+      add.append(icon("plus"), t("新增按鈕…"));
+      add.addEventListener("click", () => h.add());
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "btn";
+      reset.append(icon("rotate-ccw"), t("恢復預設"));
+      reset.addEventListener("click", () =>
+        this.#store.update({ activityOrder: [], activityHidden: [], activityCommands: [...DEFAULTS.activityCommands] }),
+      );
+      actions.append(add, reset);
+      list.replaceChildren(...rows, actions);
+    };
+    render();
+    this.#store.subscribe((_, changed) => {
+      if (changed.some((k) => k.startsWith("activity"))) render();
+    });
+    const hint = this.#row(
+      "activity",
+      t("圖示與順序"),
+      t("勾選要顯示的圖示、調整順序，也可以把常用的指令（例如 Git 歷史）放上去。在圖示列上按右鍵或直接拖曳圖示也可以調整。"),
+      () => list,
+    );
+    hint.classList.add("settings-row-block");
+    return this.#group(t("左側圖示列"), [hint]);
   }
 
   #section(title: string, iconName: string, desc?: string): HTMLElement {

@@ -73,6 +73,7 @@ import sampleEn from "./sample.en.md?raw";
 import sampleZh from "./sample.md?raw";
 import { type BlockRef, collectBlocks, offsetForLineLazy } from "./scroll-sync.ts";
 import {
+  ACTIVITY_LIMIT,
   DEFAULTS as DEFAULT_SETTINGS,
   FONT_SIZE_RANGE,
   TERM_IGNORE_LIMIT,
@@ -2064,6 +2065,7 @@ const gitPanel =
             gitHistoryKey = key;
             historyView?.refresh();
           }
+          refreshActivityCommands();
           // Git 內建在程式裡：圖示一直顯示，還沒同步的資料夾點進去會引導上傳到 GitHub。
           const tab = $("#side-tab-git");
           tab.hidden = false;
@@ -2405,7 +2407,10 @@ for (const tab of sideTabs) {
   });
 }
 $(".activity-tabs").addEventListener("keydown", (e) => {
-  const tabs = sideTabs.filter((t) => !t.hidden);
+  // 依畫面上的順序（使用者可以調整），略過隱藏的圖示。
+  const tabs = [...$(".activity-tabs").querySelectorAll<HTMLButtonElement>("[role=tab]")].filter(
+    (t) => !t.hidden && !t.classList.contains("user-hidden"),
+  );
   const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
   if (i < 0 || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
   e.preventDefault();
@@ -2550,6 +2555,7 @@ async function setWorkspace(folder: Folder | null): Promise<void> {
   // 換到另一個專案：分頁也換成那個專案的（關掉資料夾時分頁留著）。
   if (folder && (tabScope === null || !samePath(tabScope, folder.path))) await switchTabs(folder.path);
   workspaceRoot = folder;
+  refreshActivityCommands();
   fileListCache = null;
   if (folder) storage.save("workspace", folder.path);
   else storage.remove("workspace");
@@ -4488,6 +4494,20 @@ commands.register(
     run: () => recentPicker.open(),
   },
   {
+    id: "activity-add",
+    title: t("圖示列：新增按鈕…"),
+    group: t("檢視"),
+    icon: "plus",
+    run: () => addActivityCommand(),
+  },
+  {
+    id: "activity-customize",
+    title: t("圖示列：自訂…"),
+    group: t("檢視"),
+    icon: "settings",
+    run: () => settingsDialog.open(t("外觀")),
+  },
+  {
     id: "git-history",
     title: t("Git：顯示歷史（線圖）"),
     group: t("Git"),
@@ -4708,6 +4728,194 @@ for (const [tab, id] of [
   const el = $(tab);
   if (keys) el.dataset.keys = formatKeys(keys);
   if (keys) el.title = t("{label}（{keys}）", { label: el.getAttribute("aria-label") ?? "", keys: formatKeys(keys) });
+}
+
+// ---- 左側圖示列：面板圖示的順序與顯示、釘上去的指令按鈕 ----------------------
+
+/** 面板圖示的名稱（aria-label 會加上變更數，這裡用固定的名稱）。 */
+const PANEL_LABELS: Record<SidePanel, () => string> = {
+  files: () => t("檔案"),
+  outline: () => t("大綱"),
+  search: () => t("搜尋"),
+  tasks: () => t("待辦總覽"),
+  tags: () => t("標籤"),
+  issues: () => t("Issues（GitHub）"),
+  workitems: () => t("工作項目（Azure DevOps）"),
+  git: () => t("原始碼控制（Git）"),
+};
+const PANEL_ICONS: Record<SidePanel, string> = {
+  files: "files",
+  outline: "list-tree",
+  search: "search",
+  tasks: "list-checks",
+  tags: "tags",
+  issues: "circle-dot",
+  workitems: "square-kanban",
+  git: "git-branch",
+};
+
+/** 依設定排列面板圖示（沒列到的照預設順序排在後面）、隱藏使用者不要的圖示。 */
+function panelOrder(): SidePanel[] {
+  const saved = settings.value.activityOrder.filter((p): p is SidePanel => (SIDE_PANELS as string[]).includes(p));
+  return [...saved, ...SIDE_PANELS.filter((p) => !saved.includes(p))];
+}
+
+function applyActivityLayout(): void {
+  const bar = $(".activity-tabs");
+  for (const p of panelOrder()) bar.append($(`#side-tab-${p}`));
+  const hidden = settings.value.activityHidden;
+  for (const tab of sideTabs) tab.classList.toggle("user-hidden", hidden.includes(tab.dataset.panel!));
+  renderActivityCommands();
+}
+
+/** 釘上去的指令按鈕。 */
+function renderActivityCommands(): void {
+  const box = $(".activity-cmds");
+  box.replaceChildren(
+    ...settings.value.activityCommands.flatMap((id) => {
+      const cmd = commands.get(id);
+      if (!cmd) return [];
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "activity-btn activity-cmd";
+      b.dataset.command = id;
+      b.title = withKeys(cmd.title, cmd.keys);
+      b.setAttribute("aria-label", cmd.title);
+      b.draggable = true;
+      b.append(icon(cmd.icon ?? "command"));
+      b.addEventListener("click", () => void commands.run(id).catch(reportError));
+      return [b];
+    }),
+  );
+  refreshActivityCommands();
+}
+
+/** 指令能不能用會隨著開啟的資料夾、Git 狀態改變（例如沒有 Git 儲存庫時不顯示 Git 歷史）。 */
+function refreshActivityCommands(): void {
+  const box = $(".activity-cmds");
+  for (const b of box.querySelectorAll<HTMLButtonElement>("button")) {
+    const cmd = commands.get(b.dataset.command!);
+    b.hidden = !cmd || !(cmd.when?.() ?? true);
+  }
+  box.hidden = ![...box.querySelectorAll("button")].some((b) => !(b as HTMLElement).hidden);
+}
+
+function setActivity(patch: Partial<Pick<Settings, "activityOrder" | "activityHidden" | "activityCommands">>): void {
+  settings.update(patch);
+}
+
+/** 選一個指令釘到圖示列上。 */
+function pickActivityCommand(): Promise<string | null> {
+  return new Promise((resolve) => {
+    let picked: string | null = null;
+    const picker = new Picker<Command>({
+      label: t("新增按鈕到圖示列"),
+      placeholder: t("選一個指令，放到左邊的圖示列"),
+      empty: t("找不到符合的指令"),
+      columns: true,
+      query: (q) => {
+        const pinned = new Set(settings.value.activityCommands);
+        const needle = q.trim().toLowerCase();
+        return sortByGroup(commands.available()).filter(
+          (c) => c.icon && !pinned.has(c.id) && c.id !== "palette" && (!needle || `${c.group} ${c.title}`.toLowerCase().includes(needle)),
+        );
+      },
+      render: (c) => ({ title: c.title, detail: c.group, icon: c.icon, keys: c.keys && formatKeys(c.keys) }),
+      pick: (c) => (picked = c.id),
+      closed: () => resolve(picked),
+    });
+    picker.open();
+  });
+}
+
+async function addActivityCommand(): Promise<void> {
+  const id = await pickActivityCommand();
+  if (!id) return;
+  const list = settings.value.activityCommands.filter((x) => x !== id);
+  if (list.length >= ACTIVITY_LIMIT) {
+    toast(t("圖示列最多放 {n} 個按鈕。", { n: ACTIVITY_LIMIT }), { tone: "error" });
+    return;
+  }
+  setActivity({ activityCommands: [...list, id] });
+  toast(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: commands.get(id)?.title ?? id }), { tone: "success" });
+}
+
+/** 圖示列的右鍵選單：勾選要顯示的面板與按鈕、新增按鈕、到設定調整。 */
+function openActivityMenu(at: DOMRect): void {
+  for (const id of ["activity-menu-anchor", "activity-menu-anchor-popover"]) document.getElementById(id)?.remove();
+  const toggleHidden = (p: SidePanel) => {
+    const hidden = settings.value.activityHidden;
+    setActivity({ activityHidden: hidden.includes(p) ? hidden.filter((x) => x !== p) : [...hidden, p] });
+  };
+  const entries: MenuEntry[] = [
+    ...panelOrder()
+      .filter((p) => !$(`#side-tab-${p}`).hidden)
+      .map((p) => ({
+        label: PANEL_LABELS[p](),
+        icon: PANEL_ICONS[p],
+        checked: () => !settings.value.activityHidden.includes(p),
+        run: () => toggleHidden(p),
+      })),
+    "-",
+    ...settings.value.activityCommands.flatMap((id) => {
+      const cmd = commands.get(id);
+      return cmd
+        ? [
+            {
+              label: cmd.title,
+              icon: cmd.icon,
+              checked: () => settings.value.activityCommands.includes(id),
+              run: () => setActivity({ activityCommands: settings.value.activityCommands.filter((x) => x !== id) }),
+            },
+          ]
+        : [];
+    }),
+    "activity-add",
+    "activity-customize",
+  ];
+  floatingMenu("activity-menu-anchor", entries).open(at);
+}
+
+{
+  const bar = $(".activity-bar");
+  bar.addEventListener("contextmenu", (e) => {
+    if ((e.target as HTMLElement).closest(".activity-project")) return;
+    e.preventDefault();
+    const at = new DOMRect(e.clientX, e.clientY, 0, 0);
+    // Linux 在按下右鍵時就觸發 contextmenu：等放開再開，免得放開時被當成點在選單外。
+    if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => openActivityMenu(at)), { once: true });
+    else openActivityMenu(at);
+  });
+  // 拖曳圖示調整順序（面板圖示、釘選的按鈕各自排）。
+  let dragging: HTMLElement | null = null;
+  bar.addEventListener("dragstart", (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>(".activity-tabs [role=tab], .activity-cmd");
+    if (!el || !e.dataTransfer) return;
+    dragging = el;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", el.getAttribute("aria-label") ?? "");
+    el.classList.add("activity-dragging");
+  });
+  bar.addEventListener("dragover", (e) => {
+    if (!dragging) return;
+    const over = (e.target as HTMLElement).closest<HTMLElement>(".activity-tabs [role=tab], .activity-cmd");
+    if (!over || over === dragging || over.parentElement !== dragging.parentElement) return;
+    e.preventDefault();
+    const r = over.getBoundingClientRect();
+    over.parentElement!.insertBefore(dragging, e.clientY < r.top + r.height / 2 ? over : over.nextSibling);
+  });
+  bar.addEventListener("dragend", () => {
+    if (!dragging) return;
+    dragging.classList.remove("activity-dragging");
+    const fromTabs = dragging.parentElement === $(".activity-tabs");
+    dragging = null;
+    if (fromTabs) {
+      setActivity({ activityOrder: [...$(".activity-tabs").querySelectorAll<HTMLElement>("[role=tab]")].map((b) => b.dataset.panel!) });
+    } else {
+      setActivity({ activityCommands: [...$(".activity-cmds").querySelectorAll<HTMLElement>(".activity-cmd")].map((b) => b.dataset.command!) });
+    }
+  });
+  for (const tab of sideTabs) tab.draggable = true;
 }
 
 /** 安裝說明的網址。 */
@@ -5543,6 +5751,7 @@ function changeFontSize(delta: number): void {
 }
 
 function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): void {
+  if (!changed || changed.some((k) => k.startsWith("activity"))) applyActivityLayout();
   const root = document.documentElement.style;
   root.setProperty("--editor-font-size", `${s.editorFontSize}px`);
   root.setProperty("--preview-width", PREVIEW_WIDTH[s.previewWidth]);
@@ -5708,6 +5917,15 @@ const settingsDialog = new SettingsDialog(
     shortcuts: () => showShortcuts(),
     welcome: () => openWelcome(),
     changelog: () => void openChangelog().catch(reportError),
+  },
+  {
+    panels: () =>
+      panelOrder().map((p) => ({ id: p, label: PANEL_LABELS[p](), icon: PANEL_ICONS[p], available: !$(`#side-tab-${p}`).hidden })),
+    command(id) {
+      const c = commands.get(id);
+      return c ? { title: c.title, icon: c.icon ?? "command" } : null;
+    },
+    add: () => void addActivityCommand().catch(reportError),
   },
 );
 void ado?.ready().then(() => {
