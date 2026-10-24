@@ -75,13 +75,16 @@ export function parseDoc(text: string, today = new Date()): DocInfo {
     }
     const t = line.match(TASK);
     if (t) {
-      const body = raw.slice(raw.length - t[4].length);
+      // 位置和原本那一行一樣（行內程式碼換成等長的空白）；後面接著註解時只取到註解前。
+      const start = t[1].length + t[2].length + t[3].length;
+      const body = raw.slice(start, start + t[4].length);
       tasks.push({
         line: i + 1,
         done: t[2] !== " ",
         text: body,
-        owners: owners(blankCode(body)),
-        due: parseDue(blankCode(body), today),
+        // 負責人與截止日不算程式碼與註解裡的。
+        owners: owners(t[4]),
+        due: parseDue(t[4], today),
       });
     }
     for (const m of line.matchAll(TAG)) {

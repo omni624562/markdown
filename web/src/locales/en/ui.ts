@@ -219,6 +219,7 @@ export const ui: Record<string, Translation> = {
   "依檔案": "By File",
   "依截止日": "By Due Date",
   "無法讀取待辦：{error}": "Couldn't read tasks: {error}",
+  "無法讀取「{name}」": "Couldn't read \"{name}\"",
   "{n} 項未完成": ["{n} open task", "{n} open tasks"],
   "，{n} 項已過截止日": [", {n} overdue", ", {n} overdue"],
   "，共 {n} 項": [", {n} in total", ", {n} in total"],

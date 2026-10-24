@@ -77,3 +77,17 @@ test("勾選待辦", () => {
 test("待辦顯示的純文字", () => {
   assert.equal(plainTaskText("**完成** [提案](a.md) 與 [[週報|本週週報]]、`code`、<mark>重點</mark>"), "完成 提案 與 本週週報、code、重點");
 });
+
+test("和桌面版（Rust）共用的測試資料", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const cases = JSON.parse(await readFile(new URL("./doc-index.cases.json", import.meta.url), "utf8")) as {
+    name: string;
+    today: string;
+    text: string;
+    expect: unknown;
+  }[];
+  for (const c of cases) {
+    const [y, m, d] = c.today.split("-").map(Number);
+    assert.deepEqual(parseDoc(c.text, new Date(y, m - 1, d)), c.expect, c.name);
+  }
+});
