@@ -33,6 +33,8 @@ export class TasksPanel {
   #show: Show = "open";
   #order: Order = "file";
   #items: TaskItem[] = [];
+  /** 上次顯示的待辦內容（判斷要不要重建清單）。 */
+  #key = "";
   #seq = 0;
 
   constructor(el: HTMLElement, handlers: TasksHandlers) {
@@ -90,7 +92,12 @@ export class TasksPanel {
       return;
     }
     if (seq !== this.#seq) return;
-    this.#items = docs.flatMap((doc) => doc.info.tasks.map((t) => ({ ...t, doc })));
+    const items = docs.flatMap((doc) => doc.info.tasks.map((t) => ({ ...t, doc })));
+    // 待辦沒有變（打字多半不會改到待辦）：不重建清單，捲動位置與焦點也不會跳掉。
+    const key = JSON.stringify(items.map((t) => [t.doc.path, t.doc.rel, t.line, t.done, t.text, t.due, t.owners]));
+    if (key === this.#key && this.#list.childElementCount) return;
+    this.#key = key;
+    this.#items = items;
     const owners = [...new Set(this.#items.flatMap((t) => t.owners))].sort(collator.compare);
     const current = this.#owner.value;
     this.#owner.replaceChildren(new Option(t("所有人"), ""), ...owners.map((o) => new Option(`@${o}`, o)));

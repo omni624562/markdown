@@ -15,7 +15,7 @@ import {
 import { languages } from "@codemirror/language-data";
 import { type Diagnostic, forceLinting, linter } from "@codemirror/lint";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, type Extension, Prec, type StateCommand } from "@codemirror/state";
+import { Compartment, EditorState, type Extension, Prec, type StateCommand, type Text } from "@codemirror/state";
 import {
   EditorView,
   drawSelection,
@@ -98,7 +98,8 @@ export interface EditorOptions {
 }
 
 export interface EditorHandlers {
-  onChange(doc: string): void;
+  /** 內容改變時（傳 CodeMirror 的文件物件，需要字串時再轉，免得每次按鍵都把整份文件轉成字串）。 */
+  onChange(doc: Text): void;
   onSelection(view: EditorView): void;
   onScroll(topLine: number): void;
   /** JSON 解析錯誤，用於編輯器內的紅色底線提示。 */
@@ -186,7 +187,7 @@ export class Editor {
       this.#language.of(this.#languageFor(kind)),
       ...(options.extra ?? []),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged) handlers.onChange(u.state.doc.toString());
+        if (u.docChanged) handlers.onChange(u.state.doc);
         if (u.docChanged || u.selectionSet) handlers.onSelection(u.view);
       }),
     ];

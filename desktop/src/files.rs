@@ -467,8 +467,11 @@ pub async fn export_binary(
 pub struct DocxImport {
     pub name: String,
     pub md_path: String,
-    pub data_base64: String,
 }
+
+/// 剛選好的 Word 檔內容，等前端用 `import_docx_data` 以原始位元組取走
+/// （不用 base64 包在 JSON 裡：100 MB 的檔案光是轉換就要多佔好幾倍記憶體）。
+static DOCX_DATA: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 
 /// Word 檔最大多大（含圖片）。
 const MAX_DOCX_BYTES: u64 = 100 * 1024 * 1024;
@@ -498,7 +501,6 @@ pub async fn import_docx(
     known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
 ) -> Result<Option<DocxImport>, String> {
-    use base64::Engine;
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
         .set_title(tr!("匯入 Word 文件"))
@@ -533,8 +535,19 @@ pub async fn import_docx(
     Ok(Some(DocxImport {
         name: display_name(&path),
         md_path: path_string(&md),
-        data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
     }))
+    .inspect(|_| *DOCX_DATA.lock().unwrap() = Some(bytes))
+}
+
+/// 取走 `import_docx` 剛讀到的 Word 檔內容（原始位元組）。
+#[tauri::command]
+pub fn import_docx_data() -> Result<tauri::ipc::Response, String> {
+    let bytes = DOCX_DATA
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or_else(|| tr!("沒有要匯入的 Word 檔"))?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// 儲存文字檔。`path` 是先前開啟或存過的檔案時直接覆寫；否則跳出另存新檔對話框。

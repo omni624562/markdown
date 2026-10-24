@@ -51,6 +51,9 @@ pub struct ActiveDoc {
     path: Option<String>,
     name: String,
     text: String,
+    /// 內容和上次同步時相同：前端不再送全文（大文件每次移動游標都送一次很浪費），沿用上次的。
+    #[serde(default)]
+    same_text: bool,
     dirty: bool,
     selection: Option<Selection>,
 }
@@ -674,8 +677,14 @@ pub fn mcp_stop(mcp: State<'_, Mcp>) {
 /// 前端同步目前的文件、選取範圍與分頁清單。
 /// 用非同步指令：內容可能很大，不要在主執行緒上解析。
 #[tauri::command]
-pub async fn mcp_sync(snapshot: Snapshot, mcp: State<'_, Mcp>) -> Result<(), String> {
-    *mcp.snapshot.write().unwrap() = snapshot;
+pub async fn mcp_sync(mut snapshot: Snapshot, mcp: State<'_, Mcp>) -> Result<(), String> {
+    let mut current = mcp.snapshot.write().unwrap();
+    if let (Some(new), Some(old)) = (snapshot.active.as_mut(), current.active.as_ref()) {
+        if new.same_text && new.path == old.path && new.name == old.name {
+            new.text = old.text.clone();
+        }
+    }
+    *current = snapshot;
     Ok(())
 }
 

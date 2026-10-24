@@ -31,6 +31,8 @@ pub(crate) const ANY_VERSION: &str = "*";
 const KEYRING_SERVICE: &str = "md-editor-webdav";
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_FILES: usize = 5000;
+/// 預覽遠端圖片的大小上限。
+const MAX_IMAGE_BYTES: usize = 32 * 1024 * 1024;
 /// Ctrl+P 列出遠端檔案時：最多幾層、最多查幾個資料夾、最多處理幾個項目、同時送出幾個請求。
 /// 惡意或設定錯誤的伺服器可能回傳無限多層或大量的項目，所以都設上限。
 const LIST_MAX_DEPTH: usize = 6;
@@ -1280,6 +1282,13 @@ pub async fn dav_image(path: String, dav: State<'_, Dav>) -> Result<String, Stri
             .map_err(|e| e.message(&tr!("無法讀取圖片")))
     })
     .await?;
+    // 預覽用的圖片：太大的不載入（會變成好幾倍大的 data: 網址留在記憶體裡）。
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return Err(tr!(
+            "圖片超過 {mb} MB，不在預覽中顯示",
+            mb = MAX_IMAGE_BYTES / 1024 / 1024
+        ));
+    }
     Ok(format!(
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)

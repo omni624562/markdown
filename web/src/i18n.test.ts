@@ -103,10 +103,10 @@ test("跟隨系統：中文（任何地區）用繁體中文，其他用英文",
   assert.equal(resolveLang(null, []), "zh-TW");
 });
 
-test("參數與單複數", () => {
-  useLang("zh-TW");
+test("參數與單複數", async () => {
+  await useLang("zh-TW");
   assert.equal(t("找不到「{name}」", { name: "a.md" }), "找不到「a.md」");
-  useLang("en");
+  await useLang("en");
   assert.equal(t("還沒有翻譯的句子{x}", { x: 1 }), "還沒有翻譯的句子1");
-  useLang("zh-TW");
+  await useLang("zh-TW");
 });

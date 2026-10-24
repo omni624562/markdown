@@ -57,7 +57,8 @@ export interface Entry {
 export interface DocxImport {
   name: string;
   mdPath: string;
-  dataBase64: string;
+  /** Word 檔的內容（原始位元組，不經過 base64）。 */
+  data: ArrayBuffer;
 }
 
 /** 資料夾中一份 Markdown 文件的內容（`text` 省略代表和上次讀到的一樣）。 */
@@ -130,6 +131,8 @@ export interface EditorSnapshot {
     path: string | null;
     name: string;
     text: string;
+    /** 內容和上次同步時相同（`text` 是空的，原生端沿用上次的內容）。 */
+    sameText?: boolean;
     dirty: boolean;
     selection: { text: string; fromLine: number; toLine: number } | null;
   } | null;
@@ -522,7 +525,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
       layout: { widthMm: number; heightMm: number; marginTopMm: number; marginBottomMm: number; marginSideMm: number },
     ) => core.invoke<void>("print_to_pdf", { path, layout }),
     /** 選擇 Word 檔並讀取；取消時回傳 null。 */
-    importDocx: () => core.invoke<DocxImport | null>("import_docx"),
+    importDocx: async (): Promise<DocxImport | null> => {
+      const picked = await core.invoke<Omit<DocxImport, "data"> | null>("import_docx");
+      if (!picked) return null;
+      return { ...picked, data: await core.invoke<ArrayBuffer>("import_docx_data") };
+    },
     /** 讀取資料夾中的 Markdown 文件（`known` 是上次讀到的修改時間，沒變的不重讀）。 */
     scanDocs: (known: Record<string, number>, root: string) =>
       route(

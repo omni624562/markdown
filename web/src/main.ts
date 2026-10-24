@@ -35,7 +35,7 @@ import {
   remoteId,
   remoteRoot,
 } from "./desktop.ts";
-import type { EditorState } from "@codemirror/state";
+import type { EditorState, Text } from "@codemirror/state";
 import {
   type FileHandle,
   type OpenedFile,
@@ -192,6 +192,18 @@ function hash(text: string): string {
     h = Math.imul(h, 0x01000193);
   }
   return `${text.length}:${(h >>> 0).toString(36)}`;
+}
+
+/** 編輯器目前內容的雜湊。同一份內容只算一次（重畫、存檔狀態、切換分頁都會問）。 */
+let hashedDoc: Text | null = null;
+let hashedValue = "";
+function editorHash(): string {
+  const doc = editor.view.state.doc;
+  if (doc !== hashedDoc) {
+    hashedDoc = doc;
+    hashedValue = hash(doc.toString());
+  }
+  return hashedValue;
 }
 
 /** 一個分頁。目前分頁的欄位另外放在下方的全域變數，切換分頁時互相同步。 */
@@ -378,7 +390,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     scheduleAutosave(doc);
     scheduleDiskSave();
     ai?.scheduleSync();
-    refreshIndexPanels(800);
+    refreshIndexPanels(800, { backlinks: false });
   },
   onSelection(v) {
     updateCursor(v);
@@ -1302,14 +1314,13 @@ function renderStats({ stats }: RenderResult): void {
 }
 
 function renderSaveState(): void {
-  const text = editor.text;
-  const dirty = baseline !== hash(text);
+  const dirty = baseline !== editorHash();
   if (active.dirty !== dirty) {
     active.dirty = dirty;
     renderTabs();
   }
   // 只有一份還沒存過的空白文件時，不需要「未命名.md」分頁與標題；開始打字才出現。
-  const blank = docs.length === 1 && !fileBacked && !fileHandle && text === "";
+  const blank = docs.length === 1 && !fileBacked && !fileHandle && editor.view.state.doc.length === 0;
   $("#tab-bar").classList.toggle("blank", blank);
   editor.setFileName(fileName);
   const title = blank ? "oMarker" : `${dirty ? "● " : ""}${fileName} - oMarker`;
@@ -1370,13 +1381,13 @@ previewScroller.addEventListener(
 // ---- 自動儲存草稿 -------------------------------------------------------
 
 let saveTimer: number | undefined;
-let pendingDraft: { id: string; text: string } | null = null;
+let pendingDraft: { id: string; doc: Text } | null = null;
 
-function scheduleAutosave(doc: string): void {
+function scheduleAutosave(doc: Text): void {
   clearTimeout(saveTimer);
   draftSaved = false;
   // 記下是哪個分頁的內容：計時器觸發前可能已經切換到別的分頁。
-  pendingDraft = { id: active.id, text: doc };
+  pendingDraft = { id: active.id, doc };
   saveTimer = window.setTimeout(flushDraft, 400);
 }
 
@@ -1456,9 +1467,10 @@ async function autoSaveNow(): Promise<void> {
 function flushDraft(): void {
   clearTimeout(saveTimer);
   if (!pendingDraft) return;
-  const { id, text } = pendingDraft;
+  const { id, doc } = pendingDraft;
   pendingDraft = null;
   if (!docs.some((d) => d.id === id)) return; // 分頁已經關閉
+  const text = doc.toString();
   draftSaved = saveDraft(id, text);
   // 儲存空間滿了：先清掉其他「已存檔、沒改過」分頁的草稿（之後從檔案讀回），再試一次。
   if (!draftSaved && freeDraftSpace(id)) draftSaved = saveDraft(id, text);
@@ -2070,8 +2082,11 @@ const searchPanel = desktop
 
 // ---- 資料夾文件索引：待辦總覽、標籤、反向連結 ----------------------------------
 
-// 從其他程式切回來時，資料夾中的檔案可能改過了。
+// 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
+// 重新掃描整個資料夾在網路磁碟上很慢，一分鐘內最多一次。
+let indexScannedAt = 0;
 window.addEventListener("focus", () => {
+  if (Date.now() - indexScannedAt < 60_000) return;
   indexStale = true;
   refreshIndexPanels(200);
 });
@@ -2095,6 +2110,7 @@ async function indexedDocs(): Promise<IndexedDoc[]> {
   const root = desktop && workspaceRoot && !isRemote(workspaceRoot.path) ? workspaceRoot.path : null;
   if (indexStale || !root) {
     indexStale = false;
+    indexScannedAt = Date.now();
     await docIndex.refresh(root).catch((e) => {
       indexStale = true;
       throw e;
@@ -2222,13 +2238,19 @@ function openIndexed(doc: IndexedDoc, line: number): void {
 
 let indexPanelsTimer = 0;
 /** 待辦、標籤、反向連結面板顯示中時重新整理（編輯中延遲一下）。 */
-function refreshIndexPanels(delay = 0): void {
+/** 打字後只更新待辦與標籤（`backlinks: false`）：反向連結是「其他文件連到這份」，打字不會改變它。 */
+let indexBacklinks = false;
+function refreshIndexPanels(delay = 0, { backlinks = true } = {}): void {
   clearTimeout(indexPanelsTimer);
+  // 排隊中的更新有要求反向連結的話，合併後仍然要更新。
+  indexBacklinks ||= backlinks;
   indexPanelsTimer = window.setTimeout(() => {
+    const withBacklinks = indexBacklinks;
+    indexBacklinks = false;
     if (!outlineShown) return;
     if (sidePanel === "tasks") void tasksPanel.refresh();
     if (sidePanel === "tags") void tagsPanel.refresh();
-    if (sidePanel === "outline" || outlineOnRight()) void renderBacklinks();
+    if (withBacklinks && (sidePanel === "outline" || outlineOnRight())) void renderBacklinks();
   }, delay);
 }
 
@@ -2695,7 +2717,7 @@ function stash(): void {
     fileBacked,
     state: editor.state,
     scrollTop: editor.view.scrollDOM.scrollTop,
-    dirty: baseline !== hash(editor.text),
+    dirty: baseline !== editorHash(),
   });
 }
 
@@ -3838,15 +3860,21 @@ async function addClaudeWorkflow(): Promise<void> {
   if (next === "token") await terminal?.runInShell("claude setup-token");
 }
 
-function editorSnapshot(): EditorSnapshot {
-  stash();
+/** 上次同步給 MCP 的文件內容（CodeMirror 的文件物件，內容不變時是同一個）。 */
+let syncedDoc: unknown = null;
+
+function editorSnapshot(full: boolean): EditorSnapshot {
   const { from, to } = editor.view.state.selection.main;
   const doc = editor.view.state.doc;
+  // 內容沒變（例如只移動游標）：不必再把整份文件轉成字串送過去。
+  const same = !full && doc === syncedDoc;
+  syncedDoc = doc;
   return {
     active: {
       path: fileHandle?.path ?? null,
       name: fileName,
-      text: editor.text,
+      text: same ? "" : doc.toString(),
+      sameText: same,
       dirty: active.dirty,
       selection:
         from === to
@@ -4717,13 +4745,6 @@ function pickFile(accept: string): Promise<File | null> {
   });
 }
 
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
 /**
  * 匯入 Word：桌面版在 Word 檔旁邊存成同名的 .md（圖片存到旁邊的 assets 資料夾）並開啟；
  * 網頁版開成新分頁，圖片內嵌在文件裡。
@@ -4731,7 +4752,7 @@ function base64ToBytes(b64: string): Uint8Array {
 async function importDocx(): Promise<void> {
   if (desktop) {
     const picked = await desktop.importDocx();
-    if (picked) await importDocxData(picked.name, base64ToBytes(picked.dataBase64).buffer as ArrayBuffer, picked.mdPath);
+    if (picked) await importDocxData(picked.name, picked.data, picked.mdPath);
     return;
   }
   let file: File | null = null;
@@ -5642,16 +5663,27 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
 
 /** 重新讀取分頁的檔案；讀不到的標成「已刪除或移走」。 */
 async function reloadDocs(list: Doc[]): Promise<void> {
-  for (const doc of list) {
+  const one = async (doc: Doc): Promise<void> => {
     const path = docPath(doc);
-    if (!path) continue;
+    if (!path) return;
     try {
       await reloadDoc(doc, path);
     } catch {
       // 遠端檔案讀不到多半是還沒重新連線，不代表檔案不見了；連線後會再讀一次。
       if (!isRemote(path)) doc.missing = true;
     }
-  }
+  };
+  // 目前的分頁先讀，畫面最快變成正確的內容。
+  if (list.includes(active)) await one(active);
+  // 其他分頁最多同時讀 4 個（網路磁碟上一個一個讀要等很久）。
+  // 草稿被清掉的分頁（unloaded）切換過去時才讀，不必現在讀進來又寫回草稿、佔掉儲存空間。
+  const rest = list.filter((doc) => doc !== active && !doc.unloaded);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(4, rest.length) }, async () => {
+      while (next < rest.length) await one(rest[next++]);
+    }),
+  );
   persistSession();
   renderTabs();
   // 有了檔案路徑，預覽中的相對路徑圖片才能顯示。

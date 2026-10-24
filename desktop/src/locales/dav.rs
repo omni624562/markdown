@@ -35,4 +35,5 @@ pub static EN: &[(&str, &str)] = &[
     ("主機名稱不正確", "Invalid host name."),
     ("連接埠不正確", "Invalid port."),
     ("請輸入帳號", "Enter a user name."),
+    ("圖片超過 {mb} MB，不在預覽中顯示", "The image is larger than {mb} MB, so it isn't shown in the preview."),
 ];
