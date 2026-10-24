@@ -21,6 +21,7 @@ export const sync: Record<string, Translation> = {
   "追蹤 {upstream}；按一下切換或建立分支": "Tracking {upstream}. Click to switch or create a branch.",
   "這個分支還沒有設定遠端；按一下切換或建立分支": "This branch has no remote yet. Click to switch or create a branch.",
   "（未知分支）": "(unknown branch)",
+  "目前的分支：{name}；按一下切換或建立分支": "Current branch: {name}. Click to switch or create a branch.",
   "{n} 個提交還沒推送": ["{n} commit not pushed yet", "{n} commits not pushed yet"],
   "遠端有 {n} 個新提交": ["{n} new commit on the remote", "{n} new commits on the remote"],
   "拉取": "Pull",

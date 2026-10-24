@@ -2030,6 +2030,28 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
   letter-spacing: 0.06em;
   cursor: pointer;
 }
+/* 檔案總管上方：目前的分支 */
+.folder-branch {
+  display: flex;
+  flex: none;
+  gap: 5px;
+  align-items: center;
+  max-width: calc(100% - 16px);
+  margin: -6px 0 4px 10px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.folder-branch[hidden] { display: none; }
+.folder-branch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-branch .icon { flex: none; width: 13px; height: 13px; }
+.folder-branch:hover:not(:disabled) { background: var(--active-line); color: var(--fg); }
+.folder-branch:disabled { cursor: default; }
 .project-switch #folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-switch .icon { flex: none; width: 13px; height: 13px; opacity: 0.7; }
 .project-switch:hover:not(:disabled) { background: var(--active-line); color: var(--fg); }
