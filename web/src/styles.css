@@ -723,28 +723,25 @@ kbd {
 /* ---- 通知 ---- */
 .toasts {
   position: fixed;
-  /* Popover 的預設樣式（置中、邊框、背景）拿掉，維持原本的位置。 */
-  inset: auto auto auto 50%;
+  /* Popover 的預設樣式（置中、邊框、背景）拿掉。放在右下角（狀態列上方），不擋住正在寫的內容。 */
+  inset: auto calc(16px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) auto;
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
   overflow: visible;
-  bottom: calc(40px + env(safe-area-inset-bottom));
-  left: 50%;
   z-index: 50;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  align-items: center;
-  transform: translateX(-50%);
+  align-items: flex-end;
   pointer-events: none;
 }
 .toast {
   display: flex;
   gap: 12px;
   align-items: center;
-  max-width: min(480px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
   padding: 10px 14px;
   border-radius: 10px;
   background: light-dark(#2c2e33, #d7dae0);
@@ -768,8 +765,8 @@ kbd {
 .toast button.primary { padding: 4px 12px; background: var(--accent); color: #ffffff; }
 .toast button.primary:hover { filter: brightness(1.1); }
 .toast.leaving { animation: toast-out 0.15s ease-in forwards; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
-@keyframes toast-out { to { opacity: 0; transform: translateY(8px); } }
+@keyframes toast-in { from { opacity: 0; transform: translateX(16px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(16px); } }
 
 /* ---- 拖曳 ---- */
 .drop-overlay {
