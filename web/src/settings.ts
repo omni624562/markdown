@@ -104,7 +104,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   smartPaste: true,
   fixedToolbar: false,
   outlineRight: false,
-  blockRemoteImages: false,
+  // 預設封鎖：開啟別人給的文件時，對方的伺服器不會知道你的 IP 與開啟時間。按一下圖片就能載入。
+  blockRemoteImages: true,
   autoSymbols: true,
   autoSave: true,
   termCheck: true,
@@ -304,7 +305,15 @@ export class SettingsStore {
 
   #persist(): void {
     const json = JSON.stringify(this.#value, null, 2);
-    if (desktop) desktop.saveSettings(json).catch((e) => console.error("儲存設定失敗", e)); // i18n-ignore（開發者主控台）
+    if (desktop) {
+      desktop
+        .saveSettings(json)
+        .then((accepted) => {
+          // 使用者在系統的確認對話框拒絕啟用 AI 協作：開關改回關閉。
+          if (accepted === false && this.#value.aiEnabled) this.update({ aiEnabled: false });
+        })
+        .catch((e) => console.error("儲存設定失敗", e)); // i18n-ignore（開發者主控台）
+    }
     else storage.save("settings", json);
   }
 }

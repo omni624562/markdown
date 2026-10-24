@@ -396,6 +396,10 @@ export interface SshConnectRequest {
   trust?: string;
 }
 
+/** 最近一次儲存設定（AI 相關的指令要等它完成）。 */
+let settingsSaved: Promise<unknown> = Promise.resolve();
+const afterSettings = <T>(run: () => Promise<T>): Promise<T> => settingsSaved.catch(() => {}).then(run);
+
 function bridge(core: TauriCore, event: TauriEvent) {
   // 遠端（WebDAV、SSH）路徑改用 dav_* 指令；其他照舊。
   const route = <T>(path: string | null | undefined, local: () => Promise<T>, remote: () => Promise<T>) =>
@@ -443,7 +447,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<boolean>("dav_probe", { path }),
       ),
     loadSettings: () => core.invoke<string | null>("load_settings"),
-    saveSettings: (json: string) => core.invoke<void>("save_settings", { json }),
+    /**
+     * 儲存設定。從關閉改成「啟用 AI 協作」時原生端會再確認一次；使用者拒絕時回傳 false。
+     * 需要 AI 的指令會等最近一次存檔完成（原生端以設定檔為準）。
+     */
+    saveSettings: (json: string) => (settingsSaved = core.invoke<boolean>("save_settings", { json })),
 
     openFolder: () => core.invoke<Folder | null>("open_folder"),
     /**
@@ -573,11 +581,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     aiTools: () => core.invoke<{ claude: string | null; codex: string | null }>("ai_tools"),
     listFonts: () => core.invoke<{ name: string; label?: string; mono: boolean }[]>("list_fonts"),
     termOpen: (program: TermProgram, cols: number, rows: number) =>
-      core.invoke<number>("term_open", { program, cols, rows }),
+      afterSettings(() => core.invoke<number>("term_open", { program, cols, rows })),
     termWrite: (id: number, data: string) => core.invoke<void>("term_write", { id, data }),
     termResize: (id: number, cols: number, rows: number) => core.invoke<void>("term_resize", { id, cols, rows }),
     termClose: (id: number) => core.invoke<void>("term_close", { id }),
-    mcpStart: () => core.invoke<McpInfo>("mcp_start"),
+    mcpStart: () => afterSettings(() => core.invoke<McpInfo>("mcp_start")),
     mcpStop: () => core.invoke<void>("mcp_stop"),
     mcpSync: (snapshot: EditorSnapshot) => core.invoke<void>("mcp_sync", { snapshot }),
     /** 回傳 false 表示 AI 已經不在等這個決定（逾時）。 */
@@ -588,7 +596,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<string | null>("export_binary", { suggestedName, dataBase64, filterName, extensions }),
     /** 在工作區的 .github/workflows/ 建立工作流程檔（不覆蓋）。 */
     createWorkflow: (name: string, text: string) => core.invoke<string>("create_workflow", { name, text }),
-    aiRun: (id: number, tool: AiTool, prompt: string) => core.invoke<void>("ai_run", { id, tool, prompt }),
+    aiRun: (id: number, tool: AiTool, prompt: string) =>
+      afterSettings(() => core.invoke<void>("ai_run", { id, tool, prompt })),
     aiCancel: (id: number) => core.invoke<void>("ai_cancel", { id }),
 
     gitStatus: () => core.invoke<GitStatus>("git_status"),

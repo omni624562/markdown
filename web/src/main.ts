@@ -355,7 +355,7 @@ const preview = new Preview(previewEl, [
     name: "remote-images",
     apply() {},
     prepare(content) {
-      if (settings.value.blockRemoteImages) blockRemoteImages(content);
+      if (blockRemote()) blockRemoteImages(content);
     },
   },
 ]);
@@ -404,7 +404,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   typewriterMode: settings.value.typewriterMode,
   live: livePreview({
     imageUrl(src) {
-      if (/^https?:/i.test(src)) return settings.value.blockRemoteImages ? null : src;
+      if (/^https?:/i.test(src)) return blockRemote() ? null : src;
       if (/^data:image\//i.test(src)) return src;
       const docPath = fileHandle?.path;
       if (!desktop || !docPath) return null;
@@ -414,7 +414,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     },
     renderTable: (markdown) => {
       const html = renderMarkdown(markdown, { kind: "markdown" }).html;
-      return settings.value.blockRemoteImages ? blockRemoteImagesInHtml(html) : html;
+      return blockRemote() ? blockRemoteImagesInHtml(html) : html;
     },
     formatTable: (markdown) => tableFormatter(markdown),
     renderMath: renderTex,
@@ -816,8 +816,28 @@ async function followLink(href: string): Promise<void> {
   }
 }
 
+/** 使用者按過「載入遠端圖片」的分頁（只限這次開啟期間）。 */
+const remoteAllowed = new Set<string>();
+
+/** 目前的文件要不要封鎖遠端圖片。 */
+function blockRemote(): boolean {
+  return settings.value.blockRemoteImages && !remoteAllowed.has(active.id);
+}
+
+/** 載入這份文件的遠端圖片（不改設定，其他文件仍然封鎖）。 */
+function allowRemoteImages(): void {
+  remoteAllowed.add(active.id);
+  preview.clear();
+  renderNow();
+  refreshLivePreview(editor.view);
+}
+
 previewEl.addEventListener("click", (e) => {
   const image = e.target as HTMLElement;
+  if (image instanceof HTMLImageElement && image.classList.contains("remote-blocked")) {
+    allowRemoteImages();
+    return;
+  }
   if (image instanceof HTMLImageElement && !image.closest("a[href]")) {
     openLightbox(image.currentSrc || image.src, image.alt);
     return;
@@ -1066,7 +1086,7 @@ async function preparePrint(opts: PdfOptions, title: string): Promise<() => void
   const html = await preview.exportDocument(editor.text, kind, title);
   const doc = new DOMParser().parseFromString(html, "text/html");
   await resolvePrintImages(doc);
-  if (settings.value.blockRemoteImages) blockRemoteImages(doc);
+  if (blockRemote()) blockRemoteImages(doc);
   document.getElementById("print-root")?.remove();
   document.getElementById("print-page")?.remove();
   const host = document.createElement("div");
@@ -2782,6 +2802,7 @@ async function closeTab(id: string): Promise<void> {
   const i = docs.indexOf(doc);
   docs.splice(i, 1);
   dropDraft(doc.id);
+  remoteAllowed.delete(doc.id);
   outlineCollapsed.delete(doc.id);
   changeNoticeAt.delete(doc.id);
   if (!docs.length) {
@@ -3292,6 +3313,14 @@ commands.register(
       await setWorkspace(folder);
       showPanel("files");
     },
+  },
+  {
+    id: "allow-remote-images",
+    title: t("載入這份文件的遠端圖片"),
+    group: t("檢視"),
+    icon: "image",
+    when: () => blockRemote(),
+    run: () => allowRemoteImages(),
   },
   {
     id: "connect-ssh",

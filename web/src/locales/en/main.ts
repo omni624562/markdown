@@ -570,4 +570,5 @@ export const main: Record<string, Translation> = {
   "「{name}」的編碼無法辨識，畫面上的內容可能有亂碼。存檔會改成 UTF-8 覆蓋原檔，原本的內容就無法還原。建議另存成新檔，保留原檔。":
     "The encoding of \"{name}\" can't be recognized, so the text may look garbled. Saving converts it to UTF-8 and overwrites the original, which can't be restored. Save as a new file to keep the original.",
   "仍要覆蓋原檔": "Overwrite Anyway",
+  "載入這份文件的遠端圖片": "Load Remote Images in This Document",
 };

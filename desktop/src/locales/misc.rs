@@ -47,4 +47,12 @@ pub static EN: &[(&str, &str)] = &[
     ("匯出 PDF 逾時", "PDF export timed out."),
     ("無法讀取設定：{e}", "Couldn't read the settings: {e}"),
     ("無法儲存設定：{e}", "Couldn't save the settings: {e}"),
+    // 1.17.2 安全修正
+    ("這個資料夾的 Git 設定會把檔案寫到資料夾以外的地方（core.worktree 或 gitdir），為了安全不使用。", "This folder's Git settings would write files outside the folder (core.worktree or gitdir), so it isn't used, for safety."),
+    ("遠端網址用的是沒有加密的 HTTP，密碼和內容可能被看到，只能用在區域網路。請改用 HTTPS 的網址：{url}", "The remote uses unencrypted HTTP, so passwords and content could be seen. HTTP is only allowed on a local network. Use an HTTPS URL instead: {url}"),
+    ("帳號不正確", "Invalid user name."),
+    ("HTTP 不會加密，個人存取權杖可能被看到，只能用在公司內部網路的伺服器。請改用 https:// 開頭的網址", "HTTP isn't encrypted, so your personal access token could be seen. It's only allowed for servers on your company network. Use a URL starting with https:// instead."),
+    ("請先在設定開啟「啟用 AI 協作」", "Turn on \"Enable AI Collaboration\" in Settings first."),
+    ("啟用 AI 協作", "Enable AI Collaboration"),
+    ("啟用後，oMarker 可以執行 Claude Code、Codex 等 AI 工具，並讓它們讀取目前的文件。要啟用嗎？", "Once enabled, oMarker can run AI tools such as Claude Code and Codex and let them read the current document. Enable it?"),
 ];

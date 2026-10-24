@@ -482,8 +482,14 @@ pub async fn term_open(
                 Some((cmd, host)) => (cmd, tr!("SSH：{host}", host = host)),
                 None => (default_shell(), tr!("終端機")),
             },
-            Program::Claude => (tool_command(&app, Tool::Claude)?, "Claude Code".into()),
-            Program::Codex => (tool_command(&app, Tool::Codex)?, "Codex".into()),
+            Program::Claude => {
+                crate::settings::require_ai(&app)?;
+                (tool_command(&app, Tool::Claude)?, "Claude Code".into())
+            }
+            Program::Codex => {
+                crate::settings::require_ai(&app)?;
+                (tool_command(&app, Tool::Codex)?, "Codex".into())
+            }
         };
         app.state::<Terminals>().spawn(&app, cmd, cols, rows, label)
     })

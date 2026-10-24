@@ -177,6 +177,7 @@ pub async fn ai_run(
     prompt: String,
     runs: State<'_, Runs>,
 ) -> Result<(), String> {
+    crate::settings::require_ai(&app)?;
     let mut child = command(&app, tool)?
         .spawn()
         .map_err(|e| tr!("無法執行 {tool}：{e}", tool = tool.label(), e = e))?;

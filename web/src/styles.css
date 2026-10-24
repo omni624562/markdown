@@ -2251,3 +2251,6 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .issue-status.issue-error { color: var(--danger); }
 ::highlight(issue-find) { background-color: rgba(255, 200, 0, 0.35); }
 ::highlight(issue-find-current) { background-color: rgba(255, 150, 0, 0.75); }
+
+/* 已封鎖的遠端圖片：按一下載入這份文件的遠端圖片。 */
+#preview img.remote-blocked { cursor: pointer; }

@@ -25,7 +25,13 @@ pub struct FileCommit {
 
 fn open_for(file: &Path) -> Result<(Repository, String), String> {
     let dir = file.parent().ok_or_else(|| tr!("路徑不正確"))?;
-    let repo = Repository::discover(dir).map_err(|_| tr!("這個檔案不在 Git 儲存庫裡"))?;
+    let repo = crate::git::open(dir).map_err(|e| {
+        if e == tr!("這個資料夾不是 Git 儲存庫") {
+            tr!("這個檔案不在 Git 儲存庫裡")
+        } else {
+            e
+        }
+    })?;
     let rel = rel_path(&repo, file)?;
     Ok((repo, rel))
 }
@@ -256,7 +262,7 @@ pub fn workspace_github_repo(app: &AppHandle) -> Result<(String, String), String
         .state::<Workspace>()
         .root()
         .ok_or_else(|| tr!("請先開啟連到 GitHub 的資料夾"))?;
-    let repo = Repository::discover(&root).map_err(|_| tr!("這個資料夾不是 Git 儲存庫"))?;
+    let repo = crate::git::open(&root)?;
     let remote = repo
         .find_remote("origin")
         .ok()
