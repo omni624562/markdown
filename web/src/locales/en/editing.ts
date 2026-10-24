@@ -264,4 +264,5 @@ export const editing: Record<string, Translation> = {
   "最後更新": "Last Updated",
   "留言（{n}）": ["Comment ({n})", "Comments ({n})"],
   "欄位": "Field",
+  "開始寫 Markdown…（輸入 / 插入表格、圖片等；按 {keys} 開啟指令面板）": "Start writing Markdown… (type / to insert tables, images and more; press {keys} for the command palette)",
 };

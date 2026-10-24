@@ -6,6 +6,8 @@
   --surface: light-dark(#f7f7f8, #21252b);
   --surface-raised: light-dark(#ffffff, #2f343e);
   --fg: light-dark(#2c2e33, #d7dae0);
+  /* Git「已修改」：淺色底也要有 4.5:1 以上的對比。 */
+  --git-modified: light-dark(#8a6a00, #d29922);
   --muted: light-dark(#666a71, #9da5b4);
   --subtle: light-dark(#989ca3, #6f7683);
   --border: light-dark(#e3e4e7, #3a404b);
@@ -924,6 +926,7 @@ kbd {
   flex: none;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 14px 16px 14px 22px;
   border-bottom: 1px solid var(--border);
   background: var(--surface-raised);
@@ -1376,7 +1379,7 @@ button.git-info:disabled { cursor: default; }
 .git-changes-head { margin: 0 4px 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; }
 .tree-row > span:not(.git-badge) { flex: 1; }
 .git-badge { flex: none; margin-left: 4px; font: 600 11px var(--font-mono); }
-.tree-row[data-git="M"] > span:not(.git-badge), .tree-row[data-git="M"] .git-badge { color: #b08800; }
+.tree-row[data-git="M"] > span:not(.git-badge), .tree-row[data-git="M"] .git-badge { color: var(--git-modified); }
 .tree-row[data-git="U"] > span:not(.git-badge), .tree-row[data-git="U"] .git-badge,
 .tree-row[data-git="A"] > span:not(.git-badge), .tree-row[data-git="A"] .git-badge { color: var(--success); }
 .tree-row[data-git="!"] > span:not(.git-badge), .tree-row[data-git="!"] .git-badge,
@@ -1408,7 +1411,7 @@ button.git-info:disabled { cursor: default; }
 .git-file-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-file-dir { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .git-files b { flex: none; width: 1.2em; font: 600 11px var(--font-mono); text-align: center; }
-.git-files [data-status="modified"] b { color: #b08800; }
+.git-files [data-status="modified"] b { color: var(--git-modified); }
 .git-files [data-status="untracked"] b, .git-files [data-status="added"] b { color: var(--success); }
 .git-files [data-status="deleted"] b, .git-files [data-status="conflicted"] b { color: var(--danger); }
 
@@ -2254,3 +2257,27 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 
 /* 已封鎖的遠端圖片：按一下載入這份文件的遠端圖片。 */
 #preview img.remote-blocked { cursor: pointer; }
+
+/* 設定的搜尋框 */
+.settings-search {
+  flex: 1;
+  max-width: 260px;
+  margin-left: auto;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+.settings-nav.searching [role="tab"] { opacity: 0.55; }
+
+/* 快速鍵一覽 */
+.shortcuts-dialog { width: min(640px, calc(100vw - 32px)); }
+.shortcuts-body { max-height: min(60vh, 560px); overflow: auto; }
+.shortcuts-body h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+.shortcuts-body table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.shortcuts-body td { padding: 4px 0; border-bottom: 1px solid var(--border); }
+.shortcuts-body td:last-child { text-align: right; white-space: nowrap; }
+.shortcuts-body kbd { font: 12px var(--font-mono); padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }

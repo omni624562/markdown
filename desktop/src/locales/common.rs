@@ -63,4 +63,11 @@ pub static EN: &[(&str, &str)] = &[
     ("Codex 執行失敗", "Codex failed"),
     ("終端機已經結束", "The terminal has exited."),
     ("無法讀取輸出", "Couldn't read the output."),
+    ("{what}：{reason}", "{what}: {reason}"),
+    ("檔案正被其他程式使用（例如 Word、Excel，或 OneDrive 正在同步），請關閉那個程式或等同步完成後再試", "The file is in use by another program (for example Word, Excel, or OneDrive syncing). Close that program or wait for syncing to finish, then try again."),
+    ("磁碟空間不足，請清出空間後再試", "The disk is full. Free up some space and try again."),
+    ("沒有權限（檔案可能是唯讀的，或資料夾不允許寫入）", "Permission denied (the file may be read-only, or the folder doesn't allow writing)."),
+    ("找不到這個檔案或資料夾（可能已被移動或刪除）", "The file or folder wasn't found (it may have been moved or deleted)."),
+    ("這個磁碟是唯讀的", "This disk is read-only."),
+    ("已經有同名的項目", "An item with the same name already exists."),
 ];

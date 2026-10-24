@@ -323,4 +323,6 @@ export const ui: Record<string, Translation> = {
   "~/.ssh/id_ed25519（留空會自動尋找）": "~/.ssh/id_ed25519 (blank to find automatically)",
   "重新連線到 {host}": "Reconnect to {host}",
   "用金鑰登入失敗，請輸入密碼（或金鑰的密語）。": "Couldn't sign in with a key. Enter the password (or the key's passphrase).",
+  "搜尋設定…": "Search settings…",
+  "搜尋設定": "Search settings",
 };

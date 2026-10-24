@@ -72,9 +72,34 @@ pub fn describe(e: &io::Error, what: &str) -> String {
             what = what,
             e = e
         )
+    } else if let Some(reason) = plain_reason(e) {
+        tr!("{what}：{reason}", what = what, reason = reason)
     } else {
         tr!("{what}：{e}", what = what, e = e)
     }
+}
+
+/// 常見的錯誤換成看得懂、知道下一步怎麼做的說明（取代「存取被拒。 (os error 5)」）。
+fn plain_reason(e: &io::Error) -> Option<String> {
+    use io::ErrorKind::*;
+    // Windows：32 是檔案正被其他程式使用，33 是被鎖定，112 是磁碟已滿。
+    match e.raw_os_error() {
+        Some(32) | Some(33) if cfg!(windows) => {
+            return Some(tr!(
+                "檔案正被其他程式使用（例如 Word、Excel，或 OneDrive 正在同步），請關閉那個程式或等同步完成後再試"
+            ))
+        }
+        Some(112) if cfg!(windows) => return Some(tr!("磁碟空間不足，請清出空間後再試")),
+        _ => {}
+    }
+    Some(match e.kind() {
+        PermissionDenied => tr!("沒有權限（檔案可能是唯讀的，或資料夾不允許寫入）"),
+        NotFound => tr!("找不到這個檔案或資料夾（可能已被移動或刪除）"),
+        StorageFull => tr!("磁碟空間不足，請清出空間後再試"),
+        ReadOnlyFilesystem => tr!("這個磁碟是唯讀的"),
+        AlreadyExists => tr!("已經有同名的項目"),
+        _ => return None,
+    })
 }
 
 /// Windows 資料夾（`%SystemRoot%`，通常是 `C:\Windows`）。
