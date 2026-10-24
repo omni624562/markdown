@@ -184,7 +184,7 @@ export class GitPanel {
     const pr = this.#button("", "git-pull-request", async () => this.#hooks.createPr());
     pr.title = t("建立 Pull Request");
     pr.setAttribute("aria-label", t("建立 Pull Request"));
-    const history = this.#button("", "history", async () => this.#hooks.history());
+    const history = this.#button("", "git-graph", async () => this.#hooks.history());
     history.title = t("Git 歷史（線圖）");
     history.setAttribute("aria-label", t("Git 歷史（線圖）"));
     const projects = this.#button("", "folder-kanban", async () => this.#hooks.projects());
@@ -282,7 +282,7 @@ export class GitPanel {
     const text = document.createElement("p");
     const actions = document.createElement("div");
     actions.className = "git-setup-actions";
-    const open = this.#button(t("從 GitHub 開啟儲存庫"), "git-branch", () => this.#github.openRepo());
+    const open = this.#button(t("從 GitHub 開啟儲存庫"), "github", () => this.#github.openRepo());
     if (root) {
       title.textContent = t("這個資料夾還沒有同步到 GitHub");
       text.textContent = t("上傳到 GitHub 之後，可以在其他電腦下載同一個資料夾，每次的修改都會留下紀錄，也可以自動同步。不需要安裝 Git。");
@@ -296,7 +296,7 @@ export class GitPanel {
       actions.append(open);
     }
     const ado = this.#hooks.openAdo;
-    if (ado) actions.append(this.#button(t("從 Azure DevOps／TFS 下載"), "server", async () => ado()));
+    if (ado) actions.append(this.#button(t("從 Azure DevOps／TFS 下載"), "briefcase-business", async () => ado()));
     box.append(title, text, actions, this.#accountLine());
     this.#host.replaceChildren(box);
   }

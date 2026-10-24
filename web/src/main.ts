@@ -1651,8 +1651,8 @@ const projectUi = desktop
       unsaved: (path) =>
         (peekSession(path)?.docs ?? []).some((m) => m.baseline !== null && draftState(m).dirty),
       repoSources: () => [
-        { id: "github", title: t("從 GitHub 下載儲存庫…"), icon: "git-branch", run: () => void github?.openRepo() },
-        ...(ado ? [{ id: "ado", title: t("從 Azure DevOps／TFS 下載儲存庫…"), icon: "server", run: () => void ado?.openRepo() }] : []),
+        { id: "github", title: t("從 GitHub 下載儲存庫…"), icon: "github", run: () => void github?.openRepo() },
+        ...(ado ? [{ id: "ado", title: t("從 Azure DevOps／TFS 下載儲存庫…"), icon: "briefcase-business", run: () => void ado?.openRepo() }] : []),
       ],
     })
   : null;
@@ -4530,7 +4530,7 @@ commands.register(
   ),
   ...(
     [
-      ["github-open", t("GitHub：下載或開啟儲存庫…"), "git-branch", () => github?.openRepo(), () => true],
+      ["github-open", t("GitHub：下載或開啟儲存庫…"), "github", () => github?.openRepo(), () => true],
       ["github-publish", t("GitHub：把這個資料夾上傳到 GitHub…"), "arrow-up-from-line", () => github?.publish(), () => !!workspaceRoot && !isRemote(workspaceRoot.path)],
       ["github-login", t("GitHub：登入"), "shield-check", () => github?.login(), () => !github?.account],
       ["github-logout", t("GitHub：登出"), "x", () => github?.logout(), () => !!github?.account],
@@ -4544,13 +4544,13 @@ commands.register(
         },
         () => !!gitPanel?.status?.repo,
       ],
-      ["git-sync", t("Git：同步（拉取再推送）"), "refresh-cw", () => void gitSync(), () => !!gitPanel?.status?.remote && !gitPanel.status.merging],
+      ["git-sync", t("Git：同步（拉取再推送）"), "arrow-down-up", () => void gitSync(), () => !!gitPanel?.status?.remote && !gitPanel.status.merging],
       ["git-branch-switch", t("Git：切換或建立分支…"), "git-branch", () => void switchBranch().catch(reportError), () => !!gitPanel?.status?.repo && !gitPanel.status.merging],
       ["git-create-pr", t("Git：建立 Pull Request…"), "git-pull-request", () => void createPullRequest().catch(reportError), () => !!gitPanel?.status?.remote],
       ["git-merge-finish", t("Git：完成合併"), "git-merge", () => void gitPanel?.finishMerge(), () => !!gitPanel?.status?.merging],
       ["github-pages", t("GitHub：發佈成網站（GitHub Pages）…"), "globe", () => void publishPages(), () => !!github?.account && !!issuesRepo],
       ["github-gist", t("GitHub：分享成 Gist…"), "share-2", () => void shareGist(), () => !!github?.account],
-      ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "server", () => ado?.openRepo(), () => !!ado],
+      ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "briefcase-business", () => ado?.openRepo(), () => !!ado],
       ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
       ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open(t("Azure DevOps／TFS")), () => !!ado],
     ] as const
@@ -4590,7 +4590,7 @@ commands.register(
     id: "git-history",
     title: t("Git：顯示歷史（線圖）"),
     group: t("Git"),
-    icon: "history",
+    icon: "git-graph",
     keys: "Mod-Alt-h",
     when: () => !!desktop && !!gitPanel?.status?.repo,
     run: () => openGitHistory(),
@@ -4706,7 +4706,7 @@ commands.register(
     id: "git-claude-workflow",
     title: t("Git：加入 Claude Code 自動校對（GitHub Actions）…"),
     group: t("Git"),
-    icon: "git-branch",
+    icon: "github",
     when: () => !!gitPanel?.status?.repo && !!workspaceRoot && !isRemote(workspaceRoot.path),
     run: () => addClaudeWorkflow(),
   },
