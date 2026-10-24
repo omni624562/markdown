@@ -31,6 +31,8 @@ pub(crate) const ANY_VERSION: &str = "*";
 const KEYRING_SERVICE: &str = "md-editor-webdav";
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_FILES: usize = 5000;
+/// 預覽遠端圖片的大小上限。
+const MAX_IMAGE_BYTES: usize = 32 * 1024 * 1024;
 /// Ctrl+P 列出遠端檔案時：最多幾層、最多查幾個資料夾、最多處理幾個項目、同時送出幾個請求。
 /// 惡意或設定錯誤的伺服器可能回傳無限多層或大量的項目，所以都設上限。
 const LIST_MAX_DEPTH: usize = 6;
@@ -140,18 +142,21 @@ fn url_path(url: &str) -> &str {
         .unwrap_or("/")
 }
 
-fn host_of(url: &str) -> &str {
-    let after = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
-    let authority = after.split('/').next().unwrap_or("");
-    let host_port = authority.rsplit('@').next().unwrap_or(authority);
-    if let Some(rest) = host_port.strip_prefix('[') {
-        return rest.split(']').next().unwrap_or("");
-    }
-    host_port.split(':').next().unwrap_or("")
+/// 網址的主機名稱，用和實際連線相同的規則解析（`http://壞人.com#@10.0.0.1/` 的主機是 `壞人.com`）。
+/// 解析不了時回傳空字串。
+pub(crate) fn host_of(url: &str) -> String {
+    let Ok(uri) = url.trim().parse::<ureq::http::Uri>() else {
+        return String::new();
+    };
+    let host = uri.host().unwrap_or("");
+    host.strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host)
+        .to_string()
 }
 
 /// 區域網路內的位址（只有這些才允許用沒有加密的 HTTP）。
-fn is_private_host(host: &str) -> bool {
+pub(crate) fn is_private_host(host: &str) -> bool {
     if host == "localhost"
         || host.ends_with(".local")
         || host.ends_with(".lan")
@@ -178,7 +183,9 @@ pub fn normalize_url(input: &str, allow_http: bool) -> Result<String, String> {
     let url = input.trim();
     let lower = url.to_ascii_lowercase();
     let host = host_of(url);
-    if host.is_empty() {
+    let host = host.as_str();
+    // 網址裡的 `?`、`#` 在 WebDAV 用不到，卻可能讓「這是哪一台主機」被誤判。
+    if host.is_empty() || url.contains(['?', '#']) {
         return Err(tr!("網址格式不正確，例如：https://nas.local:5006/筆記/"));
     }
     if lower.starts_with("http://") {
@@ -756,7 +763,7 @@ pub async fn dav_connect(
             .unwrap_or("")
             .to_string();
         if last.is_empty() {
-            host_of(&base).to_string()
+            host_of(&base)
         } else {
             last
         }
@@ -1275,6 +1282,13 @@ pub async fn dav_image(path: String, dav: State<'_, Dav>) -> Result<String, Stri
             .map_err(|e| e.message(&tr!("無法讀取圖片")))
     })
     .await?;
+    // 預覽用的圖片：太大的不載入（會變成好幾倍大的 data: 網址留在記憶體裡）。
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return Err(tr!(
+            "圖片超過 {mb} MB，不在預覽中顯示",
+            mb = MAX_IMAGE_BYTES / 1024 / 1024
+        ));
+    }
     Ok(format!(
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
@@ -1570,6 +1584,10 @@ mod tests {
         assert!(normalize_url("http://diskstation:5005/", true).is_ok());
         assert!(normalize_url("ftp://nas/", true).is_err());
         assert!(normalize_url("https:///", false).is_err());
+        // 主機名稱的判斷和實際連線一致，不能用 `#@`、`?@` 假裝成區域網路。
+        assert!(normalize_url("http://evil.com#@10.0.0.1/", true).is_err());
+        assert!(normalize_url("http://evil.com?@10.0.0.1/", true).is_err());
+        assert_eq!(host_of("http://evil.com#@10.0.0.1/"), "evil.com");
     }
 
     #[test]

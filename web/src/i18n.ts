@@ -6,8 +6,16 @@
  * 語言在啟動時決定（設定的「介面語言」，預設跟隨系統），切換後重新載入介面。
  * 選擇存在 localStorage（`ui-lang`），讓所有模組載入時就能同步讀到。
  */
-import { en, type Translation } from "./locales/en.ts";
+import type { Translation } from "./locales/en.ts";
 import * as storage from "./storage.ts";
+
+/** 英文字典：英文介面時才載入（`loadLocale`），中文介面啟動時少讀約 85 KB。 */
+let en: Readonly<Record<string, Translation>> = {};
+
+/** 載入目前語言需要的字典。要在任何模組呼叫 `t()` 之前完成（見 `boot.ts`）。 */
+export async function loadLocale(): Promise<void> {
+  if (lang === "en" && !Object.keys(en).length) en = (await import("./locales/en.ts")).en;
+}
 
 export type LangPref = "system" | "zh-TW" | "en";
 export type Lang = "zh-TW" | "en";
@@ -52,9 +60,10 @@ export function langPrefs(): { id: LangPref; label: string }[] {
   ];
 }
 
-/** 測試用：直接指定語言。 */
-export function useLang(l: Lang): void {
+/** 測試用：直接指定語言（英文時順便載入字典）。 */
+export async function useLang(l: Lang): Promise<void> {
   lang = l;
+  await loadLocale();
 }
 
 function fill(text: string, params?: Record<string, string | number>): string {

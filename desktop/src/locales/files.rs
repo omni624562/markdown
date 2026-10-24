@@ -31,4 +31,5 @@ pub static EN: &[(&str, &str)] = &[
     ("這個資料夾不是連到 GitHub 的儲存庫", "This folder isn't a repository connected to GitHub."),
     ("這個檔案不在 Git 儲存庫裡", "This file isn't in a Git repository."),
     ("這個儲存庫沒有工作目錄", "This repository has no working directory."),
+    ("沒有要匯入的 Word 檔", "There's no Word file to import."),
 ];

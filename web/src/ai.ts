@@ -20,7 +20,8 @@ export interface AiHost {
   editor: Editor;
   review: Review;
   /** 目前編輯器的狀態（給 MCP 用）。 */
-  snapshot(): EditorSnapshot;
+  /** `full` 為 false 時，內容沒變就不附全文。 */
+  snapshot(full: boolean): EditorSnapshot;
   /** 切換到（必要時開啟）提議要修改的文件；`null` 表示目前的文件。 */
   showDocument(path: string | null): Promise<void>;
 }
@@ -43,6 +44,8 @@ export class AiController {
   #bar: HTMLElement;
   #mcpRunning = false;
   #syncTimer = 0;
+  /** 下次同步要附上全文（剛啟動、上次沒送到）。 */
+  #needFull = true;
   #queue: AiProposal[] = [];
   #handling = false;
   #run: Run | null = null;
@@ -80,7 +83,13 @@ export class AiController {
     if (!this.#mcpRunning) return;
     clearTimeout(this.#syncTimer);
     this.#syncTimer = window.setTimeout(() => {
-      void this.#d.mcpSync(this.#host.snapshot()).catch((e) => console.error("同步編輯器狀態失敗", e)); // i18n-ignore（開發者主控台）
+      const full = this.#needFull;
+      this.#needFull = false;
+      void this.#d.mcpSync(this.#host.snapshot(full)).catch((e) => {
+        // 這次沒送到：下次送全文。
+        this.#needFull = true;
+        console.error("同步編輯器狀態失敗", e); // i18n-ignore（開發者主控台）
+      });
     }, 250);
   }
 
@@ -98,6 +107,7 @@ export class AiController {
       if (want) {
         await this.#d.mcpStart();
         this.#mcpRunning = true;
+        this.#needFull = true;
         this.scheduleSync();
       } else {
         this.#mcpRunning = false;

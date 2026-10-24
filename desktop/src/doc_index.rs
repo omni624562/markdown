@@ -19,6 +19,8 @@ use crate::workspace::{rel_path, resolve_inside, walker, Workspace};
 /// 最多讀幾個檔案、單一檔案最大多少（太大的通常不是筆記）。
 const MAX_DOCS: usize = 5_000;
 const MAX_DOC_BYTES: u64 = 2 * 1024 * 1024;
+/// 全部加起來最多多少（前端會把內容留在記憶體裡）。
+const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +49,7 @@ fn mtime_ms(meta: &fs::Metadata) -> u64 {
 
 /// 列出 `root` 中的 Markdown 文件（遵守 .gitignore），只讀取修改時間和 `known` 不同的檔案。
 pub fn scan(root: &Path, known: &HashMap<String, u64>) -> Vec<DocText> {
+    let mut total = 0u64;
     walker(root)
         .build()
         .filter_map(Result::ok)
@@ -54,9 +57,10 @@ pub fn scan(root: &Path, known: &HashMap<String, u64>) -> Vec<DocText> {
         .take(MAX_DOCS)
         .filter_map(|e| {
             let meta = e.metadata().ok()?;
-            if meta.len() > MAX_DOC_BYTES {
+            if meta.len() > MAX_DOC_BYTES || total + meta.len() > MAX_TOTAL_BYTES {
                 return None;
             }
+            total += meta.len();
             let path = path_string(e.path());
             let mtime = mtime_ms(&meta);
             let text = if known.get(&path) == Some(&mtime) {

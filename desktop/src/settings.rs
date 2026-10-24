@@ -22,11 +22,62 @@ pub fn load_settings(app: AppHandle) -> Result<Option<String>, String> {
     }
 }
 
+/// 設定檔裡的「啟用 AI 協作」。執行 AI 工具、啟動 MCP 伺服器前，原生端自己再檢查一次，
+/// 不只靠網頁那一端（網頁萬一被注入程式碼，也不能自己偷偷開啟）。
+pub fn ai_enabled(app: &AppHandle) -> bool {
+    settings_path(app)
+        .ok()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .is_some_and(|v| v["aiEnabled"] == true)
+}
+
+/// 需要 AI 協作的功能先呼叫：沒有開啟時回傳錯誤。
+pub fn require_ai(app: &AppHandle) -> Result<(), String> {
+    if ai_enabled(app) {
+        Ok(())
+    } else {
+        Err(tr!("請先在設定開啟「啟用 AI 協作」"))
+    }
+}
+
+/// 儲存設定。從關閉改成「啟用 AI 協作」時，用系統的對話框再確認一次；
+/// 使用者拒絕時存成關閉，並回傳 `false`（前端會把開關改回去）。
 #[tauri::command]
-pub fn save_settings(app: AppHandle, json: String) -> Result<(), String> {
+pub async fn save_settings(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    json: String,
+) -> Result<bool, String> {
+    // 一次只存一份，確認對話框不會重複跳出。
+    static SAVING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _guard = SAVING.lock().await;
     let path = settings_path(&app)?;
+    let mut accepted = true;
+    let mut json = json;
+    if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&json) {
+        if value["aiEnabled"] == true && !ai_enabled(&app) {
+            let answer = rfd::AsyncMessageDialog::new()
+                .set_parent(&window)
+                .set_level(rfd::MessageLevel::Warning)
+                .set_title(tr!("啟用 AI 協作"))
+                .set_description(tr!(
+                    "啟用後，oMarker 可以執行 Claude Code、Codex 等 AI 工具，並讓它們讀取目前的文件。要啟用嗎？"
+                ))
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show()
+                .await;
+            if answer != rfd::MessageDialogResult::Yes {
+                accepted = false;
+                value["aiEnabled"] = serde_json::Value::Bool(false);
+                json = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+            }
+        }
+    }
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
     }
-    crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存設定：{e}", e = e))
+    crate::files::write_atomic(&path, json.as_bytes())
+        .map_err(|e| tr!("無法儲存設定：{e}", e = e))?;
+    Ok(accepted)
 }

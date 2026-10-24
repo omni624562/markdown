@@ -21,7 +21,7 @@ export function blockRemoteImages(root: ParentNode): void {
     img.dataset.blockedSrc = src;
     img.classList.add("remote-blocked");
     img.alt = img.alt ? t("🖼 {alt}（已封鎖遠端圖片）", { alt: img.alt }) : t("🖼 圖片（已封鎖遠端圖片）");
-    img.title = t("已封鎖遠端圖片：{src}\n可以在「設定 → 外觀」關閉「封鎖遠端圖片」", { src });
+    img.title = t("已封鎖遠端圖片：{src}\n按一下載入這份文件的遠端圖片；也可以在「設定 → 外觀」關閉「封鎖遠端圖片」", { src });
   }
 }
 

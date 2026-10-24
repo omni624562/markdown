@@ -131,6 +131,12 @@ fn candidates(input: &str) -> Result<Vec<String>, String> {
     if let Some(q) = url.find(['?', '#']) {
         url.truncate(q);
     }
+    // 不加密的 HTTP 會讓個人存取權杖以明文傳出去：只允許公司內部網路的位址。
+    if lower.starts_with("http://") && !crate::dav::is_private_host(&crate::dav::host_of(&url)) {
+        return Err(tr!(
+            "HTTP 不會加密，個人存取權杖可能被看到，只能用在公司內部網路的伺服器。請改用 https:// 開頭的網址"
+        ));
+    }
     if let Some(i) = url.find("/_") {
         url.truncate(i);
     }
@@ -1292,6 +1298,8 @@ mod tests {
             candidates("http://tfs:8080").unwrap(),
             ["http://tfs:8080", "http://tfs:8080/tfs"]
         );
+        // 網際網路上的伺服器不能用 HTTP（權杖會以明文傳出去）。
+        assert!(candidates("http://tfs.example.com/tfs").is_err());
         assert!(candidates("tfs.corp.com").is_err());
     }
 

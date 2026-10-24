@@ -77,6 +77,20 @@ fn fingerprint(key: &PublicKey) -> String {
     key.fingerprint(HashAlg::Sha256).to_string()
 }
 
+/// 判斷主機金鑰。known_hosts 已經有這台主機的記錄、卻沒有一把相符時一律拒絕——
+/// 連演算法不同的情況也算（攔截連線的人可能改出示另一種金鑰，假裝成第一次連線）。
+fn judge(recorded: &[PublicKey], key: &PublicKey, trust: Option<&str>) -> HostKey {
+    if recorded.iter().any(|k| k.key_data() == key.key_data()) {
+        HostKey::Trusted
+    } else if !recorded.is_empty() {
+        HostKey::Changed
+    } else if trust == Some(fingerprint(key).as_str()) {
+        HostKey::Trusted
+    } else {
+        HostKey::Unknown(key.algorithm().as_str().to_string(), fingerprint(key))
+    }
+}
+
 impl client::Handler for Checker {
     type Error = russh::Error;
 
@@ -86,17 +100,18 @@ impl client::Handler for Checker {
     ) -> Result<bool, Self::Error> {
         let state = match key {
             PublicKeyOrCertificate::PublicKey { key, .. } => {
-                match russh::keys::check_known_hosts(&self.host, self.port, key) {
-                    Ok(true) => HostKey::Trusted,
-                    Err(russh::keys::Error::KeyChanged { .. }) => HostKey::Changed,
-                    _ if self.trust.as_deref() == Some(fingerprint(key).as_str()) => {
-                        // 使用者確認過：記進 known_hosts（寫不進去也讓這次連線）。
-                        let _ =
-                            russh::keys::known_hosts::learn_known_hosts(&self.host, self.port, key);
-                        HostKey::Trusted
-                    }
-                    _ => HostKey::Unknown(key.algorithm().as_str().to_string(), fingerprint(key)),
+                let recorded: Vec<PublicKey> =
+                    russh::keys::known_hosts::known_host_keys(&self.host, self.port)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|(_, k)| k)
+                        .collect();
+                let state = judge(&recorded, key, self.trust.as_deref());
+                if matches!(state, HostKey::Trusted) && recorded.is_empty() {
+                    // 使用者確認過：記進 known_hosts（寫不進去也讓這次連線）。
+                    let _ = russh::keys::known_hosts::learn_known_hosts(&self.host, self.port, key);
                 }
+                state
             }
             PublicKeyOrCertificate::Certificate(_) => HostKey::Certificate,
         };
@@ -832,13 +847,22 @@ fn parse_host(input: &str, user: &str, port: Option<u16>) -> Result<(String, Str
     } else {
         user.trim().to_string()
     };
-    if host.is_empty() || host.contains(char::is_whitespace) || host.contains('/') {
+    if !safe_word(host) || host.contains('/') {
         return Err(tr!("主機名稱不正確"));
     }
     if user.is_empty() {
         return Err(tr!("請輸入帳號"));
     }
+    if !safe_word(&user) || user.contains('@') {
+        return Err(tr!("帳號不正確"));
+    }
     Ok((user, host.to_string(), port))
+}
+
+/// 帳號、主機名稱不能以 `-` 開頭，也不能有空白或控制字元：
+/// 交給終端機的 ssh 指令時，會被當成選項（例如 `-oProxyCommand=…` 會在本機執行程式）。
+fn safe_word(s: &str) -> bool {
+    !s.is_empty() && !s.starts_with('-') && !s.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 fn display_url(user: &str, t: &SshTarget) -> String {
@@ -961,6 +985,10 @@ pub(crate) async fn reconnect(
 /// 內嵌終端機連到同一台主機的指令（用系統的 ssh；Windows 10 以後內建）。
 /// 登入後切換到遠端資料夾。找不到 ssh 時回傳 `None`。
 pub fn terminal_command(user: &str, t: &SshTarget) -> Option<portable_pty::CommandBuilder> {
+    // 連線清單是設定檔，可能被改過：這裡再檢查一次。
+    if !safe_word(user) || !safe_word(&t.host) {
+        return None;
+    }
     let ssh = which::which("ssh").ok()?;
     let mut cmd = portable_pty::CommandBuilder::new(ssh);
     cmd.args([
@@ -974,6 +1002,8 @@ pub fn terminal_command(user: &str, t: &SshTarget) -> Option<portable_pty::Comma
         cmd.arg("-i");
         cmd.arg(expand_home(key));
     }
+    // `--` 之後一定是目的地，不會被當成選項。
+    cmd.arg("--");
     cmd.arg(format!("{user}@{}", t.host));
     // 遠端的登入 shell 可能不是 sh（例如 fish）：交給 sh 切換資料夾，再換回使用者的 shell。
     let root = t.root.replace('\'', r"'\''");
@@ -986,6 +1016,46 @@ pub fn terminal_command(user: &str, t: &SshTarget) -> Option<portable_pty::Comma
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_key_must_match_any_recorded_key() {
+        let parse = |s: &str| russh::keys::parse_public_key_base64(s).unwrap();
+        let ed = parse("AAAAC3NzaC1lZDI1NTE5AAAAIMV+3cc3PtT7NXXIhjMLTBNepYh3dqrUY5Lt8w7MLXDS");
+        let other_ed =
+            parse("AAAAC3NzaC1lZDI1NTE5AAAAIOoSDHNHfbtzBYseCRckQJAUs26l0CErqmzD943s6CF9");
+        let ecdsa = parse("AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFacpkNE9PVpAPEoj83o6XZepb0cibsLdiSLis2Drauibq2ONxZKUcbSROL4R1p2VrP485Iy4ajDjU7KxKPVjL4=");
+        assert!(matches!(
+            judge(std::slice::from_ref(&ed), &ed, None),
+            HostKey::Trusted
+        ));
+        // 同一種演算法、不同的金鑰。
+        assert!(matches!(
+            judge(std::slice::from_ref(&ed), &other_ed, None),
+            HostKey::Changed
+        ));
+        // 換成另一種演算法：也要拒絕，不能當成第一次連線。
+        assert!(matches!(
+            judge(std::slice::from_ref(&ed), &ecdsa, None),
+            HostKey::Changed
+        ));
+        let fp = fingerprint(&ecdsa);
+        assert!(matches!(
+            judge(std::slice::from_ref(&ed), &ecdsa, Some(&fp)),
+            HostKey::Changed
+        ));
+        // 沒有記錄：使用者確認過指紋才信任。
+        assert!(matches!(judge(&[], &ecdsa, None), HostKey::Unknown(..)));
+        assert!(matches!(judge(&[], &ecdsa, Some(&fp)), HostKey::Trusted));
+        assert!(matches!(
+            judge(&[], &ecdsa, Some("SHA256:別的")),
+            HostKey::Unknown(..)
+        ));
+        // 有好幾把（ed25519 和 ecdsa 都記過）：符合其中一把就好。
+        assert!(matches!(
+            judge(&[ed, ecdsa.clone()], &ecdsa, None),
+            HostKey::Trusted
+        ));
+    }
 
     #[test]
     fn parses_host_field() {
@@ -1013,6 +1083,18 @@ mod tests {
         assert!(parse_host("srv", "", None).is_err());
         assert!(parse_host("srv:abc", "u", None).is_err());
         assert!(parse_host("", "u", None).is_err());
+        // 會被 ssh 當成選項的帳號、主機名稱。
+        assert!(parse_host("-oProxyCommand=calc@srv", "", None).is_err());
+        assert!(parse_host("srv", "-oProxyCommand=calc", None).is_err());
+        assert!(parse_host("-oProxyCommand=calc", "eric", None).is_err());
+        assert!(parse_host("srv", "eric bob", None).is_err());
+        let t = SshTarget {
+            host: "srv".into(),
+            port: 22,
+            root: "/".into(),
+            key_path: None,
+        };
+        assert!(terminal_command("-oProxyCommand=x", &t).is_none());
     }
 
     #[test]
@@ -1074,6 +1156,7 @@ mod tests {
                 "2222",
                 "-i",
                 "/keys/id",
+                "--",
                 "eric@srv",
                 "sh -c 'cd \"$1\" 2>/dev/null; exec \"${SHELL:-/bin/sh}\" -l' sh '/home/eric/it'\\''s 筆記'",
             ]

@@ -75,7 +75,8 @@ export const editing: Record<string, Translation> = {
   // remote-images.ts、svg-image.ts、toc.ts、plugins/
   "🖼 {alt}（已封鎖遠端圖片）": "🖼 {alt} (remote image blocked)",
   "🖼 圖片（已封鎖遠端圖片）": "🖼 Image (remote image blocked)",
-  "已封鎖遠端圖片：{src}\n可以在「設定 → 外觀」關閉「封鎖遠端圖片」": "Remote image blocked: {src}\nYou can turn off \"Block Remote Images\" in Settings → Appearance.",
+  "已封鎖遠端圖片：{src}\n按一下載入這份文件的遠端圖片；也可以在「設定 → 外觀」關閉「封鎖遠端圖片」":
+    "Remote image blocked: {src}\nClick to load remote images in this document, or turn off \"Block Remote Images\" in Settings → Appearance.",
   "沒有圖片": "No image found.",
   "無法轉成圖片": "Couldn't convert to an image.",
   "（文件中還沒有標題）": "(No headings in this document yet)",
@@ -263,4 +264,5 @@ export const editing: Record<string, Translation> = {
   "最後更新": "Last Updated",
   "留言（{n}）": ["Comment ({n})", "Comments ({n})"],
   "欄位": "Field",
+  "開始寫 Markdown…（輸入 / 插入表格、圖片等；按 {keys} 開啟指令面板）": "Start writing Markdown… (type / to insert tables, images and more; press {keys} for the command palette)",
 };

@@ -51,6 +51,9 @@ pub struct ActiveDoc {
     path: Option<String>,
     name: String,
     text: String,
+    /// 內容和上次同步時相同：前端不再送全文（大文件每次移動游標都送一次很浪費），沿用上次的。
+    #[serde(default)]
+    same_text: bool,
     dirty: bool,
     selection: Option<Selection>,
 }
@@ -537,6 +540,15 @@ fn new_token() -> Result<String, String> {
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// 換一組新的權杖並存起來。
+fn rotate_token(dir: &Path) -> Result<String, String> {
+    let token = new_token()?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    crate::files::write_private(&dir.join("mcp-token"), token.as_bytes())
+        .map_err(|e| e.to_string())?;
+    Ok(token)
+}
+
 /// 讀取（或第一次時建立）權杖。存在 app 設定資料夾，不放在使用者的筆記資料夾裡。
 fn load_token(dir: &Path) -> Result<String, String> {
     let path = dir.join("mcp-token");
@@ -552,11 +564,8 @@ fn load_token(dir: &Path) -> Result<String, String> {
             return Ok(t.to_string());
         }
     }
-    let token = new_token()?;
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     // 權杖只有自己能讀（Unix 上權限 0600）。
-    crate::files::write_private(&path, token.as_bytes()).map_err(|e| e.to_string())?;
-    Ok(token)
+    rotate_token(dir)
 }
 
 #[derive(Serialize)]
@@ -586,16 +595,22 @@ fn info(conn: &Connection) -> McpInfo {
 /// 啟動 MCP 伺服器（已在執行時直接回傳連線資訊）。
 #[tauri::command]
 pub async fn mcp_start(app: AppHandle, mcp: State<'_, Mcp>) -> Result<McpInfo, String> {
+    crate::settings::require_ai(&app)?;
     if let Some(r) = mcp.running.lock().unwrap().as_ref() {
         return Ok(info(&r.conn));
     }
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    let token = load_token(&config_dir)?;
+    let mut token = load_token(&config_dir)?;
     let listener = match tokio::net::TcpListener::bind(("127.0.0.1", PREFERRED_PORT)).await {
         Ok(l) => l,
-        Err(_) => tokio::net::TcpListener::bind(("127.0.0.1", 0))
-            .await
-            .map_err(|e| tr!("無法啟動 MCP 伺服器：{e}", e = e))?,
+        Err(_) => {
+            // 固定的連接埠被別的程式占用：照舊註冊的 AI 工具會把權杖送給那個程式，
+            // 所以換一組新的權杖，舊的就算被拿走也沒有用（需要重新註冊）。
+            token = rotate_token(&config_dir)?;
+            tokio::net::TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .map_err(|e| tr!("無法啟動 MCP 伺服器：{e}", e = e))?
+        }
     };
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     let url = format!("http://127.0.0.1:{port}/mcp");
@@ -662,8 +677,14 @@ pub fn mcp_stop(mcp: State<'_, Mcp>) {
 /// 前端同步目前的文件、選取範圍與分頁清單。
 /// 用非同步指令：內容可能很大，不要在主執行緒上解析。
 #[tauri::command]
-pub async fn mcp_sync(snapshot: Snapshot, mcp: State<'_, Mcp>) -> Result<(), String> {
-    *mcp.snapshot.write().unwrap() = snapshot;
+pub async fn mcp_sync(mut snapshot: Snapshot, mcp: State<'_, Mcp>) -> Result<(), String> {
+    let mut current = mcp.snapshot.write().unwrap();
+    if let (Some(new), Some(old)) = (snapshot.active.as_mut(), current.active.as_ref()) {
+        if new.same_text && new.path == old.path && new.name == old.name {
+            new.text = old.text.clone();
+        }
+    }
+    *current = snapshot;
     Ok(())
 }
 
@@ -702,6 +723,10 @@ mod tests {
         let a = load_token(&dir).unwrap();
         assert_eq!(a.len(), 64);
         assert_eq!(load_token(&dir).unwrap(), a);
+        // 換新之後，下次讀到的是新的。
+        let b = rotate_token(&dir).unwrap();
+        assert_ne!(a, b);
+        assert_eq!(load_token(&dir).unwrap(), b);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

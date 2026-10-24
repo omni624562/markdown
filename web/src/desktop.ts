@@ -57,7 +57,8 @@ export interface Entry {
 export interface DocxImport {
   name: string;
   mdPath: string;
-  dataBase64: string;
+  /** Word 檔的內容（原始位元組，不經過 base64）。 */
+  data: ArrayBuffer;
 }
 
 /** 資料夾中一份 Markdown 文件的內容（`text` 省略代表和上次讀到的一樣）。 */
@@ -130,6 +131,8 @@ export interface EditorSnapshot {
     path: string | null;
     name: string;
     text: string;
+    /** 內容和上次同步時相同（`text` 是空的，原生端沿用上次的內容）。 */
+    sameText?: boolean;
     dirty: boolean;
     selection: { text: string; fromLine: number; toLine: number } | null;
   } | null;
@@ -396,6 +399,10 @@ export interface SshConnectRequest {
   trust?: string;
 }
 
+/** 最近一次儲存設定（AI 相關的指令要等它完成）。 */
+let settingsSaved: Promise<unknown> = Promise.resolve();
+const afterSettings = <T>(run: () => Promise<T>): Promise<T> => settingsSaved.catch(() => {}).then(run);
+
 function bridge(core: TauriCore, event: TauriEvent) {
   // 遠端（WebDAV、SSH）路徑改用 dav_* 指令；其他照舊。
   const route = <T>(path: string | null | undefined, local: () => Promise<T>, remote: () => Promise<T>) =>
@@ -443,7 +450,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<boolean>("dav_probe", { path }),
       ),
     loadSettings: () => core.invoke<string | null>("load_settings"),
-    saveSettings: (json: string) => core.invoke<void>("save_settings", { json }),
+    /**
+     * 儲存設定。從關閉改成「啟用 AI 協作」時原生端會再確認一次；使用者拒絕時回傳 false。
+     * 需要 AI 的指令會等最近一次存檔完成（原生端以設定檔為準）。
+     */
+    saveSettings: (json: string) => (settingsSaved = core.invoke<boolean>("save_settings", { json })),
 
     openFolder: () => core.invoke<Folder | null>("open_folder"),
     /**
@@ -514,7 +525,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
       layout: { widthMm: number; heightMm: number; marginTopMm: number; marginBottomMm: number; marginSideMm: number },
     ) => core.invoke<void>("print_to_pdf", { path, layout }),
     /** 選擇 Word 檔並讀取；取消時回傳 null。 */
-    importDocx: () => core.invoke<DocxImport | null>("import_docx"),
+    importDocx: async (): Promise<DocxImport | null> => {
+      const picked = await core.invoke<Omit<DocxImport, "data"> | null>("import_docx");
+      if (!picked) return null;
+      return { ...picked, data: await core.invoke<ArrayBuffer>("import_docx_data") };
+    },
     /** 讀取資料夾中的 Markdown 文件（`known` 是上次讀到的修改時間，沒變的不重讀）。 */
     scanDocs: (known: Record<string, number>, root: string) =>
       route(
@@ -573,11 +588,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     aiTools: () => core.invoke<{ claude: string | null; codex: string | null }>("ai_tools"),
     listFonts: () => core.invoke<{ name: string; label?: string; mono: boolean }[]>("list_fonts"),
     termOpen: (program: TermProgram, cols: number, rows: number) =>
-      core.invoke<number>("term_open", { program, cols, rows }),
+      afterSettings(() => core.invoke<number>("term_open", { program, cols, rows })),
     termWrite: (id: number, data: string) => core.invoke<void>("term_write", { id, data }),
     termResize: (id: number, cols: number, rows: number) => core.invoke<void>("term_resize", { id, cols, rows }),
     termClose: (id: number) => core.invoke<void>("term_close", { id }),
-    mcpStart: () => core.invoke<McpInfo>("mcp_start"),
+    mcpStart: () => afterSettings(() => core.invoke<McpInfo>("mcp_start")),
     mcpStop: () => core.invoke<void>("mcp_stop"),
     mcpSync: (snapshot: EditorSnapshot) => core.invoke<void>("mcp_sync", { snapshot }),
     /** 回傳 false 表示 AI 已經不在等這個決定（逾時）。 */
@@ -588,7 +603,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<string | null>("export_binary", { suggestedName, dataBase64, filterName, extensions }),
     /** 在工作區的 .github/workflows/ 建立工作流程檔（不覆蓋）。 */
     createWorkflow: (name: string, text: string) => core.invoke<string>("create_workflow", { name, text }),
-    aiRun: (id: number, tool: AiTool, prompt: string) => core.invoke<void>("ai_run", { id, tool, prompt }),
+    aiRun: (id: number, tool: AiTool, prompt: string) =>
+      afterSettings(() => core.invoke<void>("ai_run", { id, tool, prompt })),
     aiCancel: (id: number) => core.invoke<void>("ai_cancel", { id }),
 
     gitStatus: () => core.invoke<GitStatus>("git_status"),

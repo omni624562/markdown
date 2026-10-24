@@ -481,19 +481,31 @@ function activeLines(state: EditorState) {
     for (let l = doc.lineAt(r.from).number; l <= doc.lineAt(r.to).number; l++) active.add(l);
   }
   const lineActive = (pos: number) => active.has(doc.lineAt(pos).number);
-  const rangeActive = (from: number, to: number) => {
-    for (let l = doc.lineAt(from).number; l <= doc.lineAt(to).number; l++) if (active.has(l)) return true;
-    return false;
-  };
+  // 直接比對範圍有沒有重疊，不必逐行查（很長的程式碼區塊每次移動游標都要走過每一行）。
+  const spans = activeSpans(state);
+  const rangeActive = (from: number, to: number) => spans.some(([a, b]) => a <= to && b >= from);
   return { active, lineActive, rangeActive };
+}
+
+/** 游標或選取範圍所在的整行範圍（編輯器沒有焦點時是空的）。 */
+function activeSpans(state: EditorState): [number, number][] {
+  const doc = state.doc;
+  return (editorFocused(state) ? state.selection.ranges : []).map((r) => [doc.lineAt(r.from).from, doc.lineAt(r.to).to]);
+}
+
+/** 區塊元件的結果：裝飾，加上所有可能畫成元件的區塊位置（判斷移動游標時要不要重算）。 */
+interface Blocks {
+  set: DecorationSet;
+  blocks: [number, number][];
 }
 
 /**
  * 區塊元件（表格、`$$` 公式、流程圖）：會改變版面高度，CodeMirror 規定要由 StateField 提供，所以看整份文件；
  * 只走區塊層級的節點（不進入段落內容），大文件也很快。
  */
-function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSet {
-  if (opts.enabled && !opts.enabled()) return Decoration.none;
+function buildBlocks(state: EditorState, opts: LivePreviewOptions): Blocks {
+  if (opts.enabled && !opts.enabled()) return { set: Decoration.none, blocks: [] };
+  const blocks: [number, number][] = [];
   const doc = state.doc;
   const { rangeActive } = activeLines(state);
   const wholeLines = (from: number, to: number) => doc.lineAt(from).from === from && doc.lineAt(to).to === to;
@@ -511,6 +523,7 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSe
         case "ListItem":
           return;
         case "Table":
+          blocks.push([from, to]);
           if (!rangeActive(from, to) && wholeLines(from, to)) {
             decos.push(
               Decoration.replace({
@@ -521,8 +534,11 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSe
           }
           return false;
         case "FencedCode": {
-          const code = mermaidOn && wholeLines(from, to) ? mermaidSource(doc.sliceString(from, to)) : null;
+          // 先看第一行是不是 mermaid，不是就不必把整段程式碼取出來。
+          const mermaid = mermaidOn && /mermaid/i.test(doc.lineAt(from).text);
+          const code = mermaid && wholeLines(from, to) ? mermaidSource(doc.sliceString(from, to)) : null;
           if (code === null) return false;
+          blocks.push([from, to]);
           if (!rangeActive(from, to)) {
             decos.push(Decoration.replace({ widget: new MermaidWidget(code, theme, false, opts), block: true }).range(from, to));
           } else if (code.trim()) {
@@ -534,6 +550,7 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSe
         case "Paragraph": {
           if (!mathOn || doc.sliceString(from, from + 2) !== "$$") return false;
           const display = blockMath(doc.sliceString(from, to));
+          if (display !== null) blocks.push([from, to]);
           if (display !== null && !rangeActive(from, to) && wholeLines(from, to)) {
             decos.push(Decoration.replace({ widget: new MathWidget(display, true, opts.renderMath!), block: true }).range(from, to));
           }
@@ -544,7 +561,13 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): DecorationSe
       }
     },
   });
-  return Decoration.set(decos, true);
+  return { set: Decoration.set(decos, true), blocks };
+}
+
+/** 游標移動前後所在的行，有沒有碰到任何區塊（碰到才需要重算：元件要換成原始碼，或換回元件）。 */
+function selectionTouchesBlock(blocks: [number, number][], before: EditorState, after: EditorState): boolean {
+  const spans = [...activeSpans(before), ...activeSpans(after)];
+  return blocks.some(([f, t]) => spans.some(([a, b]) => a <= t && b >= f));
 }
 
 /**
@@ -835,15 +858,18 @@ export function refreshLivePreview(view: EditorView): void {
 }
 
 export function livePreview(opts: LivePreviewOptions): Extension {
-  const blocks = StateField.define<DecorationSet>({
+  const blocks = StateField.define<Blocks>({
     create: (state) => buildBlocks(state, opts),
     update(value, tr) {
       const treeChanged = syntaxTree(tr.state) !== syntaxTree(tr.startState);
       const forced = tr.effects.some((e) => e.is(rebuild));
-      if (!tr.docChanged && !tr.selection && !treeChanged && !tr.reconfigured && !focusChanged(tr) && !forced) return value.map(tr.changes);
+      if (!tr.docChanged && !treeChanged && !tr.reconfigured && !focusChanged(tr) && !forced) {
+        // 只是移動游標，而且沒有跨進或跨出任何表格、公式、流程圖：沿用原本的結果。
+        if (!tr.selection || !selectionTouchesBlock(value.blocks, tr.startState, tr.state)) return value;
+      }
       return buildBlocks(tr.state, opts);
     },
-    provide: (f) => EditorView.decorations.from(f),
+    provide: (f) => EditorView.decorations.from(f, (v) => v.set),
   });
   const inline = ViewPlugin.fromClass(
     class {

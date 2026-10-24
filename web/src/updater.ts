@@ -3,7 +3,6 @@
  * 下載並核對簽章與檢查碼後取代執行檔，重新啟動即完成更新。
  * 更新視窗會列出這一版改了什麼；重新啟動後第一次開啟時，再說明一次已經更新了哪些內容。
  */
-import changelog from "../../CHANGELOG.md?raw";
 import type { AppVersion, Desktop, UpdateManifest } from "./desktop.ts";
 import { t } from "./i18n.ts";
 import { notesForVersion } from "./release-notes.ts";
@@ -108,6 +107,8 @@ export class Updater {
     const seen = storage.load("seen-version") ?? (storage.load("update-checked") ? "舊版" : null); // i18n-ignore（內部記號）
     storage.save("seen-version", current.version);
     if (!seen || seen === current.version || !current.build) return;
+    // 更新說明只有更新後第一次開啟才用到：這時才載入，平常啟動不必多讀。
+    const { default: changelog } = await import("../../CHANGELOG.md?raw");
     const changes = notesForVersion(changelog, current.version);
     if (!changes) return;
     await showRelease({

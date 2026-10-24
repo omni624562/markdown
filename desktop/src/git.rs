@@ -107,7 +107,7 @@ pub fn auth(app: &AppHandle) -> Auth {
 /// 提交時的名字與 Email：遠端在 Azure DevOps 上就用 ADO 的帳號，否則用 GitHub 的。
 pub(crate) fn identity_for(app: &AppHandle, dir: &Path) -> Option<Identity> {
     let on_ado = crate::ado::cred(app).is_some_and(|c| {
-        Repository::discover(dir)
+        open(dir)
             .ok()
             .and_then(|r| {
                 let remote = r.find_remote("origin").ok()?;
@@ -191,8 +191,53 @@ fn classify(s: git2::Status) -> Option<FileStatus> {
     }
 }
 
+/// 找到 `dir` 所在的儲存庫（往上找 `.git`），並確認它不會把操作帶到資料夾以外：
+/// - 儲存庫設定的工作目錄（`core.worktree`）必須就是 `.git` 所在的資料夾，
+///   否則切換分支、合併時檔案會寫到別的地方（例如 Windows 的「啟動」資料夾）。
+/// - `.git` 是檔案（`gitdir: …` 指標）時，不能指到網路位置（`\\主機\…`）：
+///   光是讀取就會連過去，可能洩漏 Windows 登入的雜湊值。資料夾本身就在網路磁碟上時不限制。
+///
+/// 別人分享的資料夾可能帶著設計過的 `.git`，所以每次開啟都檢查。
 pub(crate) fn open(dir: &Path) -> Result<Repository, String> {
-    Repository::discover(dir).map_err(|_| tr!("這個資料夾不是 Git 儲存庫"))
+    let not_repo = || tr!("這個資料夾不是 Git 儲存庫");
+    let unsafe_repo = || {
+        tr!("這個資料夾的 Git 設定會把檔案寫到資料夾以外的地方（core.worktree 或 gitdir），為了安全不使用。")
+    };
+    let base = dir
+        .ancestors()
+        .find(|d| d.join(".git").exists())
+        .ok_or_else(not_repo)?;
+    let on_network = crate::io::is_network_path(base);
+    let dot_git = base.join(".git");
+    if dot_git.is_file() {
+        let text = std::fs::read_to_string(&dot_git).map_err(|_| not_repo())?;
+        let target = text
+            .lines()
+            .find_map(|l| l.strip_prefix("gitdir:"))
+            .map(str::trim)
+            .ok_or_else(not_repo)?;
+        if !on_network && looks_remote(target) {
+            return Err(unsafe_repo());
+        }
+    }
+    let repo = Repository::open(base).map_err(|_| not_repo())?;
+    if !on_network && crate::io::is_network_path(repo.path()) {
+        return Err(unsafe_repo());
+    }
+    if let Some(workdir) = repo.workdir() {
+        let canon = |p: &Path| dunce::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        if canon(workdir) != canon(base) {
+            return Err(unsafe_repo());
+        }
+    }
+    Ok(repo)
+}
+
+/// 網路位置（UNC 路徑，或 `//主機/…`）。
+fn looks_remote(path: &str) -> bool {
+    path.starts_with("\\\\")
+        || path.starts_with("//")
+        || crate::io::is_network_path(Path::new(path))
 }
 
 pub(crate) fn workdir(repo: &Repository) -> Result<PathBuf, String> {
@@ -390,10 +435,23 @@ fn is_github(url: &str) -> bool {
     url.to_ascii_lowercase().starts_with("https://github.com/")
 }
 
+/// 遠端網址只接受 HTTPS；不加密的 HTTP 只限區域網路的位址；本機的儲存庫路徑不能是網路位置
+/// （別人給的儲存庫可能把遠端設成 `\\主機\…`，光是檢查路徑存不存在就會連過去）。
 fn require_https(url: &str) -> Result<(), String> {
     let lower = url.to_ascii_lowercase();
-    if lower.starts_with("https://") || lower.starts_with("http://") || Path::new(url).exists() {
+    let local = || !looks_remote(url) && !lower.contains("://") && Path::new(url).exists();
+    if lower.starts_with("https://") || local() {
         Ok(())
+    } else if lower.starts_with("http://") {
+        let host = crate::dav::host_of(url);
+        if !host.is_empty() && crate::dav::is_private_host(&host) && !url.contains(['?', '#']) {
+            Ok(())
+        } else {
+            Err(tr!(
+                "遠端網址用的是沒有加密的 HTTP，密碼和內容可能被看到，只能用在區域網路。請改用 HTTPS 的網址：{url}",
+                url = url
+            ))
+        }
     } else {
         Err(tr!(
             "目前只支援 HTTPS 的遠端網址（例如 https://github.com/…）。這個儲存庫的遠端是：{url}",
@@ -716,8 +774,10 @@ pub fn publish_at(
     auth: &Auth,
     who: Option<&Identity>,
 ) -> Result<(), String> {
-    let repo = match Repository::discover(dir) {
+    let repo = match open(dir) {
         Ok(r) => r,
+        // 有 `.git` 但不安全：回報錯誤，不要在裡面另外建立儲存庫。
+        Err(e) if dir.ancestors().any(|d| d.join(".git").exists()) => return Err(e),
         Err(_) => {
             let mut opts = git2::RepositoryInitOptions::new();
             opts.initial_head("main");
@@ -786,6 +846,34 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dunce::canonicalize(&dir).unwrap()
+    }
+
+    #[test]
+    fn refuses_repos_that_point_outside_the_folder() {
+        // 一般的儲存庫：從子資料夾也找得到。
+        let ok = temp("open-ok");
+        Repository::init(&ok).unwrap();
+        fs::create_dir_all(ok.join("筆記")).unwrap();
+        assert!(open(&ok.join("筆記")).is_ok());
+        // core.worktree 指到別的地方：不使用。
+        let evil = temp("open-worktree");
+        let elsewhere = temp("open-elsewhere");
+        let repo = Repository::init(&evil).unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("core.worktree", elsewhere.to_str().unwrap())
+            .unwrap();
+        assert!(open(&evil).err().unwrap().contains("core.worktree"));
+        // `.git` 檔案指到網路位置：不讀取。
+        let pointer = temp("open-gitdir");
+        fs::write(pointer.join(".git"), "gitdir: //attacker/share/repo\n").unwrap();
+        assert!(open(&pointer).err().unwrap().contains("gitdir"));
+        fs::write(pointer.join(".git"), "gitdir: \\\\attacker\\share\n").unwrap();
+        assert!(open(&pointer).err().unwrap().contains("gitdir"));
+        assert!(open(&temp("open-none")).is_err());
+        for d in [ok, evil, elsewhere, pointer] {
+            let _ = fs::remove_dir_all(d);
+        }
     }
 
     #[test]
@@ -915,6 +1003,11 @@ mod tests {
             .unwrap_err()
             .contains("HTTPS"));
         assert!(require_https("https://github.com/a/b.git").is_ok());
+        assert!(require_https("http://192.168.1.5/git/notes.git").is_ok());
+        assert!(require_https("http://example.com/a.git").is_err());
+        assert!(require_https("http://example.com#@10.0.0.1/a.git").is_err());
+        assert!(require_https("\\\\attacker\\share\\r").is_err());
+        assert!(require_https("//attacker/share/r").is_err());
         assert!(is_github("https://GitHub.com/a/b"));
         assert!(!is_github("https://gitlab.com/a/b"));
     }

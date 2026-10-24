@@ -175,6 +175,8 @@ export class SettingsDialog {
   /** 重新整理 Git 頁的帳號狀態（登入、登出後）。 */
   #refreshGit = () => {};
   #page = 0;
+  /** 依搜尋文字篩選選項（空白時回到分類頁）。 */
+  #filter: (query: string) => void = () => {};
 
   constructor(
     store: SettingsStore,
@@ -200,7 +202,18 @@ export class SettingsDialog {
     close.className = "btn btn-primary btn-small";
     close.textContent = t("完成");
     close.addEventListener("click", () => d.close());
-    header.append(h, close);
+    // 選項不少：可以直接搜尋（比對名稱與說明）。
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "settings-search";
+    search.placeholder = t("搜尋設定…");
+    search.setAttribute("aria-label", t("搜尋設定"));
+    search.addEventListener("input", () => this.#filter(search.value));
+    d.addEventListener("close", () => {
+      search.value = "";
+      this.#filter("");
+    });
+    header.append(h, search, close);
     d.append(header);
 
     // 左邊是分類，右邊一次只顯示一個分類的選項。
@@ -412,6 +425,27 @@ export class SettingsDialog {
     });
     nav.append(...tabs);
     show(0);
+    this.#filter = (query) => {
+      const q = query.trim().toLowerCase();
+      const rows = [...body.querySelectorAll<HTMLElement>(".settings-row")];
+      if (!q) {
+        for (const el of body.querySelectorAll<HTMLElement>(".settings-row, .settings-group, .settings-group-title")) el.hidden = false;
+        nav.classList.remove("searching");
+        show(this.#page);
+        return;
+      }
+      nav.classList.add("searching");
+      for (const r of rows) r.hidden = !(r.textContent ?? "").toLowerCase().includes(q);
+      for (const card of body.querySelectorAll<HTMLElement>(".settings-group")) {
+        const empty = ![...card.querySelectorAll<HTMLElement>(".settings-row")].some((r) => !r.hidden);
+        card.hidden = empty;
+        const title = card.previousElementSibling;
+        if (title instanceof HTMLElement && title.classList.contains("settings-group-title")) title.hidden = empty;
+      }
+      sections.forEach((sec) => (sec.hidden = ![...sec.querySelectorAll<HTMLElement>(".settings-row")].some((r) => !r.hidden)));
+      tabs.forEach((tab) => tab.setAttribute("aria-selected", "false"));
+      body.scrollTop = 0;
+    };
   }
 
   #aiSection(): HTMLElement {

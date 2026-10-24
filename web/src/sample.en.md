@@ -1,55 +1,59 @@
 # Welcome to oMarker
 
-Write Markdown on one side and see the **live preview** on the other. Parsing is done in Rust ([comrak](https://github.com/kivikakk/comrak)) compiled to WebAssembly; code highlighting uses highlight.js.
+This is a sample document you can edit freely. Take three minutes to read it and you'll know your way around. To start writing, press "+" at the top for a new document, or just delete this text.
 
-## Keyboard Shortcuts
+## 1. Switch views
 
-| Action | Windows/Linux | macOS |
-| --- | --- | --- |
-| **Command Palette** (find every feature) | `Ctrl+Shift+P` | `⌘⇧P` |
-| Bold/Italic | `Ctrl+B`/`Ctrl+I` | `⌘B`/`⌘I` |
-| Inline code | `Ctrl+E` | `⌘E` |
-| Insert link | `Ctrl+K` | `⌘K` |
-| Heading 1–3 | `Ctrl+Alt+1`–`3` | `⌘⌥1`–`3` |
-| Open/Save | `Ctrl+O`/`Ctrl+S` | `⌘O`/`⌘S` |
-| Find and replace | `Ctrl+F` | `⌘F` |
+Switch between four views at the bottom of the window:
 
-## Supported Syntax
+- **Live Preview** (default): see the formatted result as you type; the line with the cursor shows its Markdown source
+- **Split**: Markdown on the left, preview on the right, scrolled together
+- **Source** and **Preview**: just one side
+
+## 2. Insert things
+
+- Type `/` on an empty line to insert a table, image, task list, math, diagram, date…
+- Select text to get formatting buttons, or use shortcuts: bold `Ctrl+B`, italic `Ctrl+I`, link `Ctrl+K`
+- Paste a screenshot and the image is saved to an `assets` folder next to the document
+
+## 3. Find every feature
+
+- **Command palette** `Ctrl+Shift+P`: search any feature by name, e.g. "export", "Git", "SSH"
+- **Keyboard shortcuts** `F1`
+- The "⋯" menu at the top right: projects, export, Git, AI & terminal, settings
+
+## 4. Folders and projects
+
+- After "Open Folder", a file tree appears on the left; `Ctrl+P` opens a file quickly and `Ctrl+Shift+F` searches the whole folder
+- Each folder is a project that remembers its own tabs; switch projects with the icon at the top left
+- You can also edit folders on a NAS (WebDAV) or a Linux host (SSH) directly
+
+## 5. Save, sync and export
+
+- Saved files are saved automatically, and every save is kept in version history so you can compare and restore
+- When the folder is a Git repository, `Ctrl+Shift+G` opens source control to commit and sync to GitHub in one click
+- Export to PDF, Word (.docx) or HTML, or present it as a slideshow
+
+## Supported syntax
 
 - [x] Tables, strikethrough (~~like this~~), autolinks: https://example.com
-- [x] Task lists
-- [x] Footnotes[^1]
-- [x] GitHub-style alerts
+- [x] Task lists, footnotes[^1], `[[other document]]` links, `#tags`
 - [x] Math: $E = mc^2$
 - [x] Diagrams (Mermaid)
 
+| Action | Windows / Linux | macOS |
+| --- | --- | --- |
+| Command palette | `Ctrl+Shift+P` | `⌘⇧P` |
+| Quick open | `Ctrl+P` | `⌘P` |
+| Save | `Ctrl+S` | `⌘S` |
+| Find and replace | `Ctrl+F` | `⌘F` |
+
 > [!TIP]
-> Switch the interface language in Settings → Appearance → Language.
-
-```rust
-fn main() {
-    let html = md_core::render("# Hello", &Default::default()).html;
-    println!("{html}");
-}
-```
-
-```ts
-const result = render(markdown, { sourcepos: true });
-preview.innerHTML = result.html;
-```
+> Bold text right next to Chinese characters is recognized correctly, with no spaces needed around the asterisks.
 
 ```mermaid
 graph LR
   Write --> Preview --> Export
 ```
 
-## More Features
-
-1. Press `Tab` in a table to move to the next cell; columns line up automatically (including CJK text)
-2. Open `.txt` and `.json` files too: JSON gets a collapsible tree view and live syntax errors
-3. Click a heading in the **Outline** to jump to it; the current section is highlighted
-4. The preview scrolls along with the editor; drag the divider to resize
-5. Your work is saved as a draft automatically, so a reload won't lose it
-6. Drag files into the window to open them, or export a standalone HTML file
-
-[^1]: Footnotes appear at the end of the document.
+[^1]: Footnotes appear at the bottom of the document. You can reopen this document later with "Help: Open Welcome Document" in the command palette.
