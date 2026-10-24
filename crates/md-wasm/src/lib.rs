@@ -63,6 +63,12 @@ export interface DocInfo {
   links: LinkRef[];
 }
 
+export interface FileRef {
+  path: string;
+  /** 相對於資料夾、以 `/` 分隔的路徑。 */
+  rel: string;
+}
+
 export type TermKind = "cn" | "typo" | "punct";
 
 export interface Term {
@@ -231,6 +237,22 @@ pub fn parse_doc(text: &str, year: i32) -> Result<JsValue, JsError> {
     // 沒有截止日要是 null（預設會變成 undefined）。
     let json = serde_wasm_bindgen::Serializer::json_compatible();
     Ok(md_text::parse_doc(text, year).serialize(&json)?)
+}
+
+/// 檔案或資料夾從 `from` 改名成 `to` 之後，更新 `docPath` 這份文件中指向它們的連結（和桌面版後端同一份程式）。
+/// `files` 是改名前資料夾中的檔案；沒有要改的時候回傳 `undefined`。
+#[wasm_bindgen(js_name = renameLinks)]
+pub fn rename_links(
+    text: &str,
+    doc_path: &str,
+    #[wasm_bindgen(unchecked_param_type = "FileRef[]")] files: JsValue,
+    from: &str,
+    to: &str,
+) -> Result<Option<String>, JsError> {
+    let files: Vec<md_text::FileRef> = serde_wasm_bindgen::from_value(files)?;
+    Ok(md_text::rename_links(text, doc_path, &files, |p| {
+        md_text::rebase(p, from, to)
+    }))
 }
 
 /// 兩國用語、錯字與中文標點檢查。`skip` 是不檢查的範圍（起點、終點交錯排列），`ignore` 是不再提示的詞。

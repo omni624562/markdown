@@ -1,7 +1,7 @@
 //! 資料夾文件索引：解析工作區中所有 Markdown 文件的待辦、標籤與連結，給待辦總覽、標籤與反向連結使用。
 //!
 //! 只傳解析結果給前端，不傳整份內容（大資料夾可以省下幾十 MB 的傳輸與記憶體）；
-//! 前端需要內容時（勾選待辦、改名後更新連結）再用 `read_docs` 讀那幾份。
+//! 前端需要內容時（勾選待辦）再用 `read_docs` 讀那幾份；改名後更新連結直接在這裡讀、改寫（`link_updates`）。
 //! 只重讀修改時間變了的檔案，網路磁碟上的資料夾也不會每次都整個重讀。
 
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use chrono::Datelike;
-use md_text::{parse_doc, DocInfo};
+use md_text::{parse_doc, rebase, rename_links, DocInfo, FileRef};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
@@ -110,6 +110,49 @@ pub async fn read_docs(
                     return None;
                 }
                 Some(decode(&fs::read(&path).ok()?).0)
+            })
+            .collect())
+    })
+    .await
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkUpdate {
+    /// 文件現在的路徑（文件本身也在改名的資料夾裡時是新的路徑）。
+    pub path: String,
+    pub before: String,
+    pub text: String,
+}
+
+/// 檔案或資料夾從 `from` 改名成 `to` 之後，讀取 `paths` 這幾份沒有開啟的文件（改名前的路徑），
+/// 改寫其中指向改名檔案的連結。`files` 是改名前資料夾中的檔案。
+/// 只回傳有改到的文件；使用者確認後，前端再用 `update_doc` 寫入（會比對內容、記到版本記錄）。
+#[tauri::command]
+pub async fn link_updates(
+    paths: Vec<String>,
+    files: Vec<FileRef>,
+    from: String,
+    to: String,
+    workspace: State<'_, Workspace>,
+) -> Result<Vec<LinkUpdate>, String> {
+    let root = workspace.require_root()?;
+    crate::io::blocking(move || {
+        Ok(paths
+            .iter()
+            .filter_map(|old| {
+                let now = rebase(old, &from, &to).unwrap_or_else(|| old.clone());
+                let path = resolve_inside(&root, Path::new(&now)).ok()?;
+                if fs::metadata(&path).ok()?.len() > MAX_DOC_BYTES {
+                    return None;
+                }
+                let before = decode(&fs::read(&path).ok()?).0;
+                let text = rename_links(&before, old, &files, |p| rebase(p, &from, &to))?;
+                Some(LinkUpdate {
+                    path: now,
+                    before,
+                    text,
+                })
             })
             .collect())
     })
