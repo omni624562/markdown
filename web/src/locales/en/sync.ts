@@ -109,7 +109,7 @@ export const sync: Record<string, Translation> = {
   "會從這台電腦刪除個人存取權杖。資料夾和檔案都會留在電腦上；之後要推送或拉取 Azure DevOps 的儲存庫，需要重新連線。":
     "This deletes your personal access token from this computer. Your folders and files stay on this computer. To push to or pull from Azure DevOps repositories later, you'll need to connect again.",
   "已中斷 Azure DevOps 連線": "Disconnected from Azure DevOps.",
-  "請先在設定的 Git 頁輸入 Azure DevOps 的網址與個人存取權杖": "First enter your Azure DevOps URL and personal access token on the Git page of Settings.",
+  "請先在設定的 Azure DevOps／TFS 頁輸入伺服器網址與個人存取權杖": "First enter your server URL and personal access token on the Azure DevOps/TFS page of Settings.",
   "正在讀取儲存庫清單…": "Loading repositories…",
   "搜尋 {n} 個儲存庫與 Wiki…": ["Search {n} repository and wiki…", "Search {n} repositories and wikis…"],
   "這個集合還沒有儲存庫": "This collection has no repositories yet",

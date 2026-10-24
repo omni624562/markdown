@@ -14,7 +14,7 @@ export interface AdoHooks {
   openFolder(folder: Folder): Promise<void>;
   /** 連線狀態改變（更新設定頁、工作項目面板）。 */
   changed(): void;
-  /** 還沒連線時，打開設定的 Git 頁讓使用者輸入網址與權杖。 */
+  /** 還沒連線時，打開設定的 Azure DevOps／TFS 頁讓使用者輸入網址與權杖。 */
   openSettings(): void;
 }
 
@@ -95,7 +95,7 @@ export class Ado {
   async #ensure(): Promise<boolean> {
     await this.#loaded;
     if (this.#account) return true;
-    toast(t("請先在設定的 Git 頁輸入 Azure DevOps 的網址與個人存取權杖"));
+    toast(t("請先在設定的 Azure DevOps／TFS 頁輸入伺服器網址與個人存取權杖"));
     this.#hooks.openSettings();
     return false;
   }

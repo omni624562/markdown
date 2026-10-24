@@ -83,7 +83,6 @@ export const common: Record<string, Translation> = {
   "從 GitHub 開啟儲存庫": "Open Repository from GitHub",
   "上傳到 GitHub": "Upload to GitHub",
   "AI 協作": "AI Collaboration",
-  "從 Azure DevOps 開啟儲存庫": "Open Repository from Azure DevOps",
   "從 Azure DevOps／TFS 下載或開啟儲存庫": "Download or Open Repository from Azure DevOps/TFS",
   "從 GitHub 下載或開啟儲存庫": "Download or Open Repository from GitHub",
   "「{name}」之前已經下載過，已直接開啟": "\"{name}\" was already downloaded, so it was opened",

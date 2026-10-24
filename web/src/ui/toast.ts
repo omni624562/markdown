@@ -1,9 +1,15 @@
 /** 非阻斷式通知，取代 alert()。可附一個動作按鈕（例如「復原」）。 */
 
+export interface ToastAction {
+  label: string;
+  run(): void;
+  /** 醒目的按鈕（這則通知主要就是要使用者按它）。 */
+  primary?: boolean;
+}
+
 export interface ToastOptions {
   tone?: "info" | "success" | "error";
-  /** `primary`：醒目的按鈕（這則通知主要就是要使用者按它）。 */
-  action?: { label: string; run(): void; primary?: boolean };
+  action?: ToastAction;
   /** 顯示時間（毫秒）。有動作按鈕時預設較長。 */
   duration?: number;
 }
@@ -39,6 +45,16 @@ new MutationObserver((records) => {
   if (opened) raise();
 }).observe(document.body, { subtree: true, attributeFilter: ["open"] });
 
+let errorAction: ((message: string) => ToastAction | undefined) | null = null;
+
+/**
+ * 錯誤通知自動附上的按鈕（例如「GitHub 登入已過期」附上「重新登入」）。
+ * 錯誤訊息來自很多地方（拉取、推送、Issues、Gist…），在這裡統一處理，不用每個地方各自加。
+ */
+export function setErrorAction(fn: (message: string) => ToastAction | undefined): void {
+  errorAction = fn;
+}
+
 /** 顯示通知；回傳的 `dismiss()` 可以提早關掉（例如「正在下載…」完成時）。 */
 export function toast(message: string, opts: ToastOptions = {}): { dismiss(): void } {
   const el = document.createElement("div");
@@ -56,6 +72,10 @@ export function toast(message: string, opts: ToastOptions = {}): { dismiss(): vo
     setTimeout(() => el.remove(), 300);
   };
 
+  if (!opts.action && opts.tone === "error") {
+    const action = errorAction?.(message);
+    if (action) opts = { ...opts, action, duration: Math.max(opts.duration ?? 0, 12000) };
+  }
   if (opts.action) {
     const btn = document.createElement("button");
     btn.type = "button";

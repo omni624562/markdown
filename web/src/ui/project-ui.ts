@@ -17,6 +17,8 @@ export interface ProjectHooks {
   open(path: string): Promise<void>;
   /** 開啟其他資料夾（選擇資料夾的對話框）。 */
   openFolder(): void;
+  /** 關閉目前的專案。 */
+  close(): void;
   remotes(): Promise<DavConnection[]>;
   openRemote(c: DavConnection): void;
   /** 專案的名稱、顏色等改了（更新側邊欄與狀態列）。 */
@@ -37,7 +39,7 @@ export interface RepoSource {
 type SwitchItem =
   | { kind: "project"; project: Project; section: string }
   | { kind: "remote"; remote: DavConnection }
-  | { kind: "action"; id: "open-folder" | "overview" | "edit"; title: string; icon: string }
+  | { kind: "action"; id: "open-folder" | "overview" | "edit" | "close"; title: string; icon: string }
   | { kind: "repo"; source: RepoSource };
 
 function message(e: unknown): string {
@@ -106,6 +108,7 @@ export class ProjectUi {
         else if (item.kind === "repo") item.source.run();
         else if (item.id === "open-folder") this.#h.openFolder();
         else if (item.id === "overview") void this.openOverview();
+        else if (item.id === "close") this.#h.close();
         else {
           const p = this.current;
           if (p) void this.edit(p);
@@ -151,6 +154,7 @@ export class ProjectUi {
       { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-grid" },
     ];
     if (this.current) actions.push({ kind: "action", id: "edit", title: t("目前專案的設定…"), icon: "pencil" });
+    if (this.#h.current()) actions.push({ kind: "action", id: "close", title: t("關閉專案"), icon: "folder-x" });
     for (const a of actions) if (a.kind === "action" && (!q || a.title.toLowerCase().includes(q))) items.push(a);
     for (const source of this.#h.repoSources()) {
       if (!q || source.title.toLowerCase().includes(q)) items.push({ kind: "repo", source });
@@ -286,6 +290,14 @@ export class ProjectUi {
       button(t("在檔案總管中顯示"), "folder-open", () => void this.#d.projectReveal(p.path).catch((e) => toast(message(e), { tone: "error" }))),
       button(t("從清單移除"), "x", () => void this.#forget(p)),
     );
+    if (here) {
+      actions.prepend(
+        button(t("關閉專案"), "folder-x", () => {
+          this.#overview?.close();
+          this.#h.close();
+        }),
+      );
+    }
     li.append(main, actions);
     return li;
   }
