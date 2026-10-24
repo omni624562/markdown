@@ -105,7 +105,7 @@ export class GitHub {
       render: (r) => ({
         title: r.fullName,
         detail: [r.private ? t("私人") : t("公開"), ago(r.updatedAt), r.description].filter(Boolean).join("・"),
-        icon: r.private ? "shield-check" : "git-branch",
+        icon: r.private ? "shield-check" : "github",
       }),
       pick: (r) => void this.#clone(r),
     });
