@@ -147,7 +147,7 @@ pub fn parse_doc(text: &str, year: i32) -> DocInfo {
 }
 
 /// 程式碼區塊的圍欄：最多三個空白，接著三個以上的 `` ` `` 或 `~`（回傳那一段）。
-fn fence_at(line: &str) -> Option<&str> {
+pub(crate) fn fence_at(line: &str) -> Option<&str> {
     let lead = run(line, 0, is_ws);
     if line[..lead].chars().count() > 3 {
         return None;
@@ -233,7 +233,7 @@ fn owners(text: &str) -> Vec<String> {
 }
 
 /// `[[目標#標題|顯示文字]]`：結束位置與目標。
-fn wiki_link(line: &str, at: usize) -> Option<(usize, &str)> {
+pub(crate) fn wiki_link(line: &str, at: usize) -> Option<(usize, &str)> {
     let mut i = at + 2;
     let n = run(line, i, |c| !matches!(c, '[' | ']' | '|' | '#' | '\n'));
     if n == 0 {
@@ -251,7 +251,7 @@ fn wiki_link(line: &str, at: usize) -> Option<(usize, &str)> {
 }
 
 /// `[文字](網址 "標題")`（前面可以有 `!`）：結束位置與網址。
-fn md_link(line: &str, at: usize) -> Option<(usize, &str)> {
+pub(crate) fn md_link(line: &str, at: usize) -> Option<(usize, &str)> {
     let close = at + 1 + line[at + 1..].find([']', '\n'])?;
     if !line[close..].starts_with("](") {
         return None;
@@ -296,7 +296,7 @@ fn link_dest(line: &str, at: usize) -> Option<(usize, &str)> {
 }
 
 /// 開頭是 `http:`、`mailto:` 這類網址的協定。
-fn has_scheme(href: &str) -> bool {
+pub(crate) fn has_scheme(href: &str) -> bool {
     let mut chars = href.chars();
     if !chars.next().is_some_and(|c| c.is_ascii_alphabetic()) {
         return false;

@@ -54,12 +54,12 @@ pub fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-/// 把行內程式碼換成空白（位元組長度不變，位置才對得上）。
-/// 開頭一段反引號配上後面第一段一樣長的；配不到就從下一個位置再試（和 CommonMark 略有不同，但不會漏算）。
-pub fn blank_code(line: &str) -> String {
+/// 行內程式碼的範圍（位元組位置）：開頭一段反引號配上後面第一段一樣長的；
+/// 配不到就從下一個位置再試（和 CommonMark 略有不同，但不會漏算）。
+pub fn code_spans(line: &str) -> Vec<(usize, usize)> {
     let b = line.as_bytes();
-    let mut out = b.to_vec();
     let ticks = |from: usize| b[from..].iter().take_while(|&&c| c == b'`').count();
+    let mut out = Vec::new();
     let mut i = 0;
     while i < b.len() {
         if b[i] != b'`' {
@@ -83,11 +83,20 @@ pub fn blank_code(line: &str) -> String {
         }
         match close {
             Some(end) => {
-                out[i..end].fill(b' ');
+                out.push((i, end));
                 i = end;
             }
             None => i += 1,
         }
+    }
+    out
+}
+
+/// 把行內程式碼換成空白（位元組長度不變，位置才對得上）。
+pub fn blank_code(line: &str) -> String {
+    let mut out = line.as_bytes().to_vec();
+    for (a, b) in code_spans(line) {
+        out[a..b].fill(b' ');
     }
     // 只把 ASCII 的反引號範圍換成空白，切在字元邊界上，結果一定是合法的 UTF-8。
     String::from_utf8(out).unwrap_or_else(|_| line.to_owned())

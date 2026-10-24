@@ -3,6 +3,7 @@
  * 在一般瀏覽器裡 `desktop` 為 null，其餘程式碼照常走網頁 API。
  */
 import type { DocInfo } from "./doc-index.ts";
+import type { FileRef } from "./links.ts";
 import { t } from "./i18n.ts";
 
 interface TauriCore {
@@ -87,6 +88,13 @@ export interface DocText {
   mtime: number;
   /** 解析結果；和上次讀到的修改時間一樣時省略。 */
   info?: DocInfo | null;
+}
+
+/** 改名後要更新連結的文件：現在的路徑、改之前與改之後的內容。 */
+export interface LinkUpdate {
+  path: string;
+  before: string;
+  text: string;
 }
 
 export interface FileItem {
@@ -653,6 +661,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
       ),
     /** 讀取資料夾中幾份文件的內容；讀不到的是 null。 */
     readDocs: (paths: string[]) => core.invoke<(string | null)[]>("read_docs", { paths }),
+    /**
+     * `from` 改名成 `to` 之後，在後端讀取這幾份沒有開啟的文件（改名前的路徑）並改寫其中的連結；
+     * 只回傳有改到的文件。`files` 是改名前資料夾中的檔案。
+     */
+    linkUpdates: (paths: string[], files: FileRef[], from: string, to: string) =>
+      core.invoke<LinkUpdate[]>("link_updates", { paths, files, from, to }),
     /** 改寫一份沒有開啟的文件；磁碟上的內容和 `expected` 不同時拒絕。 */
     updateDoc: (path: string, expected: string, text: string) =>
       route(

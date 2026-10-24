@@ -1,9 +1,10 @@
 /**
- * 文件互連：`[[文件]]` 找出對應的檔案、列出反向連結，以及檔案改名後更新其他文件中的連結。
+ * 文件互連：`[[文件]]` 找出對應的檔案、列出反向連結。
+ * 檔案改名後更新其他文件中的連結在 Rust（`crates/md-text`），規則和這裡的 `resolveWiki` 相同。
  * `[[週報]]` 和 Obsidian 一樣用檔名找（不分大小寫、不用寫 .md），同名時優先找同一個資料夾的。
  */
 import type { LinkRef } from "./doc-index.ts";
-import { basename, dirname, relativePath, resolvePath } from "./paths.ts";
+import { dirname, resolvePath } from "./paths.ts";
 
 export interface FileRef {
   path: string;
@@ -99,97 +100,4 @@ export function backlinks<D extends { path: string | null; info: { links: LinkRe
     if (lines.length) out.push({ doc, lines: [...new Set(lines.map((l) => l.line))] });
   }
   return out;
-}
-
-const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
-const WIKI = /\[\[([^[\]|#\n]+)((?:#[^[\]|\n]*)?(?:\|[^[\]\n]*)?)\]\]/g;
-const MD_LINK = /(!?\[[^\]\n]*\]\(\s*<?)([^)\s>]+)(>?(?:\s+"[^"\n]*")?\s*\))/g;
-
-/**
- * 改寫文件中的連結目標（程式碼裡的不動）。`fn` 收到連結，回傳新的目標；回傳 null 表示不改。
- * Markdown 連結的目標是原始寫法（可能是 %XX 編碼），`[[ ]]` 的是 `#` 與 `|` 前面的部分。
- */
-export function rewriteLinks(text: string, fn: (kind: LinkRef["kind"], target: string) => string | null): string {
-  let fence: string | null = null;
-  return text
-    .split("\n")
-    .map((line) => {
-      const f = line.match(FENCE);
-      if (fence) {
-        if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
-        return line;
-      }
-      if (f) {
-        fence = f[1];
-        return line;
-      }
-      // 行內程式碼的位置
-      const code: [number, number][] = [];
-      for (const m of line.matchAll(/(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g)) code.push([m.index, m.index + m[0].length]);
-      const inCode = (i: number) => code.some(([a, b]) => i >= a && i < b);
-      line = line.replace(WIKI, (all, target: string, rest: string, at: number) => {
-        if (inCode(at)) return all;
-        const next = fn("wiki", target);
-        return next === null ? all : `[[${next}${rest}]]`;
-      });
-      return line.replace(MD_LINK, (all, head: string, href: string, tail: string, at: number) => {
-        if (inCode(at) || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("#")) return all;
-        const next = fn("markdown", href);
-        return next === null ? all : head + next + tail;
-      });
-    })
-    .join("\n");
-}
-
-/**
- * 檔案搬移或改名後（`moved` 回傳檔案的新路徑，沒動的回傳 null），更新 `docPath` 這份文件中指向它們的連結。
- * 沒有要改的時候回傳 null。
- */
-export function renameLinks(
-  text: string,
-  docPath: string,
-  files: readonly FileRef[],
-  moved: (path: string) => string | null,
-): string | null {
-  const dir = dirname(docPath);
-  const next = rewriteLinks(text, (kind, target) => {
-    if (kind === "wiki") {
-      const old = resolveWiki(target, files, dir);
-      const to = old && moved(old);
-      if (!to) return null;
-      const name = basename(to);
-      const keepExt = MD.test(target.trim());
-      const label = keepExt ? name : name.replace(MD, "");
-      // 原本寫了資料夾（[[筆記/想法]]）就寫新的相對路徑，否則只寫檔名。
-      if (target.includes("/")) {
-        const ref = files.find((f) => samePath(f.path, old));
-        const rel = ref ? rebaseRel(ref.rel, old, to) : name;
-        return keepExt ? rel : rel.replace(MD, "");
-      }
-      return label;
-    }
-    let decoded = target.split("#")[0];
-    const hash = target.slice(decoded.length);
-    const encoded = /%[0-9a-f]{2}/i.test(decoded);
-    try {
-      decoded = decodeURIComponent(decoded);
-    } catch {
-      // 照原樣
-    }
-    if (!MD.test(decoded)) return null;
-    const old = resolvePath(dir, decoded);
-    const to = moved(old);
-    if (!to) return null;
-    const rel = relativePath(dir, to);
-    if (rel === null) return null;
-    const out = encoded ? encodeURI(rel) : rel;
-    return (/[\s()<>]/.test(out) ? encodeURI(out) : out) + hash;
-  });
-  return next === text ? null : next;
-}
-
-/** 檔案的新位置相對於資料夾的路徑（資料夾根目錄 = 舊路徑去掉 `oldRel` 的部分）。 */
-function rebaseRel(oldRel: string, oldPath: string, newPath: string): string {
-  const rootLen = oldPath.replace(/\\/g, "/").split("/").length - oldRel.split("/").length;
-  return newPath.replace(/\\/g, "/").split("/").slice(rootLen).join("/");
 }
