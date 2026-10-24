@@ -2332,7 +2332,12 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .gh-chip[hidden] { display: none; }
 .gh-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gh-chip .btn.icon-only { width: 22px; height: 22px; min-height: 22px; }
-.gh-body { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) minmax(320px, 42%); min-height: 0; }
+.gh-body { position: relative; display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) min(var(--gh-detail-width, max(320px, 42%)), calc(100% - 320px)); min-height: 0; }
+/* 提交清單與詳細內容之間的分隔線：拖曳調整寬度。 */
+.gh-resizer { position: absolute; top: 0; bottom: 0; right: calc(min(var(--gh-detail-width, max(320px, 42%)), calc(100% - 320px)) - 4px); z-index: 3; width: 7px; cursor: col-resize; touch-action: none; }
+.gh-resizer::before { content: ""; position: absolute; inset: 0 3px; transition: background 0.12s; }
+.gh-resizer:hover::before, .gh-resizer:focus-visible::before, body.resizing .gh-resizer:active::before { inset: 0 2px; background: var(--accent); }
+.gh-resizer:focus-visible { outline: none; }
 .gh-list { position: relative; min-width: 0; overflow: auto; container-type: inline-size; border-right: 1px solid var(--border); outline: none; }
 .gh-list:focus-visible .gh-row[aria-selected="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
 .gh-inner { position: relative; }
@@ -2514,6 +2519,7 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 @media (max-width: 860px) {
   .gh-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
   .gh-list { border-right: 0; border-bottom: 1px solid var(--border); }
+  .gh-resizer { display: none; }
   .gh-author { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
