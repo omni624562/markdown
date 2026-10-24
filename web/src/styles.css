@@ -1344,17 +1344,18 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 /* 用 GitHub 登入：顯示要在網頁輸入的代碼。 */
 .github-code { margin: 4px 0 8px; padding: 14px; border: 1px dashed var(--border-strong); border-radius: 10px; font: 600 28px/1.2 var(--font-mono); letter-spacing: 0.18em; text-align: center; user-select: all; }
 .github-wait { color: var(--muted); font-size: 12.5px; }
-.git-branch { display: flex; gap: 6px; align-items: center; justify-content: space-between; margin: 0 4px 8px; }
+/* 分支一列、功能按鈕一列：面板變窄時分支名稱不會被按鈕擠掉。 */
+.git-branch { display: flex; flex-direction: column; gap: 4px; align-items: stretch; margin: 0 4px 8px; }
 .git-info { display: flex; flex: 1; gap: 5px; align-items: center; min-width: 0; overflow: hidden; color: var(--fg); font-size: 13px; white-space: nowrap; }
 .git-info .icon { width: 15px; height: 15px; color: var(--muted); }
 .git-info strong { min-width: 3em; overflow: hidden; font-weight: 600; text-overflow: ellipsis; }
 .git-info small { color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; }
-button.git-info { padding: 2px 4px; margin-left: -4px; border: 0; border-radius: 5px; background: none; font-family: var(--font-ui); text-align: left; cursor: pointer; }
+button.git-info { flex: none; align-self: flex-start; max-width: calc(100% + 4px); padding: 2px 4px; margin-left: -4px; border: 0; border-radius: 5px; background: none; font-family: var(--font-ui); text-align: left; cursor: pointer; }
 button.git-info:hover:not(:disabled) { background: var(--active-line); }
 button.git-info:disabled { cursor: default; }
 .git-merge { flex-direction: column; align-items: stretch; gap: 6px; }
 .git-merge-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.git-sync { display: flex; flex: none; gap: 2px; }
+.git-sync { display: flex; flex-wrap: wrap; gap: 2px; margin-left: -6px; }
 .git-sync .btn { min-height: 26px; padding: 0 6px; color: var(--muted); font-size: 12px; }
 .git-sync .btn:hover { color: var(--fg); }
 .git-sync .btn .icon { width: 14px; height: 14px; }
