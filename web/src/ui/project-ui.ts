@@ -23,12 +23,22 @@ export interface ProjectHooks {
   changed(): void;
   /** 專案裡有沒有還沒存檔的分頁。 */
   unsaved(path: string): boolean;
+  /** 可以下載儲存庫的地方（GitHub、Azure DevOps／TFS）。 */
+  repoSources(): RepoSource[];
+}
+
+export interface RepoSource {
+  id: string;
+  title: string;
+  icon: string;
+  run(): void;
 }
 
 type SwitchItem =
   | { kind: "project"; project: Project; section: string }
   | { kind: "remote"; remote: DavConnection }
-  | { kind: "action"; id: "open-folder" | "overview" | "edit"; title: string; icon: string };
+  | { kind: "action"; id: "open-folder" | "overview" | "edit"; title: string; icon: string }
+  | { kind: "repo"; source: RepoSource };
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -87,11 +97,13 @@ export class ProjectUi {
           const ssh = item.remote.kind === "ssh";
           return { title: item.remote.name, detail: item.remote.url, icon: ssh ? "server" : "cloud", section: ssh ? "SSH" : "WebDAV" };
         }
+        if (item.kind === "repo") return { title: item.source.title, icon: item.source.icon, section: t("下載儲存庫") };
         return { title: item.title, icon: item.icon, section: t("動作") };
       },
       pick: (item) => {
         if (item.kind === "project") void this.#open(item.project);
         else if (item.kind === "remote") this.#h.openRemote(item.remote);
+        else if (item.kind === "repo") item.source.run();
         else if (item.id === "open-folder") this.#h.openFolder();
         else if (item.id === "overview") void this.openOverview();
         else {
@@ -140,6 +152,9 @@ export class ProjectUi {
     ];
     if (this.current) actions.push({ kind: "action", id: "edit", title: t("目前專案的設定…"), icon: "pencil" });
     for (const a of actions) if (a.kind === "action" && (!q || a.title.toLowerCase().includes(q))) items.push(a);
+    for (const source of this.#h.repoSources()) {
+      if (!q || source.title.toLowerCase().includes(q)) items.push({ kind: "repo", source });
+    }
     return items;
   }
 
@@ -178,7 +193,9 @@ export class ProjectUi {
       this.#h.openFolder();
     }, "btn");
     open.append(t("開啟資料夾…"));
-    head.append(open, button(t("關閉"), "x", () => dialog.close()));
+    const clone = button(t("下載儲存庫…"), "download", () => void this.#pickSource(dialog), "btn");
+    clone.append(t("下載儲存庫…"));
+    head.append(open, clone, button(t("關閉"), "x", () => dialog.close()));
     const search = dialog.querySelector<HTMLInputElement>(".po-search")!;
     search.addEventListener("input", () => {
       this.#query = search.value;
@@ -189,6 +206,28 @@ export class ProjectUi {
     });
     document.body.append(dialog);
     return dialog;
+  }
+
+  /** 選要從哪裡下載儲存庫（只有一個來源時直接開）。 */
+  /** 可以下載儲存庫的地方。 */
+  repoSources(): RepoSource[] {
+    return this.#h.repoSources();
+  }
+
+  async #pickSource(dialog: HTMLDialogElement): Promise<void> {
+    const sources = this.#h.repoSources();
+    const id =
+      sources.length === 1
+        ? sources[0].id
+        : await choose(
+            t("下載儲存庫"),
+            t("從哪裡下載？選好儲存庫後再選要放在電腦的哪個資料夾；之前已經下載過的會直接開啟。"),
+            [...sources.map((s) => ({ id: s.id, label: s.title.replace(/…$/, "") })), { id: "cancel", label: t("取消") }],
+          );
+    const source = sources.find((s) => s.id === id);
+    if (!source) return;
+    dialog.close();
+    source.run();
   }
 
   #renderOverview(): void {

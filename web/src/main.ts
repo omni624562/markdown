@@ -1648,6 +1648,10 @@ const projectUi = desktop
       changed: () => void renderProjectName().then(renderFilesEmpty),
       unsaved: (path) =>
         (peekSession(path)?.docs ?? []).some((m) => m.baseline !== null && draftState(m).dirty),
+      repoSources: () => [
+        { id: "github", title: t("從 GitHub 下載儲存庫…"), icon: "git-branch", run: () => void github?.openRepo() },
+        ...(ado ? [{ id: "ado", title: t("從 Azure DevOps／TFS 下載儲存庫…"), icon: "server", run: () => void ado?.openRepo() }] : []),
+      ],
     })
   : null;
 
@@ -2067,6 +2071,8 @@ const gitPanel =
         switchBranch: () => void switchBranch().catch(reportError),
         createPr: () => void createPullRequest().catch(reportError),
         history: () => void openGitHistory().catch(reportError),
+        projects: () => void commands.run("switch-project").catch(reportError),
+        openAdo: ado ? () => void ado!.openRepo() : null,
         changed: (status) => {
           // 提交、切換分支、拉取之後，開著的 Git 歷史跟著更新。
           const b = status?.branch;
@@ -2475,7 +2481,16 @@ async function renderFilesEmpty(): Promise<void> {
   ssh.addEventListener("click", () => void commands.run("connect-ssh").catch(reportError));
   const actions = document.createElement("div");
   actions.className = "side-buttons";
-  actions.append(open, remote, ssh);
+  actions.append(open);
+  for (const source of projectUi!.repoSources()) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn";
+    b.append(icon(source.icon), source.title.replace(/…$/, ""));
+    b.addEventListener("click", () => source.run());
+    actions.append(b);
+  }
+  actions.append(remote, ssh);
   box.replaceChildren(p, actions);
   const [projects, conns] = await Promise.all([projectUi!.refresh(), desktop.davConnections().catch(() => [])]);
   const folders = projectSections(projects).flatMap((s) => s.items).slice(0, 10);
@@ -4472,7 +4487,7 @@ commands.register(
   ),
   ...(
     [
-      ["github-open", t("GitHub：從 GitHub 開啟儲存庫…"), "git-branch", () => github?.openRepo(), () => true],
+      ["github-open", t("GitHub：下載或開啟儲存庫…"), "git-branch", () => github?.openRepo(), () => true],
       ["github-publish", t("GitHub：把這個資料夾上傳到 GitHub…"), "arrow-up-from-line", () => github?.publish(), () => !!workspaceRoot && !isRemote(workspaceRoot.path)],
       ["github-login", t("GitHub：登入"), "shield-check", () => github?.login(), () => !github?.account],
       ["github-logout", t("GitHub：登出"), "x", () => github?.logout(), () => !!github?.account],
@@ -4492,9 +4507,9 @@ commands.register(
       ["git-merge-finish", t("Git：完成合併"), "git-merge", () => void gitPanel?.finishMerge(), () => !!gitPanel?.status?.merging],
       ["github-pages", t("GitHub：發佈成網站（GitHub Pages）…"), "globe", () => void publishPages(), () => !!github?.account && !!issuesRepo],
       ["github-gist", t("GitHub：分享成 Gist…"), "share-2", () => void shareGist(), () => !!github?.account],
-      ["ado-open", t("Azure DevOps：開啟儲存庫或 Wiki…"), "server", () => ado?.openRepo(), () => !!ado],
-      ["ado-items", t("Azure DevOps：工作項目"), "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
-      ["ado-connect", t("Azure DevOps：連線設定…"), "shield-check", () => settingsDialog.open("Git"), () => !!ado],
+      ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "server", () => ado?.openRepo(), () => !!ado],
+      ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
+      ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open("Git"), () => !!ado],
     ] as const
   ).map(
     ([id, title, iconName, run, when]): Command => ({
@@ -4703,7 +4718,18 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   {
     label: t("專案"),
     icon: "folder-kanban",
-    items: ["switch-project", "project-overview", "project-settings", "-", "open-folder", "connect-webdav", "connect-ssh", "open-recent"],
+    items: [
+      "switch-project",
+      "project-overview",
+      "project-settings",
+      "-",
+      "open-folder",
+      "github-open",
+      "ado-open",
+      "connect-webdav",
+      "connect-ssh",
+      "open-recent",
+    ],
   },
   "-",
   "save",
@@ -4735,6 +4761,8 @@ setupMenu($<HTMLButtonElement>("#files-more"), commands, [
   "project-overview",
   "project-settings",
   "open-folder",
+  "github-open",
+  "ado-open",
   "connect-webdav",
   "connect-ssh",
   "open-recent",

@@ -95,7 +95,7 @@ export class GitHub {
       return;
     }
     const picker = new Picker<GitHubRepo>({
-      label: t("從 GitHub 開啟儲存庫"),
+      label: t("從 GitHub 下載或開啟儲存庫"),
       placeholder: repos.length ? t("搜尋 {n} 個儲存庫…", { n: repos.length }) : t("你的 GitHub 帳號還沒有儲存庫"),
       empty: t("找不到符合的儲存庫"),
       query: (text) => {
@@ -119,7 +119,12 @@ export class GitHub {
       wait.dismiss();
       if (!folder) return;
       await this.#hooks.openFolder(folder);
-      toast(t("已下載並開啟「{name}」，之後在「原始碼控制」就能同步", { name: folder.name }), { tone: "success", duration: 8000 });
+      toast(
+        folder.existing
+          ? t("「{name}」之前已經下載過，已直接開啟", { name: folder.name })
+          : t("已下載並開啟「{name}」，之後在「原始碼控制」就能同步", { name: folder.name }),
+        { tone: "success", duration: 8000 },
+      );
       this.#hooks.changed();
     } catch (e) {
       wait.dismiss();

@@ -14,7 +14,6 @@ use serde_json::Value;
 use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::git::{AdoCred, Identity};
-use crate::workspace::FolderInfo;
 
 const SERVICE: &str = "omarker-ado";
 /// Azure DevOps Server 2019 起支援的 REST API 版本。
@@ -494,7 +493,7 @@ pub async fn ado_clone(
     window: WebviewWindow,
     clone_url: String,
     name: String,
-) -> Result<Option<FolderInfo>, String> {
+) -> Result<Option<crate::github::Cloned>, String> {
     let (a, _) = require(&app)?;
     // 只下載這台伺服器上的儲存庫，避免前端傳來任意網址時把權杖送到別的地方。
     if !starts_with_base(&clone_url, &a.url) {
@@ -506,19 +505,14 @@ pub async fn ado_clone(
     } else {
         folder
     };
-    let Some(dest) = crate::github::pick_clone_dest(&app, &window, &folder).await? else {
+    let Some(dest) = crate::github::pick_clone_dest(&app, &window, &folder, &clone_url).await?
+    else {
         return Ok(None);
     };
     let auth = crate::git::auth(&app);
-    let target = dest.clone();
-    crate::io::blocking_for(crate::git::NETWORK_TIMEOUT, move || {
-        crate::git::clone_to(&clone_url, &target, &auth)
-    })
-    .await?;
-    let folder = crate::workspace::open_folder_from_cli(&app, dest.clone());
-    app.state::<crate::trust::Trust>()
-        .set_default_group(&app, &dest, "Azure DevOps");
-    Ok(Some(folder))
+    crate::github::clone_and_open(&app, dest, clone_url, auth, "Azure DevOps")
+        .await
+        .map(Some)
 }
 
 /// `url` 和 `base` 是不是同一台伺服器（通訊協定、主機與連接埠都相同）。
