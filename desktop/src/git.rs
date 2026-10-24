@@ -618,6 +618,17 @@ pub fn conflict_message() -> String {
 }
 
 /// 拉取遠端的新提交。有未提交的變更時不做；遇到衝突時放棄，不動任何檔案。
+/// 只向遠端抓取最新的提交（不合併、不動工作區），之後 `status_at` 就知道遠端多了幾個提交。
+pub fn fetch_at(dir: &Path, auth: &Auth) -> Result<(), String> {
+    let repo = open(dir)?;
+    let (_, remote_name, _) = tracking(&repo)?;
+    let url = remote_url(&repo, &remote_name)?;
+    let session = Session::new(auth);
+    let mut remote = repo.find_remote(&remote_name).map_err(err)?;
+    let result = remote.fetch::<&str>(&[], Some(&mut session.fetch_options()), None);
+    result.map_err(|e| session.describe(&e, &url, &tr!("檢查遠端")))
+}
+
 pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String, String> {
     let repo = open(dir)?;
     require_clean_state(&repo)?;
@@ -812,6 +823,18 @@ fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
 pub async fn git_status(app: AppHandle) -> Result<Status, String> {
     let dir = workspace_root(&app)?;
     crate::io::blocking(move || Ok(status_at(&dir))).await
+}
+
+/// 檢查遠端有沒有新的提交（只抓取，不合併），回傳更新後的狀態。
+#[tauri::command]
+pub async fn git_fetch(app: AppHandle) -> Result<Status, String> {
+    let dir = workspace_root(&app)?;
+    let auth = auth(&app);
+    crate::io::blocking_for(NETWORK_TIMEOUT, move || {
+        fetch_at(&dir, &auth)?;
+        Ok(status_at(&dir))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1036,6 +1059,11 @@ mod tests {
         fs::write(b.join("週報.md"), "# 週報\n\nb 的修改\n").unwrap();
         commit_at(&b, "b 的修改", Some(&me())).unwrap();
         assert_eq!(push_at(&b, &none).unwrap(), "已推送");
+        // 檢查遠端：知道遠端多了 1 個提交，但檔案還沒變。
+        assert_eq!(status_at(&a).branch.unwrap().behind, 0);
+        fetch_at(&a, &none).unwrap();
+        assert_eq!(status_at(&a).branch.unwrap().behind, 1);
+        assert_eq!(read(a.join("週報.md")).unwrap(), "# 週報\n");
         assert_eq!(
             pull_at(&a, &none, Some(&me())).unwrap(),
             "已拉取 1 個新的提交"

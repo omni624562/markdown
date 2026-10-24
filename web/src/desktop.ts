@@ -802,6 +802,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
     gitPull: () => core.invoke<string>("git_pull"),
+    /** 只向遠端抓取最新的提交（不合併），回傳更新後的狀態（知道遠端多了幾個提交）。 */
+    gitFetch: () => core.invoke<GitStatus>("git_fetch"),
     gitPush: () => core.invoke<string>("git_push"),
     historyList: (path: string) => core.invoke<FileVersion[]>("history_list", { path }),
     historyRead: (path: string, id: number) => core.invoke<string>("history_read", { path, id }),
