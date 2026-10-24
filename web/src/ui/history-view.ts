@@ -19,6 +19,7 @@ import { t } from "../i18n.ts";
 import { askText, choose } from "./choice.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
+import * as storage from "../storage.ts";
 import { toast } from "./toast.ts";
 
 const ROW = 32;
@@ -200,6 +201,7 @@ export class GitHistory {
     this.#setupDrag();
     this.#detail = el("div", "gh-detail");
     body.append(this.#list, this.#detail);
+    this.#setupResize(body);
     pane.append(head, this.#statsBox, body);
     pane.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !(e.target instanceof HTMLInputElement) && !e.defaultPrevented) {
@@ -231,6 +233,63 @@ export class GitHistory {
     this.#workspace.classList.add("history-open");
     await this.reload();
     this.#list.focus();
+  }
+
+  /**
+   * 右邊詳細內容的寬度：拖曳中間的分隔線調整（方向鍵也可以），雙擊恢復預設；寬度會記住。
+   * 左邊的提交清單至少留 320px。
+   */
+  #setupResize(body: HTMLElement): void {
+    const KEY = "git-history-detail-width";
+    const MIN = 280;
+    const handle = el("div", "gh-resizer");
+    handle.role = "separator";
+    handle.tabIndex = 0;
+    handle.title = t("拖曳調整寬度（雙擊恢復）");
+    handle.setAttribute("aria-orientation", "vertical");
+    handle.setAttribute("aria-label", t("調整詳細內容的寬度（方向鍵調整，雙擊恢復）"));
+    const clamp = (px: number) => Math.round(Math.max(MIN, Math.min(px, body.clientWidth - 320)));
+    const apply = (px: number | null, save = true) => {
+      if (px === null) {
+        body.style.removeProperty("--gh-detail-width");
+        if (save) storage.remove(KEY);
+        return;
+      }
+      const w = clamp(px);
+      body.style.setProperty("--gh-detail-width", `${w}px`);
+      handle.setAttribute("aria-valuenow", String(w));
+      if (save) storage.save(KEY, String(w));
+    };
+    const saved = Number(storage.load(KEY));
+    if (saved > 0) body.style.setProperty("--gh-detail-width", `${saved}px`);
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      document.body.classList.add("resizing");
+      const startX = e.clientX;
+      const startWidth = this.#detail.getBoundingClientRect().width;
+      // 往左拖是變寬。
+      const move = (ev: PointerEvent) => apply(startWidth - (ev.clientX - startX), false);
+      const up = () => {
+        handle.removeEventListener("pointermove", move);
+        document.body.classList.remove("resizing");
+        apply(this.#detail.getBoundingClientRect().width);
+      };
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", up, { once: true });
+      handle.addEventListener("pointercancel", up, { once: true });
+    });
+    handle.addEventListener("dblclick", () => apply(null));
+    handle.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 64 : 16;
+      const w = this.#detail.getBoundingClientRect().width;
+      if (e.key === "ArrowLeft") apply(w + step);
+      else if (e.key === "ArrowRight") apply(w - step);
+      else return;
+      e.preventDefault();
+    });
+    body.append(handle);
   }
 
   close(): void {
