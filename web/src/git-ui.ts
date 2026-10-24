@@ -3,7 +3,7 @@
  * Git 內建在程式裡（不需要安裝）；資料夾還不是 Git 儲存庫時，面板改成引導：
  * 用 GitHub 登入、從 GitHub 開啟儲存庫、把資料夾上傳到 GitHub。
  */
-import type { Desktop, GitChange, GitStatus } from "./desktop.ts";
+import type { Desktop, GitChange, GitConflict, GitStatus } from "./desktop.ts";
 import type { GitHub } from "./github-ui.ts";
 import type { SettingsStore } from "./settings.ts";
 import type { FileTree } from "./ui/filetree.ts";
@@ -66,6 +66,8 @@ export interface GitPanelHooks {
   switchBranch(): void;
   /** 建立 Pull Request。 */
   createPr(): void;
+  /** 開啟 Git 歷史。 */
+  history(): void;
   /** 儲存庫狀態改變（更新活動列圖示的變更數）。沒有開啟資料夾時是 null。 */
   changed(status: GitStatus | null): void;
 }
@@ -178,7 +180,11 @@ export class GitPanel {
     const pr = this.#button("", "git-pull-request", async () => this.#hooks.createPr());
     pr.title = t("建立 Pull Request");
     pr.setAttribute("aria-label", t("建立 Pull Request"));
+    const history = this.#button("", "history", async () => this.#hooks.history());
+    history.title = t("Git 歷史（線圖）");
+    history.setAttribute("aria-label", t("Git 歷史（線圖）"));
     sync.append(
+      history,
       this.#button(t("拉取"), "arrow-down-to-line", () => this.pull()),
       this.#button(t("推送"), "arrow-up-from-line", () => this.push()),
       ...(s.remote ? [pr] : []),
@@ -392,7 +398,11 @@ export class GitPanel {
       },
       true,
     );
-    if (!ok) return;
+    if (ok) this.resolveConflicts(conflicts);
+  }
+
+  /** 合併後有衝突的檔案：逐段處理（從 Git 歷史合併分支時也用這裡）。 */
+  resolveConflicts(conflicts: GitConflict[]): void {
     this.#theirs.clear();
     for (const c of conflicts) if (c.theirs !== null) this.#theirs.set(c.path, c.theirs);
     const notes = conflicts.filter((c) => c.note).map((c) => t("{name}：{note}", { name: baseName(c.path), note: c.note ?? "" }));

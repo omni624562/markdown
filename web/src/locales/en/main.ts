@@ -598,4 +598,5 @@ export const main: Record<string, Translation> = {
   "關於 oMarker": "About oMarker",
   "oMarker 更新紀錄.md": "oMarker Release Notes.md",
   "oMarker 更新紀錄": "oMarker Release Notes",
+  "關閉所有分頁": "Close All Tabs",
 };

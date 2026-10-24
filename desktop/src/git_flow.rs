@@ -56,7 +56,7 @@ pub fn branches_at(dir: &Path) -> Result<Branches, String> {
     })
 }
 
-fn require_clean(repo: &Repository) -> Result<(), String> {
+pub(crate) fn require_clean(repo: &Repository) -> Result<(), String> {
     require_clean_state(repo)?;
     if has_changes(repo)? {
         return Err(tr!("還有未提交的變更，請先提交再切換分支"));
@@ -165,8 +165,26 @@ pub fn merge_start_at(dir: &Path) -> Result<Vec<Conflict>, String> {
         .conflict_style_merge(true);
     repo.merge(&[&annotated], None, Some(&mut checkout))
         .map_err(|e| tr!("合併失敗：{e}", e = e.message()))?;
+    set_merge_message(
+        &repo,
+        &tr!(
+            "合併 {remote_name}/{short} 的變更",
+            remote_name = remote_name,
+            short = short
+        ),
+    );
+    collect_conflicts(&repo)
+}
 
-    let root = workdir(&repo)?;
+/// 合併提交的說明（完成合併時使用）。libgit2 預設寫的是英文，換成介面的語言。
+pub(crate) fn set_merge_message(repo: &Repository, message: &str) {
+    let _ = fs::write(repo.path().join("MERGE_MSG"), format!("{message}\n"));
+}
+
+/// 合併後還有衝突的檔案：有衝突的檔案先寫成「都採用本機」的內容，並回傳「都採用遠端」的內容，
+/// 讓使用者逐段選擇。
+pub(crate) fn collect_conflicts(repo: &Repository) -> Result<Vec<Conflict>, String> {
+    let root = workdir(repo)?;
     let index = repo.index().map_err(err)?;
     let conflicts: Vec<git2::IndexConflict> = index
         .conflicts()
@@ -180,9 +198,9 @@ pub fn merge_start_at(dir: &Path) -> Result<Vec<Conflict>, String> {
         };
         let rel = String::from_utf8_lossy(&entry.path).into_owned();
         let abs = root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
-        let base = blob_text(&repo, c.ancestor.as_ref()).unwrap_or_default();
-        let ours = blob_text(&repo, c.our.as_ref());
-        let theirs = blob_text(&repo, c.their.as_ref());
+        let base = blob_text(repo, c.ancestor.as_ref()).unwrap_or_default();
+        let ours = blob_text(repo, c.our.as_ref());
+        let theirs = blob_text(repo, c.their.as_ref());
         let write = |bytes: &[u8]| {
             if let Some(dir) = abs.parent() {
                 let _ = fs::create_dir_all(dir);
@@ -288,14 +306,12 @@ pub fn merge_finish_at(dir: &Path, who: Option<&Identity>) -> Result<String, Str
         .find_commit(*heads.first().ok_or_else(|| tr!("找不到要合併的提交"))?)
         .map_err(err)?;
     let sig = signature(&repo, who)?;
-    let message = match tracking(&repo) {
-        Ok((_, remote, merge)) => tr!(
-            "合併 {remote_name}/{short} 的變更",
-            remote_name = remote,
-            short = merge.trim_start_matches("refs/heads/")
-        ),
-        Err(_) => tr!("合併遠端的變更"),
-    };
+    let message = repo
+        .message()
+        .ok()
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| tr!("合併遠端的變更"));
     repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&ours, &theirs])
         .map_err(|e| tr!("完成合併失敗：{e}", e = e.message()))?;
     repo.cleanup_state().map_err(err)?;

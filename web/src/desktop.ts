@@ -314,6 +314,86 @@ export interface FileCommit {
   time: number;
 }
 
+export interface GitRef {
+  name: string;
+  /** head：目前所在的分支。 */
+  kind: "head" | "branch" | "remote" | "tag";
+}
+
+export interface LogCommit {
+  id: string;
+  parents: string[];
+  summary: string;
+  author: string;
+  email: string;
+  /** Unix 秒。 */
+  time: number;
+  refs: GitRef[];
+  /** 只在本機、還沒推送。 */
+  unpushed: boolean;
+  /** 遠端有、本機還沒拉取。 */
+  unpulled: boolean;
+}
+
+export interface LogPage {
+  commits: LogCommit[];
+  more: boolean;
+  head: string | null;
+}
+
+export interface ChangedFile {
+  /** 儲存庫裡的相對路徑（用 / 分隔）。 */
+  path: string;
+  oldPath: string | null;
+  status: "added" | "deleted" | "modified" | "renamed";
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
+export interface ChangeList {
+  files: ChangedFile[];
+  truncated: boolean;
+}
+
+export interface CommitDetail {
+  id: string;
+  parents: string[];
+  message: string;
+  author: string;
+  email: string;
+  time: number;
+  committer: string;
+  commitTime: number;
+  changes: ChangeList;
+}
+
+export interface FilePair {
+  before: string | null;
+  after: string | null;
+  note: string | null;
+}
+
+/** 會改變目前位置的操作：`before`／`after` 用來「復原」。 */
+export interface GitOpResult {
+  message: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface MergeOutcome {
+  message: string;
+  before: string | null;
+  conflicts: GitConflict[];
+}
+
+export interface StatCommit {
+  author: string;
+  time: number;
+  /** 時區（分鐘）。 */
+  offset: number;
+}
+
 export interface GitHubIssue {
   number: number;
   title: string;
@@ -625,6 +705,26 @@ function bridge(core: TauriCore, event: TauriEvent) {
     githubIssues: (search: string) => core.invoke<GitHubIssue[]>("github_issues", { search }),
     githubIssue: (number: number) => core.invoke<GitHubIssueDetail>("github_issue", { number }),
     githubWorkspaceRepo: () => core.invoke<string | null>("github_workspace_repo"),
+    gitLog: (skip: number, limit: number, all: boolean, path: string | null, text: string | null) =>
+      core.invoke<LogPage>("git_log", { skip, limit, all, path, text }),
+    gitCommitDetail: (id: string) => core.invoke<CommitDetail>("git_commit_detail", { id }),
+    gitCompare: (from: string, to: string) => core.invoke<ChangeList>("git_compare", { from, to }),
+    gitWorktreeChanges: () => core.invoke<ChangeList>("git_worktree_changes"),
+    /** `to` 是 null 時是工作目錄裡的檔案；`from` 是 null 時是 `to` 的上一個提交。 */
+    gitFilePair: (from: string | null, to: string | null, path: string, oldPath: string | null) =>
+      core.invoke<FilePair>("git_file_pair", { from, to, path, oldPath }),
+    gitAbsPath: (path: string) => core.invoke<string>("git_abs_path", { path }),
+    gitStats: () => core.invoke<StatCommit[]>("git_stats"),
+    gitBranchAt: (id: string, name: string, checkout: boolean) => core.invoke<GitOpResult>("git_branch_at", { id, name, checkout }),
+    gitDeleteBranch: (name: string) => core.invoke<string>("git_delete_branch", { name }),
+    gitTag: (id: string, name: string, message: string) => core.invoke<string>("git_tag", { id, name, message }),
+    gitDeleteTag: (name: string) => core.invoke<string>("git_delete_tag", { name }),
+    gitMergeBranch: (name: string) => core.invoke<MergeOutcome>("git_merge_branch", { name }),
+    gitRevert: (id: string) => core.invoke<GitOpResult>("git_revert", { id }),
+    gitCherryPick: (id: string) => core.invoke<GitOpResult>("git_cherry_pick", { id }),
+    gitReset: (id: string) => core.invoke<GitOpResult>("git_reset", { id }),
+    gitAmendMessage: (message: string) => core.invoke<GitOpResult>("git_amend_message", { message }),
+    gitUndo: (to: string, expect: string, keepFiles: boolean) => core.invoke<string>("git_undo", { to, expect, keepFiles }),
     gitBranches: () => core.invoke<GitBranches>("git_branches"),
     gitCheckout: (name: string) => core.invoke<string>("git_checkout", { name }),
     gitCreateBranch: (name: string) => core.invoke<string>("git_create_branch", { name }),

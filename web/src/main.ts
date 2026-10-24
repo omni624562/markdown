@@ -112,7 +112,7 @@ import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
 import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
-import { IssueView } from "./ui/issue-view.ts";
+import { IssueView, type IssueSource } from "./ui/issue-view.ts";
 import { githubIssueMarkdown, issueFileName, workItemMarkdown } from "./issue-doc.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
@@ -136,6 +136,7 @@ import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
 import type { AdoWorkItem, AdoWorkItemFilter, FileVersion } from "./desktop.ts";
+import type { GitHistory } from "./ui/history-view.ts";
 import { clampSidebarWidth, setupSidebarResize } from "./ui/sidebar-resize.ts";
 import { setupSplitter } from "./ui/splitter.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
@@ -1737,6 +1738,12 @@ const adoImagesPlugin: PreviewPlugin = {
   },
 };
 
+/** 開啟工作項目、issue（Git 歷史開著時先關掉）。 */
+function showIssue(source: IssueSource): Promise<void> {
+  historyView?.close();
+  return issueView.show(source);
+}
+
 let issuePreview: Preview | null = null;
 const issueView = new IssueView($(".workspace"), {
   render(markdown, into) {
@@ -1952,7 +1959,7 @@ const workItemsPanel = desktop
         }));
       },
       view: (item) =>
-        void issueView.show({
+        void showIssue({
           key: `ado:${item.id}`,
           label: `${item.kind} ${item.id}`,
           title: item.title,
@@ -1995,7 +2002,7 @@ const issuesPanel = desktop
             .join("・"),
         })),
       view: (item) =>
-        void issueView.show({
+        void showIssue({
           key: `github:${item.id}`,
           label: `#${item.id}`,
           title: item.title,
@@ -2046,7 +2053,15 @@ const gitPanel =
         resolve: (path, theirs) => void resolveMergeConflict(path, theirs).catch(reportError),
         switchBranch: () => void switchBranch().catch(reportError),
         createPr: () => void createPullRequest().catch(reportError),
+        history: () => void openGitHistory().catch(reportError),
         changed: (status) => {
+          // 提交、切換分支、拉取之後，開著的 Git 歷史跟著更新。
+          const b = status?.branch;
+          const key = status?.repo ? `${b?.name}|${b?.ahead}|${b?.behind}|${status.changes.length}|${status.merging}` : "";
+          if (key !== gitHistoryKey) {
+            gitHistoryKey = key;
+            historyView?.refresh();
+          }
           // Git 內建在程式裡：圖示一直顯示，還沒同步的資料夾點進去會引導上傳到 GitHub。
           const tab = $("#side-tab-git");
           tab.hidden = false;
@@ -2060,6 +2075,58 @@ const gitPanel =
         },
       })
     : null;
+
+// ---- Git 歷史（線圖） -----------------------------------------------------
+
+let historyView: GitHistory | null = null;
+/** 上次的 Git 狀態摘要（變了才重新載入歷史）。 */
+let gitHistoryKey = "";
+
+/** Git 歷史第一次開啟時才載入。 */
+async function gitHistory(): Promise<GitHistory | null> {
+  if (!desktop || !gitPanel) return null;
+  if (historyView) return historyView;
+  const { GitHistory } = await import("./ui/history-view.ts");
+  const panel = gitPanel;
+  historyView = new GitHistory($(".workspace"), desktop, {
+    status: () => panel.status,
+    hasUnsaved: () => docs.some((d) => d.dirty),
+    async openFile(path) {
+      historyView?.close();
+      await openPath(path);
+    },
+    async compareWithCurrent(path, c) {
+      await openPath(path);
+      await compareWithCommit({ ...c, author: "", time: 0, path });
+    },
+    openUrl: (url) => void desktop!.openExternal(url).catch(reportError),
+    resolveConflicts(conflicts) {
+      showPanel("git");
+      panel.resolveConflicts(conflicts);
+    },
+    async changed() {
+      await panel.refresh();
+      await fileTree?.refresh();
+    },
+    pull: () => panel.pull(),
+    push: () => panel.push(),
+    commit() {
+      historyView?.close();
+      showPanel("git");
+      panel.focusMessage();
+    },
+    closed: () => editor.view.focus(),
+  });
+  return historyView;
+}
+
+/** 開啟 Git 歷史；`path` 是檔案時只列出改過它的提交。 */
+async function openGitHistory(path: string | null = null): Promise<void> {
+  const view = await gitHistory();
+  if (!view) return;
+  issueView.close();
+  await view.open({ path });
+}
 
 const searchPanel = desktop
   ? new SearchPanel($("#search-host"), {
@@ -2754,8 +2821,9 @@ function renderTabs(): void {
 
 /** 切換到另一個分頁。 */
 function activate(doc: Doc): void {
-  // 點分頁（包括目前的分頁）就回到文件，關掉工作項目的檢視。
+  // 點分頁（包括目前的分頁）就回到文件，關掉工作項目、Git 歷史的檢視。
   issueView.close();
+  historyView?.close();
   if (doc === active) return;
   flushDraft();
   // 切換前先把這個分頁還沒自動存的內容存起來（autoSaveNow 一開始就記下了分頁與內容）。
@@ -3248,6 +3316,15 @@ commands.register(
       const keep = menuTab();
       return closeTabs(docs.filter((d) => d !== keep && !d.pinned));
     },
+  },
+  {
+    id: "tab-close-all",
+    title: t("關閉所有分頁"),
+    group: t("分頁"),
+    icon: "x",
+    // 固定的分頁保留（和「關閉其他分頁」一致）；沒存的分頁會逐一詢問。
+    when: () => docs.some((d) => !d.pinned),
+    run: () => closeTabs(docs.filter((d) => !d.pinned)),
   },
   {
     id: "tab-close-right",
@@ -4044,27 +4121,6 @@ async function compareWithVersion(v: FileVersion & { path: string }): Promise<vo
 
 // ---- Git：檔案的提交歷史、網頁連結 --------------------------------------------
 
-const commitPicker = new Picker<FileCommit & { path: string }>({
-  label: t("提交歷史"),
-  placeholder: t("選一次提交，和目前的內容比較"),
-  empty: t("這個檔案還沒有提交過"),
-  async query(q) {
-    const path = fileHandle?.path;
-    if (!desktop || !path) return [];
-    const list = await desktop.gitFileHistory(path);
-    const needle = q.trim().toLowerCase();
-    return list
-      .map((c) => ({ ...c, path }))
-      .filter((c) => !needle || `${c.summary} ${c.author} ${c.short}`.toLowerCase().includes(needle));
-  },
-  render: (c) => ({
-    title: c.summary || t("（沒有說明）"),
-    detail: [c.short, c.author, versionTitle(c.time * 1000)].filter(Boolean).join(" · "),
-    icon: "git-commit-horizontal",
-  }),
-  pick: (c) => void compareWithCommit(c).catch(reportError),
-});
-
 async function compareWithCommit(c: FileCommit & { path: string }): Promise<void> {
   if (!desktop || fileHandle?.path !== c.path) return;
   const text = await desktop.gitFileAt(c.path, c.id);
@@ -4395,12 +4451,21 @@ commands.register(
     run: () => recentPicker.open(),
   },
   {
+    id: "git-history",
+    title: t("Git：顯示歷史（線圖）"),
+    group: t("Git"),
+    icon: "history",
+    keys: "Mod-Alt-h",
+    when: () => !!desktop && !!gitPanel?.status?.repo,
+    run: () => openGitHistory(),
+  },
+  {
     id: "git-file-history",
     title: t("Git：這個檔案的提交歷史…"),
     group: t("Git"),
     icon: "git-commit-horizontal",
     when: () => !!desktop && !!fileHandle?.path && !!gitPanel?.status?.repo,
-    run: () => commitPicker.open(),
+    run: () => openGitHistory(fileHandle?.path ?? null),
   },
   {
     id: "git-open-web",
@@ -4570,7 +4635,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   {
     label: t("Git"),
     icon: "git-branch",
-    items: ["show-git", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "-", "git-file-history", "git-open-web", "git-copy-link"],
+    items: ["show-git", "git-history", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "-", "git-file-history", "git-open-web", "git-copy-link"],
   },
   { label: t("匯出"), icon: "download", items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich"] },
   "fix-terms",
@@ -4889,6 +4954,7 @@ const tabMenu = floatingMenu(
   [
     "tab-close",
     "tab-close-others",
+    "tab-close-all",
     "tab-close-right",
     "tab-close-saved",
     "-",
@@ -5366,6 +5432,7 @@ function applyLayout(): void {
 
 function setView(mode: ViewMode): void {
   issueView.close();
+  historyView?.close();
   view = mode;
   storage.save("view", mode);
   applyLayout();
