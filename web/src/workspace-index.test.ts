@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseDoc } from "./doc-index.ts";
+import { parseDoc as parse } from "./test-wasm.ts";
 import { WorkspaceIndex } from "./workspace-index.ts";
+
+const parseDoc = (text: string) => parse(text, 2026);
 
 test("資料夾索引：只收解析結果，需要內容時才讀，而且只讀沒開啟的檔案", async () => {
   const disk: Record<string, string> = { "/w/a.md": "- [ ] 甲 #標籤", "/w/b.md": "[[a]]" };
@@ -21,6 +23,7 @@ test("資料夾索引：只收解析結果，需要內容時才讀，而且只�
       reads.push(paths);
       return paths.map((p) => disk[p] ?? null);
     },
+    parseDoc,
   );
   await index.refresh("/w");
   const open = [{ id: "t1", path: "/w/b.md", name: "b.md", text: "[[a]] 編輯中" }];

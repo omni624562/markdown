@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { owners, parseDoc, parseDue, plainTaskText, setTaskDone } from "./doc-index.ts";
+import { plainTaskText, setTaskDone } from "./doc-index.ts";
+import { parseDoc as parse } from "./test-wasm.ts";
 
-const TODAY = new Date(2026, 9, 21);
+// 解析在 Rust（crates/md-text，那裡有完整的測試）；這裡確認 WebAssembly 版給前端的結果。
+const parseDoc = (text: string) => parse(text, 2026);
 
 test("找出待辦、負責人與截止日", () => {
   const doc = parseDoc(
@@ -20,7 +22,6 @@ test("找出待辦、負責人與截止日", () => {
       "#也不算 -->",
       "寄信給 me@example.com 不是負責人",
     ].join("\n"),
-    TODAY,
   );
   assert.deepEqual(
     doc.tasks.map((t) => [t.line, t.done, t.owners, t.due]),
@@ -55,18 +56,6 @@ test("連結：[[文件]] 與相對路徑的 Markdown 連結", () => {
   );
 });
 
-test("截止日格式", () => {
-  assert.equal(parseDue("2026/1/5 前", TODAY), "2026-01-05");
-  assert.equal(parseDue("12月31號", TODAY), "2026-12-31");
-  assert.equal(parseDue("2/30", TODAY), null);
-  assert.equal(parseDue("版本 1.2.3", TODAY), null);
-  assert.equal(parseDue("比例 1/2/3", TODAY), null);
-});
-
-test("負責人", () => {
-  assert.deepEqual(owners("@小明 和 @小華-、@小明"), ["小明", "小華"]);
-});
-
 test("勾選待辦", () => {
   const text = "- [ ] 一\n  - [x] 二\n普通文字";
   assert.equal(setTaskDone(text, 1, true), "- [x] 一\n  - [x] 二\n普通文字");
@@ -76,18 +65,4 @@ test("勾選待辦", () => {
 
 test("待辦顯示的純文字", () => {
   assert.equal(plainTaskText("**完成** [提案](a.md) 與 [[週報|本週週報]]、`code`、<mark>重點</mark>"), "完成 提案 與 本週週報、code、重點");
-});
-
-test("和桌面版（Rust）共用的測試資料", async () => {
-  const { readFile } = await import("node:fs/promises");
-  const cases = JSON.parse(await readFile(new URL("./doc-index.cases.json", import.meta.url), "utf8")) as {
-    name: string;
-    today: string;
-    text: string;
-    expect: unknown;
-  }[];
-  for (const c of cases) {
-    const [y, m, d] = c.today.split("-").map(Number);
-    assert.deepEqual(parseDoc(c.text, new Date(y, m - 1, d)), c.expect, c.name);
-  }
 });

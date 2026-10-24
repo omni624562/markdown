@@ -37,6 +37,32 @@ export interface RenderResult {
   error: SourceError | null;
 }
 
+export interface Task {
+  /** 第幾行（從 1 開始）。 */
+  line: number;
+  done: boolean;
+  /** 勾選框後面的文字（原始 Markdown）。 */
+  text: string;
+  /** `@名字` 標記的負責人。 */
+  owners: string[];
+  /** 截止日（YYYY-MM-DD），沒寫就是 null。 */
+  due: string | null;
+}
+
+export interface LinkRef {
+  line: number;
+  /** `[[週報]]` 的「週報」，或 `[說明](筆記/會議.md#標題)` 的「筆記/會議.md」（已解碼）。 */
+  target: string;
+  kind: "wiki" | "markdown";
+}
+
+/** 文件中的待辦、標籤與連結（程式碼區塊、行內程式碼與 HTML 註解裡的不算）。 */
+export interface DocInfo {
+  tasks: Task[];
+  tags: string[];
+  links: LinkRef[];
+}
+
 export interface RenderOptions {
   kind?: DocKind;
   sourcepos?: boolean;
@@ -183,4 +209,12 @@ pub fn spacing_positions(text: &str, kind: &str) -> Vec<u32> {
 #[wasm_bindgen(js_name = formatAllTables)]
 pub fn format_all_tables(text: &str) -> String {
     md_core::format_all_tables(text)
+}
+
+/// 文件中的待辦、標籤與連結（和桌面版後端的資料夾索引同一份程式）。`year` 是今年，截止日沒寫年份時用。
+#[wasm_bindgen(js_name = parseDoc, unchecked_return_type = "DocInfo")]
+pub fn parse_doc(text: &str, year: i32) -> Result<JsValue, JsError> {
+    // 沒有截止日要是 null（預設會變成 undefined）。
+    let json = serde_wasm_bindgen::Serializer::json_compatible();
+    Ok(md_text::parse_doc(text, year).serialize(&json)?)
 }

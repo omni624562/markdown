@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseDoc } from "./doc-index.ts";
+import { parseDoc as parse } from "./test-wasm.ts";
 import { backlinks, renameLinks, resolveWiki, rewriteLinks, samePath } from "./links.ts";
+
+const parseDoc = (text: string) => parse(text, 2026);
 
 const FILES = [
   { path: "/ws/週報.md", rel: "週報.md" },

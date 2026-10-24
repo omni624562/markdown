@@ -25,9 +25,11 @@ const write = (p, s) => writeFileSync(join(ROOT, p), s);
 const SOURCES = [
   ["desktop/Cargo.toml", /^version = "([^"]+)"/m],
   ["desktop/Cargo.lock", /^name = "md-desktop"\nversion = "([^"]+)"/m],
+  ["desktop/Cargo.lock", /^name = "md-text"\nversion = "([^"]+)"/m],
   ["Cargo.toml", /^\[workspace\.package\][^[]*?^version = "([^"]+)"/ms],
   ["Cargo.lock", /^name = "md-core"\nversion = "([^"]+)"/m],
   ["Cargo.lock", /^name = "md-cli"\nversion = "([^"]+)"/m],
+  ["Cargo.lock", /^name = "md-text"\nversion = "([^"]+)"/m],
   ["Cargo.lock", /^name = "md-wasm"\nversion = "([^"]+)"/m],
   ["web/package.json", /^ {2}"version": "([^"]+)"/m],
   ["web/package-lock.json", /^ {2}"version": "([^"]+)"/m],

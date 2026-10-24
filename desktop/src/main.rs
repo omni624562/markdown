@@ -16,7 +16,6 @@ mod ado;
 mod ai;
 mod dav;
 mod doc_index;
-mod doc_info;
 mod files;
 mod fonts;
 mod git;
