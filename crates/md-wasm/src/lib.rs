@@ -240,13 +240,16 @@ pub fn parse_doc(text: &str, year: i32) -> Result<JsValue, JsError> {
 pub fn proofread(text: &str, skip: &[u32], ignore: Vec<String>) -> Vec<u32> {
     let points: Vec<usize> = skip.iter().map(|&p| p as usize).collect();
     let bytes = convert(text, &points, true);
-    let skip: Vec<(usize, usize)> = bytes.chunks_exact(2).map(|r| (r[0], r[1])).collect();
+    let skip: Vec<(usize, usize)> = (0..bytes.len() / 2)
+        .map(|i| (bytes[2 * i], bytes[2 * i + 1]))
+        .collect();
     let found = md_text::proofread(text, &skip, &ignore.into_iter().collect());
     let ends: Vec<usize> = found.iter().flat_map(|m| [m.from, m.to]).collect();
-    convert(text, &ends, false)
-        .chunks_exact(2)
-        .zip(&found)
-        .flat_map(|(r, m)| [r[0] as u32, r[1] as u32, m.id as u32])
+    let ends = convert(text, &ends, false);
+    found
+        .iter()
+        .enumerate()
+        .flat_map(|(i, m)| [ends[2 * i] as u32, ends[2 * i + 1] as u32, m.id as u32])
         .collect()
 }
 
