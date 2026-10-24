@@ -139,7 +139,7 @@ import { WebDavDialog } from "./ui/webdav-dialog.ts";
 import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
-import type { AdoWorkItem, AdoWorkItemFilter, FileVersion, LinkUpdate } from "./desktop.ts";
+import type { AdoWorkItem, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
 import type { GitHistory } from "./ui/history-view.ts";
 import { clampSidebarWidth, setupSidebarResize } from "./ui/sidebar-resize.ts";
 import { setupSplitter } from "./ui/splitter.ts";
@@ -1692,6 +1692,18 @@ async function renderProjectName(): Promise<void> {
   else delete avatar.dataset.color;
 }
 
+/** 檔案總管上方顯示目前的分支（不是 Git 儲存庫時隱藏）；按一下切換或建立分支。 */
+function renderFolderBranch(status: GitStatus | null): void {
+  const el = $<HTMLButtonElement>("#folder-branch");
+  const name = status?.repo ? status.branch?.name : undefined;
+  el.hidden = !name;
+  if (!name) return;
+  el.querySelector("span")!.textContent = name;
+  el.disabled = status!.merging;
+  el.title = t("目前的分支：{name}；按一下切換或建立分支", { name });
+}
+$("#folder-branch").addEventListener("click", () => void switchBranch().catch(reportError));
+
 /** 用 GitHub 帳號同步（桌面版）：登入、從 GitHub 開啟儲存庫、上傳資料夾。 */
 const github = desktop
   ? new GitHub(desktop, {
@@ -2099,6 +2111,7 @@ const gitPanel =
             historyView?.refresh();
           }
           refreshActivityCommands();
+          renderFolderBranch(status);
           // Git 內建在程式裡：圖示一直顯示，還沒同步的資料夾點進去會引導上傳到 GitHub。
           const tab = $("#side-tab-git");
           tab.hidden = false;
