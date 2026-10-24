@@ -307,7 +307,7 @@ export class SettingsDialog {
     body.append(this.#aiSection());
     if (github) {
       const git = this.#section("Git", "git-branch", t("同步的方式，GitHub 與 Azure DevOps／TFS 都適用；Git 已經內建，不需要另外安裝"));
-      const hub = this.#section("GitHub", "git-pull-request", t("GitHub 帳號、下載與上傳儲存庫"));
+      const hub = this.#section("GitHub", "github", t("GitHub 帳號、下載與上傳儲存庫"));
       const accountBtn = document.createElement("button");
       accountBtn.type = "button";
       accountBtn.id = "setting-github";
@@ -887,7 +887,7 @@ export class SettingsDialog {
   ): { section: HTMLElement; refresh(): void } {
     const section = this.#section(
       t("Azure DevOps／TFS"),
-      "server",
+      "briefcase-business",
       t("公司自架的 Azure DevOps Server（TFS）或雲端版：連線、下載儲存庫與工作項目"),
     );
     const input = (id: string, type: string, placeholder: string) => {
