@@ -11,6 +11,7 @@ import { sanitizeForTerminal } from "../ai-text.ts";
 import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
 import { icon } from "./icons.ts";
+import type { MenuEntry } from "./menu.ts";
 import { toast } from "./toast.ts";
 
 const LABELS: Record<TermProgram, string> = { shell: t("終端機"), claude: "Claude Code", codex: "Codex" };
@@ -99,11 +100,18 @@ export class TerminalPanel {
   #closed = new Set<number>();
   #resizeTimer = 0;
   #onLayout: () => void;
+  #openMenu: (at: DOMRect, entries: MenuEntry[], closed: () => void) => void;
 
-  constructor(el: HTMLElement, d: Desktop, onLayout: () => void) {
+  constructor(
+    el: HTMLElement,
+    d: Desktop,
+    onLayout: () => void,
+    openMenu: (at: DOMRect, entries: MenuEntry[], closed: () => void) => void,
+  ) {
     this.#el = el;
     this.#d = d;
     this.#onLayout = onLayout;
+    this.#openMenu = openMenu;
     const tr = { resize: t("調整終端機高度"), tabs: t("終端機分頁") };
     el.innerHTML = `
       <div class="term-resize" role="separator" aria-orientation="horizontal" aria-label="${tr.resize}" tabindex="0"></div>
@@ -295,8 +303,53 @@ export class TerminalPanel {
       if (k === "v") return false;
       return true;
     });
+    // 右鍵用自己的選單：瀏覽器內建的選單在終端機裡用不到（復原、表情符號），
+    // 還有「語音輸入」之類的項目，誤按會跳出 Windows 的視窗。
+    host.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const at = new DOMRect(e.clientX, e.clientY, 0, 0);
+      // Linux 按下右鍵就觸發 contextmenu：等放開再開，免得放開時被當成點在選單外。
+      if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => this.#menu(term, at)), { once: true });
+      else this.#menu(term, at);
+    });
 
     return { term, fit, host };
+  }
+
+  /** 終端機的右鍵選單：複製、貼上、全選、清除畫面。 */
+  #menu(term: Terminal, at: DOMRect): void {
+    const item = (label: string, iconName: string, run: () => void): MenuEntry => ({
+      label,
+      icon: iconName,
+      checked: () => false,
+      run: () => {
+        run();
+        term.focus();
+      },
+    });
+    const entries: MenuEntry[] = [];
+    if (term.hasSelection()) {
+      entries.push(
+        item(t("複製"), "copy", () => {
+          void navigator.clipboard.writeText(term.getSelection());
+          term.clearSelection();
+        }),
+      );
+    }
+    entries.push(
+      item(t("貼上"), "clipboard-paste", () => {
+        navigator.clipboard.readText().then(
+          (text) => term.paste(text),
+          () => toast(t("無法從選單讀取剪貼簿，請按 {keys} 貼上。", { keys: "Ctrl+V" })),
+        );
+      }),
+      item(t("全選"), "square-dashed-text", () => term.selectAll()),
+      "-",
+      item(t("清除畫面"), "eraser", () => term.clear()),
+    );
+    // 關掉選單（例如按 Esc）後回到終端機繼續打字。
+    this.#openMenu(at, entries, () => term.focus());
   }
 
   #register(

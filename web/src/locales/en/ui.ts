@@ -226,6 +226,7 @@ export const ui: Record<string, Translation> = {
   "更新權杖": "Update Token",
   "更新連線": "Update Connection",
   "儲存庫與工作項目": "Repositories and Work Items",
+  "清除畫面": "Clear Screen",
   "調整詳細內容的寬度（方向鍵調整，雙擊恢復）": "Resize the details pane (arrow keys to adjust, double-click to reset)",
   "無法讀取「{name}」": "Couldn't read \"{name}\"",
   "{n} 項未完成": ["{n} open task", "{n} open tasks"],
