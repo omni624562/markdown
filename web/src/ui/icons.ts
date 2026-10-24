@@ -126,6 +126,7 @@ import {
   TextCursorInput,
   ReplaceAll,
   Info,
+  ChartColumn,
   ArrowRight,
   CircleQuestionMark,
   Bug,
@@ -136,6 +137,7 @@ import {
 
 const ICONS: Record<string, IconNode> = {
   info: Info,
+  "chart-column": ChartColumn,
   "arrow-right": ArrowRight,
   "circle-help": CircleQuestionMark,
   bug: Bug,

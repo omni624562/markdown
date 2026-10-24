@@ -7,6 +7,7 @@ mod dav;
 mod files;
 mod git;
 mod git_flow;
+mod git_log;
 mod github;
 mod misc;
 mod update;
@@ -20,6 +21,7 @@ pub static ALL: &[&[(&str, &str)]] = &[
     files::EN,
     git::EN,
     git_flow::EN,
+    git_log::EN,
     github::EN,
     misc::EN,
     update::EN,

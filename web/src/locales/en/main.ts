@@ -598,4 +598,9 @@ export const main: Record<string, Translation> = {
   "關於 oMarker": "About oMarker",
   "oMarker 更新紀錄.md": "oMarker Release Notes.md",
   "oMarker 更新紀錄": "oMarker Release Notes",
+  "關閉所有分頁": "Close All Tabs",
+  "上傳中…（{n} 個檔案）": "Uploading… ({n} file(s))",
+  "已上傳「{name}」": "Uploaded \"{name}\"",
+  "已上傳 {n} 個檔案": "Uploaded {n} files",
+  "已下載到「{path}」": "Downloaded to \"{path}\"",
 };

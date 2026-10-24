@@ -37,7 +37,7 @@ fn open_for(file: &Path) -> Result<(Repository, String), String> {
 }
 
 /// 檔案在儲存庫裡的相對路徑（用 `/` 分隔）。
-fn rel_path(repo: &Repository, file: &Path) -> Result<String, String> {
+pub(crate) fn rel_path(repo: &Repository, file: &Path) -> Result<String, String> {
     let root = repo
         .workdir()
         .ok_or_else(|| tr!("這個儲存庫沒有工作目錄"))?;
@@ -58,7 +58,7 @@ fn rel_path(repo: &Repository, file: &Path) -> Result<String, String> {
     Ok(rel.to_string_lossy().replace('\\', "/"))
 }
 
-fn blob_at(commit: &git2::Commit, rel: &str) -> Option<Oid> {
+pub(crate) fn blob_at(commit: &git2::Commit, rel: &str) -> Option<Oid> {
     commit
         .tree()
         .ok()?

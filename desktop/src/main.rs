@@ -21,6 +21,7 @@ mod fonts;
 mod git;
 mod git_files;
 mod git_flow;
+mod git_log;
 mod github;
 mod history;
 mod image_protocol;
@@ -271,6 +272,23 @@ fn main() {
             git_flow::git_merge_finish,
             git_flow::git_merge_abort,
             git_flow::git_create_pr,
+            git_log::git_log,
+            git_log::git_commit_detail,
+            git_log::git_compare,
+            git_log::git_worktree_changes,
+            git_log::git_file_pair,
+            git_log::git_abs_path,
+            git_log::git_stats,
+            git_log::git_branch_at,
+            git_log::git_delete_branch,
+            git_log::git_tag,
+            git_log::git_delete_tag,
+            git_log::git_merge_branch,
+            git_log::git_revert,
+            git_log::git_cherry_pick,
+            git_log::git_reset,
+            git_log::git_amend_message,
+            git_log::git_undo,
             github::github_pages,
             github::github_gist,
             github::github_issues,
@@ -324,6 +342,8 @@ fn main() {
             dav::dav_read,
             dav::dav_write,
             dav::dav_create,
+            dav::dav_upload,
+            dav::dav_download,
             dav::dav_rename,
             dav::dav_delete,
             dav::dav_save_image,
