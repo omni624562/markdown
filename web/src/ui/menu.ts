@@ -17,6 +17,15 @@ function position(menu: HTMLElement, anchor: DOMRect, side: "below" | "right"): 
   Object.assign(menu.style, { left: `${p.left}px`, top: `${p.top}px`, right: "auto", bottom: "auto", maxHeight: `${p.maxHeight}px` });
 }
 
+/** 子選單裡的指令省略和子選單同名的前綴（「Git」子選單裡的「Git：提交…」顯示成「提交…」）。 */
+export function menuTitle(title: string, parent?: string): string {
+  if (!parent) return title;
+  for (const sep of ["：", ": "]) { // i18n-ignore（全形與半形冒號）
+    if (title.startsWith(parent + sep) && title.length > parent.length + sep.length) return title.slice(parent.length + sep.length);
+  }
+  return title;
+}
+
 /** 上下鍵在同一層的項目間移動。 */
 function navigate(menu: HTMLElement, e: KeyboardEvent): boolean {
   if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return false;
@@ -50,7 +59,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
   button.popoverTargetElement = root;
 
   /** 建立一層選單的項目；子選單放在這一層裡面，Popover 才會當成巢狀（開子選單時不會關掉上一層）。 */
-  const fill = (menu: HTMLElement, list: MenuEntry[]): void => {
+  const fill = (menu: HTMLElement, list: MenuEntry[], parent?: string): void => {
     let openSub: HTMLElement | null = null;
     let hoverTimer = 0;
     const closeSub = () => {
@@ -72,7 +81,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
         if (!cmd || !(cmd.when?.() ?? true)) return [];
         item.role = "menuitem";
         if (cmd.icon) item.append(icon(cmd.icon));
-        item.append(Object.assign(document.createElement("span"), { textContent: cmd.title }));
+        item.append(Object.assign(document.createElement("span"), { textContent: menuTitle(cmd.title, parent) }));
         const keys = cmd.keys ?? cmd.shownKeys;
         if (keys) item.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys(keys) }));
         item.addEventListener("click", () => {
@@ -82,7 +91,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
       } else if ("items" in entry) {
         const sub = newMenu();
         sub.classList.add("submenu");
-        fill(sub, entry.items);
+        fill(sub, entry.items, entry.label);
         if (!sub.querySelector("button")) return [];
         item.role = "menuitem";
         item.setAttribute("aria-haspopup", "menu");

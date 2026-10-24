@@ -128,7 +128,7 @@ import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
 import { type FileRef, backlinks, renameLinks, resolveWiki } from "./links.ts";
 import { type IndexedDoc, type OpenDoc, WorkspaceIndex } from "./workspace-index.ts";
 import { isoDate, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
-import { SettingsDialog } from "./ui/settings-dialog.ts";
+import { REPO_URL, SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
 import { TerminalPanel } from "./ui/terminal-panel.ts";
 import { WebDavDialog } from "./ui/webdav-dialog.ts";
@@ -3369,6 +3369,27 @@ commands.register(
     run: () => openWelcome(),
   },
   {
+    id: "show-changelog",
+    title: t("說明：更新紀錄"),
+    group: t("說明"),
+    icon: "scroll-text",
+    run: () => openChangelog(),
+  },
+  {
+    id: "report-issue",
+    title: t("說明：回報問題或建議…"),
+    group: t("說明"),
+    icon: "bug",
+    run: () => openUrl(`${REPO_URL}/issues/new`),
+  },
+  {
+    id: "about",
+    title: t("關於 oMarker"),
+    group: t("說明"),
+    icon: "info",
+    run: () => settingsDialog.open(t("關於")),
+  },
+  {
     id: "allow-remote-images",
     title: t("載入這份文件的遠端圖片"),
     group: t("檢視"),
@@ -4549,6 +4570,11 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "-",
   { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
   { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark"] },
+  {
+    label: t("說明"),
+    icon: "circle-help",
+    items: ["show-shortcuts", "show-welcome", "show-changelog", "-", "check-update", "report-issue", "-", "about"],
+  },
   "palette",
   "settings",
 ]);
@@ -4606,6 +4632,29 @@ function openWelcome(): void {
   const doc = makeDoc({ name: t("歡迎使用 oMarker.md"), kind: "markdown", baseline: hash(sample) });
   saveDraft(doc.id, sample);
   addTab(doc);
+}
+
+/** 說明：在新分頁開啟更新紀錄（打包進程式的 CHANGELOG.md，用到時才載入）。 */
+async function openChangelog(): Promise<void> {
+  const name = t("oMarker 更新紀錄.md");
+  const existing = docs.find((d) => !d.path && d.name === name);
+  if (existing) {
+    activate(existing);
+    return;
+  }
+  const { default: changelog } = await import("../../CHANGELOG.md?raw");
+  // 開頭的說明連到儲存庫裡的其他檔案，在這裡點不開：從第一個版本開始。
+  const start = changelog.indexOf("\n## ");
+  const text = "# " + t("oMarker 更新紀錄") + "\n" + (start >= 0 ? changelog.slice(start) : changelog);
+  const doc = makeDoc({ name, kind: "markdown", baseline: hash(text) });
+  saveDraft(doc.id, text);
+  addTab(doc);
+}
+
+/** 用瀏覽器開啟網址（桌面版交給系統的預設瀏覽器）。 */
+function openUrl(url: string): void {
+  if (desktop) void desktop.openExternal(url).catch(reportError);
+  else window.open(url, "_blank", "noopener");
 }
 
 /** 說明：所有快速鍵（依功能分組，只列目前能用的）。 */
@@ -5540,6 +5589,13 @@ const settingsDialog = new SettingsDialog(
         workItems: () => showPanel("workitems"),
       }
     : null,
+  {
+    version: __APP_VERSION__,
+    openUrl,
+    shortcuts: () => showShortcuts(),
+    welcome: () => openWelcome(),
+    changelog: () => void openChangelog().catch(reportError),
+  },
 );
 void ado?.ready().then(() => {
   renderAdoTab();

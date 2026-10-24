@@ -47,8 +47,6 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["60", t("每小時")],
   ],
 };
-
-/** 桌面版提供：目前版本與手動檢查更新。 */
 /** 設定的 Git 頁：GitHub 帳號與儲存庫（桌面版）。 */
 export interface GitHubHooks {
   account(): { login: string } | null;
@@ -69,6 +67,7 @@ export interface AdoSettingsHooks {
   workItems(): void;
 }
 
+/** 桌面版提供：目前版本與手動檢查更新。 */
 export interface UpdateHooks {
   /** `label` 是版本號，`detail` 顯示在下面（例如發佈日期），`title` 是滑鼠停留時的技術資訊。 */
   version(): Promise<{ label: string; detail: string; title: string }>;
@@ -81,6 +80,19 @@ export interface UpdateHooks {
   check(): void;
   restart(): void;
 }
+
+/** 「關於」頁的連結與說明。 */
+export interface AboutHooks {
+  /** 網頁版沒有更新機制時，直接顯示的版本號。 */
+  version: string;
+  openUrl(url: string): void;
+  shortcuts(): void;
+  welcome(): void;
+  changelog(): void;
+}
+
+/** 原始碼與問題回報。 */
+export const REPO_URL = "https://github.com/omni624562/markdown";
 
 /** AI 區中，總開關關閉時一起停用的選項。 */
 const AI_DEPENDENT: (keyof Settings)[] = ["aiTool", "mcpServer", "aiTerminal", "markExternalChanges"];
@@ -97,10 +109,10 @@ interface Group {
   fields: Field[];
 }
 
-/** 「外觀」頁（主題另外加在第一組的最前面）。 */
+/** 「外觀」頁。 */
 const LOOK_GROUPS: Group[] = [
   {
-    title: t("主題與字型"),
+    title: t("字型"),
     fields: [
       { key: "docFont", label: t("內文字型"), hint: t("即時預覽、預覽與 PDF 使用") },
       {
@@ -109,15 +121,17 @@ const LOOK_GROUPS: Group[] = [
         hint: t("輸入或從清單挑選電腦上的字型；這個字型缺字時，用預設字型補上"),
       },
       { key: "codeFont", label: t("程式碼字型"), hint: t("原始碼檢視與程式碼區塊；留空使用內建的等寬字型") },
-      { key: "docLineHeight", label: t("行距") },
-      { key: "previewWidth", label: t("文字欄寬"), hint: t("預覽與匯出的版面寬度") },
+      { key: "editorFontSize", label: t("字級"), hint: t("也可以按 Ctrl+= 或 Ctrl+- 調整") },
     ],
   },
   {
     title: t("版面"),
     fields: [
+      { key: "docLineHeight", label: t("行距") },
+      { key: "previewWidth", label: t("文字欄寬"), hint: t("預覽與匯出的版面寬度") },
       { key: "fixedToolbar", label: t("固定顯示格式工具列"), hint: t("關閉時，選取文字才會浮出格式按鈕") },
       { key: "outlineRight", label: t("大綱放在右邊"), hint: t("視窗夠寬時，大綱固定在內文右邊，目前的章節會亮起來") },
+      { key: "lineNumbers", label: t("顯示行號"), hint: t("原始碼檢視") },
     ],
   },
   {
@@ -130,12 +144,11 @@ const LOOK_GROUPS: Group[] = [
   },
 ];
 
+/** 「編輯」頁。 */
 const EDIT_GROUPS: Group[] = [
   {
-    title: t("編輯區"),
+    title: t("寫作模式"),
     fields: [
-      { key: "editorFontSize", label: t("字級"), hint: t("也可以按 Ctrl+= 或 Ctrl+- 調整") },
-      { key: "lineNumbers", label: t("顯示行號"), hint: t("原始碼檢視") },
       { key: "focusMode", label: t("專注模式"), hint: t("淡化目前段落以外的文字") },
       { key: "typewriterMode", label: t("打字機模式"), hint: t("游標所在的行保持在畫面中央") },
     ],
@@ -154,11 +167,10 @@ const EDIT_GROUPS: Group[] = [
     ],
   },
   {
-    title: t("貼上與存檔"),
+    title: t("貼上"),
     fields: [
       { key: "smartPaste", label: t("貼上時轉成 Markdown"), hint: t("網頁、Google 文件、Word 保留標題、清單與表格；Ctrl+Shift+V 貼純文字") },
       { key: "imageCompress", label: t("壓縮貼上的大圖片"), hint: t("超過 2000 像素的圖片自動縮小，大照片改存成 JPEG") },
-      { key: "autoSave", label: t("自動存檔"), hint: t("已經存過的檔案，停止打字後自動存回磁碟") },
     ],
   },
 ];
@@ -185,6 +197,7 @@ export class SettingsDialog {
     update: UpdateHooks | null = null,
     github: GitHubHooks | null = null,
     ado: AdoSettingsHooks | null = null,
+    about: AboutHooks | null = null,
   ) {
     this.#ai = ai;
     this.#store = store;
@@ -255,11 +268,27 @@ export class SettingsDialog {
       d.addEventListener("toggle", () => (sel.value = theme.get()));
       return sel;
     });
-    const look = this.#section(t("外觀"), "palette", t("主題、字型與版面配置"));
-    LOOK_GROUPS.forEach((g, i) => look.append(...this.#group(g.title, [...(i === 0 ? [langRow, themeRow] : []), ...this.#rows(g.fields)])));
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "btn";
+    reset.append(icon("rotate-ccw"), t("恢復預設值"));
+    reset.addEventListener("click", () => {
+      store.reset();
+      this.#sync();
+    });
+    const general = this.#section(t("一般"), "settings", t("語言、主題與存檔"));
+    general.append(
+      ...this.#group(t("介面"), [langRow, themeRow]),
+      ...this.#group(t("存檔"), this.#rows([{ key: "autoSave", label: t("自動存檔"), hint: t("已經存過的檔案，停止打字後自動存回磁碟") }])),
+      ...this.#group(t("重設"), [this.#row("reset", t("所有設定"), t("恢復成預設值；主題、版面配置不受影響"), () => reset)]),
+    );
+    body.append(general);
+
+    const look = this.#section(t("外觀"), "palette", t("字型、版面與文件內容的顯示方式"));
+    for (const g of LOOK_GROUPS) look.append(...this.#group(g.title, this.#rows(g.fields)));
     body.append(look);
 
-    const edit = this.#section(t("編輯"), "pen-line", t("打字、貼上與存檔的方式"));
+    const edit = this.#section(t("編輯"), "pen-line", t("寫作模式、輸入輔助與貼上"));
     for (const g of EDIT_GROUPS) edit.append(...this.#group(g.title, this.#rows(g.fields)));
     body.append(edit);
 
@@ -316,51 +345,7 @@ export class SettingsDialog {
       body.append(git);
     }
 
-    const advanced = this.#section(t("進階"), "sliders-horizontal", t("版本、更新與重設"));
-    const reset = document.createElement("button");
-    reset.type = "button";
-    reset.className = "btn";
-    reset.append(icon("rotate-ccw"), t("恢復預設值"));
-    reset.addEventListener("click", () => {
-      store.reset();
-      this.#sync();
-    });
-    if (update) {
-      const checkBtn = document.createElement("button");
-      checkBtn.type = "button";
-      checkBtn.className = "btn";
-      checkBtn.addEventListener("click", () => (update.pending() ? update.restart() : update.check()));
-      const versionRow = this.#row("version", t("版本"), t("讀取中…"), () => checkBtn);
-      const label = versionRow.querySelector("label")!;
-      const hint = versionRow.querySelector("small")!;
-      // 新版已經下載好時，版本列直接說明，按鈕改成「重新啟動並更新」。
-      const refresh = async () => {
-        const v = await update.version();
-        const pending = update.pending();
-        label.textContent = t("版本 {version}", { version: v.label });
-        label.title = v.title;
-        hint.textContent = pending ? t("{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）", { version: pending }) : v.detail;
-        hint.classList.toggle("settings-ready", !!pending);
-        const checking = !pending && update.checking();
-        checkBtn.textContent = pending ? t("重新啟動並更新") : checking ? t("檢查中…") : t("檢查更新");
-        checkBtn.disabled = checking;
-        checkBtn.classList.toggle("btn-primary", !!pending);
-      };
-      d.addEventListener("toggle", () => {
-        if (d.open) void refresh();
-      });
-      update.onChange(() => {
-        if (d.open) void refresh();
-      });
-      advanced.append(
-        ...this.#group(t("更新"), [
-          versionRow,
-          this.#row("autoUpdate", t("自動檢查更新"), t("每天檢查一次，下載前會先詢問"), () => this.#control("autoUpdate")),
-        ]),
-      );
-    }
-    advanced.append(...this.#group(t("重設"), [this.#row("reset", t("所有設定"), t("恢復成預設值；主題、版面配置不受影響"), () => reset)]));
-    body.append(advanced);
+    body.append(this.#aboutSection(update, about, d));
     this.#buildNav(nav, body);
 
     d.addEventListener("click", (e) => {
@@ -370,12 +355,12 @@ export class SettingsDialog {
     store.subscribe(() => this.#sync());
   }
 
-  /** 開啟設定；`page` 是分類名稱（例如「AI 協作」）。 */
   /** 外部狀態改變（例如登入 GitHub）後更新畫面。 */
   refresh(): void {
     this.#refreshGit();
   }
 
+  /** 開啟設定；`page` 是分類名稱（例如「AI 協作」）。 */
   open(page?: string): void {
     this.#sync();
     this.#dialog.showModal();
@@ -597,6 +582,94 @@ export class SettingsDialog {
   }
 
   /** 一個分類頁：標題、一句說明，左邊的分類列會用 `iconName` 的圖示。 */
+  /** 「關於」頁：版本與更新、說明文件、原始碼與問題回報、授權。 */
+  #aboutSection(update: UpdateHooks | null, about: AboutHooks | null, d: HTMLDialogElement): HTMLElement {
+    const section = this.#section(t("關於"), "info");
+    const hero = document.createElement("div");
+    hero.className = "settings-about";
+    const logo = document.createElement("img");
+    logo.src = "favicon.svg";
+    logo.alt = "";
+    const name = document.createElement("div");
+    const title = Object.assign(document.createElement("strong"), { textContent: "oMarker" });
+    const version = Object.assign(document.createElement("span"), { textContent: about ? t("版本 {version}", { version: about.version }) : "" });
+    const tagline = Object.assign(document.createElement("p"), { textContent: t("給中文寫作的 Markdown 編輯器：即時預覽、資料夾、Git 與 AI 協作") });
+    name.append(title, version, tagline);
+    hero.append(logo, name);
+    section.append(hero);
+
+    if (update) {
+      const checkBtn = document.createElement("button");
+      checkBtn.type = "button";
+      checkBtn.className = "btn";
+      checkBtn.addEventListener("click", () => (update.pending() ? update.restart() : update.check()));
+      const versionRow = this.#row("version", t("版本"), t("讀取中…"), () => checkBtn);
+      const label = versionRow.querySelector("label")!;
+      const hint = versionRow.querySelector("small")!;
+      // 新版已經下載好時，版本列直接說明，按鈕改成「重新啟動並更新」。
+      const refresh = async () => {
+        const v = await update.version();
+        const pending = update.pending();
+        label.textContent = t("版本 {version}", { version: v.label });
+        label.title = v.title;
+        version.textContent = t("版本 {version}", { version: v.label });
+        hint.textContent = pending ? t("{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）", { version: pending }) : v.detail;
+        hint.classList.toggle("settings-ready", !!pending);
+        const checking = !pending && update.checking();
+        checkBtn.textContent = pending ? t("重新啟動並更新") : checking ? t("檢查中…") : t("檢查更新");
+        checkBtn.disabled = checking;
+        checkBtn.classList.toggle("btn-primary", !!pending);
+      };
+      d.addEventListener("toggle", () => {
+        if (d.open) void refresh();
+      });
+      update.onChange(() => {
+        if (d.open) void refresh();
+      });
+      section.append(
+        ...this.#group(t("更新"), [
+          versionRow,
+          this.#row("autoUpdate", t("自動檢查更新"), t("每天檢查一次，下載前會先詢問"), () => this.#control("autoUpdate")),
+        ]),
+      );
+    }
+    if (about) {
+      const button = (id: string, text: string, iconName: string, run: () => void) => () => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn";
+        b.id = `setting-${id}`;
+        b.append(icon(iconName), text);
+        b.addEventListener("click", () => {
+          d.close();
+          run();
+        });
+        return b;
+      };
+      const link = (id: string, text: string, url: string) => () => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn";
+        b.id = `setting-${id}`;
+        b.append(icon("external-link"), text);
+        b.addEventListener("click", () => about.openUrl(url));
+        return b;
+      };
+      section.append(
+        ...this.#group(t("說明"), [
+          this.#row("shortcuts", t("快速鍵一覽"), t("也可以按 F1"), button("shortcuts", t("開啟"), "command", about.shortcuts)),
+          this.#row("welcome", t("歡迎文件"), t("3 分鐘認識主要功能"), button("welcome", t("開啟"), "book-open-text", about.welcome)),
+          this.#row("changelog", t("更新紀錄"), t("每一版改了什麼"), button("changelog", t("開啟"), "scroll-text", about.changelog)),
+        ]),
+        ...this.#group(t("意見回饋"), [
+          this.#row("report", t("回報問題或建議"), t("在 GitHub 上留言；附上版本號會更容易找到原因"), link("report", t("回報"), `${REPO_URL}/issues/new`)),
+          this.#row("source", t("原始碼"), t("oMarker 以 MIT 授權開放原始碼"), link("source", "GitHub", REPO_URL)),
+        ]),
+      );
+    }
+    return section;
+  }
+
   #section(title: string, iconName: string, desc?: string): HTMLElement {
     const s = document.createElement("section");
     s.dataset.icon = iconName;

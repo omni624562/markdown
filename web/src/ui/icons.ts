@@ -125,11 +125,19 @@ import {
   ArrowDown,
   TextCursorInput,
   ReplaceAll,
+  Info,
+  CircleQuestionMark,
+  Bug,
+  ScrollText,
   createElement,
   type IconNode,
 } from "lucide";
 
 const ICONS: Record<string, IconNode> = {
+  info: Info,
+  "circle-help": CircleQuestionMark,
+  bug: Bug,
+  "scroll-text": ScrollText,
   "shield-check": ShieldCheck,
   "square-kanban": SquareKanban,
   "circle-dot": CircleDot,

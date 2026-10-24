@@ -2281,3 +2281,10 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .shortcuts-body td { padding: 4px 0; border-bottom: 1px solid var(--border); }
 .shortcuts-body td:last-child { text-align: right; white-space: nowrap; }
 .shortcuts-body kbd { font: 12px var(--font-mono); padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+
+/* 設定的「關於」頁 */
+.settings-about { display: flex; gap: 16px; align-items: center; margin: 4px 0 20px; }
+.settings-about img { width: 56px; height: 56px; flex: none; }
+.settings-about strong { display: block; font-size: 20px; font-weight: 600; }
+.settings-about span { color: var(--muted); font-size: 13px; }
+.settings-about p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
