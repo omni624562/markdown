@@ -9,6 +9,8 @@ import { collator } from "../collator.ts";
 export interface TagsHandlers {
   docs(): Promise<IndexedDoc[]>;
   open(doc: IndexedDoc, line: number): void;
+  /** 文件的內容（找標籤在第幾行）。 */
+  text(doc: IndexedDoc): Promise<string>;
   emptyHint(): string;
 }
 
@@ -112,7 +114,13 @@ export class TagsPanel {
             b.className = "tag-doc";
             b.title = doc.path ?? doc.rel;
             b.append(icon("file-text"), doc.rel.replace(/\.(md|markdown)$/i, ""));
-            b.addEventListener("click", () => this.#handlers.open(doc, tagLine(doc.text, tag)));
+            b.addEventListener("click", () => {
+              const h = this.#handlers;
+              void h.text(doc).then(
+                (text) => h.open(doc, tagLine(text, tag)),
+                () => h.open(doc, 1),
+              );
+            });
             item.append(b);
             ul.append(item);
           }

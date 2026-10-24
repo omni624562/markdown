@@ -16,6 +16,7 @@ mod ado;
 mod ai;
 mod dav;
 mod doc_index;
+mod doc_info;
 mod files;
 mod fonts;
 mod git;
@@ -328,6 +329,7 @@ fn main() {
             workspace::search,
             workspace::replace_in_folder,
             doc_index::scan_docs,
+            doc_index::read_docs,
             doc_index::update_doc,
             workspace::peek_text,
             images::save_image,

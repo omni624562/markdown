@@ -1,0 +1,512 @@
+[
+  {
+    "name": "待辦、負責人與截止日",
+    "today": "2026-10-21",
+    "text": "# 週報 #週報\n\n- [ ] 寫完提案 @小明 10/25\n- [x] 開會（@王大同、@Amy）2026-10-20\n  1. [ ] 子項目 `- [ ] 不算` 11月3日\n* [X] 星號也可以\n```\n- [ ] 程式碼裡不算 #不算\n```\n<!-- - [ ] 註解裡不算\n#也不算 -->\n寄信給 me@example.com 不是負責人",
+    "expect": {
+      "tasks": [
+        {
+          "line": 3,
+          "done": false,
+          "text": "寫完提案 @小明 10/25",
+          "owners": [
+            "小明"
+          ],
+          "due": "2026-10-25"
+        },
+        {
+          "line": 4,
+          "done": true,
+          "text": "開會（@王大同、@Amy）2026-10-20",
+          "owners": [
+            "王大同",
+            "Amy"
+          ],
+          "due": "2026-10-20"
+        },
+        {
+          "line": 5,
+          "done": false,
+          "text": "子項目 `- [ ] 不算` 11月3日",
+          "owners": [],
+          "due": "2026-11-03"
+        },
+        {
+          "line": 6,
+          "done": true,
+          "text": "星號也可以",
+          "owners": [],
+          "due": null
+        }
+      ],
+      "tags": [
+        "週報"
+      ],
+      "links": []
+    }
+  },
+  {
+    "name": "標籤",
+    "today": "2026-10-21",
+    "text": "討論 #專案A、#KR2 與 #專案/前端。\n#1 不算，[連結](https://a.com/#frag) 也不算，`#程式碼` 不算\n## 標題不是標籤\n#結尾-/ #a#b （#括號）「#引號」　#全形空白後",
+    "expect": {
+      "tasks": [],
+      "tags": [
+        "專案A",
+        "KR2",
+        "專案/前端",
+        "結尾",
+        "a",
+        "括號",
+        "引號",
+        "全形空白後"
+      ],
+      "links": []
+    }
+  },
+  {
+    "name": "連結",
+    "today": "2026-10-21",
+    "text": "見 [[會議記錄]]、[[週報#進度|本週]]，以及 [說明](筆記/%E6%9C%83%E8%AD%B0.md#標題)、[外部](https://example.com)、[本文](#標題)、![圖](assets/a.png)\n[壞的編碼](a%E6.md) [角括號](<b c.md>) [有標題](d.md \"標題\") [協定](mailto:x@y) [雙斜線](//cdn/x) [[  空白  ]]",
+    "expect": {
+      "tasks": [],
+      "tags": [],
+      "links": [
+        {
+          "line": 1,
+          "target": "會議記錄",
+          "kind": "wiki"
+        },
+        {
+          "line": 1,
+          "target": "週報",
+          "kind": "wiki"
+        },
+        {
+          "line": 1,
+          "target": "筆記/會議.md",
+          "kind": "markdown"
+        },
+        {
+          "line": 1,
+          "target": "assets/a.png",
+          "kind": "markdown"
+        },
+        {
+          "line": 2,
+          "target": "空白",
+          "kind": "wiki"
+        },
+        {
+          "line": 2,
+          "target": "a%E6.md",
+          "kind": "markdown"
+        },
+        {
+          "line": 2,
+          "target": "d.md",
+          "kind": "markdown"
+        }
+      ]
+    }
+  },
+  {
+    "name": "程式碼區塊：長度與種類要對上",
+    "today": "2026-10-21",
+    "text": "````\n```\n- [ ] 還在程式碼裡\n````\n- [ ] 出來了\n~~~\n```\n- [ ] 在 ~~~ 裡\n~~~ 不算結尾\n~~~\n- [ ] 結束後",
+    "expect": {
+      "tasks": [
+        {
+          "line": 5,
+          "done": false,
+          "text": "出來了",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 11,
+          "done": false,
+          "text": "結束後",
+          "owners": [],
+          "due": null
+        }
+      ],
+      "tags": [],
+      "links": []
+    }
+  },
+  {
+    "name": "行內程式碼的各種反引號",
+    "today": "2026-10-21",
+    "text": "- [ ] ``a`b`` @甲\n- [ ] ``a` @乙 #標籤一\n- [ ] `未關 @丙\n- [ ] 𠮷`碼`尾 @丁 #標籤二",
+    "expect": {
+      "tasks": [
+        {
+          "line": 1,
+          "done": false,
+          "text": "@甲",
+          "owners": [
+            "甲"
+          ],
+          "due": null
+        },
+        {
+          "line": 2,
+          "done": false,
+          "text": "``a` @乙 #標籤一",
+          "owners": [
+            "乙"
+          ],
+          "due": null
+        },
+        {
+          "line": 3,
+          "done": false,
+          "text": "`未關 @丙",
+          "owners": [
+            "丙"
+          ],
+          "due": null
+        },
+        {
+          "line": 4,
+          "done": false,
+          "text": "𠮷`碼`尾 @丁 #標籤二",
+          "owners": [
+            "丁"
+          ],
+          "due": null
+        }
+      ],
+      "tags": [
+        "標籤一",
+        "標籤二"
+      ],
+      "links": []
+    }
+  },
+  {
+    "name": "註解在行中間與跨行",
+    "today": "2026-10-21",
+    "text": "- [ ] 前面 <!-- 中間 @不算 --> 後面 @戊\n- [ ] 開始 <!-- 一直到下一行\n還在註解 #不算 --> - [ ] 不是行首 #算\n- [ ] 註解後 <!-- 未結束\n-->\n- [ ] 正常",
+    "expect": {
+      "tasks": [
+        {
+          "line": 1,
+          "done": false,
+          "text": "前面 <!-- 中間 @不算 --> 後面 @戊",
+          "owners": [
+            "戊"
+          ],
+          "due": null
+        },
+        {
+          "line": 2,
+          "done": false,
+          "text": "開始 ",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 3,
+          "done": false,
+          "text": "不是行首 #算",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 4,
+          "done": false,
+          "text": "註解後 ",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 6,
+          "done": false,
+          "text": "正常",
+          "owners": [],
+          "due": null
+        }
+      ],
+      "tags": [
+        "算"
+      ],
+      "links": []
+    }
+  },
+  {
+    "name": "截止日的各種寫法",
+    "today": "2026-10-21",
+    "text": "- [ ] 2026/1/5 前\n- [ ] 12月31號\n- [ ] 2/30\n- [ ] 版本 1.2.3\n- [ ] 比例 1/2/3\n- [ ] 12026-10-25\n- [ ] 2026-10-255\n- [ ] 0099-01-01\n- [ ] 2026.1.05\n- [ ] 3月5日 與 4/6\n- [ ] 13/40 然後 2/3\n- [ ] 2026-13-01",
+    "expect": {
+      "tasks": [
+        {
+          "line": 1,
+          "done": false,
+          "text": "2026/1/5 前",
+          "owners": [],
+          "due": "2026-01-05"
+        },
+        {
+          "line": 2,
+          "done": false,
+          "text": "12月31號",
+          "owners": [],
+          "due": "2026-12-31"
+        },
+        {
+          "line": 3,
+          "done": false,
+          "text": "2/30",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 4,
+          "done": false,
+          "text": "版本 1.2.3",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 5,
+          "done": false,
+          "text": "比例 1/2/3",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 6,
+          "done": false,
+          "text": "12026-10-25",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 7,
+          "done": false,
+          "text": "2026-10-255",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 8,
+          "done": false,
+          "text": "0099-01-01",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 9,
+          "done": false,
+          "text": "2026.1.05",
+          "owners": [],
+          "due": "2026-01-05"
+        },
+        {
+          "line": 10,
+          "done": false,
+          "text": "3月5日 與 4/6",
+          "owners": [],
+          "due": "2026-04-06"
+        },
+        {
+          "line": 11,
+          "done": false,
+          "text": "13/40 然後 2/3",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 12,
+          "done": false,
+          "text": "2026-13-01",
+          "owners": [],
+          "due": null
+        }
+      ],
+      "tags": [],
+      "links": []
+    }
+  },
+  {
+    "name": "負責人",
+    "today": "2026-10-21",
+    "text": "- [ ] @小明 和 @小華-、@小明 (@Bob_) ：@甲 a@b @\n- [ ] email@x.com @1 @_",
+    "expect": {
+      "tasks": [
+        {
+          "line": 1,
+          "done": false,
+          "text": "@小明 和 @小華-、@小明 (@Bob_) ：@甲 a@b @",
+          "owners": [
+            "小明",
+            "小華",
+            "Bob",
+            "甲"
+          ],
+          "due": null
+        },
+        {
+          "line": 2,
+          "done": false,
+          "text": "email@x.com @1 @_",
+          "owners": [
+            "1"
+          ],
+          "due": null
+        }
+      ],
+      "tags": [],
+      "links": []
+    }
+  },
+  {
+    "name": "清單符號與縮排",
+    "today": "2026-10-21",
+    "text": "+ [ ] 加號\n10. [x] 數字\n3) [ ] 括號\n-[ ] 沒空白\n- [] 空的\n- [ ]\n- [ ]  \n\t- [x] tab\n１. [ ] 全形數字",
+    "expect": {
+      "tasks": [
+        {
+          "line": 1,
+          "done": false,
+          "text": "加號",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 2,
+          "done": true,
+          "text": "數字",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 3,
+          "done": false,
+          "text": "括號",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 7,
+          "done": false,
+          "text": "",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 8,
+          "done": true,
+          "text": "tab",
+          "owners": [],
+          "due": null
+        }
+      ],
+      "tags": [],
+      "links": []
+    }
+  },
+  {
+    "name": "空白與特殊字元",
+    "today": "2026-10-21",
+    "text": "- [ ]  不換行空白 #a\n　- [ ] 全形空白開頭\n- [ ] 結尾有 CR\r\n- [x]　全形空白分隔 #b\n#c d",
+    "expect": {
+      "tasks": [
+        {
+          "line": 1,
+          "done": false,
+          "text": "不換行空白 #a",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 2,
+          "done": false,
+          "text": "全形空白開頭",
+          "owners": [],
+          "due": null
+        },
+        {
+          "line": 4,
+          "done": true,
+          "text": "全形空白分隔 #b",
+          "owners": [],
+          "due": null
+        }
+      ],
+      "tags": [
+        "a",
+        "b",
+        "c"
+      ],
+      "links": []
+    }
+  },
+  {
+    "name": "空文件",
+    "today": "2026-10-21",
+    "text": "",
+    "expect": {
+      "tasks": [],
+      "tags": [],
+      "links": []
+    }
+  },
+  {
+    "name": "只有換行",
+    "today": "2026-10-21",
+    "text": "\n\n\n",
+    "expect": {
+      "tasks": [],
+      "tags": [],
+      "links": []
+    }
+  },
+  {
+    "name": "標籤只算一次、保留順序",
+    "today": "2026-10-21",
+    "text": "#乙 #甲 #乙\n#甲 #丙/ #-/",
+    "expect": {
+      "tasks": [],
+      "tags": [
+        "乙",
+        "甲",
+        "丙"
+      ],
+      "links": []
+    }
+  },
+  {
+    "name": "連結的行號",
+    "today": "2026-10-21",
+    "text": "a\n[[一]]\n\n[二](二.md) [[三|3]]\n```\n[[不算]]\n```\n[四](四.md)",
+    "expect": {
+      "tasks": [],
+      "tags": [],
+      "links": [
+        {
+          "line": 2,
+          "target": "一",
+          "kind": "wiki"
+        },
+        {
+          "line": 4,
+          "target": "三",
+          "kind": "wiki"
+        },
+        {
+          "line": 4,
+          "target": "二.md",
+          "kind": "markdown"
+        },
+        {
+          "line": 8,
+          "target": "四.md",
+          "kind": "markdown"
+        }
+      ]
+    }
+  }
+]

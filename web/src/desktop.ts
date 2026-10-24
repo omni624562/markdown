@@ -2,6 +2,7 @@
  * 桌面版（Tauri）專用的橋接：原生對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、AI 協作。
  * 在一般瀏覽器裡 `desktop` 為 null，其餘程式碼照常走網頁 API。
  */
+import type { DocInfo } from "./doc-index.ts";
 import { t } from "./i18n.ts";
 
 interface TauriCore {
@@ -69,7 +70,8 @@ export interface DocText {
   path: string;
   rel: string;
   mtime: number;
-  text?: string | null;
+  /** 解析結果；和上次讀到的修改時間一樣時省略。 */
+  info?: DocInfo | null;
 }
 
 export interface FileItem {
@@ -629,6 +631,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<DocText[]>("scan_docs", { known }),
         () => unsupported(t("遠端資料夾不支援待辦總覽、標籤與反向連結")),
       ),
+    /** 讀取資料夾中幾份文件的內容；讀不到的是 null。 */
+    readDocs: (paths: string[]) => core.invoke<(string | null)[]>("read_docs", { paths }),
     /** 改寫一份沒有開啟的文件；磁碟上的內容和 `expected` 不同時拒絕。 */
     updateDoc: (path: string, expected: string, text: string) =>
       route(

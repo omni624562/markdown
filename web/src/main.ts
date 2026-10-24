@@ -126,9 +126,9 @@ import { setupWindowControls } from "./ui/window-controls.ts";
 import { askPdfOptions } from "./ui/pdf-dialog.ts";
 import { PAPERS, PRINT_ROOT_CSS, type PdfOptions, coverHtml, pageCss, pageLayout, shadowCss } from "./pdf-print.ts";
 import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
-import { type FileRef, backlinks, renameLinks, resolveWiki } from "./links.ts";
+import { type FileRef, backlinks, linkTarget, renameLinks, resolveWiki } from "./links.ts";
 import { type IndexedDoc, type OpenDoc, WorkspaceIndex } from "./workspace-index.ts";
-import { isoDate, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
+import { isoDate, parseDoc, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
 import { REPO_URL, SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
 import { TerminalPanel } from "./ui/terminal-panel.ts";
@@ -967,12 +967,22 @@ function scrollToHeading(anchor: string): void {
 /** 檔案或資料夾改名後，更新其他文件中指向它（或它底下檔案）的連結。 */
 async function updateLinksAfterRename(from: string, to: string, docsBefore: IndexedDoc[], files: FileRef[]): Promise<void> {
   const moved = (p: string) => rebase(p, from, to);
-  const changes: { doc: IndexedDoc; path: string; text: string }[] = [];
-  for (const doc of docsBefore) {
-    if (!doc.path) continue;
-    const next = renameLinks(doc.text, doc.path, files, moved);
-    if (next !== null) changes.push({ doc, path: moved(doc.path) ?? doc.path, text: next });
-  }
+  // 先用索引裡的連結挑出可能要改的文件，只讀這幾份的內容。
+  const linking = docsBefore.filter(
+    (doc) =>
+      doc.path &&
+      doc.info.links.some((l) => {
+        const p = linkTarget(l, doc.path, files);
+        return p !== null && moved(p) !== null;
+      }),
+  );
+  if (!linking.length) return;
+  const texts = await docIndex.texts(linking);
+  const changes: { path: string; before: string; text: string }[] = [];
+  linking.forEach((doc, i) => {
+    const next = renameLinks(texts[i], doc.path!, files, moved);
+    if (next !== null) changes.push({ path: moved(doc.path!) ?? doc.path!, before: texts[i], text: next });
+  });
   if (!changes.length) return;
   const choice = await choose(
     t("更新連結？"),
@@ -991,7 +1001,7 @@ async function updateLinksAfterRename(from: string, to: string, docsBefore: Inde
   const failed: string[] = [];
   for (const c of changes) {
     try {
-      await replaceDocText(c.path, c.doc.text, c.text);
+      await replaceDocText(c.path, c.before, c.text);
       done++;
     } catch (e) {
       failed.push(t("{name}（{error}）", { name: basename(c.path), error: e instanceof Error ? e.message : String(e) }));
@@ -2163,7 +2173,10 @@ window.addEventListener("focus", () => {
   refreshIndexPanels(200);
 });
 
-const docIndex = new WorkspaceIndex((known, root) => desktop!.scanDocs(known, root));
+const docIndex = new WorkspaceIndex(
+  (known, root) => desktop!.scanDocs(known, root),
+  (paths) => desktop!.readDocs(paths),
+);
 
 /** 已開啟的 Markdown 分頁（以編輯器中的內容為準）。 */
 function openDocsForIndex(): OpenDoc[] {
@@ -2212,9 +2225,12 @@ const tasksPanel = new TasksPanel($("#tasks-host"), {
       return;
     }
     const path = item.doc.path!;
-    const next = setTaskDone(item.doc.text, item.line, done);
+    const text = await docIndex.text(item.doc);
+    // 索引之後檔案可能被改過：那一行還是同一個待辦才勾選。
+    const now = parseDoc(text).tasks.find((x) => x.line === item.line);
+    const next = now?.text === item.text ? setTaskDone(text, item.line, done) : null;
     if (next === null) throw new Error(t("這一行已經不是待辦了，請重新整理"));
-    await desktop!.updateDoc(path, item.doc.text, next);
+    await desktop!.updateDoc(path, text, next);
     docIndex.remember(path, next);
   },
   emptyHint: () =>
@@ -2232,6 +2248,7 @@ $("#tasks-refresh").addEventListener("click", () => {
 const tagsPanel = new TagsPanel($("#tags-host"), {
   docs: indexedDocs,
   open: (doc, line) => openIndexed(doc, line),
+  text: (doc) => docIndex.text(doc),
   emptyHint: () =>
     indexScope() === "folder"
       ? t("資料夾中還沒有標籤。在文件中寫 #專案A、#KR2 這樣的標籤，就能在這裡依標籤找文件。")
@@ -2262,6 +2279,9 @@ async function renderBacklinks(): Promise<void> {
   if (!docsNow || seq !== backlinksSeq) return;
   fileListCache ??= await desktop!.listFiles(workspaceRoot!.path).catch(() => []);
   const list = backlinks(path, docsNow, markdownFiles(fileListCache));
+  // 摘要要用到那一行的內容：只讀連過來的這幾份。
+  const texts = await docIndex.texts(list.map((b) => b.doc)).catch(() => list.map(() => ""));
+  if (seq !== backlinksSeq) return;
   el.hidden = false;
   el.replaceChildren();
   const h = document.createElement("h3");
@@ -2275,7 +2295,8 @@ async function renderBacklinks(): Promise<void> {
     return;
   }
   const ul = document.createElement("ul");
-  for (const b of list) {
+  for (const [i, b] of list.entries()) {
+    const lines = texts[i].split("\n");
     for (const line of b.lines.slice(0, 3)) {
       const li = document.createElement("li");
       const btn = document.createElement("button");
@@ -2283,7 +2304,7 @@ async function renderBacklinks(): Promise<void> {
       const name = document.createElement("strong");
       name.textContent = b.doc.rel.replace(/\.(md|markdown)$/i, "");
       const snippet = document.createElement("span");
-      snippet.textContent = plainTaskText(b.doc.text.split("\n")[line - 1] ?? "").replace(/^[-*+>#\s]+|^\d+[.)]\s+/g, "");
+      snippet.textContent = plainTaskText(lines[line - 1] ?? "").replace(/^[-*+>#\s]+|^\d+[.)]\s+/g, "");
       btn.append(name, snippet);
       btn.title = t("{file}：第 {line} 行", { file: b.doc.rel, line });
       btn.addEventListener("click", () => openIndexed(b.doc, line));
