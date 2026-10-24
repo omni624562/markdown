@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "md-docx"
-version = "1.23.8"
+version = "1.24.1"
 dependencies = [
  "md-core",
 ]
