@@ -76,6 +76,14 @@ export interface GitPanelHooks {
   changed(status: GitStatus | null): void;
 }
 
+/** 視窗在前面時，多久向遠端檢查一次有沒有新的提交。 */
+const FETCH_INTERVAL = 5 * 60_000;
+
+/** 按鈕上的數字（差幾個提交）。 */
+function count(n: number): HTMLElement {
+  return Object.assign(document.createElement("span"), { className: "git-count", textContent: String(n) });
+}
+
 export class GitPanel {
   #d: Desktop;
   #settings: SettingsStore;
@@ -89,6 +97,11 @@ export class GitPanel {
   #syncTimer = 0;
   /** 自動同步出錯後，這次開啟期間先暫停。 */
   #syncPaused = false;
+  /** 上次向遠端檢查（抓取）的時間；0 表示還沒檢查。 */
+  #lastFetch = 0;
+  #fetching = false;
+  /** 上次檢查遠端失敗的原因（例如沒有登入）。 */
+  #fetchError: string | null = null;
   #message: HTMLTextAreaElement;
   /** 這次合併中，每個衝突檔案「都採用遠端」的內容（重新開啟程式後就沒有了）。 */
   #theirs = new Map<string, string>();
@@ -149,6 +162,26 @@ export class GitPanel {
     this.#render();
     this.#hooks.changed(this.#status);
     this.#scheduleSync();
+    if (Date.now() - this.#lastFetch > FETCH_INTERVAL) void this.#fetchRemote();
+  }
+
+  /**
+   * 在背景向遠端檢查有沒有新的提交（只抓取，不合併、不動檔案），拉取按鈕才知道差幾個版本。
+   * 視窗在前面時每幾分鐘一次；沒有登入等原因失敗時不跳出錯誤，只顯示在按鈕的說明裡。
+   */
+  async #fetchRemote(): Promise<void> {
+    if (this.#fetching || this.#busy || !this.#status?.branch?.upstream || this.#status.merging) return;
+    this.#fetching = true;
+    this.#lastFetch = Date.now();
+    try {
+      await this.#d.gitFetch();
+      this.#fetchError = null;
+    } catch (e) {
+      this.#fetchError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.#fetching = false;
+    }
+    await this.refresh();
   }
 
   /** 把焦點放到提交說明（指令「Git：提交變更」）。 */
@@ -177,8 +210,6 @@ export class GitPanel {
     info.disabled = this.#busy || s.merging;
     info.addEventListener("click", () => this.#hooks.switchBranch());
     info.append(icon("git-branch"), Object.assign(document.createElement("strong"), { textContent: b?.name ?? t("（未知分支）") }));
-    if (b?.ahead) info.append(Object.assign(document.createElement("small"), { textContent: `↑${b.ahead}`, title: t("{n} 個提交還沒推送", { n: b.ahead }) }));
-    if (b?.behind) info.append(Object.assign(document.createElement("small"), { textContent: `↓${b.behind}`, title: t("遠端有 {n} 個新提交", { n: b.behind }) }));
     const sync = document.createElement("div");
     sync.className = "git-sync";
     const pr = this.#button("", "git-pull-request", async () => this.#hooks.createPr());
@@ -190,13 +221,22 @@ export class GitPanel {
     const projects = this.#button("", "folder-kanban", async () => this.#hooks.projects());
     projects.title = t("切換專案或下載其他儲存庫");
     projects.setAttribute("aria-label", t("切換專案或下載其他儲存庫"));
-    sync.append(
-      projects,
-      history,
-      this.#button(t("拉取"), "arrow-down-to-line", () => this.pull()),
-      this.#button(t("推送"), "arrow-up-from-line", () => this.push()),
-      ...(s.remote ? [pr] : []),
-    );
+    // 拉取、推送按鈕上顯示和遠端差幾個提交。
+    const pull = this.#button(t("拉取"), "arrow-down-to-line", () => this.pull());
+    const push = this.#button(t("推送"), "arrow-up-from-line", () => this.push());
+    if (b?.upstream) {
+      if (b.behind) pull.append(count(b.behind));
+      if (b.ahead) push.append(count(b.ahead));
+      const checked = this.#fetchError
+        ? t("無法檢查遠端：{error}", { error: this.#fetchError })
+        : this.#lastFetch
+          ? t("上次檢查遠端：{time}", { time: new Date(this.#lastFetch).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })
+          : t("還沒檢查遠端");
+      const incoming = b.behind ? t("遠端有 {n} 個新提交", { n: b.behind }) : t("沒有新的遠端提交");
+      pull.title = `${incoming}\n${checked}`;
+      push.title = b.ahead ? t("{n} 個提交還沒推送", { n: b.ahead }) : t("沒有要推送的提交");
+    }
+    sync.append(projects, history, pull, push, ...(s.remote ? [pr] : []));
     branch.append(info, sync);
 
     // 提交

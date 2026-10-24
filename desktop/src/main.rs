@@ -358,6 +358,7 @@ fn main() {
             git::git_status,
             git::git_commit,
             git::git_pull,
+            git::git_fetch,
             git::git_push,
             github::github_account,
             github::github_login_start,

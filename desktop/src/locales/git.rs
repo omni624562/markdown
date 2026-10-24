@@ -18,6 +18,7 @@ pub static EN: &[(&str, &str)] = &[
     ("這個資料夾還沒有連到 GitHub 或其他遠端儲存庫", "This folder isn't connected to GitHub or another remote repository yet."),
     ("還有未提交的變更，請先提交再拉取", "You have uncommitted changes. Commit them before pulling."),
     ("拉取", "Pull"),
+    ("檢查遠端", "Checking the remote"),
     ("遠端還沒有這個分支，不需要拉取", "The remote doesn't have this branch yet. Nothing to pull."),
     ("已經是最新的", "Already up to date."),
     ("已拉取 {count} 個新的提交", "Pulled {count} new commit(s)."),
