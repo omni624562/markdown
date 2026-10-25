@@ -2100,7 +2100,6 @@ const gitPanel =
         switchBranch: () => void switchBranch().catch(reportError),
         createPr: () => void createPullRequest().catch(reportError),
         history: () => void openGitHistory().catch(reportError),
-        projects: () => void commands.run("switch-project").catch(reportError),
         openAdo: ado ? () => void ado!.openRepo() : null,
         changed: (status) => {
           // 提交、切換分支、拉取之後，開著的 Git 歷史跟著更新。
