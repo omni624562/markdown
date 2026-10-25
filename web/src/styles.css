@@ -1359,6 +1359,8 @@ button.git-info:disabled { cursor: default; }
 .git-sync .btn { min-height: 26px; padding: 0 6px; color: var(--muted); font-size: 12px; }
 .git-sync .btn:hover { color: var(--fg); }
 .git-sync .btn .icon { width: 14px; height: 14px; }
+.git-sync .btn.spinning .icon { animation: git-spin 0.9s linear infinite; }
+@keyframes git-spin { to { transform: rotate(360deg); } }
 .git-count { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
 .git-message {
   display: block;

@@ -169,10 +169,11 @@ export class GitPanel {
    * 在背景向遠端檢查有沒有新的提交（只抓取，不合併、不動檔案），拉取按鈕才知道差幾個版本。
    * 視窗在前面時每幾分鐘一次；沒有登入等原因失敗時不跳出錯誤，只顯示在按鈕的說明裡。
    */
-  async #fetchRemote(): Promise<void> {
+  async #fetchRemote(manual = false): Promise<void> {
     if (this.#fetching || this.#busy || !this.#status?.branch?.upstream || this.#status.merging) return;
     this.#fetching = true;
     this.#lastFetch = Date.now();
+    if (manual) this.#render();
     try {
       await this.#d.gitFetch();
       this.#fetchError = null;
@@ -182,6 +183,18 @@ export class GitPanel {
       this.#fetching = false;
     }
     await this.refresh();
+    if (!manual) return;
+    // 按「立刻檢查」時把結果說出來（背景檢查只更新按鈕上的數字）。
+    const b = this.#status?.branch;
+    if (this.#fetchError) toast(t("無法檢查遠端：{error}", { error: this.#fetchError }), { tone: "error", duration: 12000 });
+    else if (!b?.ahead && !b?.behind) toast(t("已經和遠端一致"), { tone: "success" });
+    else {
+      const parts = [
+        ...(b.behind ? [t("遠端有 {n} 個新提交", { n: b.behind })] : []),
+        ...(b.ahead ? [t("{n} 個提交還沒推送", { n: b.ahead })] : []),
+      ];
+      toast(parts.join(t("，")));
+    }
   }
 
   /** 把焦點放到提交說明（指令「Git：提交變更」）。 */
@@ -218,6 +231,12 @@ export class GitPanel {
     const history = this.#button("", "git-graph", async () => this.#hooks.history());
     history.title = t("Git 歷史（線圖）");
     history.setAttribute("aria-label", t("Git 歷史（線圖）"));
+    // 立刻向遠端檢查，比對本機和遠端差幾個提交（不合併、不動檔案）。
+    const check = this.#button("", "refresh-cw", () => this.#fetchRemote(true));
+    check.title = t("立刻檢查遠端（比對本機和遠端差幾個提交）");
+    check.setAttribute("aria-label", t("立刻檢查遠端"));
+    check.disabled ||= this.#fetching || !b?.upstream || s.merging;
+    check.classList.toggle("spinning", this.#fetching);
     const projects = this.#button("", "folder-kanban", async () => this.#hooks.projects());
     projects.title = t("切換專案或下載其他儲存庫");
     projects.setAttribute("aria-label", t("切換專案或下載其他儲存庫"));
@@ -236,7 +255,7 @@ export class GitPanel {
       pull.title = `${incoming}\n${checked}`;
       push.title = b.ahead ? t("{n} 個提交還沒推送", { n: b.ahead }) : t("沒有要推送的提交");
     }
-    sync.append(projects, history, pull, push, ...(s.remote ? [pr] : []));
+    sync.append(projects, history, check, pull, push, ...(s.remote ? [pr] : []));
     branch.append(info, sync);
 
     // 提交
