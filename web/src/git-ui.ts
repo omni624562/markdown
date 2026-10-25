@@ -68,8 +68,6 @@ export interface GitPanelHooks {
   createPr(): void;
   /** 開啟 Git 歷史。 */
   history(): void;
-  /** 切換專案或下載其他儲存庫（專案切換器）。 */
-  projects(): void;
   /** 從 Azure DevOps／TFS 下載儲存庫（有這個功能時）。 */
   openAdo: (() => void) | null;
   /** 儲存庫狀態改變（更新活動列圖示的變更數）。沒有開啟資料夾時是 null。 */
@@ -218,9 +216,6 @@ export class GitPanel {
     const history = this.#button("", "git-graph", async () => this.#hooks.history());
     history.title = t("Git 歷史（線圖）");
     history.setAttribute("aria-label", t("Git 歷史（線圖）"));
-    const projects = this.#button("", "folder-kanban", async () => this.#hooks.projects());
-    projects.title = t("切換專案或下載其他儲存庫");
-    projects.setAttribute("aria-label", t("切換專案或下載其他儲存庫"));
     // 拉取、推送按鈕上顯示和遠端差幾個提交。
     const pull = this.#button(t("拉取"), "arrow-down-to-line", () => this.pull());
     const push = this.#button(t("推送"), "arrow-up-from-line", () => this.push());
@@ -236,7 +231,7 @@ export class GitPanel {
       pull.title = `${incoming}\n${checked}`;
       push.title = b.ahead ? t("{n} 個提交還沒推送", { n: b.ahead }) : t("沒有要推送的提交");
     }
-    sync.append(projects, history, pull, push, ...(s.remote ? [pr] : []));
+    sync.append(history, pull, push, ...(s.remote ? [pr] : []));
     branch.append(info, sync);
 
     // 提交
