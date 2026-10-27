@@ -2254,9 +2254,25 @@ async function gitHistory(): Promise<GitHistory | null> {
       showPanel("git");
       panel.focusMessage();
     },
-    closed: () => editor.view.focus(),
+    closed: () => {
+      markHistoryButtons();
+      editor.view.focus();
+    },
   });
   return historyView;
+}
+
+/** 開啟 Git 歷史的指令：釘在圖示列上時，再按一次就關閉。 */
+const HISTORY_COMMANDS = ["git-history", "git-file-history"];
+
+/** 圖示列上的 Git 歷史按鈕在歷史開著時顯示成按下的樣子。 */
+function markHistoryButtons(): void {
+  const open = !!historyView?.isOpen;
+  for (const id of HISTORY_COMMANDS) {
+    for (const b of document.querySelectorAll<HTMLElement>(`.activity-cmd[data-command="${id}"]`)) {
+      b.setAttribute("aria-pressed", String(open));
+    }
+  }
 }
 
 /** 開啟 Git 歷史；`path` 是檔案時只列出改過它的提交。 */
@@ -2265,6 +2281,7 @@ async function openGitHistory(path: string | null = null): Promise<void> {
   if (!view) return;
   issueView.close();
   await view.open({ path });
+  markHistoryButtons();
 }
 
 const searchPanel = desktop
@@ -5003,10 +5020,14 @@ function renderActivityCommands(): void {
       b.setAttribute("aria-label", cmd.title);
       b.draggable = true;
       b.append(icon(cmd.icon ?? "command"));
-      b.addEventListener("click", () => void commands.run(id).catch(reportError));
+      b.addEventListener("click", () => {
+        if (HISTORY_COMMANDS.includes(id) && historyView?.isOpen) historyView.close();
+        else void commands.run(id).catch(reportError);
+      });
       return [b];
     }),
   );
+  markHistoryButtons();
   refreshActivityCommands();
 }
 

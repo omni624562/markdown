@@ -311,6 +311,8 @@ kbd {
 .activity-tabs button .icon, .activity-btn .icon { width: 22px; height: 22px; stroke-width: 1.6; }
 .activity-tabs button:hover, .activity-btn:hover, .activity-btn[aria-expanded="true"] { color: var(--fg); }
 .activity-tabs button[aria-selected="true"] { color: var(--fg); }
+/* 釘上去的按鈕對應的畫面開著時（例如 Git 歷史），再按一次就關閉。 */
+.activity-cmd[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 /* 側邊欄收起時，圖示都用一般的顏色（沒有哪個面板是打開的）。 */
 .workspace.outline-hidden .activity-tabs button[aria-selected="true"]:not(:hover) { color: var(--subtle); }
 /* 目前的面板：左邊一條強調色。側邊欄收起時不顯示。 */
