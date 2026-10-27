@@ -616,4 +616,6 @@ export const main: Record<string, Translation> = {
   "選一個指令，放到左邊的圖示列": "Choose a command to put on the left icon bar",
   "圖示列最多放 {n} 個按鈕。": "The icon bar holds up to {n} buttons.",
   "已把「{name}」放到圖示列，拖曳可以調整位置。": "Added \"{name}\" to the icon bar. Drag it to change its position.",
+  "Azure DevOps／TFS：Wiki": "Azure DevOps/TFS: Wiki",
+  "已插入「{name}」的連結": "Inserted a link to \"{name}\".",
 };

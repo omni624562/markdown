@@ -1,0 +1,63 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink } from "./wiki-text.ts";
+
+const pages = ["/首頁", "/產品", "/產品/安裝 說明", "/產品/a-b", "/FAQ"];
+
+test("頁面連結：- 是空白、%2D 是 -", () => {
+  assert.equal(resolvePageLink("/產品/安裝-說明", "/首頁", pages), "/產品/安裝 說明");
+  assert.equal(resolvePageLink("/%E7%94%A2%E5%93%81/a%2Db", "/首頁", pages), "/產品/a-b");
+  assert.equal(resolvePageLink("/產品/a-b", "/首頁", pages), "/產品/a-b");
+});
+
+test("頁面連結：相對路徑以目前頁面的資料夾為準，可以加 .md 或 #標題", () => {
+  assert.equal(resolvePageLink("安裝-說明.md#步驟", "/產品/a-b", pages), "/產品/安裝 說明");
+  assert.equal(resolvePageLink("../faq", "/產品/a-b", pages), "/FAQ");
+  assert.equal(resolvePageLink("./產品", "/首頁", pages), "/產品");
+});
+
+test("頁面連結：網址、找不到的頁面回傳 null", () => {
+  assert.equal(resolvePageLink("https://example.com/產品", "/首頁", pages), null);
+  assert.equal(resolvePageLink("mailto:a@b.c", "/首頁", pages), null);
+  assert.equal(resolvePageLink("/沒有", "/首頁", pages), null);
+  assert.equal(resolvePageLink("#標題", "/首頁", pages), null);
+  assert.equal(resolvePageLink("/%E0", "/首頁", pages), null);
+});
+
+test("圖片：附件與相對路徑", () => {
+  assert.equal(imageRepoPath("/.attachments/a%20b.png", "/產品/安裝 說明", "/"), "/.attachments/a b.png");
+  assert.equal(imageRepoPath("./img/a.png", "/產品 說明/a-b", "/"), "/產品-說明/img/a.png");
+  assert.equal(imageRepoPath("../a.png", "/A/B", "/docs"), "/docs/a.png");
+  assert.equal(imageRepoPath(".attachments/a.png", "/首頁", "/docs"), "/docs/.attachments/a.png");
+});
+
+test("圖片：網址與 data: 不處理", () => {
+  assert.equal(imageRepoPath("https://x/a.png", "/a", "/"), null);
+  assert.equal(imageRepoPath("data:image/png;base64,AA", "/a", "/"), null);
+  assert.equal(imageRepoPath("//x/a.png", "/a", "/"), null);
+});
+
+test("Wiki 語法：拿掉目錄、轉換 mermaid 與圖片大小", () => {
+  const text = "[[_TOC_]]\n\n# 標題\n\n::: mermaid\ngraph TD\n A-->B\n:::\n\n![圖](/.attachments/a.png =300x200) ![小](b.png =x100)";
+  const out = wikiMarkdown(text);
+  assert.ok(!out.includes("[[_TOC_]]"));
+  assert.ok(out.includes("```mermaid\ngraph TD\n A-->B\n```"));
+  assert.ok(out.includes("![圖|300x200](/.attachments/a.png)"));
+  assert.ok(out.includes("![小](b.png)"));
+});
+
+test("頁面名稱與攤平樹狀目錄", () => {
+  assert.equal(pageName("/產品/安裝 說明"), "安裝 說明");
+  assert.deepEqual(flattenPages([{ path: "/a", children: [{ path: "/a/b", children: [] }] }, { path: "/c", children: [] }]), [
+    "/a",
+    "/a/b",
+    "/c",
+  ]);
+});
+
+test("插入的頁面連結", () => {
+  assert.equal(
+    wikiPageLink("安裝 [說明]", "https://tfs/DC/P/_wiki/wikis/P.wiki/3/安裝 (說明)"),
+    "[安裝 \\[說明\\]](https://tfs/DC/P/_wiki/wikis/P.wiki/3/安裝%20%28說明%29)",
+  );
+});

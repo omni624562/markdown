@@ -66,7 +66,7 @@ import { basename, dirname, isInside, localImagePath, markdownUrl, rebase, resol
 import { highlightPlugin } from "./plugins/highlight.ts";
 import { localImagesPlugin } from "./plugins/local-images.ts";
 import { mathPlugin, renderTex } from "./plugins/math.ts";
-import { livePreview } from "./live-preview.ts";
+import { imageSize, livePreview } from "./live-preview.ts";
 import { codeToolsPlugin } from "./plugins/code-tools.ts";
 import { tablesPlugin } from "./plugins/tables.ts";
 import { mermaidPlugin, mermaidTheme, renderMermaid } from "./plugins/mermaid.ts";
@@ -117,6 +117,8 @@ import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
 import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
 import { IssueView, type IssueSource } from "./ui/issue-view.ts";
+import { WikiPanel } from "./ui/wiki-panel.ts";
+import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink } from "./wiki-text.ts";
 import { githubIssueMarkdown, issueFileName, workItemMarkdown } from "./issue-doc.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
@@ -139,7 +141,7 @@ import { WebDavDialog } from "./ui/webdav-dialog.ts";
 import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
-import type { AdoWorkItem, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
+import type { AdoWiki, AdoWorkItem, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
 import type { GitHistory } from "./ui/history-view.ts";
 import { clampSidebarWidth, setupSidebarResize } from "./ui/sidebar-resize.ts";
 import { setupSplitter } from "./ui/splitter.ts";
@@ -1620,8 +1622,8 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "git"];
+type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "wiki" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "wiki", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
 let sidePanel: SidePanel = SIDE_PANELS.find((p) => p === storage.load("side-panel")) ?? "outline";
 /** 目前開啟的資料夾（工作區）。 */
@@ -1730,7 +1732,8 @@ const ado = desktop
       changed: () => {
         renderAdoTab();
         workItemsPanel?.reset();
-        if (sidePanel === "workitems") showPanel("workitems", false);
+        wikiPanel?.reset();
+        if (sidePanel === "workitems" || sidePanel === "wiki") showPanel(sidePanel, false);
         settingsDialog.refresh();
         void gitPanel?.refresh();
       },
@@ -1776,10 +1779,77 @@ const adoImagesPlugin: PreviewPlugin = {
   },
 };
 
-/** 開啟工作項目、issue（Git 歷史開著時先關掉）。 */
+/** 主要區域開著的 Wiki 頁面（圖片的相對路徑以它為準）。 */
+let wikiPage: { wiki: AdoWiki; path: string } | null = null;
+
+/** Wiki 裡的圖片放在 Wiki 的 Git 儲存庫裡，要帶權杖才讀得到：改由原生端讀取；` =300x` 的大小也套用上去。 */
+const wikiImagesPlugin: PreviewPlugin = {
+  name: "wiki-images",
+  prepare(content) {
+    if (!wikiPage) return;
+    for (const img of content.querySelectorAll<HTMLImageElement>("img")) {
+      const size = imageSize(img.alt);
+      if (size.width) {
+        img.alt = size.alt;
+        img.width = size.width;
+        if (size.height) img.height = size.height;
+      }
+      const src = img.getAttribute("src");
+      const path = src && imageRepoPath(src, wikiPage.path, wikiPage.wiki.mappedPath);
+      if (!path) continue;
+      img.dataset.wikiSrc = path;
+      img.removeAttribute("src");
+    }
+  },
+  apply(_root, scope) {
+    const page = wikiPage;
+    if (!page) return;
+    for (const img of scope.querySelectorAll<HTMLImageElement>("img[data-wiki-src]")) {
+      void desktop!
+        .adoWikiImage(page.wiki, img.dataset.wikiSrc!)
+        .then((url) => (img.src = url))
+        .catch((e) => (img.title = e instanceof Error ? e.message : String(e)));
+    }
+  },
+};
+
+/** 開啟工作項目、issue、Wiki 頁面（Git 歷史開著時先關掉）。 */
 function showIssue(source: IssueSource): Promise<void> {
   historyView?.close();
+  wikiPage = null;
   return issueView.show(source);
+}
+
+/** 在主要區域開啟 Wiki 頁面；內容裡連到其他頁面的連結直接在這裡切換。 */
+function showWikiPage(wiki: AdoWiki, path: string): void {
+  let webUrl = wiki.webUrl ?? "";
+  const title = pageName(path);
+  void showIssue({
+    key: `wiki:${wiki.id}:${path}`,
+    label: wiki.name,
+    title,
+    get webUrl() {
+      return webUrl;
+    },
+    fileName: issueFileName(wiki.name, title),
+    load: async () => {
+      const page = await desktop!.adoWikiPage(wiki, path);
+      webUrl = page.webUrl ?? webUrl;
+      wikiPage = { wiki, path };
+      return wikiMarkdown(page.content);
+    },
+    insertLink: () => {
+      insertAtCursor(wikiPageLink(title, webUrl));
+      toast(t("已插入「{name}」的連結", { name: title }));
+    },
+    link: (href) => {
+      const target = resolvePageLink(href, path, flattenPages(wikiPanel?.pages ?? []));
+      if (!target) return false;
+      wikiPanel?.select(target);
+      showWikiPage(wiki, target);
+      return true;
+    },
+  });
 }
 
 let issuePreview: Preview | null = null;
@@ -1789,6 +1859,7 @@ const issueView = new IssueView($(".workspace"), {
       highlightPlugin(),
       tablesPlugin(),
       adoImagesPlugin,
+      wikiImagesPlugin,
       {
         name: "remote-images",
         apply() {},
@@ -1808,8 +1879,10 @@ const issueView = new IssueView($(".workspace"), {
     toast(t("已複製成新的 Markdown 分頁，修改不會回寫到伺服器"));
   },
   closed() {
+    wikiPage = null;
     workItemsPanel?.select(null);
     issuesPanel?.select(null);
+    wikiPanel?.select(null);
   },
 });
 
@@ -2021,6 +2094,17 @@ const workItemsPanel = desktop
     })
   : null;
 
+/** Azure DevOps 的 Wiki：選一個 Wiki，看頁面樹狀目錄，點頁面在主要區域開啟（唯讀）。 */
+const wikiPanel = desktop
+  ? new WikiPanel<AdoWiki>($("#wiki-host"), {
+      wikis: () => desktop!.adoWikis(),
+      pages: (wiki) => desktop!.adoWikiPages(wiki),
+      open: (wiki, path) => showWikiPage(wiki, path),
+      load: () => storage.load("ado-wiki"),
+      save: (id) => storage.save("ado-wiki", id),
+    })
+  : null;
+
 /** GitHub Issues：目前開啟的資料夾連到 GitHub、而且已經登入時才顯示。 */
 const issuesPanel = desktop
   ? new IssuesPanel($("#issues-host"), {
@@ -2075,13 +2159,16 @@ async function renderIssuesTab(): Promise<void> {
 }
 $("#issues-refresh").addEventListener("click", () => void issuesPanel?.refresh());
 
-/** 連線到 Azure DevOps 後才顯示「工作項目」圖示。 */
+/** 連線到 Azure DevOps 後才顯示「工作項目」與「Wiki」圖示。 */
 function renderAdoTab(): void {
-  const tab = $("#side-tab-workitems");
-  tab.hidden = !ado?.account;
-  if (tab.hidden && sidePanel === "workitems") showPanel("files", false);
+  for (const panel of ["workitems", "wiki"] as const) {
+    const tab = $(`#side-tab-${panel}`);
+    tab.hidden = !ado?.account;
+    if (tab.hidden && sidePanel === panel) showPanel("files", false);
+  }
 }
 $("#workitems-refresh").addEventListener("click", () => void workItemsPanel?.refresh());
+$("#wiki-refresh").addEventListener("click", () => void wikiPanel?.refresh());
 
 // 登入過期、權杖失效的錯誤通知：直接附上重新登入的按鈕。
 setErrorAction((message) => {
@@ -2430,6 +2517,7 @@ function placeOutline(): void {
 function showPanel(panel: SidePanel, reveal = true): void {
   if (panel === "git" && $("#side-tab-git").hidden) panel = "files";
   if (panel === "workitems" && $("#side-tab-workitems").hidden) panel = "files";
+  if (panel === "wiki" && $("#side-tab-wiki").hidden) panel = "files";
   if (panel === "issues" && $("#side-tab-issues").hidden) panel = "files";
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
   if (panel === "outline" && outlinePlacedRight()) {
@@ -2449,6 +2537,7 @@ function showPanel(panel: SidePanel, reveal = true): void {
   if (reveal && !outlineShown) setOutline(true);
   if (panel === "outline") updateActiveHeading();
   if (panel === "workitems") workItemsPanel?.shown();
+  if (panel === "wiki") wikiPanel?.shown();
   if (panel === "issues") issuesPanel?.shown();
   if (panel === "search" && searchStale) {
     searchStale = false;
@@ -4583,6 +4672,7 @@ commands.register(
       ["github-gist", t("GitHub：分享成 Gist…"), "share-2", () => void shareGist(), () => !!github?.account],
       ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "briefcase-business", () => ado?.openRepo(), () => !!ado],
       ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
+      ["ado-wiki", t("Azure DevOps／TFS：Wiki"), "book-open-text", () => showPanel("wiki"), () => !!ado?.account],
       ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open(t("Azure DevOps／TFS")), () => !!ado],
     ] as const
   ).map(
@@ -4866,6 +4956,7 @@ const PANEL_LABELS: Record<SidePanel, () => string> = {
   tags: () => t("標籤"),
   issues: () => t("Issues（GitHub）"),
   workitems: () => t("工作項目（Azure DevOps）"),
+  wiki: () => t("Wiki（Azure DevOps）"),
   git: () => t("原始碼控制（Git）"),
 };
 const PANEL_ICONS: Record<SidePanel, string> = {
@@ -4876,6 +4967,7 @@ const PANEL_ICONS: Record<SidePanel, string> = {
   tags: "tags",
   issues: "circle-dot",
   workitems: "square-kanban",
+  wiki: "book-open-text",
   git: "git-branch",
 };
 

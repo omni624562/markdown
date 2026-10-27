@@ -459,4 +459,10 @@ export const ui: Record<string, Translation> = {
   "左側圖示列": "Left Icon Bar",
   "勾選要顯示的圖示、調整順序，也可以把常用的指令（例如 Git 歷史）放上去。在圖示列上按右鍵或直接拖曳圖示也可以調整。": "Choose which icons to show and their order, and pin commands you use often (such as Git History). You can also right-click the icon bar or drag icons to rearrange them.",
   "圖示與順序": "Icons and order",
+  "搜尋頁面名稱": "Search page names",
+  "這個集合裡沒有 Wiki": "There are no wikis in this collection.",
+  "這個 Wiki 還沒有頁面": "This wiki has no pages yet.",
+  "找到 {n} 頁": ["{n} page found", "{n} pages found"],
+  "找不到符合的頁面": "No matching pages",
+  "{project}／{name}": "{project}/{name}",
 };

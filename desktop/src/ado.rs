@@ -1161,12 +1161,237 @@ pub async fn ado_image(app: AppHandle, url: String) -> Result<String, String> {
             .limit(10 * 1024 * 1024)
             .read_to_vec()
             .map_err(|e| tr!("無法讀取圖片：{e}", e = e))?;
-        Ok(format!(
-            "data:{mime};base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        ))
+        Ok(data_url(&mime, bytes))
     })
     .await
+}
+
+// ---- Wiki -------------------------------------------------------------------
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Wiki {
+    id: String,
+    name: String,
+    project: String,
+    project_id: String,
+    /// 從程式碼儲存庫發佈的 Wiki（不是專案 Wiki）。
+    code: bool,
+    repository_id: String,
+    /// 程式碼 Wiki 在儲存庫裡的資料夾（專案 Wiki 是 `/`）。
+    mapped_path: String,
+    /// 分支（程式碼 Wiki 讀頁面時要指定）。
+    version: Option<String>,
+    web_url: Option<String>,
+}
+
+fn wikis_from(wikis: &Value, projects: &Value) -> Vec<Wiki> {
+    let mut out: Vec<Wiki> = values(wikis)
+        .iter()
+        .filter_map(|w| {
+            let project_id = str_of(w, "projectId")?;
+            let project = values(projects)
+                .iter()
+                .find(|p| str_of(p, "id") == Some(project_id))
+                .and_then(|p| str_of(p, "name"))
+                .unwrap_or(project_id);
+            Some(Wiki {
+                id: str_of(w, "id")?.to_string(),
+                name: str_of(w, "name")?.to_string(),
+                project: project.to_string(),
+                project_id: project_id.to_string(),
+                code: str_of(w, "type") == Some("codeWiki"),
+                repository_id: str_of(w, "repositoryId")?.to_string(),
+                mapped_path: str_of(w, "mappedPath").unwrap_or("/").to_string(),
+                version: w
+                    .pointer("/versions/0/version")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                web_url: str_of(w, "remoteUrl").map(str::to_string),
+            })
+        })
+        .collect();
+    out.sort_by_key(|w| (w.project.to_lowercase(), w.code, w.name.to_lowercase()));
+    out
+}
+
+/// 集合裡所有的 Wiki（專案 Wiki 與程式碼 Wiki）。
+#[tauri::command]
+pub async fn ado_wikis(app: AppHandle) -> Result<Vec<Wiki>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let wikis = get(&a.url, &pat, "/_apis/wiki/wikis", &tr!("讀取 Wiki"))?;
+        let projects =
+            get(&a.url, &pat, "/_apis/projects?$top=1000", &tr!("讀取專案")).unwrap_or(Value::Null);
+        Ok(wikis_from(&wikis, &projects))
+    })
+    .await
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiPage {
+    /// 頁面路徑，例如 `/產品/安裝說明`。
+    path: String,
+    children: Vec<WikiPage>,
+}
+
+fn page_tree(v: &Value) -> Vec<WikiPage> {
+    v.get("subPages")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|p| {
+            Some(WikiPage {
+                path: str_of(p, "path")?.to_string(),
+                children: page_tree(p),
+            })
+        })
+        .collect()
+}
+
+/// Wiki 頁面 API 的路徑（`path` 是頁面路徑；程式碼 Wiki 要指定分支）。
+fn wiki_pages_path(project_id: &str, wiki_id: &str, path: &str, version: Option<&str>) -> String {
+    let mut out = format!(
+        "/{}/_apis/wiki/wikis/{}/pages?path={}",
+        encode_segment(project_id),
+        encode_segment(wiki_id),
+        encode_segment(path)
+    );
+    if let Some(v) = version.filter(|v| !v.is_empty()) {
+        out.push_str(&format!("&versionDescriptor.version={}", encode_segment(v)));
+    }
+    out
+}
+
+/// Wiki 的頁面樹（最上層頁面的清單）。
+#[tauri::command]
+pub async fn ado_wiki_pages(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    version: Option<String>,
+) -> Result<Vec<WikiPage>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let path = wiki_pages_path(&project_id, &wiki_id, "/", version.as_deref())
+            + "&recursionLevel=full";
+        Ok(page_tree(&get(
+            &a.url,
+            &pat,
+            &path,
+            &tr!("讀取 Wiki 頁面"),
+        )?))
+    })
+    .await
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiContent {
+    content: String,
+    web_url: Option<String>,
+}
+
+/// 一個 Wiki 頁面的內容（Markdown）。
+#[tauri::command]
+pub async fn ado_wiki_page(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    version: Option<String>,
+) -> Result<WikiContent, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let path = wiki_pages_path(&project_id, &wiki_id, &path, version.as_deref())
+            + "&includeContent=true";
+        let v = get(&a.url, &pat, &path, &tr!("讀取 Wiki 頁面"))?;
+        Ok(WikiContent {
+            content: str_of(&v, "content").unwrap_or_default().to_string(),
+            web_url: str_of(&v, "remoteUrl").map(str::to_string),
+        })
+    })
+    .await
+}
+
+/// 依副檔名判斷圖片類型（不支援 SVG：可能含有指令碼）。
+fn image_mime(path: &str) -> Option<&'static str> {
+    let ext = path.rsplit('.').next()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        _ => return None,
+    })
+}
+
+/// Wiki 裡的圖片（放在 Wiki 的 Git 儲存庫裡）：回傳 data: 網址。
+#[tauri::command]
+pub async fn ado_wiki_image(
+    app: AppHandle,
+    project_id: String,
+    repository_id: String,
+    path: String,
+    version: Option<String>,
+) -> Result<String, String> {
+    let (a, pat) = require(&app)?;
+    let mime = image_mime(&path).ok_or_else(|| tr!("無法讀取圖片：不是圖片"))?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let mut url = format!(
+            "{}/{}/_apis/git/repositories/{}/items?path={}&download=true&api-version={API_VERSION}",
+            a.url,
+            encode_segment(&project_id),
+            encode_segment(&repository_id),
+            encode_segment(&path)
+        );
+        if let Some(v) = version.filter(|v| !v.is_empty()) {
+            url.push_str(&format!(
+                "&versionDescriptor.version={}",
+                encode_segment(&v)
+            ));
+        }
+        let bytes = fetch_bytes(&url, &pat)?;
+        Ok(data_url(mime, bytes))
+    })
+    .await
+}
+
+/// 用權杖讀取伺服器上的檔案（不跟隨轉址，權杖不會被送到別的地方），最多 10 MB。
+fn fetch_bytes(url: &str, pat: &str) -> Result<Vec<u8>, String> {
+    let mut res = crate::update::agent()
+        .get(url)
+        .config()
+        .max_redirects(0)
+        .build()
+        .header("Authorization", &basic(pat))
+        .call()
+        .map_err(|e| tr!("無法讀取圖片：{e}", e = e))?;
+    let mime = res
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    // 權杖不對時，雲端版會回傳登入網頁。
+    if mime.starts_with("text/html") {
+        return Err(tr!("無法讀取圖片：不是圖片"));
+    }
+    res.body_mut()
+        .with_config()
+        .limit(10 * 1024 * 1024)
+        .read_to_vec()
+        .map_err(|e| tr!("無法讀取圖片：{e}", e = e))
+}
+
+fn data_url(mime: &str, bytes: Vec<u8>) -> String {
+    format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
 }
 
 fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
@@ -1395,6 +1620,37 @@ mod tests {
             list[1].clone_url,
             "https://tfs.corp.com/tfs/DC/%E7%94%A2%E5%93%81/_git/%E7%94%A2%E5%93%81.wiki"
         );
+    }
+
+    #[test]
+    fn lists_wikis_and_page_trees() {
+        let wikis = json!({"value": [
+            {"id": "w2", "name": "docs", "type": "codeWiki", "projectId": "p1", "repositoryId": "r2",
+             "mappedPath": "/docs", "versions": [{"version": "main"}]},
+            {"id": "w1", "name": "產品.wiki", "type": "projectWiki", "projectId": "p1", "repositoryId": "r1",
+             "mappedPath": "/", "versions": [{"version": "wikiMaster"}], "remoteUrl": "https://tfs/DC/x"},
+            {"id": "w3", "name": "壞的", "projectId": "p1"}
+        ]});
+        let projects = json!({"value": [{"id": "p1", "name": "產品"}]});
+        let list = wikis_from(&wikis, &projects);
+        assert_eq!(list.len(), 2);
+        assert_eq!((list[0].id.as_str(), list[0].code), ("w1", false));
+        assert_eq!(list[0].project, "產品");
+        assert_eq!(list[1].mapped_path, "/docs");
+        assert_eq!(list[1].version.as_deref(), Some("main"));
+        let tree = json!({"path": "/", "subPages": [
+            {"path": "/首頁", "subPages": []},
+            {"path": "/產品", "subPages": [{"path": "/產品/安裝"}]}
+        ]});
+        let pages = page_tree(&tree);
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages[1].children[0].path, "/產品/安裝");
+        assert_eq!(
+            wiki_pages_path("p1", "w1", "/A B", Some("main")),
+            "/p1/_apis/wiki/wikis/w1/pages?path=%2FA%20B&versionDescriptor.version=main"
+        );
+        assert_eq!(image_mime("/.attachments/a.PNG"), Some("image/png"));
+        assert_eq!(image_mime("/.attachments/a.svg"), None);
     }
 
     #[test]
