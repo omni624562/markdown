@@ -45,6 +45,8 @@ export interface IssueViewHooks {
   render(markdown: string, into: HTMLElement): void;
   open(url: string): void;
   copyAsDocument(name: string, markdown: string): void;
+  /** 開啟（或上一頁／下一頁切換到）一個項目，內容讀取之前（例如更新側邊欄清單上的標示）。 */
+  opened(source: IssueSource): void;
   /** 檢視關閉了（例如清掉側邊欄清單上的標示）。 */
   closed(): void;
 }
@@ -83,6 +85,14 @@ function iconButton(label: string, iconName: string, run: () => void, keys?: str
 /** 支援 CSS Custom Highlight API 時用它標示（不改動內容的 DOM）。 */
 const highlights = typeof CSS !== "undefined" && "highlights" in CSS ? CSS.highlights : null;
 
+interface HistoryEntry {
+  source: IssueSource;
+  scroll: number;
+}
+
+/** 上一頁、下一頁各記住幾筆。 */
+const HISTORY_LIMIT = 50;
+
 export class IssueView {
   #workspace: HTMLElement;
   #h: IssueViewHooks;
@@ -98,6 +108,12 @@ export class IssueView {
   #source: IssueSource | null = null;
   #markdown = "";
   #seq = 0;
+  /** 上一頁、下一頁（記住捲動位置）。 */
+  #back: HistoryEntry[] = [];
+  #forward: HistoryEntry[] = [];
+  #restoreScroll: number | null = null;
+  #backBtn: HTMLButtonElement;
+  #forwardBtn: HTMLButtonElement;
   #matches: FindMatch[] = [];
   #current = 0;
 
@@ -121,6 +137,11 @@ export class IssueView {
     this.#title = document.createElement("h2");
     this.#title.className = "issue-title";
     heading.append(this.#meta, this.#title);
+    const nav = document.createElement("div");
+    nav.className = "issue-nav";
+    this.#backBtn = iconButton(t("返回上一頁"), "arrow-left", () => this.back(), "Alt-←");
+    this.#forwardBtn = iconButton(t("前往下一頁"), "arrow-right", () => this.forward(), "Alt-→");
+    nav.append(this.#backBtn, this.#forwardBtn);
     const actions = document.createElement("div");
     actions.className = "issue-actions";
     const insert = document.createElement("button");
@@ -144,7 +165,7 @@ export class IssueView {
       iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
       iconButton(t("關閉"), "x", () => this.close(), "Escape"),
     );
-    head.append(heading, actions);
+    head.append(nav, heading, actions);
 
     this.#find = document.createElement("div");
     this.#find.className = "issue-find";
@@ -180,6 +201,13 @@ export class IssueView {
     });
     pane.append(head, this.#find, this.#scroll);
     pane.addEventListener("keydown", (e) => this.#keydown(e));
+    // 滑鼠的「上一頁」「下一頁」側鍵。
+    pane.addEventListener("mouseup", (e) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      if (e.button === 3) this.back();
+      else this.forward();
+    });
     workspace.querySelector(".outline-right")?.before(pane) ?? workspace.append(pane);
     this.#pane = pane;
   }
@@ -188,9 +216,53 @@ export class IssueView {
     return !this.#pane.hidden;
   }
 
-  /** 開啟（或切換到）一個工作項目、issue。 */
+  /** 開啟（或切換到）一個工作項目、issue、Wiki 頁面；原本開著的記到「上一頁」。 */
   async show(source: IssueSource): Promise<void> {
+    if (this.#source && this.#source.key !== source.key) {
+      this.#remember(this.#back);
+      this.#forward = [];
+    }
+    await this.#open(source);
+  }
+
+  back(): void {
+    this.#go(this.#back, this.#forward);
+  }
+
+  forward(): void {
+    this.#go(this.#forward, this.#back);
+  }
+
+  #go(from: HistoryEntry[], to: HistoryEntry[]): void {
+    const entry = from.pop();
+    if (!entry || !this.#source) return;
+    this.#remember(to);
+    this.#restoreScroll = entry.scroll;
+    void this.#open(entry.source);
+  }
+
+  #remember(list: HistoryEntry[]): void {
+    if (!this.#source) return;
+    list.push({ source: this.#source, scroll: this.#scroll.scrollTop });
+    if (list.length > HISTORY_LIMIT) list.shift();
+  }
+
+  #updateNav(): void {
+    this.#backBtn.disabled = !this.#back.length;
+    this.#forwardBtn.disabled = !this.#forward.length;
+    const title = (list: HistoryEntry[]) => list[list.length - 1]?.source.title;
+    const label = (name: string, list: HistoryEntry[], keys: string) =>
+      list.length
+        ? t("{label}：{title}（{keys}）", { label: name, title: title(list)!, keys: formatKeys(keys) })
+        : t("{label}（{keys}）", { label: name, keys: formatKeys(keys) });
+    this.#backBtn.title = label(t("返回上一頁"), this.#back, "Alt-←");
+    this.#forwardBtn.title = label(t("前往下一頁"), this.#forward, "Alt-→");
+  }
+
+  async #open(source: IssueSource): Promise<void> {
     this.#source = source;
+    this.#h.opened(source);
+    this.#updateNav();
     this.#pane.dataset.source = source.origin.kind;
     this.#label.textContent = source.label;
     this.#meta.replaceChildren(
@@ -220,13 +292,19 @@ export class IssueView {
       if (seq !== this.#seq) return;
       this.#markdown = md;
       this.#h.render(md, this.#body);
-      this.#scroll.scrollTop = 0;
+      this.#scroll.scrollTop = this.#restoreScroll ?? 0;
+      this.#restoreScroll = null;
       if (!this.#find.hidden) this.#search();
     } catch (e) {
       if (seq !== this.#seq) return;
       loading.textContent = e instanceof Error ? e.message : String(e);
       loading.classList.add("issue-error");
     }
+  }
+
+  /** 用已經讀到的內容重畫（主題或設定改變時，不用重新向伺服器讀取）。 */
+  rerender(): void {
+    if (this.isOpen && this.#markdown) this.#h.render(this.#markdown, this.#body);
   }
 
   close(): void {
@@ -236,6 +314,9 @@ export class IssueView {
     this.#pane.hidden = true;
     this.#workspace.classList.remove("issue-open");
     this.#source = null;
+    this.#back = [];
+    this.#forward = [];
+    this.#restoreScroll = null;
     this.#body.replaceChildren();
     this.#h.closed();
   }
@@ -267,6 +348,10 @@ export class IssueView {
         this.#closeFind();
         this.#pane.focus();
       } else this.close();
+    } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      if (e.key === "ArrowLeft") this.back();
+      else this.forward();
     } else if (e.key === "Enter" && e.target === this.#findInput) {
       e.preventDefault();
       this.#step(e.shiftKey ? -1 : 1);

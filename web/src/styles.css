@@ -572,11 +572,25 @@ kbd {
   color: var(--muted);
   text-align: center;
 }
+/* 即時預覽、原始碼：放在編輯區中間，點空白處仍然是在編輯區打字。 */
+.editor-pane { position: relative; }
+.empty-state.in-editor { top: 64px; pointer-events: none; }
+.empty-state.in-editor .empty-card { pointer-events: auto; }
+.empty-card { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
 .empty-state h2 { margin: 0 0 8px; color: var(--fg); font-size: 18px; }
 .empty-state p { max-width: 46ch; margin: 0 0 16px; line-height: 1.7; }
 .empty-actions { display: flex; gap: 8px; }
 .empty-actions .btn { border-color: var(--border-strong); }
 .empty-tip { margin-top: 16px !important; font-size: 12px; }
+.empty-actions { flex-wrap: wrap; justify-content: center; }
+.empty-recent { width: min(420px, 100%); margin-top: 24px; text-align: left; }
+.empty-recent h3 { margin: 0 0 6px; padding: 0 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.empty-recent ul { margin: 0; padding: 0; list-style: none; }
+.empty-recent button { display: flex; gap: 8px; align-items: center; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px var(--font-ui); text-align: left; cursor: pointer; }
+.empty-recent button:hover, .empty-recent button:focus-visible { background: var(--active-line); }
+.empty-recent .icon { flex: none; width: 15px; height: 15px; color: var(--muted); }
+.empty-recent-name { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty-recent-dir { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- 狀態列 ---- */
 .statusbar {
@@ -2283,6 +2297,8 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
+.issue-nav { display: flex; flex: none; gap: 2px; margin-left: -6px; }
+.issue-nav .btn:disabled { opacity: 0.35; cursor: default; }
 .issue-heading { display: flex; flex: 1 1 260px; flex-direction: column; min-width: 0; }
 /* 不是本機檔案的內容：上方一條來源顏色的細條，標頭有來源與「唯讀」標籤。 */
 .issue-pane { --source: var(--accent); border-top: 3px solid var(--source); }
