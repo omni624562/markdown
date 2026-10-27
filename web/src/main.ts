@@ -1816,7 +1816,6 @@ const wikiImagesPlugin: PreviewPlugin = {
 /** 開啟工作項目、issue、Wiki 頁面（Git 歷史開著時先關掉）。 */
 function showIssue(source: IssueSource): Promise<void> {
   historyView?.close();
-  wikiPage = null;
   return issueView.show(source);
 }
 
@@ -1878,6 +1877,14 @@ const issueView = new IssueView($(".workspace"), {
     saveDraft(doc.id, markdown);
     addTab(doc);
     toast(t("已複製成新的 Markdown 分頁，修改不會回寫到伺服器"));
+  },
+  opened(source) {
+    // Wiki 頁面讀到內容時才設定（圖片的相對路徑以它為準）。
+    wikiPage = null;
+    const [kind, id, ...rest] = source.key.split(":");
+    workItemsPanel?.select(kind === "ado" ? Number(id) : null);
+    issuesPanel?.select(kind === "github" ? Number(id) : null);
+    wikiPanel?.select(kind === "wiki" && wikiPanel.wiki?.id === id ? rest.join(":") : null);
   },
   closed() {
     wikiPage = null;
