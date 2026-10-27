@@ -619,4 +619,9 @@ export const main: Record<string, Translation> = {
   "Azure DevOps／TFS：Wiki": "Azure DevOps/TFS: Wiki",
   "已插入「{name}」的連結": "Inserted a link to \"{name}\".",
   "Azure DevOps 工作項目": "Azure DevOps work item",
+  "直接在這裡開始寫，排版會即時顯示。": "Just start writing here; formatting appears as you type.",
+  "在這裡輸入 Markdown，切到預覽可以看排版結果。": "Type Markdown here. Switch to Preview to see the formatted result.",
+  "在這裡輸入文字。": "Type your text here.",
+  "在這裡貼上 JSON，切到預覽可以看樹狀檢視。": "Paste JSON here. Switch to Preview to see it as a tree.",
+  "最近開啟的檔案": "Recent Files",
 };
