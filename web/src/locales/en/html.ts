@@ -19,4 +19,6 @@ export const html: Record<string, Translation> = {
   "文件類型（依副檔名自動判斷，也可以在這裡切換）": "Document type (detected from the file extension; you can also change it here)",
   "放開以開啟檔案": "Drop to Open Files",
   "支援 Markdown、文字檔、YAML、CSV、HTML、程式碼檔；圖片會插入到文件中": "Markdown, text, YAML, CSV, HTML and code files are supported. Images are inserted into the document.",
+  "重新讀取檔案清單（不會和 Git 同步）": "Reload the file list from disk (doesn't sync with Git)",
+  "重新讀取檔案清單": "Reload File List",
 };
