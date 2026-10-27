@@ -2285,6 +2285,8 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
+.issue-nav { display: flex; flex: none; gap: 2px; margin-left: -6px; }
+.issue-nav .btn:disabled { opacity: 0.35; cursor: default; }
 .issue-heading { display: flex; flex: 1 1 260px; flex-direction: column; min-width: 0; }
 /* 不是本機檔案的內容：上方一條來源顏色的細條，標頭有來源與「唯讀」標籤。 */
 .issue-pane { --source: var(--accent); border-top: 3px solid var(--source); }

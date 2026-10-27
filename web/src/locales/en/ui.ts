@@ -466,4 +466,7 @@ export const ui: Record<string, Translation> = {
   "找不到符合的頁面": "No matching pages",
   "{project}／{name}": "{project}/{name}",
   "唯讀": "Read-only",
+  "返回上一頁": "Back",
+  "前往下一頁": "Forward",
+  "{label}：{title}（{keys}）": "{label}: {title} ({keys})",
 };
