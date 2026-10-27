@@ -1962,6 +1962,45 @@ const issueView = new IssueView($(".workspace"), {
   },
 });
 
+// ---- 狀態列：開著 Wiki、工作項目、Git 歷史時，顯示正在看什麼，藏起只跟本機文件有關的項目 ----
+
+const statusView = $("#status-view");
+const issuePane = $(".issue-pane:not(.history-pane)");
+
+function renderStatusView(): void {
+  const issueOpen = workspace.classList.contains("issue-open");
+  const historyOpen = workspace.classList.contains("history-open");
+  const viewing = issueOpen || historyOpen;
+  $(".statusbar").classList.toggle("viewing", viewing);
+  statusView.hidden = !viewing;
+  if (!viewing) return;
+  const source = historyOpen ? "git" : (issuePane.dataset.source ?? "");
+  const names: Record<string, string> = {
+    wiki: "Azure DevOps Wiki",
+    ado: t("Azure DevOps 工作項目"),
+    github: "GitHub Issue",
+    git: t("Git 歷史"),
+  };
+  const label = document.createElement("span");
+  label.className = "status-view-label";
+  label.append(
+    icon(source === "git" ? "git-branch" : "lock"),
+    source === "git" ? names.git : t("{name}・唯讀", { name: names[source] ?? "" }),
+  );
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "status-btn";
+  back.append(icon("arrow-left"), t("回到文件"));
+  back.title = t("關閉這個畫面，回到編輯中的文件（Esc）");
+  back.addEventListener("click", () => {
+    issueView.close();
+    historyView?.close();
+  });
+  statusView.replaceChildren(label, back);
+}
+new MutationObserver(renderStatusView).observe(workspace, { attributes: true, attributeFilter: ["class"] });
+new MutationObserver(renderStatusView).observe(issuePane, { attributes: true, attributeFilter: ["data-source"] });
+
 /** 工作項目的篩選條件（記住上次的選擇）。 */
 const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {
   role: "assigned",
