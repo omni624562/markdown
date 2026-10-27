@@ -1166,6 +1166,18 @@ kbd {
   .tab-close { width: 32px; height: 32px; }
 }
 
+/* 開著 Wiki、工作項目、Git 歷史時：顯示正在看什麼，藏起只跟本機文件有關的項目。 */
+.status-view { display: inline-flex; gap: 8px; align-items: center; }
+.status-view[hidden] { display: none; }
+.status-view-label { display: inline-flex; gap: 4px; align-items: center; color: var(--fg); }
+.status-view-label .icon { width: 13px; height: 13px; color: var(--muted); }
+.statusbar.viewing #status-cursor,
+.statusbar.viewing #status-stats,
+.statusbar.viewing #doc-kind,
+.statusbar.viewing #status-save { display: none; }
+/* 檢視切換仍可以按（會回到文件），但不標示目前的模式。 */
+.statusbar.viewing .view-switch button[aria-checked="true"] { background: none; color: var(--muted); box-shadow: none; }
+
 /* ---- 狀態列按鈕 ---- */
 .status-btn {
   display: inline-flex;

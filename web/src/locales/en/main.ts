@@ -619,4 +619,7 @@ export const main: Record<string, Translation> = {
   "Azure DevOps／TFS：Wiki": "Azure DevOps/TFS: Wiki",
   "已插入「{name}」的連結": "Inserted a link to \"{name}\".",
   "Azure DevOps 工作項目": "Azure DevOps work item",
+  "{name}・唯讀": "{name} · Read-only",
+  "回到文件": "Back to Document",
+  "關閉這個畫面，回到編輯中的文件（Esc）": "Close this view and return to the document you're editing (Esc)",
 };
