@@ -618,22 +618,51 @@ function renderError({ error }: RenderResult): void {
   parseErrorEl.replaceChildren(msg, jump);
 }
 
+/** 空白文件提示目前畫的內容（一樣就不重畫，最近開啟的檔案也不重讀）。 */
+let emptyStateKey = "";
+
+/**
+ * 空白文件的提示：開啟檔案、從範本新增、載入範例、最近開啟的檔案。
+ * 有預覽時放在預覽區；即時預覽、原始碼只有編輯區，改放在編輯區中間（不擋打字，打字就消失）。
+ */
 function renderEmptyState(text: string): void {
   const empty = text.trim() === "";
   emptyStateEl.hidden = !empty;
-  if (!empty) return;
+  if (!empty) {
+    emptyStateKey = "";
+    return;
+  }
+  const inEditor = workspace.dataset.view === "editor";
+  const host = inEditor ? $(".editor-pane") : previewScroller;
+  if (emptyStateEl.parentElement !== host) host.append(emptyStateEl);
+  emptyStateEl.classList.toggle("in-editor", inEditor);
+  const key = `${kind}|${view}|${inEditor}|${currentLang()}`;
+  if (key === emptyStateKey) return;
+  emptyStateKey = key;
   // 只有預覽時旁邊沒有編輯區，提示改成切換到可以打字的檢視。
   const previewOnly = view === "preview";
   const hints: Record<DocKind, string> = {
-    markdown: previewOnly ? t("按「開始寫作」切換到即時預覽，直接在畫面上打字。") : t("在左邊開始寫，這裡會即時顯示排版結果。"),
-    text: previewOnly ? t("按「開始寫作」切換到可以輸入的檢視。") : t("在左邊輸入文字，這裡會顯示閱讀版面。"),
-    json: previewOnly ? t("按「開始寫作」切換到可以輸入的檢視。") : t("貼上 JSON，這裡會顯示可摺疊的樹狀檢視，並即時檢查語法。"),
+    markdown: previewOnly
+      ? t("按「開始寫作」切換到即時預覽，直接在畫面上打字。")
+      : view === "live"
+        ? t("直接在這裡開始寫，排版會即時顯示。")
+        : inEditor
+          ? t("在這裡輸入 Markdown，切到預覽可以看排版結果。")
+          : t("在左邊開始寫，這裡會即時顯示排版結果。"),
+    text: previewOnly ? t("按「開始寫作」切換到可以輸入的檢視。") : inEditor ? t("在這裡輸入文字。") : t("在左邊輸入文字，這裡會顯示閱讀版面。"),
+    json: previewOnly
+      ? t("按「開始寫作」切換到可以輸入的檢視。")
+      : inEditor
+        ? t("在這裡貼上 JSON，切到預覽可以看樹狀檢視。")
+        : t("貼上 JSON，這裡會顯示可摺疊的樹狀檢視，並即時檢查語法。"),
   };
-  emptyStateEl.innerHTML = `<h2></h2><p></p><div class="empty-actions"></div><p class="empty-tip"></p>`;
-  emptyStateEl.querySelector("h2")!.textContent = t("空白文件");
-  emptyStateEl.querySelector(".empty-tip")!.textContent = t("也可以直接把 Markdown、文字檔或程式碼檔拖曳進來");
-  emptyStateEl.querySelector("p")!.textContent = hints[kind];
-  const actions = emptyStateEl.querySelector(".empty-actions")!;
+  const card = document.createElement("div");
+  card.className = "empty-card";
+  card.innerHTML = `<h2></h2><p></p><div class="empty-actions"></div><p class="empty-tip"></p>`;
+  card.querySelector("h2")!.textContent = t("空白文件");
+  card.querySelector(".empty-tip")!.textContent = t("也可以直接把 Markdown、文字檔或程式碼檔拖曳進來");
+  card.querySelector("p")!.textContent = hints[kind];
+  const actions = card.querySelector(".empty-actions")!;
   const mk = (label: string, run: () => void) => {
     const b = document.createElement("button");
     b.type = "button";
@@ -647,6 +676,37 @@ function renderEmptyState(text: string): void {
   if (kind === "markdown") mk(t("從範本新增"), () => void commands.run("new-from-template"));
   if (kind === "markdown") mk(t("載入範例文件"), () => editor.replaceAll(sample));
   actions.querySelector("button")?.classList.add("btn-primary");
+  emptyStateEl.replaceChildren(card);
+  if (desktop) void renderRecentFiles(card, key);
+}
+
+/** 空白文件提示下方的「最近開啟的檔案」（最多 5 個，點了直接開啟）。 */
+async function renderRecentFiles(card: HTMLElement, key: string): Promise<void> {
+  const { files } = await desktop!.recent().catch(() => ({ files: [] as string[] }));
+  if (key !== emptyStateKey || !files.length) return;
+  const box = document.createElement("div");
+  box.className = "empty-recent";
+  const h = document.createElement("h3");
+  h.textContent = t("最近開啟的檔案");
+  const list = document.createElement("ul");
+  for (const path of files.slice(0, 5)) {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = displayPath(path);
+    const name = document.createElement("span");
+    name.className = "empty-recent-name";
+    name.textContent = basename(path) || path;
+    const dir = document.createElement("span");
+    dir.className = "empty-recent-dir";
+    dir.textContent = displayPath(dirname(path));
+    b.append(icon("file-text"), name, dir);
+    b.addEventListener("click", () => void openPath(path).catch(reportError));
+    li.append(b);
+    list.append(li);
+  }
+  box.append(h, list);
+  card.querySelector(".empty-tip")!.before(box);
 }
 
 let outlineKey = "";
@@ -1853,10 +1913,18 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
 }
 
 let issuePreview: Preview | null = null;
+/** 主題或流程圖、數學式設定改變時，重畫開著的工作項目、Wiki 頁面。 */
+function rerenderIssue(): void {
+  issuePreview?.clear();
+  issueView.rerender();
+}
 const issueView = new IssueView($(".workspace"), {
   render(markdown, into) {
     issuePreview ??= new Preview(into, [
       highlightPlugin(),
+      // Wiki 常用流程圖與數學式：和本機預覽一樣畫出來（依同樣的設定）。
+      mathPlugin(() => settings.value.math),
+      mermaidPlugin(() => settings.value.mermaid, { open: (svg) => openDiagram(svg), copy: (svg) => void copyDiagram(svg) }),
       tablesPlugin(),
       adoImagesPlugin,
       wikiImagesPlugin,
@@ -5959,6 +6027,7 @@ function applyLayout(): void {
     navToggle.setAttribute("aria-pressed", String(outlineShown));
     navToggle.replaceChildren(icon(outlineShown ? "panel-left-close" : "panel-left"));
   }
+  renderEmptyState(editor.text);
   blocks = null;
   if (effective !== "preview") editor.view.requestMeasure();
   // 視窗變寬而出現預覽時（分割檢視），補畫之前略過的預覽。
@@ -5995,6 +6064,7 @@ function setTheme(pref: ThemePref): void {
     preview.invalidate();
     scheduleRender();
     refreshLivePreview(editor.view);
+    rerenderIssue();
   }
   terminal?.applyTheme();
 }
@@ -6006,6 +6076,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     preview.invalidate();
     scheduleRender();
     refreshLivePreview(editor.view);
+    rerenderIssue();
   }
 });
 
@@ -6077,6 +6148,7 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
     preview.clear();
     renderNow();
     refreshLivePreview(editor.view);
+    rerenderIssue();
   }
   if (changed.includes("termCheck") || changed.includes("termIgnore")) recheckTerms(editor.view);
   if (changed.includes("outlineRight")) {
