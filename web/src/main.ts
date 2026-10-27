@@ -1854,10 +1854,18 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
 }
 
 let issuePreview: Preview | null = null;
+/** 主題或流程圖、數學式設定改變時，重畫開著的工作項目、Wiki 頁面。 */
+function rerenderIssue(): void {
+  issuePreview?.clear();
+  issueView.rerender();
+}
 const issueView = new IssueView($(".workspace"), {
   render(markdown, into) {
     issuePreview ??= new Preview(into, [
       highlightPlugin(),
+      // Wiki 常用流程圖與數學式：和本機預覽一樣畫出來（依同樣的設定）。
+      mathPlugin(() => settings.value.math),
+      mermaidPlugin(() => settings.value.mermaid, { open: (svg) => openDiagram(svg), copy: (svg) => void copyDiagram(svg) }),
       tablesPlugin(),
       adoImagesPlugin,
       wikiImagesPlugin,
@@ -5988,6 +5996,7 @@ function setTheme(pref: ThemePref): void {
     preview.invalidate();
     scheduleRender();
     refreshLivePreview(editor.view);
+    rerenderIssue();
   }
   terminal?.applyTheme();
 }
@@ -5999,6 +6008,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     preview.invalidate();
     scheduleRender();
     refreshLivePreview(editor.view);
+    rerenderIssue();
   }
 });
 
@@ -6070,6 +6080,7 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
     preview.clear();
     renderNow();
     refreshLivePreview(editor.view);
+    rerenderIssue();
   }
   if (changed.includes("termCheck") || changed.includes("termIgnore")) recheckTerms(editor.view);
   if (changed.includes("outlineRight")) {
