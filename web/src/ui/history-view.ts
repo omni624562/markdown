@@ -18,6 +18,7 @@ import { timeAgo, versionTitle } from "../history-label.ts";
 import { t } from "../i18n.ts";
 import { askText, choose } from "./choice.ts";
 import { icon } from "./icons.ts";
+import { sourceBadge } from "./issue-view.ts";
 import { placeMenu } from "./menu-place.ts";
 import * as storage from "../storage.ts";
 import { toast } from "./toast.ts";
@@ -140,6 +141,7 @@ export class GitHistory {
     this.#d = d;
     this.#h = hooks;
     const pane = el("section", "pane issue-pane history-pane");
+    pane.dataset.source = "git";
     pane.hidden = true;
     pane.setAttribute("aria-label", t("Git 歷史"));
     pane.tabIndex = -1;
@@ -147,7 +149,9 @@ export class GitHistory {
     const head = el("header", "issue-head gh-head");
     const heading = el("div", "issue-heading");
     this.#branchLabel = el("span", "issue-label");
-    heading.append(this.#branchLabel, el("h2", "issue-title", t("Git 歷史")));
+    const meta = el("div", "issue-meta");
+    meta.append(sourceBadge(t("Git 儲存庫"), "git-branch"), this.#branchLabel);
+    heading.append(meta, el("h2", "issue-title", t("Git 歷史")));
     this.#scope = el("select", "gh-scope");
     this.#scope.setAttribute("aria-label", t("顯示哪些分支"));
     this.#scope.append(new Option(t("所有分支"), "all"), new Option(t("目前的分支"), "head"));

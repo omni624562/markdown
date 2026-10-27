@@ -1826,6 +1826,7 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
   const title = pageName(path);
   void showIssue({
     key: `wiki:${wiki.id}:${path}`,
+    origin: { kind: "wiki", icon: "book-open-text", text: "Azure DevOps Wiki" },
     label: wiki.name,
     title,
     get webUrl() {
@@ -2072,6 +2073,7 @@ const workItemsPanel = desktop
       view: (item) =>
         void showIssue({
           key: `ado:${item.id}`,
+          origin: { kind: "ado", icon: "square-kanban", text: t("Azure DevOps 工作項目") },
           label: `${item.kind} ${item.id}`,
           title: item.title,
           webUrl: item.webUrl,
@@ -2126,6 +2128,7 @@ const issuesPanel = desktop
       view: (item) =>
         void showIssue({
           key: `github:${item.id}`,
+          origin: { kind: "github", icon: "circle-dot", text: "GitHub Issue" },
           label: `#${item.id}`,
           title: item.title,
           webUrl: item.webUrl,

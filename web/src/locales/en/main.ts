@@ -618,4 +618,5 @@ export const main: Record<string, Translation> = {
   "已把「{name}」放到圖示列，拖曳可以調整位置。": "Added \"{name}\" to the icon bar. Drag it to change its position.",
   "Azure DevOps／TFS：Wiki": "Azure DevOps/TFS: Wiki",
   "已插入「{name}」的連結": "Inserted a link to \"{name}\".",
+  "Azure DevOps 工作項目": "Azure DevOps work item",
 };
