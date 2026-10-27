@@ -465,4 +465,5 @@ export const ui: Record<string, Translation> = {
   "找到 {n} 頁": ["{n} page found", "{n} pages found"],
   "找不到符合的頁面": "No matching pages",
   "{project}／{name}": "{project}/{name}",
+  "唯讀": "Read-only",
 };

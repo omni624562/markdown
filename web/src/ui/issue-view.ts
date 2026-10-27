@@ -7,9 +7,26 @@ import { formatKeys } from "../commands.ts";
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 
+/** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
+export interface IssueOrigin {
+  kind: "ado" | "github" | "wiki";
+  icon: string;
+  text: string;
+}
+
+/** 標頭上的來源標籤（例如「Azure DevOps Wiki」「唯讀」）。 */
+export function sourceBadge(text: string, iconName?: string, className = "source-badge"): HTMLElement {
+  const b = document.createElement("span");
+  b.className = className;
+  if (iconName) b.append(icon(iconName));
+  b.append(text);
+  return b;
+}
+
 export interface IssueSource {
   /** 辨認是不是同一個（例如 `ado:123`）。 */
   key: string;
+  origin: IssueOrigin;
   /** 標題前面的小字，例如「Bug 123」「#45」。 */
   label: string;
   title: string;
@@ -70,6 +87,7 @@ export class IssueView {
   #workspace: HTMLElement;
   #h: IssueViewHooks;
   #pane: HTMLElement;
+  #meta: HTMLElement;
   #label: HTMLElement;
   #title: HTMLElement;
   #body: HTMLElement;
@@ -96,11 +114,13 @@ export class IssueView {
     head.className = "issue-head";
     const heading = document.createElement("div");
     heading.className = "issue-heading";
+    this.#meta = document.createElement("div");
+    this.#meta.className = "issue-meta";
     this.#label = document.createElement("span");
     this.#label.className = "issue-label";
     this.#title = document.createElement("h2");
     this.#title.className = "issue-title";
-    heading.append(this.#label, this.#title);
+    heading.append(this.#meta, this.#title);
     const actions = document.createElement("div");
     actions.className = "issue-actions";
     const insert = document.createElement("button");
@@ -171,7 +191,13 @@ export class IssueView {
   /** 開啟（或切換到）一個工作項目、issue。 */
   async show(source: IssueSource): Promise<void> {
     this.#source = source;
+    this.#pane.dataset.source = source.origin.kind;
     this.#label.textContent = source.label;
+    this.#meta.replaceChildren(
+      sourceBadge(source.origin.text, source.origin.icon),
+      sourceBadge(t("唯讀"), "lock", "source-badge source-readonly"),
+      this.#label,
+    );
     this.#title.textContent = source.title;
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
