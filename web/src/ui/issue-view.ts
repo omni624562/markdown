@@ -229,6 +229,11 @@ export class IssueView {
     }
   }
 
+  /** 用已經讀到的內容重畫（主題或設定改變時，不用重新向伺服器讀取）。 */
+  rerender(): void {
+    if (this.isOpen && this.#markdown) this.#h.render(this.#markdown, this.#body);
+  }
+
   close(): void {
     if (!this.isOpen) return;
     this.#seq++;
