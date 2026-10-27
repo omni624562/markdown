@@ -19,6 +19,8 @@ export interface IssueSource {
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
   insertLink(): void;
+  /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
+  link?(href: string): boolean;
 }
 
 export interface IssueViewHooks {
@@ -153,6 +155,7 @@ export class IssueView {
       const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
       if (!a) return;
       e.preventDefault();
+      if (this.#source?.link?.(a.getAttribute("href")!)) return;
       if (/^https?:/i.test(a.href)) this.#h.open(a.href);
     });
     pane.append(head, this.#find, this.#scroll);

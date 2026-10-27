@@ -292,6 +292,25 @@ export interface AdoRepo {
   wiki: boolean;
 }
 
+export interface AdoWiki {
+  id: string;
+  name: string;
+  project: string;
+  projectId: string;
+  /** 從程式碼儲存庫發佈的 Wiki。 */
+  code: boolean;
+  repositoryId: string;
+  /** 程式碼 Wiki 在儲存庫裡的資料夾（專案 Wiki 是 `/`）。 */
+  mappedPath: string;
+  version: string | null;
+  webUrl: string | null;
+}
+
+export interface AdoWikiPage {
+  path: string;
+  children: AdoWikiPage[];
+}
+
 export interface AdoWorkItem {
   id: number;
   title: string;
@@ -800,6 +819,19 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
     adoImage: (url: string) => core.invoke<string>("ado_image", { url }),
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
+    adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),
+    adoWikiPages: (w: AdoWiki) =>
+      core.invoke<AdoWikiPage[]>("ado_wiki_pages", { projectId: w.projectId, wikiId: w.id, version: w.code ? w.version : null }),
+    adoWikiPage: (w: AdoWiki, path: string) =>
+      core.invoke<{ content: string; webUrl: string | null }>("ado_wiki_page", {
+        projectId: w.projectId,
+        wikiId: w.id,
+        path,
+        version: w.code ? w.version : null,
+      }),
+    /** Wiki 儲存庫裡的圖片，回傳 data: 網址。 */
+    adoWikiImage: (w: AdoWiki, path: string) =>
+      core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
     gitPull: () => core.invoke<string>("git_pull"),
     /** 只向遠端抓取最新的提交（不合併），回傳更新後的狀態（知道遠端多了幾個提交）。 */

@@ -23,6 +23,7 @@ pub static EN: &[(&str, &str)] = &[
     ("請輸入個人存取權杖", "Enter a personal access token."),
     ("請先到設定的 Azure DevOps／TFS 頁連線", "Connect on the Azure DevOps/TFS page in Settings first."),
     ("讀取 Wiki", "Loading wikis"),
+    ("讀取 Wiki 頁面", "Loading the wiki page"),
     ("讀取專案", "Loading projects"),
     ("儲存庫網址不在目前連線的 Azure DevOps 上", "The repository URL isn't on the Azure DevOps server you're connected to."),
     ("這個儲存庫不在目前連線的 Azure DevOps 上", "This repository isn't on the Azure DevOps server you're connected to."),

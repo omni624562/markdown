@@ -1756,6 +1756,18 @@ button.git-info:disabled { cursor: default; }
 .workitems-filters .workitems-select:focus-visible, .workitems-filters .workitems-person:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filters .workitems-person, .workitems-filters .workitems-area { grid-column: 1 / -1; }
 .workitems-filters [hidden] { display: none; }
+/* Wiki（Azure DevOps） */
+.wiki-filters { grid-template-columns: 1fr; }
+.wiki-tree { margin: 0; padding: 0; list-style: none; }
+.wiki-row { display: flex; align-items: center; padding-left: calc(var(--depth, 0) * 14px); }
+.wiki-toggle { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 24px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.wiki-toggle:disabled { cursor: default; }
+.wiki-toggle svg { width: 14px; height: 14px; }
+.wiki-page { display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 3px 6px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.45 var(--font-ui); text-align: left; cursor: pointer; }
+.wiki-page:hover, .wiki-page:focus-visible { background: var(--active-line); }
+.wiki-page[aria-current="true"] { background: var(--accent-soft); color: var(--accent); }
+.wiki-name { overflow-wrap: anywhere; }
+.wiki-where { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
 .tasks-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
 .tasks-filters .segmented button[aria-pressed="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
 .tasks-filters select { height: 28px; max-width: 110px; padding: 0 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 12px var(--font-ui); }
