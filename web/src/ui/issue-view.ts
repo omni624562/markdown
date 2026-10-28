@@ -59,6 +59,17 @@ export interface IssueViewHooks {
   closed(): void;
   /** 切換「和編輯區並排顯示」。 */
   toggleSide?(): void;
+  /** 本機的離線副本：讀到內容就存一份，連不上時拿來顯示。 */
+  offline?: IssueOffline;
+}
+
+export interface IssueOffline {
+  save(source: IssueSource, markdown: string): void;
+  load(source: IssueSource): Promise<{ markdown: string; savedAt: number } | null>;
+  /** 有沒有「保留離線」；不能保留的（沒辦法在背景更新）回傳 null，不顯示按鈕。 */
+  kept(source: IssueSource): boolean | null;
+  /** 切換「保留離線」（`markdown` 是目前顯示的內容）。 */
+  toggle(source: IssueSource, markdown: string): void;
 }
 
 export interface FindMatch {
@@ -132,6 +143,8 @@ export class IssueView {
   #stale: HTMLElement;
   #backBtn: HTMLButtonElement;
   #forwardBtn: HTMLButtonElement;
+  /** 「保留離線」。 */
+  #keepBtn: HTMLButtonElement;
   #editBtn: HTMLButtonElement;
   #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
@@ -184,6 +197,12 @@ export class IssueView {
     copy.addEventListener("click", () => {
       if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
     });
+    this.#keepBtn = iconButton(t("保留離線"), "download", () => {
+      if (!this.#source || !this.#markdown) return;
+      this.#h.offline?.toggle(this.#source, this.#markdown);
+      this.#updateKeep();
+    });
+    this.#keepBtn.hidden = true;
     const toggleSide = hooks.toggleSide;
     if (toggleSide) {
       this.#sideBtn = iconButton(t("和編輯區並排顯示"), "columns-2", () => toggleSide());
@@ -194,6 +213,7 @@ export class IssueView {
       insert,
       this.#editBtn,
       copy,
+      this.#keepBtn,
       ...(this.#sideBtn ? [this.#sideBtn] : []),
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
@@ -315,6 +335,18 @@ export class IssueView {
     this.#forwardBtn.title = label(t("前往下一頁"), this.#forward, "Alt-→");
   }
 
+  /** 「保留離線」按鈕：不能保留的不顯示；已保留的按下去是取消。 */
+  #updateKeep(): void {
+    const kept = this.#source ? (this.#h.offline?.kept(this.#source) ?? null) : null;
+    this.#keepBtn.hidden = kept === null;
+    this.#keepBtn.setAttribute("aria-pressed", String(!!kept));
+    this.#keepBtn.classList.toggle("active", !!kept);
+    this.#keepBtn.replaceChildren(icon(kept ? "check" : "download"));
+    const label = kept ? t("已保留離線（按一下取消）") : t("保留離線：沒有網路時也能看，連線時在背景更新");
+    this.#keepBtn.title = label;
+    this.#keepBtn.setAttribute("aria-label", label);
+  }
+
   /** 標頭上的位置：「P.wiki › 產品 › 安裝」，上層頁面可以點。 */
   #crumbs(source: IssueSource): (string | HTMLElement)[] {
     if (!source.crumbs?.length) return [source.label];
@@ -349,6 +381,7 @@ export class IssueView {
     this.#source = source;
     this.#h.opened(source);
     this.#updateNav();
+    this.#updateKeep();
     this.#pane.dataset.source = source.origin.kind;
     this.#pane.dataset.sourceName = source.origin.text;
     this.#label.textContent = source.label;
@@ -397,11 +430,23 @@ export class IssueView {
       this.#cache.set(source.key, md);
       if (this.#cache.size > CACHE_LIMIT) this.#cache.delete(this.#cache.keys().next().value!);
       if (md !== this.#markdown || loading) this.#display(md, cached !== undefined);
+      this.#h.offline?.save(source, md);
     } catch (e) {
       if (seq !== this.#seq) return;
       const message = e instanceof Error ? e.message : String(e);
+      // 這次還沒顯示任何內容：有離線副本就先顯示副本。
+      const copy = loading ? await this.#h.offline?.load(source).catch(() => null) : null;
+      if (seq !== this.#seq) return;
+      if (copy) {
+        this.#display(copy.markdown);
+        loading = null;
+      }
       const target = loading ?? this.#stale;
-      target.textContent = loading ? message : t("顯示的是之前讀到的內容，這次更新失敗：{message}", { message });
+      target.textContent = loading
+        ? message
+        : copy
+          ? t("顯示的是 {time} 存下的離線副本，這次讀取失敗：{message}", { time: new Date(copy.savedAt).toLocaleString(), message })
+          : t("顯示的是之前讀到的內容，這次更新失敗：{message}", { message });
       target.classList.add("issue-error");
       target.hidden = false;
       const retry = document.createElement("button");
