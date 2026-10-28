@@ -1795,6 +1795,15 @@ button.git-info:disabled { cursor: default; }
 .wiki-page:hover, .wiki-page:focus-visible { background: var(--active-line); }
 .wiki-page[aria-current="true"] { background: var(--accent-soft); color: var(--accent); }
 .wiki-name { overflow-wrap: anywhere; }
+/* 釘選按鈕：滑鼠移到列上才出現；已釘選的一直顯示。 */
+.wiki-pin { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; opacity: 0; }
+.wiki-pin svg { width: 13px; height: 13px; }
+.wiki-row:hover .wiki-pin, .wiki-pin:focus-visible, .wiki-pin.pinned { opacity: 1; }
+.wiki-pin:hover { background: var(--active-line); color: var(--fg); }
+.wiki-quick { margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.wiki-quick[hidden] { display: none; }
+.wiki-quick h3 { margin: 6px 4px 2px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.wiki-quick ul { margin: 0; padding: 0; list-style: none; }
 .wiki-where { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
 .tasks-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
 .tasks-filters .segmented button[aria-pressed="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }

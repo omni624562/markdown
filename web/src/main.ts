@@ -2261,6 +2261,16 @@ const wikiPanel = desktop
       open: (wiki, path) => showWikiPage(wiki, path),
       load: () => storage.load("ado-wiki"),
       save: (id) => storage.save("ado-wiki", id),
+      prefs(id) {
+        const paths = (v: unknown) => (Array.isArray(v) ? v.filter((p): p is string => typeof p === "string") : []);
+        try {
+          const v = JSON.parse(storage.load(`ado-wiki-pages:${id}`) ?? "{}") as Record<string, unknown>;
+          return { recent: paths(v.recent), pinned: paths(v.pinned) };
+        } catch {
+          return { recent: [], pinned: [] };
+        }
+      },
+      savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
     })
   : null;
 

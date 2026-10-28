@@ -469,4 +469,7 @@ export const ui: Record<string, Translation> = {
   "返回上一頁": "Back",
   "前往下一頁": "Forward",
   "{label}：{title}（{keys}）": "{label}: {title} ({keys})",
+  "釘選這一頁": "Pin This Page",
+  "最近看過": "Recently Viewed",
+  "已釘選": "Pinned",
 };

@@ -3,7 +3,7 @@
  * 點一下頁面在主要區域以唯讀方式開啟。
  */
 import { t } from "../i18n.ts";
-import { pageName } from "../wiki-text.ts";
+import { flattenPages, pageName, pushRecent } from "../wiki-text.ts";
 import { icon } from "./icons.ts";
 
 export interface WikiInfo {
@@ -25,7 +25,19 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   /** 上次選的 Wiki。 */
   load(): string | null;
   save(id: string): void;
+  /** 每個 Wiki 各自記住的最近看過、釘選的頁面。 */
+  prefs(wikiId: string): WikiPrefs;
+  savePrefs(wikiId: string, prefs: WikiPrefs): void;
 }
+
+export interface WikiPrefs {
+  recent: string[];
+  pinned: string[];
+}
+
+/** 最近看過列出幾頁、最多釘選幾頁。 */
+const RECENT_LIMIT = 5;
+const PINNED_LIMIT = 30;
 
 /** 搜尋結果最多列出幾頁。 */
 const MAX_RESULTS = 200;
@@ -36,6 +48,9 @@ export class WikiPanel<W extends WikiInfo> {
   #input: HTMLInputElement;
   #status: HTMLElement;
   #list: HTMLUListElement;
+  /** 樹狀目錄上方的「釘選」「最近看過」。 */
+  #quick: HTMLElement;
+  #prefs: WikiPrefs = { recent: [], pinned: [] };
   #wikis: W[] = [];
   #wiki: W | null = null;
   #pages: WikiTreePage[] = [];
@@ -69,7 +84,10 @@ export class WikiPanel<W extends WikiInfo> {
     this.#list = document.createElement("ul");
     this.#list.className = "wiki-tree";
     this.#list.setAttribute("role", "tree");
-    el.append(bar, this.#input, this.#status, this.#list);
+    this.#quick = document.createElement("div");
+    this.#quick.className = "wiki-quick";
+    this.#quick.hidden = true;
+    el.append(bar, this.#input, this.#status, this.#quick, this.#list);
   }
 
   /** 第一次顯示面板時才讀取。 */
@@ -86,6 +104,8 @@ export class WikiPanel<W extends WikiInfo> {
     this.#pages = [];
     this.#select.replaceChildren();
     this.#list.replaceChildren();
+    this.#quick.replaceChildren();
+    this.#quick.hidden = true;
     this.#status.textContent = "";
   }
 
@@ -126,7 +146,9 @@ export class WikiPanel<W extends WikiInfo> {
     if (wiki?.id !== this.#wiki?.id) this.#expanded.clear();
     this.#wiki = wiki;
     this.#pages = [];
+    this.#prefs = wiki ? this.#h.prefs(wiki.id) : { recent: [], pinned: [] };
     this.#list.replaceChildren();
+    this.#quick.hidden = true;
     if (!wiki) {
       this.#status.textContent = t("這個集合裡沒有 Wiki");
       return;
@@ -155,6 +177,7 @@ export class WikiPanel<W extends WikiInfo> {
 
   #render(): void {
     const q = this.#input.value.trim().toLowerCase();
+    this.#renderQuick(!q);
     if (!this.#pages.length) {
       this.#status.textContent = t("這個 Wiki 還沒有頁面");
       this.#list.replaceChildren();
@@ -226,8 +249,84 @@ export class WikiPanel<W extends WikiInfo> {
       this.select(page.path);
       this.#h.open(this.#wiki, page.path);
     });
-    li.append(toggle, b);
+    li.append(toggle, b, this.#pinButton(page.path));
     return li;
+  }
+
+  /** 釘選／取消釘選的按鈕（滑鼠移到列上才出現；已釘選的一直顯示）。 */
+  #pinButton(path: string): HTMLButtonElement {
+    const pinned = this.#prefs.pinned.includes(path);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "wiki-pin";
+    b.classList.toggle("pinned", pinned);
+    const label = pinned ? t("取消釘選") : t("釘選這一頁");
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.setAttribute("aria-pressed", String(pinned));
+    b.append(icon(pinned ? "pin-off" : "pin"));
+    b.addEventListener("click", () => this.#togglePin(path));
+    return b;
+  }
+
+  #togglePin(path: string): void {
+    const pinned = this.#prefs.pinned;
+    this.#prefs.pinned = pinned.includes(path) ? pinned.filter((p) => p !== path) : [...pinned, path].slice(-PINNED_LIMIT);
+    this.#savePrefs();
+    this.#render();
+  }
+
+  #savePrefs(): void {
+    if (this.#wiki) this.#h.savePrefs(this.#wiki.id, this.#prefs);
+  }
+
+  /** 樹狀目錄上方的「釘選」與「最近看過」（搜尋時不顯示；已刪除的頁面不列出）。 */
+  #renderQuick(show: boolean): void {
+    const exists = new Set(flattenPages(this.#pages));
+    const pinned = this.#prefs.pinned.filter((p) => exists.has(p));
+    const recent = this.#prefs.recent.filter((p) => exists.has(p) && !pinned.includes(p));
+    const groups: HTMLElement[] = [];
+    const group = (title: string, paths: string[]) => {
+      if (!paths.length) return;
+      const box = document.createElement("section");
+      const h = document.createElement("h3");
+      h.textContent = title;
+      const ul = document.createElement("ul");
+      for (const path of paths) {
+        const li = document.createElement("li");
+        li.className = "wiki-row";
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "wiki-page";
+        b.dataset.path = path;
+        b.title = path;
+        const name = document.createElement("span");
+        name.className = "wiki-name";
+        name.textContent = pageName(path);
+        b.append(name);
+        const where = path.slice(1, path.lastIndexOf("/"));
+        if (where) {
+          const meta = document.createElement("span");
+          meta.className = "wiki-where";
+          meta.textContent = where;
+          b.append(meta);
+        }
+        if (path === this.#current) b.setAttribute("aria-current", "true");
+        b.addEventListener("click", () => {
+          if (!this.#wiki) return;
+          this.select(path);
+          this.#h.open(this.#wiki, path);
+        });
+        li.append(b, this.#pinButton(path));
+        ul.append(li);
+      }
+      box.append(h, ul);
+      groups.push(box);
+    };
+    group(t("已釘選"), pinned);
+    group(t("最近看過"), recent.slice(0, RECENT_LIMIT));
+    this.#quick.replaceChildren(...groups);
+    this.#quick.hidden = !show || !groups.length;
   }
 
   #toggle(path: string): void {
@@ -236,9 +335,14 @@ export class WikiPanel<W extends WikiInfo> {
     this.#render();
   }
 
-  /** 標示目前開著的頁面（null 表示都沒開）；展開它所在的資料夾。 */
+  /** 標示目前開著的頁面（null 表示都沒開）；展開它所在的資料夾，並記到「最近看過」。 */
   select(path: string | null): void {
     this.#current = path;
+    if (path && this.#wiki && this.#prefs.recent[0] !== path) {
+      this.#prefs.recent = pushRecent(this.#prefs.recent, path, RECENT_LIMIT + PINNED_LIMIT);
+      this.#savePrefs();
+      if (!this.#input.value.trim()) this.#renderQuick(true);
+    }
     if (path) {
       let changed = false;
       for (let i = path.indexOf("/", 1); i > 0; i = path.indexOf("/", i + 1)) {
@@ -250,7 +354,7 @@ export class WikiPanel<W extends WikiInfo> {
       }
       if (changed && !this.#input.value.trim()) this.#render();
     }
-    for (const b of this.#list.querySelectorAll<HTMLElement>(".wiki-page")) {
+    for (const b of [...this.#quick.querySelectorAll<HTMLElement>(".wiki-page"), ...this.#list.querySelectorAll<HTMLElement>(".wiki-page")]) {
       if (b.dataset.path === path) b.setAttribute("aria-current", "true");
       else b.removeAttribute("aria-current");
     }

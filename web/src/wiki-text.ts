@@ -108,3 +108,8 @@ export function wikiPageLink(title: string, url: string): string {
   const href = url.replace(/[()\s]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
   return `[${text}](${href})`;
 }
+
+/** 把 `path` 移到清單最前面（不重複），最多留 `limit` 個。 */
+export function pushRecent(list: readonly string[], path: string, limit: number): string[] {
+  return [path, ...list.filter((p) => p !== path)].slice(0, limit);
+}

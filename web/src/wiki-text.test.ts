@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink } from "./wiki-text.ts";
+import { flattenPages, imageRepoPath, pageName, pushRecent, resolvePageLink, wikiMarkdown, wikiPageLink } from "./wiki-text.ts";
 
 const pages = ["/首頁", "/產品", "/產品/安裝 說明", "/產品/a-b", "/FAQ"];
 
@@ -60,4 +60,10 @@ test("插入的頁面連結", () => {
     wikiPageLink("安裝 [說明]", "https://tfs/DC/P/_wiki/wikis/P.wiki/3/安裝 (說明)"),
     "[安裝 \\[說明\\]](https://tfs/DC/P/_wiki/wikis/P.wiki/3/安裝%20%28說明%29)",
   );
+});
+
+test("最近看過的頁面：移到最前面、不重複、有上限", () => {
+  assert.deepEqual(pushRecent(["/a", "/b", "/c"], "/b", 5), ["/b", "/a", "/c"]);
+  assert.deepEqual(pushRecent(["/a", "/b"], "/c", 2), ["/c", "/a"]);
+  assert.deepEqual(pushRecent([], "/a", 5), ["/a"]);
 });
