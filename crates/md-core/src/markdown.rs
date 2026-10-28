@@ -1,7 +1,9 @@
 //! Markdown（GFM）渲染。
 
+use comrak::html::{format_node_default, ChildRendering, Context};
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{format_html, parse_document, Anchorizer, Arena, Node, Options};
+use comrak::{parse_document, Anchorizer, Arena, Node, Options};
+use std::fmt::{self, Write};
 
 use crate::{count_text, Heading, RenderOptions, Rendered};
 
@@ -43,7 +45,15 @@ pub(crate) fn render(markdown: &str, opts: &RenderOptions) -> Rendered {
     let mut html = String::new();
     if !opts.skip_html {
         html.reserve(markdown.len() * 3 / 2);
-        format_html(root, &options, &mut html).expect("writing to a String cannot fail");
+        comrak::html::format_document_with_formatter(
+            root,
+            &options,
+            &mut html,
+            &comrak::options::Plugins::default(),
+            format_node,
+            (),
+        )
+        .expect("writing to a String cannot fail");
     }
 
     Rendered {
@@ -76,6 +86,83 @@ pub fn image_urls(markdown: &str) -> Vec<String> {
         }
         out
     })
+}
+
+/// 輸出 HTML：原始 HTML 區塊一律不輸出，只有可收合區塊（`<details>`、`<summary>…</summary>`、`</details>`）例外。
+fn format_node<'a>(
+    context: &mut Context<()>,
+    node: Node<'a>,
+    entering: bool,
+) -> Result<ChildRendering, fmt::Error> {
+    if let NodeValue::HtmlBlock(ref block) = node.data().value {
+        if let Some(safe) = details_html(&block.literal) {
+            if entering {
+                context.cr()?;
+                context.write_str(&safe)?;
+                context.cr()?;
+            }
+            return Ok(ChildRendering::HTML);
+        }
+    }
+    format_node_default(context, node, entering)
+}
+
+/// HTML 區塊只由可收合區塊的標籤組成時，回傳整理過、安全的 HTML；否則回傳 None（照舊不輸出）。
+/// 每一行只能是 `<details>`、`<details open>`、`</details>`，或 `<summary>純文字</summary>`
+/// （純文字裡不能有 `<`、`>`；`&` 不是字元參照時會跳脫）。
+pub(crate) fn details_html(literal: &str) -> Option<String> {
+    let mut out = String::new();
+    for line in literal.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let lower = line.to_ascii_lowercase();
+        match lower.as_str() {
+            "<details>" => out.push_str("<details class=\"md-details\">"),
+            "<details open>" => out.push_str("<details class=\"md-details\" open>"),
+            "</details>" => out.push_str("</details>"),
+            _ => {
+                let inner = (lower.starts_with("<summary>") && lower.ends_with("</summary>"))
+                    .then(|| &line["<summary>".len()..line.len() - "</summary>".len()])?;
+                if inner.contains(['<', '>']) {
+                    return None;
+                }
+                out.push_str("<summary>");
+                out.push_str(&escape_amp(inner.trim()));
+                out.push_str("</summary>");
+            }
+        }
+        out.push('\n');
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// 把不是字元參照（`&amp;`、`&#123;`、`&#x1F;`）的 `&` 跳脫，`"` 也一併跳脫。
+fn escape_amp(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for (i, c) in text.char_indices() {
+        match c {
+            '&' => {
+                let rest = &text[i + 1..];
+                let entity = rest.find(';').is_some_and(|end| {
+                    let name = &rest[..end];
+                    let digits = name.strip_prefix("#x").or_else(|| name.strip_prefix("#X"));
+                    !name.is_empty()
+                        && end <= 32
+                        && match (digits, name.strip_prefix('#')) {
+                            (Some(hex), _) => {
+                                !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit())
+                            }
+                            (None, Some(dec)) => {
+                                !dec.is_empty() && dec.bytes().all(|b| b.is_ascii_digit())
+                            }
+                            (None, None) => name.bytes().all(|b| b.is_ascii_alphanumeric()),
+                        }
+                });
+                out.push_str(if entity { "&" } else { "&amp;" });
+            }
+            '"' => out.push_str("&quot;"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// 允許的行內 HTML 標籤（不能帶屬性）與對應的節點。

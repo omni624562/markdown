@@ -239,6 +239,41 @@ mod tests {
     }
 
     #[test]
+    fn details_blocks_render_safely() {
+        let out = r(
+            "<details>\n<summary>技術追溯 A&B &amp; C</summary>\n\n- 第一點\n\n</details>\n\n後面",
+        );
+        assert!(
+            out.html.contains(
+                "<details class=\"md-details\">\n<summary>技術追溯 A&amp;B &amp; C</summary>"
+            ),
+            "{}",
+            out.html
+        );
+        assert!(out.html.contains("<li>第一點</li>"), "{}", out.html);
+        assert!(out.html.contains("</details>"), "{}", out.html);
+        assert!(r("<details open>\n<summary>x</summary>")
+            .html
+            .contains("<details class=\"md-details\" open>"));
+        for src in [
+            "<details onclick=\"x\">\n<summary>x</summary>",
+            "<details>\n<summary><img src=x onerror=alert(1)></summary>",
+            "<details>\n<div>x</div>",
+            "<summary style=\"x\">y</summary>",
+        ] {
+            let html = r(src).html;
+            assert!(
+                !html.contains("<details") && !html.contains("<summary"),
+                "{src}: {html}"
+            );
+            assert!(
+                !html.contains("onerror") && !html.contains("onclick"),
+                "{src}: {html}"
+            );
+        }
+    }
+
+    #[test]
     fn unsafe_or_unbalanced_tags_stay_hidden() {
         for src in [
             "<u style=\"color:red\">x</u>",

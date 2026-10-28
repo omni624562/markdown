@@ -93,6 +93,12 @@ body {
 /* 項目之間有空白行時（鬆散清單），文字包在 <p> 裡；勾選框浮在第一行左邊，不要自己佔一行。 */
 .markdown-body .task-list-item > input:has(+ p) { float: left; margin-top: 0.45em; }
 
+/* 可收合區塊（<details>／<summary>，例如 TFS 工作項目裡的「技術追溯」）。 */
+.markdown-body details.md-details { margin: 0 0 16px; padding: 0 12px; border: 1px solid var(--md-border); border-radius: 6px; }
+.markdown-body details.md-details > summary { margin: 0 -12px; padding: 6px 12px; font-weight: 600; cursor: pointer; }
+.markdown-body details.md-details > summary:hover { background: var(--md-subtle); }
+.markdown-body details.md-details[open] > summary { border-bottom: 1px solid var(--md-border); margin-bottom: 12px; }
+.markdown-body details.md-details > :last-child { margin-bottom: 12px; }
 .markdown-body blockquote {
   padding: 0 1em;
   color: var(--md-muted);
