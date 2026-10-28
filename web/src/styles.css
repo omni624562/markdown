@@ -1843,6 +1843,11 @@ button.git-info:disabled { cursor: default; }
 .workitems-filter-clear:hover { border-color: var(--border); background: var(--active-line); color: var(--fg); }
 .workitems-filter-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filter-clear .icon { width: 14px; height: 14px; }
+.workitems-filter-toggle[hidden] { display: none; }
+.workitems-query-open { grid-column: 1 / -1; justify-self: start; display: inline-flex; gap: 6px; align-items: center; text-align: left; }
+.workitems-query-open .icon { width: 15px; height: 15px; }
+.workitems-query-note { grid-column: 1 / -1; margin: 0; color: var(--accent); font-size: 12px; line-height: 1.5; }
+.workitems-query-note[hidden] { display: none; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
 .workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }

@@ -353,6 +353,15 @@ export interface AdoWorkItemRelation extends AdoWorkItem {
 }
 
 /** 工作項目清單的篩選條件。 */
+/** TFS 上存的查詢。 */
+export interface AdoSavedQuery {
+  id: string;
+  project: string;
+  name: string;
+  /** 所在的資料夾（例如 `Shared Queries/團隊`）。 */
+  folder: string;
+}
+
 export interface AdoWorkItemFilter {
   /** 依指派給誰或建立者篩選人。 */
   role: "assigned" | "created";
@@ -843,6 +852,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
     /** 依編號讀取工作項目（讀不到的略過）。 */
     adoWorkItemsByIds: (ids: number[]) => core.invoke<AdoWorkItem[]>("ado_work_items_by_ids", { ids }),
+    /** TFS 上存的查詢（我的查詢、共用查詢）。 */
+    adoQueries: () => core.invoke<AdoSavedQuery[]>("ado_queries"),
+    /** 執行存的查詢（最多 200 個工作項目）。 */
+    adoQueryRun: (q: { project: string; id: string }) => core.invoke<AdoWorkItem[]>("ado_query_run", { project: q.project, id: q.id }),
     /** 這個類型的工作項目可以設定的狀態。 */
     adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
     /** 改狀態、指派給我、留言（HTML）；`rev` 是開啟時的修訂版本。 */
