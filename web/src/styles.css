@@ -1558,6 +1558,19 @@ button.git-info:disabled { cursor: default; }
 @media (hover: none) { .code-copy, .diagram-tools { opacity: 1; } }
 
 /* 即時預覽的流程圖：滑過時右上角出現工具列；編輯中接在原始碼下面。 */
+.cm-lp-details { padding: 2px var(--lp-pad); }
+.cm-lp-details-head { display: flex; align-items: flex-start; gap: 6px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-weight: 600; cursor: pointer; user-select: none; }
+.cm-lp-details-head:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.cm-lp-details-caret { display: grid; flex: none; place-items: center; height: 1lh; color: var(--muted); transition: transform 0.12s; }
+.cm-lp-details-caret svg { width: 1em; height: 1em; }
+.cm-lp-details.open .cm-lp-details-caret { transform: rotate(90deg); }
+.cm-lp-details-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cm-lp-details-edit { display: grid; flex: none; place-items: center; width: 1lh; height: 1lh; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
+.cm-lp-details-head:hover .cm-lp-details-edit, .cm-lp-details-edit:focus-visible { opacity: 1; }
+.cm-lp-details-edit:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.cm-lp-details-edit svg { width: 0.9em; height: 0.9em; }
+.cm-lp-details-end { height: 0; margin: 4px var(--lp-pad) 8px; border-top: 1px solid var(--border); cursor: pointer; }
+.cm-lp-details-end::before { content: ""; display: block; height: 8px; margin-top: -4px; }
 .cm-lp-mermaid { position: relative; }
 .cm-lp-diagram { overflow-x: auto; text-align: center; color: var(--muted); font-size: 0.9em; }
 .cm-lp-diagram svg { display: inline-block; vertical-align: top; }

@@ -95,10 +95,15 @@ fn format_node<'a>(
     entering: bool,
 ) -> Result<ChildRendering, fmt::Error> {
     if let NodeValue::HtmlBlock(ref block) = node.data().value {
-        if let Some(safe) = details_html(&block.literal) {
+        if let Some(parts) = details_parts(&block.literal) {
             if entering {
                 context.cr()?;
-                context.write_str(&safe)?;
+                context.write_str(&parts.head)?;
+                if !parts.body.trim().is_empty() {
+                    let body = render_fragment(parts.body, context.options);
+                    context.write_str(&body)?;
+                }
+                context.write_str(&parts.tail)?;
                 context.cr()?;
             }
             return Ok(ChildRendering::HTML);
@@ -107,31 +112,128 @@ fn format_node<'a>(
     format_node_default(context, node, entering)
 }
 
-/// HTML 區塊只由可收合區塊的標籤組成時，回傳整理過、安全的 HTML；否則回傳 None（照舊不輸出）。
-/// 每一行只能是 `<details>`、`<details open>`、`</details>`，或 `<summary>純文字</summary>`
-/// （純文字裡不能有 `<`、`>`；`&` 不是字元參照時會跳脫）。
-pub(crate) fn details_html(literal: &str) -> Option<String> {
-    let mut out = String::new();
-    for line in literal.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        let lower = line.to_ascii_lowercase();
-        match lower.as_str() {
-            "<details>" => out.push_str("<details class=\"md-details\">"),
-            "<details open>" => out.push_str("<details class=\"md-details\" open>"),
-            "</details>" => out.push_str("</details>"),
-            _ => {
-                let inner = (lower.starts_with("<summary>") && lower.ends_with("</summary>"))
-                    .then(|| &line["<summary>".len()..line.len() - "</summary>".len()])?;
-                if inner.contains(['<', '>']) {
-                    return None;
-                }
-                out.push_str("<summary>");
-                out.push_str(&escape_amp(inner.trim()));
-                out.push_str("</summary>");
+/// 區塊裡夾帶的 Markdown（標籤和內容之間沒有空行時，整段會被當成同一個 HTML 區塊）：照一般規則渲染。
+fn render_fragment(markdown: &str, options: &Options) -> String {
+    let mut options = options.clone();
+    // 行號是片段裡的，對不到原文件，不輸出。
+    options.render.sourcepos = false;
+    let arena = Arena::new();
+    let root = parse_document(&arena, markdown, &options);
+    allow_formatting_tags(&arena, root);
+    let mut html = String::new();
+    let _ = comrak::html::format_document_with_formatter(
+        root,
+        &options,
+        &mut html,
+        &comrak::options::Plugins::default(),
+        format_node,
+        (),
+    );
+    html
+}
+
+/// 可收合區塊的 HTML 區塊拆成：開頭的標籤（整理過、安全的 HTML）、中間夾帶的 Markdown、結尾的 `</details>`。
+pub(crate) struct DetailsParts<'s> {
+    pub head: String,
+    pub body: &'s str,
+    pub tail: String,
+}
+
+/// HTML 區塊以可收合區塊的標籤開頭時拆開；否則回傳 None（照舊不輸出）。
+/// 認得的標籤：`<details>`（屬性只保留 `open`）、`<summary>…</summary>`（只留純文字）、`</details>`，
+/// 可以寫在同一行或分行；標籤後面、結尾 `</details>` 前面的內容照 Markdown 渲染。
+pub(crate) fn details_parts(literal: &str) -> Option<DetailsParts<'_>> {
+    let mut head = String::new();
+    let mut rest = literal;
+    loop {
+        let trimmed = rest.trim_start();
+        match take_tag(trimmed) {
+            Some((html, after)) => {
+                head.push_str(&html);
+                head.push('\n');
+                rest = after;
             }
+            None => break,
         }
-        out.push('\n');
     }
-    (!out.is_empty()).then_some(out)
+    if head.is_empty() {
+        return None;
+    }
+    // 結尾連續的 `</details>`。
+    let mut tail = String::new();
+    let mut body = rest;
+    loop {
+        let trimmed = body.trim_end();
+        let lower = trimmed.to_ascii_lowercase();
+        if !lower.ends_with("</details>") {
+            break;
+        }
+        body = &trimmed[..trimmed.len() - "</details>".len()];
+        tail.push_str("</details>\n");
+    }
+    Some(DetailsParts { head, body, tail })
+}
+
+/// 開頭一個可收合區塊的標籤：回傳整理過的 HTML 與剩下的文字。
+fn take_tag(s: &str) -> Option<(String, &str)> {
+    let lower = s.to_ascii_lowercase();
+    let starts_tag = |name: &str| {
+        lower.starts_with(name)
+            && matches!(
+                lower.as_bytes().get(name.len()),
+                Some(b'>' | b' ' | b'\t' | b'\n' | b'\r' | b'/')
+            )
+    };
+    if lower.starts_with("</details>") {
+        return Some(("</details>".into(), &s["</details>".len()..]));
+    }
+    if starts_tag("<details") {
+        let gt = s.find('>')?;
+        let attrs = &lower["<details".len()..gt];
+        if attrs.contains('<') {
+            return None;
+        }
+        let open = attrs
+            .split(|c: char| c.is_whitespace() || c == '/')
+            .any(|a| a == "open" || a.starts_with("open="));
+        let html = if open {
+            "<details class=\"md-details\" open>"
+        } else {
+            "<details class=\"md-details\">"
+        };
+        return Some((html.into(), &s[gt + 1..]));
+    }
+    if starts_tag("<summary") {
+        let gt = s.find('>')?;
+        let close = lower[gt..].find("</summary>")? + gt;
+        let text = summary_text(&s[gt + 1..close]);
+        let html = format!(
+            "<summary>{}</summary>",
+            if text.is_empty() {
+                "Details".into()
+            } else {
+                text
+            }
+        );
+        return Some((html, &s[close + "</summary>".len()..]));
+    }
+    None
+}
+
+/// 標題只留純文字：拿掉標籤、合併空白，跳脫 `<`、`>` 與不是字元參照的 `&`。
+fn summary_text(inner: &str) -> String {
+    let mut text = String::with_capacity(inner.len());
+    let mut in_tag = false;
+    for c in inner.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            _ if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    escape_amp(&text).replace('<', "&lt;").replace('>', "&gt;")
 }
 
 /// 把不是字元參照（`&amp;`、`&#123;`、`&#x1F;`）的 `&` 跳脫，`"` 也一併跳脫。

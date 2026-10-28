@@ -255,22 +255,46 @@ mod tests {
         assert!(r("<details open>\n<summary>x</summary>")
             .html
             .contains("<details class=\"md-details\" open>"));
+        // 屬性、標題裡的標籤、夾帶的其他 HTML 一律拿掉；只留 open。
         for src in [
             "<details onclick=\"x\">\n<summary>x</summary>",
             "<details>\n<summary><img src=x onerror=alert(1)></summary>",
-            "<details>\n<div>x</div>",
+            "<details>\n<div onclick=\"x\">x</div>",
             "<summary style=\"x\">y</summary>",
+            "<details><summary>a</summary><script>alert(1)</script>\n</details>",
+        ] {
+            let html = r(src).html;
+            for bad in ["onerror", "onclick", "style=", "<img", "<div", "<script"] {
+                assert!(!html.contains(bad), "{src}: {html}");
+            }
+        }
+    }
+
+    #[test]
+    fn details_in_common_layouts() {
+        // TFS、GitHub 常見的寫法：同一行、標題有粗體、標籤和內容之間沒有空行、縮排。
+        for src in [
+            "<details><summary>本次差異技術追溯（非審閱必讀）</summary>\n\n- 第一點\n\n</details>",
+            "<details>\n<summary><b>本次差異技術追溯（非審閱必讀）</b></summary>\n\n- 第一點\n</details>",
+            "<details>\n<summary>本次差異技術追溯（非審閱必讀）</summary>\n- 第一點\n- 第二點\n</details>",
+            "<details>\n  <summary>本次差異技術追溯（非審閱必讀）</summary>\n\n- 第一點\n\n</details>",
+            "<details><summary>本次差異技術追溯（非審閱必讀）</summary>\n- 第一點\n</details>\n\n後面",
+            "<DETAILS>\n<SUMMARY>本次差異技術追溯（非審閱必讀）</SUMMARY>\n\n- 第一點\n\n</DETAILS>",
         ] {
             let html = r(src).html;
             assert!(
-                !html.contains("<details") && !html.contains("<summary"),
+                html.contains("<details class=\"md-details\">\n<summary>本次差異技術追溯（非審閱必讀）</summary>"),
                 "{src}: {html}"
             );
-            assert!(
-                !html.contains("onerror") && !html.contains("onclick"),
-                "{src}: {html}"
-            );
+            assert!(html.contains("<li>第一點</li>"), "{src}: {html}");
+            assert_eq!(html.matches("<details").count(), html.matches("</details>").count(), "{src}: {html}");
+            assert!(!html.contains("raw HTML omitted"), "{src}: {html}");
         }
+        // 巢狀
+        let html = r("<details><summary>外</summary>\n\n<details><summary>內</summary>\n\n內容\n\n</details>\n</details>").html;
+        assert_eq!(html.matches("<details class").count(), 2, "{html}");
+        assert_eq!(html.matches("</details>").count(), 2, "{html}");
+        assert!(html.contains("<p>內容</p>"), "{html}");
     }
 
     #[test]
