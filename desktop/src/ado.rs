@@ -2018,6 +2018,99 @@ pub async fn ado_wiki_page_info(
     .await
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiRevision {
+    id: String,
+    author: String,
+    date: String,
+    comment: String,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistory {
+    /// 頁面在 Wiki 儲存庫裡的檔案路徑（讀某一版的內容時用）。
+    git_path: String,
+    /// 新的在前。
+    revisions: Vec<WikiRevision>,
+}
+
+/// 提交清單（`git/commits`）轉成修改記錄。
+fn revisions_of(v: &Value) -> Vec<WikiRevision> {
+    v.get("value")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let author = c.get("author");
+            Some(WikiRevision {
+                id: str_of(c, "commitId")?.to_string(),
+                author: author
+                    .and_then(|a| str_of(a, "name"))
+                    .unwrap_or_default()
+                    .to_string(),
+                date: author
+                    .and_then(|a| str_of(a, "date"))
+                    .unwrap_or_default()
+                    .to_string(),
+                comment: str_of(c, "comment").unwrap_or_default().trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Wiki 頁面的修改記錄（最近 100 次）：誰、什麼時候、說明。
+#[tauri::command]
+pub async fn ado_wiki_history(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    repository_id: Option<String>,
+    path: String,
+) -> Result<WikiHistory, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("讀取 Wiki 頁面的修改記錄");
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let page = read(
+            crate::update::agent()
+                .get(&format!("{}{api}&api-version={API_VERSION}", a.url))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        let git_path = str_of(&page, "gitItemPath")
+            .ok_or_else(|| tr!("{what}失敗：伺服器沒有提供頁面的檔案位置", what = what))?
+            .to_string();
+        let repo = repository_id
+            .as_deref()
+            .filter(|r| !r.is_empty())
+            .unwrap_or(&wiki_id);
+        let url = format!(
+            "{}/{}/_apis/git/repositories/{}/commits?searchCriteria.itemPath={}&searchCriteria.$top=100&api-version={API_VERSION}",
+            a.url,
+            encode_segment(&project_id),
+            encode_segment(repo),
+            encode_segment(&git_path)
+        );
+        let v = read(
+            crate::update::agent()
+                .get(&url)
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        Ok(WikiHistory {
+            git_path,
+            revisions: revisions_of(&v),
+        })
+    })
+    .await
+}
+
 // ---- Wiki 全文搜尋 -------------------------------------------------------------
 
 /// 搜尋服務的網址：雲端版在另一個主機（almsearch），自架的伺服器就是集合本身。
@@ -2577,6 +2670,32 @@ mod tests {
         assert!(!same_server("http://tfs.corp.com/tfs/DC/_git/r", base));
         assert!(!same_server("https://tfs.corp.com:8443/tfs/DC", base));
         assert!(!same_server("https://tfs.corp.com.evil.com/tfs/DC", base));
+    }
+
+    #[test]
+    fn reads_wiki_revisions() {
+        let v = serde_json::json!({ "value": [
+            { "commitId": "b2", "comment": " 更新 安裝.md \n", "author": { "name": "王小明", "date": "2026-10-28T02:42:00Z" } },
+            { "commitId": "a1", "author": { "name": "陳大文" } },
+            { "comment": "沒有 id 的略過" }
+        ] });
+        assert_eq!(
+            revisions_of(&v),
+            vec![
+                WikiRevision {
+                    id: "b2".into(),
+                    author: "王小明".into(),
+                    date: "2026-10-28T02:42:00Z".into(),
+                    comment: "更新 安裝.md".into()
+                },
+                WikiRevision {
+                    id: "a1".into(),
+                    author: "陳大文".into(),
+                    date: String::new(),
+                    comment: String::new()
+                },
+            ]
+        );
     }
 
     #[test]
