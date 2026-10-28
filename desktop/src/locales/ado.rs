@@ -15,7 +15,7 @@ pub static EN: &[(&str, &str)] = &[
     ("{what}失敗：沒有權限", "{what} failed: Permission denied."),
     ("{what}失敗：找不到（404），請確認網址", "{what} failed: Not found (404). Check the URL."),
     ("{what}失敗：伺服器回應 {code}", "{what} failed: The server responded with {code}."),
-    ("{what}失敗：無法連線到 Azure DevOps（{e}）", "{what} failed: Couldn't connect to Azure DevOps ({e})"),
+    ("{what}失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）", "{what} failed: Couldn't reach the Azure DevOps server. Check your network or VPN connection ({e})."),
     ("連線失敗：個人存取權杖無效或已過期", "Connection failed: The personal access token is invalid or has expired."),
     ("連線失敗：這台伺服器上沒有可以使用的集合", "Connection failed: There are no collections you can use on this server."),
     ("這台伺服器上有好幾個集合（{many}），請在網址後面加上集合名稱，例如 {base}/{first}", "This server has several collections ({many}). Add the collection name to the end of the URL, for example {base}/{first}"),
