@@ -668,4 +668,8 @@ export const main: Record<string, Translation> = {
   "頁面標題太長了。": "The page title is too long.",
   "已經有同名的頁面了，請換一個名稱": "A page with this name already exists. Please choose another name.",
   "已建立 Wiki 頁面「{name}」": "Created wiki page “{name}”",
+  "Wiki 只接受 PNG、JPG、GIF、WebP、BMP 圖片，已略過 {n} 張。": ["The wiki only accepts PNG, JPG, GIF, WebP, and BMP images. Skipped {n} image.", "The wiki only accepts PNG, JPG, GIF, WebP, and BMP images. Skipped {n} images."],
+  "正在上傳圖片到 Wiki…": "Uploading images to the wiki…",
+  "已把 {n} 張圖片上傳到 Wiki，存回頁面後別人就看得到": ["Uploaded {n} image to the wiki. Others will see it once you save the page.", "Uploaded {n} images to the wiki. Others will see them once you save the page."],
+  "已把圖片上傳到 Wiki，存回頁面後別人就看得到": "Uploaded the image to the wiki. Others will see it once you save the page.",
 };

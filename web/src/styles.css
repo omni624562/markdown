@@ -1834,6 +1834,12 @@ button.git-info:disabled { cursor: default; }
 /* 改過幾項條件：放在按鈕裡、圖示右邊（不要浮在外面，窄的時候會被切掉或蓋住圖示）。 */
 .workitems-filter-count { box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font: 600 10.5px/16px var(--font-ui); text-align: center; }
 .workitems-filter-count[hidden] { display: none; }
+.workitems-filter-group { display: inline-flex; flex: none; gap: 2px; align-items: flex-start; }
+.workitems-filter-clear { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; width: 24px; height: 30px; margin: 2px 0 6px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.workitems-filter-clear[hidden] { display: none; }
+.workitems-filter-clear:hover { border-color: var(--border); background: var(--active-line); color: var(--fg); }
+.workitems-filter-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.workitems-filter-clear .icon { width: 14px; height: 14px; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
 .workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }
