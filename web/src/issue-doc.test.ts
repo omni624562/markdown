@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { AdoWorkItemDetail, GitHubIssueDetail } from "./desktop.ts";
-import { githubIssueMarkdown, inlineText, issueFileName, workItemMarkdown } from "./issue-doc.ts";
+import type { AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
+import { githubIssueMarkdown, inlineText, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { findMatches } from "./ui/issue-view.ts";
 
 const item: AdoWorkItemDetail = {
@@ -22,7 +22,47 @@ const item: AdoWorkItemDetail = {
   details: "<ol><li>開啟網站</li><li>按登入</li></ol>",
   comments: [{ author: "李大同", created: "2026-10-21T01:00:00Z", text: "<p>已重現</p>" }],
   rev: 3,
+  relations: [],
 };
+
+const rel = (id: number, link: AdoWorkItemRelation["link"], linkName: string, title: string): AdoWorkItemRelation => ({
+  id,
+  title,
+  state: "Active",
+  kind: "Task",
+  project: "產品",
+  assignedTo: null,
+  changed: null,
+  priority: null,
+  webUrl: `https://tfs/DC/x/_workitems/edit/${id}`,
+  link,
+  linkName,
+});
+
+test("相關工作項目：依種類分組，其他用伺服器上的名稱", () => {
+  const md = workItemMarkdown({
+    ...item,
+    relations: [
+      rel(3, "child", "Child", "子工作 [A]"),
+      rel(1, "parent", "Parent", "功能"),
+      rel(4, "child", "Child", "子工作 B"),
+      rel(9, "other", "Tested By", "測試"),
+    ],
+  });
+  assert.match(
+    md,
+    /## 相關工作項目（4）\n\n### 上層\n\n- \[Task 1：功能\]\(<https:\/\/tfs\/DC\/x\/_workitems\/edit\/1>\)・Active\n\n### 子項目\n\n- \[Task 3：子工作 \\\[A\\\]\]\(<[^>]+>\)・Active\n- \[Task 4：子工作 B\]/,
+  );
+  assert.match(md, /### Tested By\n\n- \[Task 9：測試\]/);
+  assert.ok(md.indexOf("## 相關工作項目") < md.indexOf("## 留言"));
+});
+
+test("工作項目網址裡的編號", () => {
+  assert.equal(workItemIdOf("https://tfs/DC/x/_workitems/edit/12"), 12);
+  assert.equal(workItemIdOf("https://tfs/DC/x/_workitems/edit/12/?a=1"), 12);
+  assert.equal(workItemIdOf("https://tfs/DC/x/_workitems/edit/12abc"), null);
+  assert.equal(workItemIdOf("https://example.com/"), null);
+});
 
 test("工作項目：標題跳脫、欄位表、說明與重現步驟轉成 Markdown、留言", () => {
   const md = workItemMarkdown(item);

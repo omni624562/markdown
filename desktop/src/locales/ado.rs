@@ -31,6 +31,7 @@ pub static EN: &[(&str, &str)] = &[
     ("這個工作項目在你開啟之後被別人改過了，請重新整理後再試一次", "Someone else changed this work item after you opened it. Refresh and try again."),
     ("更新工作項目失敗：伺服器回應 {code}", "Couldn't update the work item: the server responded {code}."),
     ("更新工作項目失敗：{message}", "Couldn't update the work item: {message}"),
+    ("儲存 Wiki 頁面", "Saving the wiki page"),
     ("讀取專案", "Loading projects"),
     ("儲存庫網址不在目前連線的 Azure DevOps 上", "The repository URL isn't on the Azure DevOps server you're connected to."),
     ("這個儲存庫不在目前連線的 Azure DevOps 上", "This repository isn't on the Azure DevOps server you're connected to."),

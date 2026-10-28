@@ -163,19 +163,33 @@ fn read(
     res: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
     what: &str,
 ) -> Result<Value, String> {
+    read_with_etag(res, what).map(|(v, _)| v)
+}
+
+/// 和 `read` 一樣，另外回傳回應的 ETag（Wiki 頁面的版本，存回去時用來確認沒有被別人改過）。
+fn read_with_etag(
+    res: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    what: &str,
+) -> Result<(Value, Option<String>), String> {
     match res {
         Ok(mut r) => {
+            let etag = r
+                .headers()
+                .get("ETag")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
             let text = r
                 .body_mut()
                 .read_to_string()
                 .map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))?;
             // 權杖不對時，雲端版會回傳登入網頁（HTML）而不是錯誤碼。
-            serde_json::from_str(&text).map_err(|_| {
+            let v = serde_json::from_str(&text).map_err(|_| {
                 tr!(
                     "{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖",
                     what = what
                 )
-            })
+            })?;
+            Ok((v, etag))
         }
         Err(ureq::Error::StatusCode(401)) => Err(tr!(
             "{what}失敗：個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖",
@@ -623,7 +637,7 @@ pub fn create_pull(
 
 // ---- 工作項目 ---------------------------------------------------------------
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkItem {
     id: u64,
@@ -634,6 +648,8 @@ pub struct WorkItem {
     /// 指派給誰（清單上看所有人的工作項目時顯示）。
     assigned_to: Option<String>,
     changed: Option<String>,
+    /// 優先順序（1 最高）；流程範本沒有這個欄位時是空的。
+    priority: Option<u64>,
     web_url: String,
 }
 
@@ -646,7 +662,6 @@ pub struct WorkItemDetail {
     /// 區域與反覆項目（例如「產品\前端」「產品\Sprint 3」）。
     area: Option<String>,
     iteration: Option<String>,
-    priority: Option<u64>,
     tags: Vec<String>,
     /// 說明（HTML，前端轉成 Markdown 顯示）。
     description: Option<String>,
@@ -656,6 +671,53 @@ pub struct WorkItemDetail {
     comments: Vec<WorkItemComment>,
     /// 修訂版本（改狀態、指派時用來確認這段時間沒有被別人改過）。
     rev: Option<u64>,
+    /// 相關的工作項目（上層、子項目、相關、前置、後續…）；讀不到時是空的。
+    relations: Vec<WorkItemRelation>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemRelation {
+    /// `parent`、`child`、`related`、`predecessor`、`successor` 或 `other`。
+    link: &'static str,
+    /// 伺服器上的連結名稱（例如 Parent、Tested By），`other` 時顯示。
+    link_name: String,
+    #[serde(flatten)]
+    item: WorkItem,
+}
+
+/// 最多列出幾個相關的工作項目（一次查詢的上限是 200）。
+const MAX_RELATIONS: usize = 200;
+
+/// 關聯裡連到其他工作項目的部分：(種類, 名稱, 編號)；附件、超連結、認可、PR 等略過。
+fn relation_links(v: &Value) -> Vec<(&'static str, String, u64)> {
+    let mut seen = std::collections::HashSet::new();
+    v.get("relations")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|r| {
+            let rel = str_of(r, "rel")?;
+            let url = str_of(r, "url")?;
+            let at = url.to_ascii_lowercase().rfind("/workitems/")?;
+            let id: u64 = url[at + "/workitems/".len()..].parse().ok()?;
+            let link = match rel {
+                "System.LinkTypes.Hierarchy-Reverse" => "parent",
+                "System.LinkTypes.Hierarchy-Forward" => "child",
+                "System.LinkTypes.Related" => "related",
+                "System.LinkTypes.Dependency-Reverse" => "predecessor",
+                "System.LinkTypes.Dependency-Forward" => "successor",
+                _ => "other",
+            };
+            let name = r
+                .get("attributes")
+                .and_then(|a| str_of(a, "name"))
+                .unwrap_or(rel)
+                .to_string();
+            seen.insert((link, id)).then_some((link, name, id))
+        })
+        .take(MAX_RELATIONS)
+        .collect()
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -684,6 +746,8 @@ const CLOSED_STATES: &[&str] = &[
     "完成",   // i18n-ignore
 ];
 const FIELDS: &str = "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.AssignedTo,System.ChangedDate";
+/// 優先順序欄位（清單排序用）；自訂的流程範本可能沒有。
+const PRIORITY: &str = "Microsoft.VSTS.Common.Priority";
 
 fn wiql_string(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
@@ -811,6 +875,7 @@ fn item_of(base: &str, v: &Value) -> Option<WorkItem> {
         changed: field(v, "System.ChangedDate")
             .and_then(Value::as_str)
             .map(str::to_string),
+        priority: field(v, PRIORITY).and_then(Value::as_u64),
     })
 }
 
@@ -880,15 +945,23 @@ pub async fn ado_work_items(
             return Ok(vec![]);
         }
         let list: Vec<String> = ids.iter().map(u64::to_string).collect();
-        let res = get(
-            &base,
-            &pat,
-            &format!(
-                "/_apis/wit/workitems?ids={}&fields={FIELDS}&errorPolicy=omit",
-                list.join(",")
-            ),
-            &tr!("讀取工作項目"),
-        )?;
+        let fetch = |fields: &str| {
+            get(
+                &base,
+                &pat,
+                &format!(
+                    "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
+                    list.join(",")
+                ),
+                &tr!("讀取工作項目"),
+            )
+        };
+        // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
+        let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
+            Ok(res) => res,
+            Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+            Err(_) => fetch(FIELDS)?,
+        };
         let items: Vec<WorkItem> = values(&res)
             .iter()
             .filter_map(|v| item_of(&base, v))
@@ -905,6 +978,7 @@ pub async fn ado_work_items(
                 project: w.project.clone(),
                 assigned_to: w.assigned_to.clone(),
                 changed: w.changed.clone(),
+                priority: w.priority,
                 web_url: w.web_url.clone(),
             })
             .collect())
@@ -1086,11 +1160,40 @@ pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, St
         let v = get(
             &a.url,
             &pat,
-            &format!("/_apis/wit/workitems/{id}"),
+            &format!("/_apis/wit/workitems/{id}?$expand=relations"),
             &tr!("讀取工作項目"),
         )?;
         let mut d =
             detail_of(&a.url, &v).ok_or_else(|| tr!("讀取工作項目失敗：回應的格式不正確"))?;
+        // 相關工作項目的標題、狀態要另外查；讀不到不影響其他內容。
+        let links = relation_links(&v);
+        if !links.is_empty() {
+            let mut ids: Vec<u64> = links.iter().map(|(_, _, id)| *id).collect();
+            ids.sort_unstable();
+            ids.dedup();
+            let ids: Vec<String> = ids.iter().map(u64::to_string).collect();
+            let path = format!(
+                "/_apis/wit/workitems?ids={}&fields={FIELDS}&errorPolicy=omit",
+                ids.join(",")
+            );
+            if let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取工作項目")) {
+                let items: Vec<WorkItem> = values(&res)
+                    .iter()
+                    .filter_map(|v| item_of(&a.url, v))
+                    .collect();
+                d.relations = links
+                    .into_iter()
+                    .filter_map(|(link, link_name, id)| {
+                        let item = items.iter().find(|w| w.id == id)?.clone();
+                        Some(WorkItemRelation {
+                            link,
+                            link_name,
+                            item,
+                        })
+                    })
+                    .collect();
+            }
+        }
         // 留言是另外的 API（2019 起的預覽版）；讀不到不影響其他內容。
         let path = format!(
             "/{}/_apis/wit/workItems/{id}/comments",
@@ -1382,6 +1485,8 @@ pub async fn ado_wikis(app: AppHandle) -> Result<Vec<Wiki>, String> {
 pub struct WikiPage {
     /// 頁面路徑，例如 `/產品/安裝說明`。
     path: String,
+    /// 頁面編號（瀏覽器網址列上的數字）；舊版伺服器沒有。
+    id: Option<u64>,
     children: Vec<WikiPage>,
 }
 
@@ -1393,6 +1498,7 @@ fn page_tree(v: &Value) -> Vec<WikiPage> {
         .filter_map(|p| {
             Some(WikiPage {
                 path: str_of(p, "path")?.to_string(),
+                id: p.get("id").and_then(Value::as_u64),
                 children: page_tree(p),
             })
         })
@@ -1440,6 +1546,88 @@ pub async fn ado_wiki_pages(
 pub struct WikiContent {
     content: String,
     web_url: Option<String>,
+    /// 頁面的版本（存回去時帶上，確認這段時間沒有被別人改過）。
+    etag: Option<String>,
+}
+
+/// 讀取 Wiki 頁面的內容、網址與版本。
+fn read_wiki_page(
+    base: &str,
+    pat: &str,
+    project_id: &str,
+    wiki_id: &str,
+    path: &str,
+    version: Option<&str>,
+) -> Result<WikiContent, String> {
+    let api = wiki_pages_path(project_id, wiki_id, path, version) + "&includeContent=true";
+    let (v, etag) = read_with_etag(
+        crate::update::agent()
+            .get(&format!("{base}{api}&api-version={API_VERSION}"))
+            .header("Authorization", &basic(pat))
+            .header("Accept", "application/json")
+            .call(),
+        &tr!("讀取 Wiki 頁面"),
+    )?;
+    Ok(WikiContent {
+        content: str_of(&v, "content").unwrap_or_default().to_string(),
+        web_url: str_of(&v, "remoteUrl").map(str::to_string),
+        etag,
+    })
+}
+
+#[derive(Serialize, Debug)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum WikiSaveOutcome {
+    /// 已存回伺服器；`etag` 是新的版本。
+    Saved { etag: Option<String> },
+    /// 開始編輯之後頁面被別人改過：回傳伺服器上的內容與版本，交給使用者決定。
+    Conflict {
+        content: String,
+        etag: Option<String>,
+    },
+}
+
+/// 把編輯好的內容存回 Wiki 頁面（只限專案 Wiki）。`etag` 是開始編輯時的版本：
+/// 伺服器上的版本不同（被別人改過）時不覆蓋，回傳衝突。
+#[tauri::command]
+pub async fn ado_wiki_save(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    content: String,
+    etag: String,
+) -> Result<WikiSaveOutcome, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .put(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .header("If-Match", &etag)
+            .send(&serde_json::json!({ "content": content }).to_string());
+        match res {
+            Err(ureq::Error::StatusCode(409 | 412)) => {
+                let page = read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?;
+                Ok(WikiSaveOutcome::Conflict {
+                    content: page.content,
+                    etag: page.etag,
+                })
+            }
+            res => {
+                let (_, etag) = read_with_etag(res, &tr!("儲存 Wiki 頁面"))?;
+                // 回應沒有帶版本時再讀一次，下次存檔才比得出有沒有被別人改過。
+                let etag = match etag {
+                    Some(etag) => Some(etag),
+                    None => read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?.etag,
+                };
+                Ok(WikiSaveOutcome::Saved { etag })
+            }
+        }
+    })
+    .await
 }
 
 /// 一個 Wiki 頁面的內容（Markdown）。
@@ -1453,13 +1641,14 @@ pub async fn ado_wiki_page(
 ) -> Result<WikiContent, String> {
     let (a, pat) = require(&app)?;
     crate::io::blocking_for(TIMEOUT, move || {
-        let path = wiki_pages_path(&project_id, &wiki_id, &path, version.as_deref())
-            + "&includeContent=true";
-        let v = get(&a.url, &pat, &path, &tr!("讀取 Wiki 頁面"))?;
-        Ok(WikiContent {
-            content: str_of(&v, "content").unwrap_or_default().to_string(),
-            web_url: str_of(&v, "remoteUrl").map(str::to_string),
-        })
+        read_wiki_page(
+            &a.url,
+            &pat,
+            &project_id,
+            &wiki_id,
+            &path,
+            version.as_deref(),
+        )
     })
     .await
 }
@@ -1556,7 +1745,6 @@ fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
         created_by: person(field(v, "System.CreatedBy")),
         area: text("System.AreaPath"),
         iteration: text("System.IterationPath"),
-        priority: field(v, "Microsoft.VSTS.Common.Priority").and_then(Value::as_u64),
         tags: field_str(v, "System.Tags")
             .split(';')
             .map(str::trim)
@@ -1565,6 +1753,7 @@ fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
             .collect(),
         comments: vec![],
         rev: v.get("rev").and_then(Value::as_u64),
+        relations: vec![],
         description: html("System.Description"),
         details: html("Microsoft.VSTS.Common.AcceptanceCriteria")
             .or_else(|| html("Microsoft.VSTS.TCM.ReproSteps")),
@@ -1790,11 +1979,13 @@ mod tests {
         assert_eq!(list[1].version.as_deref(), Some("main"));
         let tree = json!({"path": "/", "subPages": [
             {"path": "/首頁", "subPages": []},
-            {"path": "/產品", "subPages": [{"path": "/產品/安裝"}]}
+            {"path": "/產品", "subPages": [{"path": "/產品/安裝", "id": 12}]}
         ]});
         let pages = page_tree(&tree);
         assert_eq!(pages.len(), 2);
         assert_eq!(pages[1].children[0].path, "/產品/安裝");
+        assert_eq!(pages[1].children[0].id, Some(12));
+        assert_eq!(pages[0].id, None);
         assert_eq!(
             wiki_pages_path("p1", "w1", "/A B", Some("main")),
             "/p1/_apis/wiki/wikis/w1/pages?path=%2FA%20B&versionDescriptor.version=main"
@@ -1912,6 +2103,29 @@ mod tests {
     }
 
     #[test]
+    fn reads_work_item_relations() {
+        let v = json!({"relations": [
+            {"rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://tfs/DC/_apis/wit/workItems/10", "attributes": {"name": "Parent"}},
+            {"rel": "System.LinkTypes.Hierarchy-Forward", "url": "https://tfs/DC/_apis/wit/workItems/11", "attributes": {"name": "Child"}},
+            {"rel": "System.LinkTypes.Hierarchy-Forward", "url": "https://tfs/DC/_apis/wit/workItems/11", "attributes": {"name": "Child"}},
+            {"rel": "Microsoft.VSTS.Common.TestedBy-Forward", "url": "https://tfs/DC/_apis/wit/workitems/12", "attributes": {"name": "Tested By"}},
+            {"rel": "AttachedFile", "url": "https://tfs/DC/_apis/wit/attachments/abc", "attributes": {"name": "a.png"}},
+            {"rel": "ArtifactLink", "url": "vstfs:///Git/Commit/x", "attributes": {"name": "Fixed in Commit"}},
+            {"rel": "System.LinkTypes.Related", "url": "https://tfs/DC/_apis/wit/workItems/13"}
+        ]});
+        assert_eq!(
+            relation_links(&v),
+            vec![
+                ("parent", "Parent".to_string(), 10),
+                ("child", "Child".to_string(), 11),
+                ("other", "Tested By".to_string(), 12),
+                ("related", "System.LinkTypes.Related".to_string(), 13),
+            ]
+        );
+        assert!(relation_links(&json!({})).is_empty());
+    }
+
+    #[test]
     fn reads_comments_oldest_first() {
         let v = json!({"comments": [
             {"text": "<p>第二則</p>", "createdBy": {"displayName": "B"}, "createdDate": "2026-10-02T00:00:00Z"},
@@ -1934,7 +2148,7 @@ mod tests {
         }});
         let d = detail_of("https://tfs/DC", &v).unwrap();
         assert_eq!(d.tags, ["前端", "登入"]);
-        assert_eq!(d.priority, Some(2));
+        assert_eq!(d.item.priority, Some(2));
         assert_eq!(d.area.as_deref(), Some("產品\\前端"));
         assert_eq!(d.iteration, None);
         assert_eq!(d.item.title, "修正登入");
