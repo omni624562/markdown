@@ -1745,6 +1745,16 @@ button.git-info:disabled { cursor: default; }
 /* 工作項目（Azure DevOps） */
 .workitems-search { width: 100%; height: 30px; margin: 2px 0 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
 .workitems-search:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
+.workitems-searchrow .workitems-search { flex: 1; min-width: 0; }
+.workitems-filter-toggle { position: relative; display: grid; flex: none; place-items: center; width: 30px; height: 30px; margin: 2px 0 6px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; }
+.workitems-filter-toggle:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
+.workitems-filter-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.workitems-filter-toggle[aria-expanded="true"] { background: var(--active-line); color: var(--fg); }
+.workitems-filter-toggle.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.workitems-filter-toggle .icon { width: 15px; height: 15px; }
+.workitems-filter-count { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font: 600 10.5px/16px var(--font-ui); text-align: center; }
+.workitems-filter-count[hidden] { display: none; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
 .workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }
@@ -1783,7 +1793,8 @@ button.git-info:disabled { cursor: default; }
 .workitems-filters .workitems-select:hover, .workitems-filters .workitems-person:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
 .workitems-filters .workitems-select:focus-visible, .workitems-filters .workitems-person:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filters .workitems-person, .workitems-filters .workitems-area { grid-column: 1 / -1; }
-.workitems-filters [hidden] { display: none; }
+.workitems-filters [hidden], .workitems-filters[hidden] { display: none; }
+.workitems-filter-reset { grid-column: 1 / -1; justify-self: start; }
 /* Wiki（Azure DevOps） */
 .wiki-filters { grid-template-columns: 1fr; }
 /* Azure DevOps 面板上方切換工作項目／Wiki。 */
