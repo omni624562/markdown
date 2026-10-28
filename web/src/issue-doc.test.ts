@@ -21,6 +21,7 @@ const item: AdoWorkItemDetail = {
   description: "<p>按下<strong>登入</strong>沒有反應</p><script>alert(1)</script>",
   details: "<ol><li>開啟網站</li><li>按登入</li></ol>",
   comments: [{ author: "李大同", created: "2026-10-21T01:00:00Z", text: "<p>已重現</p>" }],
+  rev: 3,
   relations: [],
 };
 
@@ -32,6 +33,7 @@ const rel = (id: number, link: AdoWorkItemRelation["link"], linkName: string, ti
   project: "產品",
   assignedTo: null,
   changed: null,
+  priority: null,
   webUrl: `https://tfs/DC/x/_workitems/edit/${id}`,
   link,
   linkName,

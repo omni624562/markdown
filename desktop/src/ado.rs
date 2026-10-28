@@ -163,19 +163,33 @@ fn read(
     res: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
     what: &str,
 ) -> Result<Value, String> {
+    read_with_etag(res, what).map(|(v, _)| v)
+}
+
+/// 和 `read` 一樣，另外回傳回應的 ETag（Wiki 頁面的版本，存回去時用來確認沒有被別人改過）。
+fn read_with_etag(
+    res: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    what: &str,
+) -> Result<(Value, Option<String>), String> {
     match res {
         Ok(mut r) => {
+            let etag = r
+                .headers()
+                .get("ETag")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
             let text = r
                 .body_mut()
                 .read_to_string()
                 .map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))?;
             // 權杖不對時，雲端版會回傳登入網頁（HTML）而不是錯誤碼。
-            serde_json::from_str(&text).map_err(|_| {
+            let v = serde_json::from_str(&text).map_err(|_| {
                 tr!(
                     "{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖",
                     what = what
                 )
-            })
+            })?;
+            Ok((v, etag))
         }
         Err(ureq::Error::StatusCode(401)) => Err(tr!(
             "{what}失敗：個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖",
@@ -192,7 +206,7 @@ fn read(
         )),
         // 409（例如 PR 已經存在）由呼叫端說明。
         Err(e) => Err(tr!(
-            "{what}失敗：無法連線到 Azure DevOps（{e}）",
+            "{what}失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
             what = what,
             e = e
         )),
@@ -392,6 +406,232 @@ pub fn ado_disconnect(app: AppHandle) {
 
 fn require(app: &AppHandle) -> Result<(Account, String), String> {
     connection(app).ok_or_else(|| tr!("請先到設定的 Azure DevOps／TFS 頁連線"))
+}
+
+// ---- 權限檢查 ---------------------------------------------------------------
+
+/// 一項權限檢查的結果。`status` 是 `ok`、`fail` 或 `unknown`（無法事先檢查）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccessCheck {
+    id: &'static str,
+    label: String,
+    status: &'static str,
+    detail: String,
+}
+
+fn check(id: &'static str, label: String, result: Result<String, String>) -> AccessCheck {
+    match result {
+        Ok(detail) => AccessCheck {
+            id,
+            label,
+            status: "ok",
+            detail,
+        },
+        Err(detail) => AccessCheck {
+            id,
+            label,
+            status: "fail",
+            detail,
+        },
+    }
+}
+
+/// 用 `validateOnly` 試改工作項目（不會真的存檔）：確認權杖與帳號能不能修改工作項目。
+fn can_edit_work_item(base: &str, pat: &str, id: u64) -> Result<String, String> {
+    let res = crate::update::agent()
+        .patch(&format!(
+            "{base}/_apis/wit/workitems/{id}?validateOnly=true&api-version={API_VERSION}"
+        ))
+        .config()
+        .http_status_as_error(false)
+        .build()
+        .header("Authorization", &basic(pat))
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json-patch+json")
+        .send(r#"[{"op":"add","path":"/fields/System.History","value":""}]"#)
+        .map_err(|e| e.to_string())?;
+    match res.status().as_u16() {
+        code if code < 400 => Ok(tr!(
+            "可以修改（用工作項目 {id} 試過，沒有真的修改）",
+            id = id
+        )),
+        401 => Err(tr!("權杖沒有「Work Items（Read & write）」權限")),
+        403 => Err(tr!("帳號沒有修改這個專案工作項目的權限")),
+        code => Err(tr!("無法確認：伺服器回應 {code}", code = code)),
+    }
+}
+
+/// 逐項檢查這個權杖能做什麼：登入、專案、工作項目（讀、改）、Wiki、程式碼。
+#[tauri::command]
+pub async fn ado_check(app: AppHandle) -> Result<Vec<AccessCheck>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let base = a.url.as_str();
+        let mut out = vec![];
+        out.push(check(
+            "login",
+            tr!("登入"),
+            connection_data(base, &pat).and_then(|d| {
+                user_of(&d)
+                    .map(|(name, _)| tr!("以「{name}」登入", name = name))
+                    .ok_or_else(|| tr!("個人存取權杖無效或已過期"))
+            }),
+        ));
+        out.push(check(
+            "projects",
+            tr!("讀取專案"),
+            get(base, &pat, "/_apis/projects?$top=100", &tr!("讀取專案"))
+                .map(|v| tr!("看得到 {n} 個專案", n = values(&v).len())),
+        ));
+        let wiql = serde_json::json!({
+            "query": "SELECT [System.Id] FROM WorkItems ORDER BY [System.ChangedDate] DESC"
+        });
+        let items = post(
+            base,
+            &pat,
+            "/_apis/wit/wiql?$top=1",
+            &wiql,
+            &tr!("讀取工作項目"),
+        );
+        let first = items.as_ref().ok().and_then(|v| {
+            v.get("workItems")
+                .and_then(Value::as_array)
+                .and_then(|l| l.first())
+                .and_then(|w| w.get("id"))
+                .and_then(Value::as_u64)
+        });
+        out.push(check(
+            "workItemsRead",
+            tr!("讀取工作項目"),
+            items.map(|_| tr!("可以讀取")),
+        ));
+        out.push(match first {
+            Some(id) => check(
+                "workItemsWrite",
+                tr!("修改工作項目（改狀態、指派、留言）"),
+                can_edit_work_item(base, &pat, id),
+            ),
+            None => AccessCheck {
+                id: "workItemsWrite",
+                label: tr!("修改工作項目（改狀態、指派、留言）"),
+                status: "unknown",
+                detail: tr!("沒有可以試的工作項目，無法確認"),
+            },
+        });
+        out.push(check(
+            "wikiRead",
+            tr!("讀取 Wiki"),
+            get(base, &pat, "/_apis/wiki/wikis", &tr!("讀取 Wiki"))
+                .map(|v| tr!("看得到 {n} 個 Wiki", n = values(&v).len())),
+        ));
+        out.push(AccessCheck {
+            id: "wikiWrite",
+            label: tr!("編輯 Wiki 頁面"),
+            status: "unknown",
+            detail: tr!("無法事先確認，第一次存回時就知道；權杖需要「Wiki（Read & write）」權限"),
+        });
+        out.push(check(
+            "code",
+            tr!("讀取程式碼（儲存庫）"),
+            get(base, &pat, "/_apis/git/repositories", &tr!("讀取儲存庫"))
+                .map(|v| tr!("看得到 {n} 個儲存庫", n = values(&v).len())),
+        ));
+        Ok(out)
+    })
+    .await
+}
+
+// ---- 連線狀態（狀態列） --------------------------------------------------------
+
+/// 連線狀態：`ok`（連得到、權杖有效）、`offline`（連不到伺服器）、`auth`（權杖無效或過期）、
+/// `error`（其他錯誤）、`none`（還沒有設定連線）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AdoPing {
+    status: &'static str,
+    /// 登入者（`ok` 時）。
+    name: Option<String>,
+    message: String,
+}
+
+/// 依 connectionData 的回應分類（`code` 是 HTTP 狀態碼，`body` 是內容）。
+fn ping_of(code: u16, body: &str) -> AdoPing {
+    let auth = || AdoPing {
+        status: "auth",
+        name: None,
+        message: tr!("個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖"),
+    };
+    match code {
+        401 | 403 => auth(),
+        c if c < 400 => match serde_json::from_str::<Value>(body)
+            .ok()
+            .as_ref()
+            .and_then(user_of)
+        {
+            Some((name, _)) => AdoPing {
+                status: "ok",
+                name: Some(name),
+                message: String::new(),
+            },
+            // 權杖不對時，雲端版會回傳登入網頁（不是 JSON）或匿名使用者。
+            None => auth(),
+        },
+        c => AdoPing {
+            status: "error",
+            name: None,
+            message: tr!("伺服器回應 {code}", code = c),
+        },
+    }
+}
+
+/// 檢查連線狀態（不會修改任何資料，最多等 20 秒）。
+#[tauri::command]
+pub async fn ado_ping(app: AppHandle) -> Result<AdoPing, String> {
+    let Some((a, pat)) = connection(&app) else {
+        return Ok(AdoPing {
+            status: "none",
+            name: None,
+            message: String::new(),
+        });
+    };
+    crate::io::blocking_for(Duration::from_secs(20), move || {
+        let call = |version: Option<&str>| {
+            let url = match version {
+                Some(v) => format!("{}/_apis/connectionData?api-version={v}", a.url),
+                None => format!("{}/_apis/connectionData", a.url),
+            };
+            crate::update::agent()
+                .get(&url)
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call()
+        };
+        // 舊版伺服器不接受預覽版號（回 400），再不帶版號試一次。
+        let res = match call(Some("5.0-preview")) {
+            Ok(r) if r.status().as_u16() == 400 => call(None),
+            other => other,
+        };
+        Ok(match res {
+            Ok(mut r) => {
+                let code = r.status().as_u16();
+                let body = r.body_mut().read_to_string().unwrap_or_default();
+                ping_of(code, &body)
+            }
+            Err(e) => AdoPing {
+                status: "offline",
+                name: None,
+                message: tr!(
+                    "連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
+                    e = e
+                ),
+            },
+        })
+    })
+    .await
 }
 
 // ---- 儲存庫 -----------------------------------------------------------------
@@ -634,6 +874,8 @@ pub struct WorkItem {
     /// 指派給誰（清單上看所有人的工作項目時顯示）。
     assigned_to: Option<String>,
     changed: Option<String>,
+    /// 優先順序（1 最高）；流程範本沒有這個欄位時是空的。
+    priority: Option<u64>,
     web_url: String,
 }
 
@@ -646,7 +888,6 @@ pub struct WorkItemDetail {
     /// 區域與反覆項目（例如「產品\前端」「產品\Sprint 3」）。
     area: Option<String>,
     iteration: Option<String>,
-    priority: Option<u64>,
     tags: Vec<String>,
     /// 說明（HTML，前端轉成 Markdown 顯示）。
     description: Option<String>,
@@ -654,6 +895,8 @@ pub struct WorkItemDetail {
     details: Option<String>,
     /// 留言（舊到新）；伺服器不支援或讀不到時是空的。
     comments: Vec<WorkItemComment>,
+    /// 修訂版本（改狀態、指派時用來確認這段時間沒有被別人改過）。
+    rev: Option<u64>,
     /// 相關的工作項目（上層、子項目、相關、前置、後續…）；讀不到時是空的。
     relations: Vec<WorkItemRelation>,
 }
@@ -729,6 +972,8 @@ const CLOSED_STATES: &[&str] = &[
     "完成",   // i18n-ignore
 ];
 const FIELDS: &str = "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.AssignedTo,System.ChangedDate";
+/// 優先順序欄位（清單排序用）；自訂的流程範本可能沒有。
+const PRIORITY: &str = "Microsoft.VSTS.Common.Priority";
 
 fn wiql_string(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
@@ -856,6 +1101,7 @@ fn item_of(base: &str, v: &Value) -> Option<WorkItem> {
         changed: field(v, "System.ChangedDate")
             .and_then(Value::as_str)
             .map(str::to_string),
+        priority: field(v, PRIORITY).and_then(Value::as_u64),
     })
 }
 
@@ -925,15 +1171,23 @@ pub async fn ado_work_items(
             return Ok(vec![]);
         }
         let list: Vec<String> = ids.iter().map(u64::to_string).collect();
-        let res = get(
-            &base,
-            &pat,
-            &format!(
-                "/_apis/wit/workitems?ids={}&fields={FIELDS}&errorPolicy=omit",
-                list.join(",")
-            ),
-            &tr!("讀取工作項目"),
-        )?;
+        let fetch = |fields: &str| {
+            get(
+                &base,
+                &pat,
+                &format!(
+                    "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
+                    list.join(",")
+                ),
+                &tr!("讀取工作項目"),
+            )
+        };
+        // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
+        let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
+            Ok(res) => res,
+            Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+            Err(_) => fetch(FIELDS)?,
+        };
         let items: Vec<WorkItem> = values(&res)
             .iter()
             .filter_map(|v| item_of(&base, v))
@@ -950,6 +1204,7 @@ pub async fn ado_work_items(
                 project: w.project.clone(),
                 assigned_to: w.assigned_to.clone(),
                 changed: w.changed.clone(),
+                priority: w.priority,
                 web_url: w.web_url.clone(),
             })
             .collect())
@@ -1228,6 +1483,153 @@ fn comments_of(v: &Value) -> Vec<WorkItemComment> {
     list
 }
 
+// ---- 工作項目：改狀態、指派給我、留言 ---------------------------------------------
+
+/// 這個類型的工作項目可以設定的狀態（依流程的順序）。
+#[tauri::command]
+pub async fn ado_work_item_states(
+    app: AppHandle,
+    project: String,
+    kind: String,
+) -> Result<Vec<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("讀取工作項目的狀態");
+        let base = format!(
+            "/{}/_apis/wit/workitemtypes/{}",
+            encode_segment(&project),
+            encode_segment(&kind)
+        );
+        // 狀態清單是 2018 起的預覽版 API；舊版伺服器改從類型定義的狀態轉換整理出來。
+        if let Ok(v) = get_version(
+            &a.url,
+            &pat,
+            &format!("{base}/states"),
+            Some("4.1-preview.1"),
+            &what,
+        ) {
+            let states: Vec<String> = values(&v)
+                .iter()
+                .filter_map(|s| str_of(s, "name").map(str::to_string))
+                .collect();
+            if !states.is_empty() {
+                return Ok(states);
+            }
+        }
+        let v = get(&a.url, &pat, &base, &what)?;
+        Ok(states_from_transitions(&v))
+    })
+    .await
+}
+
+/// 類型定義裡的狀態轉換（`{"Active": [{"to": "Resolved"}], ...}`）出現過的所有狀態。
+fn states_from_transitions(v: &Value) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    let mut add = |s: &str| {
+        if !s.is_empty() && !out.iter().any(|x| x == s) {
+            out.push(s.to_string());
+        }
+    };
+    if let Some(map) = v.get("transitions").and_then(Value::as_object) {
+        for (from, list) in map {
+            add(from);
+            for t in list.as_array().map_or(&[][..], Vec::as_slice) {
+                add(str_of(t, "to").unwrap_or_default());
+            }
+        }
+    }
+    out
+}
+
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkItemChange {
+    pub state: Option<String>,
+    pub assign_to_me: bool,
+    /// 留言（HTML），加到討論裡。
+    pub comment: Option<String>,
+    /// 開啟時的修訂版本：伺服器上的版本不同（被別人改過）時不更新。
+    pub rev: Option<u64>,
+}
+
+/// 更新工作項目要送出的 JSON Patch。`me` 是登入的帳號（指派給我用）。
+fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
+    let mut ops = vec![];
+    if let Some(rev) = change.rev {
+        ops.push(serde_json::json!({ "op": "test", "path": "/rev", "value": rev }));
+    }
+    if let Some(state) = change.state.as_deref().filter(|s| !s.is_empty()) {
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.State", "value": state }),
+        );
+    }
+    if change.assign_to_me {
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": me }),
+        );
+    }
+    if let Some(comment) = change.comment.as_deref().filter(|c| !c.trim().is_empty()) {
+        // System.History 就是工作項目的討論（所有版本的伺服器都支援）。
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.History", "value": comment }),
+        );
+    }
+    ops
+}
+
+/// 改狀態、指派給我、留言（可以一起）。
+#[tauri::command]
+pub async fn ado_work_item_update(
+    app: AppHandle,
+    id: u64,
+    change: WorkItemChange,
+) -> Result<(), String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let me = a.account.clone().unwrap_or_else(|| a.name.clone());
+        let ops = change_ops(&change, &me);
+        if ops.iter().all(|op| op["op"] == "test") {
+            return Ok(());
+        }
+        let res = crate::update::agent()
+            .patch(&format!(
+                "{}/_apis/wit/workitems/{id}?api-version={API_VERSION}",
+                a.url
+            ))
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json-patch+json")
+            .send(&Value::Array(ops).to_string());
+        let mut r = res.map_err(|e| {
+            tr!(
+                "更新工作項目失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
+                e = e
+            )
+        })?;
+        let code = r.status().as_u16();
+        if code < 400 {
+            return Ok(());
+        }
+        let text = r.body_mut().read_to_string().unwrap_or_default();
+        let message = serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|v| str_of(&v, "message").map(str::to_string))
+            .unwrap_or_default();
+        Err(match code {
+            401 => tr!("更新工作項目失敗：個人存取權杖無效或已過期，或權杖沒有「工作項目：讀取與寫入」的權限"),
+            403 => tr!("更新工作項目失敗：沒有權限修改這個工作項目"),
+            // 修訂版本不同：開啟之後被別人改過了。
+            409 | 412 => tr!("這個工作項目在你開啟之後被別人改過了，請重新整理後再試一次"),
+            _ if message.is_empty() => tr!("更新工作項目失敗：伺服器回應 {code}", code = code),
+            _ => tr!("更新工作項目失敗：{message}", message = message),
+        })
+    })
+    .await
+}
+
 /// 工作項目內文裡的圖片：附件要用權杖才能讀，網頁元件自己載不到。
 /// 只讀取連線中那台伺服器上的網址，不跟隨轉址（權杖不會被送到別的地方），回傳 data: 網址。
 #[tauri::command]
@@ -1400,6 +1802,88 @@ pub async fn ado_wiki_pages(
 pub struct WikiContent {
     content: String,
     web_url: Option<String>,
+    /// 頁面的版本（存回去時帶上，確認這段時間沒有被別人改過）。
+    etag: Option<String>,
+}
+
+/// 讀取 Wiki 頁面的內容、網址與版本。
+fn read_wiki_page(
+    base: &str,
+    pat: &str,
+    project_id: &str,
+    wiki_id: &str,
+    path: &str,
+    version: Option<&str>,
+) -> Result<WikiContent, String> {
+    let api = wiki_pages_path(project_id, wiki_id, path, version) + "&includeContent=true";
+    let (v, etag) = read_with_etag(
+        crate::update::agent()
+            .get(&format!("{base}{api}&api-version={API_VERSION}"))
+            .header("Authorization", &basic(pat))
+            .header("Accept", "application/json")
+            .call(),
+        &tr!("讀取 Wiki 頁面"),
+    )?;
+    Ok(WikiContent {
+        content: str_of(&v, "content").unwrap_or_default().to_string(),
+        web_url: str_of(&v, "remoteUrl").map(str::to_string),
+        etag,
+    })
+}
+
+#[derive(Serialize, Debug)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum WikiSaveOutcome {
+    /// 已存回伺服器；`etag` 是新的版本。
+    Saved { etag: Option<String> },
+    /// 開始編輯之後頁面被別人改過：回傳伺服器上的內容與版本，交給使用者決定。
+    Conflict {
+        content: String,
+        etag: Option<String>,
+    },
+}
+
+/// 把編輯好的內容存回 Wiki 頁面（只限專案 Wiki）。`etag` 是開始編輯時的版本：
+/// 伺服器上的版本不同（被別人改過）時不覆蓋，回傳衝突。
+#[tauri::command]
+pub async fn ado_wiki_save(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    content: String,
+    etag: String,
+) -> Result<WikiSaveOutcome, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .put(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .header("If-Match", &etag)
+            .send(&serde_json::json!({ "content": content }).to_string());
+        match res {
+            Err(ureq::Error::StatusCode(409 | 412)) => {
+                let page = read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?;
+                Ok(WikiSaveOutcome::Conflict {
+                    content: page.content,
+                    etag: page.etag,
+                })
+            }
+            res => {
+                let (_, etag) = read_with_etag(res, &tr!("儲存 Wiki 頁面"))?;
+                // 回應沒有帶版本時再讀一次，下次存檔才比得出有沒有被別人改過。
+                let etag = match etag {
+                    Some(etag) => Some(etag),
+                    None => read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?.etag,
+                };
+                Ok(WikiSaveOutcome::Saved { etag })
+            }
+        }
+    })
+    .await
 }
 
 /// 一個 Wiki 頁面的內容（Markdown）。
@@ -1413,13 +1897,14 @@ pub async fn ado_wiki_page(
 ) -> Result<WikiContent, String> {
     let (a, pat) = require(&app)?;
     crate::io::blocking_for(TIMEOUT, move || {
-        let path = wiki_pages_path(&project_id, &wiki_id, &path, version.as_deref())
-            + "&includeContent=true";
-        let v = get(&a.url, &pat, &path, &tr!("讀取 Wiki 頁面"))?;
-        Ok(WikiContent {
-            content: str_of(&v, "content").unwrap_or_default().to_string(),
-            web_url: str_of(&v, "remoteUrl").map(str::to_string),
-        })
+        read_wiki_page(
+            &a.url,
+            &pat,
+            &project_id,
+            &wiki_id,
+            &path,
+            version.as_deref(),
+        )
     })
     .await
 }
@@ -1496,6 +1981,113 @@ fn fetch_bytes(url: &str, pat: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| tr!("無法讀取圖片：{e}", e = e))
 }
 
+// ---- 儲存庫裡的文字檔、工作項目的附件 ---------------------------------------------
+
+/// 文字檔最多讀幾個位元組。
+const TEXT_LIMIT: u64 = 5 * 1024 * 1024;
+
+/// 用權杖讀取伺服器上的文字檔（不跟隨轉址），回傳內容；不是文字（含 NUL）時回錯誤。
+fn fetch_text(url: &str, pat: &str) -> Result<String, String> {
+    let what = tr!("讀取檔案");
+    let mut res = crate::update::agent()
+        .get(url)
+        .config()
+        .max_redirects(0)
+        .build()
+        .header("Authorization", &basic(pat))
+        .call()
+        .map_err(|e| match e {
+            ureq::Error::StatusCode(404) => {
+                tr!("{what}失敗：找不到（404），請確認網址", what = what)
+            }
+            ureq::Error::StatusCode(401 | 403) => tr!("{what}失敗：沒有權限", what = what),
+            e => tr!("{what}失敗：{e}", what = what, e = e),
+        })?;
+    let mime = res
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    // 權杖不對時，雲端版會回傳登入網頁。
+    if mime.starts_with("text/html") {
+        return Err(tr!(
+            "{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖",
+            what = what
+        ));
+    }
+    let bytes = res
+        .body_mut()
+        .with_config()
+        .limit(TEXT_LIMIT)
+        .read_to_vec()
+        .map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))?;
+    text_of(bytes)
+}
+
+/// 檔案內容轉成文字：有 NUL 就不是文字檔；不是 UTF-8 的字元換成替代字元。
+fn text_of(bytes: Vec<u8>) -> Result<String, String> {
+    if bytes.contains(&0) {
+        return Err(tr!("這個檔案不是文字檔，請用瀏覽器開啟"));
+    }
+    let text = String::from_utf8(bytes)
+        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
+    Ok(text
+        .strip_prefix('\u{feff}')
+        .map(str::to_string)
+        .unwrap_or(text))
+}
+
+/// Git 儲存庫裡的文字檔（例如文件連到 `/_git/repo?path=/docs/a.md`）。
+/// `version_type` 是 branch、tag 或 commit。
+#[tauri::command]
+pub async fn ado_repo_text(
+    app: AppHandle,
+    project: String,
+    repo: String,
+    path: String,
+    version: Option<String>,
+    version_type: Option<String>,
+) -> Result<String, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let mut url = format!(
+            "{}/{}/_apis/git/repositories/{}/items?path={}&download=true&api-version={API_VERSION}",
+            a.url,
+            encode_segment(&project),
+            encode_segment(&repo),
+            encode_segment(&path)
+        );
+        if let Some(v) = version.filter(|v| !v.is_empty()) {
+            url.push_str(&format!(
+                "&versionDescriptor.version={}",
+                encode_segment(&v)
+            ));
+            if let Some(kind) =
+                version_type.filter(|k| ["branch", "tag", "commit"].contains(&k.as_str()))
+            {
+                url.push_str(&format!("&versionDescriptor.versionType={kind}"));
+            }
+        }
+        fetch_text(&url, &pat)
+    })
+    .await
+}
+
+/// 工作項目的附件（文字檔）；只讀取連線中那台伺服器上的附件網址。
+#[tauri::command]
+pub async fn ado_attachment_text(app: AppHandle, url: String) -> Result<String, String> {
+    let (a, pat) = require(&app)?;
+    let lower = url.to_ascii_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("http://"))
+        || !same_server(&url, &a.url)
+        || !lower.contains("/_apis/wit/attachments/")
+    {
+        return Err(tr!("只能讀取 Azure DevOps 伺服器上的附件"));
+    }
+    crate::io::blocking_for(TIMEOUT, move || fetch_text(&url, &pat)).await
+}
+
 fn data_url(mime: &str, bytes: Vec<u8>) -> String {
     format!(
         "data:{mime};base64,{}",
@@ -1516,7 +2108,6 @@ fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
         created_by: person(field(v, "System.CreatedBy")),
         area: text("System.AreaPath"),
         iteration: text("System.IterationPath"),
-        priority: field(v, "Microsoft.VSTS.Common.Priority").and_then(Value::as_u64),
         tags: field_str(v, "System.Tags")
             .split(';')
             .map(str::trim)
@@ -1524,6 +2115,7 @@ fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
             .map(str::to_string)
             .collect(),
         comments: vec![],
+        rev: v.get("rev").and_then(Value::as_u64),
         relations: vec![],
         description: html("System.Description"),
         details: html("Microsoft.VSTS.Common.AcceptanceCriteria")
@@ -1844,6 +2436,46 @@ mod tests {
     }
 
     #[test]
+    fn reads_text_files() {
+        assert_eq!(
+            text_of("\u{feff}# 標題".as_bytes().to_vec()).unwrap(),
+            "# 標題"
+        );
+        assert!(text_of(vec![0x89, b'P', b'N', b'G', 0, 0]).is_err());
+        assert_eq!(text_of(vec![b'a', 0xff, b'b']).unwrap(), "a\u{fffd}b");
+    }
+
+    #[test]
+    fn builds_work_item_change() {
+        let change = WorkItemChange {
+            state: Some("Resolved".into()),
+            assign_to_me: true,
+            comment: Some("<p>好了</p>".into()),
+            rev: Some(7),
+        };
+        let ops = change_ops(&change, "CORP\\ming");
+        assert_eq!(ops.len(), 4);
+        assert_eq!(ops[0], json!({"op": "test", "path": "/rev", "value": 7}));
+        assert_eq!(ops[1]["path"], "/fields/System.State");
+        assert_eq!(ops[2]["value"], "CORP\\ming");
+        assert_eq!(ops[3]["path"], "/fields/System.History");
+        let empty = WorkItemChange {
+            comment: Some("  ".into()),
+            ..Default::default()
+        };
+        assert!(change_ops(&empty, "x").is_empty());
+    }
+
+    #[test]
+    fn reads_states_from_transitions() {
+        let v = json!({"transitions": {"": [{"to": "New"}], "New": [{"to": "Active"}], "Active": [{"to": "Resolved"}, {"to": "New"}]}});
+        let states = states_from_transitions(&v);
+        assert_eq!(states.len(), 3);
+        assert!(states.contains(&"Resolved".to_string()));
+        assert!(!states.contains(&String::new()));
+    }
+
+    #[test]
     fn reads_work_item_relations() {
         let v = json!({"relations": [
             {"rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://tfs/DC/_apis/wit/workItems/10", "attributes": {"name": "Parent"}},
@@ -1864,6 +2496,24 @@ mod tests {
             ]
         );
         assert!(relation_links(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn classifies_ping() {
+        let ok = r#"{"authenticatedUser":{"providerDisplayName":"王小明"}}"#;
+        assert_eq!(ping_of(200, ok).status, "ok");
+        assert_eq!(ping_of(200, ok).name.as_deref(), Some("王小明"));
+        assert_eq!(ping_of(200, "<html>login</html>").status, "auth");
+        assert_eq!(
+            ping_of(
+                200,
+                r#"{"authenticatedUser":{"providerDisplayName":"Anonymous"}}"#
+            )
+            .status,
+            "auth"
+        );
+        assert_eq!(ping_of(401, "").status, "auth");
+        assert_eq!(ping_of(500, "").status, "error");
     }
 
     #[test]
@@ -1889,7 +2539,7 @@ mod tests {
         }});
         let d = detail_of("https://tfs/DC", &v).unwrap();
         assert_eq!(d.tags, ["前端", "登入"]);
-        assert_eq!(d.priority, Some(2));
+        assert_eq!(d.item.priority, Some(2));
         assert_eq!(d.area.as_deref(), Some("產品\\前端"));
         assert_eq!(d.iteration, None);
         assert_eq!(d.item.title, "修正登入");

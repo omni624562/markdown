@@ -12,6 +12,8 @@ export interface TabInfo {
   missing?: boolean;
   /** 固定的分頁：顯示圖釘（按一下取消固定），沒有關閉按鈕。 */
   pinned?: boolean;
+  /** 不是本機檔案：`wiki` 是編輯中的 Azure DevOps Wiki 頁面（存檔時寫回伺服器）。 */
+  source?: "wiki";
 }
 
 export interface TabBarHandlers {
@@ -131,6 +133,7 @@ export class TabBar {
         tab.setAttribute("aria-selected", String(info.id === activeId));
         tab.classList.toggle("missing", !!info.missing);
         tab.classList.toggle("pinned", !!info.pinned);
+        tab.classList.toggle("tab-wiki", info.source === "wiki");
         const name = document.createElement("span");
         name.className = "tab-name";
         name.textContent = info.name;

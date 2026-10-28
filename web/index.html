@@ -55,7 +55,7 @@
             <i data-icon="circle-dot"></i>
           </button>
           <button type="button" role="tab" id="side-tab-ado" data-panel="ado" aria-controls="panel-ado" aria-label="Azure DevOps（工作項目、Wiki）" hidden>
-            <i data-icon="square-kanban"></i>
+            <i data-icon="square-kanban"></i><span class="activity-badge" id="ado-badge" hidden></span>
           </button>
           <button type="button" role="tab" id="side-tab-git" data-panel="git" aria-controls="panel-git" aria-label="原始碼控制（Git）" hidden>
             <i data-icon="git-branch"></i><span class="activity-badge" id="git-badge" hidden></span>
@@ -131,8 +131,8 @@
         <section class="side-panel" id="panel-ado" role="tabpanel" aria-labelledby="side-tab-ado" hidden>
           <div class="side-head">
             <div class="segmented ado-switch" role="radiogroup" aria-label="Azure DevOps">
-              <button type="button" role="radio" data-ado="workitems" aria-checked="true"><i data-icon="square-kanban"></i><span>工作項目</span></button>
-              <button type="button" role="radio" data-ado="wiki" aria-checked="false"><i data-icon="book-open-text"></i><span>Wiki</span></button>
+              <button type="button" role="radio" data-ado="workitems" aria-checked="true" title="工作項目" aria-label="工作項目"><i data-icon="square-kanban"></i><span>工作項目</span></button>
+              <button type="button" role="radio" data-ado="wiki" aria-checked="false" title="Wiki" aria-label="Wiki"><i data-icon="book-open-text"></i><span>Wiki</span></button>
             </div>
             <div class="side-actions">
               <button type="button" class="btn icon-only" id="ado-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
@@ -186,6 +186,7 @@
         <option value="json">JSON</option>
       </select>
       <button type="button" id="status-save" class="status-btn save-state"></button>
+      <button type="button" id="status-ado" class="status-btn ado-state" hidden><i data-icon="square-kanban"></i><span class="ado-dot" aria-hidden="true"></span><span class="ado-state-label"></span></button>
       <span id="status-update" class="update-state" role="status" hidden></span>
       <button type="button" class="status-btn" data-command="toggle-terminal" hidden><i data-icon="square-terminal"></i><span>終端機</span></button>
     </footer>

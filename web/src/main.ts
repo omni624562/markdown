@@ -120,8 +120,10 @@ import { TasksPanel } from "./ui/tasks-panel.ts";
 import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
 import { IssueView, type IssueSource } from "./ui/issue-view.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
-import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink } from "./wiki-text.ts";
+import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { markOf, markSeen, remember, type SeenMap, trimSeen } from "./workitem-seen.ts";
 import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
+import { fenceLanguage, isMarkdownName, isReadableFileName, parseRepoFileLink, type RepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
@@ -1021,6 +1023,8 @@ async function followLink(href: string): Promise<void> {
     return;
   }
   if (/^(https?:|mailto:)/i.test(href)) {
+    // 連到 Azure DevOps 儲存庫裡的 Markdown 等文字檔：在 oMarker 裡閱讀，不下載。
+    if (openRepoFileLink(href)) return;
     // 連到工作項目、Wiki 頁面的連結在 oMarker 裡開啟（讀不到就照舊用瀏覽器）。
     if (await openRemoteLink(href)) return;
     if (desktop) await desktop.openExternal(href);
@@ -1580,7 +1584,9 @@ function renderSaveState(): void {
   }
   status.save.dataset.state = dirty ? "dirty" : "saved";
   if (!dirty) status.save.textContent = fileBacked ? t("已儲存") : "";
-  else status.save.textContent = (fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (draftSaved ? t(" · 草稿已自動保存") : "");
+  else
+    status.save.textContent =
+      (active.wiki ? t("尚未存回 Wiki") : fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (draftSaved ? t(" · 草稿已自動保存") : "");
   // 已儲存時不佔位置；只有需要注意時才顯示。
   status.save.hidden = !dirty;
   status.save.title = dirty ? t("按一下存檔（Ctrl+S）") : "";
@@ -1976,9 +1982,156 @@ const ado = desktop
     })
   : null;
 
+// ---- 工作項目：改狀態、指派給我、留言（在內容上方的操作列） ----------------------------
+
+/** 每種工作項目可以設定的狀態（同一個專案、類型只讀一次）。 */
+const workItemStates = new Map<string, Promise<string[]>>();
+
+/** 工作項目內容上方的操作列；`update` 在讀到最新內容時呼叫（狀態、指派、修訂版本）。 */
+function workItemActions(item: AdoWorkItem): { el: HTMLElement; update(d: AdoWorkItemDetail): void } {
+  let detail: AdoWorkItemDetail | null = null;
+  const bar = document.createElement("div");
+  bar.className = "issue-toolbar";
+  const stateLabel = document.createElement("label");
+  stateLabel.className = "issue-toolbar-field";
+  stateLabel.append(t("狀態"));
+  const state = document.createElement("select");
+  state.className = "issue-toolbar-select";
+  state.append(new Option(item.state, item.state, true, true));
+  stateLabel.append(state);
+  const assign = document.createElement("button");
+  assign.type = "button";
+  assign.className = "btn btn-small";
+  assign.append(icon("user-check"), t("改成指派給我"));
+  const commentBtn = document.createElement("button");
+  commentBtn.type = "button";
+  commentBtn.className = "btn btn-small";
+  commentBtn.append(icon("message-square-plus"), t("新增留言"));
+  const form = document.createElement("div");
+  form.className = "issue-comment-form";
+  form.hidden = true;
+  const textarea = document.createElement("textarea");
+  textarea.rows = 3;
+  textarea.placeholder = t("輸入留言（可以用 Markdown）");
+  textarea.setAttribute("aria-label", t("留言"));
+  const send = document.createElement("button");
+  send.type = "button";
+  send.className = "btn btn-small btn-primary";
+  send.textContent = t("送出留言");
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn btn-small";
+  cancel.textContent = t("取消");
+  const formActions = document.createElement("div");
+  formActions.className = "issue-comment-actions";
+  formActions.append(send, cancel);
+  form.append(textarea, formActions);
+  bar.append(stateLabel, assign, commentBtn, form);
+
+  const me = () => ado?.account?.name ?? "";
+  const render = () => {
+    const current = detail?.state ?? item.state;
+    if (![...state.options].some((o) => o.value === current)) state.append(new Option(current, current));
+    state.value = current;
+    const mine = (detail?.assignedTo ?? item.assignedTo) === me();
+    assign.hidden = mine;
+  };
+  // 第一次點選狀態時才讀取可以設定的狀態。
+  const loadStates = () => {
+    const key = `${item.project}|${item.kind}`;
+    let p = workItemStates.get(key);
+    if (!p) {
+      p = desktop!.adoWorkItemStates(item.project, item.kind);
+      workItemStates.set(key, p);
+      p.catch(() => workItemStates.delete(key));
+    }
+    void p
+      .then((list) => {
+        const current = state.value;
+        state.replaceChildren(...list.map((s) => new Option(s, s, false, s === current)));
+        render();
+      })
+      .catch(reportError);
+  };
+  state.addEventListener("focus", loadStates, { once: true });
+  state.addEventListener("pointerdown", loadStates, { once: true });
+
+  /** 送出變更；成功後重新讀取內容與清單。 */
+  const apply = async (change: { state?: string; assignToMe?: boolean; comment?: string }, done: string) => {
+    for (const el of [state, assign, commentBtn, send]) el.disabled = true;
+    try {
+      await desktop!.adoWorkItemUpdate(item.id, { ...change, rev: detail?.rev });
+      toast(done, { tone: "success" });
+      await issueView.refresh();
+      void workItemsPanel?.refresh();
+      return true;
+    } catch (e) {
+      reportError(e);
+      render();
+      return false;
+    } finally {
+      for (const el of [state, assign, commentBtn, send]) el.disabled = false;
+    }
+  };
+  state.addEventListener("change", () => {
+    const next = state.value;
+    if (next === (detail?.state ?? item.state)) return;
+    void apply({ state: next }, t("已把狀態改成「{state}」", { state: next }));
+  });
+  assign.addEventListener("click", () => void apply({ assignToMe: true }, t("已指派給你")));
+  commentBtn.addEventListener("click", () => {
+    form.hidden = !form.hidden;
+    if (!form.hidden) textarea.focus();
+  });
+  cancel.addEventListener("click", () => {
+    form.hidden = true;
+    textarea.value = "";
+  });
+  const submit = async () => {
+    const text = textarea.value.trim();
+    if (!text) return textarea.focus();
+    const html = renderMarkdown(text, { kind: "markdown" }).html;
+    if (await apply({ comment: html }, t("已新增留言"))) {
+      textarea.value = "";
+      form.hidden = true;
+    }
+  };
+  send.addEventListener("click", () => void submit());
+  textarea.addEventListener("keydown", (e) => {
+    // Ctrl+Enter 送出；Esc 只收起表單，不要關掉整個檢視。
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void submit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      cancel.click();
+    }
+  });
+  render();
+  return {
+    el: bar,
+    update(d) {
+      detail = d;
+      render();
+    },
+  };
+}
+
+/** 依 `key` 分組（組的順序依第一次出現；組裡維持原本的順序）。 */
+function groupItems<T>(items: T[], key: (item: T) => string): { title: string; items: T[] }[] {
+  const groups = new Map<string, T[]>();
+  for (const it of items) {
+    const k = key(it);
+    groups.set(k, [...(groups.get(k) ?? []), it]);
+  }
+  return [...groups].map(([title, list]) => ({ title, items: list }));
+}
+
 /** 在主要區域開啟工作項目；內容裡的相關工作項目點一下在這裡切換。 */
 function showWorkItem(item: AdoWorkItem): void {
   let related = new Map<number, AdoWorkItem>();
+  const actions = workItemActions(item);
   void showIssue({
     key: `ado:${item.id}`,
     origin: { kind: "ado", icon: "square-kanban", text: t("Azure DevOps 工作項目") },
@@ -1989,9 +2142,11 @@ function showWorkItem(item: AdoWorkItem): void {
     load: async () => {
       const d = await desktop!.adoWorkItem(item.id);
       related = new Map(d.relations.map((r) => [r.id, r]));
+      actions.update(d);
       return workItemMarkdown(d);
     },
     insertLink: () => insertIssueLink(item),
+    toolbar: actions.el,
     link: (href) => {
       const id = workItemIdOf(href);
       const target = id === null ? undefined : related.get(id);
@@ -2211,10 +2366,132 @@ const wikiImagesPlugin: PreviewPlugin = {
   },
 };
 
+// ---- Azure DevOps 儲存庫裡的文字檔、工作項目的附件：在 oMarker 裡閱讀 ---------------------
+
+/** 正在看的儲存庫檔案（內容裡相對路徑的圖片以它為準）。 */
+let repoFile: Extract<RepoFileLink, { kind: "git" }> | null = null;
+
+const repoImagesPlugin: PreviewPlugin = {
+  name: "repo-images",
+  prepare(content) {
+    if (!repoFile) return;
+    for (const img of content.querySelectorAll<HTMLImageElement>("img")) {
+      const path = resolveRepoPath(repoFile.path, img.getAttribute("src") ?? "");
+      if (!path) continue;
+      img.dataset.repoSrc = path;
+      img.removeAttribute("src");
+    }
+  },
+  apply(_root, scope) {
+    const file = repoFile;
+    if (!file) return;
+    for (const img of scope.querySelectorAll<HTMLImageElement>("img[data-repo-src]")) {
+      void desktop!
+        .adoRepoImage(file.project, file.repo, img.dataset.repoSrc!, file.version)
+        .then((url) => (img.src = url))
+        .catch((e) => (img.title = e instanceof Error ? e.message : String(e)));
+    }
+  },
+};
+
+/** 連到連線中伺服器上、可以閱讀的儲存庫檔案或附件時，在主要區域開啟並回傳 true。 */
+function openRepoFileLink(href: string): boolean {
+  const base = ado?.account?.url;
+  const link = desktop && base ? parseRepoFileLink(href, base) : null;
+  if (!link) return false;
+  showRepoFile(link);
+  return true;
+}
+
+/** 在主要區域閱讀儲存庫裡的文字檔或附件：Markdown 照常排版，其他文字檔當成程式碼上色。 */
+function showRepoFile(link: RepoFileLink): void {
+  const base = ado!.account!.url;
+  const git = link.kind === "git" ? link : null;
+  const webUrl = link.kind === "git" ? repoFileUrl(base, link) : link.url;
+  const folder = git ? git.path.slice(0, git.path.lastIndexOf("/")) || "/" : "";
+  void showIssue({
+    key: `file:${webUrl}`,
+    origin: git
+      ? { kind: "repo", icon: "git-branch", text: t("Azure DevOps 儲存庫") }
+      : { kind: "repo", icon: "paperclip", text: t("工作項目附件") },
+    label: git ? `${git.repo}${folder === "/" ? "" : folder}${git.version ? ` @ ${git.version}` : ""}` : t("附件"),
+    title: link.name,
+    webUrl,
+    fileName: isMarkdownName(link.name) ? link.name : `${link.name}.md`,
+    load: async () => {
+      const text = link.kind === "git" ? await desktop!.adoRepoText(link) : await desktop!.adoAttachmentText(link.url);
+      repoFile = git;
+      if (isMarkdownName(link.name)) return text;
+      // 其他文字檔放進程式碼區塊（圍欄比內容裡最長的 ` 多一個）。
+      const fence = "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+      return `${fence}${fenceLanguage(link.name)}\n${text.replace(/\n$/, "")}\n${fence}`;
+    },
+    insertLink: () => {
+      insertAtCursor(wikiPageLink(link.name, webUrl));
+      toast(t("已插入「{name}」的連結", { name: link.name }));
+    },
+    // 檔案裡的相對連結：同一個儲存庫的文字檔在這裡切換，其他檔案用瀏覽器開。
+    link: git
+      ? (href) => {
+          const path = resolveRepoPath(git.path, href);
+          if (!path) return false;
+          const name = path.slice(path.lastIndexOf("/") + 1);
+          if (isReadableFileName(name)) showRepoFile({ ...git, path, name });
+          else void desktop?.openExternal(repoFileUrl(base, git, path)).catch(reportError);
+          return true;
+        }
+      : undefined,
+  });
+}
+
 /** 開啟工作項目、issue、Wiki 頁面（Git 歷史開著時先關掉）。 */
 function showIssue(source: IssueSource): Promise<void> {
   historyView?.close();
   return issueView.show(source);
+}
+
+/** 存回 Wiki 時伺服器上比較新的版本（發生衝突後，使用者選擇覆蓋時用它）。 */
+const wikiServerEtag = new Map<string, string>();
+
+/** 在分頁裡編輯 Wiki 頁面（Ctrl+S 存回伺服器）；已經開著就切換過去。 */
+async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
+  const open = docs.find((d) => d.wiki?.wikiId === wiki.id && d.wiki.path === path);
+  if (open) {
+    activate(open);
+    return;
+  }
+  const page = await desktop!.adoWikiPage(wiki, path);
+  if (!page.etag) throw new Error(t("伺服器沒有提供這一頁的版本，無法確認存回時有沒有蓋掉別人的修改，所以不能在這裡編輯。"));
+  // 編輯器一律用 \n 換行，先統一，免得一開就顯示成有變更。
+  const content = page.content.replace(/\r\n?/g, "\n");
+  issueView.close();
+  const doc = makeDoc({
+    name: `${pageName(path)}.md`,
+    kind: "markdown",
+    baseline: hash(content),
+    wiki: { projectId: wiki.projectId, wikiId: wiki.id, wikiName: wiki.name, path, etag: page.etag },
+  });
+  saveDraft(doc.id, content);
+  addTab(doc);
+  toast(t("編輯完按 Ctrl+S 存回 Wiki。如果這段時間有人改過這一頁，會先讓你比較差異。"));
+}
+
+/** 把分頁的內容存回 Wiki 頁面；伺服器上的版本被別人改過時回傳那個版本（交給衝突處理）。 */
+async function saveWikiPage(text: string, force: boolean): Promise<{ name: string; diskText: string } | void> {
+  const doc = active;
+  const target = doc.wiki!;
+  const etag = (force && wikiServerEtag.get(doc.id)) || target.etag;
+  const out = await desktop!.adoWikiSave(target, text, etag);
+  if (out.status === "conflict") {
+    if (out.etag) wikiServerEtag.set(doc.id, out.etag);
+    return { name: doc.name, diskText: out.content.replace(/\r\n?/g, "\n") };
+  }
+  wikiServerEtag.delete(doc.id);
+  doc.wiki = { ...target, etag: out.etag ?? target.etag };
+  setBaseline(text, true);
+  persistSession();
+  renderTabs();
+  toast(t("已存回 Wiki 頁面「{name}」", { name: pageName(target.path) }), { tone: "success" });
 }
 
 /** 在主要區域開啟 Wiki 頁面；內容裡連到其他頁面的連結直接在這裡切換。 */
@@ -2230,6 +2507,20 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
       return webUrl;
     },
     fileName: issueFileName(wiki.name, title),
+    // 程式碼 Wiki 的內容在 Git 儲存庫裡，要用 Git 改；專案 Wiki 可以直接編輯、存回。
+    edit: wiki.code ? undefined : () => void editWikiPage(wiki, path).catch(reportError),
+    // 標頭顯示所在位置：Wiki 名稱 › 上層頁面…（點上層頁面切換過去）。
+    crumbs: [
+      { label: wiki.name },
+      ...path
+        .split("/")
+        .filter(Boolean)
+        .slice(0, -1)
+        .map((name, i, parts) => {
+          const parent = `/${parts.slice(0, i + 1).join("/")}`;
+          return { label: name, open: () => showWikiPage(wiki, parent) };
+        }),
+    ],
     load: async () => {
       const page = await desktop!.adoWikiPage(wiki, path);
       webUrl = page.webUrl ?? webUrl;
@@ -2256,6 +2547,9 @@ function rerenderIssue(): void {
   issuePreview?.clear();
   issueView.rerender();
 }
+/** 工作項目、Wiki、Issue 和編輯區並排顯示（不蓋住正在寫的文件）；記住上次的選擇。 */
+let issueSide = storage.load("issue-side") === "1";
+
 const issueView = new IssueView($(".workspace"), {
   render(markdown, into) {
     issuePreview ??= new Preview(into, [
@@ -2267,6 +2561,7 @@ const issueView = new IssueView($(".workspace"), {
       tablesPlugin(),
       adoImagesPlugin,
       wikiImagesPlugin,
+      repoImagesPlugin,
       {
         name: "remote-images",
         apply() {},
@@ -2288,6 +2583,7 @@ const issueView = new IssueView($(".workspace"), {
     }
   },
   open: (url) => void desktop?.openExternal(url).catch(reportError),
+  follow: (href) => openRepoFileLink(href),
   copyAsDocument(name, markdown) {
     issueView.close();
     const doc = makeDoc({ name, kind: "markdown", baseline: hash("") });
@@ -2298,12 +2594,21 @@ const issueView = new IssueView($(".workspace"), {
   opened(source) {
     outlineView = { key: source.key, headings: [], body: null };
     renderOutline([]);
-    // Wiki 頁面讀到內容時才設定（圖片的相對路徑以它為準）。
+    // Wiki 頁面、儲存庫檔案讀到內容時才設定（圖片的相對路徑以它為準）。
     wikiPage = null;
+    repoFile = null;
     const [kind, id, ...rest] = source.key.split(":");
+    if (kind === "ado") workItemOpened(Number(id));
     workItemsPanel?.select(kind === "ado" ? Number(id) : null);
     issuesPanel?.select(kind === "github" ? Number(id) : null);
     wikiPanel?.select(kind === "wiki" && wikiPanel.wiki?.id === id ? rest.join(":") : null);
+  },
+  toggleSide() {
+    issueSide = !issueSide;
+    storage.save("issue-side", issueSide ? "1" : "");
+    issueView.setSide(issueSide);
+    applyLayout();
+    toast(issueSide ? t("已改成和編輯區並排顯示") : t("已改回蓋住編輯區顯示"));
   },
   closed() {
     wikiPage = null;
@@ -2322,7 +2627,8 @@ const statusView = $("#status-view");
 const issuePane = $(".issue-pane:not(.history-pane)");
 
 function renderStatusView(): void {
-  const issueOpen = workspace.classList.contains("issue-open");
+  // 並排顯示時編輯區還在，狀態列照常顯示文件的資訊。
+  const issueOpen = workspace.classList.contains("issue-open") && !workspace.classList.contains("issue-side");
   const historyOpen = workspace.classList.contains("history-open");
   const viewing = issueOpen || historyOpen;
   $(".statusbar").classList.toggle("viewing", viewing);
@@ -2339,7 +2645,7 @@ function renderStatusView(): void {
   label.className = "status-view-label";
   label.append(
     icon(source === "git" ? "git-branch" : "lock"),
-    source === "git" ? names.git : t("{name}・唯讀", { name: names[source] ?? "" }),
+    source === "git" ? names.git : t("{name}・唯讀", { name: names[source] ?? issuePane.dataset.sourceName ?? "" }),
   );
   const back = document.createElement("button");
   back.type = "button";
@@ -2353,7 +2659,16 @@ function renderStatusView(): void {
   statusView.replaceChildren(label, back);
 }
 new MutationObserver(renderStatusView).observe(workspace, { attributes: true, attributeFilter: ["class"] });
-new MutationObserver(renderStatusView).observe(issuePane, { attributes: true, attributeFilter: ["data-source"] });
+issueView.setSide(issueSide);
+// 並排顯示時，檢視打開或關閉要重新排版（編輯區讓出右半邊）。
+let issueWasOpen = false;
+new MutationObserver(() => {
+  const open = workspace.classList.contains("issue-open");
+  if (open === issueWasOpen) return;
+  issueWasOpen = open;
+  if (issueSide) applyLayout();
+}).observe(workspace, { attributes: true, attributeFilter: ["class"] });
+new MutationObserver(renderStatusView).observe(issuePane, { attributes: true, attributeFilter: ["data-source", "data-source-name"] });
 
 /** 工作項目的篩選條件（記住上次的選擇）。 */
 const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {
@@ -2397,12 +2712,48 @@ let loadWorkItemFilterOptions = (): void => {};
 /**
  * 工作項目的篩選列：人（指派給、建立者）、狀態、類型、專案、區域。
  * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
+ * 平常收起來，按搜尋框右邊的「篩選」按鈕展開；按鈕上的數字是改過幾項條件。
  */
-function workItemFilterBar(): HTMLElement {
+function workItemFilterBar(): { bar: HTMLElement; button: HTMLButtonElement } {
   const bar = document.createElement("div");
   bar.className = "workitems-filters";
+  bar.id = "workitem-filters";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "workitems-filter-toggle";
+  button.setAttribute("aria-controls", bar.id);
+  const badge = document.createElement("span");
+  badge.className = "workitems-filter-count";
+  button.append(icon("sliders-horizontal"), badge);
+  const setOpen = (open: boolean) => {
+    bar.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    storage.save("workitem-filter-open", open ? "1" : "");
+  };
+  button.addEventListener("click", () => setOpen(bar.hidden));
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "btn btn-small workitems-filter-reset";
+  reset.textContent = t("清除篩選");
+  const updateBadge = () => {
+    const n = [
+      !(f.role === "assigned" && f.person === "@me"),
+      f.state !== "open",
+      !!f.kind,
+      !!f.project,
+      !!f.area,
+    ].filter(Boolean).length;
+    badge.textContent = n ? String(n) : "";
+    badge.hidden = !n;
+    reset.hidden = !n;
+    button.classList.toggle("active", n > 0);
+    const label = n ? t("篩選（已設定 {n} 項）", { n }) : t("篩選");
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  };
   const changed = () => {
     storage.save("workitem-filter", JSON.stringify(workItemFilter));
+    updateBadge();
     void workItemsPanel?.refresh();
   };
   const select = (label: string, options: [string, string][], value: string, change: (v: string) => void) => {
@@ -2521,17 +2872,57 @@ function workItemFilterBar(): HTMLElement {
       })
       .catch(() => (loaded = false));
   };
-  bar.append(person, state, name, kind, project, area, people);
-  return bar;
+  reset.addEventListener("click", () => {
+    clearTimeout(timer);
+    Object.assign(f, DEFAULT_WORK_ITEM_FILTER);
+    person.value = "assigned:@me";
+    name.hidden = true;
+    name.value = "";
+    state.value = "open";
+    kind.value = "";
+    project.value = "";
+    loadScope();
+    changed();
+  });
+  bar.append(person, state, name, kind, project, area, people, reset);
+  updateBadge();
+  setOpen(storage.load("workitem-filter-open") === "1");
+  return { bar, button };
 }
 
 const workItemsPanel = desktop
   ? new IssuesPanel<AdoWorkItem & IssueSummary>($("#workitems-host"), {
       placeholder: t("搜尋標題或內容，或輸入編號"),
-      filters: workItemFilterBar(),
+      arrangements: [
+        // 伺服器回傳的順序就是最近更新的在前面。
+        { id: "recent", label: t("最近更新"), arrange: (items) => [{ title: null, items }] },
+        {
+          id: "priority",
+          label: t("優先順序"),
+          arrange: (items) => [{ title: null, items: [...items].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99)) }],
+        },
+        { id: "state", label: t("依狀態分組"), arrange: (items) => groupItems(items, (w) => w.state) },
+        { id: "kind", label: t("依類型分組"), arrange: (items) => groupItems(items, (w) => w.kind) },
+      ],
+      arrangement: {
+        load: () => storage.load("workitem-arrange"),
+        save: (id) => storage.save("workitem-arrange", id),
+      },
+      mark: (item) => {
+        const mark = markOf(workItemSeen, item);
+        if (!mark) return null;
+        return { kind: mark, label: mark === "new" ? t("新指派給你，還沒看過") : t("上次看過之後有更新") };
+      },
+      link: (item) => workItemLink(item),
+      ...(() => {
+        const { bar, button } = workItemFilterBar();
+        return { filters: bar, filterButton: button };
+      })(),
       list: async (search) => {
         loadWorkItemFilterOptions();
-        return (await desktop!.adoWorkItems(search, workItemFilter)).map((w) => ({
+        const found = await desktop!.adoWorkItems(search, workItemFilter);
+        noteWorkItems(found, !search && isDefaultFilter());
+        return found.map((w) => ({
           ...w,
           meta: [`${w.kind} ${w.id}`, w.state, showAssignee() ? w.assignedTo : "", shortDate(w.changed)]
             .filter(Boolean)
@@ -2572,6 +2963,7 @@ const wikiPanel = desktop
         }
       },
       savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
+      link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
     })
   : null;
 
@@ -2579,6 +2971,7 @@ const wikiPanel = desktop
 const issuesPanel = desktop
   ? new IssuesPanel($("#issues-host"), {
       placeholder: t("搜尋 issue，或輸入編號"),
+      link: (item) => workItemLink(item),
       list: async (search) =>
         (await desktop!.githubIssues(search)).map((i) => ({
           ...i,
@@ -2637,7 +3030,152 @@ function renderAdoTab(): void {
   tab.hidden = !ado?.account;
   if (tab.hidden) panelUnavailable("ado");
   else panelAvailable("ado");
+  void pingAdo();
+  if (ado?.account) void pollWorkItems();
+  else {
+    pollItems = [];
+    renderAdoBadge();
+  }
 }
+
+// ---- 狀態列：Azure DevOps 的連線狀態（連得到、連不到、權杖過期），定時檢查 ----
+
+const adoStatus = $("#status-ado");
+let adoPing: { status: string; name: string | null; message: string; at: number } | null = null;
+let pinging = false;
+let lastPing = 0;
+
+async function pingAdo(): Promise<void> {
+  if (!desktop || !ado?.account) {
+    adoPing = null;
+    renderAdoStatus();
+    return;
+  }
+  if (pinging) return;
+  pinging = true;
+  lastPing = Date.now();
+  adoStatus.classList.add("checking");
+  try {
+    adoPing = { ...(await desktop.adoPing()), at: Date.now() };
+  } catch (e) {
+    adoPing = { status: "error", name: null, message: e instanceof Error ? e.message : String(e), at: Date.now() };
+  } finally {
+    pinging = false;
+    adoStatus.classList.remove("checking");
+    renderAdoStatus();
+  }
+}
+
+function renderAdoStatus(): void {
+  adoStatus.hidden = !ado?.account;
+  if (adoStatus.hidden) return;
+  const state = adoPing?.status ?? "unknown";
+  adoStatus.dataset.state = state;
+  const summary: Record<string, string> = {
+    ok: adoPing?.name ? t("已連線（{name}）", { name: adoPing.name }) : t("已連線"),
+    offline: t("連不到伺服器"),
+    auth: t("權杖無效或已過期"),
+    error: t("連線有問題"),
+    unknown: t("檢查中…"),
+  };
+  // 連線正常時只顯示圖示和綠點；有問題時加上文字，比較容易注意到。
+  adoStatus.querySelector<HTMLElement>(".ado-state-label")!.textContent = state === "ok" || state === "unknown" ? "" : summary[state];
+  const time = adoPing ? new Date(adoPing.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+  adoStatus.title = [
+    t("Azure DevOps：{state}", { state: summary[state] ?? "" }) + (time ? t("（最後檢查 {time}）", { time }) : ""),
+    adoPing?.message ?? "",
+    state === "auth" ? t("按一下開啟設定，更新權杖") : t("按一下重新檢查"),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  adoStatus.setAttribute("aria-label", adoStatus.title);
+}
+
+adoStatus.addEventListener("click", () => {
+  if (adoPing?.status === "auth") settingsDialog.open(t("Azure DevOps／TFS"));
+  else void pingAdo();
+});
+window.setInterval(() => {
+  if (!document.hidden) void pingAdo();
+}, 5 * 60_000);
+window.addEventListener("online", () => void pingAdo());
+// 切回視窗時：上次檢查超過一分鐘才再檢查。
+window.addEventListener("focus", () => {
+  if (Date.now() - lastPing > 60_000) void pingAdo();
+});
+// ---- 工作項目：標出上次看過之後有更新的，定時在背景檢查（圖示上顯示數量） ----
+
+let workItemSeen: SeenMap | null = (() => {
+  try {
+    const v = JSON.parse(storage.load("workitem-seen") ?? "null") as unknown;
+    return v && typeof v === "object" ? (v as SeenMap) : null;
+  } catch {
+    return null;
+  }
+})();
+/** 讀過的工作項目（開啟時找得到最後更新時間）。 */
+const knownWorkItems = new Map<number, AdoWorkItem>();
+/** 最近一次「指派給你、還沒結束」的清單（背景檢查或面板的預設清單）。 */
+let pollItems: AdoWorkItem[] = [];
+
+function saveSeen(next: SeenMap): void {
+  workItemSeen = trimSeen(next);
+  storage.save("workitem-seen", JSON.stringify(workItemSeen));
+}
+
+/** 記下讀到的工作項目；`mine` 是指派給你、還沒結束的清單。 */
+function noteWorkItems(items: AdoWorkItem[], mine: boolean): void {
+  for (const w of items) knownWorkItems.set(w.id, w);
+  const { seen, changed } = remember(workItemSeen, items, mine);
+  if (changed) saveSeen(seen);
+  if (mine) pollItems = items;
+  renderAdoBadge();
+}
+
+/** 開啟工作項目時記下「看過了」，清掉清單上的小圓點。 */
+function workItemOpened(id: number): void {
+  const item = knownWorkItems.get(id);
+  if (!item) return;
+  const { seen, changed } = markSeen(workItemSeen, item);
+  if (!changed) return;
+  saveSeen(seen);
+  workItemsPanel?.refreshMarks();
+  renderAdoBadge();
+}
+
+/** 圖示上的數字：指派給你的工作項目裡，新的或有更新的有幾個。 */
+function renderAdoBadge(): void {
+  const badge = $("#ado-badge");
+  const n = pollItems.filter((w) => markOf(workItemSeen, w)).length;
+  badge.hidden = !n;
+  badge.textContent = n > 99 ? "99+" : String(n);
+  const tab = $("#side-tab-ado");
+  const label = t("Azure DevOps（工作項目、Wiki）");
+  tab.setAttribute("aria-label", n ? t("{label}：{n} 個工作項目有更新", { label, n }) : label);
+}
+
+let polling = false;
+/** 在背景檢查指派給你的工作項目（視窗沒在看時略過）。 */
+async function pollWorkItems(): Promise<void> {
+  if (polling || !desktop || !ado?.account || document.hidden) return;
+  polling = true;
+  try {
+    const signature = () => pollItems.map((w) => `${w.id}@${w.changed}`).join();
+    const before = signature();
+    noteWorkItems(await desktop.adoWorkItems("", DEFAULT_WORK_ITEM_FILTER), true);
+    // 面板上是同一份清單時，有新的或更新的項目就一起更新清單。
+    if (before && signature() !== before && isDefaultFilter() && workItemsPanel?.showingList) void workItemsPanel.refresh();
+    else workItemsPanel?.refreshMarks();
+  } catch {
+    // 網路斷了就等下次再檢查。
+  } finally {
+    polling = false;
+  }
+}
+window.setInterval(() => void pollWorkItems(), 5 * 60_000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void pollWorkItems();
+});
 
 /** 切換 Azure DevOps 面板裡的工作項目／Wiki（面板開著時才讀取內容）。 */
 function setAdoTab(tab: AdoTab): void {
@@ -2662,6 +3200,22 @@ for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")
 }
 setAdoTab(adoTab);
 $("#ado-refresh").addEventListener("click", () => void (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.refresh());
+
+/**
+ * 網路恢復或切回視窗時，重新讀取上次失敗的工作項目、Wiki、Issues 與開著的內容
+ * （面板沒開著的，下次打開時本來就會重讀）。
+ */
+let lastAutoRetry = 0;
+function retryRemoteLoads(force = false): void {
+  const now = Date.now();
+  if (!force && now - lastAutoRetry < 10_000) return;
+  lastAutoRetry = now;
+  if (sidePanel === "ado") (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.retryFailed();
+  if (sidePanel === "issues") issuesPanel?.retryFailed();
+  issueView.retryFailed();
+}
+window.addEventListener("online", () => retryRemoteLoads(true));
+window.addEventListener("focus", () => retryRemoteLoads());
 
 // 登入過期、權杖失效的錯誤通知：直接附上重新登入的按鈕。
 setErrorAction((message) => {
@@ -3485,11 +4039,85 @@ interface QuickItem {
   detail: string;
   doc?: Doc;
   path?: string;
+  /** 工作項目、Wiki 頁面：選了之後在主要區域開啟。 */
+  remote?: { icon: string; open(): void };
+}
+
+let quickRemoteSeq = 0;
+
+/**
+ * Ctrl+P 裡的工作項目與 Wiki 頁面（連上 Azure DevOps 時）：
+ * `#123` 直接開啟那個工作項目，`#文字` 搜尋工作項目的標題；其他字找目前 Wiki 的頁面名稱。
+ */
+async function quickRemoteItems(q: string): Promise<QuickItem[]> {
+  const text = q.trim();
+  if (!desktop || !ado?.account || !text) return [];
+  if (text.startsWith("#")) {
+    const rest = text.slice(1).trim();
+    if (/^\d+$/.test(rest)) {
+      const id = Number(rest);
+      return [
+        {
+          title: `#${id}`,
+          detail: t("開啟 Azure DevOps 工作項目"),
+          remote: { icon: "square-kanban", open: () => void openWorkItemById(id) },
+        },
+      ];
+    }
+    if (rest.length < 2) return [];
+    // 打字停一下才查詢，免得每個字都向伺服器查一次。
+    const seq = ++quickRemoteSeq;
+    await new Promise((r) => setTimeout(r, 300));
+    if (seq !== quickRemoteSeq) return [];
+    const found = await desktop
+      .adoWorkItems(rest, { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" })
+      .catch(() => [] as AdoWorkItem[]);
+    return found.slice(0, 30).map((w) => ({
+      title: w.title,
+      detail: [`${w.kind} ${w.id}`, w.state].join("・"),
+      remote: { icon: "square-kanban", open: () => showWorkItem(w) },
+    }));
+  }
+  // Wiki 頁面清單在背景讀取：還沒讀到（或網路慢）時先只列檔案，不讓 Ctrl+P 卡住。
+  if (!wikiListCache) {
+    wikiListCache = desktop.adoWikis();
+    wikiListCache.catch(() => (wikiListCache = null));
+  }
+  const wikis = await soon(wikiListCache);
+  const id = wikiPanel?.wiki?.id ?? storage.load("ado-wiki");
+  const wiki = wikis?.find((w) => w.id === id) ?? wikis?.[0];
+  if (!wiki) return [];
+  let pages = wikiPagesCache.get(wiki.id);
+  if (!pages) {
+    pages = desktop.adoWikiPages(wiki);
+    wikiPagesCache.set(wiki.id, pages);
+    pages.catch(() => wikiPagesCache.delete(wiki.id));
+  }
+  const paths = flattenPages((await soon(pages)) ?? []);
+  return paths.map((path) => ({
+    title: pageName(path),
+    detail: t("Wiki・{where}", { where: [wiki.name, path.slice(1, path.lastIndexOf("/"))].filter(Boolean).join(" › ") }),
+    remote: { icon: "book-open-text", open: () => showWikiPage(wiki, path) },
+  }));
+}
+
+/** `p` 在一小段時間內有結果就回傳結果，否則（或失敗時）回傳 null。 */
+function soon<T>(p: Promise<T>, ms = 150): Promise<T | null> {
+  return Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+}
+
+/** 依編號開啟工作項目（讀不到時提示）。 */
+async function openWorkItemById(id: number): Promise<void> {
+  try {
+    showWorkItem(await peekWorkItem(id));
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e));
+  }
 }
 
 const quickOpen = new Picker<QuickItem>({
   label: t("快速開啟"),
-  placeholder: desktop ? t("輸入檔名，例如「週報」") : t("輸入檔名切換分頁"),
+  placeholder: desktop ? t("輸入檔名、Wiki 頁面，或 #編號 開啟工作項目") : t("輸入檔名切換分頁"),
   empty: t("找不到符合的檔案"),
   async query(q) {
     stash();
@@ -3518,6 +4146,10 @@ const quickOpen = new Picker<QuickItem>({
       }
     }
     if (!q.trim()) return items.slice(0, 200);
+    const remote = await quickRemoteItems(q);
+    // `#…` 只找工作項目（伺服器已經依相關程度排序）。
+    if (q.trim().startsWith("#")) return remote;
+    items.push(...remote);
     return items
       .map((it) => ({ it, score: Math.max(fuzzyScore(q, it.title) * 2, fuzzyScore(q, `${it.detail}/${it.title}`)) }))
       .filter((x) => x.score > 0)
@@ -3525,8 +4157,8 @@ const quickOpen = new Picker<QuickItem>({
       .slice(0, 200)
       .map((x) => x.it);
   },
-  render: (it) => ({ title: it.title, detail: it.detail, icon: it.doc ? "file-text" : "file" }),
-  pick: (it) => (it.doc ? activate(it.doc) : void openPath(it.path!).catch(reportError)),
+  render: (it) => ({ title: it.title, detail: it.detail, icon: it.remote?.icon ?? (it.doc ? "file-text" : "file") }),
+  pick: (it) => (it.remote ? it.remote.open() : it.doc ? activate(it.doc) : void openPath(it.path!).catch(reportError)),
 });
 
 /** 把全域變數（目前分頁）寫回分頁物件。 */
@@ -3549,7 +4181,7 @@ function persistSession(): void {
   saveSession(
     {
       activeId: active.id,
-      docs: docs.map(({ id, name, kind, path, baseline, fileBacked, pinned }) => ({ id, name, kind, path, baseline, fileBacked, pinned })),
+      docs: docs.map(({ id, name, kind, path, baseline, fileBacked, pinned, wiki }) => ({ id, name, kind, path, baseline, fileBacked, pinned, wiki })),
     },
     tabScope,
   );
@@ -3560,7 +4192,10 @@ function renderTabs(): void {
     docs.map((d) => ({
       id: d.id,
       name: d === active ? fileName : d.name,
-      title: ((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name),
+      title: d.wiki
+        ? t("Azure DevOps Wiki：{wiki}{path}（按 Ctrl+S 存回伺服器）", { wiki: d.wiki.wikiName, path: d.wiki.path })
+        : (((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name)),
+      source: d.wiki ? ("wiki" as const) : undefined,
       dirty: d.dirty,
       missing: d.missing,
       pinned: d.pinned,
@@ -3576,8 +4211,8 @@ function renderTabs(): void {
 
 /** 切換到另一個分頁。 */
 function activate(doc: Doc): void {
-  // 點分頁（包括目前的分頁）就回到文件，關掉工作項目、Git 歷史的檢視。
-  issueView.close();
+  // 點分頁（包括目前的分頁）就回到文件，關掉工作項目、Git 歷史的檢視（並排顯示時留著）。
+  if (!issueSide) issueView.close();
   historyView?.close();
   if (doc === active) return;
   flushDraft();
@@ -3806,6 +4441,8 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   // 手動存檔後恢復自動存檔。
   diskSaveBlocked = null;
   const text = editor.text;
+  // 編輯中的 Wiki 頁面：存回伺服器（另存新檔則照常存成本機檔案）。
+  if (active.wiki && !saveAs && desktop) return saveWikiPage(text, force);
   let out: Awaited<ReturnType<typeof saveFile>>;
   try {
     out = await saveFile(text, fileName, kind, fileHandle, { saveAs, force });
@@ -3824,6 +4461,8 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   if (!out) return;
   if (out.status === "conflict") return { name: out.name, diskText: out.diskText };
   fileHandle = out.handle;
+  // 另存成本機檔案之後，這個分頁就是那個檔案，不再對應 Wiki 頁面。
+  if (out.handle) active.wiki = undefined;
   active.missing = false;
   // 已經存成 UTF-8 了。
   active.lossy = false;
@@ -3922,11 +4561,14 @@ function otherWriter(path = fileHandle?.path): string {
 /** 檔案在開啟後被別的程式改過：讓使用者比較差異、覆蓋或另存。 */
 async function resolveConflict(name: string, diskText: string): Promise<void> {
   const remote = isRemote(fileHandle?.path);
+  const wiki = !!active.wiki;
   const choice = await choose(
-    t("檔案已被{who}修改", { who: otherWriter() }),
-    remote
-      ? t("「{name}」在你開啟之後被其他電腦或程式改過。要怎麼處理？", { name })
-      : t("「{name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？", { name }),
+    wiki ? t("Wiki 頁面已被別人修改") : t("檔案已被{who}修改", { who: otherWriter() }),
+    wiki
+      ? t("「{name}」在你開始編輯之後被別人改過了。要怎麼處理？", { name })
+      : remote
+        ? t("「{name}」在你開啟之後被其他電腦或程式改過。要怎麼處理？", { name })
+        : t("「{name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？", { name }),
     [
       { id: "compare", label: t("比較差異"), primary: true },
       { id: "overwrite", label: t("用我的版本覆蓋"), danger: true },
@@ -3938,9 +4580,9 @@ async function resolveConflict(name: string, diskText: string): Promise<void> {
   else if (choice === "save-as") await save(true);
   else if (choice === "compare") {
     const started = review.start(diskText, {
-      title: t("與{store}上的版本比較", { store: storeName() }),
+      title: wiki ? t("與 Wiki 上的版本比較") : t("與{store}上的版本比較", { store: storeName() }),
       hint: t("逐段選擇要採用哪個版本，全部處理完會自動存檔。"),
-      acceptLabel: isRemote(fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
+      acceptLabel: wiki || isRemote(fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
       rejectLabel: t("保留我的版本"),
       onFinish: () => void save(false, true).catch(reportError),
     });
@@ -4264,6 +4906,15 @@ commands.register(
     run: () => quickOpen.open(),
   },
   {
+    id: "open-work-item",
+    title: t("開啟工作項目…"),
+    group: "Azure DevOps",
+    icon: "square-kanban",
+    when: () => !!ado?.account,
+    // 快速開啟裡輸入 #編號 直接開啟，#文字 搜尋標題。
+    run: () => quickOpen.open("#"),
+  },
+  {
     id: "search-in-folder",
     title: t("在資料夾中搜尋"),
     group: t("資料夾與專案"),
@@ -4440,7 +5091,8 @@ commands.register(
     keys: "Mod-f",
     when: () => view !== "preview",
     // 工作項目開在主要區域時，在它的內容裡找字。
-    run: () => (issueView.isOpen ? issueView.openFind() : void openSearchPanel(editor.view)),
+    run: () =>
+      issueView.isOpen && (!issueSide || issueView.hasFocus) ? issueView.openFind() : void openSearchPanel(editor.view),
   },
   {
     id: "format-json",
@@ -6425,8 +7077,11 @@ function applyLayout(): void {
   const narrow = narrowQuery.matches;
   // 手機寬度放不下並排，分割模式改為只顯示編輯區（可用分頁切換到預覽）。
   const effective: ViewMode = narrow && view === "split" ? "editor" : view;
+  // 工作項目等內容和編輯區並排：版面當成分割，右半邊放內容（預覽藏起來）。
+  const side = issueSide && !narrow && workspace.classList.contains("issue-open");
+  workspace.classList.toggle("issue-side", side);
   // 即時預覽的版面和只顯示編輯區相同，差別在編輯區裡直接顯示排版。
-  const layout = effective === "live" ? "editor" : effective;
+  const layout = side ? "split" : effective === "live" ? "editor" : effective;
   workspace.dataset.view = layout;
   workspace.classList.toggle("live", effective === "live");
   if (liveApplied !== (effective === "live")) {
@@ -6471,7 +7126,7 @@ function applyLayout(): void {
 }
 
 function setView(mode: ViewMode): void {
-  issueView.close();
+  if (!issueSide) issueView.close();
   historyView?.close();
   view = mode;
   storage.save("view", mode);
@@ -6560,6 +7215,10 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
   if (codeFont) root.setProperty("--font-mono", codeFont);
   else root.removeProperty("--font-mono");
   root.setProperty("--doc-line-height", DOC_LINE_HEIGHT[s.docLineHeight]);
+  // 介面大小：整個視窗縮放（啟動時預設 100% 就不用呼叫）。
+  if (desktop && (changed ? changed.includes("uiScale") : s.uiScale !== "100")) {
+    void desktop.setUiZoom(Number(s.uiScale) / 100).catch(reportError);
+  }
   if (!changed) return;
   const fontKeys: (keyof Settings)[] = ["docFont", "docFontCustom", "codeFont", "docLineHeight"];
   if (changed.some((k) => fontKeys.includes(k))) editor.view.requestMeasure();
@@ -6707,6 +7366,7 @@ const settingsDialog = new SettingsDialog(
         disconnect: () => void ado!.disconnect(),
         openRepo: () => void ado!.openRepo(),
         workItems: () => showAdo("workitems"),
+        check: () => desktop!.adoCheck(),
       }
     : null,
   {

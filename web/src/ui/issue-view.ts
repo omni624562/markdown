@@ -9,7 +9,7 @@ import { icon } from "./icons.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
-  kind: "ado" | "github" | "wiki";
+  kind: "ado" | "github" | "wiki" | "repo";
   icon: string;
   text: string;
 }
@@ -35,7 +35,13 @@ export interface IssueSource {
   fileName: string;
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
+  /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
+  crumbs?: { label: string; open?(): void }[];
   insertLink(): void;
+  /** 標頭下方的操作列（例如工作項目的狀態、指派給我、留言）。 */
+  toolbar?: HTMLElement;
+  /** 「編輯」：在分頁裡編輯、存回伺服器（不能編輯的不給）。 */
+  edit?(): void;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -47,8 +53,12 @@ export interface IssueViewHooks {
   copyAsDocument(name: string, markdown: string): void;
   /** 開啟（或上一頁／下一頁切換到）一個項目，內容讀取之前（例如更新側邊欄清單上的標示）。 */
   opened(source: IssueSource): void;
+  /** 內容裡的連結（項目自己沒處理時）：例如儲存庫裡的 Markdown 檔，在這裡開啟；處理了就回傳 true。 */
+  follow?(href: string): boolean;
   /** 檢視關閉了（例如清掉側邊欄清單上的標示）。 */
   closed(): void;
+  /** 切換「和編輯區並排顯示」。 */
+  toggleSide?(): void;
 }
 
 export interface FindMatch {
@@ -92,6 +102,8 @@ interface HistoryEntry {
 
 /** 上一頁、下一頁各記住幾筆。 */
 const HISTORY_LIMIT = 50;
+/** 記住最近看過幾份內容（上一頁、下一頁、重新開啟時先顯示，背景再更新）。 */
+const CACHE_LIMIT = 30;
 
 export class IssueView {
   #workspace: HTMLElement;
@@ -103,6 +115,7 @@ export class IssueView {
   #body: HTMLElement;
   #scroll: HTMLElement;
   #find: HTMLElement;
+  #toolbar: HTMLElement;
   #findInput: HTMLInputElement;
   #findCount: HTMLElement;
   #source: IssueSource | null = null;
@@ -112,8 +125,15 @@ export class IssueView {
   #back: HistoryEntry[] = [];
   #forward: HistoryEntry[] = [];
   #restoreScroll: number | null = null;
+  #failed = false;
+  /** 看過的內容（key → Markdown），最近看的放最後面。 */
+  #cache = new Map<string, string>();
+  /** 顯示的是之前讀到的內容、這次更新失敗時的提示。 */
+  #stale: HTMLElement;
   #backBtn: HTMLButtonElement;
   #forwardBtn: HTMLButtonElement;
+  #editBtn: HTMLButtonElement;
+  #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
   #current = 0;
 
@@ -149,6 +169,13 @@ export class IssueView {
     insert.className = "btn btn-small btn-primary";
     insert.append(icon("link"), t("插入連結"));
     insert.addEventListener("click", () => this.#source?.insertLink());
+    this.#editBtn = document.createElement("button");
+    this.#editBtn.type = "button";
+    this.#editBtn.className = "btn btn-small";
+    this.#editBtn.append(icon("pencil"), t("編輯"));
+    this.#editBtn.title = t("在分頁裡編輯，按 Ctrl+S 存回伺服器");
+    this.#editBtn.hidden = true;
+    this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "btn btn-small";
@@ -157,9 +184,17 @@ export class IssueView {
     copy.addEventListener("click", () => {
       if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
     });
+    const toggleSide = hooks.toggleSide;
+    if (toggleSide) {
+      this.#sideBtn = iconButton(t("和編輯區並排顯示"), "columns-2", () => toggleSide());
+      this.#sideBtn.classList.add("issue-side-toggle");
+      this.#sideBtn.setAttribute("aria-pressed", "false");
+    }
     actions.append(
       insert,
+      this.#editBtn,
       copy,
+      ...(this.#sideBtn ? [this.#sideBtn] : []),
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
       iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
@@ -190,16 +225,23 @@ export class IssueView {
     this.#scroll.className = "issue-scroll";
     this.#body = document.createElement("article");
     this.#body.className = "markdown-body issue-body";
-    this.#scroll.append(this.#body);
+    this.#stale = document.createElement("p");
+    this.#stale.className = "issue-status issue-stale";
+    this.#stale.hidden = true;
+    this.#scroll.append(this.#stale, this.#body);
     // 內容裡的連結用瀏覽器開，不要把整個視窗導走。
     this.#body.addEventListener("click", (e) => {
       const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
       if (!a) return;
       e.preventDefault();
       if (this.#source?.link?.(a.getAttribute("href")!)) return;
+      if (this.#h.follow?.(a.href)) return;
       if (/^https?:/i.test(a.href)) this.#h.open(a.href);
     });
-    pane.append(head, this.#find, this.#scroll);
+    this.#toolbar = document.createElement("div");
+    this.#toolbar.className = "issue-toolbar-host";
+    this.#toolbar.hidden = true;
+    pane.append(head, this.#toolbar, this.#find, this.#scroll);
     pane.addEventListener("keydown", (e) => this.#keydown(e));
     // 滑鼠的「上一頁」「下一頁」側鍵。
     pane.addEventListener("mouseup", (e) => {
@@ -214,6 +256,20 @@ export class IssueView {
 
   get isOpen(): boolean {
     return !this.#pane.hidden;
+  }
+
+  /** 焦點在這個檢視裡（並排顯示時，用來分辨 Ctrl+F 要在哪邊找）。 */
+  get hasFocus(): boolean {
+    return this.#pane.contains(document.activeElement);
+  }
+
+  /** 更新「並排顯示」按鈕的狀態。 */
+  setSide(on: boolean): void {
+    if (!this.#sideBtn) return;
+    this.#sideBtn.setAttribute("aria-pressed", String(on));
+    const label = on ? t("改回蓋住編輯區顯示") : t("和編輯區並排顯示");
+    this.#sideBtn.title = label;
+    this.#sideBtn.setAttribute("aria-label", label);
   }
 
   /** 開啟（或切換到）一個工作項目、issue、Wiki 頁面；原本開著的記到「上一頁」。 */
@@ -259,47 +315,118 @@ export class IssueView {
     this.#forwardBtn.title = label(t("前往下一頁"), this.#forward, "Alt-→");
   }
 
+  /** 標頭上的位置：「P.wiki › 產品 › 安裝」，上層頁面可以點。 */
+  #crumbs(source: IssueSource): (string | HTMLElement)[] {
+    if (!source.crumbs?.length) return [source.label];
+    const out: (string | HTMLElement)[] = [];
+    source.crumbs.forEach((c, i) => {
+      if (i) {
+        const sep = document.createElement("span");
+        sep.className = "issue-crumb-sep";
+        sep.setAttribute("aria-hidden", "true");
+        sep.textContent = "›";
+        out.push(sep);
+      }
+      if (c.open) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "issue-crumb";
+        b.textContent = c.label;
+        b.title = t("開啟「{name}」", { name: c.label });
+        const open = c.open;
+        b.addEventListener("click", () => open());
+        out.push(b);
+      } else {
+        const span = document.createElement("span");
+        span.textContent = c.label;
+        out.push(span);
+      }
+    });
+    return out;
+  }
+
   async #open(source: IssueSource): Promise<void> {
     this.#source = source;
     this.#h.opened(source);
     this.#updateNav();
     this.#pane.dataset.source = source.origin.kind;
+    this.#pane.dataset.sourceName = source.origin.text;
     this.#label.textContent = source.label;
+    this.#label.replaceChildren(...this.#crumbs(source));
     this.#meta.replaceChildren(
       sourceBadge(source.origin.text, source.origin.icon),
       sourceBadge(t("唯讀"), "lock", "source-badge source-readonly"),
       this.#label,
     );
     this.#title.textContent = source.title;
+    this.#toolbar.replaceChildren(...(source.toolbar ? [source.toolbar] : []));
+    this.#toolbar.hidden = !source.toolbar;
+    this.#editBtn.hidden = !source.edit;
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();
     this.#pane.focus();
-    await this.refresh();
+    await this.refresh(true);
   }
 
-  async refresh(): Promise<void> {
+  /**
+   * 向伺服器重新讀取內容。`quiet`：看過的內容先顯示出來，背景讀取，有變動才重畫（捲動位置不變）；
+   * 否則先清掉、顯示「讀取中…」（按「重新整理」時）。
+   */
+  async refresh(quiet = false): Promise<void> {
     const source = this.#source;
     if (!source) return;
     const seq = ++this.#seq;
-    this.#markdown = "";
-    const loading = document.createElement("p");
-    loading.className = "issue-status";
-    loading.textContent = t("讀取中…");
-    this.#body.replaceChildren(loading);
+    const cached = quiet ? this.#cache.get(source.key) : undefined;
+    this.#failed = false;
+    this.#stale.hidden = true;
+    let loading: HTMLElement | null = null;
+    if (cached !== undefined) {
+      this.#display(cached);
+    } else {
+      this.#markdown = "";
+      loading = document.createElement("p");
+      loading.className = "issue-status";
+      loading.textContent = t("讀取中…");
+      this.#body.replaceChildren(loading);
+    }
     try {
       const md = await source.load();
       if (seq !== this.#seq) return;
-      this.#markdown = md;
-      this.#h.render(md, this.#body);
-      this.#scroll.scrollTop = this.#restoreScroll ?? 0;
-      this.#restoreScroll = null;
-      if (!this.#find.hidden) this.#search();
+      this.#cache.delete(source.key);
+      this.#cache.set(source.key, md);
+      if (this.#cache.size > CACHE_LIMIT) this.#cache.delete(this.#cache.keys().next().value!);
+      if (md !== this.#markdown || loading) this.#display(md, cached !== undefined);
     } catch (e) {
       if (seq !== this.#seq) return;
-      loading.textContent = e instanceof Error ? e.message : String(e);
-      loading.classList.add("issue-error");
+      const message = e instanceof Error ? e.message : String(e);
+      const target = loading ?? this.#stale;
+      target.textContent = loading ? message : t("顯示的是之前讀到的內容，這次更新失敗：{message}", { message });
+      target.classList.add("issue-error");
+      target.hidden = false;
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-small load-retry";
+      retry.append(icon("refresh-cw"), t("重試"));
+      retry.addEventListener("click", () => void this.refresh(!loading));
+      target.append(retry);
+      this.#failed = true;
     }
+  }
+
+  /** 顯示內容；`keepScroll`：背景更新時留在原本的位置，否則回到記住的位置（或最上面）。 */
+  #display(md: string, keepScroll = false): void {
+    const top = this.#scroll.scrollTop;
+    this.#markdown = md;
+    this.#h.render(md, this.#body);
+    this.#scroll.scrollTop = keepScroll ? top : (this.#restoreScroll ?? 0);
+    if (!keepScroll) this.#restoreScroll = null;
+    if (!this.#find.hidden) this.#search();
+  }
+
+  /** 上次讀取失敗就重新讀取（網路恢復、切回視窗時呼叫）；有之前讀到的內容就留著，背景更新。 */
+  retryFailed(): void {
+    if (this.isOpen && this.#failed) void this.refresh(true);
   }
 
   /** 用已經讀到的內容重畫（主題或設定改變時，不用重新向伺服器讀取）。 */
