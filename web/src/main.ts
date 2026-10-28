@@ -102,6 +102,7 @@ import {
   saveProjectView,
   saveSession,
   type Session,
+  type WikiTarget,
 } from "./session.ts";
 import * as storage from "./storage.ts";
 import { editTable } from "./table.ts";
@@ -502,7 +503,10 @@ const preview = new Preview(previewEl, [
   }),
   docLinksPlugin({ wikiExists: (target) => wikiExists(target) }),
   ...(desktop
-    ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, (p) => davImageCached(p))]
+    ? [
+        localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, (p) => davImageCached(p)),
+        wikiEditImagesPlugin(),
+      ]
     : []),
   {
     name: "remote-images",
@@ -559,6 +563,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     imageUrl(src) {
       if (/^https?:/i.test(src)) return blockRemote() ? null : src;
       if (/^data:image\//i.test(src)) return src;
+      if (active.wiki) return wikiEditImage(active.wiki, src);
       const docPath = fileHandle?.path;
       if (!desktop || !docPath) return null;
       const path = localImagePath(src, dirname(docPath));
@@ -8079,6 +8084,10 @@ async function insertImages(original: File[]): Promise<void> {
     });
     return;
   }
+  if (active.wiki) {
+    await insertWikiImages(files);
+    return;
+  }
   const docPath = fileHandle?.path;
   if (!docPath) {
     toast(t("請先存檔：圖片會存到文件所在資料夾的 assets 資料夾裡。"), {
@@ -8105,6 +8114,87 @@ async function insertImages(original: File[]): Promise<void> {
   toast(files.length > 1 ? t("已把 {n} 張圖片存到 assets 資料夾", { n: files.length }) : t("已把圖片存到 assets 資料夾"), {
     tone: "success",
   });
+}
+
+/** Wiki 附件接受的圖片格式。 */
+const WIKI_IMAGE_EXT = new Set(["png", "jpg", "gif", "webp", "bmp"]);
+
+/** 編輯 Wiki 頁面時貼上、拖曳的圖片：上傳成 Wiki 的附件，插入 `/.attachments/…` 的連結（TFS 網頁版也看得到）。 */
+async function insertWikiImages(files: File[]): Promise<void> {
+  const doc = active;
+  const target = doc.wiki!;
+  const skipped = files.filter((f) => !WIKI_IMAGE_EXT.has(IMAGE_EXT[f.type]));
+  if (skipped.length) toast(t("Wiki 只接受 PNG、JPG、GIF、WebP、BMP 圖片，已略過 {n} 張。", { n: skipped.length }), { tone: "error" });
+  const ok = files.filter((f) => WIKI_IMAGE_EXT.has(IMAGE_EXT[f.type]));
+  if (!ok.length) return;
+  const progress = toast(t("正在上傳圖片到 Wiki…"), { duration: 60000 });
+  const links: string[] = [];
+  try {
+    for (const file of ok) {
+      const url = await readDataUrl(file);
+      const ext = IMAGE_EXT[file.type];
+      const path = await desktop!.adoWikiAttach(target, stem(file.name), ext, url.split(",")[1]);
+      // 剛上傳的圖片直接用手上的內容顯示，不必再下載一次。
+      wikiEditImages.set(wikiImageKey(target, path), Promise.resolve(url));
+      links.push(`![${altText(file.name)}](${markdownUrl(path)})`);
+    }
+  } finally {
+    progress.dismiss();
+  }
+  if (active !== doc) return; // 上傳時使用者切換了分頁
+  insertAtCursor(links.join("\n"));
+  toast(links.length > 1 ? t("已把 {n} 張圖片上傳到 Wiki，存回頁面後別人就看得到", { n: links.length }) : t("已把圖片上傳到 Wiki，存回頁面後別人就看得到"), {
+    tone: "success",
+  });
+}
+
+/** 編輯中的 Wiki 頁面裡的圖片（存在 Wiki 的 Git 儲存庫裡，要帶權杖才讀得到）。 */
+const wikiEditImages = new Map<string, Promise<string>>();
+
+function wikiImageKey(target: WikiTarget, path: string): string {
+  return `wiki-img:${target.wikiId}:${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/** 編輯中 Wiki 頁面的圖片網址：相對路徑與 `/.attachments/…` 換成讀回來的 data: 網址；不是 Wiki 裡的圖片回傳 null。 */
+function wikiEditImage(target: WikiTarget, src: string): Promise<string> | null {
+  if (!desktop) return null;
+  const path = imageRepoPath(src, target.path, "/");
+  if (!path) return null;
+  const key = wikiImageKey(target, path);
+  let url = wikiEditImages.get(key);
+  if (!url) {
+    const wiki = { projectId: target.projectId, repositoryId: target.repositoryId ?? target.wikiId, version: null } as AdoWiki;
+    url = offlineImage(key, () => desktop!.adoWikiImage(wiki, path));
+    url.catch(() => wikiEditImages.delete(key));
+    if (wikiEditImages.size > 200) wikiEditImages.clear();
+    wikiEditImages.set(key, url);
+  }
+  return url;
+}
+
+/** 預覽中編輯中 Wiki 頁面的圖片（和閱讀 Wiki 頁面時一樣，由原生端讀取）。 */
+function wikiEditImagesPlugin(): PreviewPlugin {
+  return {
+  name: "wiki-edit-images",
+  prepare(content) {
+    if (!active.wiki) return;
+    for (const img of content.querySelectorAll<HTMLImageElement>("img[src]")) {
+      const src = img.getAttribute("src")!;
+      if (!imageRepoPath(src, active.wiki.path, "/")) continue;
+      img.dataset.wikiEditSrc = src;
+      img.removeAttribute("src");
+    }
+  },
+  apply(_root, scope) {
+    const target = active.wiki;
+    if (!target) return;
+    for (const img of scope.querySelectorAll<HTMLImageElement>("img[data-wiki-edit-src]")) {
+      void wikiEditImage(target, img.dataset.wikiEditSrc!)
+        ?.then((url) => (img.src = url))
+        .catch((e) => (img.title = e instanceof Error ? e.message : String(e)));
+    }
+  },
+  };
 }
 
 // ---- 拖曳開檔 -----------------------------------------------------------
