@@ -118,8 +118,8 @@ import { TasksPanel } from "./ui/tasks-panel.ts";
 import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
 import { IssueView, type IssueSource } from "./ui/issue-view.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
-import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink } from "./wiki-text.ts";
-import { githubIssueMarkdown, issueFileName, workItemMarkdown } from "./issue-doc.ts";
+import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
@@ -1836,8 +1836,34 @@ const ado = desktop
     })
   : null;
 
+/** 在主要區域開啟工作項目；內容裡的相關工作項目點一下在這裡切換。 */
+function showWorkItem(item: AdoWorkItem): void {
+  let related = new Map<number, AdoWorkItem>();
+  void showIssue({
+    key: `ado:${item.id}`,
+    origin: { kind: "ado", icon: "square-kanban", text: t("Azure DevOps 工作項目") },
+    label: `${item.kind} ${item.id}`,
+    title: item.title,
+    webUrl: item.webUrl,
+    fileName: issueFileName(`${item.kind} ${item.id}`, item.title),
+    load: async () => {
+      const d = await desktop!.adoWorkItem(item.id);
+      related = new Map(d.relations.map((r) => [r.id, r]));
+      return workItemMarkdown(d);
+    },
+    insertLink: () => insertIssueLink(item),
+    link: (href) => {
+      const id = workItemIdOf(href);
+      const target = id === null ? undefined : related.get(id);
+      if (!target) return false;
+      showWorkItem(target);
+      return true;
+    },
+  });
+}
+
 /** 插入 `[#123 標題](網址)` 到游標位置。 */
-function insertIssueLink(item: IssueSummary): void {
+function insertIssueLink(item: Pick<IssueSummary, "id" | "title" | "webUrl">): void {
   insertAtCursor(workItemLink(item));
   toast(t("已插入「#{id}」的連結", { id: item.id }));
 }
@@ -2113,12 +2139,48 @@ let loadWorkItemFilterOptions = (): void => {};
 /**
  * 工作項目的篩選列：人（指派給、建立者）、狀態、類型、專案、區域。
  * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
+ * 平常收起來，按搜尋框右邊的「篩選」按鈕展開；按鈕上的數字是改過幾項條件。
  */
-function workItemFilterBar(): HTMLElement {
+function workItemFilterBar(): { bar: HTMLElement; button: HTMLButtonElement } {
   const bar = document.createElement("div");
   bar.className = "workitems-filters";
+  bar.id = "workitem-filters";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "workitems-filter-toggle";
+  button.setAttribute("aria-controls", bar.id);
+  const badge = document.createElement("span");
+  badge.className = "workitems-filter-count";
+  button.append(icon("sliders-horizontal"), badge);
+  const setOpen = (open: boolean) => {
+    bar.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    storage.save("workitem-filter-open", open ? "1" : "");
+  };
+  button.addEventListener("click", () => setOpen(bar.hidden));
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "btn btn-small workitems-filter-reset";
+  reset.textContent = t("清除篩選");
+  const updateBadge = () => {
+    const n = [
+      !(f.role === "assigned" && f.person === "@me"),
+      f.state !== "open",
+      !!f.kind,
+      !!f.project,
+      !!f.area,
+    ].filter(Boolean).length;
+    badge.textContent = n ? String(n) : "";
+    badge.hidden = !n;
+    reset.hidden = !n;
+    button.classList.toggle("active", n > 0);
+    const label = n ? t("篩選（已設定 {n} 項）", { n }) : t("篩選");
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  };
   const changed = () => {
     storage.save("workitem-filter", JSON.stringify(workItemFilter));
+    updateBadge();
     void workItemsPanel?.refresh();
   };
   const select = (label: string, options: [string, string][], value: string, change: (v: string) => void) => {
@@ -2237,14 +2299,32 @@ function workItemFilterBar(): HTMLElement {
       })
       .catch(() => (loaded = false));
   };
-  bar.append(person, state, name, kind, project, area, people);
-  return bar;
+  reset.addEventListener("click", () => {
+    clearTimeout(timer);
+    Object.assign(f, DEFAULT_WORK_ITEM_FILTER);
+    person.value = "assigned:@me";
+    name.hidden = true;
+    name.value = "";
+    state.value = "open";
+    kind.value = "";
+    project.value = "";
+    loadScope();
+    changed();
+  });
+  bar.append(person, state, name, kind, project, area, people, reset);
+  updateBadge();
+  setOpen(storage.load("workitem-filter-open") === "1");
+  return { bar, button };
 }
 
 const workItemsPanel = desktop
   ? new IssuesPanel<AdoWorkItem & IssueSummary>($("#workitems-host"), {
       placeholder: t("搜尋標題或內容，或輸入編號"),
-      filters: workItemFilterBar(),
+      link: (item) => workItemLink(item),
+      ...(() => {
+        const { bar, button } = workItemFilterBar();
+        return { filters: bar, filterButton: button };
+      })(),
       list: async (search) => {
         loadWorkItemFilterOptions();
         return (await desktop!.adoWorkItems(search, workItemFilter)).map((w) => ({
@@ -2254,17 +2334,7 @@ const workItemsPanel = desktop
             .join("・"),
         }));
       },
-      view: (item) =>
-        void showIssue({
-          key: `ado:${item.id}`,
-          origin: { kind: "ado", icon: "square-kanban", text: t("Azure DevOps 工作項目") },
-          label: `${item.kind} ${item.id}`,
-          title: item.title,
-          webUrl: item.webUrl,
-          fileName: issueFileName(`${item.kind} ${item.id}`, item.title),
-          load: async () => workItemMarkdown(await desktop!.adoWorkItem(item.id)),
-          insertLink: () => insertIssueLink(item),
-        }),
+      view: (item) => showWorkItem(item),
       status: (n, search) =>
         n
           ? search
@@ -2298,6 +2368,7 @@ const wikiPanel = desktop
         }
       },
       savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
+      link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
     })
   : null;
 
@@ -2305,6 +2376,7 @@ const wikiPanel = desktop
 const issuesPanel = desktop
   ? new IssuesPanel($("#issues-host"), {
       placeholder: t("搜尋 issue，或輸入編號"),
+      link: (item) => workItemLink(item),
       list: async (search) =>
         (await desktop!.githubIssues(search)).map((i) => ({
           ...i,
