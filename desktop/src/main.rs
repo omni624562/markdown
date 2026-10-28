@@ -181,6 +181,17 @@ fn set_title(window: WebviewWindow, title: String) -> Result<(), String> {
     window.set_title(&title).map_err(|e| e.to_string())
 }
 
+/// 介面大小：整個視窗一起縮放（和瀏覽器的縮放一樣，版面會依縮放後的寬度重新排）。
+#[tauri::command]
+fn set_ui_zoom(window: WebviewWindow, scale: f64) -> Result<(), String> {
+    if !scale.is_finite() {
+        return Err("invalid scale".into());
+    }
+    window
+        .set_zoom(scale.clamp(0.5, 3.0))
+        .map_err(|e| e.to_string())
+}
+
 /// Windows 不用系統的標題列，改由網頁的頂端列兼當標題列（拖曳、最小化、最大化、關閉）。
 const CUSTOM_TITLE_BAR: bool = cfg!(windows);
 
@@ -252,6 +263,7 @@ fn main() {
             probe_path,
             open_external,
             set_title,
+            set_ui_zoom,
             custom_title_bar,
             window_control,
             files::open_file,
@@ -309,6 +321,11 @@ fn main() {
             ado::ado_wiki_pages,
             ado::ado_wiki_page,
             ado::ado_check,
+            ado::ado_repo_text,
+            ado::ado_attachment_text,
+            ado::ado_work_item_states,
+            ado::ado_work_item_update,
+            ado::ado_wiki_save,
             ado::ado_wiki_image,
             pdf::pick_pdf_path,
             pdf::print_to_pdf,

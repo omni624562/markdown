@@ -18,6 +18,17 @@ export interface DocMeta {
   fileBacked: boolean;
   /** 固定的分頁：排在最左邊，「關閉其他分頁」不會關掉它。 */
   pinned?: boolean;
+  /** 編輯中的 Azure DevOps Wiki 頁面：存檔時寫回伺服器。 */
+  wiki?: WikiTarget;
+}
+
+/** 分頁對應的 Wiki 頁面，以及開始編輯時（或上次存回時）的版本。 */
+export interface WikiTarget {
+  projectId: string;
+  wikiId: string;
+  wikiName: string;
+  path: string;
+  etag: string;
 }
 
 export interface Session {

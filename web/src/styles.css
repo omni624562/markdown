@@ -1125,6 +1125,11 @@ kbd {
   --tab-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8M16 13H8M16 17H8'/%3E%3C/svg%3E");
 }
 .tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 4%, transparent); }
+/* 編輯中的 Wiki 頁面（存檔時寫回 Azure DevOps）：書本圖示、來源的顏色。 */
+.tab.tab-wiki {
+  --tab-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z'/%3E%3Cpath d='M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z'/%3E%3C/svg%3E");
+}
+.tab.tab-wiki::before { color: light-dark(#0b6bcb, #4ea1f3); opacity: 0.9; }
 .tab[aria-selected="true"] {
   z-index: 1;
   background: var(--bg);
@@ -1748,6 +1753,22 @@ button.git-info:disabled { cursor: default; }
 /* 工作項目（Azure DevOps） */
 .workitems-search { width: 100%; height: 30px; margin: 2px 0 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
 .workitems-search:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* 新指派給你、還沒看過（藍點），或上次看過之後有更新（橘點）的工作項目。 */
+.workitem-dot { display: inline-block; flex: none; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+.workitem-dot.updated { background: light-dark(#c2410c, #fb923c); }
+.workitem.workitem-marked .workitem-title { font-weight: 600; }
+/* 清單上方：狀態文字與排列方式（側邊欄窄時換行）。 */
+.workitems-statusrow { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; justify-content: space-between; }
+.workitems-statusrow .workitems-status { flex: 1 1 120px; min-width: 0; }
+.workitems-arrange { flex: none; max-width: 100%; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 12px var(--font-ui); cursor: pointer; }
+.workitems-arrange:hover { color: var(--fg); background: var(--active-line); }
+.workitems-arrange:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.workitems-group button { display: flex; gap: 4px; align-items: center; width: 100%; margin-top: 6px; padding: 3px 4px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: 600 12px var(--font-ui); text-align: left; cursor: pointer; }
+.workitems-group button:hover { background: var(--active-line); color: var(--fg); }
+.workitems-group button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.workitems-group .icon { flex: none; width: 14px; height: 14px; }
+.workitems-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workitems-group-count { flex: none; min-width: 18px; padding: 0 5px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 8%, transparent); font-weight: 500; text-align: center; }
 .workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
 .workitems-searchrow .workitems-search { flex: 1; min-width: 0; }
 .workitems-filter-toggle { position: relative; display: grid; flex: none; place-items: center; width: 30px; height: 30px; margin: 2px 0 6px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; }
@@ -2327,6 +2348,11 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .workspace.issue-open > .editor-pane,
 .workspace.issue-open > .splitter,
 .workspace.issue-open > .preview-pane { display: none; }
+/* 和編輯區並排：內容放在預覽的位置，編輯區與分隔線照常顯示。 */
+.workspace.issue-open.issue-side > .editor-pane { display: flex; }
+.workspace.issue-open.issue-side > .splitter { display: block; }
+.workspace.issue-side > .issue-pane:not(.history-pane) { grid-column: preview-start / preview-end; }
+.workspace.narrow .issue-side-toggle { display: none; }
 .issue-head {
   display: flex;
   flex: none;
@@ -2342,7 +2368,7 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .issue-heading { display: flex; flex: 1 1 260px; flex-direction: column; min-width: 0; }
 /* 不是本機檔案的內容：上方一條來源顏色的細條，標頭有來源與「唯讀」標籤。 */
 .issue-pane { --source: var(--accent); border-top: 3px solid var(--source); }
-.issue-pane[data-source="ado"], .issue-pane[data-source="wiki"] { --source: light-dark(#0b6bcb, #4ea1f3); }
+.issue-pane[data-source="ado"], .issue-pane[data-source="wiki"], .issue-pane[data-source="repo"] { --source: light-dark(#0b6bcb, #4ea1f3); }
 .issue-pane[data-source="github"] { --source: light-dark(#8250df, #a371f7); }
 .issue-pane[data-source="git"] { --source: light-dark(#d1491f, #f0784f); }
 .issue-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; margin-bottom: 2px; }
@@ -2363,9 +2389,35 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .source-badge .icon { width: 13px; height: 13px; }
 .source-badge.source-readonly { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--muted); font-weight: 500; }
 /* 檢視開著時，分頁列上原本選取的本機分頁變淡（目前看的不是它）。 */
-body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
-body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
-.issue-label { color: var(--muted); font-size: 12px; }
+body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
+body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
+.issue-label { display: inline-flex; flex-wrap: wrap; gap: 0 4px; align-items: baseline; min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.issue-crumb { padding: 0 2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.issue-crumb:hover { background: var(--active-line); color: var(--fg); text-decoration: underline; }
+.issue-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.issue-crumb-sep { color: var(--subtle); }
+/* 工作項目內容上方的操作列：狀態、指派給我、新增留言（窄的時候換行）。 */
+.issue-toolbar-host { flex: none; border-bottom: 1px solid var(--border); background: var(--surface); }
+.issue-toolbar-host[hidden] { display: none; }
+.issue-toolbar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 6px 16px; }
+.issue-toolbar-field { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; }
+.issue-toolbar-select { max-width: 200px; height: 28px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
+.issue-toolbar-select:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.issue-toolbar .btn[hidden] { display: none; }
+.issue-comment-form { display: flex; flex: 1 1 100%; flex-direction: column; gap: 6px; }
+.issue-comment-form[hidden] { display: none; }
+.issue-comment-form textarea { box-sizing: border-box; width: 100%; min-height: 64px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--font-ui); resize: vertical; }
+.issue-comment-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.issue-comment-actions { display: flex; gap: 6px; justify-content: flex-end; }
+/* 文件裡連到工作項目、Wiki 頁面的摘要卡片（編輯器的提示框、預覽的浮動卡片）。 */
+.remote-card { --source: light-dark(#0b6bcb, #4ea1f3); max-width: min(360px, calc(100vw - 32px)); padding: 8px 12px; color: var(--fg); font: 12.5px/1.5 var(--font-ui); }
+.remote-card-floating { position: fixed; z-index: 60; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 20px rgb(0 0 0 / 14%); pointer-events: none; }
+.remote-card-source { display: flex; gap: 4px; align-items: center; color: var(--source); font-size: 11.5px; font-weight: 600; }
+.remote-card-source .icon { width: 13px; height: 13px; }
+.remote-card-title { margin-top: 2px; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.remote-card-meta { color: var(--muted); overflow-wrap: anywhere; }
+.remote-card-meta.remote-card-error { color: var(--danger); }
+.remote-card-hint { margin-top: 4px; color: var(--subtle); font-size: 11.5px; }
 .issue-title { margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }

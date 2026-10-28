@@ -6,6 +6,7 @@ import {
   type Settings,
   type SettingsStore,
 } from "../settings.ts";
+import { desktop } from "../desktop.ts";
 import { fontStack, installedFonts } from "../fonts.ts";
 import { type LangPref, langPref, langPrefs, setLangPref, t } from "../i18n.ts";
 import { icon } from "./icons.ts";
@@ -31,6 +32,13 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["kai", t("楷體")],
     ["mono", t("等寬")],
     ["custom", t("自訂…")],
+  ],
+  uiScale: [
+    ["90", "90%"],
+    ["100", t("100%（預設）")],
+    ["110", "110%"],
+    ["125", "125%"],
+    ["150", "150%"],
   ],
   docLineHeight: [
     ["compact", t("緊湊")],
@@ -113,6 +121,8 @@ interface Field {
   key: keyof Settings;
   label: string;
   hint?: string;
+  /** 只有桌面版有（網頁版用瀏覽器本身的功能）。 */
+  desktopOnly?: boolean;
 }
 
 /** 一組放在同一張卡片裡的選項；`title` 顯示在卡片上方。 */
@@ -139,6 +149,12 @@ const LOOK_GROUPS: Group[] = [
   {
     title: t("版面"),
     fields: [
+      {
+        key: "uiScale",
+        label: t("介面大小"),
+        hint: t("整個視窗一起放大或縮小（選單、側邊欄、按鈕）；文件的字級在上面另外設定"),
+        desktopOnly: true,
+      },
       { key: "docLineHeight", label: t("行距") },
       { key: "previewWidth", label: t("文字欄寬"), hint: t("預覽與匯出的版面寬度") },
       { key: "fixedToolbar", label: t("固定顯示格式工具列"), hint: t("關閉時，選取文字才會浮出格式按鈕") },
@@ -828,7 +844,9 @@ export class SettingsDialog {
   }
 
   #rows(fields: Field[]): HTMLElement[] {
-    return fields.map((f) => this.#row(f.key, f.label, f.hint, () => this.#control(f.key)));
+    return fields
+      .filter((f) => !f.desktopOnly || desktop)
+      .map((f) => this.#row(f.key, f.label, f.hint, () => this.#control(f.key)));
   }
 
   #row(id: string, label: string, hint: string | undefined, control: () => HTMLElement): HTMLElement {
