@@ -592,6 +592,11 @@ export class IssueView {
       highlights.delete("issue-find-current");
       return;
     }
+    // 目前的符合處在收合的區塊（<details>）裡：展開，才看得到、捲得過去。
+    for (let el = this.#matches[this.#current].node.parentElement; el; el = el.parentElement) {
+      if (el instanceof HTMLDetailsElement && !el.open) el.open = true;
+      if (el === this.#body) break;
+    }
     const ranges = this.#matches.map((m) => this.#range(m));
     highlights.set("issue-find", new Highlight(...ranges));
     const current = ranges[this.#current];
