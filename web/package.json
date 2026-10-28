@@ -1,7 +1,7 @@
 {
   "name": "md-editor-web",
   "private": true,
-  "version": "1.31.4",
+  "version": "1.31.5",
   "type": "module",
   "scripts": {
     "wasm": "wasm-pack build ../crates/md-wasm --release --target web --out-dir ../../web/pkg --out-name md_wasm",

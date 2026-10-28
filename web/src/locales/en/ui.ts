@@ -472,5 +472,6 @@ export const ui: Record<string, Translation> = {
   "釘選這一頁": "Pin This Page",
   "最近看過": "Recently Viewed",
   "已釘選": "Pinned",
+  "顯示的是之前讀到的內容，這次更新失敗：{message}": "Showing what was loaded earlier; this update failed: {message}",
   "網路恢復或切回這個視窗時會自動再試一次。": "It will try again automatically when the network is back or you return to this window.",
 };
