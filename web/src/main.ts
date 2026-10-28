@@ -119,6 +119,7 @@ import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts"
 import { IssueView, type IssueSource } from "./ui/issue-view.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
 import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink } from "./wiki-text.ts";
+import { markOf, markSeen, remember, type SeenMap, trimSeen } from "./workitem-seen.ts";
 import { githubIssueMarkdown, issueFileName, workItemMarkdown } from "./issue-doc.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
@@ -1997,6 +1998,7 @@ const issueView = new IssueView($(".workspace"), {
     // Wiki 頁面讀到內容時才設定（圖片的相對路徑以它為準）。
     wikiPage = null;
     const [kind, id, ...rest] = source.key.split(":");
+    if (kind === "ado") workItemOpened(Number(id));
     workItemsPanel?.select(kind === "ado" ? Number(id) : null);
     issuesPanel?.select(kind === "github" ? Number(id) : null);
     wikiPanel?.select(kind === "wiki" && wikiPanel.wiki?.id === id ? rest.join(":") : null);
@@ -2224,10 +2226,17 @@ function workItemFilterBar(): HTMLElement {
 const workItemsPanel = desktop
   ? new IssuesPanel<AdoWorkItem & IssueSummary>($("#workitems-host"), {
       placeholder: t("搜尋標題或內容，或輸入編號"),
+      mark: (item) => {
+        const mark = markOf(workItemSeen, item);
+        if (!mark) return null;
+        return { kind: mark, label: mark === "new" ? t("新指派給你，還沒看過") : t("上次看過之後有更新") };
+      },
       filters: workItemFilterBar(),
       list: async (search) => {
         loadWorkItemFilterOptions();
-        return (await desktop!.adoWorkItems(search, workItemFilter)).map((w) => ({
+        const found = await desktop!.adoWorkItems(search, workItemFilter);
+        noteWorkItems(found, !search && isDefaultFilter());
+        return found.map((w) => ({
           ...w,
           meta: [`${w.kind} ${w.id}`, w.state, showAssignee() ? w.assignedTo : "", shortDate(w.changed)]
             .filter(Boolean)
@@ -2343,7 +2352,86 @@ function renderAdoTab(): void {
   tab.hidden = !ado?.account;
   if (tab.hidden) panelUnavailable("ado");
   else panelAvailable("ado");
+  if (ado?.account) void pollWorkItems();
+  else {
+    pollItems = [];
+    renderAdoBadge();
+  }
 }
+
+// ---- 工作項目：標出上次看過之後有更新的，定時在背景檢查（圖示上顯示數量） ----
+
+let workItemSeen: SeenMap | null = (() => {
+  try {
+    const v = JSON.parse(storage.load("workitem-seen") ?? "null") as unknown;
+    return v && typeof v === "object" ? (v as SeenMap) : null;
+  } catch {
+    return null;
+  }
+})();
+/** 讀過的工作項目（開啟時找得到最後更新時間）。 */
+const knownWorkItems = new Map<number, AdoWorkItem>();
+/** 最近一次「指派給你、還沒結束」的清單（背景檢查或面板的預設清單）。 */
+let pollItems: AdoWorkItem[] = [];
+
+function saveSeen(next: SeenMap): void {
+  workItemSeen = trimSeen(next);
+  storage.save("workitem-seen", JSON.stringify(workItemSeen));
+}
+
+/** 記下讀到的工作項目；`mine` 是指派給你、還沒結束的清單。 */
+function noteWorkItems(items: AdoWorkItem[], mine: boolean): void {
+  for (const w of items) knownWorkItems.set(w.id, w);
+  const { seen, changed } = remember(workItemSeen, items, mine);
+  if (changed) saveSeen(seen);
+  if (mine) pollItems = items;
+  renderAdoBadge();
+}
+
+/** 開啟工作項目時記下「看過了」，清掉清單上的小圓點。 */
+function workItemOpened(id: number): void {
+  const item = knownWorkItems.get(id);
+  if (!item) return;
+  const { seen, changed } = markSeen(workItemSeen, item);
+  if (!changed) return;
+  saveSeen(seen);
+  workItemsPanel?.refreshMarks();
+  renderAdoBadge();
+}
+
+/** 圖示上的數字：指派給你的工作項目裡，新的或有更新的有幾個。 */
+function renderAdoBadge(): void {
+  const badge = $("#ado-badge");
+  const n = pollItems.filter((w) => markOf(workItemSeen, w)).length;
+  badge.hidden = !n;
+  badge.textContent = n > 99 ? "99+" : String(n);
+  const tab = $("#side-tab-ado");
+  const label = t("Azure DevOps（工作項目、Wiki）");
+  tab.setAttribute("aria-label", n ? t("{label}：{n} 個工作項目有更新", { label, n }) : label);
+}
+
+let polling = false;
+/** 在背景檢查指派給你的工作項目（視窗沒在看時略過）。 */
+async function pollWorkItems(): Promise<void> {
+  if (polling || !desktop || !ado?.account || document.hidden) return;
+  polling = true;
+  try {
+    const signature = () => pollItems.map((w) => `${w.id}@${w.changed}`).join();
+    const before = signature();
+    noteWorkItems(await desktop.adoWorkItems("", DEFAULT_WORK_ITEM_FILTER), true);
+    // 面板上是同一份清單時，有新的或更新的項目就一起更新清單。
+    if (before && signature() !== before && isDefaultFilter() && workItemsPanel?.showingList) void workItemsPanel.refresh();
+    else workItemsPanel?.refreshMarks();
+  } catch {
+    // 網路斷了就等下次再檢查。
+  } finally {
+    polling = false;
+  }
+}
+window.setInterval(() => void pollWorkItems(), 5 * 60_000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void pollWorkItems();
+});
 
 /** 切換 Azure DevOps 面板裡的工作項目／Wiki（面板開著時才讀取內容）。 */
 function setAdoTab(tab: AdoTab): void {

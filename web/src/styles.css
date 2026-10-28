@@ -1745,6 +1745,10 @@ button.git-info:disabled { cursor: default; }
 /* 工作項目（Azure DevOps） */
 .workitems-search { width: 100%; height: 30px; margin: 2px 0 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
 .workitems-search:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* 新指派給你、還沒看過（藍點），或上次看過之後有更新（橘點）的工作項目。 */
+.workitem-dot { display: inline-block; flex: none; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+.workitem-dot.updated { background: light-dark(#c2410c, #fb923c); }
+.workitem.workitem-marked .workitem-title { font-weight: 600; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
 .workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }
