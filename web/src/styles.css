@@ -1198,6 +1198,17 @@ kbd {
 .statusbar.viewing .view-switch button[aria-checked="true"] { background: none; color: var(--muted); box-shadow: none; }
 
 /* ---- 狀態列按鈕 ---- */
+/* Azure DevOps 連線狀態：綠點正常、橘點連不到、紅點權杖有問題；檢查中閃爍。 */
+.ado-state .ado-dot { flex: none; width: 7px; height: 7px; margin-left: -2px; border-radius: 50%; background: var(--subtle); }
+.ado-state[data-state="ok"] .ado-dot { background: var(--success); }
+.ado-state[data-state="offline"] .ado-dot, .ado-state[data-state="error"] .ado-dot { background: light-dark(#c2410c, #fb923c); }
+.ado-state[data-state="auth"] .ado-dot { background: var(--danger); }
+.ado-state[data-state="offline"], .ado-state[data-state="error"] { color: light-dark(#c2410c, #fb923c); }
+.ado-state[data-state="auth"] { color: var(--danger); }
+.ado-state.checking .ado-dot { animation: ado-pulse 1s ease-in-out infinite; }
+@keyframes ado-pulse { 50% { opacity: 0.3; } }
+.ado-state-label:empty { display: none; }
+@media (max-width: 720px) { .ado-state-label { display: none; } }
 .status-btn {
   display: inline-flex;
   gap: 4px;

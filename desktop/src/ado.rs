@@ -542,6 +542,98 @@ pub async fn ado_check(app: AppHandle) -> Result<Vec<AccessCheck>, String> {
     .await
 }
 
+// ---- 連線狀態（狀態列） --------------------------------------------------------
+
+/// 連線狀態：`ok`（連得到、權杖有效）、`offline`（連不到伺服器）、`auth`（權杖無效或過期）、
+/// `error`（其他錯誤）、`none`（還沒有設定連線）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AdoPing {
+    status: &'static str,
+    /// 登入者（`ok` 時）。
+    name: Option<String>,
+    message: String,
+}
+
+/// 依 connectionData 的回應分類（`code` 是 HTTP 狀態碼，`body` 是內容）。
+fn ping_of(code: u16, body: &str) -> AdoPing {
+    let auth = || AdoPing {
+        status: "auth",
+        name: None,
+        message: tr!("個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖"),
+    };
+    match code {
+        401 | 403 => auth(),
+        c if c < 400 => match serde_json::from_str::<Value>(body)
+            .ok()
+            .as_ref()
+            .and_then(user_of)
+        {
+            Some((name, _)) => AdoPing {
+                status: "ok",
+                name: Some(name),
+                message: String::new(),
+            },
+            // 權杖不對時，雲端版會回傳登入網頁（不是 JSON）或匿名使用者。
+            None => auth(),
+        },
+        c => AdoPing {
+            status: "error",
+            name: None,
+            message: tr!("伺服器回應 {code}", code = c),
+        },
+    }
+}
+
+/// 檢查連線狀態（不會修改任何資料，最多等 20 秒）。
+#[tauri::command]
+pub async fn ado_ping(app: AppHandle) -> Result<AdoPing, String> {
+    let Some((a, pat)) = connection(&app) else {
+        return Ok(AdoPing {
+            status: "none",
+            name: None,
+            message: String::new(),
+        });
+    };
+    crate::io::blocking_for(Duration::from_secs(20), move || {
+        let call = |version: Option<&str>| {
+            let url = match version {
+                Some(v) => format!("{}/_apis/connectionData?api-version={v}", a.url),
+                None => format!("{}/_apis/connectionData", a.url),
+            };
+            crate::update::agent()
+                .get(&url)
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call()
+        };
+        // 舊版伺服器不接受預覽版號（回 400），再不帶版號試一次。
+        let res = match call(Some("5.0-preview")) {
+            Ok(r) if r.status().as_u16() == 400 => call(None),
+            other => other,
+        };
+        Ok(match res {
+            Ok(mut r) => {
+                let code = r.status().as_u16();
+                let body = r.body_mut().read_to_string().unwrap_or_default();
+                ping_of(code, &body)
+            }
+            Err(e) => AdoPing {
+                status: "offline",
+                name: None,
+                message: tr!(
+                    "連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
+                    e = e
+                ),
+            },
+        })
+    })
+    .await
+}
+
 // ---- 儲存庫 -----------------------------------------------------------------
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -2374,6 +2466,24 @@ mod tests {
             ]
         );
         assert!(relation_links(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn classifies_ping() {
+        let ok = r#"{"authenticatedUser":{"providerDisplayName":"王小明"}}"#;
+        assert_eq!(ping_of(200, ok).status, "ok");
+        assert_eq!(ping_of(200, ok).name.as_deref(), Some("王小明"));
+        assert_eq!(ping_of(200, "<html>login</html>").status, "auth");
+        assert_eq!(
+            ping_of(
+                200,
+                r#"{"authenticatedUser":{"providerDisplayName":"Anonymous"}}"#
+            )
+            .status,
+            "auth"
+        );
+        assert_eq!(ping_of(401, "").status, "auth");
+        assert_eq!(ping_of(500, "").status, "error");
     }
 
     #[test]

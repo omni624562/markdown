@@ -823,6 +823,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     githubGist: (fileName: string, content: string, description: string, isPublic: boolean) =>
       core.invoke<string>("github_gist", { fileName, content, description, public: isPublic }),
     adoAccount: () => core.invoke<AdoAccount | null>("ado_account"),
+    /** 連線狀態（狀態列用）。 */
+    adoPing: () =>
+      core.invoke<{ status: "ok" | "offline" | "auth" | "error" | "none"; name: string | null; message: string }>("ado_ping"),
     /** 逐項檢查權杖能做什麼（登入、專案、工作項目讀寫、Wiki、程式碼）。 */
     adoCheck: () =>
       core.invoke<{ id: string; label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>("ado_check"),
