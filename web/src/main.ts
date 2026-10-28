@@ -3226,7 +3226,7 @@ let loadWorkItemFilterOptions = (): void => {};
  * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
  * 平常收起來，按搜尋框右邊的「篩選」按鈕展開；按鈕上的數字是改過幾項條件。
  */
-function workItemFilterBar(): { bar: HTMLElement; button: HTMLButtonElement } {
+function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   const bar = document.createElement("div");
   bar.className = "workitems-filters";
   bar.id = "workitem-filters";
@@ -3247,6 +3247,18 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLButtonElement } {
   reset.type = "button";
   reset.className = "btn btn-small workitems-filter-reset";
   reset.textContent = t("清除篩選");
+  // 有設定條件時，篩選按鈕旁邊多一個「×」，不用展開篩選列就能一次清掉。
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "workitems-filter-clear";
+  const clearLabel = t("清除全部篩選條件（回到「指派給我、進行中」）");
+  clear.title = clearLabel;
+  clear.setAttribute("aria-label", clearLabel);
+  clear.append(icon("x"));
+  clear.addEventListener("click", () => reset.click());
+  const group = document.createElement("span");
+  group.className = "workitems-filter-group";
+  group.append(button, clear);
   const updateBadge = () => {
     const n = [
       !(f.role === "assigned" && f.person === "@me"),
@@ -3258,6 +3270,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLButtonElement } {
     badge.textContent = n ? String(n) : "";
     badge.hidden = !n;
     reset.hidden = !n;
+    clear.hidden = !n;
     button.classList.toggle("active", n > 0);
     const label = n ? t("篩選（已設定 {n} 項）", { n }) : t("篩選");
     button.title = label;
@@ -3399,7 +3412,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLButtonElement } {
   bar.append(person, state, name, kind, project, area, people, reset);
   updateBadge();
   setOpen(storage.load("workitem-filter-open") === "1");
-  return { bar, button };
+  return { bar, button: group };
 }
 
 const workItemsPanel = desktop
