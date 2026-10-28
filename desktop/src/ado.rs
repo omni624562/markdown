@@ -1886,6 +1886,40 @@ pub async fn ado_wiki_save(
     .await
 }
 
+/// 建立新的 Wiki 頁面（只限專案 Wiki）：`path` 是完整路徑（例如 `/產品/新頁面`），上層頁面要已經存在。
+/// 已經有同名的頁面時不覆蓋。回傳新頁面的版本（之後存回時用）。
+#[tauri::command]
+pub async fn ado_wiki_create(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .put(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(&serde_json::json!({ "content": content }).to_string());
+        match res {
+            // 沒帶 If-Match 時，已經有這一頁會被拒絕（不會覆蓋）。
+            Err(ureq::Error::StatusCode(409 | 412)) => Err(tr!("已經有同名的頁面了，請換一個名稱")),
+            res => {
+                let (_, etag) = read_with_etag(res, &tr!("建立 Wiki 頁面"))?;
+                Ok(match etag {
+                    Some(etag) => Some(etag),
+                    None => read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?.etag,
+                })
+            }
+        }
+    })
+    .await
+}
+
 /// 一個 Wiki 頁面的內容（Markdown）。
 #[tauri::command]
 pub async fn ado_wiki_page(

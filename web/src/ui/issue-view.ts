@@ -42,6 +42,8 @@ export interface IssueSource {
   toolbar?: HTMLElement;
   /** 「編輯」：在分頁裡編輯、存回伺服器（不能編輯的不給）。 */
   edit?(): void;
+  /** 「新增子頁面」（Wiki 頁面；不能新增的不給）。 */
+  addChild?(): void;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -146,6 +148,7 @@ export class IssueView {
   /** 「保留離線」。 */
   #keepBtn: HTMLButtonElement;
   #editBtn: HTMLButtonElement;
+  #addChildBtn: HTMLButtonElement;
   #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
   #current = 0;
@@ -189,6 +192,13 @@ export class IssueView {
     this.#editBtn.title = t("在分頁裡編輯，按 Ctrl+S 存回伺服器");
     this.#editBtn.hidden = true;
     this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
+    this.#addChildBtn = document.createElement("button");
+    this.#addChildBtn.type = "button";
+    this.#addChildBtn.className = "btn btn-small";
+    this.#addChildBtn.append(icon("file-plus"), t("新增子頁面"));
+    this.#addChildBtn.title = t("在這一頁底下新增一頁，建立後直接編輯");
+    this.#addChildBtn.hidden = true;
+    this.#addChildBtn.addEventListener("click", () => this.#source?.addChild?.());
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "btn btn-small";
@@ -212,6 +222,7 @@ export class IssueView {
     actions.append(
       insert,
       this.#editBtn,
+      this.#addChildBtn,
       copy,
       this.#keepBtn,
       ...(this.#sideBtn ? [this.#sideBtn] : []),
@@ -395,6 +406,7 @@ export class IssueView {
     this.#toolbar.replaceChildren(...(source.toolbar ? [source.toolbar] : []));
     this.#toolbar.hidden = !source.toolbar;
     this.#editBtn.hidden = !source.edit;
+    this.#addChildBtn.hidden = !source.addChild;
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();
