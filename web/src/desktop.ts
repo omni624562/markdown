@@ -837,6 +837,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
         path,
         version: w.code ? w.version : null,
       }),
+    /** 離線副本：存一份（`kept` 時不會自動刪掉）、讀回來、取消保留。 */
+    offlinePut: (key: string, value: string, kept: boolean) => core.invoke<void>("offline_put", { key, value, kept }),
+    offlineGet: (key: string) => core.invoke<string | null>("offline_get", { key }),
+    offlineRelease: (key: string) => core.invoke<void>("offline_release", { key }),
     /** Wiki 儲存庫裡的圖片，回傳 data: 網址。 */
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
