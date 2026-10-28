@@ -559,4 +559,10 @@ export const ui: Record<string, Translation> = {
   "{label}・{time} 更新": "{label} · updated {time}",
   "Azure DevOps／TFS：保留離線的頁面…": "Azure DevOps/TFS: Pages kept offline…",
   "網路恢復或切回這個視窗時會自動再試一次。": "It will try again automatically when the network is back or you return to this window.",
+  "修改記錄": "History",
+  "誰、什麼時候改了這一頁，改了什麼": "Who changed this page, when, and what they changed",
+  "新增子頁面": "New Subpage",
+  "新增頁面": "New Page",
+  "在這一頁底下新增一頁，建立後直接編輯": "Add a page under this one and start editing it",
+  "在「{name}」底下新增子頁面": "New subpage under “{name}”",
 };

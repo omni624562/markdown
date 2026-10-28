@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { flattenPages, imageRepoPath, pageFromGitPath, pageName, pushRecent, resolvePageLink, snippetParts, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { childPagePath, flattenPages, imageRepoPath, pageFromGitPath, pageName, pushRecent, resolvePageLink, snippetParts, wikiMarkdown, wikiPageLink, wikiPageUrl, wikiTitleProblem } from "./wiki-text.ts";
 
 const pages = ["/首頁", "/產品", "/產品/安裝 說明", "/產品/a-b", "/FAQ"];
 
@@ -93,4 +93,20 @@ test("snippetParts 拆出符合的字", () => {
   ]);
   assert.deepEqual(snippetParts(""), []);
   assert.deepEqual(snippetParts("<b>x</b>"), [{ text: "<b>x</b>", hit: false }]);
+});
+
+test("wikiTitleProblem 檢查新頁面的標題", () => {
+  assert.equal(wikiTitleProblem("  安裝說明 "), null);
+  assert.equal(wikiTitleProblem("   "), "empty");
+  assert.equal(wikiTitleProblem("A/B"), "chars");
+  assert.equal(wikiTitleProblem("C#"), "chars");
+  assert.equal(wikiTitleProblem("a\\b"), "chars");
+  assert.equal(wikiTitleProblem(".隱藏"), "dot");
+  assert.equal(wikiTitleProblem("很".repeat(80)), "long");
+});
+
+test("childPagePath 組出新頁面的路徑", () => {
+  assert.equal(childPagePath(null, " 新頁面 "), "/新頁面");
+  assert.equal(childPagePath("/", "新頁面"), "/新頁面");
+  assert.equal(childPagePath("/產品/安裝", "Windows"), "/產品/安裝/Windows");
 });
