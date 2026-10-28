@@ -1315,6 +1315,139 @@ pub async fn ado_wiki_page(
     .await
 }
 
+// ---- Wiki 全文搜尋 -------------------------------------------------------------
+
+/// 搜尋服務的網址：雲端版在另一個主機（almsearch），自架的伺服器就是集合本身。
+fn search_base(base: &str) -> String {
+    if let Some(rest) = base.strip_prefix("https://dev.azure.com/") {
+        return format!("https://almsearch.dev.azure.com/{rest}");
+    }
+    if let Some((scheme, rest)) = base.split_once("://") {
+        let (host, path) = rest.split_once('/').map_or((rest, ""), |(h, p)| (h, p));
+        if let Some(org) = host.strip_suffix(".visualstudio.com") {
+            let path = if path.is_empty() {
+                String::new()
+            } else {
+                format!("/{path}")
+            };
+            return format!("{scheme}://{org}.almsearch.visualstudio.com{path}");
+        }
+    }
+    base.to_string()
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHit {
+    /// 頁面在 Wiki 儲存庫裡的檔案路徑（例如 `/產品/安裝-說明.md`）。
+    path: String,
+    /// 符合的片段（`<highlighthit>` 標出符合的字）。
+    snippet: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiSearch {
+    /// 伺服器有沒有搜尋功能（沒裝 Search 擴充功能時是 false）。
+    available: bool,
+    results: Vec<WikiHit>,
+}
+
+fn wiki_hits(v: &Value) -> Vec<WikiHit> {
+    v.get("results")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|r| {
+            let path = str_of(r, "path")?.to_string();
+            let snippet = r
+                .get("hits")
+                .and_then(Value::as_array)
+                .and_then(|hits| {
+                    hits.iter()
+                        .find(|h| str_of(h, "fieldReferenceName") == Some("content"))
+                        .or_else(|| hits.first())
+                })
+                .and_then(|h| h.get("highlights"))
+                .and_then(Value::as_array)
+                .and_then(|l| l.first())
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            Some(WikiHit { path, snippet })
+        })
+        .collect()
+}
+
+/// 在一個 Wiki 的內容裡搜尋（需要伺服器有 Search 擴充功能；沒有時 `available` 是 false）。
+#[tauri::command]
+pub async fn ado_wiki_search(
+    app: AppHandle,
+    project: String,
+    wiki: String,
+    text: String,
+) -> Result<WikiSearch, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let url = format!(
+            "{}/{}/_apis/search/wikisearchresults?api-version=5.0-preview.1",
+            search_base(&a.url),
+            encode_segment(&project)
+        );
+        let body = serde_json::json!({
+            "searchText": text,
+            "$skip": 0,
+            "$top": 50,
+            "filters": { "Project": [project], "Wiki": [wiki] },
+            "includeFacets": false,
+        });
+        let mut res = crate::update::agent()
+            .post(&url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(&body.to_string())
+            .map_err(|e| {
+                tr!(
+                    "{what}失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
+                    what = tr!("搜尋 Wiki"),
+                    e = e
+                )
+            })?;
+        let code = res.status().as_u16();
+        let text = res.body_mut().read_to_string().unwrap_or_default();
+        match code {
+            // 沒有搜尋服務（沒裝擴充功能、舊版伺服器）。
+            400 | 404 | 501 => Ok(WikiSearch {
+                available: false,
+                results: vec![],
+            }),
+            401 | 403 => Err(tr!("{what}失敗：沒有權限", what = tr!("搜尋 Wiki"))),
+            c if c >= 400 => Err(tr!(
+                "{what}失敗：伺服器回應 {code}",
+                what = tr!("搜尋 Wiki"),
+                code = c
+            )),
+            _ => {
+                let v: Value = serde_json::from_str(&text).map_err(|_| {
+                    tr!(
+                        "{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖",
+                        what = tr!("搜尋 Wiki")
+                    )
+                })?;
+                Ok(WikiSearch {
+                    available: true,
+                    results: wiki_hits(&v),
+                })
+            }
+        }
+    })
+    .await
+}
+
 /// 依副檔名判斷圖片類型（不支援 SVG：可能含有指令碼）。
 fn image_mime(path: &str) -> Option<&'static str> {
     let ext = path.rsplit('.').next()?.to_ascii_lowercase();
@@ -1729,6 +1862,28 @@ mod tests {
             {"identity": {"displayName": " "}}
         ]});
         assert_eq!(member_names(&members), ["王小明", "Amy Lin"]);
+    }
+
+    #[test]
+    fn searches_wikis() {
+        assert_eq!(
+            search_base("https://dev.azure.com/acme"),
+            "https://almsearch.dev.azure.com/acme"
+        );
+        assert_eq!(
+            search_base("https://acme.visualstudio.com/DefaultCollection"),
+            "https://acme.almsearch.visualstudio.com/DefaultCollection"
+        );
+        assert_eq!(search_base("https://tfs/DC"), "https://tfs/DC");
+        let v = json!({"results": [
+            {"path": "/產品/安裝-說明.md", "hits": [{"fieldReferenceName": "fileName", "highlights": ["x"]},
+                {"fieldReferenceName": "content", "highlights": ["先<highlighthit>安裝</highlighthit>工具"]}]},
+            {"path": "/首頁.md"}
+        ]});
+        let hits = wiki_hits(&v);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].snippet, "先<highlighthit>安裝</highlighthit>工具");
+        assert_eq!(hits[1].snippet, "");
     }
 
     #[test]

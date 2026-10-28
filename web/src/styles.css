@@ -1836,6 +1836,14 @@ button.git-info:disabled { cursor: default; }
 .wiki-quick h3 { margin: 6px 4px 2px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
 .wiki-quick ul { margin: 0; padding: 0; list-style: none; }
 .wiki-where { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
+/* 名稱搜尋結果下方的「內容符合」。 */
+.wiki-content { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+.wiki-content[hidden] { display: none; }
+.wiki-content h3 { margin: 6px 4px 2px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.wiki-content ul { margin: 0; padding: 0; list-style: none; }
+.wiki-content-note { margin: 4px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.wiki-snippet { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.wiki-snippet mark { padding: 0 1px; border-radius: 2px; background: var(--accent-soft); color: var(--fg); }
 .tasks-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
 .tasks-filters .segmented button[aria-pressed="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
 .tasks-filters select { height: 28px; max-width: 110px; padding: 0 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 12px var(--font-ui); }
