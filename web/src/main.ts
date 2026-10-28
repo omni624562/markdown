@@ -1953,6 +1953,9 @@ function rerenderIssue(): void {
   issuePreview?.clear();
   issueView.rerender();
 }
+/** 工作項目、Wiki、Issue 和編輯區並排顯示（不蓋住正在寫的文件）；記住上次的選擇。 */
+let issueSide = storage.load("issue-side") === "1";
+
 const issueView = new IssueView($(".workspace"), {
   render(markdown, into) {
     issuePreview ??= new Preview(into, [
@@ -2001,6 +2004,13 @@ const issueView = new IssueView($(".workspace"), {
     issuesPanel?.select(kind === "github" ? Number(id) : null);
     wikiPanel?.select(kind === "wiki" && wikiPanel.wiki?.id === id ? rest.join(":") : null);
   },
+  toggleSide() {
+    issueSide = !issueSide;
+    storage.save("issue-side", issueSide ? "1" : "");
+    issueView.setSide(issueSide);
+    applyLayout();
+    toast(issueSide ? t("已改成和編輯區並排顯示") : t("已改回蓋住編輯區顯示"));
+  },
   closed() {
     wikiPage = null;
     outlineView = null;
@@ -2018,7 +2028,8 @@ const statusView = $("#status-view");
 const issuePane = $(".issue-pane:not(.history-pane)");
 
 function renderStatusView(): void {
-  const issueOpen = workspace.classList.contains("issue-open");
+  // 並排顯示時編輯區還在，狀態列照常顯示文件的資訊。
+  const issueOpen = workspace.classList.contains("issue-open") && !workspace.classList.contains("issue-side");
   const historyOpen = workspace.classList.contains("history-open");
   const viewing = issueOpen || historyOpen;
   $(".statusbar").classList.toggle("viewing", viewing);
@@ -2049,6 +2060,15 @@ function renderStatusView(): void {
   statusView.replaceChildren(label, back);
 }
 new MutationObserver(renderStatusView).observe(workspace, { attributes: true, attributeFilter: ["class"] });
+issueView.setSide(issueSide);
+// 並排顯示時，檢視打開或關閉要重新排版（編輯區讓出右半邊）。
+let issueWasOpen = false;
+new MutationObserver(() => {
+  const open = workspace.classList.contains("issue-open");
+  if (open === issueWasOpen) return;
+  issueWasOpen = open;
+  if (issueSide) applyLayout();
+}).observe(workspace, { attributes: true, attributeFilter: ["class"] });
 new MutationObserver(renderStatusView).observe(issuePane, { attributes: true, attributeFilter: ["data-source"] });
 
 /** 工作項目的篩選條件（記住上次的選擇）。 */
@@ -3298,8 +3318,8 @@ function renderTabs(): void {
 
 /** 切換到另一個分頁。 */
 function activate(doc: Doc): void {
-  // 點分頁（包括目前的分頁）就回到文件，關掉工作項目、Git 歷史的檢視。
-  issueView.close();
+  // 點分頁（包括目前的分頁）就回到文件，關掉工作項目、Git 歷史的檢視（並排顯示時留著）。
+  if (!issueSide) issueView.close();
   historyView?.close();
   if (doc === active) return;
   flushDraft();
@@ -4162,7 +4182,8 @@ commands.register(
     keys: "Mod-f",
     when: () => view !== "preview",
     // 工作項目開在主要區域時，在它的內容裡找字。
-    run: () => (issueView.isOpen ? issueView.openFind() : void openSearchPanel(editor.view)),
+    run: () =>
+      issueView.isOpen && (!issueSide || issueView.hasFocus) ? issueView.openFind() : void openSearchPanel(editor.view),
   },
   {
     id: "format-json",
@@ -6147,8 +6168,11 @@ function applyLayout(): void {
   const narrow = narrowQuery.matches;
   // 手機寬度放不下並排，分割模式改為只顯示編輯區（可用分頁切換到預覽）。
   const effective: ViewMode = narrow && view === "split" ? "editor" : view;
+  // 工作項目等內容和編輯區並排：版面當成分割，右半邊放內容（預覽藏起來）。
+  const side = issueSide && !narrow && workspace.classList.contains("issue-open");
+  workspace.classList.toggle("issue-side", side);
   // 即時預覽的版面和只顯示編輯區相同，差別在編輯區裡直接顯示排版。
-  const layout = effective === "live" ? "editor" : effective;
+  const layout = side ? "split" : effective === "live" ? "editor" : effective;
   workspace.dataset.view = layout;
   workspace.classList.toggle("live", effective === "live");
   if (liveApplied !== (effective === "live")) {
@@ -6193,7 +6217,7 @@ function applyLayout(): void {
 }
 
 function setView(mode: ViewMode): void {
-  issueView.close();
+  if (!issueSide) issueView.close();
   historyView?.close();
   view = mode;
   storage.save("view", mode);
