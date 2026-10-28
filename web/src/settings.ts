@@ -42,6 +42,8 @@ export interface Settings {
   blockRemoteImages: boolean;
   /** 桌面版：已經存過的檔案，停止打字一下子後自動存回磁碟。 */
   autoSave: boolean;
+  /** 新指派給我的工作項目：oMarker 在背景時跳出系統通知。 */
+  adoNotify: boolean;
   /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
   autoSymbols: boolean;
   /** 標示中國用語與常見錯字（波浪底線），滑鼠移上去可以替換。 */
@@ -120,6 +122,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   blockRemoteImages: true,
   autoSymbols: true,
   autoSave: true,
+  adoNotify: true,
   termCheck: true,
   termIgnore: [],
   imageCompress: true,
@@ -193,6 +196,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("blockRemoteImages");
   bool("autoSymbols");
   bool("autoSave");
+  bool("adoNotify");
   bool("termCheck");
   bool("imageCompress");
   bool("focusMode");

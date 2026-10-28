@@ -976,6 +976,12 @@ export class SettingsDialog {
     const itemsRow = this.#row("ado-items", t("工作項目"), t("在側邊欄列出指派給你的工作項目，可以插入連結到文件"), () =>
       action("ado-items", t("顯示"), () => ado.workItems()),
     );
+    const notifyRow = this.#row(
+      "adoNotify",
+      t("新指派給我時通知"),
+      t("oMarker 在背景或縮小時，有新的工作項目指派給你就跳出 Windows 通知，點一下就打開它"),
+      () => this.#control("adoNotify"),
+    );
     // 權限檢查：逐項列出權杖能做什麼，缺的告訴使用者怎麼補。
     const results = document.createElement("ul");
     results.className = "ado-check-list";
@@ -1026,7 +1032,7 @@ export class SettingsDialog {
       urlRow.hidden = patRow.hidden = !asking;
       // 上面兩列藏起來時，帳號是第一列，不需要分隔線。
       statusRow.style.borderTop = asking ? "" : "0";
-      openRow.hidden = itemsRow.hidden = checkRow.hidden = !a;
+      openRow.hidden = itemsRow.hidden = notifyRow.hidden = checkRow.hidden = !a;
       if (!a) results.hidden = true;
       label.textContent = a ? t("帳號") : t("連線");
       hint.textContent = a
@@ -1040,7 +1046,7 @@ export class SettingsDialog {
     refresh();
     section.append(
       ...this.#group(t("連線"), [urlRow, patRow, statusRow, checkRow, results]),
-      ...this.#group(t("儲存庫與工作項目"), [openRow, itemsRow]),
+      ...this.#group(t("儲存庫與工作項目"), [openRow, itemsRow, notifyRow]),
     );
     return { section, refresh };
   }

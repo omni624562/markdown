@@ -26,6 +26,8 @@ pub static EN: &[(&str, &str)] = &[
     ("請先到設定的 Azure DevOps／TFS 頁連線", "Connect on the Azure DevOps/TFS page in Settings first."),
     ("讀取 Wiki", "Loading wikis"),
     ("讀取 Wiki 頁面", "Loading the wiki page"),
+    ("新指派給你：{kind} {id}", "Newly assigned to you: {kind} {id}"),
+    ("有 {n} 個工作項目新指派給你", "{n} work items were newly assigned to you"),
     ("搜尋 Wiki", "Searching the wiki"),
     ("個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖", "The personal access token is invalid or expired. Update it on the Azure DevOps/TFS page in Settings."),
     ("連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）", "Couldn't reach the Azure DevOps server. Check your network or VPN connection ({e})."),

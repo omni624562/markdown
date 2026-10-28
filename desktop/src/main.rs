@@ -29,6 +29,7 @@ mod images;
 mod io;
 mod locales;
 mod navigation;
+mod notify;
 mod offline;
 mod pdf;
 mod projects;
@@ -332,6 +333,7 @@ fn main() {
             ado::ado_attachment_text,
             ado::ado_work_item_states,
             ado::ado_work_item_update,
+            notify::notify_work_items,
             ado::ado_wiki_save,
             ado::ado_wiki_page_info,
             ado::ado_wiki_attach,
