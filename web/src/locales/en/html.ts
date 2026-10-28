@@ -7,8 +7,6 @@ export const html: Record<string, Translation> = {
   "側邊欄": "Sidebar",
   "待辦總覽": "Tasks",
   "Issues（GitHub）": "Issues (GitHub)",
-  "工作項目（Azure DevOps）": "Work Items (Azure DevOps)",
-  "Wiki（Azure DevOps）": "Wiki (Azure DevOps)",
   "側邊欄內容": "Sidebar Content",
   "開啟其他資料夾": "Open Another Folder",
   "工作區檔案": "Workspace Files",
@@ -21,4 +19,5 @@ export const html: Record<string, Translation> = {
   "支援 Markdown、文字檔、YAML、CSV、HTML、程式碼檔；圖片會插入到文件中": "Markdown, text, YAML, CSV, HTML and code files are supported. Images are inserted into the document.",
   "重新讀取檔案清單（不會和 Git 同步）": "Reload the file list from disk (doesn't sync with Git)",
   "重新讀取檔案清單": "Reload File List",
+  "Azure DevOps（工作項目、Wiki）": "Azure DevOps (Work Items, Wiki)",
 };

@@ -1786,6 +1786,12 @@ button.git-info:disabled { cursor: default; }
 .workitems-filters [hidden] { display: none; }
 /* Wiki（Azure DevOps） */
 .wiki-filters { grid-template-columns: 1fr; }
+/* Azure DevOps 面板上方切換工作項目／Wiki。 */
+.ado-switch { flex: 1 1 auto; min-width: 0; margin-left: -6px; }
+.ado-switch button { flex: 1 1 0; min-width: 0; gap: 5px; min-height: 26px; padding: 0 8px; font-size: 12.5px; white-space: nowrap; }
+.ado-switch button span { overflow: hidden; text-overflow: ellipsis; }
+.ado-switch button .icon { flex: none; width: 14px; height: 14px; }
+#panel-ado .side-head .side-actions { flex: none; }
 .wiki-tree { margin: 0; padding: 0; list-style: none; }
 .wiki-row { display: flex; align-items: center; padding-left: calc(var(--depth, 0) * 14px); }
 .wiki-toggle { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 24px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; }
