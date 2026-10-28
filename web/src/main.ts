@@ -3363,11 +3363,85 @@ interface QuickItem {
   detail: string;
   doc?: Doc;
   path?: string;
+  /** 工作項目、Wiki 頁面：選了之後在主要區域開啟。 */
+  remote?: { icon: string; open(): void };
+}
+
+let quickRemoteSeq = 0;
+
+/**
+ * Ctrl+P 裡的工作項目與 Wiki 頁面（連上 Azure DevOps 時）：
+ * `#123` 直接開啟那個工作項目，`#文字` 搜尋工作項目的標題；其他字找目前 Wiki 的頁面名稱。
+ */
+async function quickRemoteItems(q: string): Promise<QuickItem[]> {
+  const text = q.trim();
+  if (!desktop || !ado?.account || !text) return [];
+  if (text.startsWith("#")) {
+    const rest = text.slice(1).trim();
+    if (/^\d+$/.test(rest)) {
+      const id = Number(rest);
+      return [
+        {
+          title: `#${id}`,
+          detail: t("開啟 Azure DevOps 工作項目"),
+          remote: { icon: "square-kanban", open: () => void openWorkItemById(id) },
+        },
+      ];
+    }
+    if (rest.length < 2) return [];
+    // 打字停一下才查詢，免得每個字都向伺服器查一次。
+    const seq = ++quickRemoteSeq;
+    await new Promise((r) => setTimeout(r, 300));
+    if (seq !== quickRemoteSeq) return [];
+    const found = await desktop
+      .adoWorkItems(rest, { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" })
+      .catch(() => [] as AdoWorkItem[]);
+    return found.slice(0, 30).map((w) => ({
+      title: w.title,
+      detail: [`${w.kind} ${w.id}`, w.state].join("・"),
+      remote: { icon: "square-kanban", open: () => showWorkItem(w) },
+    }));
+  }
+  // Wiki 頁面清單在背景讀取：還沒讀到（或網路慢）時先只列檔案，不讓 Ctrl+P 卡住。
+  if (!wikiListCache) {
+    wikiListCache = desktop.adoWikis();
+    wikiListCache.catch(() => (wikiListCache = null));
+  }
+  const wikis = await soon(wikiListCache);
+  const id = wikiPanel?.wiki?.id ?? storage.load("ado-wiki");
+  const wiki = wikis?.find((w) => w.id === id) ?? wikis?.[0];
+  if (!wiki) return [];
+  let pages = wikiPagesCache.get(wiki.id);
+  if (!pages) {
+    pages = desktop.adoWikiPages(wiki);
+    wikiPagesCache.set(wiki.id, pages);
+    pages.catch(() => wikiPagesCache.delete(wiki.id));
+  }
+  const paths = flattenPages((await soon(pages)) ?? []);
+  return paths.map((path) => ({
+    title: pageName(path),
+    detail: t("Wiki・{where}", { where: [wiki.name, path.slice(1, path.lastIndexOf("/"))].filter(Boolean).join(" › ") }),
+    remote: { icon: "book-open-text", open: () => showWikiPage(wiki, path) },
+  }));
+}
+
+/** `p` 在一小段時間內有結果就回傳結果，否則（或失敗時）回傳 null。 */
+function soon<T>(p: Promise<T>, ms = 150): Promise<T | null> {
+  return Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+}
+
+/** 依編號開啟工作項目（讀不到時提示）。 */
+async function openWorkItemById(id: number): Promise<void> {
+  try {
+    showWorkItem(await peekWorkItem(id));
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e));
+  }
 }
 
 const quickOpen = new Picker<QuickItem>({
   label: t("快速開啟"),
-  placeholder: desktop ? t("輸入檔名，例如「週報」") : t("輸入檔名切換分頁"),
+  placeholder: desktop ? t("輸入檔名、Wiki 頁面，或 #編號 開啟工作項目") : t("輸入檔名切換分頁"),
   empty: t("找不到符合的檔案"),
   async query(q) {
     stash();
@@ -3396,6 +3470,10 @@ const quickOpen = new Picker<QuickItem>({
       }
     }
     if (!q.trim()) return items.slice(0, 200);
+    const remote = await quickRemoteItems(q);
+    // `#…` 只找工作項目（伺服器已經依相關程度排序）。
+    if (q.trim().startsWith("#")) return remote;
+    items.push(...remote);
     return items
       .map((it) => ({ it, score: Math.max(fuzzyScore(q, it.title) * 2, fuzzyScore(q, `${it.detail}/${it.title}`)) }))
       .filter((x) => x.score > 0)
@@ -3403,8 +3481,8 @@ const quickOpen = new Picker<QuickItem>({
       .slice(0, 200)
       .map((x) => x.it);
   },
-  render: (it) => ({ title: it.title, detail: it.detail, icon: it.doc ? "file-text" : "file" }),
-  pick: (it) => (it.doc ? activate(it.doc) : void openPath(it.path!).catch(reportError)),
+  render: (it) => ({ title: it.title, detail: it.detail, icon: it.remote?.icon ?? (it.doc ? "file-text" : "file") }),
+  pick: (it) => (it.remote ? it.remote.open() : it.doc ? activate(it.doc) : void openPath(it.path!).catch(reportError)),
 });
 
 /** 把全域變數（目前分頁）寫回分頁物件。 */
@@ -4140,6 +4218,15 @@ commands.register(
     icon: "search",
     keys: "Mod-p",
     run: () => quickOpen.open(),
+  },
+  {
+    id: "open-work-item",
+    title: t("開啟工作項目…"),
+    group: "Azure DevOps",
+    icon: "square-kanban",
+    when: () => !!ado?.account,
+    // 快速開啟裡輸入 #編號 直接開啟，#文字 搜尋標題。
+    run: () => quickOpen.open("#"),
   },
   {
     id: "search-in-folder",
