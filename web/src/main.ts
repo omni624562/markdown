@@ -2332,7 +2332,8 @@ async function renderIssuesTab(): Promise<void> {
   const tab = $("#side-tab-issues");
   tab.hidden = !repo;
   tab.title = repo ? t("Issues（{repo}）", { repo }) : "Issues";
-  if (tab.hidden && sidePanel === "issues") showPanel("files", false);
+  if (tab.hidden) panelUnavailable("issues");
+  else panelAvailable("issues");
 }
 $("#issues-refresh").addEventListener("click", () => void issuesPanel?.refresh());
 
@@ -2340,7 +2341,8 @@ $("#issues-refresh").addEventListener("click", () => void issuesPanel?.refresh()
 function renderAdoTab(): void {
   const tab = $("#side-tab-ado");
   tab.hidden = !ado?.account;
-  if (tab.hidden && sidePanel === "ado") showPanel("files", false);
+  if (tab.hidden) panelUnavailable("ado");
+  else panelAvailable("ado");
 }
 
 /** 切換 Azure DevOps 面板裡的工作項目／Wiki（面板開著時才讀取內容）。 */
@@ -2398,6 +2400,7 @@ const gitPanel =
           // Git 內建在程式裡：圖示一直顯示，還沒同步的資料夾點進去會引導上傳到 GitHub。
           const tab = $("#side-tab-git");
           tab.hidden = false;
+          panelAvailable("git");
           const count = status?.repo ? status.changes.length : 0;
           const badge = $("#git-badge");
           badge.hidden = !count;
@@ -2728,10 +2731,30 @@ function placeOutline(): void {
   right.hidden = !outlineOnRight();
 }
 
+/**
+ * 要開的面板圖示還沒出現（Azure DevOps、GitHub 要等連線讀到，Git 要等狀態讀到）時先顯示檔案，
+ * 記在這裡；圖示出現後再切回來（例如上次關閉時開著 Azure DevOps，下次啟動仍然回到它）。
+ */
+let pendingPanel: SidePanel | null = null;
+
+/** 面板的圖示不能用了（例如中斷連線）：先換到檔案，圖示再出現時切回來。 */
+function panelUnavailable(panel: SidePanel): void {
+  // 圖示已經藏起來，showPanel 會改開檔案並記住原本要的面板。
+  if (sidePanel === panel) showPanel(panel, false);
+}
+
+/** 面板的圖示出現了：剛才因為還不能用而沒開成，現在切過去。 */
+function panelAvailable(panel: SidePanel): void {
+  if (pendingPanel === panel) showPanel(panel, false);
+}
+
 function showPanel(panel: SidePanel, reveal = true): void {
+  const requested = panel;
   if (panel === "git" && $("#side-tab-git").hidden) panel = "files";
   if (panel === "ado" && $("#side-tab-ado").hidden) panel = "files";
   if (panel === "issues" && $("#side-tab-issues").hidden) panel = "files";
+  // 不能用而改開檔案時不記住（下次啟動仍然開原本要的面板）。
+  pendingPanel = panel === requested ? null : requested;
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
   if (panel === "outline" && outlinePlacedRight()) {
     if (!rightOutlineShown) setRightOutline(true);
@@ -2739,7 +2762,7 @@ function showPanel(panel: SidePanel, reveal = true): void {
     return;
   }
   sidePanel = panel;
-  storage.save("side-panel", panel);
+  if (!pendingPanel) storage.save("side-panel", panel);
   for (const tab of sideTabs) {
     const on = tab.dataset.panel === panel;
     tab.setAttribute("aria-selected", String(on));
@@ -6630,7 +6653,7 @@ setTheme(themePref);
 applySettings(settings.value);
 if (settingsRecovered) toast(t("設定檔有無法讀取的內容，相關選項已恢復成預設值。"), { tone: "error", duration: 8000 });
 buildFormatBar();
-showPanel(sidePanel, false);
+showPanel(pendingPanel ?? sidePanel, false);
 void renderFilesEmpty();
 // 手機上大綱是蓋在內容上的抽屜，一開始先收起來。
 if (narrowQuery.matches) outlineShown = false;
