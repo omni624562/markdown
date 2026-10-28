@@ -51,6 +51,8 @@ export interface IssueViewHooks {
   opened(source: IssueSource): void;
   /** 檢視關閉了（例如清掉側邊欄清單上的標示）。 */
   closed(): void;
+  /** 切換「和編輯區並排顯示」。 */
+  toggleSide?(): void;
 }
 
 export interface FindMatch {
@@ -123,6 +125,7 @@ export class IssueView {
   #stale: HTMLElement;
   #backBtn: HTMLButtonElement;
   #forwardBtn: HTMLButtonElement;
+  #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
   #current = 0;
 
@@ -166,9 +169,16 @@ export class IssueView {
     copy.addEventListener("click", () => {
       if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
     });
+    const toggleSide = hooks.toggleSide;
+    if (toggleSide) {
+      this.#sideBtn = iconButton(t("和編輯區並排顯示"), "columns-2", () => toggleSide());
+      this.#sideBtn.classList.add("issue-side-toggle");
+      this.#sideBtn.setAttribute("aria-pressed", "false");
+    }
     actions.append(
       insert,
       copy,
+      ...(this.#sideBtn ? [this.#sideBtn] : []),
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
       iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
@@ -226,6 +236,20 @@ export class IssueView {
 
   get isOpen(): boolean {
     return !this.#pane.hidden;
+  }
+
+  /** 焦點在這個檢視裡（並排顯示時，用來分辨 Ctrl+F 要在哪邊找）。 */
+  get hasFocus(): boolean {
+    return this.#pane.contains(document.activeElement);
+  }
+
+  /** 更新「並排顯示」按鈕的狀態。 */
+  setSide(on: boolean): void {
+    if (!this.#sideBtn) return;
+    this.#sideBtn.setAttribute("aria-pressed", String(on));
+    const label = on ? t("改回蓋住編輯區顯示") : t("和編輯區並排顯示");
+    this.#sideBtn.title = label;
+    this.#sideBtn.setAttribute("aria-label", label);
   }
 
   /** 開啟（或切換到）一個工作項目、issue、Wiki 頁面；原本開著的記到「上一頁」。 */

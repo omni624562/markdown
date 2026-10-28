@@ -1366,6 +1366,9 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .git-setup p { margin: 6px 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 .git-setup-actions { display: flex; flex-direction: column; gap: 6px; }
 .git-setup-actions .btn { justify-content: center; }
+/* 側邊欄拉到最窄或字比較大時，按鈕文字換行，不要超出面板（圖示維持原本大小）。 */
+#sidebar .btn { max-width: 100%; min-width: 0; padding-block: 3px; white-space: normal; overflow-wrap: anywhere; text-align: center; line-height: 1.35; }
+#sidebar .btn > .icon { flex: none; }
 .git-account { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-soft); color: var(--muted); font-size: 12px; }
 /* 已經是儲存庫，但還不能同步（沒有遠端、還沒登入）。 */
 .git-hint { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; margin: 0 4px 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--fg); font-size: 12.5px; }
@@ -1745,6 +1748,32 @@ button.git-info:disabled { cursor: default; }
 /* 工作項目（Azure DevOps） */
 .workitems-search { width: 100%; height: 30px; margin: 2px 0 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
 .workitems-search:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* 新指派給你、還沒看過（藍點），或上次看過之後有更新（橘點）的工作項目。 */
+.workitem-dot { display: inline-block; flex: none; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+.workitem-dot.updated { background: light-dark(#c2410c, #fb923c); }
+.workitem.workitem-marked .workitem-title { font-weight: 600; }
+/* 清單上方：狀態文字與排列方式（側邊欄窄時換行）。 */
+.workitems-statusrow { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; justify-content: space-between; }
+.workitems-statusrow .workitems-status { flex: 1 1 120px; min-width: 0; }
+.workitems-arrange { flex: none; max-width: 100%; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 12px var(--font-ui); cursor: pointer; }
+.workitems-arrange:hover { color: var(--fg); background: var(--active-line); }
+.workitems-arrange:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.workitems-group button { display: flex; gap: 4px; align-items: center; width: 100%; margin-top: 6px; padding: 3px 4px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: 600 12px var(--font-ui); text-align: left; cursor: pointer; }
+.workitems-group button:hover { background: var(--active-line); color: var(--fg); }
+.workitems-group button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.workitems-group .icon { flex: none; width: 14px; height: 14px; }
+.workitems-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workitems-group-count { flex: none; min-width: 18px; padding: 0 5px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 8%, transparent); font-weight: 500; text-align: center; }
+.workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
+.workitems-searchrow .workitems-search { flex: 1; min-width: 0; }
+.workitems-filter-toggle { position: relative; display: grid; flex: none; place-items: center; width: 30px; height: 30px; margin: 2px 0 6px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; }
+.workitems-filter-toggle:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
+.workitems-filter-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.workitems-filter-toggle[aria-expanded="true"] { background: var(--active-line); color: var(--fg); }
+.workitems-filter-toggle.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.workitems-filter-toggle .icon { width: 15px; height: 15px; }
+.workitems-filter-count { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font: 600 10.5px/16px var(--font-ui); text-align: center; }
+.workitems-filter-count[hidden] { display: none; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
 .workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }
@@ -1783,7 +1812,8 @@ button.git-info:disabled { cursor: default; }
 .workitems-filters .workitems-select:hover, .workitems-filters .workitems-person:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
 .workitems-filters .workitems-select:focus-visible, .workitems-filters .workitems-person:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filters .workitems-person, .workitems-filters .workitems-area { grid-column: 1 / -1; }
-.workitems-filters [hidden] { display: none; }
+.workitems-filters [hidden], .workitems-filters[hidden] { display: none; }
+.workitems-filter-reset { grid-column: 1 / -1; justify-self: start; }
 /* Wiki（Azure DevOps） */
 .wiki-filters { grid-template-columns: 1fr; }
 /* Azure DevOps 面板上方切換工作項目／Wiki。 */
@@ -1791,6 +1821,11 @@ button.git-info:disabled { cursor: default; }
 .ado-switch button { flex: 1 1 0; min-width: 0; gap: 5px; min-height: 26px; padding: 0 8px; font-size: 12.5px; white-space: nowrap; }
 .ado-switch button span { overflow: hidden; text-overflow: ellipsis; }
 .ado-switch button .icon { flex: none; width: 14px; height: 14px; }
+/* 側邊欄很窄時，切換只留圖示（文字會被截成「工…」看不懂）；名稱在提示與 aria-label 裡。 */
+#panel-ado .side-head { container: ado-head / inline-size; }
+@container ado-head (max-width: 230px) {
+  .ado-switch button span { display: none; }
+}
 #panel-ado .side-head .side-actions { flex: none; }
 /* 遠端的清單（工作項目、Wiki、Issues）常要重新讀取：重新整理按鈕一直顯示。 */
 #panel-ado .side-actions, #panel-issues .side-actions { opacity: 1; }
@@ -2308,6 +2343,11 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .workspace.issue-open > .editor-pane,
 .workspace.issue-open > .splitter,
 .workspace.issue-open > .preview-pane { display: none; }
+/* 和編輯區並排：內容放在預覽的位置，編輯區與分隔線照常顯示。 */
+.workspace.issue-open.issue-side > .editor-pane { display: flex; }
+.workspace.issue-open.issue-side > .splitter { display: block; }
+.workspace.issue-side > .issue-pane:not(.history-pane) { grid-column: preview-start / preview-end; }
+.workspace.narrow .issue-side-toggle { display: none; }
 .issue-head {
   display: flex;
   flex: none;
@@ -2344,13 +2384,22 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .source-badge .icon { width: 13px; height: 13px; }
 .source-badge.source-readonly { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--muted); font-weight: 500; }
 /* 檢視開著時，分頁列上原本選取的本機分頁變淡（目前看的不是它）。 */
-body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
-body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
+body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
+body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
 .issue-label { display: inline-flex; flex-wrap: wrap; gap: 0 4px; align-items: baseline; min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .issue-crumb { padding: 0 2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
 .issue-crumb:hover { background: var(--active-line); color: var(--fg); text-decoration: underline; }
 .issue-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .issue-crumb-sep { color: var(--subtle); }
+/* 文件裡連到工作項目、Wiki 頁面的摘要卡片（編輯器的提示框、預覽的浮動卡片）。 */
+.remote-card { --source: light-dark(#0b6bcb, #4ea1f3); max-width: min(360px, calc(100vw - 32px)); padding: 8px 12px; color: var(--fg); font: 12.5px/1.5 var(--font-ui); }
+.remote-card-floating { position: fixed; z-index: 60; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 20px rgb(0 0 0 / 14%); pointer-events: none; }
+.remote-card-source { display: flex; gap: 4px; align-items: center; color: var(--source); font-size: 11.5px; font-weight: 600; }
+.remote-card-source .icon { width: 13px; height: 13px; }
+.remote-card-title { margin-top: 2px; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.remote-card-meta { color: var(--muted); overflow-wrap: anywhere; }
+.remote-card-meta.remote-card-error { color: var(--danger); }
+.remote-card-hint { margin-top: 4px; color: var(--subtle); font-size: 11.5px; }
 .issue-title { margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }

@@ -308,6 +308,8 @@ export interface AdoWiki {
 
 export interface AdoWikiPage {
   path: string;
+  /** 頁面編號（瀏覽器網址列上的數字）；舊版伺服器沒有。 */
+  id: number | null;
   children: AdoWikiPage[];
 }
 
@@ -320,6 +322,8 @@ export interface AdoWorkItem {
   project: string;
   assignedTo: string | null;
   changed: string | null;
+  /** 優先順序（1 最高）；流程範本沒有這個欄位時是 null。 */
+  priority: number | null;
   webUrl: string;
 }
 
@@ -328,7 +332,6 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   /** 區域、反覆項目（例如「產品\\前端」）。 */
   area: string | null;
   iteration: string | null;
-  priority: number | null;
   tags: string[];
   /** 說明（HTML）。 */
   description: string | null;
@@ -336,6 +339,14 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   details: string | null;
   /** 留言（舊到新，內容是 HTML）。 */
   comments: { author: string; created: string | null; text: string }[];
+  /** 相關的工作項目；讀不到時是空的。 */
+  relations: AdoWorkItemRelation[];
+}
+
+export interface AdoWorkItemRelation extends AdoWorkItem {
+  link: "parent" | "child" | "related" | "predecessor" | "successor" | "other";
+  /** 伺服器上的連結名稱（例如 Tested By），`other` 時顯示。 */
+  linkName: string;
 }
 
 /** 工作項目清單的篩選條件。 */
