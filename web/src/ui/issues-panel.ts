@@ -13,6 +13,19 @@ export interface IssueSummary {
   webUrl: string;
 }
 
+/** 清單的一組（分組時有標題）。 */
+export interface IssueGroup<T> {
+  title: string | null;
+  items: T[];
+}
+
+/** 清單的排列方式（排序或分組）；在清單上方切換，不用重新讀取。 */
+export interface Arrangement<T> {
+  id: string;
+  label: string;
+  arrange(items: T[]): IssueGroup<T>[];
+}
+
 export interface IssuesHandlers<T extends IssueSummary> {
   list(search: string): Promise<T[]>;
   /** 在主要區域開啟內容。 */
@@ -20,6 +33,9 @@ export interface IssuesHandlers<T extends IssueSummary> {
   /** 狀態列文字：`count` 是結果數量，`search` 是搜尋文字（空白表示預設清單）。 */
   status(count: number, search: string): string;
   placeholder: string;
+  /** 排列方式（第一個是預設）與記住上次的選擇。 */
+  arrangements?: Arrangement<T>[];
+  arrangement?: { load(): string | null; save(id: string): void };
   /** 項目前面的小圓點（例如「上次看過之後有更新」）；沒有就回傳 null。 */
   mark?(item: T): { kind: string; label: string } | null;
   /** 放在搜尋框下方的篩選列（改變時呼叫 `refresh()`）。 */
@@ -62,6 +78,11 @@ export class IssuesPanel<T extends IssueSummary> {
   #loaded = false;
   /** 上次讀取失敗：網路恢復時再試一次。 */
   #failed = false;
+  /** 最近一次讀到的清單（切換排列方式時重畫）。 */
+  #items: T[] = [];
+  #arrange: HTMLSelectElement | null = null;
+  /** 收起來的分組。 */
+  #collapsed = new Set<string>();
 
   constructor(el: HTMLElement, handlers: IssuesHandlers<T>) {
     this.#h = handlers;
@@ -83,9 +104,28 @@ export class IssuesPanel<T extends IssueSummary> {
     });
     this.#status = document.createElement("p");
     this.#status.className = "workitems-status";
+    let statusRow: HTMLElement = this.#status;
+    const arrangements = handlers.arrangements;
+    if (arrangements?.length) {
+      const select = document.createElement("select");
+      select.className = "workitems-arrange";
+      select.setAttribute("aria-label", t("排列方式"));
+      select.title = t("排列方式");
+      for (const a of arrangements) select.append(new Option(a.label, a.id));
+      const saved = handlers.arrangement?.load();
+      if (saved && arrangements.some((a) => a.id === saved)) select.value = saved;
+      select.addEventListener("change", () => {
+        handlers.arrangement?.save(select.value);
+        this.#render();
+      });
+      this.#arrange = select;
+      statusRow = document.createElement("div");
+      statusRow.className = "workitems-statusrow";
+      statusRow.append(this.#status, select);
+    }
     this.#list = document.createElement("ul");
     this.#list.className = "workitems-list";
-    el.append(this.#input, ...(handlers.filters ? [handlers.filters] : []), this.#status, this.#list);
+    el.append(this.#input, ...(handlers.filters ? [handlers.filters] : []), statusRow, this.#list);
   }
 
   /** 第一次顯示面板時才讀取。 */
@@ -111,7 +151,8 @@ export class IssuesPanel<T extends IssueSummary> {
       if (seq !== this.#seq) return;
       this.#failed = false;
       this.#status.textContent = this.#h.status(items.length, search);
-      this.#list.replaceChildren(...items.map((it) => this.#row(it)));
+      this.#items = items;
+      this.#render();
     } catch (e) {
       if (seq !== this.#seq) return;
       // 下次打開面板時再試一次。
@@ -125,6 +166,43 @@ export class IssuesPanel<T extends IssueSummary> {
   /** 上次讀取失敗就重新讀取（網路恢復、切回視窗時呼叫）。 */
   retryFailed(): void {
     if (this.#failed) void this.refresh();
+  }
+
+  /** 依目前的排列方式畫出清單（分組時每組有可以收合的標題）。 */
+  #render(): void {
+    const arrangement = this.#h.arrangements?.find((a) => a.id === this.#arrange?.value);
+    const groups = arrangement ? arrangement.arrange(this.#items) : [{ title: null, items: this.#items }];
+    const rows: HTMLLIElement[] = [];
+    for (const group of groups) {
+      if (group.title !== null) {
+        const key = `${arrangement?.id}:${group.title}`;
+        const open = !this.#collapsed.has(key);
+        const li = document.createElement("li");
+        li.className = "workitems-group";
+        const b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("aria-expanded", String(open));
+        const name = document.createElement("span");
+        name.className = "workitems-group-name";
+        name.textContent = group.title || t("（未設定）");
+        const count = document.createElement("span");
+        count.className = "workitems-group-count";
+        count.textContent = String(group.items.length);
+        b.append(icon(open ? "chevron-down" : "chevron-right"), name, count);
+        b.addEventListener("click", () => {
+          if (open) this.#collapsed.add(key);
+          else this.#collapsed.delete(key);
+          this.#render();
+          this.#list.querySelector<HTMLElement>(`.workitems-group button[data-key="${CSS.escape(key)}"]`)?.focus();
+        });
+        b.dataset.key = key;
+        li.append(b);
+        rows.push(li);
+        if (!open) continue;
+      }
+      rows.push(...group.items.map((it) => this.#row(it)));
+    }
+    this.#list.replaceChildren(...rows);
   }
 
   #row(item: T): HTMLLIElement {

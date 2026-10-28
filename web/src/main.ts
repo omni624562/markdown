@@ -1837,6 +1837,16 @@ const ado = desktop
     })
   : null;
 
+/** 依 `key` 分組（組的順序依第一次出現；組裡維持原本的順序）。 */
+function groupItems<T>(items: T[], key: (item: T) => string): { title: string; items: T[] }[] {
+  const groups = new Map<string, T[]>();
+  for (const it of items) {
+    const k = key(it);
+    groups.set(k, [...(groups.get(k) ?? []), it]);
+  }
+  return [...groups].map(([title, list]) => ({ title, items: list }));
+}
+
 /** 插入 `[#123 標題](網址)` 到游標位置。 */
 function insertIssueLink(item: IssueSummary): void {
   insertAtCursor(workItemLink(item));
@@ -2226,6 +2236,21 @@ function workItemFilterBar(): HTMLElement {
 const workItemsPanel = desktop
   ? new IssuesPanel<AdoWorkItem & IssueSummary>($("#workitems-host"), {
       placeholder: t("搜尋標題或內容，或輸入編號"),
+      arrangements: [
+        // 伺服器回傳的順序就是最近更新的在前面。
+        { id: "recent", label: t("最近更新"), arrange: (items) => [{ title: null, items }] },
+        {
+          id: "priority",
+          label: t("優先順序"),
+          arrange: (items) => [{ title: null, items: [...items].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99)) }],
+        },
+        { id: "state", label: t("依狀態分組"), arrange: (items) => groupItems(items, (w) => w.state) },
+        { id: "kind", label: t("依類型分組"), arrange: (items) => groupItems(items, (w) => w.kind) },
+      ],
+      arrangement: {
+        load: () => storage.load("workitem-arrange"),
+        save: (id) => storage.save("workitem-arrange", id),
+      },
       mark: (item) => {
         const mark = markOf(workItemSeen, item);
         if (!mark) return null;
