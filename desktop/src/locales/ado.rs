@@ -26,6 +26,8 @@ pub static EN: &[(&str, &str)] = &[
     ("請先到設定的 Azure DevOps／TFS 頁連線", "Connect on the Azure DevOps/TFS page in Settings first."),
     ("讀取 Wiki", "Loading wikis"),
     ("讀取 Wiki 頁面", "Loading the wiki page"),
+    ("新指派給你：{kind} {id}", "Newly assigned to you: {kind} {id}"),
+    ("有 {n} 個工作項目新指派給你", "{n} work items were newly assigned to you"),
     ("請輸入標題", "Enter a title."),
     ("建立工作項目失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）", "Couldn't create the work item: Can't reach the Azure DevOps server. Check your network or VPN connection ({e})."),
     ("建立工作項目失敗：伺服器的回應不是預期的格式", "Couldn't create the work item: The server's response wasn't in the expected format."),

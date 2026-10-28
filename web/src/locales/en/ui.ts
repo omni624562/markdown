@@ -559,6 +559,8 @@ export const ui: Record<string, Translation> = {
   "{label}・{time} 更新": "{label} · updated {time}",
   "Azure DevOps／TFS：保留離線的頁面…": "Azure DevOps/TFS: Pages kept offline…",
   "網路恢復或切回這個視窗時會自動再試一次。": "It will try again automatically when the network is back or you return to this window.",
+  "新指派給我時通知": "Notify Me of New Assignments",
+  "oMarker 在背景或縮小時，有新的工作項目指派給你就跳出 Windows 通知，點一下就打開它": "When oMarker is in the background or minimized, show a Windows notification when a work item is newly assigned to you. Click it to open the item.",
   "修改記錄": "History",
   "誰、什麼時候改了這一頁，改了什麼": "Who changed this page, when, and what they changed",
   "新增子頁面": "New Subpage",

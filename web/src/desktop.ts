@@ -943,6 +943,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     updateCheck: () => core.invoke<{ current: AppVersion; latest: UpdateManifest | null }>("update_check"),
     updateInstall: () => core.invoke<void>("update_install"),
     updateRestart: () => core.invoke<void>("update_restart"),
+    /** 「新指派給你」的系統通知（Windows）。 */
+    notifyWorkItems: (items: { id: number; title: string; kind: string }[]) => core.invoke<void>("notify_work_items", { items }),
+    /** 點了通知：`id` 是要打開的工作項目（0 是打開清單）。 */
+    onNotificationOpen: (fn: (id: number) => void) => event.listen<number>("notification-open", (e) => fn(e.payload)),
     onUpdateProgress: (fn: (p: { downloaded: number; total: number }) => void) =>
       event.listen<{ downloaded: number; total: number }>("update-progress", (e) => fn(e.payload)),
 

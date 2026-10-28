@@ -3972,12 +3972,14 @@ function renderAdoBadge(): void {
 let polling = false;
 /** 在背景檢查指派給你的工作項目（視窗沒在看時略過）。 */
 async function pollWorkItems(): Promise<void> {
-  if (polling || !desktop || !ado?.account || document.hidden) return;
+  // 縮小或在背景時，開了通知才檢查（要跳出通知）。
+  if (polling || !desktop || !ado?.account || (document.hidden && !settings.value.adoNotify)) return;
   polling = true;
   try {
     const signature = () => pollItems.map((w) => `${w.id}@${w.changed}`).join();
     const before = signature();
     noteWorkItems(await desktop.adoWorkItems("", DEFAULT_WORK_ITEM_FILTER), true);
+    notifyNewWorkItems();
     // 面板上是同一份清單時，有新的或更新的項目就一起更新清單。
     if (before && signature() !== before && isDefaultFilter() && workItemsPanel?.showingList) void workItemsPanel.refresh();
     else workItemsPanel?.refreshMarks();
@@ -3987,6 +3989,37 @@ async function pollWorkItems(): Promise<void> {
     polling = false;
   }
 }
+/** 通知過的工作項目（同一個只通知一次）。 */
+const notifiedWorkItems = new Set<number>(
+  (() => {
+    try {
+      const v = JSON.parse(storage.load("wi-notified") ?? "[]") as unknown;
+      return Array.isArray(v) ? v.filter((n): n is number => typeof n === "number") : [];
+    } catch {
+      return [];
+    }
+  })(),
+);
+
+/** 新指派給你、還沒看過也還沒通知過的工作項目：oMarker 在背景時跳出系統通知。 */
+function notifyNewWorkItems(): void {
+  if (!desktop || !settings.value.adoNotify) return;
+  const fresh = pollItems.filter((w) => markOf(workItemSeen, w) === "new" && !notifiedWorkItems.has(w.id));
+  if (!fresh.length) return;
+  for (const w of fresh) notifiedWorkItems.add(w.id);
+  storage.save("wi-notified", JSON.stringify([...notifiedWorkItems].slice(-300)));
+  // 正在用 oMarker 時，側邊欄圖示上的數字就夠了。
+  if (!document.hidden && document.hasFocus()) return;
+  void desktop.notifyWorkItems(fresh.map((w) => ({ id: w.id, title: w.title, kind: w.kind }))).catch(() => {});
+}
+
+if (desktop) {
+  void desktop.onNotificationOpen((id) => {
+    if (id) void openWorkItemById(id);
+    else showAdo("workitems");
+  });
+}
+
 window.setInterval(() => void pollWorkItems(), 5 * 60_000);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) void pollWorkItems();
