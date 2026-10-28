@@ -33,6 +33,9 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   link?(wiki: W, path: string): string | null;
   /** 搜尋頁面內容（`path` 是頁面路徑）；伺服器沒有搜尋功能時 `available` 是 false。 */
   searchContent?(wiki: W, text: string): Promise<WikiContentSearch>;
+  /** 新增頁面：`parent` 是上層頁面（null 是最上層）；不能新增的 Wiki（例如程式碼 Wiki）回傳 false 時不顯示按鈕。 */
+  create?(wiki: W, parent: string | null): void;
+  canCreate?(wiki: W): boolean;
 }
 
 export interface WikiContentSearch {
@@ -58,6 +61,8 @@ const CONTENT_DELAY = 500;
 export class WikiPanel<W extends WikiInfo> {
   #h: WikiPanelHooks<W>;
   #select: HTMLSelectElement;
+  /** 「新增頁面」（最上層）。 */
+  #newBtn: HTMLButtonElement;
   #input: HTMLInputElement;
   #status: HTMLElement;
   #list: HTMLUListElement;
@@ -95,7 +100,18 @@ export class WikiPanel<W extends WikiInfo> {
       if (wiki) this.#h.save(wiki.id);
       void this.#loadPages(wiki);
     });
-    bar.append(this.#select);
+    this.#newBtn = document.createElement("button");
+    this.#newBtn.type = "button";
+    this.#newBtn.className = "wiki-new";
+    const newLabel = t("新增頁面");
+    this.#newBtn.title = newLabel;
+    this.#newBtn.setAttribute("aria-label", newLabel);
+    this.#newBtn.append(icon("file-plus"), Object.assign(document.createElement("span"), { textContent: newLabel }));
+    this.#newBtn.hidden = true;
+    this.#newBtn.addEventListener("click", () => {
+      if (this.#wiki) this.#h.create?.(this.#wiki, null);
+    });
+    bar.append(this.#select, this.#newBtn);
     this.#input = document.createElement("input");
     this.#input.type = "search";
     this.#input.className = "workitems-search";
@@ -204,6 +220,7 @@ export class WikiPanel<W extends WikiInfo> {
     if (wiki?.id !== this.#wiki?.id) this.#expanded.clear();
     this.#wiki = wiki;
     this.#pages = [];
+    this.#newBtn.hidden = !this.#canCreate();
     this.#prefs = wiki ? this.#h.prefs(wiki.id) : { recent: [], pinned: [] };
     this.#list.replaceChildren();
     this.#quick.hidden = true;
@@ -492,8 +509,29 @@ export class WikiPanel<W extends WikiInfo> {
       this.select(page.path);
       this.#h.open(this.#wiki, page.path);
     });
-    li.append(toggle, b, this.#pinButton(page.path));
+    li.append(toggle, b);
+    if (this.#canCreate()) li.append(this.#addButton(page.path));
+    li.append(this.#pinButton(page.path));
     return li;
+  }
+
+  #canCreate(): boolean {
+    return !!this.#wiki && !!this.#h.create && (this.#h.canCreate?.(this.#wiki) ?? true);
+  }
+
+  /** 「新增子頁面」的按鈕（滑鼠移到列上才出現）。 */
+  #addButton(path: string): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "wiki-add";
+    const label = t("在「{name}」底下新增子頁面", { name: pageName(path) });
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.append(icon("plus"));
+    b.addEventListener("click", () => {
+      if (this.#wiki) this.#h.create?.(this.#wiki, path);
+    });
+    return b;
   }
 
   /** 釘選／取消釘選的按鈕（滑鼠移到列上才出現；已釘選的一直顯示）。 */
