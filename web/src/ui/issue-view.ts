@@ -299,6 +299,12 @@ export class IssueView {
       if (seq !== this.#seq) return;
       loading.textContent = e instanceof Error ? e.message : String(e);
       loading.classList.add("issue-error");
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-small load-retry";
+      retry.append(icon("refresh-cw"), t("重試"));
+      retry.addEventListener("click", () => void this.refresh());
+      loading.append(retry);
     }
   }
 
