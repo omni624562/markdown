@@ -336,6 +336,14 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   details: string | null;
   /** 留言（舊到新，內容是 HTML）。 */
   comments: { author: string; created: string | null; text: string }[];
+  /** 相關的工作項目；讀不到時是空的。 */
+  relations: AdoWorkItemRelation[];
+}
+
+export interface AdoWorkItemRelation extends AdoWorkItem {
+  link: "parent" | "child" | "related" | "predecessor" | "successor" | "other";
+  /** 伺服器上的連結名稱（例如 Tested By），`other` 時顯示。 */
+  linkName: string;
 }
 
 /** 工作項目清單的篩選條件。 */
