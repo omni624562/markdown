@@ -1886,6 +1886,40 @@ pub async fn ado_wiki_save(
     .await
 }
 
+/// 建立新的 Wiki 頁面（只限專案 Wiki）：`path` 是完整路徑（例如 `/產品/新頁面`），上層頁面要已經存在。
+/// 已經有同名的頁面時不覆蓋。回傳新頁面的版本（之後存回時用）。
+#[tauri::command]
+pub async fn ado_wiki_create(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .put(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(&serde_json::json!({ "content": content }).to_string());
+        match res {
+            // 沒帶 If-Match 時，已經有這一頁會被拒絕（不會覆蓋）。
+            Err(ureq::Error::StatusCode(409 | 412)) => Err(tr!("已經有同名的頁面了，請換一個名稱")),
+            res => {
+                let (_, etag) = read_with_etag(res, &tr!("建立 Wiki 頁面"))?;
+                Ok(match etag {
+                    Some(etag) => Some(etag),
+                    None => read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?.etag,
+                })
+            }
+        }
+    })
+    .await
+}
+
 /// 一個 Wiki 頁面的內容（Markdown）。
 #[tauri::command]
 pub async fn ado_wiki_page(
@@ -2255,6 +2289,73 @@ pub async fn ado_wiki_image(
     .await
 }
 
+/// 上傳到 Wiki 附件的檔名：只留英數字、`-`、`_`、`.`，其餘換成 `-`，加上時間避免和既有的附件同名。
+fn attachment_name(stem: &str, ext: &str, stamp: u128) -> String {
+    let clean: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let clean = clean.trim_matches('-');
+    let stem = if clean.is_empty() { "image" } else { clean };
+    let stem: String = stem.chars().take(40).collect();
+    format!("{stem}-{stamp}.{ext}")
+}
+
+/// 把圖片上傳成 Wiki 的附件（`.attachments` 資料夾），回傳在頁面裡引用的路徑（例如 `/.attachments/image-123.png`）。
+/// `data` 是 base64；Wiki 的附件 API 本身就是收 base64 文字。
+#[tauri::command]
+pub async fn ado_wiki_attach(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    name: String,
+    ext: String,
+    data: String,
+) -> Result<String, String> {
+    let (a, pat) = require(&app)?;
+    if image_mime(&format!("x.{ext}")).is_none() {
+        return Err(tr!("無法上傳圖片：不是圖片"));
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or_default();
+        let file = attachment_name(&name, &ext, stamp);
+        let what = tr!("上傳圖片到 Wiki");
+        let put = |version: &str| {
+            crate::update::agent()
+                .put(&format!(
+                    "{}/{}/_apis/wiki/wikis/{}/attachments?name={}&api-version={version}",
+                    a.url,
+                    encode_segment(&project_id),
+                    encode_segment(&wiki_id),
+                    encode_segment(&file)
+                ))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/octet-stream")
+                .send(data.as_str())
+        };
+        // 舊版伺服器（Azure DevOps Server 2019）的附件 API 還是預覽版。
+        let res = match put(API_VERSION) {
+            Err(ureq::Error::StatusCode(400)) => put("5.0-preview.1"),
+            res => res,
+        };
+        let v = read(res, &what)?;
+        Ok(str_of(&v, "path")
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("/.attachments/{file}")))
+    })
+    .await
+}
+
 /// 用權杖讀取伺服器上的檔案（不跟隨轉址，權杖不會被送到別的地方），最多 10 MB。
 fn fetch_bytes(url: &str, pat: &str) -> Result<Vec<u8>, String> {
     let mut res = crate::update::agent()
@@ -2594,6 +2695,17 @@ mod tests {
                     comment: String::new()
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn names_wiki_attachments_safely() {
+        assert_eq!(attachment_name("截圖 1", "png", 42), "1-42.png");
+        assert_eq!(attachment_name("", "jpg", 7), "image-7.jpg");
+        assert_eq!(attachment_name("../a b", "png", 1), "a-b-1.png");
+        assert_eq!(
+            attachment_name("screen_shot-2", "gif", 3),
+            "screen_shot-2-3.gif"
         );
     }
 

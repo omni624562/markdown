@@ -44,6 +44,8 @@ export interface IssueSource {
   edit?(): void;
   /** 「修改記錄」（Wiki 頁面）。 */
   history?(): void;
+  /** 「新增子頁面」（Wiki 頁面；不能新增的不給）。 */
+  addChild?(): void;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -149,6 +151,7 @@ export class IssueView {
   #keepBtn: HTMLButtonElement;
   #editBtn: HTMLButtonElement;
   #historyBtn: HTMLButtonElement;
+  #addChildBtn: HTMLButtonElement;
   #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
   #current = 0;
@@ -199,6 +202,13 @@ export class IssueView {
     this.#historyBtn.title = t("誰、什麼時候改了這一頁，改了什麼");
     this.#historyBtn.hidden = true;
     this.#historyBtn.addEventListener("click", () => this.#source?.history?.());
+    this.#addChildBtn = document.createElement("button");
+    this.#addChildBtn.type = "button";
+    this.#addChildBtn.className = "btn btn-small";
+    this.#addChildBtn.append(icon("file-plus"), t("新增子頁面"));
+    this.#addChildBtn.title = t("在這一頁底下新增一頁，建立後直接編輯");
+    this.#addChildBtn.hidden = true;
+    this.#addChildBtn.addEventListener("click", () => this.#source?.addChild?.());
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "btn btn-small";
@@ -223,6 +233,7 @@ export class IssueView {
       insert,
       this.#editBtn,
       this.#historyBtn,
+      this.#addChildBtn,
       copy,
       this.#keepBtn,
       ...(this.#sideBtn ? [this.#sideBtn] : []),
@@ -407,6 +418,7 @@ export class IssueView {
     this.#toolbar.hidden = !source.toolbar;
     this.#editBtn.hidden = !source.edit;
     this.#historyBtn.hidden = !source.history;
+    this.#addChildBtn.hidden = !source.addChild;
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();

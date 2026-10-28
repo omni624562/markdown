@@ -488,6 +488,7 @@ export const ui: Record<string, Translation> = {
   "清除篩選": "Clear filters",
   "篩選": "Filters",
   "篩選（已設定 {n} 項）": "Filters ({n} set)",
+  "清除全部篩選條件（回到「指派給我、進行中」）": "Clear all filters (back to “Assigned to Me, Active”)",
   "Wiki 頁面": "Wiki pages",
   "Azure DevOps：{state}": "Azure DevOps: {state}",
   "已連線（{name}）": "Connected ({name})",
@@ -560,4 +561,8 @@ export const ui: Record<string, Translation> = {
   "網路恢復或切回這個視窗時會自動再試一次。": "It will try again automatically when the network is back or you return to this window.",
   "修改記錄": "History",
   "誰、什麼時候改了這一頁，改了什麼": "Who changed this page, when, and what they changed",
+  "新增子頁面": "New Subpage",
+  "新增頁面": "New Page",
+  "在這一頁底下新增一頁，建立後直接編輯": "Add a page under this one and start editing it",
+  "在「{name}」底下新增子頁面": "New subpage under “{name}”",
 };

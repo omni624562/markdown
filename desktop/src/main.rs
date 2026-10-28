@@ -335,6 +335,8 @@ fn main() {
             ado::ado_wiki_save,
             ado::ado_wiki_page_info,
             ado::ado_wiki_history,
+            ado::ado_wiki_create,
+            ado::ado_wiki_attach,
             ado::ado_wiki_image,
             pdf::pick_pdf_path,
             pdf::print_to_pdf,
