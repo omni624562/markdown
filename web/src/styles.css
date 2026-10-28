@@ -2350,6 +2350,13 @@ body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="tru
 .remote-card-meta { color: var(--muted); overflow-wrap: anywhere; }
 .remote-card-meta.remote-card-error { color: var(--danger); }
 .remote-card-hint { margin-top: 4px; color: var(--subtle); font-size: 11.5px; }
+/* 文件裡工作項目連結旁的狀態標籤（顏色依狀態：新的、進行中、已解決、完成、移除）。 */
+.wi-chip { --tone: light-dark(#0b6bcb, #4ea1f3); display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 9px; background: color-mix(in srgb, var(--tone) 14%, transparent); color: var(--tone); font: 600 0.72em/1.6 var(--font-ui); vertical-align: 0.12em; white-space: nowrap; text-decoration: none; cursor: default; }
+.wi-chip[hidden] { display: none; }
+.wi-chip[data-tone="new"] { --tone: var(--muted); }
+.wi-chip[data-tone="resolved"] { --tone: light-dark(#7c3aed, #a78bfa); }
+.wi-chip[data-tone="done"] { --tone: var(--success); }
+.wi-chip[data-tone="removed"] { --tone: var(--subtle); text-decoration: line-through; }
 .issue-title { margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }

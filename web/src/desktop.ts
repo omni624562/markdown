@@ -829,6 +829,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
     adoImage: (url: string) => core.invoke<string>("ado_image", { url }),
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
+    /** 依編號讀取工作項目（讀不到的略過）。 */
+    adoWorkItemsByIds: (ids: number[]) => core.invoke<AdoWorkItem[]>("ado_work_items_by_ids", { ids }),
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),
     adoWikiPages: (w: AdoWiki) =>
       core.invoke<AdoWikiPage[]>("ado_wiki_pages", { projectId: w.projectId, wikiId: w.id, version: w.code ? w.version : null }),

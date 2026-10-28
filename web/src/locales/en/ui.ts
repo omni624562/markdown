@@ -469,6 +469,7 @@ export const ui: Record<string, Translation> = {
   "點一下在 oMarker 開啟": "Click to open it in oMarker",
   "沒有指派": "Unassigned",
   "在這個 Wiki 裡找不到這一頁": "This page wasn't found in the wiki",
+  "{label}：{title}・{state}": "{label}: {title} · {state}",
   "搜尋頁面名稱": "Search page names",
   "這個集合裡沒有 Wiki": "There are no wikis in this collection.",
   "這個 Wiki 還沒有頁面": "This wiki has no pages yet.",

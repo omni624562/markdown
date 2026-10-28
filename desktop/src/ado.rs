@@ -957,6 +957,36 @@ pub async fn ado_work_items(
     .await
 }
 
+/// 依編號讀取工作項目（文件裡連結旁的狀態標籤用）；最多 200 個，讀不到的（刪除、沒權限）略過。
+#[tauri::command]
+pub async fn ado_work_items_by_ids(app: AppHandle, ids: Vec<u64>) -> Result<Vec<WorkItem>, String> {
+    let (a, pat) = require(&app)?;
+    let mut ids = ids;
+    ids.sort_unstable();
+    ids.dedup();
+    ids.truncate(200);
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let list: Vec<String> = ids.iter().map(u64::to_string).collect();
+        let res = get(
+            &a.url,
+            &pat,
+            &format!(
+                "/_apis/wit/workitems?ids={}&fields={FIELDS}&errorPolicy=omit",
+                list.join(",")
+            ),
+            &tr!("讀取工作項目"),
+        )?;
+        Ok(values(&res)
+            .iter()
+            .filter_map(|v| item_of(&a.url, v))
+            .collect())
+    })
+    .await
+}
+
 /// 一個工作項目的內容。
 /// 篩選列的選項：專案與工作項目類型。
 #[derive(Serialize, Debug, Default)]

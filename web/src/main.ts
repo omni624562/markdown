@@ -4,7 +4,9 @@ import "./styles.css";
 import { undo } from "@codemirror/commands";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
-import { EditorView, hoverTooltip, type ViewUpdate } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, hoverTooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import { RangeSetBuilder, StateEffect } from "@codemirror/state";
+import { linksInLine, stateTone } from "./workitem-chips.ts";
 import init, {
   type Heading,
   type RenderResult,
@@ -366,8 +368,127 @@ function davImageCached(path: string): Promise<string> {
   return p;
 }
 
+// ---- 文件裡的工作項目連結：旁邊顯示目前的狀態（即時預覽、預覽、Wiki 內容） ----------------
+
+/** 讀過的狀態（五分鐘內不重新讀取；讀不到的記成 null）。 */
+const chipCache = new Map<number, { item: AdoWorkItem | null; at: number }>();
+const chipWanted = new Set<number>();
+let chipTimer = 0;
+const CHIP_TTL = 5 * 60_000;
+const chipsChanged = StateEffect.define<null>();
+
+/** 需要 `id` 的狀態：還沒讀過或太舊就排進下一次一起讀（打字停一下才送出）。 */
+function wantChip(id: number): void {
+  const hit = chipCache.get(id);
+  if (hit && Date.now() - hit.at < CHIP_TTL) return;
+  if (!desktop || !ado?.account) return;
+  chipWanted.add(id);
+  clearTimeout(chipTimer);
+  chipTimer = window.setTimeout(() => void flushChips(), 300);
+}
+
+async function flushChips(): Promise<void> {
+  const ids = [...chipWanted];
+  chipWanted.clear();
+  if (!ids.length) return;
+  // 先記下時間，讀取期間不會重複排隊。
+  for (const id of ids) chipCache.set(id, { item: chipCache.get(id)?.item ?? null, at: Date.now() });
+  try {
+    const items = await desktop!.adoWorkItemsByIds(ids);
+    for (const id of ids) chipCache.set(id, { item: items.find((w) => w.id === id) ?? null, at: Date.now() });
+  } catch {
+    // 連不到伺服器：留著舊的狀態，五分鐘後再試。
+  }
+  editor.view.dispatch({ effects: chipsChanged.of(null) });
+  for (const el of document.querySelectorAll<HTMLElement>(".wi-chip[data-wi]")) fillChip(el, Number(el.dataset.wi));
+}
+
+function fillChip(el: HTMLElement, id: number): void {
+  const item = chipCache.get(id)?.item;
+  el.hidden = !item;
+  if (!item) return;
+  el.textContent = item.state;
+  el.dataset.tone = stateTone(item.state);
+  el.title = t("{label}：{title}・{state}", { label: `${item.kind} ${item.id}`, title: item.title, state: item.state });
+}
+
+function chipElement(id: number): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "wi-chip";
+  el.dataset.wi = String(id);
+  fillChip(el, id);
+  wantChip(id);
+  return el;
+}
+
+class ChipWidget extends WidgetType {
+  constructor(readonly id: number) {
+    super();
+  }
+  eq(other: ChipWidget): boolean {
+    return other.id === this.id;
+  }
+  toDOM(): HTMLElement {
+    return chipElement(this.id);
+  }
+}
+
+/** 即時預覽：看得到的行裡，連到工作項目的連結後面加上狀態標籤。 */
+function chipDecorations(view: EditorView): DecorationSet {
+  const base = ado?.account?.url;
+  if (!desktop || !base) return Decoration.none;
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const { from, to } of view.visibleRanges) {
+    for (let pos = from; pos <= to; ) {
+      const line = view.state.doc.lineAt(pos);
+      for (const link of linksInLine(line.text)) {
+        const target = parseRemoteLink(link.url, base);
+        if (target?.kind === "workitem") {
+          builder.add(line.from + link.end, line.from + link.end, Decoration.widget({ widget: new ChipWidget(target.id), side: 1 }));
+        }
+      }
+      pos = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
+const workItemChips = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = chipDecorations(view);
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.viewportChanged || u.transactions.some((tr) => tr.effects.some((e) => e.is(chipsChanged)))) {
+        this.decorations = chipDecorations(u.view);
+      }
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
+
+/** 預覽、Wiki 內容：連到工作項目的連結後面加上狀態標籤。 */
+const workItemChipsPlugin: PreviewPlugin = {
+  name: "workitem-chips",
+  apply(_root, scope) {
+    const base = ado?.account?.url;
+    if (!desktop || !base) return;
+    for (const a of scope.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+      if (a.nextElementSibling?.classList.contains("wi-chip")) continue;
+      const target = parseRemoteLink(a.getAttribute("href") ?? "", base);
+      if (target?.kind === "workitem") a.after(chipElement(target.id));
+    }
+  },
+  // 匯出的文件不帶狀態標籤（狀態會變，別人看的時候已經不準了）。
+  exportTransform(root) {
+    for (const chip of root.querySelectorAll(".wi-chip")) chip.remove();
+  },
+};
+
 const preview = new Preview(previewEl, [
   highlightPlugin(),
+  workItemChipsPlugin,
   mathPlugin(() => settings.value.math),
   mermaidPlugin(() => settings.value.mermaid, { open: (svg) => openDiagram(svg), copy: (svg) => void copyDiagram(svg) }),
   tablesPlugin(),
@@ -430,7 +551,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
   formatTable: tableFormatter,
   focusMode: settings.value.focusMode,
   typewriterMode: settings.value.typewriterMode,
-  live: livePreview({
+  live: [workItemChips, livePreview({
     imageUrl(src) {
       if (/^https?:/i.test(src)) return blockRemote() ? null : src;
       if (/^data:image\//i.test(src)) return src;
@@ -458,7 +579,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     wikiExists: (target) => wikiExists(target),
     openTag: (tag) => openTag(tag),
     openImage: (url, alt, editSource) => openLightbox(url, alt, editSource),
-  }),
+  })],
   markdownTools: [
     selectionToolbar({
       enabled: () => view !== "preview" && !settings.value.fixedToolbar && !review.active,
@@ -2139,6 +2260,7 @@ const issueView = new IssueView($(".workspace"), {
   render(markdown, into) {
     issuePreview ??= new Preview(into, [
       highlightPlugin(),
+      workItemChipsPlugin,
       // Wiki 常用流程圖與數學式：和本機預覽一樣畫出來（依同樣的設定）。
       mathPlugin(() => settings.value.math),
       mermaidPlugin(() => settings.value.mermaid, { open: (svg) => openDiagram(svg), copy: (svg) => void copyDiagram(svg) }),
