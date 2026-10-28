@@ -36,6 +36,8 @@ export interface IssueSource {
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
   insertLink(): void;
+  /** 標頭下方的操作列（例如工作項目的狀態、指派給我、留言）。 */
+  toolbar?: HTMLElement;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -105,6 +107,7 @@ export class IssueView {
   #body: HTMLElement;
   #scroll: HTMLElement;
   #find: HTMLElement;
+  #toolbar: HTMLElement;
   #findInput: HTMLInputElement;
   #findCount: HTMLElement;
   #source: IssueSource | null = null;
@@ -209,7 +212,10 @@ export class IssueView {
       if (this.#source?.link?.(a.getAttribute("href")!)) return;
       if (/^https?:/i.test(a.href)) this.#h.open(a.href);
     });
-    pane.append(head, this.#find, this.#scroll);
+    this.#toolbar = document.createElement("div");
+    this.#toolbar.className = "issue-toolbar-host";
+    this.#toolbar.hidden = true;
+    pane.append(head, this.#toolbar, this.#find, this.#scroll);
     pane.addEventListener("keydown", (e) => this.#keydown(e));
     // 滑鼠的「上一頁」「下一頁」側鍵。
     pane.addEventListener("mouseup", (e) => {
@@ -281,6 +287,8 @@ export class IssueView {
       this.#label,
     );
     this.#title.textContent = source.title;
+    this.#toolbar.replaceChildren(...(source.toolbar ? [source.toolbar] : []));
+    this.#toolbar.hidden = !source.toolbar;
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();

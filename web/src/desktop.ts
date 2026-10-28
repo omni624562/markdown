@@ -336,6 +336,8 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   details: string | null;
   /** 留言（舊到新，內容是 HTML）。 */
   comments: { author: string; created: string | null; text: string }[];
+  /** 修訂版本（更新時用來確認這段時間沒有被別人改過）。 */
+  rev: number | null;
 }
 
 /** 工作項目清單的篩選條件。 */
@@ -819,6 +821,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
     adoImage: (url: string) => core.invoke<string>("ado_image", { url }),
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
+    /** 這個類型的工作項目可以設定的狀態。 */
+    adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
+    /** 改狀態、指派給我、留言（HTML）；`rev` 是開啟時的修訂版本。 */
+    adoWorkItemUpdate: (
+      id: number,
+      change: { state?: string; assignToMe?: boolean; comment?: string; rev?: number | null },
+    ) => core.invoke<void>("ado_work_item_update", { id, change: { ...change, rev: change.rev ?? null } }),
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),
     adoWikiPages: (w: AdoWiki) =>
       core.invoke<AdoWikiPage[]>("ado_wiki_pages", { projectId: w.projectId, wikiId: w.id, version: w.code ? w.version : null }),

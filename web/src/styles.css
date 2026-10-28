@@ -2347,6 +2347,19 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
 body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
 .issue-label { color: var(--muted); font-size: 12px; }
+/* 工作項目內容上方的操作列：狀態、指派給我、新增留言（窄的時候換行）。 */
+.issue-toolbar-host { flex: none; border-bottom: 1px solid var(--border); background: var(--surface); }
+.issue-toolbar-host[hidden] { display: none; }
+.issue-toolbar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 6px 16px; }
+.issue-toolbar-field { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; }
+.issue-toolbar-select { max-width: 200px; height: 28px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
+.issue-toolbar-select:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.issue-toolbar .btn[hidden] { display: none; }
+.issue-comment-form { display: flex; flex: 1 1 100%; flex-direction: column; gap: 6px; }
+.issue-comment-form[hidden] { display: none; }
+.issue-comment-form textarea { box-sizing: border-box; width: 100%; min-height: 64px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--font-ui); resize: vertical; }
+.issue-comment-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.issue-comment-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .issue-title { margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }

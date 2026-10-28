@@ -654,6 +654,8 @@ pub struct WorkItemDetail {
     details: Option<String>,
     /// 留言（舊到新）；伺服器不支援或讀不到時是空的。
     comments: Vec<WorkItemComment>,
+    /// 修訂版本（改狀態、指派時用來確認這段時間沒有被別人改過）。
+    rev: Option<u64>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -1122,6 +1124,153 @@ fn comments_of(v: &Value) -> Vec<WorkItemComment> {
     list
 }
 
+// ---- 工作項目：改狀態、指派給我、留言 ---------------------------------------------
+
+/// 這個類型的工作項目可以設定的狀態（依流程的順序）。
+#[tauri::command]
+pub async fn ado_work_item_states(
+    app: AppHandle,
+    project: String,
+    kind: String,
+) -> Result<Vec<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("讀取工作項目的狀態");
+        let base = format!(
+            "/{}/_apis/wit/workitemtypes/{}",
+            encode_segment(&project),
+            encode_segment(&kind)
+        );
+        // 狀態清單是 2018 起的預覽版 API；舊版伺服器改從類型定義的狀態轉換整理出來。
+        if let Ok(v) = get_version(
+            &a.url,
+            &pat,
+            &format!("{base}/states"),
+            Some("4.1-preview.1"),
+            &what,
+        ) {
+            let states: Vec<String> = values(&v)
+                .iter()
+                .filter_map(|s| str_of(s, "name").map(str::to_string))
+                .collect();
+            if !states.is_empty() {
+                return Ok(states);
+            }
+        }
+        let v = get(&a.url, &pat, &base, &what)?;
+        Ok(states_from_transitions(&v))
+    })
+    .await
+}
+
+/// 類型定義裡的狀態轉換（`{"Active": [{"to": "Resolved"}], ...}`）出現過的所有狀態。
+fn states_from_transitions(v: &Value) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    let mut add = |s: &str| {
+        if !s.is_empty() && !out.iter().any(|x| x == s) {
+            out.push(s.to_string());
+        }
+    };
+    if let Some(map) = v.get("transitions").and_then(Value::as_object) {
+        for (from, list) in map {
+            add(from);
+            for t in list.as_array().map_or(&[][..], Vec::as_slice) {
+                add(str_of(t, "to").unwrap_or_default());
+            }
+        }
+    }
+    out
+}
+
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkItemChange {
+    pub state: Option<String>,
+    pub assign_to_me: bool,
+    /// 留言（HTML），加到討論裡。
+    pub comment: Option<String>,
+    /// 開啟時的修訂版本：伺服器上的版本不同（被別人改過）時不更新。
+    pub rev: Option<u64>,
+}
+
+/// 更新工作項目要送出的 JSON Patch。`me` 是登入的帳號（指派給我用）。
+fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
+    let mut ops = vec![];
+    if let Some(rev) = change.rev {
+        ops.push(serde_json::json!({ "op": "test", "path": "/rev", "value": rev }));
+    }
+    if let Some(state) = change.state.as_deref().filter(|s| !s.is_empty()) {
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.State", "value": state }),
+        );
+    }
+    if change.assign_to_me {
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": me }),
+        );
+    }
+    if let Some(comment) = change.comment.as_deref().filter(|c| !c.trim().is_empty()) {
+        // System.History 就是工作項目的討論（所有版本的伺服器都支援）。
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.History", "value": comment }),
+        );
+    }
+    ops
+}
+
+/// 改狀態、指派給我、留言（可以一起）。
+#[tauri::command]
+pub async fn ado_work_item_update(
+    app: AppHandle,
+    id: u64,
+    change: WorkItemChange,
+) -> Result<(), String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let me = a.account.clone().unwrap_or_else(|| a.name.clone());
+        let ops = change_ops(&change, &me);
+        if ops.iter().all(|op| op["op"] == "test") {
+            return Ok(());
+        }
+        let res = crate::update::agent()
+            .patch(&format!(
+                "{}/_apis/wit/workitems/{id}?api-version={API_VERSION}",
+                a.url
+            ))
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json-patch+json")
+            .send(&Value::Array(ops).to_string());
+        let mut r = res.map_err(|e| {
+            tr!(
+                "更新工作項目失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
+                e = e
+            )
+        })?;
+        let code = r.status().as_u16();
+        if code < 400 {
+            return Ok(());
+        }
+        let text = r.body_mut().read_to_string().unwrap_or_default();
+        let message = serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|v| str_of(&v, "message").map(str::to_string))
+            .unwrap_or_default();
+        Err(match code {
+            401 => tr!("更新工作項目失敗：個人存取權杖無效或已過期，或權杖沒有「工作項目：讀取與寫入」的權限"),
+            403 => tr!("更新工作項目失敗：沒有權限修改這個工作項目"),
+            // 修訂版本不同：開啟之後被別人改過了。
+            409 | 412 => tr!("這個工作項目在你開啟之後被別人改過了，請重新整理後再試一次"),
+            _ if message.is_empty() => tr!("更新工作項目失敗：伺服器回應 {code}", code = code),
+            _ => tr!("更新工作項目失敗：{message}", message = message),
+        })
+    })
+    .await
+}
+
 /// 工作項目內文裡的圖片：附件要用權杖才能讀，網頁元件自己載不到。
 /// 只讀取連線中那台伺服器上的網址，不跟隨轉址（權杖不會被送到別的地方），回傳 data: 網址。
 #[tauri::command]
@@ -1415,6 +1564,7 @@ fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
             .map(str::to_string)
             .collect(),
         comments: vec![],
+        rev: v.get("rev").and_then(Value::as_u64),
         description: html("System.Description"),
         details: html("Microsoft.VSTS.Common.AcceptanceCriteria")
             .or_else(|| html("Microsoft.VSTS.TCM.ReproSteps")),
@@ -1729,6 +1879,36 @@ mod tests {
             {"identity": {"displayName": " "}}
         ]});
         assert_eq!(member_names(&members), ["王小明", "Amy Lin"]);
+    }
+
+    #[test]
+    fn builds_work_item_change() {
+        let change = WorkItemChange {
+            state: Some("Resolved".into()),
+            assign_to_me: true,
+            comment: Some("<p>好了</p>".into()),
+            rev: Some(7),
+        };
+        let ops = change_ops(&change, "CORP\\ming");
+        assert_eq!(ops.len(), 4);
+        assert_eq!(ops[0], json!({"op": "test", "path": "/rev", "value": 7}));
+        assert_eq!(ops[1]["path"], "/fields/System.State");
+        assert_eq!(ops[2]["value"], "CORP\\ming");
+        assert_eq!(ops[3]["path"], "/fields/System.History");
+        let empty = WorkItemChange {
+            comment: Some("  ".into()),
+            ..Default::default()
+        };
+        assert!(change_ops(&empty, "x").is_empty());
+    }
+
+    #[test]
+    fn reads_states_from_transitions() {
+        let v = json!({"transitions": {"": [{"to": "New"}], "New": [{"to": "Active"}], "Active": [{"to": "Resolved"}, {"to": "New"}]}});
+        let states = states_from_transitions(&v);
+        assert_eq!(states.len(), 3);
+        assert!(states.contains(&"Resolved".to_string()));
+        assert!(!states.contains(&String::new()));
     }
 
     #[test]
