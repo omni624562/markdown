@@ -120,7 +120,7 @@ import { TasksPanel } from "./ui/tasks-panel.ts";
 import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
 import { IssueView, type IssueSource } from "./ui/issue-view.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
-import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
 import { markOf, markSeen, remember, type SeenMap, trimSeen } from "./workitem-seen.ts";
 import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { fenceLanguage, isMarkdownName, isReadableFileName, parseRepoFileLink, type RepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
@@ -2964,6 +2964,20 @@ const wikiPanel = desktop
       },
       savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
       link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
+      async searchContent(wiki, text) {
+        const found = await desktop!.adoWikiSearch(wiki, text);
+        const pages = flattenPages(wikiPanel?.pages ?? []);
+        const seen = new Set<string>();
+        const results: { path: string; snippet: string }[] = [];
+        for (const r of found.results) {
+          const path = pageFromGitPath(r.path, wiki.mappedPath, pages);
+          if (path && !seen.has(path)) {
+            seen.add(path);
+            results.push({ path, snippet: r.snippet });
+          }
+        }
+        return { available: found.available, results };
+      },
     })
   : null;
 

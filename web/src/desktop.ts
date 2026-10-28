@@ -859,6 +859,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
         path,
         version: w.code ? w.version : null,
       }),
+    /** 搜尋 Wiki 內容（`path` 是 Wiki 儲存庫裡的檔案路徑）；伺服器沒有搜尋功能時 `available` 是 false。 */
+    adoWikiSearch: (w: AdoWiki, text: string) =>
+      core.invoke<{ available: boolean; results: { path: string; snippet: string }[] }>("ado_wiki_search", {
+        project: w.project,
+        wiki: w.name,
+        text,
+      }),
     /** Git 儲存庫裡的文字檔（例如連結指到的 Markdown 檔）。 */
     adoRepoText: (f: { project: string; repo: string; path: string; version: string | null; versionType: string | null }) =>
       core.invoke<string>("ado_repo_text", {
