@@ -109,6 +109,11 @@ export function wikiPageLink(title: string, url: string): string {
   return `[${text}](${href})`;
 }
 
+/** 還沒讀過內容的頁面網址：Wiki 網址加上 `?pagePath=`（Azure DevOps 會轉到那一頁）。 */
+export function wikiPageUrl(wikiUrl: string, path: string): string {
+  return `${wikiUrl.replace(/[?#].*$/, "").replace(/\/+$/, "")}?pagePath=${encodeURIComponent(path)}`;
+}
+
 /** 把 `path` 移到清單最前面（不重複），最多留 `limit` 個。 */
 export function pushRecent(list: readonly string[], path: string, limit: number): string[] {
   return [path, ...list.filter((p) => p !== path)].slice(0, limit);

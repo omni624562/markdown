@@ -118,7 +118,7 @@ import { TasksPanel } from "./ui/tasks-panel.ts";
 import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
 import { IssueView, type IssueSource } from "./ui/issue-view.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
-import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink } from "./wiki-text.ts";
+import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
 import { githubIssueMarkdown, issueFileName, workItemMarkdown } from "./issue-doc.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
@@ -2274,6 +2274,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLButtonElement } {
 const workItemsPanel = desktop
   ? new IssuesPanel<AdoWorkItem & IssueSummary>($("#workitems-host"), {
       placeholder: t("搜尋標題或內容，或輸入編號"),
+      link: (item) => workItemLink(item),
       ...(() => {
         const { bar, button } = workItemFilterBar();
         return { filters: bar, filterButton: button };
@@ -2331,6 +2332,7 @@ const wikiPanel = desktop
         }
       },
       savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
+      link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
     })
   : null;
 
@@ -2338,6 +2340,7 @@ const wikiPanel = desktop
 const issuesPanel = desktop
   ? new IssuesPanel($("#issues-host"), {
       placeholder: t("搜尋 issue，或輸入編號"),
+      link: (item) => workItemLink(item),
       list: async (search) =>
         (await desktop!.githubIssues(search)).map((i) => ({
           ...i,
