@@ -2386,7 +2386,11 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 /* 檢視開著時，分頁列上原本選取的本機分頁變淡（目前看的不是它）。 */
 body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
 body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
-.issue-label { color: var(--muted); font-size: 12px; }
+.issue-label { display: inline-flex; flex-wrap: wrap; gap: 0 4px; align-items: baseline; min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.issue-crumb { padding: 0 2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.issue-crumb:hover { background: var(--active-line); color: var(--fg); text-decoration: underline; }
+.issue-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.issue-crumb-sep { color: var(--subtle); }
 /* 文件裡連到工作項目、Wiki 頁面的摘要卡片（編輯器的提示框、預覽的浮動卡片）。 */
 .remote-card { --source: light-dark(#0b6bcb, #4ea1f3); max-width: min(360px, calc(100vw - 32px)); padding: 8px 12px; color: var(--fg); font: 12.5px/1.5 var(--font-ui); }
 .remote-card-floating { position: fixed; z-index: 60; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 20px rgb(0 0 0 / 14%); pointer-events: none; }

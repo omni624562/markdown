@@ -35,6 +35,8 @@ export interface IssueSource {
   fileName: string;
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
+  /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
+  crumbs?: { label: string; open?(): void }[];
   insertLink(): void;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
@@ -293,12 +295,43 @@ export class IssueView {
     this.#forwardBtn.title = label(t("前往下一頁"), this.#forward, "Alt-→");
   }
 
+  /** 標頭上的位置：「P.wiki › 產品 › 安裝」，上層頁面可以點。 */
+  #crumbs(source: IssueSource): (string | HTMLElement)[] {
+    if (!source.crumbs?.length) return [source.label];
+    const out: (string | HTMLElement)[] = [];
+    source.crumbs.forEach((c, i) => {
+      if (i) {
+        const sep = document.createElement("span");
+        sep.className = "issue-crumb-sep";
+        sep.setAttribute("aria-hidden", "true");
+        sep.textContent = "›";
+        out.push(sep);
+      }
+      if (c.open) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "issue-crumb";
+        b.textContent = c.label;
+        b.title = t("開啟「{name}」", { name: c.label });
+        const open = c.open;
+        b.addEventListener("click", () => open());
+        out.push(b);
+      } else {
+        const span = document.createElement("span");
+        span.textContent = c.label;
+        out.push(span);
+      }
+    });
+    return out;
+  }
+
   async #open(source: IssueSource): Promise<void> {
     this.#source = source;
     this.#h.opened(source);
     this.#updateNav();
     this.#pane.dataset.source = source.origin.kind;
     this.#label.textContent = source.label;
+    this.#label.replaceChildren(...this.#crumbs(source));
     this.#meta.replaceChildren(
       sourceBadge(source.origin.text, source.origin.icon),
       sourceBadge(t("唯讀"), "lock", "source-badge source-readonly"),

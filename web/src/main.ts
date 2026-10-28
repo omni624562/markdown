@@ -2120,6 +2120,18 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
       return webUrl;
     },
     fileName: issueFileName(wiki.name, title),
+    // 標頭顯示所在位置：Wiki 名稱 › 上層頁面…（點上層頁面切換過去）。
+    crumbs: [
+      { label: wiki.name },
+      ...path
+        .split("/")
+        .filter(Boolean)
+        .slice(0, -1)
+        .map((name, i, parts) => {
+          const parent = `/${parts.slice(0, i + 1).join("/")}`;
+          return { label: name, open: () => showWikiPage(wiki, parent) };
+        }),
+    ],
     load: async () => {
       const page = await desktop!.adoWikiPage(wiki, path);
       webUrl = page.webUrl ?? webUrl;
