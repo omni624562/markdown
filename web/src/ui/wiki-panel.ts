@@ -28,6 +28,8 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   /** 每個 Wiki 各自記住的最近看過、釘選的頁面。 */
   prefs(wikiId: string): WikiPrefs;
   savePrefs(wikiId: string, prefs: WikiPrefs): void;
+  /** 拖曳頁面時帶的 Markdown 連結（拖到文件裡插入）；沒有網址時回傳 null。 */
+  link?(wiki: W, path: string): string | null;
 }
 
 export interface WikiPrefs {
@@ -88,6 +90,14 @@ export class WikiPanel<W extends WikiInfo> {
     this.#quick.className = "wiki-quick";
     this.#quick.hidden = true;
     el.append(bar, this.#input, this.#status, this.#quick, this.#list);
+    // 把頁面拖到文件裡，插入 `[頁面名稱](網址)`。
+    el.addEventListener("dragstart", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>(".wiki-page");
+      const link = b && this.#wiki ? this.#h.link?.(this.#wiki, b.dataset.path!) : null;
+      if (!link || !e.dataTransfer) return;
+      e.dataTransfer.setData("text/plain", link);
+      e.dataTransfer.effectAllowed = "copy";
+    });
   }
 
   /** 第一次顯示面板時才讀取。 */
@@ -229,6 +239,7 @@ export class WikiPanel<W extends WikiInfo> {
     b.className = "wiki-page";
     b.dataset.path = page.path;
     b.title = page.path;
+    b.draggable = !!this.#h.link;
     const name = document.createElement("span");
     name.className = "wiki-name";
     name.textContent = pageName(page.path);
@@ -300,6 +311,7 @@ export class WikiPanel<W extends WikiInfo> {
         b.className = "wiki-page";
         b.dataset.path = path;
         b.title = path;
+        b.draggable = !!this.#h.link;
         const name = document.createElement("span");
         name.className = "wiki-name";
         name.textContent = pageName(path);

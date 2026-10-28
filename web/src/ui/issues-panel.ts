@@ -19,6 +19,8 @@ export interface IssuesHandlers<T extends IssueSummary> {
   /** 狀態列文字：`count` 是結果數量，`search` 是搜尋文字（空白表示預設清單）。 */
   status(count: number, search: string): string;
   placeholder: string;
+  /** 拖曳項目時帶的 Markdown 連結（拖到文件裡插入）。 */
+  link?(item: T): string;
   /** 放在搜尋框下方的篩選列（改變時呼叫 `refresh()`）。 */
   filters?: HTMLElement;
 }
@@ -115,6 +117,15 @@ export class IssuesPanel<T extends IssueSummary> {
       this.select(item.id);
       this.#h.view(item);
     });
+    const link = this.#h.link;
+    if (link) {
+      b.draggable = true;
+      b.addEventListener("dragstart", (e) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData("text/plain", link(item));
+        e.dataTransfer.effectAllowed = "copy";
+      });
+    }
     li.append(b);
     return li;
   }
