@@ -1742,6 +1742,105 @@ pub async fn ado_work_item_update(
     .await
 }
 
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NewWorkItem {
+    pub project: String,
+    pub kind: String,
+    pub title: String,
+    /// 內容（HTML）；Bug 放在「重現步驟」，其他類型放在「描述」。
+    pub description: Option<String>,
+    pub assign_to_me: bool,
+    /// 上層工作項目的編號。
+    pub parent: Option<u64>,
+}
+
+/// 建立工作項目要送出的 JSON Patch。`me` 是登入的帳號，`base` 是集合的網址（上層連結用）。
+fn create_ops(item: &NewWorkItem, me: &str, base: &str) -> Vec<Value> {
+    let mut ops = vec![
+        serde_json::json!({ "op": "add", "path": "/fields/System.Title", "value": item.title.trim() }),
+    ];
+    if let Some(html) = item.description.as_deref().filter(|d| !d.trim().is_empty()) {
+        let field = if item.kind.eq_ignore_ascii_case("Bug") {
+            "Microsoft.VSTS.TCM.ReproSteps"
+        } else {
+            "System.Description"
+        };
+        ops.push(
+            serde_json::json!({ "op": "add", "path": format!("/fields/{field}"), "value": html }),
+        );
+    }
+    if item.assign_to_me {
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": me }),
+        );
+    }
+    if let Some(parent) = item.parent {
+        ops.push(serde_json::json!({
+            "op": "add",
+            "path": "/relations/-",
+            "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": format!("{}/_apis/wit/workItems/{parent}", base.trim_end_matches('/')),
+            }
+        }));
+    }
+    ops
+}
+
+/// 建立工作項目，回傳新的工作項目。
+#[tauri::command]
+pub async fn ado_work_item_create(app: AppHandle, item: NewWorkItem) -> Result<WorkItem, String> {
+    let (a, pat) = require(&app)?;
+    if item.title.trim().is_empty() {
+        return Err(tr!("請輸入標題"));
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let me = a.account.clone().unwrap_or_else(|| a.name.clone());
+        let ops = create_ops(&item, &me, &a.url);
+        let res = crate::update::agent()
+            .post(&format!(
+                "{}/{}/_apis/wit/workitems/${}?api-version={API_VERSION}",
+                a.url,
+                encode_segment(&item.project),
+                encode_segment(&item.kind)
+            ))
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json-patch+json")
+            .send(&Value::Array(ops).to_string());
+        let mut r = res.map_err(|e| {
+            tr!(
+                "建立工作項目失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
+                e = e
+            )
+        })?;
+        let code = r.status().as_u16();
+        let text = r.body_mut().read_to_string().unwrap_or_default();
+        let v = serde_json::from_str::<Value>(&text).ok();
+        if code < 400 {
+            return v
+                .as_ref()
+                .and_then(|v| item_of(&a.url, v))
+                .ok_or_else(|| tr!("建立工作項目失敗：伺服器的回應不是預期的格式"));
+        }
+        let message = v
+            .as_ref()
+            .and_then(|v| str_of(v, "message").map(str::to_string))
+            .unwrap_or_default();
+        Err(match code {
+            401 => tr!("建立工作項目失敗：個人存取權杖無效或已過期，或權杖沒有「工作項目：讀取與寫入」的權限"),
+            403 => tr!("建立工作項目失敗：沒有權限在這個專案建立工作項目"),
+            _ if message.is_empty() => tr!("建立工作項目失敗：伺服器回應 {code}", code = code),
+            _ => tr!("建立工作項目失敗：{message}", message = message),
+        })
+    })
+    .await
+}
+
 /// 工作項目內文裡的圖片：附件要用權杖才能讀，網頁元件自己載不到。
 /// 只讀取連線中那台伺服器上的網址，不跟隨轉址（權杖不會被送到別的地方），回傳 data: 網址。
 #[tauri::command]
@@ -2880,6 +2979,35 @@ mod tests {
             (None, None)
         );
         assert_eq!(latest_author(&serde_json::json!({})), (None, None));
+    }
+
+    #[test]
+    fn builds_create_ops() {
+        let item = NewWorkItem {
+            project: "P".into(),
+            kind: "Bug".into(),
+            title: " 登入失敗 ".into(),
+            description: Some("<p>步驟</p>".into()),
+            assign_to_me: true,
+            parent: Some(42),
+        };
+        let ops = create_ops(&item, "me@corp", "https://tfs/DC/");
+        assert_eq!(ops[0]["value"], "登入失敗");
+        assert_eq!(ops[1]["path"], "/fields/Microsoft.VSTS.TCM.ReproSteps");
+        assert_eq!(ops[2]["value"], "me@corp");
+        assert_eq!(
+            ops[3]["value"]["url"],
+            "https://tfs/DC/_apis/wit/workItems/42"
+        );
+        let task = NewWorkItem {
+            kind: "Task".into(),
+            title: "x".into(),
+            description: Some("<p>a</p>".into()),
+            ..Default::default()
+        };
+        let ops = create_ops(&task, "me", "https://tfs/DC");
+        assert_eq!(ops.len(), 2);
+        assert_eq!(ops[1]["path"], "/fields/System.Description");
     }
 
     #[test]

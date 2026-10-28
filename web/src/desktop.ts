@@ -859,6 +859,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 這個類型的工作項目可以設定的狀態。 */
     adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
     /** 改狀態、指派給我、留言（HTML）；`rev` 是開啟時的修訂版本。 */
+    /** 建立工作項目（`description` 是 HTML）。 */
+    adoWorkItemCreate: (item: { project: string; kind: string; title: string; description: string | null; assignToMe: boolean; parent: number | null }) =>
+      core.invoke<AdoWorkItem>("ado_work_item_create", { item }),
     adoWorkItemUpdate: (
       id: number,
       change: { state?: string; assignToMe?: boolean; comment?: string; rev?: number | null },
