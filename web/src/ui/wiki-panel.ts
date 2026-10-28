@@ -82,14 +82,30 @@ export class WikiPanel<W extends WikiInfo> {
     this.#input.placeholder = t("搜尋頁面名稱");
     this.#input.setAttribute("aria-label", t("搜尋頁面名稱"));
     this.#input.addEventListener("input", () => this.#render());
+    // ↓ 從搜尋框移到清單。
+    this.#input.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowDown" || e.isComposing) return;
+      const first = this.#pageButtons()[0];
+      if (!first) return;
+      e.preventDefault();
+      first.focus();
+    });
     this.#status = document.createElement("p");
     this.#status.className = "workitems-status";
     this.#list = document.createElement("ul");
     this.#list.className = "wiki-tree";
     this.#list.setAttribute("role", "tree");
+    this.#list.setAttribute("aria-label", t("Wiki 頁面"));
+    this.#list.addEventListener("keydown", (e) => this.#keydown(e));
+    // 樹狀目錄在 Tab 順序裡只佔一個位置（目前聚焦的那一列）。
+    this.#list.addEventListener("focusin", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".wiki-page");
+      if (b) this.#rove(b);
+    });
     this.#quick = document.createElement("div");
     this.#quick.className = "wiki-quick";
     this.#quick.hidden = true;
+    this.#quick.addEventListener("keydown", (e) => this.#keydown(e));
     el.append(bar, this.#input, this.#status, this.#quick, this.#list);
   }
 
@@ -210,6 +226,7 @@ export class WikiPanel<W extends WikiInfo> {
       walk(this.#pages);
       this.#status.textContent = found.length ? t("找到 {n} 頁", { n: found.length }) : t("找不到符合的頁面");
       this.#list.replaceChildren(...found.slice(0, MAX_RESULTS).map((p) => this.#row(p, 0, true)));
+      this.#rove();
       return;
     }
     this.#status.textContent = "";
@@ -222,6 +239,68 @@ export class WikiPanel<W extends WikiInfo> {
     };
     walk(this.#pages, 0);
     this.#list.replaceChildren(...rows);
+    this.#rove();
+  }
+
+  /** 「釘選」「最近看過」與樹狀目錄裡所有的頁面按鈕（由上而下）。 */
+  #pageButtons(): HTMLButtonElement[] {
+    const quick = this.#quick.hidden ? [] : [...this.#quick.querySelectorAll<HTMLButtonElement>(".wiki-page")];
+    return [...quick, ...this.#list.querySelectorAll<HTMLButtonElement>(".wiki-page")];
+  }
+
+  /** 樹狀目錄裡只有 `active`（沒給就是目前的頁面或第一列）可以用 Tab 移到。 */
+  #rove(active?: HTMLButtonElement): void {
+    const buttons = [...this.#list.querySelectorAll<HTMLButtonElement>(".wiki-page")];
+    const target = active ?? buttons.find((b) => b.getAttribute("aria-current") === "true") ?? buttons[0];
+    for (const b of buttons) b.tabIndex = b === target ? 0 : -1;
+  }
+
+  #focusPage(path: string): void {
+    this.#list.querySelector<HTMLButtonElement>(`.wiki-page[data-path="${CSS.escape(path)}"]`)?.focus();
+  }
+
+  /** 鍵盤操作：↑↓ 移動、→ 展開（已展開就移到第一個子頁面）、← 收合（已收合就移到上一層）、Home／End、Enter 開啟。 */
+  #keydown(e: KeyboardEvent): void {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".wiki-page");
+    if (!b || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return;
+    const all = this.#pageButtons();
+    const i = all.indexOf(b);
+    const path = b.dataset.path!;
+    const inTree = this.#list.contains(b);
+    const expanded = b.closest("li")?.getAttribute("aria-expanded");
+    let target: HTMLElement | undefined;
+    switch (e.key) {
+      case "ArrowDown":
+        target = all[i + 1];
+        break;
+      case "ArrowUp":
+        target = i > 0 ? all[i - 1] : this.#input;
+        break;
+      case "Home":
+        target = all[0];
+        break;
+      case "End":
+        target = all[all.length - 1];
+        break;
+      case "ArrowRight":
+        if (!inTree) return;
+        if (expanded === "false") {
+          this.#toggle(path);
+          this.#focusPage(path);
+        } else if (expanded === "true") target = all[i + 1];
+        break;
+      case "ArrowLeft":
+        if (!inTree) return;
+        if (expanded === "true") {
+          this.#toggle(path);
+          this.#focusPage(path);
+        } else this.#focusPage(path.slice(0, path.lastIndexOf("/")));
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    target?.focus();
   }
 
   #row(page: WikiTreePage, depth: number, flat: boolean): HTMLLIElement {
