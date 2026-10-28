@@ -332,6 +332,7 @@ fn main() {
             ado::ado_attachment_text,
             ado::ado_work_item_states,
             ado::ado_work_item_update,
+            ado::ado_work_item_create,
             ado::ado_wiki_save,
             ado::ado_wiki_page_info,
             ado::ado_wiki_image,

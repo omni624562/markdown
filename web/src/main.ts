@@ -147,6 +147,7 @@ import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, timeAgo, versionTitle } from "./history-label.ts";
 import { myChanges, recentEditor, type WikiPageInfo } from "./wiki-coedit.ts";
+import { draftFromSelection } from "./workitem-create.ts";
 import type { AdoWiki, AdoWikiPage, AdoWorkItem, AdoWorkItemDetail, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
 import { findWikiPage, parseRemoteLink, type RemoteLink, urlAt } from "./remote-links.ts";
 import type { GitHistory } from "./ui/history-view.ts";
@@ -3722,6 +3723,8 @@ function setAdoTab(tab: AdoTab): void {
   storage.save("ado-panel-tab", tab);
   $("#workitems-host").hidden = tab !== "workitems";
   $("#wiki-host").hidden = tab !== "wiki";
+  const newBtn = document.getElementById("ado-new");
+  if (newBtn) newBtn.hidden = tab !== "workitems";
   for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")) {
     b.setAttribute("aria-checked", String(b.dataset.ado === tab));
   }
@@ -3739,6 +3742,16 @@ for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")
 }
 setAdoTab(adoTab);
 $("#ado-refresh").addEventListener("click", () => void (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.refresh());
+// 工作項目清單上方的「建立工作項目」。
+const adoNew = document.createElement("button");
+adoNew.type = "button";
+adoNew.className = "btn icon-only";
+adoNew.id = "ado-new";
+adoNew.title = t("建立工作項目");
+adoNew.setAttribute("aria-label", t("建立工作項目"));
+adoNew.append(icon("plus"));
+adoNew.addEventListener("click", () => createWorkItemDialog());
+$("#ado-refresh").before(adoNew);
 
 /**
  * 網路恢復或切回視窗時，重新讀取上次失敗的工作項目、Wiki、Issues 與開著的內容
@@ -6406,6 +6419,14 @@ commands.register(
       ["ado-wiki", t("Azure DevOps／TFS：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!ado?.account],
       ["ado-offline", t("Azure DevOps／TFS：保留離線的頁面…"), "download", () => keptPicker.open(), () => !!desktop && keptPages.length > 0],
       ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open(t("Azure DevOps／TFS")), () => !!ado],
+      ["ado-create-work-item", t("Azure DevOps／TFS：建立工作項目…"), "plus", () => createWorkItemDialog(), () => !!ado?.account],
+      [
+        "ado-create-from-selection",
+        t("Azure DevOps／TFS：用選取的文字建立工作項目…"),
+        "plus",
+        () => createWorkItemFromSelection(),
+        () => !!ado?.account && kind === "markdown" && !editor.view.state.selection.main.empty,
+      ],
     ] as const
   ).map(
     ([id, title, iconName, run, when]): Command => ({
@@ -7219,6 +7240,7 @@ const contextMenu = floatingMenu("context-anchor", [
   "-",
   "ai-actions",
   "send-to-terminal-ai",
+  "ado-create-from-selection",
   "-",
   "git-copy-link",
 ]);
@@ -7528,6 +7550,166 @@ async function copyDiagram(svg: string): Promise<void> {
     return;
   }
   toast(t("已把流程圖複製成圖片"), { tone: "success" });
+}
+
+// ---- 建立工作項目 ------------------------------------------------------------------
+
+/**
+ * 建立工作項目的對話框：專案、類型、標題、內容（Markdown，送出時轉成 HTML）、上層項目、指派給我。
+ * 建立成功後呼叫 `created`（例如在文件裡補上連結）。
+ */
+function createWorkItemDialog(draft: { title?: string; description?: string } = {}, created?: (w: AdoWorkItem) => void): void {
+  if (!desktop || !ado?.account) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "choice wi-create";
+  const form = document.createElement("form");
+  form.method = "dialog";
+  const h = document.createElement("h2");
+  h.textContent = t("建立工作項目");
+  const field = (label: string, control: HTMLElement) => {
+    const l = document.createElement("label");
+    l.className = "pdf-field";
+    l.append(Object.assign(document.createElement("span"), { textContent: label }), control);
+    return l;
+  };
+  const project = document.createElement("select");
+  const kindSel = document.createElement("select");
+  const row = document.createElement("div");
+  row.className = "wi-create-row";
+  row.append(field(t("專案"), project), field(t("類型"), kindSel));
+  const title = document.createElement("input");
+  title.type = "text";
+  title.value = draft.title ?? "";
+  title.maxLength = 255;
+  const body = document.createElement("textarea");
+  body.rows = 6;
+  body.value = draft.description ?? "";
+  body.placeholder = t("可以用 Markdown，送出時會轉成格式化的內容");
+  const parent = document.createElement("input");
+  parent.type = "text";
+  parent.inputMode = "numeric";
+  parent.placeholder = t("例如 1933599（可以不填）");
+  const assign = document.createElement("label");
+  assign.className = "pdf-check";
+  const assignBox = document.createElement("input");
+  assignBox.type = "checkbox";
+  assignBox.checked = storage.load("wi-create-assign") !== "0";
+  assign.append(assignBox, t("建立後指派給我"));
+  const error = document.createElement("p");
+  error.className = "wi-create-error";
+  error.hidden = true;
+  const actions = document.createElement("div");
+  actions.className = "choice-actions";
+  const cancel = Object.assign(document.createElement("button"), { type: "button", className: "btn", textContent: t("取消") });
+  cancel.addEventListener("click", () => dialog.close());
+  const ok = Object.assign(document.createElement("button"), { type: "submit", className: "btn btn-primary", textContent: t("建立") });
+  actions.append(cancel, ok);
+  form.append(h, row, field(t("標題（必填）"), title), field(t("內容"), body), field(t("上層工作項目編號"), parent), assign, error, actions);
+  dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  title.focus();
+
+  // 專案與類型：記住上次選的；第一次用篩選列選的專案。
+  const fill = (sel: HTMLSelectElement, values: string[], preferred: (string | null | undefined)[]) => {
+    sel.replaceChildren(...values.map((v) => new Option(v, v)));
+    const pick = preferred.find((p) => p && values.includes(p));
+    if (pick) sel.value = pick;
+  };
+  ok.disabled = true;
+  void desktop
+    .adoWorkItemFilters()
+    .then(({ projects, kinds }) => {
+      fill(project, projects, [storage.load("wi-create-project"), workItemFilter.project]);
+      fill(kindSel, kinds, [storage.load("wi-create-kind"), "Task", "User Story"]);
+      ok.disabled = false;
+    })
+    .catch((e) => {
+      error.hidden = false;
+      error.textContent = e instanceof Error ? e.message : String(e);
+    });
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = title.value.trim();
+    const parentId = parent.value.trim().replace(/^#/, "");
+    if (!name) {
+      error.hidden = false;
+      error.textContent = t("請輸入標題。");
+      title.focus();
+      return;
+    }
+    if (parentId && !/^\d+$/.test(parentId)) {
+      error.hidden = false;
+      error.textContent = t("上層工作項目要填編號（數字）。");
+      parent.focus();
+      return;
+    }
+    error.hidden = true;
+    ok.disabled = true;
+    ok.textContent = t("建立中…");
+    const markdown = body.value.trim();
+    void desktop!
+      .adoWorkItemCreate({
+        project: project.value,
+        kind: kindSel.value,
+        title: name,
+        description: markdown ? renderMarkdown(markdown, { kind: "markdown" }).html : null,
+        assignToMe: assignBox.checked,
+        parent: parentId ? Number(parentId) : null,
+      })
+      .then((w) => {
+        storage.save("wi-create-project", project.value);
+        storage.save("wi-create-kind", kindSel.value);
+        storage.save("wi-create-assign", assignBox.checked ? "1" : "0");
+        dialog.close();
+        void workItemsPanel?.refresh();
+        created?.(w);
+        toast(t("已建立 {kind} {id}「{title}」", { kind: w.kind, id: w.id, title: w.title }), {
+          tone: "success",
+          duration: 8000,
+          action: { label: t("開啟"), run: () => showWorkItem(w) },
+        });
+      })
+      .catch((err) => {
+        ok.disabled = false;
+        ok.textContent = t("建立");
+        error.hidden = false;
+        error.textContent = err instanceof Error ? err.message : String(err);
+      });
+  });
+}
+
+/** 用選取的文字建立工作項目，建立後在那一行後面補上 `[#編號](網址)`。 */
+function createWorkItemFromSelection(): void {
+  const view = editor.view;
+  const sel = view.state.selection.main;
+  if (sel.empty) {
+    createWorkItemDialog();
+    return;
+  }
+  const doc = active;
+  const text = view.state.sliceDoc(sel.from, sel.to);
+  const draft = draftFromSelection(text);
+  // 標題那一行（選取範圍裡第一個有字的行）。
+  const offset = text.search(/\S/);
+  const lineText = view.state.doc.lineAt(sel.from + Math.max(offset, 0)).text;
+  createWorkItemDialog(draft, (w) => {
+    if (active !== doc) return;
+    const state = editor.view.state;
+    // 文件在這段時間改過：找回那一行；找不到就放在游標處。
+    let line = null as ReturnType<typeof state.doc.line> | null;
+    for (let i = 1; i <= state.doc.lines; i++) {
+      if (state.doc.line(i).text === lineText) {
+        line = state.doc.line(i);
+        break;
+      }
+    }
+    const link = ` [#${w.id}](${w.webUrl})`;
+    const at = line ? line.to : state.selection.main.head;
+    editor.view.dispatch({ changes: { from: at, insert: link }, userEvent: "input" });
+  });
 }
 
 /** 選取範圍的文字（多重選取用換行連接）。 */

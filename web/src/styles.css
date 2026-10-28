@@ -2840,3 +2840,12 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+
+/* ---- 建立工作項目 ---- */
+.choice.wi-create { width: min(560px, calc(100vw - 32px)); }
+.wi-create-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0 12px; }
+.wi-create textarea { box-sizing: border-box; width: 100%; min-height: 110px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--ctl-radius); background: var(--bg); color: var(--fg); font: 400 14px/1.6 var(--font-ui); resize: vertical; }
+.wi-create textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.wi-create .pdf-field input { height: 36px; }
+.wi-create-error { margin: 0 0 10px; color: var(--danger); font-size: 13px; }
+.wi-create-error[hidden] { display: none; }
