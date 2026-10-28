@@ -2346,7 +2346,11 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 /* 檢視開著時，分頁列上原本選取的本機分頁變淡（目前看的不是它）。 */
 body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
 body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
-.issue-label { color: var(--muted); font-size: 12px; }
+.issue-label { display: inline-flex; flex-wrap: wrap; gap: 0 4px; align-items: baseline; min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.issue-crumb { padding: 0 2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.issue-crumb:hover { background: var(--active-line); color: var(--fg); text-decoration: underline; }
+.issue-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.issue-crumb-sep { color: var(--subtle); }
 .issue-title { margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
