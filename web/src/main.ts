@@ -147,7 +147,7 @@ import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, timeAgo, versionTitle } from "./history-label.ts";
 import { myChanges, recentEditor, type WikiPageInfo } from "./wiki-coedit.ts";
-import type { AdoWiki, AdoWikiPage, AdoWorkItem, AdoWorkItemDetail, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
+import type { AdoSavedQuery, AdoWiki, AdoWikiPage, AdoWorkItem, AdoWorkItemDetail, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
 import { findWikiPage, parseRemoteLink, type RemoteLink, urlAt } from "./remote-links.ts";
 import type { GitHistory } from "./ui/history-view.ts";
 import { clampSidebarWidth, setupSidebarResize } from "./ui/sidebar-resize.ts";
@@ -3221,6 +3221,58 @@ const showAssignee = () => !(workItemFilter.role === "assigned" && workItemFilte
 /** 讀取篩選列的選項（第一次列出工作項目時）。 */
 let loadWorkItemFilterOptions = (): void => {};
 
+// ---- TFS 的已儲存查詢 ------------------------------------------------------------
+
+/** 目前列出的查詢（null 是用篩選條件）。 */
+let workItemQuery: AdoSavedQuery | null = (() => {
+  try {
+    const v = JSON.parse(storage.load("workitem-query") ?? "null") as AdoSavedQuery | null;
+    return v && typeof v.id === "string" && typeof v.project === "string" ? v : null;
+  } catch {
+    return null;
+  }
+})();
+/** 篩選列建好後設定：更新按鈕上的數字並重新列出。 */
+let workItemFilterChanged: () => void = () => {};
+
+function setWorkItemQuery(q: AdoSavedQuery | null, refresh = true): void {
+  workItemQuery = q;
+  if (q) storage.save("workitem-query", JSON.stringify(q));
+  else storage.remove("workitem-query");
+  if (refresh) workItemFilterChanged();
+}
+
+/** 查詢結果裡再用搜尋框的文字（標題或編號）縮小範圍。 */
+function filterQueryResult(items: AdoWorkItem[], search: string): AdoWorkItem[] {
+  const q = search.trim().replace(/^#/, "").toLowerCase();
+  return q ? items.filter((w) => String(w.id).startsWith(q) || w.title.toLowerCase().includes(q)) : items;
+}
+
+let savedQueries: Promise<AdoSavedQuery[]> | null = null;
+type QueryChoice = AdoSavedQuery | { clear: true };
+
+const queryPicker = new Picker<QueryChoice>({
+  label: t("TFS 的已儲存查詢"),
+  placeholder: t("輸入查詢名稱或資料夾"),
+  empty: t("找不到已儲存的查詢（可以在 TFS 網頁版的「查詢」建立）"),
+  async query(text) {
+    if (!desktop) return [];
+    if (!savedQueries) {
+      savedQueries = desktop.adoQueries();
+      savedQueries.catch(() => (savedQueries = null));
+    }
+    const needle = text.trim().toLowerCase();
+    const all = await savedQueries;
+    const found = needle ? all.filter((q) => `${q.name} ${q.folder} ${q.project}`.toLowerCase().includes(needle)) : all;
+    return workItemQuery && !needle ? [{ clear: true }, ...found] : found;
+  },
+  render: (q) =>
+    "clear" in q
+      ? { title: t("不用查詢，回到篩選條件"), detail: t("目前：{name}", { name: workItemQuery?.name ?? "" }), icon: "x" }
+      : { title: q.name, detail: [q.project, q.folder].filter(Boolean).join(" › "), icon: "scroll-text" },
+  pick: (q) => setWorkItemQuery("clear" in q ? null : q),
+});
+
 /**
  * 工作項目的篩選列：人（指派給、建立者）、狀態、類型、專案、區域。
  * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
@@ -3256,17 +3308,40 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   clear.setAttribute("aria-label", clearLabel);
   clear.append(icon("x"));
   clear.addEventListener("click", () => reset.click());
+  // TFS 存的查詢：選了就改列查詢的結果（篩選條件暫時不用）。
+  const query = document.createElement("button");
+  query.type = "button";
+  query.className = "workitems-filter-toggle workitems-query";
+  query.append(icon("scroll-text"));
+  query.addEventListener("click", () => queryPicker.open());
   const group = document.createElement("span");
   group.className = "workitems-filter-group";
-  group.append(button, clear);
+  group.append(button, query, clear);
+  const queryOpen = document.createElement("button");
+  queryOpen.type = "button";
+  queryOpen.className = "btn btn-small workitems-query-open";
+  queryOpen.append(icon("scroll-text"), t("已儲存的查詢…"));
+  queryOpen.addEventListener("click", () => queryPicker.open());
+  const queryNote = document.createElement("p");
+  queryNote.className = "workitems-query-note";
   const updateBadge = () => {
+    const q = workItemQuery;
+    query.classList.toggle("active", !!q);
+    const queryLabel = q ? t("目前列出查詢「{name}」的結果（按一下換查詢或取消）", { name: q.name }) : t("TFS 的已儲存查詢");
+    query.title = queryLabel;
+    query.setAttribute("aria-label", queryLabel);
+    query.setAttribute("aria-pressed", String(!!q));
+    // 平常收在篩選列裡；正在用查詢時才放在搜尋框旁邊，看得出來、也方便換掉。
+    query.hidden = !q;
+    queryNote.hidden = !q;
+    queryNote.textContent = q ? t("目前列出查詢「{name}」的結果，下面的篩選條件暫時不套用。", { name: q.name }) : "";
     const n = [
       !(f.role === "assigned" && f.person === "@me"),
       f.state !== "open",
       !!f.kind,
       !!f.project,
       !!f.area,
-    ].filter(Boolean).length;
+    ].filter(Boolean).length + (q ? 1 : 0);
     badge.textContent = n ? String(n) : "";
     badge.hidden = !n;
     reset.hidden = !n;
@@ -3278,6 +3353,10 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   };
   const changed = () => {
     storage.save("workitem-filter", JSON.stringify(workItemFilter));
+    updateBadge();
+    void workItemsPanel?.refresh();
+  };
+  workItemFilterChanged = () => {
     updateBadge();
     void workItemsPanel?.refresh();
   };
@@ -3399,6 +3478,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   };
   reset.addEventListener("click", () => {
     clearTimeout(timer);
+    setWorkItemQuery(null, false);
     Object.assign(f, DEFAULT_WORK_ITEM_FILTER);
     person.value = "assigned:@me";
     name.hidden = true;
@@ -3409,7 +3489,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     loadScope();
     changed();
   });
-  bar.append(person, state, name, kind, project, area, people, reset);
+  bar.append(queryOpen, queryNote, person, state, name, kind, project, area, people, reset);
   updateBadge();
   setOpen(storage.load("workitem-filter-open") === "1");
   return { bar, button: group };
@@ -3445,8 +3525,11 @@ const workItemsPanel = desktop
       })(),
       list: async (search) => {
         loadWorkItemFilterOptions();
-        const found = await withOfflineCopy(`wi-list:${search}:${JSON.stringify(workItemFilter)}`, () => desktop!.adoWorkItems(search, workItemFilter));
-        noteWorkItems(found, !search && isDefaultFilter());
+        const q = workItemQuery;
+        const found = q
+          ? filterQueryResult(await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q)), search)
+          : await withOfflineCopy(`wi-list:${search}:${JSON.stringify(workItemFilter)}`, () => desktop!.adoWorkItems(search, workItemFilter));
+        noteWorkItems(found, !q && !search && isDefaultFilter());
         return found.map((w) => ({
           ...w,
           meta: [`${w.kind} ${w.id}`, w.state, showAssignee() ? w.assignedTo : "", shortDate(w.changed)]
@@ -3456,7 +3539,13 @@ const workItemsPanel = desktop
       },
       view: (item) => showWorkItem(item),
       status: (n, search) =>
-        n
+        workItemQuery
+          ? n
+            ? t("查詢「{name}」的結果（{n}）", { name: workItemQuery.name, n })
+            : search
+              ? t("查詢「{name}」的結果裡找不到符合的工作項目", { name: workItemQuery.name })
+              : t("查詢「{name}」沒有結果", { name: workItemQuery.name })
+          : n
           ? search
             ? t("找到 {n} 個工作項目", { n })
             : isDefaultFilter()

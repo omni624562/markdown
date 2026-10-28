@@ -326,6 +326,8 @@ fn main() {
             offline::offline_release,
             ado::ado_wiki_search,
             ado::ado_work_items_by_ids,
+            ado::ado_queries,
+            ado::ado_query_run,
             ado::ado_ping,
             ado::ado_check,
             ado::ado_repo_text,

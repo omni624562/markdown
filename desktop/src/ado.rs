@@ -1170,44 +1170,156 @@ pub async fn ado_work_items(
         if ids.is_empty() {
             return Ok(vec![]);
         }
-        let list: Vec<String> = ids.iter().map(u64::to_string).collect();
-        let fetch = |fields: &str| {
-            get(
-                &base,
-                &pat,
-                &format!(
-                    "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
-                    list.join(",")
-                ),
-                &tr!("讀取工作項目"),
-            )
+        fetch_work_items(&base, &pat, &ids)
+    })
+    .await
+}
+
+/// 讀取工作項目的摘要，保持 `ids` 的順序（查詢的排序）；讀不到的略過。
+fn fetch_work_items(base: &str, pat: &str, ids: &[u64]) -> Result<Vec<WorkItem>, String> {
+    let list: Vec<String> = ids.iter().map(u64::to_string).collect();
+    let fetch = |fields: &str| {
+        get(
+            base,
+            pat,
+            &format!(
+                "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
+                list.join(",")
+            ),
+            &tr!("讀取工作項目"),
+        )
+    };
+    // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
+    let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
+        Ok(res) => res,
+        Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+        Err(_) => fetch(FIELDS)?,
+    };
+    let mut items: Vec<WorkItem> = values(&res)
+        .iter()
+        .filter_map(|v| item_of(base, v))
+        .collect();
+    // 保持查詢的排序（最近更新的在前面）。
+    items.sort_by_key(|w| ids.iter().position(|id| *id == w.id).unwrap_or(usize::MAX));
+    Ok(items)
+}
+
+/// TFS 上存的查詢（我的查詢、共用查詢）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedQuery {
+    id: String,
+    project: String,
+    name: String,
+    /// 所在的資料夾（例如 `Shared Queries/團隊`）。
+    folder: String,
+}
+
+/// 查詢樹（`wit/queries?$depth=2`）攤平成查詢清單（資料夾不列）。
+fn flatten_queries(project: &str, nodes: &[Value], out: &mut Vec<SavedQuery>) {
+    for node in nodes {
+        if node
+            .get("isFolder")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                flatten_queries(project, children, out);
+            }
+            continue;
+        }
+        let (Some(id), Some(name)) = (str_of(node, "id"), str_of(node, "name")) else {
+            continue;
         };
-        // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
-        let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
-            Ok(res) => res,
-            Err(e) if e.contains("401") || e.contains("403") => return Err(e),
-            Err(_) => fetch(FIELDS)?,
-        };
-        let items: Vec<WorkItem> = values(&res)
+        let path = str_of(node, "path").unwrap_or(name);
+        let folder = path.rsplit_once('/').map_or("", |(f, _)| f).to_string();
+        out.push(SavedQuery {
+            id: id.to_string(),
+            project: project.to_string(),
+            name: name.to_string(),
+            folder,
+        });
+    }
+}
+
+/// 所有專案（最多 20 個）存的查詢；讀不到的專案略過。
+#[tauri::command]
+pub async fn ado_queries(app: AppHandle) -> Result<Vec<SavedQuery>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = get(&a.url, &pat, "/_apis/projects?$top=1000", &tr!("讀取專案"))?;
+        let mut projects: Vec<String> = values(&res)
             .iter()
-            .filter_map(|v| item_of(&base, v))
+            .filter_map(|p| str_of(p, "name").map(str::to_string))
             .collect();
-        // 保持查詢的排序（最近更新的在前面）。
-        Ok(ids
-            .iter()
-            .filter_map(|id| items.iter().find(|w| w.id == *id))
-            .map(|w| WorkItem {
-                id: w.id,
-                title: w.title.clone(),
-                state: w.state.clone(),
-                kind: w.kind.clone(),
-                project: w.project.clone(),
-                assigned_to: w.assigned_to.clone(),
-                changed: w.changed.clone(),
-                priority: w.priority,
-                web_url: w.web_url.clone(),
-            })
-            .collect())
+        projects.sort_by_key(|p| p.to_lowercase());
+        let mut out = vec![];
+        for project in projects.iter().take(20) {
+            let path = format!(
+                "/{}/_apis/wit/queries?$depth=2&$expand=minimal",
+                encode_segment(project)
+            );
+            if let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取已儲存的查詢")) {
+                flatten_queries(project, values(&res), &mut out);
+            }
+        }
+        Ok(out)
+    })
+    .await
+}
+
+/// 查詢結果裡的工作項目編號（一般查詢是 `workItems`，樹狀、連結查詢是 `workItemRelations`），不重複、照順序。
+fn query_ids(v: &Value) -> Vec<u64> {
+    let mut ids: Vec<u64> = vec![];
+    let mut push = |id: Option<u64>| {
+        if let Some(id) = id {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    };
+    for w in v
+        .get("workItems")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        push(w.get("id").and_then(Value::as_u64));
+    }
+    for r in v
+        .get("workItemRelations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        push(r.pointer("/source/id").and_then(Value::as_u64));
+        push(r.pointer("/target/id").and_then(Value::as_u64));
+    }
+    ids.truncate(200);
+    ids
+}
+
+/// 執行存的查詢，回傳工作項目（最多 200 個，照查詢的排序）。
+#[tauri::command]
+pub async fn ado_query_run(
+    app: AppHandle,
+    project: String,
+    id: String,
+) -> Result<Vec<WorkItem>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let path = format!(
+            "/{}/_apis/wit/wiql/{}?$top=200",
+            encode_segment(&project),
+            encode_segment(&id)
+        );
+        let res = get(&a.url, &pat, &path, &tr!("執行查詢"))?;
+        let ids = query_ids(&res);
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        // 一次最多讀 200 個（伺服器的上限）。
+        fetch_work_items(&a.url, &pat, &ids)
     })
     .await
 }
@@ -2476,6 +2588,51 @@ mod tests {
         assert!(!same_server("http://tfs.corp.com/tfs/DC/_git/r", base));
         assert!(!same_server("https://tfs.corp.com:8443/tfs/DC", base));
         assert!(!same_server("https://tfs.corp.com.evil.com/tfs/DC", base));
+    }
+
+    #[test]
+    fn flattens_saved_queries() {
+        let v = serde_json::json!({ "value": [
+            { "id": "f1", "name": "My Queries", "path": "My Queries", "isFolder": true, "children": [
+                { "id": "q1", "name": "我的 Bug", "path": "My Queries/我的 Bug" }
+            ] },
+            { "id": "f2", "name": "Shared Queries", "path": "Shared Queries", "isFolder": true, "children": [
+                { "id": "f3", "name": "團隊", "path": "Shared Queries/團隊", "isFolder": true, "children": [
+                    { "id": "q2", "name": "本週", "path": "Shared Queries/團隊/本週" }
+                ] }
+            ] }
+        ] });
+        let mut out = vec![];
+        flatten_queries("P", values(&v), &mut out);
+        assert_eq!(
+            out,
+            vec![
+                SavedQuery {
+                    id: "q1".into(),
+                    project: "P".into(),
+                    name: "我的 Bug".into(),
+                    folder: "My Queries".into()
+                },
+                SavedQuery {
+                    id: "q2".into(),
+                    project: "P".into(),
+                    name: "本週".into(),
+                    folder: "Shared Queries/團隊".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_query_result_ids() {
+        let flat = serde_json::json!({ "workItems": [{ "id": 3 }, { "id": 1 }, { "id": 3 }] });
+        assert_eq!(query_ids(&flat), vec![3, 1]);
+        let tree = serde_json::json!({ "workItemRelations": [
+            { "target": { "id": 10 } },
+            { "source": { "id": 10 }, "target": { "id": 11 } }
+        ] });
+        assert_eq!(query_ids(&tree), vec![10, 11]);
+        assert!(query_ids(&serde_json::json!({})).is_empty());
     }
 
     #[test]
