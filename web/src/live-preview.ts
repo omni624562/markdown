@@ -7,6 +7,7 @@ import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
+import { type DetailsRegion, detailsRegions } from "./details-blocks.ts";
 import { TAG } from "./doc-index.ts";
 import { t } from "./i18n.ts";
 import { rangeChecker } from "./ranges.ts";
@@ -284,6 +285,90 @@ class MathWidget extends WidgetType {
   }
 }
 
+/** 即時預覽裡展開、收合可收合區塊（`<details>`），值是區塊第一行的開頭位置。 */
+const detailsToggle = StateEffect.define<number>();
+
+/** 按過展開或收合的可收合區塊（和原本的預設相反；預設收合，寫了 `open` 的預設展開）。 */
+const detailsFlipped = StateField.define<readonly number[]>({
+  create: () => [],
+  update(value, tr) {
+    let next = tr.docChanged ? value.map((p) => tr.changes.mapPos(p, 1)) : value;
+    for (const e of tr.effects) {
+      if (e.is(detailsToggle)) next = next.includes(e.value) ? next.filter((p) => p !== e.value) : [...next, e.value];
+    }
+    return next;
+  },
+});
+
+/** 可收合區塊的標題列：點一下展開或收合，右邊的筆可以改原始碼。 */
+class DetailsWidget extends WidgetType {
+  readonly title: string;
+  readonly open: boolean;
+  constructor(title: string, open: boolean) {
+    super();
+    this.title = title;
+    this.open = open;
+  }
+  eq(other: DetailsWidget): boolean {
+    return other.title === this.title && other.open === this.open;
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const el = document.createElement("div");
+    el.className = `cm-lp-details${this.open ? " open" : ""}`;
+    const head = document.createElement("div");
+    head.className = "cm-lp-details-head";
+    head.setAttribute("role", "button");
+    head.setAttribute("aria-expanded", String(this.open));
+    head.title = this.open ? t("點一下收合") : t("點一下展開");
+    const caret = document.createElement("span");
+    caret.className = "cm-lp-details-caret";
+    caret.append(icon("chevron-right"));
+    const title = document.createElement("span");
+    title.className = "cm-lp-details-title";
+    title.textContent = this.title || t("詳細內容");
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "cm-lp-details-edit";
+    edit.title = t("編輯原始碼");
+    edit.setAttribute("aria-label", t("編輯原始碼"));
+    edit.append(icon("pen-line"));
+    head.append(caret, title, edit);
+    el.append(head);
+    head.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const pos = view.posAtDOM(el);
+      if ((e.target as HTMLElement).closest(".cm-lp-details-edit")) {
+        // 游標放在標題列（顯示原始碼）。
+        view.dispatch({ selection: { anchor: view.state.doc.lineAt(pos).to }, userEvent: "select.pointer" });
+        view.focus();
+      } else {
+        view.dispatch({ effects: detailsToggle.of(view.state.doc.lineAt(pos).from) });
+      }
+    });
+    return el;
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+/** 展開的可收合區塊結尾（`</details>` 那一行）：一條細線。 */
+class DetailsEndWidget extends WidgetType {
+  eq(): boolean {
+    return true;
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "cm-lp-details-end";
+    revealOnClick(view, el);
+    return el;
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 /** 流程圖畫面上最多多高，超過的等比例縮小（點「放大」看原始大小）。 */
 const DIAGRAM_MAX_HEIGHT = 560;
 /** 編輯原始碼時，停止打字多久後重畫。 */
@@ -513,9 +598,13 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): Blocks {
   const mermaidOn = !!opts.renderMermaid && (opts.mermaidEnabled?.() ?? true);
   const theme = opts.mermaidTheme?.() ?? "";
   const decos: Range<Decoration>[] = [];
+  const htmlLines: { number: number; text: string }[] = [];
   syntaxTree(state).iterate({
     enter: ({ name, from, to }) => {
       switch (name) {
+        case "HTMLBlock":
+          for (let l = doc.lineAt(from).number; l <= doc.lineAt(to).number; l++) htmlLines.push({ number: l, text: doc.line(l).text });
+          return false;
         case "Document":
         case "Blockquote":
         case "BulletList":
@@ -561,7 +650,54 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): Blocks {
       }
     },
   });
+  if (htmlLines.length) detailsBlocks(state, detailsRegions(htmlLines), decos, blocks, rangeActive);
   return { set: Decoration.set(decos, true), blocks };
+}
+
+/**
+ * 可收合區塊：收合時整塊換成標題列；展開時標題列換成可以點的標題、`</details>` 換成細線，中間照常排版。
+ * 游標碰到的部分顯示原始碼（收合中的區塊被搜尋選到時整塊顯示原始碼）。
+ */
+function detailsBlocks(
+  state: EditorState,
+  regions: DetailsRegion[],
+  decos: Range<Decoration>[],
+  blocks: [number, number][],
+  rangeActive: (from: number, to: number) => boolean,
+): void {
+  const doc = state.doc;
+  const flipped = state.field(detailsFlipped, false) ?? [];
+  const collapsed: [number, number][] = [];
+  const own: Range<Decoration>[] = [];
+  for (const r of regions) {
+    const headFrom = doc.line(r.headStart).from;
+    // 外層已經收合：裡面的不必處理。
+    if (collapsed.some(([a, b]) => headFrom >= a && headFrom <= b)) continue;
+    const headTo = doc.line(r.headEnd).to;
+    const close = doc.line(r.close);
+    const open = r.open !== flipped.includes(headFrom);
+    if (!open) {
+      blocks.push([headFrom, close.to]);
+      if (rangeActive(headFrom, close.to)) continue;
+      collapsed.push([headFrom, close.to]);
+      own.push(Decoration.replace({ widget: new DetailsWidget(r.title, false), block: true }).range(headFrom, close.to));
+      continue;
+    }
+    blocks.push([headFrom, headTo], [close.from, close.to]);
+    if (!rangeActive(headFrom, headTo)) {
+      own.push(Decoration.replace({ widget: new DetailsWidget(r.title, true), block: true }).range(headFrom, headTo));
+    }
+    if (!rangeActive(close.from, close.to)) {
+      own.push(Decoration.replace({ widget: new DetailsEndWidget(), block: true }).range(close.from, close.to));
+    }
+  }
+  // 收起來的範圍裡的表格、公式、流程圖不必畫。
+  if (collapsed.length) {
+    const kept = decos.filter((d) => !collapsed.some(([a, b]) => d.from >= a && d.from <= b));
+    decos.length = 0;
+    decos.push(...kept);
+  }
+  decos.push(...own);
 }
 
 /** 游標移動前後所在的行，有沒有碰到任何區塊（碰到才需要重算：元件要換成原始碼，或換回元件）。 */
@@ -862,7 +998,7 @@ export function livePreview(opts: LivePreviewOptions): Extension {
     create: (state) => buildBlocks(state, opts),
     update(value, tr) {
       const treeChanged = syntaxTree(tr.state) !== syntaxTree(tr.startState);
-      const forced = tr.effects.some((e) => e.is(rebuild));
+      const forced = tr.effects.some((e) => e.is(rebuild) || e.is(detailsToggle));
       if (!tr.docChanged && !treeChanged && !tr.reconfigured && !focusChanged(tr) && !forced) {
         // 只是移動游標，而且沒有跨進或跨出任何表格、公式、流程圖：沿用原本的結果。
         if (!tr.selection || !selectionTouchesBlock(value.blocks, tr.startState, tr.state)) return value;
@@ -891,6 +1027,7 @@ export function livePreview(opts: LivePreviewOptions): Extension {
   );
   return [
     focusTracking,
+    detailsFlipped,
     blocks,
     inline,
     EditorView.editorAttributes.of({ class: "cm-lp" }),
