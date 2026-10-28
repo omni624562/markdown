@@ -36,6 +36,8 @@ export interface IssueSource {
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
   insertLink(): void;
+  /** 「編輯」：在分頁裡編輯、存回伺服器（不能編輯的不給）。 */
+  edit?(): void;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -121,6 +123,7 @@ export class IssueView {
   #stale: HTMLElement;
   #backBtn: HTMLButtonElement;
   #forwardBtn: HTMLButtonElement;
+  #editBtn: HTMLButtonElement;
   #matches: FindMatch[] = [];
   #current = 0;
 
@@ -156,6 +159,13 @@ export class IssueView {
     insert.className = "btn btn-small btn-primary";
     insert.append(icon("link"), t("插入連結"));
     insert.addEventListener("click", () => this.#source?.insertLink());
+    this.#editBtn = document.createElement("button");
+    this.#editBtn.type = "button";
+    this.#editBtn.className = "btn btn-small";
+    this.#editBtn.append(icon("pencil"), t("編輯"));
+    this.#editBtn.title = t("在分頁裡編輯，按 Ctrl+S 存回伺服器");
+    this.#editBtn.hidden = true;
+    this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "btn btn-small";
@@ -166,6 +176,7 @@ export class IssueView {
     });
     actions.append(
       insert,
+      this.#editBtn,
       copy,
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
@@ -281,6 +292,7 @@ export class IssueView {
       this.#label,
     );
     this.#title.textContent = source.title;
+    this.#editBtn.hidden = !source.edit;
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();

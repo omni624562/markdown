@@ -1440,7 +1440,9 @@ function renderSaveState(): void {
   }
   status.save.dataset.state = dirty ? "dirty" : "saved";
   if (!dirty) status.save.textContent = fileBacked ? t("已儲存") : "";
-  else status.save.textContent = (fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (draftSaved ? t(" · 草稿已自動保存") : "");
+  else
+    status.save.textContent =
+      (active.wiki ? t("尚未存回 Wiki") : fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (draftSaved ? t(" · 草稿已自動保存") : "");
   // 已儲存時不佔位置；只有需要注意時才顯示。
   status.save.hidden = !dirty;
   status.save.title = dirty ? t("按一下存檔（Ctrl+S）") : "";
@@ -1914,6 +1916,50 @@ function showIssue(source: IssueSource): Promise<void> {
   return issueView.show(source);
 }
 
+/** 存回 Wiki 時伺服器上比較新的版本（發生衝突後，使用者選擇覆蓋時用它）。 */
+const wikiServerEtag = new Map<string, string>();
+
+/** 在分頁裡編輯 Wiki 頁面（Ctrl+S 存回伺服器）；已經開著就切換過去。 */
+async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
+  const open = docs.find((d) => d.wiki?.wikiId === wiki.id && d.wiki.path === path);
+  if (open) {
+    activate(open);
+    return;
+  }
+  const page = await desktop!.adoWikiPage(wiki, path);
+  if (!page.etag) throw new Error(t("伺服器沒有提供這一頁的版本，無法確認存回時有沒有蓋掉別人的修改，所以不能在這裡編輯。"));
+  // 編輯器一律用 \n 換行，先統一，免得一開就顯示成有變更。
+  const content = page.content.replace(/\r\n?/g, "\n");
+  issueView.close();
+  const doc = makeDoc({
+    name: `${pageName(path)}.md`,
+    kind: "markdown",
+    baseline: hash(content),
+    wiki: { projectId: wiki.projectId, wikiId: wiki.id, wikiName: wiki.name, path, etag: page.etag },
+  });
+  saveDraft(doc.id, content);
+  addTab(doc);
+  toast(t("編輯完按 Ctrl+S 存回 Wiki。如果這段時間有人改過這一頁，會先讓你比較差異。"));
+}
+
+/** 把分頁的內容存回 Wiki 頁面；伺服器上的版本被別人改過時回傳那個版本（交給衝突處理）。 */
+async function saveWikiPage(text: string, force: boolean): Promise<{ name: string; diskText: string } | void> {
+  const doc = active;
+  const target = doc.wiki!;
+  const etag = (force && wikiServerEtag.get(doc.id)) || target.etag;
+  const out = await desktop!.adoWikiSave(target, text, etag);
+  if (out.status === "conflict") {
+    if (out.etag) wikiServerEtag.set(doc.id, out.etag);
+    return { name: doc.name, diskText: out.content.replace(/\r\n?/g, "\n") };
+  }
+  wikiServerEtag.delete(doc.id);
+  doc.wiki = { ...target, etag: out.etag ?? target.etag };
+  setBaseline(text, true);
+  persistSession();
+  renderTabs();
+  toast(t("已存回 Wiki 頁面「{name}」", { name: pageName(target.path) }), { tone: "success" });
+}
+
 /** 在主要區域開啟 Wiki 頁面；內容裡連到其他頁面的連結直接在這裡切換。 */
 function showWikiPage(wiki: AdoWiki, path: string): void {
   let webUrl = wiki.webUrl ?? "";
@@ -1927,6 +1973,8 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
       return webUrl;
     },
     fileName: issueFileName(wiki.name, title),
+    // 程式碼 Wiki 的內容在 Git 儲存庫裡，要用 Git 改；專案 Wiki 可以直接編輯、存回。
+    edit: wiki.code ? undefined : () => void editWikiPage(wiki, path).catch(reportError),
     load: async () => {
       const page = await desktop!.adoWikiPage(wiki, path);
       webUrl = page.webUrl ?? webUrl;
@@ -3271,7 +3319,7 @@ function persistSession(): void {
   saveSession(
     {
       activeId: active.id,
-      docs: docs.map(({ id, name, kind, path, baseline, fileBacked, pinned }) => ({ id, name, kind, path, baseline, fileBacked, pinned })),
+      docs: docs.map(({ id, name, kind, path, baseline, fileBacked, pinned, wiki }) => ({ id, name, kind, path, baseline, fileBacked, pinned, wiki })),
     },
     tabScope,
   );
@@ -3282,7 +3330,10 @@ function renderTabs(): void {
     docs.map((d) => ({
       id: d.id,
       name: d === active ? fileName : d.name,
-      title: ((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name),
+      title: d.wiki
+        ? t("Azure DevOps Wiki：{wiki}{path}（按 Ctrl+S 存回伺服器）", { wiki: d.wiki.wikiName, path: d.wiki.path })
+        : (((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name)),
+      source: d.wiki ? ("wiki" as const) : undefined,
       dirty: d.dirty,
       missing: d.missing,
       pinned: d.pinned,
@@ -3528,6 +3579,8 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   // 手動存檔後恢復自動存檔。
   diskSaveBlocked = null;
   const text = editor.text;
+  // 編輯中的 Wiki 頁面：存回伺服器（另存新檔則照常存成本機檔案）。
+  if (active.wiki && !saveAs && desktop) return saveWikiPage(text, force);
   let out: Awaited<ReturnType<typeof saveFile>>;
   try {
     out = await saveFile(text, fileName, kind, fileHandle, { saveAs, force });
@@ -3546,6 +3599,8 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   if (!out) return;
   if (out.status === "conflict") return { name: out.name, diskText: out.diskText };
   fileHandle = out.handle;
+  // 另存成本機檔案之後，這個分頁就是那個檔案，不再對應 Wiki 頁面。
+  if (out.handle) active.wiki = undefined;
   active.missing = false;
   // 已經存成 UTF-8 了。
   active.lossy = false;
@@ -3644,11 +3699,14 @@ function otherWriter(path = fileHandle?.path): string {
 /** 檔案在開啟後被別的程式改過：讓使用者比較差異、覆蓋或另存。 */
 async function resolveConflict(name: string, diskText: string): Promise<void> {
   const remote = isRemote(fileHandle?.path);
+  const wiki = !!active.wiki;
   const choice = await choose(
-    t("檔案已被{who}修改", { who: otherWriter() }),
-    remote
-      ? t("「{name}」在你開啟之後被其他電腦或程式改過。要怎麼處理？", { name })
-      : t("「{name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？", { name }),
+    wiki ? t("Wiki 頁面已被別人修改") : t("檔案已被{who}修改", { who: otherWriter() }),
+    wiki
+      ? t("「{name}」在你開始編輯之後被別人改過了。要怎麼處理？", { name })
+      : remote
+        ? t("「{name}」在你開啟之後被其他電腦或程式改過。要怎麼處理？", { name })
+        : t("「{name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？", { name }),
     [
       { id: "compare", label: t("比較差異"), primary: true },
       { id: "overwrite", label: t("用我的版本覆蓋"), danger: true },
@@ -3660,9 +3718,9 @@ async function resolveConflict(name: string, diskText: string): Promise<void> {
   else if (choice === "save-as") await save(true);
   else if (choice === "compare") {
     const started = review.start(diskText, {
-      title: t("與{store}上的版本比較", { store: storeName() }),
+      title: wiki ? t("與 Wiki 上的版本比較") : t("與{store}上的版本比較", { store: storeName() }),
       hint: t("逐段選擇要採用哪個版本，全部處理完會自動存檔。"),
-      acceptLabel: isRemote(fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
+      acceptLabel: wiki || isRemote(fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
       rejectLabel: t("保留我的版本"),
       onFinish: () => void save(false, true).catch(reportError),
     });
