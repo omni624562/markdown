@@ -3,7 +3,7 @@
  * 以及「複製成 Markdown 文件」都用這一份。工作項目的 HTML 轉成 Markdown 後，
  * 由預覽同一套流程顯示（Rust 端會移除原始 HTML 與危險的連結）。
  */
-import type { AdoWorkItemDetail, GitHubIssueDetail } from "./desktop.ts";
+import type { AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
 import { htmlToMarkdown } from "./html-paste.ts";
 import { t } from "./i18n.ts";
 
@@ -49,6 +49,33 @@ function commentHeading(author: string, created: string | null): string {
   return `### ${[name, dateTime(created)].filter(Boolean).join("・")}`;
 }
 
+/** 相關工作項目的分組：上層、子項目、前置、後續、相關，其他依伺服器上的連結名稱。 */
+function relationsMarkdown(list: AdoWorkItemRelation[]): string {
+  const labels: Record<string, string> = {
+    parent: t("上層"),
+    child: t("子項目"),
+    predecessor: t("前置項目"),
+    successor: t("後續項目"),
+    related: t("相關"),
+  };
+  const groups = new Map<string, AdoWorkItemRelation[]>();
+  for (const key of Object.keys(labels)) groups.set(labels[key], []);
+  for (const r of list) {
+    const label = labels[r.link] ?? inlineText(r.linkName);
+    groups.set(label, [...(groups.get(label) ?? []), r]);
+  }
+  return [...groups]
+    .filter(([, items]) => items.length)
+    .map(([label, items]) => {
+      const lines = items.map((r) => {
+        const text = t("{label}：{title}", { label: inlineText(`${r.kind} ${r.id}`), title: inlineText(r.title) });
+        return `- [${text}](<${r.webUrl}>)・${inlineText(r.state)}`;
+      });
+      return `### ${label}\n\n${lines.join("\n")}`;
+    })
+    .join("\n\n");
+}
+
 /** 工作項目的 Markdown。 */
 export function workItemMarkdown(d: AdoWorkItemDetail): string {
   const fields = fieldTable([
@@ -72,10 +99,17 @@ export function workItemMarkdown(d: AdoWorkItemDetail): string {
     // 「說明」在共用的翻譯是選單的「Help」；這裡是工作項目的 Description 欄位。
     section(t("工作項目說明"), html(d.description)),
     section(d.kind === "Bug" ? t("重現步驟") : t("驗收條件"), html(d.details)),
+    section(t("相關工作項目（{n}）", { n: d.relations.length }), relationsMarkdown(d.relations)),
     section(t("留言（{n}）", { n: d.comments.length }), comments.join("\n\n")),
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/** 工作項目網址裡的編號（`…/_workitems/edit/123`）；不是工作項目的網址回傳 null。 */
+export function workItemIdOf(href: string): number | null {
+  const m = /\/_workitems\/edit\/(\d+)\/?(?:[?#]|$)/i.exec(href);
+  return m ? Number(m[1]) : null;
 }
 
 /** GitHub issue 的 Markdown（內容本來就是 Markdown）。 */
