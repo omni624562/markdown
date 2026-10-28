@@ -119,8 +119,8 @@ export const ui: Record<string, Translation> = {
   "伺服器網址": "Server URL",
   "集合或組織的網址；貼上專案或儲存庫的網址也可以": "URL of the collection or organization; a project or repository URL also works.",
   "個人存取權杖（PAT）": "Personal Access Token (PAT)",
-  "在 ADO 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code（Read & write）與 Work Items（Read）":
-    "Create one on the ADO website under User settings (top right) → \"Personal access tokens\", with the Code (Read & write) and Work Items (Read) scopes.",
+  "在 ADO 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code、Work Items 與 Wiki（都選 Read & write）":
+    "Create one on the ADO website under User settings (top right) → \"Personal access tokens\", with the Code, Work Items and Wiki scopes (all Read & write).",
   "連線": "Connect",
   "選一個儲存庫或專案 Wiki，下載到電腦並開啟": "Pick a repository or project wiki to download to this computer and open.",
   "在側邊欄列出指派給你的工作項目，可以插入連結到文件": "Lists work items assigned to you in the Sidebar; you can insert links to them into documents.",
@@ -488,6 +488,10 @@ export const ui: Record<string, Translation> = {
   "篩選": "Filters",
   "篩選（已設定 {n} 項）": "Filters ({n} set)",
   "Wiki 頁面": "Wiki pages",
+  "權限檢查": "Permission check",
+  "檢查": "Check",
+  "確認這個權杖能讀寫哪些東西（不會修改任何資料）": "See what this token can read and change (nothing is modified)",
+  "缺少的權限：到 ADO 網頁右上角的使用者設定 →「Personal access tokens」，編輯這個權杖勾選需要的項目，再按上面的「更新權杖」貼上（權杖內容不變時不用重貼）。": "Missing permissions: in Azure DevOps, open User settings (top right) → Personal access tokens, edit this token to add the needed scopes. If the token value doesn't change, you don't need to paste it again.",
   "100%（預設）": "100% (default)",
   "介面大小": "Interface size",
   "整個視窗一起放大或縮小（選單、側邊欄、按鈕）；文件的字級在上面另外設定": "Scales the whole window (menus, sidebar, buttons). The document font size is set separately above.",

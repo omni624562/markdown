@@ -7178,6 +7178,7 @@ const settingsDialog = new SettingsDialog(
         disconnect: () => void ado!.disconnect(),
         openRepo: () => void ado!.openRepo(),
         workItems: () => showAdo("workitems"),
+        check: () => desktop!.adoCheck(),
       }
     : null,
   {

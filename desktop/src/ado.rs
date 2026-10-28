@@ -408,6 +408,140 @@ fn require(app: &AppHandle) -> Result<(Account, String), String> {
     connection(app).ok_or_else(|| tr!("請先到設定的 Azure DevOps／TFS 頁連線"))
 }
 
+// ---- 權限檢查 ---------------------------------------------------------------
+
+/// 一項權限檢查的結果。`status` 是 `ok`、`fail` 或 `unknown`（無法事先檢查）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccessCheck {
+    id: &'static str,
+    label: String,
+    status: &'static str,
+    detail: String,
+}
+
+fn check(id: &'static str, label: String, result: Result<String, String>) -> AccessCheck {
+    match result {
+        Ok(detail) => AccessCheck {
+            id,
+            label,
+            status: "ok",
+            detail,
+        },
+        Err(detail) => AccessCheck {
+            id,
+            label,
+            status: "fail",
+            detail,
+        },
+    }
+}
+
+/// 用 `validateOnly` 試改工作項目（不會真的存檔）：確認權杖與帳號能不能修改工作項目。
+fn can_edit_work_item(base: &str, pat: &str, id: u64) -> Result<String, String> {
+    let res = crate::update::agent()
+        .patch(&format!(
+            "{base}/_apis/wit/workitems/{id}?validateOnly=true&api-version={API_VERSION}"
+        ))
+        .config()
+        .http_status_as_error(false)
+        .build()
+        .header("Authorization", &basic(pat))
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json-patch+json")
+        .send(r#"[{"op":"add","path":"/fields/System.History","value":""}]"#)
+        .map_err(|e| e.to_string())?;
+    match res.status().as_u16() {
+        code if code < 400 => Ok(tr!(
+            "可以修改（用工作項目 {id} 試過，沒有真的修改）",
+            id = id
+        )),
+        401 => Err(tr!("權杖沒有「Work Items（Read & write）」權限")),
+        403 => Err(tr!("帳號沒有修改這個專案工作項目的權限")),
+        code => Err(tr!("無法確認：伺服器回應 {code}", code = code)),
+    }
+}
+
+/// 逐項檢查這個權杖能做什麼：登入、專案、工作項目（讀、改）、Wiki、程式碼。
+#[tauri::command]
+pub async fn ado_check(app: AppHandle) -> Result<Vec<AccessCheck>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let base = a.url.as_str();
+        let mut out = vec![];
+        out.push(check(
+            "login",
+            tr!("登入"),
+            connection_data(base, &pat).and_then(|d| {
+                user_of(&d)
+                    .map(|(name, _)| tr!("以「{name}」登入", name = name))
+                    .ok_or_else(|| tr!("個人存取權杖無效或已過期"))
+            }),
+        ));
+        out.push(check(
+            "projects",
+            tr!("讀取專案"),
+            get(base, &pat, "/_apis/projects?$top=100", &tr!("讀取專案"))
+                .map(|v| tr!("看得到 {n} 個專案", n = values(&v).len())),
+        ));
+        let wiql = serde_json::json!({
+            "query": "SELECT [System.Id] FROM WorkItems ORDER BY [System.ChangedDate] DESC"
+        });
+        let items = post(
+            base,
+            &pat,
+            "/_apis/wit/wiql?$top=1",
+            &wiql,
+            &tr!("讀取工作項目"),
+        );
+        let first = items.as_ref().ok().and_then(|v| {
+            v.get("workItems")
+                .and_then(Value::as_array)
+                .and_then(|l| l.first())
+                .and_then(|w| w.get("id"))
+                .and_then(Value::as_u64)
+        });
+        out.push(check(
+            "workItemsRead",
+            tr!("讀取工作項目"),
+            items.map(|_| tr!("可以讀取")),
+        ));
+        out.push(match first {
+            Some(id) => check(
+                "workItemsWrite",
+                tr!("修改工作項目（改狀態、指派、留言）"),
+                can_edit_work_item(base, &pat, id),
+            ),
+            None => AccessCheck {
+                id: "workItemsWrite",
+                label: tr!("修改工作項目（改狀態、指派、留言）"),
+                status: "unknown",
+                detail: tr!("沒有可以試的工作項目，無法確認"),
+            },
+        });
+        out.push(check(
+            "wikiRead",
+            tr!("讀取 Wiki"),
+            get(base, &pat, "/_apis/wiki/wikis", &tr!("讀取 Wiki"))
+                .map(|v| tr!("看得到 {n} 個 Wiki", n = values(&v).len())),
+        ));
+        out.push(AccessCheck {
+            id: "wikiWrite",
+            label: tr!("編輯 Wiki 頁面"),
+            status: "unknown",
+            detail: tr!("無法事先確認，第一次存回時就知道；權杖需要「Wiki（Read & write）」權限"),
+        });
+        out.push(check(
+            "code",
+            tr!("讀取程式碼（儲存庫）"),
+            get(base, &pat, "/_apis/git/repositories", &tr!("讀取儲存庫"))
+                .map(|v| tr!("看得到 {n} 個儲存庫", n = values(&v).len())),
+        ));
+        Ok(out)
+    })
+    .await
+}
+
 // ---- 儲存庫 -----------------------------------------------------------------
 
 #[derive(Serialize, Debug, PartialEq)]

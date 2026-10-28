@@ -74,6 +74,8 @@ export interface AdoSettingsHooks {
   disconnect(): void;
   openRepo(): void;
   workItems(): void;
+  /** 逐項檢查權杖能做什麼。 */
+  check(): Promise<{ label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>;
 }
 
 /** 桌面版提供：目前版本與手動檢查更新。 */
@@ -924,7 +926,7 @@ export class SettingsDialog {
     const patRow = this.#row(
       "ado-pat",
       t("個人存取權杖（PAT）"),
-      t("在 ADO 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code（Read & write）與 Work Items（Read）"),
+      t("在 ADO 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code、Work Items 與 Wiki（都選 Read & write）"),
       () => pat,
     );
     // 已連線時：權杖過期或要換帳號，不用先中斷連線，直接輸入新的權杖。
@@ -974,6 +976,49 @@ export class SettingsDialog {
     const itemsRow = this.#row("ado-items", t("工作項目"), t("在側邊欄列出指派給你的工作項目，可以插入連結到文件"), () =>
       action("ado-items", t("顯示"), () => ado.workItems()),
     );
+    // 權限檢查：逐項列出權杖能做什麼，缺的告訴使用者怎麼補。
+    const results = document.createElement("ul");
+    results.className = "ado-check-list";
+    results.hidden = true;
+    // 這個按鈕的結果顯示在設定裡，不能像其他動作一樣先關掉設定。
+    const checkBtn = document.createElement("button");
+    checkBtn.type = "button";
+    checkBtn.className = "btn";
+    checkBtn.id = "setting-ado-check";
+    checkBtn.textContent = t("檢查");
+    checkBtn.addEventListener("click", () => {
+      checkBtn.disabled = true;
+      results.hidden = false;
+      results.replaceChildren(Object.assign(document.createElement("li"), { textContent: t("檢查中…") }));
+      void ado
+        .check()
+        .then((list) => {
+          const icons = { ok: "check", fail: "x", unknown: "circle-help" } as const;
+          results.replaceChildren(
+            ...list.map((c) => {
+              const li = document.createElement("li");
+              li.className = `ado-check-${c.status}`;
+              const name = document.createElement("strong");
+              name.textContent = c.label;
+              const detail = document.createElement("span");
+              detail.textContent = c.detail;
+              li.append(icon(icons[c.status]), name, detail);
+              return li;
+            }),
+          );
+          if (list.some((c) => c.status === "fail")) {
+            const tip = document.createElement("li");
+            tip.className = "ado-check-tip";
+            tip.textContent = t("缺少的權限：到 ADO 網頁右上角的使用者設定 →「Personal access tokens」，編輯這個權杖勾選需要的項目，再按上面的「更新權杖」貼上（權杖內容不變時不用重貼）。");
+            results.append(tip);
+          }
+        })
+        .catch((e) => {
+          results.replaceChildren(Object.assign(document.createElement("li"), { textContent: e instanceof Error ? e.message : String(e) }));
+        })
+        .finally(() => (checkBtn.disabled = false));
+    });
+    const checkRow = this.#row("ado-check", t("權限檢查"), t("確認這個權杖能讀寫哪些東西（不會修改任何資料）"), () => checkBtn);
     const refresh = () => {
       const a = ado.account();
       if (!a) editing = false;
@@ -981,7 +1026,8 @@ export class SettingsDialog {
       urlRow.hidden = patRow.hidden = !asking;
       // 上面兩列藏起來時，帳號是第一列，不需要分隔線。
       statusRow.style.borderTop = asking ? "" : "0";
-      openRow.hidden = itemsRow.hidden = !a;
+      openRow.hidden = itemsRow.hidden = checkRow.hidden = !a;
+      if (!a) results.hidden = true;
       label.textContent = a ? t("帳號") : t("連線");
       hint.textContent = a
         ? t("已連線：{name}（{url}）", { name: a.name, url: a.url.replace(/^https?:\/\//, "") })
@@ -993,7 +1039,7 @@ export class SettingsDialog {
     };
     refresh();
     section.append(
-      ...this.#group(t("連線"), [urlRow, patRow, statusRow]),
+      ...this.#group(t("連線"), [urlRow, patRow, statusRow, checkRow, results]),
       ...this.#group(t("儲存庫與工作項目"), [openRow, itemsRow]),
     );
     return { section, refresh };

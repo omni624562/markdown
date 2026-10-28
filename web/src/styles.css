@@ -2745,6 +2745,17 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .activity-setting-actions { display: flex; gap: 8px; margin-top: 8px; }
 
 /* 設定列裡並排的幾個按鈕（例如 GitHub 帳號的「重新登入」「登出」）。 */
+/* Azure DevOps 權限檢查的結果。 */
+.ado-check-list { display: grid; gap: 6px; margin: 0; padding: 10px 14px; list-style: none; border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent); font-size: 12.5px; }
+.ado-check-list[hidden] { display: none; }
+.ado-check-list li { display: grid; grid-template-columns: 16px minmax(0, 12em) minmax(0, 1fr); gap: 2px 8px; align-items: baseline; }
+.ado-check-list .icon { width: 14px; height: 14px; align-self: center; }
+.ado-check-list span { color: var(--muted); overflow-wrap: anywhere; }
+.ado-check-ok .icon { color: var(--success); }
+.ado-check-fail .icon, .ado-check-fail span { color: var(--danger); }
+.ado-check-unknown .icon { color: var(--subtle); }
+.ado-check-list .ado-check-tip { display: block; margin-top: 4px; color: var(--fg); line-height: 1.5; }
+@media (max-width: 640px) { .ado-check-list li { grid-template-columns: 16px minmax(0, 1fr); } .ado-check-list span { grid-column: 2; } }
 .setting-buttons {
   display: inline-flex;
   gap: 6px;
