@@ -308,6 +308,8 @@ export interface AdoWiki {
 
 export interface AdoWikiPage {
   path: string;
+  /** 頁面編號（瀏覽器網址列上的數字）；舊版伺服器沒有。 */
+  id: number | null;
   children: AdoWikiPage[];
 }
 
@@ -320,6 +322,8 @@ export interface AdoWorkItem {
   project: string;
   assignedTo: string | null;
   changed: string | null;
+  /** 優先順序（1 最高）；流程範本沒有這個欄位時是 null。 */
+  priority: number | null;
   webUrl: string;
 }
 
@@ -328,7 +332,6 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   /** 區域、反覆項目（例如「產品\\前端」）。 */
   area: string | null;
   iteration: string | null;
-  priority: number | null;
   tags: string[];
   /** 說明（HTML）。 */
   description: string | null;
@@ -336,6 +339,16 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   details: string | null;
   /** 留言（舊到新，內容是 HTML）。 */
   comments: { author: string; created: string | null; text: string }[];
+  /** 修訂版本（更新時用來確認這段時間沒有被別人改過）。 */
+  rev: number | null;
+  /** 相關的工作項目；讀不到時是空的。 */
+  relations: AdoWorkItemRelation[];
+}
+
+export interface AdoWorkItemRelation extends AdoWorkItem {
+  link: "parent" | "child" | "related" | "predecessor" | "successor" | "other";
+  /** 伺服器上的連結名稱（例如 Tested By），`other` 時顯示。 */
+  linkName: string;
 }
 
 /** 工作項目清單的篩選條件。 */
@@ -821,16 +834,43 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
     adoImage: (url: string) => core.invoke<string>("ado_image", { url }),
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
+    /** 這個類型的工作項目可以設定的狀態。 */
+    adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
+    /** 改狀態、指派給我、留言（HTML）；`rev` 是開啟時的修訂版本。 */
+    adoWorkItemUpdate: (
+      id: number,
+      change: { state?: string; assignToMe?: boolean; comment?: string; rev?: number | null },
+    ) => core.invoke<void>("ado_work_item_update", { id, change: { ...change, rev: change.rev ?? null } }),
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),
     adoWikiPages: (w: AdoWiki) =>
       core.invoke<AdoWikiPage[]>("ado_wiki_pages", { projectId: w.projectId, wikiId: w.id, version: w.code ? w.version : null }),
     adoWikiPage: (w: AdoWiki, path: string) =>
-      core.invoke<{ content: string; webUrl: string | null }>("ado_wiki_page", {
+      core.invoke<{ content: string; webUrl: string | null; etag: string | null }>("ado_wiki_page", {
         projectId: w.projectId,
         wikiId: w.id,
         path,
         version: w.code ? w.version : null,
       }),
+    /** Git 儲存庫裡的文字檔（例如連結指到的 Markdown 檔）。 */
+    adoRepoText: (f: { project: string; repo: string; path: string; version: string | null; versionType: string | null }) =>
+      core.invoke<string>("ado_repo_text", {
+        project: f.project,
+        repo: f.repo,
+        path: f.path,
+        version: f.version,
+        versionType: f.versionType,
+      }),
+    /** 工作項目的附件（文字檔）。 */
+    adoAttachmentText: (url: string) => core.invoke<string>("ado_attachment_text", { url }),
+    /** Git 儲存庫裡的圖片，回傳 data: 網址（儲存庫檔案內容裡的相對路徑圖片）。 */
+    adoRepoImage: (project: string, repo: string, path: string, version: string | null) =>
+      core.invoke<string>("ado_wiki_image", { projectId: project, repositoryId: repo, path, version }),
+    /** 把內容存回 Wiki 頁面；`etag` 是開始編輯時的版本，伺服器上已經不同時回傳衝突。 */
+    adoWikiSave: (w: { projectId: string; wikiId: string; path: string }, content: string, etag: string) =>
+      core.invoke<{ status: "saved"; etag: string | null } | { status: "conflict"; content: string; etag: string | null }>(
+        "ado_wiki_save",
+        { projectId: w.projectId, wikiId: w.wikiId, path: w.path, content, etag },
+      ),
     /** Wiki 儲存庫裡的圖片，回傳 data: 網址。 */
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
