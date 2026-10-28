@@ -92,6 +92,8 @@ interface HistoryEntry {
 
 /** 上一頁、下一頁各記住幾筆。 */
 const HISTORY_LIMIT = 50;
+/** 記住最近看過幾份內容（上一頁、下一頁、重新開啟時先顯示，背景再更新）。 */
+const CACHE_LIMIT = 30;
 
 export class IssueView {
   #workspace: HTMLElement;
@@ -112,6 +114,11 @@ export class IssueView {
   #back: HistoryEntry[] = [];
   #forward: HistoryEntry[] = [];
   #restoreScroll: number | null = null;
+  #failed = false;
+  /** 看過的內容（key → Markdown），最近看的放最後面。 */
+  #cache = new Map<string, string>();
+  /** 顯示的是之前讀到的內容、這次更新失敗時的提示。 */
+  #stale: HTMLElement;
   #backBtn: HTMLButtonElement;
   #forwardBtn: HTMLButtonElement;
   #matches: FindMatch[] = [];
@@ -190,7 +197,10 @@ export class IssueView {
     this.#scroll.className = "issue-scroll";
     this.#body = document.createElement("article");
     this.#body.className = "markdown-body issue-body";
-    this.#scroll.append(this.#body);
+    this.#stale = document.createElement("p");
+    this.#stale.className = "issue-status issue-stale";
+    this.#stale.hidden = true;
+    this.#scroll.append(this.#stale, this.#body);
     // 內容裡的連結用瀏覽器開，不要把整個視窗導走。
     this.#body.addEventListener("click", (e) => {
       const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
@@ -275,31 +285,67 @@ export class IssueView {
     this.#workspace.classList.add("issue-open");
     this.#closeFind();
     this.#pane.focus();
-    await this.refresh();
+    await this.refresh(true);
   }
 
-  async refresh(): Promise<void> {
+  /**
+   * 向伺服器重新讀取內容。`quiet`：看過的內容先顯示出來，背景讀取，有變動才重畫（捲動位置不變）；
+   * 否則先清掉、顯示「讀取中…」（按「重新整理」時）。
+   */
+  async refresh(quiet = false): Promise<void> {
     const source = this.#source;
     if (!source) return;
     const seq = ++this.#seq;
-    this.#markdown = "";
-    const loading = document.createElement("p");
-    loading.className = "issue-status";
-    loading.textContent = t("讀取中…");
-    this.#body.replaceChildren(loading);
+    const cached = quiet ? this.#cache.get(source.key) : undefined;
+    this.#failed = false;
+    this.#stale.hidden = true;
+    let loading: HTMLElement | null = null;
+    if (cached !== undefined) {
+      this.#display(cached);
+    } else {
+      this.#markdown = "";
+      loading = document.createElement("p");
+      loading.className = "issue-status";
+      loading.textContent = t("讀取中…");
+      this.#body.replaceChildren(loading);
+    }
     try {
       const md = await source.load();
       if (seq !== this.#seq) return;
-      this.#markdown = md;
-      this.#h.render(md, this.#body);
-      this.#scroll.scrollTop = this.#restoreScroll ?? 0;
-      this.#restoreScroll = null;
-      if (!this.#find.hidden) this.#search();
+      this.#cache.delete(source.key);
+      this.#cache.set(source.key, md);
+      if (this.#cache.size > CACHE_LIMIT) this.#cache.delete(this.#cache.keys().next().value!);
+      if (md !== this.#markdown || loading) this.#display(md, cached !== undefined);
     } catch (e) {
       if (seq !== this.#seq) return;
-      loading.textContent = e instanceof Error ? e.message : String(e);
-      loading.classList.add("issue-error");
+      const message = e instanceof Error ? e.message : String(e);
+      const target = loading ?? this.#stale;
+      target.textContent = loading ? message : t("顯示的是之前讀到的內容，這次更新失敗：{message}", { message });
+      target.classList.add("issue-error");
+      target.hidden = false;
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-small load-retry";
+      retry.append(icon("refresh-cw"), t("重試"));
+      retry.addEventListener("click", () => void this.refresh(!loading));
+      target.append(retry);
+      this.#failed = true;
     }
+  }
+
+  /** 顯示內容；`keepScroll`：背景更新時留在原本的位置，否則回到記住的位置（或最上面）。 */
+  #display(md: string, keepScroll = false): void {
+    const top = this.#scroll.scrollTop;
+    this.#markdown = md;
+    this.#h.render(md, this.#body);
+    this.#scroll.scrollTop = keepScroll ? top : (this.#restoreScroll ?? 0);
+    if (!keepScroll) this.#restoreScroll = null;
+    if (!this.#find.hidden) this.#search();
+  }
+
+  /** 上次讀取失敗就重新讀取（網路恢復、切回視窗時呼叫）；有之前讀到的內容就留著，背景更新。 */
+  retryFailed(): void {
+    if (this.isOpen && this.#failed) void this.refresh(true);
   }
 
   /** 用已經讀到的內容重畫（主題或設定改變時，不用重新向伺服器讀取）。 */

@@ -192,7 +192,7 @@ fn read(
         )),
         // 409（例如 PR 已經存在）由呼叫端說明。
         Err(e) => Err(tr!(
-            "{what}失敗：無法連線到 Azure DevOps（{e}）",
+            "{what}失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
             what = what,
             e = e
         )),

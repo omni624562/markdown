@@ -465,6 +465,10 @@ export const ui: Record<string, Translation> = {
   "相關": "Related",
   "後續項目": "Successor",
   "相關工作項目（{n}）": "Related work items ({n})",
+  "清除篩選": "Clear filters",
+  "篩選": "Filters",
+  "篩選（已設定 {n} 項）": "Filters ({n} set)",
+  "Wiki 頁面": "Wiki pages",
   "搜尋頁面名稱": "Search page names",
   "這個集合裡沒有 Wiki": "There are no wikis in this collection.",
   "這個 Wiki 還沒有頁面": "This wiki has no pages yet.",
@@ -478,4 +482,6 @@ export const ui: Record<string, Translation> = {
   "釘選這一頁": "Pin This Page",
   "最近看過": "Recently Viewed",
   "已釘選": "Pinned",
+  "顯示的是之前讀到的內容，這次更新失敗：{message}": "Showing what was loaded earlier; this update failed: {message}",
+  "網路恢復或切回這個視窗時會自動再試一次。": "It will try again automatically when the network is back or you return to this window.",
 };
