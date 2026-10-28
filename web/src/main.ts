@@ -119,7 +119,7 @@ import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts"
 import { IssueView, type IssueSource } from "./ui/issue-view.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
 import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
-import { githubIssueMarkdown, issueFileName, workItemMarkdown } from "./issue-doc.ts";
+import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
@@ -1836,8 +1836,34 @@ const ado = desktop
     })
   : null;
 
+/** 在主要區域開啟工作項目；內容裡的相關工作項目點一下在這裡切換。 */
+function showWorkItem(item: AdoWorkItem): void {
+  let related = new Map<number, AdoWorkItem>();
+  void showIssue({
+    key: `ado:${item.id}`,
+    origin: { kind: "ado", icon: "square-kanban", text: t("Azure DevOps 工作項目") },
+    label: `${item.kind} ${item.id}`,
+    title: item.title,
+    webUrl: item.webUrl,
+    fileName: issueFileName(`${item.kind} ${item.id}`, item.title),
+    load: async () => {
+      const d = await desktop!.adoWorkItem(item.id);
+      related = new Map(d.relations.map((r) => [r.id, r]));
+      return workItemMarkdown(d);
+    },
+    insertLink: () => insertIssueLink(item),
+    link: (href) => {
+      const id = workItemIdOf(href);
+      const target = id === null ? undefined : related.get(id);
+      if (!target) return false;
+      showWorkItem(target);
+      return true;
+    },
+  });
+}
+
 /** 插入 `[#123 標題](網址)` 到游標位置。 */
-function insertIssueLink(item: IssueSummary): void {
+function insertIssueLink(item: Pick<IssueSummary, "id" | "title" | "webUrl">): void {
   insertAtCursor(workItemLink(item));
   toast(t("已插入「#{id}」的連結", { id: item.id }));
 }
@@ -2288,17 +2314,7 @@ const workItemsPanel = desktop
             .join("・"),
         }));
       },
-      view: (item) =>
-        void showIssue({
-          key: `ado:${item.id}`,
-          origin: { kind: "ado", icon: "square-kanban", text: t("Azure DevOps 工作項目") },
-          label: `${item.kind} ${item.id}`,
-          title: item.title,
-          webUrl: item.webUrl,
-          fileName: issueFileName(`${item.kind} ${item.id}`, item.title),
-          load: async () => workItemMarkdown(await desktop!.adoWorkItem(item.id)),
-          insertLink: () => insertIssueLink(item),
-        }),
+      view: (item) => showWorkItem(item),
       status: (n, search) =>
         n
           ? search
