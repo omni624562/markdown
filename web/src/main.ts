@@ -6335,6 +6335,10 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
   if (codeFont) root.setProperty("--font-mono", codeFont);
   else root.removeProperty("--font-mono");
   root.setProperty("--doc-line-height", DOC_LINE_HEIGHT[s.docLineHeight]);
+  // 介面大小：整個視窗縮放（啟動時預設 100% 就不用呼叫）。
+  if (desktop && (changed ? changed.includes("uiScale") : s.uiScale !== "100")) {
+    void desktop.setUiZoom(Number(s.uiScale) / 100).catch(reportError);
+  }
   if (!changed) return;
   const fontKeys: (keyof Settings)[] = ["docFont", "docFontCustom", "codeFont", "docLineHeight"];
   if (changed.some((k) => fontKeys.includes(k))) editor.view.requestMeasure();

@@ -567,6 +567,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<DesktopSaveOutcome>("dav_write", { path: req.path, text: req.text, force: req.force ?? false }),
       ),
     setTitle: (title: string) => core.invoke<void>("set_title", { title }),
+    /** 介面大小（1 是 100%）。 */
+    setUiZoom: (scale: number) => core.invoke<void>("set_ui_zoom", { scale }),
     /** Windows 版用網頁的頂端列當標題列。 */
     customTitleBar: () => core.invoke<boolean>("custom_title_bar"),
     windowControl: (action: "minimize" | "toggle-maximize" | "close" | "drag" | "state") =>
