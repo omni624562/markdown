@@ -88,7 +88,8 @@ import {
 } from "./settings.ts";
 import { pasteAsMarkdown } from "./html-paste.ts";
 import { hiddenByCollapse, moveSection, sectionRange, subtreeEnd, swapSection } from "./sections.ts";
-import { type HeadingRef, encodeLinkPath, linkCompletion } from "./link-complete.ts";
+import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { type HeadingRef, type RemotePage, encodeLinkPath, linkCompletion } from "./link-complete.ts";
 import {
   type DocMeta,
   dropDraft,
@@ -102,6 +103,7 @@ import {
   saveProjectView,
   saveSession,
   type Session,
+  type WikiTarget,
 } from "./session.ts";
 import * as storage from "./storage.ts";
 import { editTable } from "./table.ts";
@@ -121,7 +123,7 @@ import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts"
 import { IssueView, type IssueOffline, type IssueSource } from "./ui/issue-view.ts";
 import { addImage, keep, parseKept, type KeptPage, type OfflineRef } from "./offline.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
-import { flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { childPagePath, flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl, wikiTitleProblem } from "./wiki-text.ts";
 import { markOf, markSeen, remember, type SeenMap, trimSeen } from "./workitem-seen.ts";
 import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { fenceLanguage, isMarkdownName, isReadableFileName, parseRepoFileLink, type RepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
@@ -502,7 +504,10 @@ const preview = new Preview(previewEl, [
   }),
   docLinksPlugin({ wikiExists: (target) => wikiExists(target) }),
   ...(desktop
-    ? [localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, (p) => davImageCached(p))]
+    ? [
+        localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, (p) => davImageCached(p)),
+        wikiEditImagesPlugin(),
+      ]
     : []),
   {
     name: "remote-images",
@@ -559,6 +564,7 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
     imageUrl(src) {
       if (/^https?:/i.test(src)) return blockRemote() ? null : src;
       if (/^data:image\//i.test(src)) return src;
+      if (active.wiki) return wikiEditImage(active.wiki, src);
       const docPath = fileHandle?.path;
       if (!desktop || !docPath) return null;
       const path = localImagePath(src, dirname(docPath));
@@ -638,9 +644,11 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
           fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
           return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
         },
+        remotePages: () => wikiLinkPages(1000),
       },
       [
         (ctx) => (kind === "json" ? null : dateCompletion(ctx)),
+        (ctx) => (kind === "markdown" ? workItemIdCompletion(ctx) : null),
         (ctx) => (kind === "markdown" ? slashSource(ctx) : null),
       ],
     ),
@@ -2658,6 +2666,42 @@ async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
   toast(last ? `${hint} ${last}` : hint, { duration: 8000 });
 }
 
+/** 新增 Wiki 頁面（`parent` 是上層頁面，null 是最上層）：問標題、建立，然後直接開始編輯。 */
+async function createWikiPage(wiki: AdoWiki, parent: string | null): Promise<void> {
+  if (wiki.code) {
+    toast(t("從程式碼儲存庫發佈的 Wiki 要在儲存庫裡新增 Markdown 檔（用 Git 提交）。"));
+    return;
+  }
+  const where = parent ? t("新頁面會放在「{name}」底下。", { name: pageName(parent) }) : t("新頁面會放在 Wiki 的最上層。");
+  let title = "";
+  for (;;) {
+    const answer = await askText(parent ? t("新增子頁面") : t("新增頁面"), where, title, t("建立"));
+    if (answer === null) return;
+    title = answer.trim();
+    const problem = wikiTitleProblem(title);
+    const existing = new Set(flattenPages(wikiPanel?.pages ?? []).map((p) => p.toLowerCase()));
+    const message =
+      problem === "empty"
+        ? t("請輸入頁面標題。")
+        : problem === "chars"
+          ? t("頁面標題不能有 /、\\、#。")
+          : problem === "dot"
+            ? t("頁面標題不能以「.」開頭或結尾。")
+            : problem === "long"
+              ? t("頁面標題太長了。")
+              : existing.has(childPagePath(parent, title).toLowerCase())
+                ? t("已經有同名的頁面了，請換一個名稱")
+                : null;
+    if (!message) break;
+    toast(message, { tone: "error" });
+  }
+  const path = childPagePath(parent, title);
+  await desktop!.adoWikiCreate(wiki, path, `# ${title}\n\n`);
+  toast(t("已建立 Wiki 頁面「{name}」", { name: title }), { tone: "success" });
+  void wikiPanel?.refresh().then(() => wikiPanel?.select(path));
+  await editWikiPage(wiki, path);
+}
+
 /** 把分頁的內容存回 Wiki 頁面；伺服器上的版本被別人改過時回傳那個版本（交給衝突處理）。 */
 async function saveWikiPage(text: string, force: boolean): Promise<{ name: string; diskText: string } | void> {
   const doc = active;
@@ -2677,6 +2721,142 @@ async function saveWikiPage(text: string, force: boolean): Promise<{ name: strin
   renderTabs();
   renderWikiBar();
   toast(t("已存回 Wiki 頁面「{name}」", { name: pageName(target.path) }), { tone: "success" });
+}
+
+// ---- Wiki 頁面的修改記錄：誰、什麼時候改了什麼，和目前的內容比較 ----------------------
+
+interface WikiRevisionItem {
+  id: string;
+  author: string;
+  date: string;
+  comment: string;
+  /** 前一版（比這一版舊的那一次）；第一版是 null。 */
+  previous: string | null;
+}
+
+type WikiHistoryTarget = { projectId: string; wikiId: string; repositoryId?: string; path: string };
+
+/** 修改記錄要看的頁面（Wiki 頁面檢視或 Wiki 編輯分頁）。 */
+let wikiHistoryOf: (WikiHistoryTarget & { wiki: AdoWiki | null }) | null = null;
+let wikiHistoryLoad: Promise<{ gitPath: string; revisions: WikiRevisionItem[] }> | null = null;
+
+const wikiHistoryPicker = new Picker<WikiRevisionItem>({
+  label: t("修改記錄"),
+  placeholder: t("選擇一次修改，看那次改了什麼"),
+  empty: t("這一頁還沒有修改記錄。"),
+  async query(q) {
+    if (!wikiHistoryLoad) return [];
+    const { revisions } = await wikiHistoryLoad;
+    const needle = q.trim().toLowerCase();
+    return needle ? revisions.filter((r) => `${r.author} ${r.comment}`.toLowerCase().includes(needle)) : revisions;
+  },
+  render: (r) => ({
+    title: r.date ? t("{who} · {time}", { who: r.author || t("（不明）"), time: versionTitle(Date.parse(r.date)) }) : r.author,
+    detail: r.comment || r.id.slice(0, 8),
+    icon: "history",
+  }),
+  pick: (r) => void showWikiRevision(r).catch(reportError),
+});
+
+/** 打開修改記錄（Wiki 頁面檢視或編輯分頁）。 */
+function openWikiHistory(target: WikiHistoryTarget, wiki: AdoWiki | null): void {
+  wikiHistoryOf = { projectId: target.projectId, wikiId: target.wikiId, repositoryId: target.repositoryId, path: target.path, wiki };
+  wikiHistoryLoad = desktop!.adoWikiHistory(target).then(({ gitPath, revisions }) => ({
+    gitPath,
+    revisions: revisions.map((r, i) => ({ ...r, previous: revisions[i + 1]?.id ?? null })),
+  }));
+  wikiHistoryLoad.catch(reportError);
+  wikiHistoryPicker.open();
+}
+
+/** 讀某一版的內容（`null` 是還沒有這一頁之前，內容是空的）。 */
+async function wikiRevisionText(id: string | null): Promise<string> {
+  if (!id || !wikiHistoryOf || !wikiHistoryLoad) return "";
+  const { gitPath } = await wikiHistoryLoad;
+  const text = await desktop!.adoRepoText({
+    project: wikiHistoryOf.projectId,
+    repo: wikiHistoryOf.repositoryId ?? wikiHistoryOf.wikiId,
+    path: gitPath,
+    version: id,
+    versionType: "commit",
+  });
+  return text.replace(/\r\n?/g, "\n");
+}
+
+/** 一次修改的內容：列出那次改了哪幾段；可以和目前的內容比較（逐段還原）或複製那一版。 */
+async function showWikiRevision(r: WikiRevisionItem): Promise<void> {
+  const target = wikiHistoryOf;
+  if (!target) return;
+  const [text, before] = await Promise.all([wikiRevisionText(r.id), wikiRevisionText(r.previous)]);
+  const changes = myChanges(before, text);
+  const who = r.author || t("（不明）");
+  const when = r.date ? versionTitle(Date.parse(r.date)) : "";
+  const dialog = document.createElement("dialog");
+  dialog.className = "choice wiki-revision";
+  const h = document.createElement("h2");
+  h.textContent = r.previous ? t("{who}的修改", { who }) : t("{who}建立了這一頁", { who });
+  const p = document.createElement("p");
+  p.textContent = [when, r.comment].filter(Boolean).join(" · ");
+  const list = document.createElement("ol");
+  list.className = "wiki-mine-list";
+  for (const change of changes) {
+    const item = document.createElement("li");
+    if (change.before) {
+      item.append(
+        Object.assign(document.createElement("div"), { className: "wiki-mine-label", textContent: change.after ? t("原本") : t("刪除了") }),
+        Object.assign(document.createElement("pre"), { className: "wiki-mine-before", textContent: change.before }),
+      );
+    }
+    if (change.after) {
+      item.append(
+        Object.assign(document.createElement("div"), { className: "wiki-mine-label", textContent: change.before ? t("改成") : t("新增了") }),
+        Object.assign(document.createElement("pre"), { className: "wiki-mine-after", textContent: change.after }),
+      );
+    }
+    list.append(item);
+  }
+  if (!changes.length) list.append(Object.assign(document.createElement("li"), { textContent: t("這次修改沒有改到內容（例如只是改名或搬移）。") }));
+  const actions = document.createElement("div");
+  actions.className = "choice-actions";
+  const button = (label: string, run: () => void, primary = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `btn${primary ? " btn-primary" : ""}`;
+    b.textContent = label;
+    b.addEventListener("click", run);
+    return b;
+  };
+  actions.append(
+    button(t("複製這一版的內容"), () => {
+      void navigator.clipboard.writeText(text).then(() => toast(t("已複製"), { tone: "success", duration: 1500 }));
+    }),
+    button(t("和目前的內容比較"), () => {
+      dialog.close();
+      void compareWikiRevision(target, text, who, when).catch(reportError);
+    }),
+    button(t("關閉"), () => dialog.close(), true),
+  );
+  dialog.append(h, p, list, actions);
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+/** 在編輯分頁裡和某一版逐段比較（「採用這一版」把那一段換回去，處理完按 Ctrl+S 存回）。 */
+async function compareWikiRevision(target: WikiHistoryTarget & { wiki: AdoWiki | null }, text: string, who: string, when: string): Promise<void> {
+  const open = docs.find((d) => d.wiki?.wikiId === target.wikiId && d.wiki.path === target.path);
+  if (open) activate(open);
+  else if (target.wiki) await editWikiPage(target.wiki, target.path);
+  else return;
+  if (!active.wiki || active.wiki.path !== target.path) return;
+  if (review.active) review.finish();
+  const started = review.start(text, {
+    title: t("與 {who} {time} 的版本比較", { who, time: when }),
+    hint: t("「採用這一版」會把那一段換回那時的內容，可以用 Ctrl+Z 復原；處理完按 Ctrl+S 存回 Wiki"),
+    acceptLabel: t("採用這一版"),
+    rejectLabel: t("保留目前"),
+  });
+  if (!started) toast(t("這一版和目前的內容相同。"));
 }
 
 // ---- Wiki 共同編輯：編輯中定期檢查有沒有人改過；載入最新版時保留自己的修改 ----------
@@ -3017,6 +3197,10 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
     fileName: issueFileName(wiki.name, title),
     // 程式碼 Wiki 的內容在 Git 儲存庫裡，要用 Git 改；專案 Wiki 可以直接編輯、存回。
     edit: wiki.code ? undefined : () => void editWikiPage(wiki, path).catch(reportError),
+    history: wiki.code
+      ? undefined
+      : () => openWikiHistory({ projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path }, wiki),
+    addChild: wiki.code ? undefined : () => void createWikiPage(wiki, path).catch(reportError),
     // 標頭顯示所在位置：Wiki 名稱 › 上層頁面…（點上層頁面切換過去）。
     crumbs: [
       { label: wiki.name },
@@ -3578,6 +3762,8 @@ const wikiPanel = desktop
       },
       savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
       link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
+      create: (wiki, parent) => void createWikiPage(wiki, parent).catch(reportError),
+      canCreate: (wiki) => !wiki.code,
       async searchContent(wiki, text) {
         const found = await desktop!.adoWikiSearch(wiki, text);
         const pages = flattenPages(wikiPanel?.pages ?? []);
@@ -4732,6 +4918,93 @@ async function quickRemoteItems(q: string): Promise<QuickItem[]> {
     remote: { icon: "book-open-text", open: () => showWikiPage(wiki, path) },
   }));
 }
+
+/** 連結用的 Wiki 頁面：編輯 Wiki 頁面時是那個 Wiki，否則是 Wiki 面板選的那個。等不到 `wait` 毫秒就先不列。 */
+async function wikiLinkPages(wait = 150): Promise<RemotePage[]> {
+  if (!desktop || !ado?.account) return [];
+  if (!wikiListCache) {
+    wikiListCache = desktop.adoWikis();
+    wikiListCache.catch(() => (wikiListCache = null));
+  }
+  const wikis = await soon(wikiListCache, wait);
+  const target = active.wiki;
+  const id = target?.wikiId ?? wikiPanel?.wiki?.id ?? storage.load("ado-wiki");
+  const wiki = wikis?.find((w) => w.id === id) ?? wikis?.[0];
+  if (!wiki) return [];
+  let pages = wikiPagesCache.get(wiki.id);
+  if (!pages) {
+    pages = desktop.adoWikiPages(wiki);
+    wikiPagesCache.set(wiki.id, pages);
+    pages.catch(() => wikiPagesCache.delete(wiki.id));
+  }
+  const paths = flattenPages((await soon(pages, wait)) ?? []);
+  // 在同一個 Wiki 裡用 Wiki 的相對連結（`/上層/頁面`），TFS 網頁版也點得到；其他文件用網頁網址。
+  const sameWiki = target?.wikiId === wiki.id;
+  return paths.flatMap((path) => {
+    const name = pageName(path);
+    const where = [wiki.name, path.slice(1, path.lastIndexOf("/"))].filter(Boolean).join(" › ");
+    if (sameWiki) return [{ label: name, detail: t("Wiki・{where}", { where }), link: `[${name.replace(/[[\]]/g, "")}](${encodeLinkPath(path)})` }];
+    if (!wiki.webUrl) return [];
+    return [{ label: name, detail: t("Wiki・{where}", { where }), link: wikiPageLink(name, wikiPageUrl(wiki.webUrl, path)) }];
+  });
+}
+
+/** 文件裡打 `#123`（編號）時列出符合的工作項目，選了就換成 `[#123 標題](網址)`。 */
+async function workItemIdCompletion(ctx: CompletionContext): Promise<CompletionResult | null> {
+  if (!desktop || !ado?.account) return null;
+  const m = ctx.matchBefore(/(?<=^|[\s(（「、，,:：])#\d{1,9}$/);
+  if (!m) return null;
+  // 打字停一下才查詢。
+  await new Promise((r) => setTimeout(r, 250));
+  if (ctx.aborted) return null;
+  const found = await desktop
+    .adoWorkItems(m.text.slice(1), { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" })
+    .catch(() => [] as AdoWorkItem[]);
+  if (ctx.aborted || !found.length) return null;
+  return {
+    from: m.from,
+    filter: false,
+    options: found.slice(0, 20).map((w) => ({
+      label: `#${w.id} ${w.title}`,
+      detail: `${w.kind}・${w.state}`,
+      type: "class",
+      apply: workItemLink(w),
+    })),
+  };
+}
+
+/** 插入工作項目連結：輸入標題關鍵字或編號搜尋（空白時列出指派給我的）。 */
+let workItemLinkSeq = 0;
+const workItemLinkPicker = new Picker<AdoWorkItem>({
+  label: t("插入工作項目連結"),
+  placeholder: t("輸入標題關鍵字或編號"),
+  empty: t("找不到符合的工作項目"),
+  async query(q) {
+    if (!desktop) return [];
+    const seq = ++workItemLinkSeq;
+    await new Promise((r) => setTimeout(r, 250));
+    if (seq !== workItemLinkSeq) return [];
+    const text = q.trim().replace(/^#/, "");
+    const filter = text ? { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" as const } : DEFAULT_WORK_ITEM_FILTER;
+    return (await desktop.adoWorkItems(text, filter)).slice(0, 50);
+  },
+  render: (w) => ({ title: w.title, detail: [`${w.kind} ${w.id}`, w.state].join("・"), icon: "square-kanban" }),
+  pick: (w) => insertIssueLink(w),
+});
+
+/** 插入 Wiki 頁面連結。 */
+const wikiLinkPicker = new Picker<RemotePage>({
+  label: t("插入 Wiki 頁面連結"),
+  placeholder: t("輸入頁面名稱"),
+  empty: t("找不到符合的 Wiki 頁面"),
+  async query(q) {
+    const needle = q.trim().toLowerCase();
+    const pages = await wikiLinkPages(3000);
+    return needle ? pages.filter((p) => `${p.label} ${p.detail}`.toLowerCase().includes(needle)) : pages;
+  },
+  render: (p) => ({ title: p.label, detail: p.detail, icon: "book-open-text" }),
+  pick: (p) => insertAtCursor(p.link),
+});
 
 /** `p` 在一小段時間內有結果就回傳結果，否則（或失敗時）回傳 null。 */
 function soon<T>(p: Promise<T>, ms = 150): Promise<T | null> {
@@ -6562,6 +6835,19 @@ commands.register(
     run: () => void copyWebLink().catch(reportError),
   },
   {
+    id: "wiki-history",
+    title: t("Wiki 頁面的修改記錄…"),
+    group: t("檔案"),
+    icon: "history",
+    when: () => !!desktop && (!!active.wiki || (issueView.isOpen && !!wikiPage && !wikiPage.wiki.code)),
+    run: () => {
+      if (issueView.isOpen && wikiPage) {
+        const { wiki, path } = wikiPage;
+        openWikiHistory({ projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path }, wiki);
+      } else if (active.wiki) openWikiHistory(active.wiki, null);
+    },
+  },
+  {
     id: "history",
     title: t("版本記錄…"),
     group: t("檔案"),
@@ -6596,6 +6882,22 @@ commands.register(
       run: () => void startAiTool(tool),
     }),
   ),
+  {
+    id: "insert-work-item-link",
+    title: t("插入工作項目連結…"),
+    group: t("插入"),
+    icon: "square-kanban",
+    when: () => !!desktop && !!ado?.account && kind === "markdown" && view !== "preview",
+    run: () => workItemLinkPicker.open(),
+  },
+  {
+    id: "insert-wiki-link",
+    title: t("插入 Wiki 頁面連結…"),
+    group: t("插入"),
+    icon: "book-open-text",
+    when: () => !!desktop && !!ado?.account && kind === "markdown" && view !== "preview",
+    run: () => wikiLinkPicker.open(),
+  },
   {
     id: "insert-symbol",
     title: t("插入符號…"),
@@ -7222,6 +7524,8 @@ const insertMenuUi = floatingMenu("insert-anchor", [
   "insert-toc",
   "-",
   "insert-symbol",
+  "insert-work-item-link",
+  "insert-wiki-link",
 ]);
 const openInsertMenu = (at: DOMRect) => insertMenuUi.open(at);
 
@@ -7243,6 +7547,8 @@ const SLASH_KEYWORDS: Record<string, string> = {
   "insert-toc": "toc 目錄", // i18n-ignore
   "insert-symbol": "symbol 符號 特殊", // i18n-ignore
   "insert-today": "date today 日期 今天", // i18n-ignore
+  "insert-work-item-link": "workitem work item issue bug task 工作項目 工單 連結", // i18n-ignore
+  "insert-wiki-link": "wiki page link 頁面 連結", // i18n-ignore
 };
 function slashItems(): SlashItem[] {
   return Object.entries(SLASH_KEYWORDS).flatMap(([id, keywords]) => {
@@ -8168,6 +8474,10 @@ async function insertImages(original: File[]): Promise<void> {
     });
     return;
   }
+  if (active.wiki) {
+    await insertWikiImages(files);
+    return;
+  }
   const docPath = fileHandle?.path;
   if (!docPath) {
     toast(t("請先存檔：圖片會存到文件所在資料夾的 assets 資料夾裡。"), {
@@ -8194,6 +8504,87 @@ async function insertImages(original: File[]): Promise<void> {
   toast(files.length > 1 ? t("已把 {n} 張圖片存到 assets 資料夾", { n: files.length }) : t("已把圖片存到 assets 資料夾"), {
     tone: "success",
   });
+}
+
+/** Wiki 附件接受的圖片格式。 */
+const WIKI_IMAGE_EXT = new Set(["png", "jpg", "gif", "webp", "bmp"]);
+
+/** 編輯 Wiki 頁面時貼上、拖曳的圖片：上傳成 Wiki 的附件，插入 `/.attachments/…` 的連結（TFS 網頁版也看得到）。 */
+async function insertWikiImages(files: File[]): Promise<void> {
+  const doc = active;
+  const target = doc.wiki!;
+  const skipped = files.filter((f) => !WIKI_IMAGE_EXT.has(IMAGE_EXT[f.type]));
+  if (skipped.length) toast(t("Wiki 只接受 PNG、JPG、GIF、WebP、BMP 圖片，已略過 {n} 張。", { n: skipped.length }), { tone: "error" });
+  const ok = files.filter((f) => WIKI_IMAGE_EXT.has(IMAGE_EXT[f.type]));
+  if (!ok.length) return;
+  const progress = toast(t("正在上傳圖片到 Wiki…"), { duration: 60000 });
+  const links: string[] = [];
+  try {
+    for (const file of ok) {
+      const url = await readDataUrl(file);
+      const ext = IMAGE_EXT[file.type];
+      const path = await desktop!.adoWikiAttach(target, stem(file.name), ext, url.split(",")[1]);
+      // 剛上傳的圖片直接用手上的內容顯示，不必再下載一次。
+      wikiEditImages.set(wikiImageKey(target, path), Promise.resolve(url));
+      links.push(`![${altText(file.name)}](${markdownUrl(path)})`);
+    }
+  } finally {
+    progress.dismiss();
+  }
+  if (active !== doc) return; // 上傳時使用者切換了分頁
+  insertAtCursor(links.join("\n"));
+  toast(links.length > 1 ? t("已把 {n} 張圖片上傳到 Wiki，存回頁面後別人就看得到", { n: links.length }) : t("已把圖片上傳到 Wiki，存回頁面後別人就看得到"), {
+    tone: "success",
+  });
+}
+
+/** 編輯中的 Wiki 頁面裡的圖片（存在 Wiki 的 Git 儲存庫裡，要帶權杖才讀得到）。 */
+const wikiEditImages = new Map<string, Promise<string>>();
+
+function wikiImageKey(target: WikiTarget, path: string): string {
+  return `wiki-img:${target.wikiId}:${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/** 編輯中 Wiki 頁面的圖片網址：相對路徑與 `/.attachments/…` 換成讀回來的 data: 網址；不是 Wiki 裡的圖片回傳 null。 */
+function wikiEditImage(target: WikiTarget, src: string): Promise<string> | null {
+  if (!desktop) return null;
+  const path = imageRepoPath(src, target.path, "/");
+  if (!path) return null;
+  const key = wikiImageKey(target, path);
+  let url = wikiEditImages.get(key);
+  if (!url) {
+    const wiki = { projectId: target.projectId, repositoryId: target.repositoryId ?? target.wikiId, version: null } as AdoWiki;
+    url = offlineImage(key, () => desktop!.adoWikiImage(wiki, path));
+    url.catch(() => wikiEditImages.delete(key));
+    if (wikiEditImages.size > 200) wikiEditImages.clear();
+    wikiEditImages.set(key, url);
+  }
+  return url;
+}
+
+/** 預覽中編輯中 Wiki 頁面的圖片（和閱讀 Wiki 頁面時一樣，由原生端讀取）。 */
+function wikiEditImagesPlugin(): PreviewPlugin {
+  return {
+  name: "wiki-edit-images",
+  prepare(content) {
+    if (!active.wiki) return;
+    for (const img of content.querySelectorAll<HTMLImageElement>("img[src]")) {
+      const src = img.getAttribute("src")!;
+      if (!imageRepoPath(src, active.wiki.path, "/")) continue;
+      img.dataset.wikiEditSrc = src;
+      img.removeAttribute("src");
+    }
+  },
+  apply(_root, scope) {
+    const target = active.wiki;
+    if (!target) return;
+    for (const img of scope.querySelectorAll<HTMLImageElement>("img[data-wiki-edit-src]")) {
+      void wikiEditImage(target, img.dataset.wikiEditSrc!)
+        ?.then((url) => (img.src = url))
+        .catch((e) => (img.title = e instanceof Error ? e.message : String(e)));
+    }
+  },
+  };
 }
 
 // ---- 拖曳開檔 -----------------------------------------------------------

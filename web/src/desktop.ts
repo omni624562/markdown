@@ -904,6 +904,17 @@ function bridge(core: TauriCore, event: TauriEvent) {
         "ado_wiki_save",
         { projectId: w.projectId, wikiId: w.wikiId, path: w.path, content, etag },
       ),
+    /** Wiki 頁面的修改記錄（新的在前）與頁面在儲存庫裡的檔案路徑。 */
+    adoWikiHistory: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
+      core.invoke<{ gitPath: string; revisions: { id: string; author: string; date: string; comment: string }[] }>("ado_wiki_history", {
+        projectId: w.projectId,
+        wikiId: w.wikiId,
+        repositoryId: w.repositoryId ?? null,
+        path: w.path,
+      }),
+    /** 建立新的 Wiki 頁面（已經有同名的頁面時失敗），回傳新頁面的版本。 */
+    adoWikiCreate: (w: AdoWiki, path: string, content: string) =>
+      core.invoke<string | null>("ado_wiki_create", { projectId: w.projectId, wikiId: w.id, path, content }),
     /** Wiki 頁面目前的版本與最後修改的人（不讀內容）。 */
     adoWikiPageInfo: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
       core.invoke<WikiPageInfo>("ado_wiki_page_info", {
@@ -913,6 +924,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
         path: w.path,
       }),
     /** Wiki 儲存庫裡的圖片，回傳 data: 網址。 */
+    /** 把圖片上傳成 Wiki 的附件，回傳頁面裡引用的路徑（`/.attachments/…`）。`data` 是 base64。 */
+    adoWikiAttach: (w: { projectId: string; wikiId: string }, name: string, ext: string, data: string) =>
+      core.invoke<string>("ado_wiki_attach", { projectId: w.projectId, wikiId: w.wikiId, name, ext, data }),
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),

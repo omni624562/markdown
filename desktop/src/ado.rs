@@ -1998,6 +1998,40 @@ pub async fn ado_wiki_save(
     .await
 }
 
+/// 建立新的 Wiki 頁面（只限專案 Wiki）：`path` 是完整路徑（例如 `/產品/新頁面`），上層頁面要已經存在。
+/// 已經有同名的頁面時不覆蓋。回傳新頁面的版本（之後存回時用）。
+#[tauri::command]
+pub async fn ado_wiki_create(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .put(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(&serde_json::json!({ "content": content }).to_string());
+        match res {
+            // 沒帶 If-Match 時，已經有這一頁會被拒絕（不會覆蓋）。
+            Err(ureq::Error::StatusCode(409 | 412)) => Err(tr!("已經有同名的頁面了，請換一個名稱")),
+            res => {
+                let (_, etag) = read_with_etag(res, &tr!("建立 Wiki 頁面"))?;
+                Ok(match etag {
+                    Some(etag) => Some(etag),
+                    None => read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?.etag,
+                })
+            }
+        }
+    })
+    .await
+}
+
 /// 一個 Wiki 頁面的內容（Markdown）。
 #[tauri::command]
 pub async fn ado_wiki_page(
@@ -2092,6 +2126,99 @@ pub async fn ado_wiki_page_info(
             None => (None, None),
         };
         Ok(WikiPageInfo { etag, author, date })
+    })
+    .await
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiRevision {
+    id: String,
+    author: String,
+    date: String,
+    comment: String,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistory {
+    /// 頁面在 Wiki 儲存庫裡的檔案路徑（讀某一版的內容時用）。
+    git_path: String,
+    /// 新的在前。
+    revisions: Vec<WikiRevision>,
+}
+
+/// 提交清單（`git/commits`）轉成修改記錄。
+fn revisions_of(v: &Value) -> Vec<WikiRevision> {
+    v.get("value")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let author = c.get("author");
+            Some(WikiRevision {
+                id: str_of(c, "commitId")?.to_string(),
+                author: author
+                    .and_then(|a| str_of(a, "name"))
+                    .unwrap_or_default()
+                    .to_string(),
+                date: author
+                    .and_then(|a| str_of(a, "date"))
+                    .unwrap_or_default()
+                    .to_string(),
+                comment: str_of(c, "comment").unwrap_or_default().trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Wiki 頁面的修改記錄（最近 100 次）：誰、什麼時候、說明。
+#[tauri::command]
+pub async fn ado_wiki_history(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    repository_id: Option<String>,
+    path: String,
+) -> Result<WikiHistory, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("讀取 Wiki 頁面的修改記錄");
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let page = read(
+            crate::update::agent()
+                .get(&format!("{}{api}&api-version={API_VERSION}", a.url))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        let git_path = str_of(&page, "gitItemPath")
+            .ok_or_else(|| tr!("{what}失敗：伺服器沒有提供頁面的檔案位置", what = what))?
+            .to_string();
+        let repo = repository_id
+            .as_deref()
+            .filter(|r| !r.is_empty())
+            .unwrap_or(&wiki_id);
+        let url = format!(
+            "{}/{}/_apis/git/repositories/{}/commits?searchCriteria.itemPath={}&searchCriteria.$top=100&api-version={API_VERSION}",
+            a.url,
+            encode_segment(&project_id),
+            encode_segment(repo),
+            encode_segment(&git_path)
+        );
+        let v = read(
+            crate::update::agent()
+                .get(&url)
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        Ok(WikiHistory {
+            git_path,
+            revisions: revisions_of(&v),
+        })
     })
     .await
 }
@@ -2270,6 +2397,73 @@ pub async fn ado_wiki_image(
         }
         let bytes = fetch_bytes(&url, &pat)?;
         Ok(data_url(mime, bytes))
+    })
+    .await
+}
+
+/// 上傳到 Wiki 附件的檔名：只留英數字、`-`、`_`、`.`，其餘換成 `-`，加上時間避免和既有的附件同名。
+fn attachment_name(stem: &str, ext: &str, stamp: u128) -> String {
+    let clean: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let clean = clean.trim_matches('-');
+    let stem = if clean.is_empty() { "image" } else { clean };
+    let stem: String = stem.chars().take(40).collect();
+    format!("{stem}-{stamp}.{ext}")
+}
+
+/// 把圖片上傳成 Wiki 的附件（`.attachments` 資料夾），回傳在頁面裡引用的路徑（例如 `/.attachments/image-123.png`）。
+/// `data` 是 base64；Wiki 的附件 API 本身就是收 base64 文字。
+#[tauri::command]
+pub async fn ado_wiki_attach(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    name: String,
+    ext: String,
+    data: String,
+) -> Result<String, String> {
+    let (a, pat) = require(&app)?;
+    if image_mime(&format!("x.{ext}")).is_none() {
+        return Err(tr!("無法上傳圖片：不是圖片"));
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or_default();
+        let file = attachment_name(&name, &ext, stamp);
+        let what = tr!("上傳圖片到 Wiki");
+        let put = |version: &str| {
+            crate::update::agent()
+                .put(&format!(
+                    "{}/{}/_apis/wiki/wikis/{}/attachments?name={}&api-version={version}",
+                    a.url,
+                    encode_segment(&project_id),
+                    encode_segment(&wiki_id),
+                    encode_segment(&file)
+                ))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/octet-stream")
+                .send(data.as_str())
+        };
+        // 舊版伺服器（Azure DevOps Server 2019）的附件 API 還是預覽版。
+        let res = match put(API_VERSION) {
+            Err(ureq::Error::StatusCode(400)) => put("5.0-preview.1"),
+            res => res,
+        };
+        let v = read(res, &what)?;
+        Ok(str_of(&v, "path")
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("/.attachments/{file}")))
     })
     .await
 }
@@ -2624,6 +2818,32 @@ mod tests {
     }
 
     #[test]
+    fn reads_wiki_revisions() {
+        let v = serde_json::json!({ "value": [
+            { "commitId": "b2", "comment": " 更新 安裝.md \n", "author": { "name": "王小明", "date": "2026-10-28T02:42:00Z" } },
+            { "commitId": "a1", "author": { "name": "陳大文" } },
+            { "comment": "沒有 id 的略過" }
+        ] });
+        assert_eq!(
+            revisions_of(&v),
+            vec![
+                WikiRevision {
+                    id: "b2".into(),
+                    author: "王小明".into(),
+                    date: "2026-10-28T02:42:00Z".into(),
+                    comment: "更新 安裝.md".into()
+                },
+                WikiRevision {
+                    id: "a1".into(),
+                    author: "陳大文".into(),
+                    date: String::new(),
+                    comment: String::new()
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn reads_query_result_ids() {
         let flat = serde_json::json!({ "workItems": [{ "id": 3 }, { "id": 1 }, { "id": 3 }] });
         assert_eq!(query_ids(&flat), vec![3, 1]);
@@ -2633,6 +2853,17 @@ mod tests {
         ] });
         assert_eq!(query_ids(&tree), vec![10, 11]);
         assert!(query_ids(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn names_wiki_attachments_safely() {
+        assert_eq!(attachment_name("截圖 1", "png", 42), "1-42.png");
+        assert_eq!(attachment_name("", "jpg", 7), "image-7.jpg");
+        assert_eq!(attachment_name("../a b", "png", 1), "a-b-1.png");
+        assert_eq!(
+            attachment_name("screen_shot-2", "gif", 3),
+            "screen_shot-2-3.gif"
+        );
     }
 
     #[test]
