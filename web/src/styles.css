@@ -1376,6 +1376,36 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .offline-bar.back .icon { color: var(--success); }
 .offline-bar .btn { border-color: var(--border-strong); background: var(--bg); }
 
+/* ---- Wiki 共同編輯：有新版本的提示、我的修改 ---- */
+.wiki-bar { border-bottom-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 9%, var(--bg)); }
+.wiki-bar .icon { flex: none; color: var(--accent); }
+.wiki-bar p { min-width: 0; }
+.wiki-bar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.wiki-bar .btn-primary { border-color: var(--accent); background: var(--accent); }
+.wiki-mine { display: flex; flex: none; flex-direction: column; max-height: 38vh; border-bottom: 1px solid var(--border); background: var(--surface); }
+.wiki-mine[hidden] { display: none; }
+.wiki-mine > header { display: flex; flex: none; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 8px 12px; }
+.wiki-mine > header p { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; min-width: 0; margin: 0; }
+.wiki-mine > header p span { color: var(--muted); font-size: 12px; }
+.wiki-mine > header p .icon { color: var(--accent); }
+.wiki-mine-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+.wiki-mine .btn { display: inline-flex; gap: 4px; align-items: center; border-color: var(--border-strong); background: var(--bg); }
+.wiki-mine .btn .icon { width: 15px; height: 15px; flex: none; }
+.wiki-mine-list { flex: 1; min-height: 0; margin: 0; padding: 0 12px 10px 36px; overflow: auto; }
+.wiki-mine.collapsed .wiki-mine-list { display: none; }
+.wiki-mine-list li { margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.wiki-mine-list li.used { opacity: 0.6; }
+.wiki-mine-label { color: var(--muted); font-size: 12px; }
+.wiki-mine-list pre { margin: 2px 0 6px; padding: 4px 8px; border-radius: 4px; font: 0.9em/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.wiki-mine-before { background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+.wiki-mine-after { background: color-mix(in srgb, var(--success) 10%, transparent); }
+.wiki-mine-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 560px) {
+  .wiki-mine-tools .btn { min-width: 32px; padding: 0 8px; }
+  .wiki-mine-tools .btn span { display: none; }
+  .wiki-mine-list { padding-left: 30px; }
+}
+
 /* ---- Git：原始碼控制面板 ---- */
 /* 還不是 Git 儲存庫：引導用 GitHub 同步。 */
 .git-setup { margin: 0 4px 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }

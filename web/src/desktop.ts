@@ -5,6 +5,7 @@
 import type { DocInfo } from "./doc-index.ts";
 import type { FileRef } from "./links.ts";
 import { t } from "./i18n.ts";
+import type { WikiPageInfo } from "./wiki-coedit.ts";
 
 interface TauriCore {
   /** `args` 是位元組時當成請求本文直接傳送（大檔案不用轉成 base64），其他資料放在標頭。 */
@@ -890,6 +891,14 @@ function bridge(core: TauriCore, event: TauriEvent) {
         "ado_wiki_save",
         { projectId: w.projectId, wikiId: w.wikiId, path: w.path, content, etag },
       ),
+    /** Wiki 頁面目前的版本與最後修改的人（不讀內容）。 */
+    adoWikiPageInfo: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
+      core.invoke<WikiPageInfo>("ado_wiki_page_info", {
+        projectId: w.projectId,
+        wikiId: w.wikiId,
+        repositoryId: w.repositoryId ?? null,
+        path: w.path,
+      }),
     /** Wiki 儲存庫裡的圖片，回傳 data: 網址。 */
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
