@@ -480,6 +480,7 @@ export const ui: Record<string, Translation> = {
   "點一下在 oMarker 開啟": "Click to open it in oMarker",
   "沒有指派": "Unassigned",
   "在這個 Wiki 裡找不到這一頁": "This page wasn't found in the wiki",
+  "{label}：{title}・{state}": "{label}: {title} · {state}",
   "開啟 Azure DevOps 工作項目": "Open Azure DevOps work item",
   "Wiki・{where}": "Wiki · {where}",
   "輸入檔名、Wiki 頁面，或 #編號 開啟工作項目": "Type a file name, a wiki page, or #number for a work item",
