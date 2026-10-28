@@ -659,4 +659,11 @@ export const main: Record<string, Translation> = {
   "最新版裡找不到原本這段（可能已經被別人改掉了），請改用「複製」或「插入到游標處」。": "Couldn't find the original text in the latest version (someone may have changed it). Use Copy or Insert at Cursor instead.",
   "找到原本的位置": "Find Original",
   "最新版裡找不到原本這段（可能已經被別人改掉了）。": "Couldn't find the original text in the latest version (someone may have changed it).",
+  "插入工作項目連結": "Insert Work Item Link",
+  "輸入標題關鍵字或編號": "Type title keywords or an ID",
+  "插入 Wiki 頁面連結": "Insert Wiki Page Link",
+  "輸入頁面名稱": "Type a page name",
+  "找不到符合的 Wiki 頁面": "No matching wiki pages",
+  "插入工作項目連結…": "Insert Work Item Link…",
+  "插入 Wiki 頁面連結…": "Insert Wiki Page Link…",
 };

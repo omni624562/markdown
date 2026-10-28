@@ -88,7 +88,8 @@ import {
 } from "./settings.ts";
 import { pasteAsMarkdown } from "./html-paste.ts";
 import { hiddenByCollapse, moveSection, sectionRange, subtreeEnd, swapSection } from "./sections.ts";
-import { type HeadingRef, encodeLinkPath, linkCompletion } from "./link-complete.ts";
+import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { type HeadingRef, type RemotePage, encodeLinkPath, linkCompletion } from "./link-complete.ts";
 import {
   type DocMeta,
   dropDraft,
@@ -638,9 +639,11 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
           fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
           return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
         },
+        remotePages: () => wikiLinkPages(1000),
       },
       [
         (ctx) => (kind === "json" ? null : dateCompletion(ctx)),
+        (ctx) => (kind === "markdown" ? workItemIdCompletion(ctx) : null),
         (ctx) => (kind === "markdown" ? slashSource(ctx) : null),
       ],
     ),
@@ -4644,6 +4647,93 @@ async function quickRemoteItems(q: string): Promise<QuickItem[]> {
   }));
 }
 
+/** 連結用的 Wiki 頁面：編輯 Wiki 頁面時是那個 Wiki，否則是 Wiki 面板選的那個。等不到 `wait` 毫秒就先不列。 */
+async function wikiLinkPages(wait = 150): Promise<RemotePage[]> {
+  if (!desktop || !ado?.account) return [];
+  if (!wikiListCache) {
+    wikiListCache = desktop.adoWikis();
+    wikiListCache.catch(() => (wikiListCache = null));
+  }
+  const wikis = await soon(wikiListCache, wait);
+  const target = active.wiki;
+  const id = target?.wikiId ?? wikiPanel?.wiki?.id ?? storage.load("ado-wiki");
+  const wiki = wikis?.find((w) => w.id === id) ?? wikis?.[0];
+  if (!wiki) return [];
+  let pages = wikiPagesCache.get(wiki.id);
+  if (!pages) {
+    pages = desktop.adoWikiPages(wiki);
+    wikiPagesCache.set(wiki.id, pages);
+    pages.catch(() => wikiPagesCache.delete(wiki.id));
+  }
+  const paths = flattenPages((await soon(pages, wait)) ?? []);
+  // 在同一個 Wiki 裡用 Wiki 的相對連結（`/上層/頁面`），TFS 網頁版也點得到；其他文件用網頁網址。
+  const sameWiki = target?.wikiId === wiki.id;
+  return paths.flatMap((path) => {
+    const name = pageName(path);
+    const where = [wiki.name, path.slice(1, path.lastIndexOf("/"))].filter(Boolean).join(" › ");
+    if (sameWiki) return [{ label: name, detail: t("Wiki・{where}", { where }), link: `[${name.replace(/[[\]]/g, "")}](${encodeLinkPath(path)})` }];
+    if (!wiki.webUrl) return [];
+    return [{ label: name, detail: t("Wiki・{where}", { where }), link: wikiPageLink(name, wikiPageUrl(wiki.webUrl, path)) }];
+  });
+}
+
+/** 文件裡打 `#123`（編號）時列出符合的工作項目，選了就換成 `[#123 標題](網址)`。 */
+async function workItemIdCompletion(ctx: CompletionContext): Promise<CompletionResult | null> {
+  if (!desktop || !ado?.account) return null;
+  const m = ctx.matchBefore(/(?<=^|[\s(（「、，,:：])#\d{1,9}$/);
+  if (!m) return null;
+  // 打字停一下才查詢。
+  await new Promise((r) => setTimeout(r, 250));
+  if (ctx.aborted) return null;
+  const found = await desktop
+    .adoWorkItems(m.text.slice(1), { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" })
+    .catch(() => [] as AdoWorkItem[]);
+  if (ctx.aborted || !found.length) return null;
+  return {
+    from: m.from,
+    filter: false,
+    options: found.slice(0, 20).map((w) => ({
+      label: `#${w.id} ${w.title}`,
+      detail: `${w.kind}・${w.state}`,
+      type: "class",
+      apply: workItemLink(w),
+    })),
+  };
+}
+
+/** 插入工作項目連結：輸入標題關鍵字或編號搜尋（空白時列出指派給我的）。 */
+let workItemLinkSeq = 0;
+const workItemLinkPicker = new Picker<AdoWorkItem>({
+  label: t("插入工作項目連結"),
+  placeholder: t("輸入標題關鍵字或編號"),
+  empty: t("找不到符合的工作項目"),
+  async query(q) {
+    if (!desktop) return [];
+    const seq = ++workItemLinkSeq;
+    await new Promise((r) => setTimeout(r, 250));
+    if (seq !== workItemLinkSeq) return [];
+    const text = q.trim().replace(/^#/, "");
+    const filter = text ? { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" as const } : DEFAULT_WORK_ITEM_FILTER;
+    return (await desktop.adoWorkItems(text, filter)).slice(0, 50);
+  },
+  render: (w) => ({ title: w.title, detail: [`${w.kind} ${w.id}`, w.state].join("・"), icon: "square-kanban" }),
+  pick: (w) => insertIssueLink(w),
+});
+
+/** 插入 Wiki 頁面連結。 */
+const wikiLinkPicker = new Picker<RemotePage>({
+  label: t("插入 Wiki 頁面連結"),
+  placeholder: t("輸入頁面名稱"),
+  empty: t("找不到符合的 Wiki 頁面"),
+  async query(q) {
+    const needle = q.trim().toLowerCase();
+    const pages = await wikiLinkPages(3000);
+    return needle ? pages.filter((p) => `${p.label} ${p.detail}`.toLowerCase().includes(needle)) : pages;
+  },
+  render: (p) => ({ title: p.label, detail: p.detail, icon: "book-open-text" }),
+  pick: (p) => insertAtCursor(p.link),
+});
+
 /** `p` 在一小段時間內有結果就回傳結果，否則（或失敗時）回傳 null。 */
 function soon<T>(p: Promise<T>, ms = 150): Promise<T | null> {
   return Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
@@ -6508,6 +6598,22 @@ commands.register(
     }),
   ),
   {
+    id: "insert-work-item-link",
+    title: t("插入工作項目連結…"),
+    group: t("插入"),
+    icon: "square-kanban",
+    when: () => !!desktop && !!ado?.account && kind === "markdown" && view !== "preview",
+    run: () => workItemLinkPicker.open(),
+  },
+  {
+    id: "insert-wiki-link",
+    title: t("插入 Wiki 頁面連結…"),
+    group: t("插入"),
+    icon: "book-open-text",
+    when: () => !!desktop && !!ado?.account && kind === "markdown" && view !== "preview",
+    run: () => wikiLinkPicker.open(),
+  },
+  {
     id: "insert-symbol",
     title: t("插入符號…"),
     group: t("插入"),
@@ -7133,6 +7239,8 @@ const insertMenuUi = floatingMenu("insert-anchor", [
   "insert-toc",
   "-",
   "insert-symbol",
+  "insert-work-item-link",
+  "insert-wiki-link",
 ]);
 const openInsertMenu = (at: DOMRect) => insertMenuUi.open(at);
 
@@ -7154,6 +7262,8 @@ const SLASH_KEYWORDS: Record<string, string> = {
   "insert-toc": "toc 目錄", // i18n-ignore
   "insert-symbol": "symbol 符號 特殊", // i18n-ignore
   "insert-today": "date today 日期 今天", // i18n-ignore
+  "insert-work-item-link": "workitem work item issue bug task 工作項目 工單 連結", // i18n-ignore
+  "insert-wiki-link": "wiki page link 頁面 連結", // i18n-ignore
 };
 function slashItems(): SlashItem[] {
   return Object.entries(SLASH_KEYWORDS).flatMap(([id, keywords]) => {
