@@ -289,6 +289,12 @@ if (!docs.length) {
 let active: Doc = docs.find((d) => d.id === restored?.activeId) ?? docs[0];
 
 let kind: DocKind = active.kind;
+/**
+ * 開著 Wiki、工作項目時，大綱改列它的標題（`body` 是內容的元素，用來捲動）；
+ * 編輯中文件的標題記在 `docHeadings`，關掉後換回來。
+ */
+let outlineView: { key: string; headings: Heading[]; body: HTMLElement | null } | null = null;
+let docHeadings: Heading[] = [];
 let fileName = active.name;
 let fileHandle: FileHandle | null = active.handle;
 /** 最後一次存檔／開檔／新增時內容的雜湊；目前內容與它不同就代表有未存檔的變更。 */
@@ -590,7 +596,8 @@ function renderNow(full = false): void {
   blocks = null;
   renderError(result);
   renderEmptyState(text);
-  renderOutline(result.headings);
+  docHeadings = result.headings;
+  if (!outlineView) renderOutline(result.headings);
   renderStats(result);
   renderSaveState();
   editor.relint();
@@ -714,8 +721,9 @@ let outlineKey = "";
 const outlineCollapsed = new Map<string, Set<string>>();
 const collapseKey = (h: Heading) => `${h.level} ${h.text}`;
 function collapsedSet(): Set<string> {
-  let set = outlineCollapsed.get(active.id);
-  if (!set) outlineCollapsed.set(active.id, (set = new Set()));
+  const scope = outlineView ? `view:${outlineView.key}` : active.id;
+  let set = outlineCollapsed.get(scope);
+  if (!set) outlineCollapsed.set(scope, (set = new Set()));
   return set;
 }
 
@@ -780,12 +788,17 @@ function toggleOutline(index: number, collapse?: boolean): boolean {
 
 function renderOutline(headings: Heading[]): void {
   outlineEmpty.hidden = headings.length > 0;
-  outlineEmpty.textContent =
-    kind === "markdown" ? t("文件中還沒有標題。用 # 開頭的行會出現在這裡。") : t("只有 Markdown 文件的標題會顯示在大綱中。");
+  outlineEmpty.textContent = outlineView
+    ? t("這一頁沒有標題。")
+    : kind === "markdown"
+      ? t("文件中還沒有標題。用 # 開頭的行會出現在這裡。")
+      : t("只有 Markdown 文件的標題會顯示在大綱中。");
   outlineHeadings = headings;
-  const movable = kind === "markdown";
+  // Wiki、工作項目是唯讀的，不能拖曳搬移章節。
+  const movable = !outlineView && kind === "markdown";
+  const scope = outlineView ? `view:${outlineView.key}` : active.id;
   // 標題沒有變（大多數按鍵都是這樣）就不重建，大文件可能有上千個標題。
-  const key = `${active.id}\n${movable}\n${headings.map((h) => `${h.level} ${h.line} ${h.id} ${h.text}`).join("\n")}`;
+  const key = `${scope}\n${movable}\n${headings.map((h) => `${h.level} ${h.line} ${h.id} ${h.text}`).join("\n")}`;
   if (key === outlineKey && outlineList.childElementCount === headings.length) return;
   outlineKey = key;
   // 重新產生大綱時保留鍵盤焦點（例如用 Alt+↑／↓ 連續搬移章節）。
@@ -804,10 +817,9 @@ function renderOutline(headings: Heading[]): void {
       a.dataset.index = String(i);
       a.textContent = h.text || t("（空白標題）");
       a.style.setProperty("--level", String(h.level));
-      if (movable) {
-        a.draggable = true;
-        a.title = t("拖曳可以搬移整個章節；也可以按 Alt+↑／↓");
-      }
+      // 連結預設可以拖曳：不能搬移章節時關掉，免得拖出網址。
+      a.draggable = movable;
+      if (movable) a.title = t("拖曳可以搬移整個章節；也可以按 Alt+↑／↓");
       // 有子標題的才有收合的三角形（不在 Tab 順序裡，鍵盤用 ←／→）。
       if (subtreeEnd(levels, i) > i + 1) {
         const toggle = document.createElement("button");
@@ -1282,13 +1294,18 @@ outlineList.addEventListener("click", (e) => {
   const h = a && outlineHeadings[Number(a.dataset.index)];
   if (!h) return;
   e.preventDefault();
+  if (outlineView) {
+    viewHeading(h.id)?.scrollIntoView({ block: "start" });
+    if (narrowQuery.matches) setOutline(false);
+    return;
+  }
   if (view !== "preview") editor.reveal(h.line);
   if (previewVisible()) document.getElementById(h.id)?.scrollIntoView({ block: "start" });
   if (narrowQuery.matches) setOutline(false);
 });
 outlineList.addEventListener("dragstart", (e) => {
   const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
-  if (!link || kind !== "markdown") return;
+  if (!link || kind !== "markdown" || outlineView) return;
   draggingSection = Number(link.dataset.index);
   link.parentElement!.classList.add("dragging");
   e.dataTransfer!.effectAllowed = "move";
@@ -1345,18 +1362,29 @@ outlineList.addEventListener("keydown", (e) => {
   }
   if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
   const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
-  if (!link || kind !== "markdown") return;
+  if (!link || kind !== "markdown" || outlineView) return;
   e.preventDefault();
   const moved = swapSection(editor.text, outlineHeadings, Number(link.dataset.index), e.key === "ArrowUp" ? -1 : 1);
   if (moved) applySectionMove(moved.text, moved.index, true);
 });
+
+/** Wiki、工作項目內容裡的標題（和本機預覽的標題 id 可能一樣，所以只在內容裡找）。 */
+function viewHeading(id: string): HTMLElement | null {
+  return outlineView?.body?.querySelector<HTMLElement>(`#${CSS.escape(id)}`) ?? null;
+}
 
 /** 大綱標示目前閱讀到的段落。 */
 function updateActiveHeading(): void {
   const links = [...outlineList.querySelectorAll<HTMLAnchorElement>("a")];
   if (!links.length) return;
   let active: HTMLAnchorElement | undefined;
-  if (view === "preview") {
+  if (outlineView) {
+    const top = (outlineView.body?.parentElement?.getBoundingClientRect().top ?? 0) + 48;
+    for (const a of links) {
+      const el = viewHeading(a.dataset.id!);
+      if (el && el.getBoundingClientRect().top <= top) active = a;
+    }
+  } else if (view === "preview") {
     const top = previewScroller.getBoundingClientRect().top + 48;
     for (const a of links) {
       const el = document.getElementById(a.dataset.id!);
@@ -1936,7 +1964,17 @@ const issueView = new IssueView($(".workspace"), {
         },
       },
     ]);
-    issuePreview.update(markdown, "markdown");
+    const result = issuePreview.update(markdown, "markdown");
+    // 大綱改列這一頁的標題；捲動內容時標示目前讀到的段落。
+    if (outlineView) {
+      outlineView = { ...outlineView, headings: result.headings, body: into };
+      renderOutline(result.headings);
+      updateActiveHeading();
+    }
+    if (!into.dataset.outlineScroll) {
+      into.dataset.outlineScroll = "1";
+      into.parentElement?.addEventListener("scroll", () => outlineView && updateActiveHeading(), { passive: true });
+    }
   },
   open: (url) => void desktop?.openExternal(url).catch(reportError),
   copyAsDocument(name, markdown) {
@@ -1947,6 +1985,8 @@ const issueView = new IssueView($(".workspace"), {
     toast(t("已複製成新的 Markdown 分頁，修改不會回寫到伺服器"));
   },
   opened(source) {
+    outlineView = { key: source.key, headings: [], body: null };
+    renderOutline([]);
     // Wiki 頁面讀到內容時才設定（圖片的相對路徑以它為準）。
     wikiPage = null;
     const [kind, id, ...rest] = source.key.split(":");
@@ -1956,6 +1996,9 @@ const issueView = new IssueView($(".workspace"), {
   },
   closed() {
     wikiPage = null;
+    outlineView = null;
+    renderOutline(docHeadings);
+    updateActiveHeading();
     workItemsPanel?.select(null);
     issuesPanel?.select(null);
     wikiPanel?.select(null);

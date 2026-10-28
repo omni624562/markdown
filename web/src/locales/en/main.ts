@@ -627,4 +627,5 @@ export const main: Record<string, Translation> = {
   "在這裡輸入文字。": "Type your text here.",
   "在這裡貼上 JSON，切到預覽可以看樹狀檢視。": "Paste JSON here. Switch to Preview to see it as a tree.",
   "最近開啟的檔案": "Recent Files",
+  "這一頁沒有標題。": "This page has no headings.",
 };
