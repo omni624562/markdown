@@ -145,7 +145,8 @@ import { TerminalPanel } from "./ui/terminal-panel.ts";
 import { WebDavDialog } from "./ui/webdav-dialog.ts";
 import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
-import { sizeLabel, versionTitle } from "./history-label.ts";
+import { sizeLabel, timeAgo, versionTitle } from "./history-label.ts";
+import { myChanges, recentEditor, type WikiPageInfo } from "./wiki-coedit.ts";
 import type { AdoWiki, AdoWikiPage, AdoWorkItem, AdoWorkItemDetail, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
 import { findWikiPage, parseRemoteLink, type RemoteLink, urlAt } from "./remote-links.ts";
 import type { GitHistory } from "./ui/history-view.ts";
@@ -2613,6 +2614,28 @@ async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
     activate(open);
     return;
   }
+  const target = { projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path };
+  // 開始編輯前先看最後是誰、什麼時候改的：別人剛改過就提醒（對方可能還在編輯）。
+  const [info, me] = await Promise.all([
+    desktop!.adoWikiPageInfo(target).catch(() => null),
+    adoMe(),
+  ]);
+  const recent = info && recentEditor(info, me);
+  if (recent) {
+    const choice = await choose(
+      t("這一頁剛有人改過"),
+      t("{who} {ago}改過「{name}」，可能還在編輯。兩個人同時編輯時，後存檔的人要比較差異、合併修改；可以先聯絡對方。", {
+        who: recent.author,
+        ago: timeAgo(recent.at),
+        name: pageName(path),
+      }),
+      [
+        { id: "edit", label: t("仍要編輯"), primary: true },
+        { id: "cancel", label: t("取消") },
+      ],
+    );
+    if (choice !== "edit") return;
+  }
   const page = await desktop!.adoWikiPage(wiki, path);
   if (!page.etag) throw new Error(t("伺服器沒有提供這一頁的版本，無法確認存回時有沒有蓋掉別人的修改，所以不能在這裡編輯。"));
   // 編輯器一律用 \n 換行，先統一，免得一開就顯示成有變更。
@@ -2622,11 +2645,17 @@ async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
     name: `${pageName(path)}.md`,
     kind: "markdown",
     baseline: hash(content),
-    wiki: { projectId: wiki.projectId, wikiId: wiki.id, wikiName: wiki.name, path, etag: page.etag },
+    wiki: { ...target, wikiName: wiki.name, etag: page.etag },
   });
   saveDraft(doc.id, content);
+  storage.save(`wiki-base:${doc.id}`, content);
+  wikiCheckedAt.set(doc.id, Date.now());
   addTab(doc);
-  toast(t("編輯完按 Ctrl+S 存回 Wiki。如果這段時間有人改過這一頁，會先讓你比較差異。"));
+  const last = info?.author && info.date && Number.isFinite(Date.parse(info.date))
+    ? t("最後修改：{who}，{ago}。", { who: info.author, ago: timeAgo(Date.parse(info.date)) })
+    : "";
+  const hint = t("編輯完按 Ctrl+S 存回 Wiki。編輯中有人存檔時，上方會出現提示。");
+  toast(last ? `${hint} ${last}` : hint, { duration: 8000 });
 }
 
 /** 把分頁的內容存回 Wiki 頁面；伺服器上的版本被別人改過時回傳那個版本（交給衝突處理）。 */
@@ -2640,11 +2669,336 @@ async function saveWikiPage(text: string, force: boolean): Promise<{ name: strin
     return { name: doc.name, diskText: out.content.replace(/\r\n?/g, "\n") };
   }
   wikiServerEtag.delete(doc.id);
+  wikiNewer.delete(doc.id);
   doc.wiki = { ...target, etag: out.etag ?? target.etag };
+  storage.save(`wiki-base:${doc.id}`, text);
   setBaseline(text, true);
   persistSession();
   renderTabs();
+  renderWikiBar();
   toast(t("已存回 Wiki 頁面「{name}」", { name: pageName(target.path) }), { tone: "success" });
+}
+
+// ---- Wiki 共同編輯：編輯中定期檢查有沒有人改過；載入最新版時保留自己的修改 ----------
+
+const wikiBar = $("#wiki-bar");
+const wikiMine = $("#wiki-mine");
+wikiMine.setAttribute("aria-label", t("我的修改"));
+/** 編輯中多久檢查一次伺服器上的版本。 */
+const WIKI_CHECK_MS = 90_000;
+/** 切回視窗、切換分頁時，距離上次檢查至少多久才再檢查。 */
+const WIKI_RECHECK_MS = 20_000;
+/** 伺服器上比開始編輯（或上次存回）時新的版本；按「稍後」後，同一個版本不再提示。 */
+const wikiNewer = new Map<string, { info: WikiPageInfo; dismissed: boolean }>();
+const wikiCheckedAt = new Map<string, number>();
+/** 「我的修改」面板收合起來的分頁。 */
+const wikiMineCollapsed = new Set<string>();
+let adoMeName: Promise<string | null> | null = null;
+
+/** 目前連線的使用者名稱（判斷最後修改的是不是自己）。 */
+function adoMe(): Promise<string | null> {
+  adoMeName ??= desktop!
+    .adoAccount()
+    .then((a) => a?.name ?? null)
+    .catch(() => null);
+  return adoMeName;
+}
+
+/** 檢查 Wiki 分頁對應的頁面有沒有被別人改過（網路錯誤時不提示，下次再查）。 */
+async function checkWikiNewer(doc: Doc, force = false): Promise<void> {
+  const target = doc.wiki;
+  if (!target || !desktop) return;
+  const last = wikiCheckedAt.get(doc.id) ?? 0;
+  if (!force && Date.now() - last < WIKI_RECHECK_MS) return;
+  wikiCheckedAt.set(doc.id, Date.now());
+  const [info, me] = await Promise.all([desktop.adoWikiPageInfo(target).catch(() => null), adoMe()]);
+  // 檢查期間存回了或分頁關掉了：以目前的版本為準。
+  if (!info?.etag || !docs.includes(doc) || !doc.wiki) return;
+  const newer = info.etag !== doc.wiki.etag && !(info.author && me && sameUser(info.author, me));
+  if (!newer) wikiNewer.delete(doc.id);
+  else if (wikiNewer.get(doc.id)?.info.etag !== info.etag) wikiNewer.set(doc.id, { info, dismissed: false });
+  if (doc === active) renderWikiBar();
+}
+
+function sameUser(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+window.setInterval(() => {
+  if (!document.hidden && active.wiki) void checkWikiNewer(active, true);
+}, WIKI_CHECK_MS);
+window.addEventListener("focus", () => {
+  if (active.wiki) void checkWikiNewer(active);
+});
+
+/** 編輯中的 Wiki 頁面有新版本時，上方的提示列。 */
+function renderWikiBar(): void {
+  const newer = active.wiki ? wikiNewer.get(active.id) : undefined;
+  wikiBar.hidden = !newer || newer.dismissed;
+  if (!newer || newer.dismissed) return;
+  const { author, date } = newer.info;
+  const at = date ? Date.parse(date) : NaN;
+  const msg = document.createElement("p");
+  msg.append(
+    icon("users"),
+    Object.assign(document.createElement("strong"), { textContent: t("這一頁有新版本") }),
+    Object.assign(document.createElement("span"), {
+      textContent:
+        author && Number.isFinite(at)
+          ? t("{who} {ago}存了新的內容（在你開始編輯之後）。", { who: author, ago: timeAgo(at) })
+          : t("有人在你開始編輯之後存了新的內容。"),
+    }),
+  );
+  const actions = document.createElement("div");
+  actions.className = "wiki-bar-actions";
+  const button = (label: string, run: () => Promise<void> | void, primary = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `btn${primary ? " btn-primary" : ""}`;
+    b.textContent = label;
+    b.addEventListener("click", () => void Promise.resolve(run()).catch(reportError));
+    return b;
+  };
+  const doc = active;
+  const dirty = hash(editor.text) !== baseline;
+  if (dirty) {
+    actions.append(
+      button(t("比較差異"), () => compareWikiLatest(doc), true),
+      button(t("載入最新版，保留我的修改"), () => loadWikiLatest(doc)),
+    );
+  } else {
+    actions.append(button(t("載入最新版"), () => loadWikiLatest(doc), true));
+  }
+  actions.append(
+    button(t("稍後"), () => {
+      newer.dismissed = true;
+      renderWikiBar();
+    }),
+  );
+  wikiBar.replaceChildren(msg, actions);
+}
+
+/** 讀伺服器上最新的內容與版本。 */
+async function fetchWikiLatest(doc: Doc): Promise<{ content: string; etag: string | null }> {
+  const target = doc.wiki!;
+  const wiki = { id: target.wikiId, projectId: target.projectId, code: false, version: null } as AdoWiki;
+  const page = await desktop!.adoWikiPage(wiki, target.path);
+  return { content: page.content.replace(/\r\n?/g, "\n"), etag: page.etag };
+}
+
+/** 和伺服器上的最新版逐段比較（和存檔時發生衝突一樣，全部處理完會存回）。 */
+async function compareWikiLatest(doc: Doc): Promise<void> {
+  if (doc !== active) return;
+  const latest = await fetchWikiLatest(doc);
+  if (latest.etag) wikiServerEtag.set(doc.id, latest.etag);
+  wikiNewer.delete(doc.id);
+  renderWikiBar();
+  const started = review.start(latest.content, {
+    title: t("與 Wiki 上的版本比較"),
+    hint: t("逐段選擇要採用哪個版本，全部處理完會自動存檔。"),
+    acceptLabel: t("採用伺服器版本"),
+    rejectLabel: t("保留我的版本"),
+    onFinish: () => void save(false, true).catch(reportError),
+  });
+  if (!started) toast(t("你的內容和 Wiki 上的最新版相同。"));
+}
+
+/**
+ * 換成伺服器上的最新版；自己還沒存回的修改另外保留在「我的修改」面板，可以一段一段複製、插入回去
+ * （也可以按 Ctrl+Z 回到換之前的內容）。`latest` 是已經讀到的最新版（存檔衝突時）。
+ */
+async function loadWikiLatest(doc: Doc, latest?: { content: string; etag: string | null }): Promise<void> {
+  if (doc !== active) return;
+  // 比較差異還沒處理完：結束比較會存檔，先讓使用者處理完。
+  if (review.active) {
+    toast(t("請先處理完目前的比較差異。"));
+    return;
+  }
+  latest ??= await fetchWikiLatest(doc);
+  if (!latest.etag) throw new Error(t("伺服器沒有提供這一頁的版本，無法確認存回時有沒有蓋掉別人的修改，所以不能在這裡編輯。"));
+  const mine = editor.text;
+  const base = storage.load(`wiki-base:${doc.id}`);
+  const kept = hash(mine) !== baseline && mine !== latest.content;
+  if (kept) {
+    storage.save(`wiki-mine:${doc.id}`, JSON.stringify({ text: mine, base, at: Date.now() }));
+    wikiMineCollapsed.delete(doc.id);
+  }
+  editor.replaceAll(latest.content, { userEvent: "input.reload", isolate: true });
+  wikiServerEtag.delete(doc.id);
+  wikiNewer.delete(doc.id);
+  doc.wiki = { ...doc.wiki!, etag: latest.etag };
+  storage.save(`wiki-base:${doc.id}`, latest.content);
+  setBaseline(latest.content, true);
+  renderSaveState();
+  renderTabs();
+  renderWikiBar();
+  renderWikiMine();
+  toast(
+    kept
+      ? t("已載入 Wiki 上的最新版。你的修改保留在上方的「我的修改」，可以複製或插入回去；按 Ctrl+Z 可以回到你原本的內容。")
+      : t("已載入 Wiki 上的最新版。"),
+    { tone: "success", duration: kept ? 10000 : 4000 },
+  );
+}
+
+interface WikiMine {
+  text: string;
+  base: string | null;
+  at: number;
+}
+
+function loadWikiMine(id: string): WikiMine | null {
+  try {
+    const v = JSON.parse(storage.load(`wiki-mine:${id}`) ?? "null") as WikiMine | null;
+    return v && typeof v.text === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 「我的修改」面板：載入最新版之前自己改的內容，一段一段可以複製、插入到游標處、找到原本的位置。 */
+function renderWikiMine(): void {
+  const mine = active.wiki ? loadWikiMine(active.id) : null;
+  wikiMine.hidden = !mine;
+  if (!mine) {
+    wikiMine.replaceChildren();
+    return;
+  }
+  const doc = active;
+  const changes = mine.base === null ? [{ before: "", after: mine.text }] : myChanges(mine.base, mine.text);
+  const collapsed = wikiMineCollapsed.has(doc.id);
+  wikiMine.classList.toggle("collapsed", collapsed);
+
+  const btn = (label: string, iconName: string, run: () => void | Promise<void>, cls = "btn") => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = cls;
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }));
+    b.addEventListener("click", () => void Promise.resolve(run()).catch(reportError));
+    return b;
+  };
+  const copy = async (text: string, item?: HTMLElement) => {
+    await navigator.clipboard.writeText(text);
+    item?.classList.add("used");
+    toast(t("已複製"), { tone: "success", duration: 1500 });
+  };
+
+  const head = document.createElement("header");
+  const title = document.createElement("p");
+  title.append(
+    icon("history"),
+    Object.assign(document.createElement("strong"), { textContent: t("我的修改（{n} 段）", { n: changes.length }) }),
+    Object.assign(document.createElement("span"), {
+      textContent: t("{time}載入最新版前保留的。把需要的段落複製或插入回去，再按 Ctrl+S 存回。", { time: timeAgo(mine.at) }),
+    }),
+  );
+  const tools = document.createElement("div");
+  tools.className = "wiki-mine-tools";
+  tools.append(
+    btn(t("複製我的完整版本"), "copy", () => copy(mine.text)),
+    btn(t("在新分頁開啟"), "file-plus", () => {
+      const copyDoc = makeDoc({ name: t("{name}（我的版本）.md", { name: pageName(doc.wiki!.path) }), kind: "markdown", baseline: hash("") });
+      saveDraft(copyDoc.id, mine.text);
+      addTab(copyDoc);
+    }),
+    btn(collapsed ? t("展開") : t("收合"), collapsed ? "chevron-down" : "chevron-up", () => {
+      if (collapsed) wikiMineCollapsed.delete(doc.id);
+      else wikiMineCollapsed.add(doc.id);
+      renderWikiMine();
+    }),
+    btn(t("關閉"), "x", async () => {
+      const choice = await choose(t("關閉「我的修改」？"), t("關閉後就不再保留這份修改（還沒貼回去的內容會不見）。"), [
+        { id: "close", label: t("關閉"), danger: true },
+        { id: "cancel", label: t("取消"), primary: true },
+      ]);
+      if (choice !== "close") return;
+      storage.remove(`wiki-mine:${doc.id}`);
+      renderWikiMine();
+    }),
+  );
+  head.append(title, tools);
+
+  const list = document.createElement("ol");
+  list.className = "wiki-mine-list";
+  for (const change of changes) {
+    const item = document.createElement("li");
+    if (change.before) {
+      const label = change.after ? t("原本") : t("你刪除了");
+      item.append(
+        Object.assign(document.createElement("div"), { className: "wiki-mine-label", textContent: label }),
+        Object.assign(document.createElement("pre"), { className: "wiki-mine-before", textContent: change.before }),
+      );
+    }
+    if (change.after) {
+      item.append(
+        Object.assign(document.createElement("div"), {
+          className: "wiki-mine-label",
+          textContent: change.before ? t("改成") : t("你新增了"),
+        }),
+        Object.assign(document.createElement("pre"), { className: "wiki-mine-after", textContent: change.after }),
+      );
+    }
+    const actions = document.createElement("div");
+    actions.className = "wiki-mine-actions";
+    if (change.before && change.after) {
+      actions.append(
+        btn(t("取代原本這段"), "replace", () => {
+          const view = editor.view;
+          const at = view.state.doc.toString().indexOf(change.before);
+          if (at < 0) {
+            toast(t("最新版裡找不到原本這段（可能已經被別人改掉了），請改用「複製」或「插入到游標處」。"));
+            return;
+          }
+          view.dispatch({
+            changes: { from: at, to: at + change.before.length, insert: change.after },
+            selection: { anchor: at + change.after.length },
+            scrollIntoView: true,
+            userEvent: "input.paste",
+          });
+          view.focus();
+          item.classList.add("used");
+        }, "btn btn-small"),
+      );
+    }
+    if (change.after) {
+      actions.append(
+        btn(t("複製"), "copy", () => copy(change.after, item), "btn btn-small"),
+        btn(t("插入到游標處"), "corner-down-left", () => {
+          const view = editor.view;
+          const sel = view.state.selection.main;
+          const line = view.state.doc.lineAt(sel.from);
+          // 游標在一段文字的結尾或開頭時，插入成獨立的一段。
+          let text = change.after;
+          if (sel.empty && line.text.trim()) {
+            if (sel.from === line.to) text = `\n\n${text}`;
+            else if (sel.from === line.from) text = `${text}\n\n`;
+          }
+          view.dispatch(view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.paste" });
+          view.focus();
+          item.classList.add("used");
+        }, "btn btn-small"),
+      );
+    }
+    if (change.before) {
+      actions.append(
+        btn(t("找到原本的位置"), "search", () => {
+          const view = editor.view;
+          const at = view.state.doc.toString().indexOf(change.before);
+          if (at < 0) {
+            toast(t("最新版裡找不到原本這段（可能已經被別人改掉了）。"));
+            return;
+          }
+          view.dispatch({ selection: { anchor: at, head: at + change.before.length }, scrollIntoView: true });
+          view.focus();
+        }, "btn btn-small"),
+      );
+    }
+    item.append(actions);
+    list.append(item);
+  }
+  wikiMine.replaceChildren(head, list);
 }
 
 /** 在主要區域開啟 Wiki 頁面；內容裡連到其他頁面的連結直接在這裡切換。 */
@@ -4419,6 +4773,9 @@ function activate(doc: Doc): void {
   renderNow();
   renderTabs();
   renderOffline();
+  renderWikiBar();
+  renderWikiMine();
+  if (doc.wiki) void checkWikiNewer(doc);
   if (doc.externalOriginal !== undefined) {
     const original = doc.externalOriginal;
     doc.externalOriginal = undefined;
@@ -4462,6 +4819,8 @@ async function closeTab(id: string): Promise<void> {
   remoteAllowed.delete(doc.id);
   outlineCollapsed.delete(doc.id);
   changeNoticeAt.delete(doc.id);
+  wikiNewer.delete(doc.id);
+  wikiCheckedAt.delete(doc.id);
   if (!docs.length) {
     const blank = makeDoc({ name: t("未命名{ext}", { ext: KINDS[kind].ext }), kind });
     docs.push(blank);
@@ -4747,12 +5106,14 @@ async function resolveConflict(name: string, diskText: string): Promise<void> {
         : t("「{name}」在你開啟之後被其他程式（例如同步軟體或另一個編輯器）改過。要怎麼處理？", { name }),
     [
       { id: "compare", label: t("比較差異"), primary: true },
+      ...(wiki ? [{ id: "reload", label: t("載入最新版，保留我的修改") }] : []),
       { id: "overwrite", label: t("用我的版本覆蓋"), danger: true },
       { id: "save-as", label: t("另存新檔") },
       { id: "cancel", label: t("取消") },
     ],
   );
-  if (choice === "overwrite") await save(false, true);
+  if (choice === "reload") await loadWikiLatest(active, { content: diskText, etag: wikiServerEtag.get(active.id) ?? null });
+  else if (choice === "overwrite") await save(false, true);
   else if (choice === "save-as") await save(true);
   else if (choice === "compare") {
     const started = review.start(diskText, {

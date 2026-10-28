@@ -29,6 +29,8 @@ export interface WikiTarget {
   wikiName: string;
   path: string;
   etag: string;
+  /** Wiki 所在的 Git 儲存庫（查最後修改的人用；舊的分頁沒有記）。 */
+  repositoryId?: string;
 }
 
 export interface Session {
@@ -171,12 +173,20 @@ export function dropOrphanDrafts(): number {
     .keys("tabs")
     .filter((k) => k === "tabs" || k.startsWith("tabs@"))
     .map((k) => storage.load(k));
-  const drafts = storage.keys("draft:").map((k) => k.slice("draft:".length));
+  const drafts = [
+    ...new Set(
+      ["draft:", ...WIKI_PREFIXES].flatMap((prefix) => storage.keys(prefix).map((k) => k.slice(prefix.length))),
+    ),
+  ];
   const orphans = orphanDraftIds(sessions, drafts);
   for (const id of orphans) dropDraft(id);
   return orphans.length;
 }
 
+/** 分頁附帶的資料：Wiki 開始編輯時的內容、載入最新版前保留的自己的修改。 */
+const WIKI_PREFIXES = ["wiki-base:", "wiki-mine:"];
+
 export function dropDraft(id: string): void {
   storage.remove(`draft:${id}`);
+  for (const prefix of WIKI_PREFIXES) storage.remove(prefix + id);
 }

@@ -1909,6 +1909,81 @@ pub async fn ado_wiki_page(
     .await
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiPageInfo {
+    /// 伺服器上目前的版本（和開始編輯時的不同，就是被別人改過了）。
+    etag: Option<String>,
+    /// 最後修改的人與時間（Wiki 儲存庫裡這一頁的最新提交；查不到時是空的）。
+    author: Option<String>,
+    date: Option<String>,
+}
+
+/// 提交清單（`git/commits`）裡第一筆的作者與時間。
+fn latest_author(v: &Value) -> (Option<String>, Option<String>) {
+    let author = v
+        .get("value")
+        .and_then(Value::as_array)
+        .and_then(|list| list.first())
+        .and_then(|c| c.get("author"));
+    let field = |key: &str| {
+        author
+            .and_then(|a| str_of(a, key))
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    (field("name"), field("date"))
+}
+
+/// Wiki 頁面目前的版本與最後修改的人（編輯中定期檢查有沒有人改過，開始編輯前提醒）。
+/// 不讀內容，只看版本；最後修改的人另外查 Wiki 儲存庫的提交，查不到不算錯。
+#[tauri::command]
+pub async fn ado_wiki_page_info(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    repository_id: Option<String>,
+    path: String,
+) -> Result<WikiPageInfo, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let (page, etag) = read_with_etag(
+            crate::update::agent()
+                .get(&format!("{}{api}&api-version={API_VERSION}", a.url))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &tr!("讀取 Wiki 頁面"),
+        )?;
+        let (author, date) = match str_of(&page, "gitItemPath") {
+            Some(item) => {
+                let repo = repository_id.as_deref().filter(|r| !r.is_empty()).unwrap_or(&wiki_id);
+                let url = format!(
+                    "{}/{}/_apis/git/repositories/{}/commits?searchCriteria.itemPath={}&searchCriteria.$top=1&api-version={API_VERSION}",
+                    a.url,
+                    encode_segment(&project_id),
+                    encode_segment(repo),
+                    encode_segment(item)
+                );
+                read(
+                    crate::update::agent()
+                        .get(&url)
+                        .header("Authorization", &basic(&pat))
+                        .header("Accept", "application/json")
+                        .call(),
+                    &tr!("讀取 Wiki 頁面"),
+                )
+                .map(|v| latest_author(&v))
+                .unwrap_or_default()
+            }
+            None => (None, None),
+        };
+        Ok(WikiPageInfo { etag, author, date })
+    })
+    .await
+}
+
 // ---- Wiki 全文搜尋 -------------------------------------------------------------
 
 /// 搜尋服務的網址：雲端版在另一個主機（almsearch），自架的伺服器就是集合本身。
@@ -2401,6 +2476,22 @@ mod tests {
         assert!(!same_server("http://tfs.corp.com/tfs/DC/_git/r", base));
         assert!(!same_server("https://tfs.corp.com:8443/tfs/DC", base));
         assert!(!same_server("https://tfs.corp.com.evil.com/tfs/DC", base));
+    }
+
+    #[test]
+    fn reads_latest_wiki_author() {
+        let v = serde_json::json!({ "count": 1, "value": [
+            { "commitId": "abc", "author": { "name": "王小明", "email": "a@b", "date": "2026-10-28T02:42:00Z" } }
+        ] });
+        assert_eq!(
+            latest_author(&v),
+            (Some("王小明".into()), Some("2026-10-28T02:42:00Z".into()))
+        );
+        assert_eq!(
+            latest_author(&serde_json::json!({ "value": [] })),
+            (None, None)
+        );
+        assert_eq!(latest_author(&serde_json::json!({})), (None, None));
     }
 
     #[test]
