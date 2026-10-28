@@ -488,6 +488,7 @@ export const ui: Record<string, Translation> = {
   "清除篩選": "Clear filters",
   "篩選": "Filters",
   "篩選（已設定 {n} 項）": "Filters ({n} set)",
+  "清除全部篩選條件（回到「指派給我、進行中」）": "Clear all filters (back to “Assigned to Me, Active”)",
   "Wiki 頁面": "Wiki pages",
   "Azure DevOps：{state}": "Azure DevOps: {state}",
   "已連線（{name}）": "Connected ({name})",
