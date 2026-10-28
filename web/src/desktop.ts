@@ -808,6 +808,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     githubGist: (fileName: string, content: string, description: string, isPublic: boolean) =>
       core.invoke<string>("github_gist", { fileName, content, description, public: isPublic }),
     adoAccount: () => core.invoke<AdoAccount | null>("ado_account"),
+    /** 連線狀態（狀態列用）。 */
+    adoPing: () =>
+      core.invoke<{ status: "ok" | "offline" | "auth" | "error" | "none"; name: string | null; message: string }>("ado_ping"),
     adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),

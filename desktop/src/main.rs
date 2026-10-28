@@ -308,6 +308,7 @@ fn main() {
             ado::ado_wikis,
             ado::ado_wiki_pages,
             ado::ado_wiki_page,
+            ado::ado_ping,
             ado::ado_wiki_image,
             pdf::pick_pdf_path,
             pdf::print_to_pdf,
