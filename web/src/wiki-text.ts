@@ -6,6 +6,21 @@ export function pageName(path: string): string {
   return parts[parts.length - 1] ?? "/";
 }
 
+/** 新頁面的標題有什麼問題（沒問題回傳 null）：Wiki 不接受 `/`、`\\`、`#`，也不能以 `.` 開頭或結尾。 */
+export function wikiTitleProblem(title: string): "empty" | "chars" | "dot" | "long" | null {
+  const s = title.trim();
+  if (!s) return "empty";
+  if (/[\/\\#\u0000-\u001f]/.test(s)) return "chars";
+  if (s.startsWith(".") || s.endsWith(".")) return "dot";
+  if (new TextEncoder().encode(s).length > 200) return "long";
+  return null;
+}
+
+/** 在 `parent` 底下（null 是最上層）的新頁面路徑。 */
+export function childPagePath(parent: string | null, title: string): string {
+  return `${parent && parent !== "/" ? parent.replace(/\/+$/, "") : ""}/${title.trim()}`;
+}
+
 /** 依 `.`、`..` 整理路徑（結果以 `/` 開頭，不以 `/` 結尾）。 */
 function normalize(path: string): string {
   const out: string[] = [];

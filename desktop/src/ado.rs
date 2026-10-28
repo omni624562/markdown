@@ -1170,44 +1170,156 @@ pub async fn ado_work_items(
         if ids.is_empty() {
             return Ok(vec![]);
         }
-        let list: Vec<String> = ids.iter().map(u64::to_string).collect();
-        let fetch = |fields: &str| {
-            get(
-                &base,
-                &pat,
-                &format!(
-                    "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
-                    list.join(",")
-                ),
-                &tr!("讀取工作項目"),
-            )
+        fetch_work_items(&base, &pat, &ids)
+    })
+    .await
+}
+
+/// 讀取工作項目的摘要，保持 `ids` 的順序（查詢的排序）；讀不到的略過。
+fn fetch_work_items(base: &str, pat: &str, ids: &[u64]) -> Result<Vec<WorkItem>, String> {
+    let list: Vec<String> = ids.iter().map(u64::to_string).collect();
+    let fetch = |fields: &str| {
+        get(
+            base,
+            pat,
+            &format!(
+                "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
+                list.join(",")
+            ),
+            &tr!("讀取工作項目"),
+        )
+    };
+    // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
+    let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
+        Ok(res) => res,
+        Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+        Err(_) => fetch(FIELDS)?,
+    };
+    let mut items: Vec<WorkItem> = values(&res)
+        .iter()
+        .filter_map(|v| item_of(base, v))
+        .collect();
+    // 保持查詢的排序（最近更新的在前面）。
+    items.sort_by_key(|w| ids.iter().position(|id| *id == w.id).unwrap_or(usize::MAX));
+    Ok(items)
+}
+
+/// TFS 上存的查詢（我的查詢、共用查詢）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedQuery {
+    id: String,
+    project: String,
+    name: String,
+    /// 所在的資料夾（例如 `Shared Queries/團隊`）。
+    folder: String,
+}
+
+/// 查詢樹（`wit/queries?$depth=2`）攤平成查詢清單（資料夾不列）。
+fn flatten_queries(project: &str, nodes: &[Value], out: &mut Vec<SavedQuery>) {
+    for node in nodes {
+        if node
+            .get("isFolder")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                flatten_queries(project, children, out);
+            }
+            continue;
+        }
+        let (Some(id), Some(name)) = (str_of(node, "id"), str_of(node, "name")) else {
+            continue;
         };
-        // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
-        let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
-            Ok(res) => res,
-            Err(e) if e.contains("401") || e.contains("403") => return Err(e),
-            Err(_) => fetch(FIELDS)?,
-        };
-        let items: Vec<WorkItem> = values(&res)
+        let path = str_of(node, "path").unwrap_or(name);
+        let folder = path.rsplit_once('/').map_or("", |(f, _)| f).to_string();
+        out.push(SavedQuery {
+            id: id.to_string(),
+            project: project.to_string(),
+            name: name.to_string(),
+            folder,
+        });
+    }
+}
+
+/// 所有專案（最多 20 個）存的查詢；讀不到的專案略過。
+#[tauri::command]
+pub async fn ado_queries(app: AppHandle) -> Result<Vec<SavedQuery>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = get(&a.url, &pat, "/_apis/projects?$top=1000", &tr!("讀取專案"))?;
+        let mut projects: Vec<String> = values(&res)
             .iter()
-            .filter_map(|v| item_of(&base, v))
+            .filter_map(|p| str_of(p, "name").map(str::to_string))
             .collect();
-        // 保持查詢的排序（最近更新的在前面）。
-        Ok(ids
-            .iter()
-            .filter_map(|id| items.iter().find(|w| w.id == *id))
-            .map(|w| WorkItem {
-                id: w.id,
-                title: w.title.clone(),
-                state: w.state.clone(),
-                kind: w.kind.clone(),
-                project: w.project.clone(),
-                assigned_to: w.assigned_to.clone(),
-                changed: w.changed.clone(),
-                priority: w.priority,
-                web_url: w.web_url.clone(),
-            })
-            .collect())
+        projects.sort_by_key(|p| p.to_lowercase());
+        let mut out = vec![];
+        for project in projects.iter().take(20) {
+            let path = format!(
+                "/{}/_apis/wit/queries?$depth=2&$expand=minimal",
+                encode_segment(project)
+            );
+            if let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取已儲存的查詢")) {
+                flatten_queries(project, values(&res), &mut out);
+            }
+        }
+        Ok(out)
+    })
+    .await
+}
+
+/// 查詢結果裡的工作項目編號（一般查詢是 `workItems`，樹狀、連結查詢是 `workItemRelations`），不重複、照順序。
+fn query_ids(v: &Value) -> Vec<u64> {
+    let mut ids: Vec<u64> = vec![];
+    let mut push = |id: Option<u64>| {
+        if let Some(id) = id {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    };
+    for w in v
+        .get("workItems")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        push(w.get("id").and_then(Value::as_u64));
+    }
+    for r in v
+        .get("workItemRelations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        push(r.pointer("/source/id").and_then(Value::as_u64));
+        push(r.pointer("/target/id").and_then(Value::as_u64));
+    }
+    ids.truncate(200);
+    ids
+}
+
+/// 執行存的查詢，回傳工作項目（最多 200 個，照查詢的排序）。
+#[tauri::command]
+pub async fn ado_query_run(
+    app: AppHandle,
+    project: String,
+    id: String,
+) -> Result<Vec<WorkItem>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let path = format!(
+            "/{}/_apis/wit/wiql/{}?$top=200",
+            encode_segment(&project),
+            encode_segment(&id)
+        );
+        let res = get(&a.url, &pat, &path, &tr!("執行查詢"))?;
+        let ids = query_ids(&res);
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        // 一次最多讀 200 個（伺服器的上限）。
+        fetch_work_items(&a.url, &pat, &ids)
     })
     .await
 }
@@ -1985,6 +2097,40 @@ pub async fn ado_wiki_save(
     .await
 }
 
+/// 建立新的 Wiki 頁面（只限專案 Wiki）：`path` 是完整路徑（例如 `/產品/新頁面`），上層頁面要已經存在。
+/// 已經有同名的頁面時不覆蓋。回傳新頁面的版本（之後存回時用）。
+#[tauri::command]
+pub async fn ado_wiki_create(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .put(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(&serde_json::json!({ "content": content }).to_string());
+        match res {
+            // 沒帶 If-Match 時，已經有這一頁會被拒絕（不會覆蓋）。
+            Err(ureq::Error::StatusCode(409 | 412)) => Err(tr!("已經有同名的頁面了，請換一個名稱")),
+            res => {
+                let (_, etag) = read_with_etag(res, &tr!("建立 Wiki 頁面"))?;
+                Ok(match etag {
+                    Some(etag) => Some(etag),
+                    None => read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?.etag,
+                })
+            }
+        }
+    })
+    .await
+}
+
 /// 一個 Wiki 頁面的內容（Markdown）。
 #[tauri::command]
 pub async fn ado_wiki_page(
@@ -2079,6 +2225,99 @@ pub async fn ado_wiki_page_info(
             None => (None, None),
         };
         Ok(WikiPageInfo { etag, author, date })
+    })
+    .await
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiRevision {
+    id: String,
+    author: String,
+    date: String,
+    comment: String,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistory {
+    /// 頁面在 Wiki 儲存庫裡的檔案路徑（讀某一版的內容時用）。
+    git_path: String,
+    /// 新的在前。
+    revisions: Vec<WikiRevision>,
+}
+
+/// 提交清單（`git/commits`）轉成修改記錄。
+fn revisions_of(v: &Value) -> Vec<WikiRevision> {
+    v.get("value")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let author = c.get("author");
+            Some(WikiRevision {
+                id: str_of(c, "commitId")?.to_string(),
+                author: author
+                    .and_then(|a| str_of(a, "name"))
+                    .unwrap_or_default()
+                    .to_string(),
+                date: author
+                    .and_then(|a| str_of(a, "date"))
+                    .unwrap_or_default()
+                    .to_string(),
+                comment: str_of(c, "comment").unwrap_or_default().trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Wiki 頁面的修改記錄（最近 100 次）：誰、什麼時候、說明。
+#[tauri::command]
+pub async fn ado_wiki_history(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    repository_id: Option<String>,
+    path: String,
+) -> Result<WikiHistory, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("讀取 Wiki 頁面的修改記錄");
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let page = read(
+            crate::update::agent()
+                .get(&format!("{}{api}&api-version={API_VERSION}", a.url))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        let git_path = str_of(&page, "gitItemPath")
+            .ok_or_else(|| tr!("{what}失敗：伺服器沒有提供頁面的檔案位置", what = what))?
+            .to_string();
+        let repo = repository_id
+            .as_deref()
+            .filter(|r| !r.is_empty())
+            .unwrap_or(&wiki_id);
+        let url = format!(
+            "{}/{}/_apis/git/repositories/{}/commits?searchCriteria.itemPath={}&searchCriteria.$top=100&api-version={API_VERSION}",
+            a.url,
+            encode_segment(&project_id),
+            encode_segment(repo),
+            encode_segment(&git_path)
+        );
+        let v = read(
+            crate::update::agent()
+                .get(&url)
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        Ok(WikiHistory {
+            git_path,
+            revisions: revisions_of(&v),
+        })
     })
     .await
 }
@@ -2257,6 +2496,73 @@ pub async fn ado_wiki_image(
         }
         let bytes = fetch_bytes(&url, &pat)?;
         Ok(data_url(mime, bytes))
+    })
+    .await
+}
+
+/// 上傳到 Wiki 附件的檔名：只留英數字、`-`、`_`、`.`，其餘換成 `-`，加上時間避免和既有的附件同名。
+fn attachment_name(stem: &str, ext: &str, stamp: u128) -> String {
+    let clean: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let clean = clean.trim_matches('-');
+    let stem = if clean.is_empty() { "image" } else { clean };
+    let stem: String = stem.chars().take(40).collect();
+    format!("{stem}-{stamp}.{ext}")
+}
+
+/// 把圖片上傳成 Wiki 的附件（`.attachments` 資料夾），回傳在頁面裡引用的路徑（例如 `/.attachments/image-123.png`）。
+/// `data` 是 base64；Wiki 的附件 API 本身就是收 base64 文字。
+#[tauri::command]
+pub async fn ado_wiki_attach(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    name: String,
+    ext: String,
+    data: String,
+) -> Result<String, String> {
+    let (a, pat) = require(&app)?;
+    if image_mime(&format!("x.{ext}")).is_none() {
+        return Err(tr!("無法上傳圖片：不是圖片"));
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or_default();
+        let file = attachment_name(&name, &ext, stamp);
+        let what = tr!("上傳圖片到 Wiki");
+        let put = |version: &str| {
+            crate::update::agent()
+                .put(&format!(
+                    "{}/{}/_apis/wiki/wikis/{}/attachments?name={}&api-version={version}",
+                    a.url,
+                    encode_segment(&project_id),
+                    encode_segment(&wiki_id),
+                    encode_segment(&file)
+                ))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/octet-stream")
+                .send(data.as_str())
+        };
+        // 舊版伺服器（Azure DevOps Server 2019）的附件 API 還是預覽版。
+        let res = match put(API_VERSION) {
+            Err(ureq::Error::StatusCode(400)) => put("5.0-preview.1"),
+            res => res,
+        };
+        let v = read(res, &what)?;
+        Ok(str_of(&v, "path")
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("/.attachments/{file}")))
     })
     .await
 }
@@ -2575,6 +2881,88 @@ mod tests {
         assert!(!same_server("http://tfs.corp.com/tfs/DC/_git/r", base));
         assert!(!same_server("https://tfs.corp.com:8443/tfs/DC", base));
         assert!(!same_server("https://tfs.corp.com.evil.com/tfs/DC", base));
+    }
+
+    #[test]
+    fn flattens_saved_queries() {
+        let v = serde_json::json!({ "value": [
+            { "id": "f1", "name": "My Queries", "path": "My Queries", "isFolder": true, "children": [
+                { "id": "q1", "name": "我的 Bug", "path": "My Queries/我的 Bug" }
+            ] },
+            { "id": "f2", "name": "Shared Queries", "path": "Shared Queries", "isFolder": true, "children": [
+                { "id": "f3", "name": "團隊", "path": "Shared Queries/團隊", "isFolder": true, "children": [
+                    { "id": "q2", "name": "本週", "path": "Shared Queries/團隊/本週" }
+                ] }
+            ] }
+        ] });
+        let mut out = vec![];
+        flatten_queries("P", values(&v), &mut out);
+        assert_eq!(
+            out,
+            vec![
+                SavedQuery {
+                    id: "q1".into(),
+                    project: "P".into(),
+                    name: "我的 Bug".into(),
+                    folder: "My Queries".into()
+                },
+                SavedQuery {
+                    id: "q2".into(),
+                    project: "P".into(),
+                    name: "本週".into(),
+                    folder: "Shared Queries/團隊".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_wiki_revisions() {
+        let v = serde_json::json!({ "value": [
+            { "commitId": "b2", "comment": " 更新 安裝.md \n", "author": { "name": "王小明", "date": "2026-10-28T02:42:00Z" } },
+            { "commitId": "a1", "author": { "name": "陳大文" } },
+            { "comment": "沒有 id 的略過" }
+        ] });
+        assert_eq!(
+            revisions_of(&v),
+            vec![
+                WikiRevision {
+                    id: "b2".into(),
+                    author: "王小明".into(),
+                    date: "2026-10-28T02:42:00Z".into(),
+                    comment: "更新 安裝.md".into()
+                },
+                WikiRevision {
+                    id: "a1".into(),
+                    author: "陳大文".into(),
+                    date: String::new(),
+                    comment: String::new()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_query_result_ids() {
+        let flat = serde_json::json!({ "workItems": [{ "id": 3 }, { "id": 1 }, { "id": 3 }] });
+        assert_eq!(query_ids(&flat), vec![3, 1]);
+        let tree = serde_json::json!({ "workItemRelations": [
+            { "target": { "id": 10 } },
+            { "source": { "id": 10 }, "target": { "id": 11 } }
+        ] });
+        assert_eq!(query_ids(&tree), vec![10, 11]);
+        assert!(query_ids(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn names_wiki_attachments_safely() {
+        assert_eq!(attachment_name("截圖 1", "png", 42), "1-42.png");
+        assert_eq!(attachment_name("", "jpg", 7), "image-7.jpg");
+        assert_eq!(attachment_name("../a b", "png", 1), "a-b-1.png");
+        assert_eq!(
+            attachment_name("screen_shot-2", "gif", 3),
+            "screen_shot-2-3.gif"
+        );
     }
 
     #[test]

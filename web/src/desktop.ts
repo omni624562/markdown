@@ -353,6 +353,15 @@ export interface AdoWorkItemRelation extends AdoWorkItem {
 }
 
 /** 工作項目清單的篩選條件。 */
+/** TFS 上存的查詢。 */
+export interface AdoSavedQuery {
+  id: string;
+  project: string;
+  name: string;
+  /** 所在的資料夾（例如 `Shared Queries/團隊`）。 */
+  folder: string;
+}
+
 export interface AdoWorkItemFilter {
   /** 依指派給誰或建立者篩選人。 */
   role: "assigned" | "created";
@@ -843,6 +852,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
     /** 依編號讀取工作項目（讀不到的略過）。 */
     adoWorkItemsByIds: (ids: number[]) => core.invoke<AdoWorkItem[]>("ado_work_items_by_ids", { ids }),
+    /** TFS 上存的查詢（我的查詢、共用查詢）。 */
+    adoQueries: () => core.invoke<AdoSavedQuery[]>("ado_queries"),
+    /** 執行存的查詢（最多 200 個工作項目）。 */
+    adoQueryRun: (q: { project: string; id: string }) => core.invoke<AdoWorkItem[]>("ado_query_run", { project: q.project, id: q.id }),
     /** 這個類型的工作項目可以設定的狀態。 */
     adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
     /** 改狀態、指派給我、留言（HTML）；`rev` 是開啟時的修訂版本。 */
@@ -894,6 +907,17 @@ function bridge(core: TauriCore, event: TauriEvent) {
         "ado_wiki_save",
         { projectId: w.projectId, wikiId: w.wikiId, path: w.path, content, etag },
       ),
+    /** Wiki 頁面的修改記錄（新的在前）與頁面在儲存庫裡的檔案路徑。 */
+    adoWikiHistory: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
+      core.invoke<{ gitPath: string; revisions: { id: string; author: string; date: string; comment: string }[] }>("ado_wiki_history", {
+        projectId: w.projectId,
+        wikiId: w.wikiId,
+        repositoryId: w.repositoryId ?? null,
+        path: w.path,
+      }),
+    /** 建立新的 Wiki 頁面（已經有同名的頁面時失敗），回傳新頁面的版本。 */
+    adoWikiCreate: (w: AdoWiki, path: string, content: string) =>
+      core.invoke<string | null>("ado_wiki_create", { projectId: w.projectId, wikiId: w.id, path, content }),
     /** Wiki 頁面目前的版本與最後修改的人（不讀內容）。 */
     adoWikiPageInfo: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
       core.invoke<WikiPageInfo>("ado_wiki_page_info", {
@@ -903,6 +927,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
         path: w.path,
       }),
     /** Wiki 儲存庫裡的圖片，回傳 data: 網址。 */
+    /** 把圖片上傳成 Wiki 的附件，回傳頁面裡引用的路徑（`/.attachments/…`）。`data` 是 base64。 */
+    adoWikiAttach: (w: { projectId: string; wikiId: string }, name: string, ext: string, data: string) =>
+      core.invoke<string>("ado_wiki_attach", { projectId: w.projectId, wikiId: w.wikiId, name, ext, data }),
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
