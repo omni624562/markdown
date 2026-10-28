@@ -9,7 +9,7 @@ import { icon } from "./icons.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
-  kind: "ado" | "github" | "wiki";
+  kind: "ado" | "github" | "wiki" | "repo";
   icon: string;
   text: string;
 }
@@ -35,7 +35,13 @@ export interface IssueSource {
   fileName: string;
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
+  /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
+  crumbs?: { label: string; open?(): void }[];
   insertLink(): void;
+  /** 標頭下方的操作列（例如工作項目的狀態、指派給我、留言）。 */
+  toolbar?: HTMLElement;
+  /** 「編輯」：在分頁裡編輯、存回伺服器（不能編輯的不給）。 */
+  edit?(): void;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -47,8 +53,12 @@ export interface IssueViewHooks {
   copyAsDocument(name: string, markdown: string): void;
   /** 開啟（或上一頁／下一頁切換到）一個項目，內容讀取之前（例如更新側邊欄清單上的標示）。 */
   opened(source: IssueSource): void;
+  /** 內容裡的連結（項目自己沒處理時）：例如儲存庫裡的 Markdown 檔，在這裡開啟；處理了就回傳 true。 */
+  follow?(href: string): boolean;
   /** 檢視關閉了（例如清掉側邊欄清單上的標示）。 */
   closed(): void;
+  /** 切換「和編輯區並排顯示」。 */
+  toggleSide?(): void;
   /** 本機的離線副本：讀到內容就存一份，連不上時拿來顯示。 */
   offline?: IssueOffline;
 }
@@ -116,6 +126,7 @@ export class IssueView {
   #body: HTMLElement;
   #scroll: HTMLElement;
   #find: HTMLElement;
+  #toolbar: HTMLElement;
   #findInput: HTMLInputElement;
   #findCount: HTMLElement;
   #source: IssueSource | null = null;
@@ -134,6 +145,8 @@ export class IssueView {
   #forwardBtn: HTMLButtonElement;
   /** 「保留離線」。 */
   #keepBtn: HTMLButtonElement;
+  #editBtn: HTMLButtonElement;
+  #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
   #current = 0;
 
@@ -169,6 +182,13 @@ export class IssueView {
     insert.className = "btn btn-small btn-primary";
     insert.append(icon("link"), t("插入連結"));
     insert.addEventListener("click", () => this.#source?.insertLink());
+    this.#editBtn = document.createElement("button");
+    this.#editBtn.type = "button";
+    this.#editBtn.className = "btn btn-small";
+    this.#editBtn.append(icon("pencil"), t("編輯"));
+    this.#editBtn.title = t("在分頁裡編輯，按 Ctrl+S 存回伺服器");
+    this.#editBtn.hidden = true;
+    this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "btn btn-small";
@@ -183,10 +203,18 @@ export class IssueView {
       this.#updateKeep();
     });
     this.#keepBtn.hidden = true;
+    const toggleSide = hooks.toggleSide;
+    if (toggleSide) {
+      this.#sideBtn = iconButton(t("和編輯區並排顯示"), "columns-2", () => toggleSide());
+      this.#sideBtn.classList.add("issue-side-toggle");
+      this.#sideBtn.setAttribute("aria-pressed", "false");
+    }
     actions.append(
       insert,
+      this.#editBtn,
       copy,
       this.#keepBtn,
+      ...(this.#sideBtn ? [this.#sideBtn] : []),
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
       iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
@@ -227,9 +255,13 @@ export class IssueView {
       if (!a) return;
       e.preventDefault();
       if (this.#source?.link?.(a.getAttribute("href")!)) return;
+      if (this.#h.follow?.(a.href)) return;
       if (/^https?:/i.test(a.href)) this.#h.open(a.href);
     });
-    pane.append(head, this.#find, this.#scroll);
+    this.#toolbar = document.createElement("div");
+    this.#toolbar.className = "issue-toolbar-host";
+    this.#toolbar.hidden = true;
+    pane.append(head, this.#toolbar, this.#find, this.#scroll);
     pane.addEventListener("keydown", (e) => this.#keydown(e));
     // 滑鼠的「上一頁」「下一頁」側鍵。
     pane.addEventListener("mouseup", (e) => {
@@ -244,6 +276,20 @@ export class IssueView {
 
   get isOpen(): boolean {
     return !this.#pane.hidden;
+  }
+
+  /** 焦點在這個檢視裡（並排顯示時，用來分辨 Ctrl+F 要在哪邊找）。 */
+  get hasFocus(): boolean {
+    return this.#pane.contains(document.activeElement);
+  }
+
+  /** 更新「並排顯示」按鈕的狀態。 */
+  setSide(on: boolean): void {
+    if (!this.#sideBtn) return;
+    this.#sideBtn.setAttribute("aria-pressed", String(on));
+    const label = on ? t("改回蓋住編輯區顯示") : t("和編輯區並排顯示");
+    this.#sideBtn.title = label;
+    this.#sideBtn.setAttribute("aria-label", label);
   }
 
   /** 開啟（或切換到）一個工作項目、issue、Wiki 頁面；原本開著的記到「上一頁」。 */
@@ -301,19 +347,54 @@ export class IssueView {
     this.#keepBtn.setAttribute("aria-label", label);
   }
 
+  /** 標頭上的位置：「P.wiki › 產品 › 安裝」，上層頁面可以點。 */
+  #crumbs(source: IssueSource): (string | HTMLElement)[] {
+    if (!source.crumbs?.length) return [source.label];
+    const out: (string | HTMLElement)[] = [];
+    source.crumbs.forEach((c, i) => {
+      if (i) {
+        const sep = document.createElement("span");
+        sep.className = "issue-crumb-sep";
+        sep.setAttribute("aria-hidden", "true");
+        sep.textContent = "›";
+        out.push(sep);
+      }
+      if (c.open) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "issue-crumb";
+        b.textContent = c.label;
+        b.title = t("開啟「{name}」", { name: c.label });
+        const open = c.open;
+        b.addEventListener("click", () => open());
+        out.push(b);
+      } else {
+        const span = document.createElement("span");
+        span.textContent = c.label;
+        out.push(span);
+      }
+    });
+    return out;
+  }
+
   async #open(source: IssueSource): Promise<void> {
     this.#source = source;
     this.#h.opened(source);
     this.#updateNav();
     this.#updateKeep();
     this.#pane.dataset.source = source.origin.kind;
+    this.#pane.dataset.sourceName = source.origin.text;
     this.#label.textContent = source.label;
+    this.#label.replaceChildren(...this.#crumbs(source));
     this.#meta.replaceChildren(
       sourceBadge(source.origin.text, source.origin.icon),
       sourceBadge(t("唯讀"), "lock", "source-badge source-readonly"),
       this.#label,
     );
     this.#title.textContent = source.title;
+    this.#toolbar.replaceChildren(...(source.toolbar ? [source.toolbar] : []));
+    this.#toolbar.hidden = !source.toolbar;
+    this.#editBtn.hidden = !source.edit;
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();

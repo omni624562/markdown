@@ -17,6 +17,10 @@ export interface QuickAction {
 
 export type AiTool = "claude" | "codex";
 
+/** 介面大小可以選的百分比。 */
+export const UI_SCALES = ["90", "100", "110", "125", "150"] as const;
+export type UiScale = (typeof UI_SCALES)[number];
+
 export interface Settings {
   /** 編輯區字級（px）。 */
   editorFontSize: number;
@@ -60,6 +64,8 @@ export interface Settings {
   codeFont: string;
   /** 即時預覽、預覽與 PDF 的行距。 */
   docLineHeight: "compact" | "normal" | "relaxed";
+  /** 介面大小（百分比，桌面版）：整個視窗一起放大或縮小，和文件的字級分開。 */
+  uiScale: UiScale;
   /** 用 KaTeX 顯示 `$…$` 數學公式。 */
   math: boolean;
   /** 顯示 ```mermaid 流程圖。 */
@@ -124,6 +130,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   docFontCustom: "",
   codeFont: "",
   docLineHeight: "normal",
+  uiScale: "100",
   math: true,
   mermaid: true,
   aiEnabled: false,
@@ -278,6 +285,11 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   if ("docLineHeight" in input) {
     const h = input.docLineHeight;
     if (h === "compact" || h === "normal" || h === "relaxed") out.docLineHeight = h;
+    else problems++;
+  }
+  if ("uiScale" in input) {
+    const v = input.uiScale;
+    if (typeof v === "string" && (UI_SCALES as readonly string[]).includes(v)) out.uiScale = v as UiScale;
     else problems++;
   }
   return { settings: out, problems };
