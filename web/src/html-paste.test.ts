@@ -60,3 +60,14 @@ test("只有純文字時不轉換，保留原本的空白", () => {
   assert.equal(pasteAsMarkdown("", "x"), null);
   assert.equal(pasteAsMarkdown("<p><b>粗</b></p>", "粗"), "**粗**");
 });
+
+test("可收合區塊保留 <details>／<summary>，裡面照常轉成 Markdown", () => {
+  const md = htmlToMarkdown(
+    "<p>前面</p><details><summary>本次差異<b>技術</b>追溯 A&amp;B &lt;x&gt;</summary><ul><li>Story：修改前</li></ul></details><p>後面</p>",
+  );
+  assert.equal(
+    md,
+    "前面\n\n<details>\n<summary>本次差異技術追溯 A&amp;B &lt;x&gt;</summary>\n\n- Story：修改前\n\n</details>\n\n後面",
+  );
+  assert.match(htmlToMarkdown('<details open><summary>x</summary><p>y</p></details>'), /^<details open>\n<summary>x<\/summary>\n\ny\n\n<\/details>$/);
+});
