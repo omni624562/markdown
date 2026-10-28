@@ -20,6 +20,8 @@ export interface IssuesHandlers<T extends IssueSummary> {
   /** 狀態列文字：`count` 是結果數量，`search` 是搜尋文字（空白表示預設清單）。 */
   status(count: number, search: string): string;
   placeholder: string;
+  /** 項目前面的小圓點（例如「上次看過之後有更新」）；沒有就回傳 null。 */
+  mark?(item: T): { kind: string; label: string } | null;
   /** 拖曳項目時帶的 Markdown 連結（拖到文件裡插入）。 */
   link?(item: T): string;
   /** 放在搜尋框下方的篩選列（改變時呼叫 `refresh()`）。 */
@@ -58,6 +60,8 @@ export class IssuesPanel<T extends IssueSummary> {
   #seq = 0;
   /** 目前在主要區域開著的項目（清單上標示出來）。 */
   #current: number | null = null;
+  /** 清單上每一列對應的項目（重畫小圓點用）。 */
+  #rowItems = new WeakMap<HTMLElement, T>();
   #timer = 0;
   #loaded = false;
   /** 上次讀取失敗：網路恢復時再試一次。 */
@@ -148,6 +152,8 @@ export class IssuesPanel<T extends IssueSummary> {
     b.append(top, title);
     b.dataset.id = String(item.id);
     if (item.id === this.#current) b.setAttribute("aria-current", "true");
+    this.#rowItems.set(b, item);
+    this.#applyMark(b, item);
     b.addEventListener("click", () => {
       this.select(item.id);
       this.#h.view(item);
@@ -163,6 +169,32 @@ export class IssuesPanel<T extends IssueSummary> {
     }
     li.append(b);
     return li;
+  }
+
+  #applyMark(b: HTMLElement, item: T): void {
+    b.querySelector(".workitem-dot")?.remove();
+    const mark = this.#h.mark?.(item) ?? null;
+    b.classList.toggle("workitem-marked", !!mark);
+    if (!mark) return;
+    const dot = document.createElement("span");
+    dot.className = `workitem-dot ${mark.kind}`;
+    dot.title = mark.label;
+    dot.setAttribute("role", "img");
+    dot.setAttribute("aria-label", mark.label);
+    b.querySelector(".workitem-meta")?.prepend(dot);
+  }
+
+  /** 讀過清單、而且沒有在搜尋（顯示的是篩選列的清單）。 */
+  get showingList(): boolean {
+    return this.#loaded && !this.#input.value.trim();
+  }
+
+  /** 重畫清單上的小圓點（例如開啟項目、背景檢查之後）。 */
+  refreshMarks(): void {
+    for (const b of this.#list.querySelectorAll<HTMLElement>(".workitem")) {
+      const item = this.#rowItems.get(b);
+      if (item) this.#applyMark(b, item);
+    }
   }
 
   /** 標示目前在主要區域開著的項目（null 表示都沒開）。 */
