@@ -2323,7 +2323,7 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .issue-heading { display: flex; flex: 1 1 260px; flex-direction: column; min-width: 0; }
 /* 不是本機檔案的內容：上方一條來源顏色的細條，標頭有來源與「唯讀」標籤。 */
 .issue-pane { --source: var(--accent); border-top: 3px solid var(--source); }
-.issue-pane[data-source="ado"], .issue-pane[data-source="wiki"] { --source: light-dark(#0b6bcb, #4ea1f3); }
+.issue-pane[data-source="ado"], .issue-pane[data-source="wiki"], .issue-pane[data-source="repo"] { --source: light-dark(#0b6bcb, #4ea1f3); }
 .issue-pane[data-source="github"] { --source: light-dark(#8250df, #a371f7); }
 .issue-pane[data-source="git"] { --source: light-dark(#d1491f, #f0784f); }
 .issue-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; margin-bottom: 2px; }
