@@ -849,6 +849,20 @@ function bridge(core: TauriCore, event: TauriEvent) {
         path,
         version: w.code ? w.version : null,
       }),
+    /** Git 儲存庫裡的文字檔（例如連結指到的 Markdown 檔）。 */
+    adoRepoText: (f: { project: string; repo: string; path: string; version: string | null; versionType: string | null }) =>
+      core.invoke<string>("ado_repo_text", {
+        project: f.project,
+        repo: f.repo,
+        path: f.path,
+        version: f.version,
+        versionType: f.versionType,
+      }),
+    /** 工作項目的附件（文字檔）。 */
+    adoAttachmentText: (url: string) => core.invoke<string>("ado_attachment_text", { url }),
+    /** Git 儲存庫裡的圖片，回傳 data: 網址（儲存庫檔案內容裡的相對路徑圖片）。 */
+    adoRepoImage: (project: string, repo: string, path: string, version: string | null) =>
+      core.invoke<string>("ado_wiki_image", { projectId: project, repositoryId: repo, path, version }),
     /** 把內容存回 Wiki 頁面；`etag` 是開始編輯時的版本，伺服器上已經不同時回傳衝突。 */
     adoWikiSave: (w: { projectId: string; wikiId: string; path: string }, content: string, etag: string) =>
       core.invoke<{ status: "saved"; etag: string | null } | { status: "conflict"; content: string; etag: string | null }>(

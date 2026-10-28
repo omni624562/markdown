@@ -121,6 +121,7 @@ import { WikiPanel } from "./ui/wiki-panel.ts";
 import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
 import { markOf, markSeen, remember, type SeenMap, trimSeen } from "./workitem-seen.ts";
 import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
+import { fenceLanguage, isMarkdownName, isReadableFileName, parseRepoFileLink, type RepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
 import { TagsPanel } from "./ui/tags-panel.ts";
 import { Slideshow, slideAtLine, splitSlides } from "./ui/slideshow.ts";
 import { compressImage, formatBytes } from "./image-compress.ts";
@@ -901,6 +902,8 @@ async function followLink(href: string): Promise<void> {
     return;
   }
   if (/^(https?:|mailto:)/i.test(href)) {
+    // 連到 Azure DevOps 儲存庫裡的 Markdown 等文字檔：在 oMarker 裡閱讀，不下載。
+    if (openRepoFileLink(href)) return;
     // 連到工作項目、Wiki 頁面的連結在 oMarker 裡開啟（讀不到就照舊用瀏覽器）。
     if (await openRemoteLink(href)) return;
     if (desktop) await desktop.openExternal(href);
@@ -2242,6 +2245,84 @@ const wikiImagesPlugin: PreviewPlugin = {
   },
 };
 
+// ---- Azure DevOps 儲存庫裡的文字檔、工作項目的附件：在 oMarker 裡閱讀 ---------------------
+
+/** 正在看的儲存庫檔案（內容裡相對路徑的圖片以它為準）。 */
+let repoFile: Extract<RepoFileLink, { kind: "git" }> | null = null;
+
+const repoImagesPlugin: PreviewPlugin = {
+  name: "repo-images",
+  prepare(content) {
+    if (!repoFile) return;
+    for (const img of content.querySelectorAll<HTMLImageElement>("img")) {
+      const path = resolveRepoPath(repoFile.path, img.getAttribute("src") ?? "");
+      if (!path) continue;
+      img.dataset.repoSrc = path;
+      img.removeAttribute("src");
+    }
+  },
+  apply(_root, scope) {
+    const file = repoFile;
+    if (!file) return;
+    for (const img of scope.querySelectorAll<HTMLImageElement>("img[data-repo-src]")) {
+      void desktop!
+        .adoRepoImage(file.project, file.repo, img.dataset.repoSrc!, file.version)
+        .then((url) => (img.src = url))
+        .catch((e) => (img.title = e instanceof Error ? e.message : String(e)));
+    }
+  },
+};
+
+/** 連到連線中伺服器上、可以閱讀的儲存庫檔案或附件時，在主要區域開啟並回傳 true。 */
+function openRepoFileLink(href: string): boolean {
+  const base = ado?.account?.url;
+  const link = desktop && base ? parseRepoFileLink(href, base) : null;
+  if (!link) return false;
+  showRepoFile(link);
+  return true;
+}
+
+/** 在主要區域閱讀儲存庫裡的文字檔或附件：Markdown 照常排版，其他文字檔當成程式碼上色。 */
+function showRepoFile(link: RepoFileLink): void {
+  const base = ado!.account!.url;
+  const git = link.kind === "git" ? link : null;
+  const webUrl = link.kind === "git" ? repoFileUrl(base, link) : link.url;
+  const folder = git ? git.path.slice(0, git.path.lastIndexOf("/")) || "/" : "";
+  void showIssue({
+    key: `file:${webUrl}`,
+    origin: git
+      ? { kind: "repo", icon: "git-branch", text: t("Azure DevOps 儲存庫") }
+      : { kind: "repo", icon: "paperclip", text: t("工作項目附件") },
+    label: git ? `${git.repo}${folder === "/" ? "" : folder}${git.version ? ` @ ${git.version}` : ""}` : t("附件"),
+    title: link.name,
+    webUrl,
+    fileName: isMarkdownName(link.name) ? link.name : `${link.name}.md`,
+    load: async () => {
+      const text = link.kind === "git" ? await desktop!.adoRepoText(link) : await desktop!.adoAttachmentText(link.url);
+      repoFile = git;
+      if (isMarkdownName(link.name)) return text;
+      // 其他文字檔放進程式碼區塊（圍欄比內容裡最長的 ` 多一個）。
+      const fence = "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+      return `${fence}${fenceLanguage(link.name)}\n${text.replace(/\n$/, "")}\n${fence}`;
+    },
+    insertLink: () => {
+      insertAtCursor(wikiPageLink(link.name, webUrl));
+      toast(t("已插入「{name}」的連結", { name: link.name }));
+    },
+    // 檔案裡的相對連結：同一個儲存庫的文字檔在這裡切換，其他檔案用瀏覽器開。
+    link: git
+      ? (href) => {
+          const path = resolveRepoPath(git.path, href);
+          if (!path) return false;
+          const name = path.slice(path.lastIndexOf("/") + 1);
+          if (isReadableFileName(name)) showRepoFile({ ...git, path, name });
+          else void desktop?.openExternal(repoFileUrl(base, git, path)).catch(reportError);
+          return true;
+        }
+      : undefined,
+  });
+}
+
 /** 開啟工作項目、issue、Wiki 頁面（Git 歷史開著時先關掉）。 */
 function showIssue(source: IssueSource): Promise<void> {
   historyView?.close();
@@ -2358,6 +2439,7 @@ const issueView = new IssueView($(".workspace"), {
       tablesPlugin(),
       adoImagesPlugin,
       wikiImagesPlugin,
+      repoImagesPlugin,
       {
         name: "remote-images",
         apply() {},
@@ -2379,6 +2461,7 @@ const issueView = new IssueView($(".workspace"), {
     }
   },
   open: (url) => void desktop?.openExternal(url).catch(reportError),
+  follow: (href) => openRepoFileLink(href),
   copyAsDocument(name, markdown) {
     issueView.close();
     const doc = makeDoc({ name, kind: "markdown", baseline: hash("") });
@@ -2389,8 +2472,9 @@ const issueView = new IssueView($(".workspace"), {
   opened(source) {
     outlineView = { key: source.key, headings: [], body: null };
     renderOutline([]);
-    // Wiki 頁面讀到內容時才設定（圖片的相對路徑以它為準）。
+    // Wiki 頁面、儲存庫檔案讀到內容時才設定（圖片的相對路徑以它為準）。
     wikiPage = null;
+    repoFile = null;
     const [kind, id, ...rest] = source.key.split(":");
     if (kind === "ado") workItemOpened(Number(id));
     workItemsPanel?.select(kind === "ado" ? Number(id) : null);
@@ -2439,7 +2523,7 @@ function renderStatusView(): void {
   label.className = "status-view-label";
   label.append(
     icon(source === "git" ? "git-branch" : "lock"),
-    source === "git" ? names.git : t("{name}・唯讀", { name: names[source] ?? "" }),
+    source === "git" ? names.git : t("{name}・唯讀", { name: names[source] ?? issuePane.dataset.sourceName ?? "" }),
   );
   const back = document.createElement("button");
   back.type = "button";
@@ -2462,7 +2546,7 @@ new MutationObserver(() => {
   issueWasOpen = open;
   if (issueSide) applyLayout();
 }).observe(workspace, { attributes: true, attributeFilter: ["class"] });
-new MutationObserver(renderStatusView).observe(issuePane, { attributes: true, attributeFilter: ["data-source"] });
+new MutationObserver(renderStatusView).observe(issuePane, { attributes: true, attributeFilter: ["data-source", "data-source-name"] });
 
 /** 工作項目的篩選條件（記住上次的選擇）。 */
 const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {

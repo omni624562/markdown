@@ -308,6 +308,8 @@ fn main() {
             ado::ado_wikis,
             ado::ado_wiki_pages,
             ado::ado_wiki_page,
+            ado::ado_repo_text,
+            ado::ado_attachment_text,
             ado::ado_work_item_states,
             ado::ado_work_item_update,
             ado::ado_wiki_save,

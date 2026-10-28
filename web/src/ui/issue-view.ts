@@ -9,7 +9,7 @@ import { icon } from "./icons.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
-  kind: "ado" | "github" | "wiki";
+  kind: "ado" | "github" | "wiki" | "repo";
   icon: string;
   text: string;
 }
@@ -53,6 +53,8 @@ export interface IssueViewHooks {
   copyAsDocument(name: string, markdown: string): void;
   /** 開啟（或上一頁／下一頁切換到）一個項目，內容讀取之前（例如更新側邊欄清單上的標示）。 */
   opened(source: IssueSource): void;
+  /** 內容裡的連結（項目自己沒處理時）：例如儲存庫裡的 Markdown 檔，在這裡開啟；處理了就回傳 true。 */
+  follow?(href: string): boolean;
   /** 檢視關閉了（例如清掉側邊欄清單上的標示）。 */
   closed(): void;
   /** 切換「和編輯區並排顯示」。 */
@@ -233,6 +235,7 @@ export class IssueView {
       if (!a) return;
       e.preventDefault();
       if (this.#source?.link?.(a.getAttribute("href")!)) return;
+      if (this.#h.follow?.(a.href)) return;
       if (/^https?:/i.test(a.href)) this.#h.open(a.href);
     });
     this.#toolbar = document.createElement("div");
@@ -347,6 +350,7 @@ export class IssueView {
     this.#h.opened(source);
     this.#updateNav();
     this.#pane.dataset.source = source.origin.kind;
+    this.#pane.dataset.sourceName = source.origin.text;
     this.#label.textContent = source.label;
     this.#label.replaceChildren(...this.#crumbs(source));
     this.#meta.replaceChildren(
