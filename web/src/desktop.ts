@@ -308,6 +308,8 @@ export interface AdoWiki {
 
 export interface AdoWikiPage {
   path: string;
+  /** 頁面編號（瀏覽器網址列上的數字）；舊版伺服器沒有。 */
+  id: number | null;
   children: AdoWikiPage[];
 }
 

@@ -2341,6 +2341,15 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
 body:has(.workspace.issue-open, .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
 .issue-label { color: var(--muted); font-size: 12px; }
+/* 文件裡連到工作項目、Wiki 頁面的摘要卡片（編輯器的提示框、預覽的浮動卡片）。 */
+.remote-card { --source: light-dark(#0b6bcb, #4ea1f3); max-width: min(360px, calc(100vw - 32px)); padding: 8px 12px; color: var(--fg); font: 12.5px/1.5 var(--font-ui); }
+.remote-card-floating { position: fixed; z-index: 60; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 20px rgb(0 0 0 / 14%); pointer-events: none; }
+.remote-card-source { display: flex; gap: 4px; align-items: center; color: var(--source); font-size: 11.5px; font-weight: 600; }
+.remote-card-source .icon { width: 13px; height: 13px; }
+.remote-card-title { margin-top: 2px; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.remote-card-meta { color: var(--muted); overflow-wrap: anywhere; }
+.remote-card-meta.remote-card-error { color: var(--danger); }
+.remote-card-hint { margin-top: 4px; color: var(--subtle); font-size: 11.5px; }
 .issue-title { margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }

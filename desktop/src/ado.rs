@@ -1309,6 +1309,8 @@ pub async fn ado_wikis(app: AppHandle) -> Result<Vec<Wiki>, String> {
 pub struct WikiPage {
     /// 頁面路徑，例如 `/產品/安裝說明`。
     path: String,
+    /// 頁面編號（瀏覽器網址列上的數字）；舊版伺服器沒有。
+    id: Option<u64>,
     children: Vec<WikiPage>,
 }
 
@@ -1320,6 +1322,7 @@ fn page_tree(v: &Value) -> Vec<WikiPage> {
         .filter_map(|p| {
             Some(WikiPage {
                 path: str_of(p, "path")?.to_string(),
+                id: p.get("id").and_then(Value::as_u64),
                 children: page_tree(p),
             })
         })
@@ -1717,11 +1720,13 @@ mod tests {
         assert_eq!(list[1].version.as_deref(), Some("main"));
         let tree = json!({"path": "/", "subPages": [
             {"path": "/首頁", "subPages": []},
-            {"path": "/產品", "subPages": [{"path": "/產品/安裝"}]}
+            {"path": "/產品", "subPages": [{"path": "/產品/安裝", "id": 12}]}
         ]});
         let pages = page_tree(&tree);
         assert_eq!(pages.len(), 2);
         assert_eq!(pages[1].children[0].path, "/產品/安裝");
+        assert_eq!(pages[1].children[0].id, Some(12));
+        assert_eq!(pages[0].id, None);
         assert_eq!(
             wiki_pages_path("p1", "w1", "/A B", Some("main")),
             "/p1/_apis/wiki/wikis/w1/pages?path=%2FA%20B&versionDescriptor.version=main"
