@@ -900,6 +900,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
         path: w.path,
       }),
     /** Wiki 儲存庫裡的圖片，回傳 data: 網址。 */
+    /** 把圖片上傳成 Wiki 的附件，回傳頁面裡引用的路徑（`/.attachments/…`）。`data` 是 base64。 */
+    adoWikiAttach: (w: { projectId: string; wikiId: string }, name: string, ext: string, data: string) =>
+      core.invoke<string>("ado_wiki_attach", { projectId: w.projectId, wikiId: w.wikiId, name, ext, data }),
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
