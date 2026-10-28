@@ -118,3 +118,45 @@ export function wikiPageUrl(wikiUrl: string, path: string): string {
 export function pushRecent(list: readonly string[], path: string, limit: number): string[] {
   return [path, ...list.filter((p) => p !== path)].slice(0, limit);
 }
+
+/**
+ * 搜尋結果的 Git 檔案路徑（例如 `/產品/安裝-說明.md`）是 Wiki 的哪一頁：拿掉 `mappedPath` 與 `.md`，
+ * 每一段的 `-` 換回空白、`%2D` 換回 `-`。頁面清單裡有這一頁（不分大小寫）時回傳清單裡的寫法。
+ */
+export function pageFromGitPath(gitPath: string, mappedPath: string, pages: Iterable<string>): string | null {
+  const base = normalize(mappedPath);
+  let path = normalize(gitPath);
+  if (base !== "/") {
+    if (path.toLowerCase() !== base.toLowerCase() && !path.toLowerCase().startsWith(`${base.toLowerCase()}/`)) return null;
+    path = path.slice(base.length) || "/";
+  }
+  if (!/\.md$/i.test(path)) return null;
+  let page: string;
+  try {
+    page = `/${path
+      .replace(/\.md$/i, "")
+      .split("/")
+      .filter(Boolean)
+      .map((s) => decodeURIComponent(s.replace(/-/g, " ")))
+      .join("/")}`;
+  } catch {
+    return null;
+  }
+  if (page === "/") return null;
+  for (const p of pages) if (p.toLowerCase() === page.toLowerCase()) return p;
+  return page;
+}
+
+/** 把搜尋結果的片段拆成一般文字與符合的字（`<highlighthit>…</highlighthit>`）。 */
+export function snippetParts(snippet: string): { text: string; hit: boolean }[] {
+  const out: { text: string; hit: boolean }[] = [];
+  const re = /<highlighthit>([\s\S]*?)<\/highlighthit>/gi;
+  let last = 0;
+  for (let m = re.exec(snippet); m; m = re.exec(snippet)) {
+    if (m.index > last) out.push({ text: snippet.slice(last, m.index), hit: false });
+    if (m[1]) out.push({ text: m[1], hit: true });
+    last = m.index + m[0].length;
+  }
+  if (last < snippet.length) out.push({ text: snippet.slice(last), hit: false });
+  return out.map((p) => ({ ...p, text: p.text.replace(/\s+/g, " ") })).filter((p) => p.text);
+}

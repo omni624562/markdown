@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { flattenPages, imageRepoPath, pageName, pushRecent, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { flattenPages, imageRepoPath, pageFromGitPath, pageName, pushRecent, resolvePageLink, snippetParts, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
 
 const pages = ["/首頁", "/產品", "/產品/安裝 說明", "/產品/a-b", "/FAQ"];
 
@@ -71,4 +71,26 @@ test("最近看過的頁面：移到最前面、不重複、有上限", () => {
   assert.deepEqual(pushRecent(["/a", "/b", "/c"], "/b", 5), ["/b", "/a", "/c"]);
   assert.deepEqual(pushRecent(["/a", "/b"], "/c", 2), ["/c", "/a"]);
   assert.deepEqual(pushRecent([], "/a", 5), ["/a"]);
+});
+
+test("pageFromGitPath 把搜尋結果的檔案路徑換成頁面", () => {
+  const pages = ["/產品", "/產品/安裝 說明", "/產品/a-b", "/Home"];
+  assert.equal(pageFromGitPath("/產品/安裝-說明.md", "/", pages), "/產品/安裝 說明");
+  assert.equal(pageFromGitPath("/產品/a%2Db.md", "/", pages), "/產品/a-b");
+  assert.equal(pageFromGitPath("/home.md", "/", pages), "/Home");
+  assert.equal(pageFromGitPath("/docs/產品.md", "/docs", pages), "/產品");
+  assert.equal(pageFromGitPath("/other/產品.md", "/docs", pages), null);
+  assert.equal(pageFromGitPath("/.attachments/a.png", "/", pages), null);
+  assert.equal(pageFromGitPath("/新頁面.md", "/", pages), "/新頁面");
+  assert.equal(pageFromGitPath("/%E0%A4.md", "/", pages), null);
+});
+
+test("snippetParts 拆出符合的字", () => {
+  assert.deepEqual(snippetParts("先<highlighthit>安裝</highlighthit>工具\n再設定"), [
+    { text: "先", hit: false },
+    { text: "安裝", hit: true },
+    { text: "工具 再設定", hit: false },
+  ]);
+  assert.deepEqual(snippetParts(""), []);
+  assert.deepEqual(snippetParts("<b>x</b>"), [{ text: "<b>x</b>", hit: false }]);
 });

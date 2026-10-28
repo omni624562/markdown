@@ -118,9 +118,10 @@ import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
 import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
-import { IssueView, type IssueSource } from "./ui/issue-view.ts";
+import { IssueView, type IssueOffline, type IssueSource } from "./ui/issue-view.ts";
+import { addImage, keep, parseKept, type KeptPage, type OfflineRef } from "./offline.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
-import { flattenPages, imageRepoPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
 import { markOf, markSeen, remember, type SeenMap, trimSeen } from "./workitem-seen.ts";
 import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { fenceLanguage, isMarkdownName, isReadableFileName, parseRepoFileLink, type RepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
@@ -2131,6 +2132,7 @@ function groupItems<T>(items: T[], key: (item: T) => string): { title: string; i
 /** 在主要區域開啟工作項目；內容裡的相關工作項目點一下在這裡切換。 */
 function showWorkItem(item: AdoWorkItem): void {
   let related = new Map<number, AdoWorkItem>();
+  offlineRefs.set(`ado:${item.id}`, { type: "ado", item });
   const actions = workItemActions(item);
   void showIssue({
     key: `ado:${item.id}`,
@@ -2324,8 +2326,9 @@ const adoImagesPlugin: PreviewPlugin = {
   },
   apply(_root, scope) {
     for (const img of scope.querySelectorAll<HTMLImageElement>("img[data-ado-src]")) {
-      void desktop!
-        .adoImage(img.dataset.adoSrc!)
+      const src = img.dataset.adoSrc!;
+      img.dataset.offlineKey = `ado-img:${src}`;
+      void offlineImage(img.dataset.offlineKey, () => desktop!.adoImage(src))
         .then((url) => (img.src = url))
         .catch((e) => (img.title = e instanceof Error ? e.message : String(e)));
     }
@@ -2358,14 +2361,164 @@ const wikiImagesPlugin: PreviewPlugin = {
     const page = wikiPage;
     if (!page) return;
     for (const img of scope.querySelectorAll<HTMLImageElement>("img[data-wiki-src]")) {
-      void desktop!
-        .adoWikiImage(page.wiki, img.dataset.wikiSrc!)
+      const path = img.dataset.wikiSrc!;
+      img.dataset.offlineKey = `wiki-img:${page.wiki.id}:${path}`;
+      void offlineImage(img.dataset.offlineKey, () => desktop!.adoWikiImage(page.wiki, path))
         .then((url) => (img.src = url))
         .catch((e) => (img.title = e instanceof Error ? e.message : String(e)));
     }
   },
 };
 
+// ---- 離線副本：看過的工作項目、Wiki 頁面與圖片存一份在本機，連不上時拿來顯示 ----------
+
+/** 「保留離線」的頁面（不會自動刪掉，連線時在背景更新）。 */
+let keptPages = parseKept(storage.load("offline-kept"));
+function saveKept(list: KeptPage[]): void {
+  keptPages = list;
+  storage.save("offline-kept", JSON.stringify(list));
+}
+const isKept = (key: string) => keptPages.some((p) => p.key === key);
+/** 開過的頁面怎麼重新讀取（檢視的 key → 資料），可以保留離線的才有。 */
+const offlineRefs = new Map<string, OfflineRef>();
+/** 主要區域開著的頁面（圖片記在它底下）。 */
+let issueKey: string | null = null;
+/** 這次執行已經存過的圖片（同一張不重複寫入）。 */
+const savedImages = new Set<string>();
+
+/** 讀圖片並存一份離線副本；讀不到時改用副本。 */
+async function offlineImage(key: string, fetch: () => Promise<string>): Promise<string> {
+  const page = issueKey;
+  try {
+    const url = await fetch();
+    const kept = !!page && isKept(page);
+    if (desktop && !savedImages.has(key)) {
+      savedImages.add(key);
+      void desktop.offlinePut(key, url, kept).catch(() => savedImages.delete(key));
+    }
+    if (kept) saveKept(addImage(keptPages, page, key));
+    return url;
+  } catch (e) {
+    const copy = await desktop?.offlineGet(key).catch(() => null);
+    if (copy && /^data:image\/(?!svg)/i.test(copy)) return copy;
+    throw e;
+  }
+}
+
+/** 讀清單（Wiki、頁面樹、工作項目）並存一份副本；連不上時改用副本，並提示一次。 */
+let offlineNoticeAt = 0;
+async function withOfflineCopy<T>(key: string, fetch: () => Promise<T>): Promise<T> {
+  try {
+    const value = await fetch();
+    void desktop?.offlinePut(`list:${key}`, JSON.stringify(value), false).catch(() => {});
+    return value;
+  } catch (e) {
+    const raw = await desktop?.offlineGet(`list:${key}`).catch(() => null);
+    let copy: T;
+    try {
+      if (!raw) throw e;
+      copy = JSON.parse(raw) as T;
+    } catch {
+      throw e;
+    }
+    if (Date.now() - offlineNoticeAt > 60_000) {
+      offlineNoticeAt = Date.now();
+      toast(t("連不上伺服器，先顯示上次存下的離線副本"));
+    }
+    return copy;
+  }
+}
+
+function pageCopy(markdown: string, savedAt = Date.now()): string {
+  return JSON.stringify({ markdown, savedAt });
+}
+
+/** 背景更新「保留離線」的頁面（啟動後、網路恢復時；最多每 30 分鐘一次）。 */
+let keptRefreshed = 0;
+async function refreshKeptPages(): Promise<void> {
+  if (!desktop || !ado?.account || !keptPages.length || Date.now() - keptRefreshed < 30 * 60_000) return;
+  keptRefreshed = Date.now();
+  for (const page of [...keptPages]) {
+    try {
+      const ref = page.ref;
+      const markdown =
+        ref.type === "ado"
+          ? workItemMarkdown(await desktop.adoWorkItem(ref.item.id))
+          : wikiMarkdown((await desktop.adoWikiPage(ref.wiki, ref.path)).content);
+      if (!isKept(page.key)) continue;
+      await desktop.offlinePut(`page:${page.key}`, pageCopy(markdown), true);
+      saveKept(keptPages.map((p) => (p.key === page.key ? { ...p, savedAt: Date.now() } : p)));
+    } catch {
+      // 連不上（或頁面已刪除）：下次再試。
+      keptRefreshed = Math.min(keptRefreshed, Date.now() - 25 * 60_000);
+      return;
+    }
+  }
+}
+
+const issueOffline: IssueOffline | undefined = desktop
+  ? {
+      save(source, markdown) {
+        const kept = isKept(source.key);
+        void desktop!.offlinePut(`page:${source.key}`, pageCopy(markdown), kept).catch(() => {});
+        if (kept) saveKept(keptPages.map((p) => (p.key === source.key ? { ...p, savedAt: Date.now() } : p)));
+      },
+      async load(source) {
+        const raw = await desktop!.offlineGet(`page:${source.key}`);
+        if (!raw) return null;
+        try {
+          const v = JSON.parse(raw) as { markdown?: unknown; savedAt?: unknown };
+          return typeof v.markdown === "string" ? { markdown: v.markdown, savedAt: typeof v.savedAt === "number" ? v.savedAt : 0 } : null;
+        } catch {
+          return null;
+        }
+      },
+      kept: (source) => (isKept(source.key) ? true : offlineRefs.has(source.key) ? false : null),
+      toggle(source, markdown) {
+        const old = keptPages.find((p) => p.key === source.key);
+        if (old) {
+          saveKept(keptPages.filter((p) => p.key !== source.key));
+          for (const key of [`page:${source.key}`, ...old.images]) void desktop!.offlineRelease(key).catch(() => {});
+          toast(t("已取消保留離線"));
+          return;
+        }
+        const ref = offlineRefs.get(source.key);
+        if (!ref) return;
+        // 畫面上已經讀到的圖片一起保留。
+        const images: string[] = [];
+        for (const img of document.querySelectorAll<HTMLImageElement>(".issue-pane:not(.history-pane) img[data-offline-key]")) {
+          const key = img.dataset.offlineKey!;
+          if (!img.src.startsWith("data:")) continue;
+          images.push(key);
+          savedImages.add(key);
+          void desktop!.offlinePut(key, img.src, true).catch(() => {});
+        }
+        saveKept(keep(keptPages, { key: source.key, title: source.title, label: source.label, ref, images, savedAt: Date.now() }));
+        void desktop!.offlinePut(`page:${source.key}`, pageCopy(markdown), true).catch(reportError);
+        toast(t("已保留離線：沒有網路時也能開啟（指令面板的「保留離線的頁面」）"));
+      },
+    }
+  : undefined;
+
+/** 列出「保留離線」的頁面，選一頁開啟（離線時顯示存下的內容）。 */
+const keptPicker = new Picker<KeptPage>({
+  label: t("保留離線的頁面"),
+  placeholder: t("輸入標題"),
+  empty: t("還沒有保留離線的頁面。在工作項目或 Wiki 頁面上方按「保留離線」。"),
+  query(q) {
+    const needle = q.trim().toLowerCase();
+    return needle ? keptPages.filter((p) => `${p.label} ${p.title}`.toLowerCase().includes(needle)) : keptPages;
+  },
+  render: (p) => ({
+    title: p.title,
+    detail: p.savedAt ? t("{label}・{time} 更新", { label: p.label, time: new Date(p.savedAt).toLocaleString() }) : p.label,
+    icon: p.ref.type === "ado" ? "square-kanban" : "book-open-text",
+  }),
+  pick(p) {
+    if (p.ref.type === "ado") showWorkItem(p.ref.item);
+    else showWikiPage(p.ref.wiki, p.ref.path);
+  },
+});
 // ---- Azure DevOps 儲存庫裡的文字檔、工作項目的附件：在 oMarker 裡閱讀 ---------------------
 
 /** 正在看的儲存庫檔案（內容裡相對路徑的圖片以它為準）。 */
@@ -2498,6 +2651,7 @@ async function saveWikiPage(text: string, force: boolean): Promise<{ name: strin
 function showWikiPage(wiki: AdoWiki, path: string): void {
   let webUrl = wiki.webUrl ?? "";
   const title = pageName(path);
+  offlineRefs.set(`wiki:${wiki.id}:${path}`, { type: "wiki", wiki, path });
   void showIssue({
     key: `wiki:${wiki.id}:${path}`,
     origin: { kind: "wiki", icon: "book-open-text", text: "Azure DevOps Wiki" },
@@ -2522,9 +2676,10 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
         }),
     ],
     load: async () => {
+      // 先設定：讀不到、改顯示離線副本時，圖片的相對路徑也以這一頁為準。
+      wikiPage = { wiki, path };
       const page = await desktop!.adoWikiPage(wiki, path);
       webUrl = page.webUrl ?? webUrl;
-      wikiPage = { wiki, path };
       return wikiMarkdown(page.content);
     },
     insertLink: () => {
@@ -2591,7 +2746,9 @@ const issueView = new IssueView($(".workspace"), {
     addTab(doc);
     toast(t("已複製成新的 Markdown 分頁，修改不會回寫到伺服器"));
   },
+  offline: issueOffline,
   opened(source) {
+    issueKey = source.key;
     outlineView = { key: source.key, headings: [], body: null };
     renderOutline([]);
     // Wiki 頁面、儲存庫檔案讀到內容時才設定（圖片的相對路徑以它為準）。
@@ -2611,6 +2768,7 @@ const issueView = new IssueView($(".workspace"), {
     toast(issueSide ? t("已改成和編輯區並排顯示") : t("已改回蓋住編輯區顯示"));
   },
   closed() {
+    issueKey = null;
     wikiPage = null;
     outlineView = null;
     renderOutline(docHeadings);
@@ -2920,7 +3078,7 @@ const workItemsPanel = desktop
       })(),
       list: async (search) => {
         loadWorkItemFilterOptions();
-        const found = await desktop!.adoWorkItems(search, workItemFilter);
+        const found = await withOfflineCopy(`wi-list:${search}:${JSON.stringify(workItemFilter)}`, () => desktop!.adoWorkItems(search, workItemFilter));
         noteWorkItems(found, !search && isDefaultFilter());
         return found.map((w) => ({
           ...w,
@@ -2948,8 +3106,8 @@ const workItemsPanel = desktop
 /** Azure DevOps 的 Wiki：選一個 Wiki，看頁面樹狀目錄，點頁面在主要區域開啟（唯讀）。 */
 const wikiPanel = desktop
   ? new WikiPanel<AdoWiki>($("#wiki-host"), {
-      wikis: () => desktop!.adoWikis(),
-      pages: (wiki) => desktop!.adoWikiPages(wiki),
+      wikis: () => withOfflineCopy("wikis", () => desktop!.adoWikis()),
+      pages: (wiki) => withOfflineCopy(`wiki-pages:${wiki.id}`, () => desktop!.adoWikiPages(wiki)),
       open: (wiki, path) => showWikiPage(wiki, path),
       load: () => storage.load("ado-wiki"),
       save: (id) => storage.save("ado-wiki", id),
@@ -2964,6 +3122,20 @@ const wikiPanel = desktop
       },
       savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
       link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
+      async searchContent(wiki, text) {
+        const found = await desktop!.adoWikiSearch(wiki, text);
+        const pages = flattenPages(wikiPanel?.pages ?? []);
+        const seen = new Set<string>();
+        const results: { path: string; snippet: string }[] = [];
+        for (const r of found.results) {
+          const path = pageFromGitPath(r.path, wiki.mappedPath, pages);
+          if (path && !seen.has(path)) {
+            seen.add(path);
+            results.push({ path, snippet: r.snippet });
+          }
+        }
+        return { available: found.available, results };
+      },
     })
   : null;
 
@@ -3214,7 +3386,11 @@ function retryRemoteLoads(force = false): void {
   if (sidePanel === "issues") issuesPanel?.retryFailed();
   issueView.retryFailed();
 }
-window.addEventListener("online", () => retryRemoteLoads(true));
+window.addEventListener("online", () => {
+  retryRemoteLoads(true);
+  void refreshKeptPages();
+});
+window.setTimeout(() => void refreshKeptPages(), 60_000);
 window.addEventListener("focus", () => retryRemoteLoads());
 
 // 登入過期、權杖失效的錯誤通知：直接附上重新登入的按鈕。
@@ -5854,6 +6030,7 @@ commands.register(
       ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "briefcase-business", () => ado?.openRepo(), () => !!ado],
       ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showAdo("workitems"), () => !!ado?.account],
       ["ado-wiki", t("Azure DevOps／TFS：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!ado?.account],
+      ["ado-offline", t("Azure DevOps／TFS：保留離線的頁面…"), "download", () => keptPicker.open(), () => !!desktop && keptPages.length > 0],
       ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open(t("Azure DevOps／TFS")), () => !!ado],
     ] as const
   ).map(

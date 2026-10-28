@@ -3,7 +3,7 @@
  * 點一下頁面在主要區域以唯讀方式開啟。
  */
 import { t } from "../i18n.ts";
-import { flattenPages, pageName, pushRecent } from "../wiki-text.ts";
+import { flattenPages, pageName, pushRecent, snippetParts } from "../wiki-text.ts";
 import { icon } from "./icons.ts";
 import { showLoadError } from "./issues-panel.ts";
 
@@ -31,6 +31,13 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   savePrefs(wikiId: string, prefs: WikiPrefs): void;
   /** 拖曳頁面時帶的 Markdown 連結（拖到文件裡插入）；沒有網址時回傳 null。 */
   link?(wiki: W, path: string): string | null;
+  /** 搜尋頁面內容（`path` 是頁面路徑）；伺服器沒有搜尋功能時 `available` 是 false。 */
+  searchContent?(wiki: W, text: string): Promise<WikiContentSearch>;
+}
+
+export interface WikiContentSearch {
+  available: boolean;
+  results: { path: string; snippet: string }[];
 }
 
 export interface WikiPrefs {
@@ -44,6 +51,9 @@ const PINNED_LIMIT = 30;
 
 /** 搜尋結果最多列出幾頁。 */
 const MAX_RESULTS = 200;
+/** 搜尋內容：至少幾個字、停止輸入多久後才搜尋。 */
+const CONTENT_MIN = 2;
+const CONTENT_DELAY = 500;
 
 export class WikiPanel<W extends WikiInfo> {
   #h: WikiPanelHooks<W>;
@@ -63,6 +73,14 @@ export class WikiPanel<W extends WikiInfo> {
   #loaded = false;
   /** 上次讀取失敗時要重做的事（網路恢復時再試一次）。 */
   #retry: (() => void) | null = null;
+  /** 名稱搜尋結果下方的「內容符合」。 */
+  #content: HTMLElement;
+  #contentTimer = 0;
+  #contentSeq = 0;
+  /** 搜過的內容結果（`Wiki id` + 搜尋字 → 結果或錯誤訊息）。 */
+  #contentCache = new Map<string, WikiContentSearch | string>();
+  /** 伺服器沒有搜尋功能（只提示一次，之後不再搜尋）。 */
+  #contentUnavailable = false;
 
   constructor(el: HTMLElement, hooks: WikiPanelHooks<W>) {
     this.#h = hooks;
@@ -81,8 +99,9 @@ export class WikiPanel<W extends WikiInfo> {
     this.#input = document.createElement("input");
     this.#input.type = "search";
     this.#input.className = "workitems-search";
-    this.#input.placeholder = t("搜尋頁面名稱");
-    this.#input.setAttribute("aria-label", t("搜尋頁面名稱"));
+    const searchLabel = hooks.searchContent ? t("搜尋頁面名稱與內容") : t("搜尋頁面名稱");
+    this.#input.placeholder = searchLabel;
+    this.#input.setAttribute("aria-label", searchLabel);
     this.#input.addEventListener("input", () => this.#render());
     // ↓ 從搜尋框移到清單。
     this.#input.addEventListener("keydown", (e) => {
@@ -108,7 +127,11 @@ export class WikiPanel<W extends WikiInfo> {
     this.#quick.className = "wiki-quick";
     this.#quick.hidden = true;
     this.#quick.addEventListener("keydown", (e) => this.#keydown(e));
-    el.append(bar, this.#input, this.#status, this.#quick, this.#list);
+    this.#content = document.createElement("section");
+    this.#content.className = "wiki-content";
+    this.#content.hidden = true;
+    this.#content.addEventListener("keydown", (e) => this.#keydown(e));
+    el.append(bar, this.#input, this.#status, this.#quick, this.#list, this.#content);
     // 把頁面拖到文件裡，插入 `[頁面名稱](網址)`。
     el.addEventListener("dragstart", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>(".wiki-page");
@@ -136,6 +159,9 @@ export class WikiPanel<W extends WikiInfo> {
     this.#quick.replaceChildren();
     this.#quick.hidden = true;
     this.#status.textContent = "";
+    this.#contentCache.clear();
+    this.#contentUnavailable = false;
+    this.#renderContent("");
   }
 
   /** 重新讀取 Wiki 清單與目前 Wiki 的頁面。 */
@@ -181,6 +207,7 @@ export class WikiPanel<W extends WikiInfo> {
     this.#prefs = wiki ? this.#h.prefs(wiki.id) : { recent: [], pinned: [] };
     this.#list.replaceChildren();
     this.#quick.hidden = true;
+    this.#renderContent("");
     if (!wiki) {
       this.#status.textContent = t("這個集合裡沒有 Wiki");
       return;
@@ -223,6 +250,7 @@ export class WikiPanel<W extends WikiInfo> {
     if (!this.#pages.length) {
       this.#status.textContent = t("這個 Wiki 還沒有頁面");
       this.#list.replaceChildren();
+      this.#renderContent("");
       return;
     }
     if (q) {
@@ -237,8 +265,10 @@ export class WikiPanel<W extends WikiInfo> {
       this.#status.textContent = found.length ? t("找到 {n} 頁", { n: found.length }) : t("找不到符合的頁面");
       this.#list.replaceChildren(...found.slice(0, MAX_RESULTS).map((p) => this.#row(p, 0, true)));
       this.#rove();
+      this.#renderContent(this.#input.value.trim());
       return;
     }
+    this.#renderContent("");
     this.#status.textContent = "";
     const rows: HTMLLIElement[] = [];
     const walk = (list: WikiTreePage[], depth: number) => {
@@ -252,10 +282,117 @@ export class WikiPanel<W extends WikiInfo> {
     this.#rove();
   }
 
-  /** 「釘選」「最近看過」與樹狀目錄裡所有的頁面按鈕（由上而下）。 */
+  /** 「釘選」「最近看過」、樹狀目錄與「內容符合」裡所有的頁面按鈕（由上而下）。 */
   #pageButtons(): HTMLButtonElement[] {
     const quick = this.#quick.hidden ? [] : [...this.#quick.querySelectorAll<HTMLButtonElement>(".wiki-page")];
-    return [...quick, ...this.#list.querySelectorAll<HTMLButtonElement>(".wiki-page")];
+    const content = this.#content.hidden ? [] : [...this.#content.querySelectorAll<HTMLButtonElement>(".wiki-page")];
+    return [...quick, ...this.#list.querySelectorAll<HTMLButtonElement>(".wiki-page"), ...content];
+  }
+
+  /** 名稱搜尋結果下方的「內容符合」：停止輸入一下子後才搜尋，同樣的字不重複搜尋。 */
+  #renderContent(text: string): void {
+    clearTimeout(this.#contentTimer);
+    const wiki = this.#wiki;
+    if (!wiki || !this.#h.searchContent || [...text].length < CONTENT_MIN) {
+      this.#contentSeq++;
+      this.#content.hidden = true;
+      this.#content.replaceChildren();
+      return;
+    }
+    const heading = document.createElement("h3");
+    heading.textContent = t("內容符合");
+    const note = (message: string) => {
+      const p = document.createElement("p");
+      p.className = "wiki-content-note";
+      p.textContent = message;
+      this.#content.replaceChildren(heading, p);
+      this.#content.hidden = false;
+    };
+    if (this.#contentUnavailable) {
+      note(t("伺服器沒有啟用 Wiki 內容搜尋（需要安裝 Search 擴充功能），目前只能搜尋頁面名稱"));
+      return;
+    }
+    const key = `${wiki.id}\n${text.toLowerCase()}`;
+    const cached = this.#contentCache.get(key);
+    if (cached !== undefined) {
+      if (typeof cached === "string") note(cached);
+      else this.#showContent(heading, cached);
+      return;
+    }
+    note(t("搜尋內容中…"));
+    const seq = ++this.#contentSeq;
+    this.#contentTimer = window.setTimeout(async () => {
+      let result: WikiContentSearch | string;
+      try {
+        result = await this.#h.searchContent!(wiki, text);
+      } catch (e) {
+        result = String(e);
+      }
+      if (typeof result !== "string" && !result.available) this.#contentUnavailable = true;
+      else this.#contentCache.set(key, result);
+      if (seq === this.#contentSeq) this.#renderContent(text);
+    }, CONTENT_DELAY);
+  }
+
+  #showContent(heading: HTMLElement, found: WikiContentSearch): void {
+    const exists = new Set(flattenPages(this.#pages));
+    const results = found.results.filter((r) => exists.has(r.path));
+    heading.textContent = t("內容符合（{n}）", { n: results.length });
+    if (!results.length) {
+      const p = document.createElement("p");
+      p.className = "wiki-content-note";
+      p.textContent = t("沒有頁面內容符合");
+      this.#content.replaceChildren(heading, p);
+      this.#content.hidden = false;
+      return;
+    }
+    const ul = document.createElement("ul");
+    for (const r of results) {
+      const li = document.createElement("li");
+      li.className = "wiki-row";
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "wiki-page";
+      b.dataset.path = r.path;
+      b.title = r.path;
+      b.draggable = !!this.#h.link;
+      b.tabIndex = -1;
+      const name = document.createElement("span");
+      name.className = "wiki-name";
+      name.textContent = pageName(r.path);
+      b.append(name);
+      const where = r.path.slice(1, r.path.lastIndexOf("/"));
+      if (where) {
+        const meta = document.createElement("span");
+        meta.className = "wiki-where";
+        meta.textContent = where;
+        b.append(meta);
+      }
+      const parts = snippetParts(r.snippet);
+      if (parts.length) {
+        const snip = document.createElement("span");
+        snip.className = "wiki-snippet";
+        for (const part of parts) {
+          if (!part.hit) snip.append(part.text);
+          else {
+            const mark = document.createElement("mark");
+            mark.textContent = part.text;
+            snip.append(mark);
+          }
+        }
+        b.append(snip);
+      }
+      if (r.path === this.#current) b.setAttribute("aria-current", "true");
+      b.addEventListener("click", () => {
+        if (!this.#wiki) return;
+        this.select(r.path);
+        this.#h.open(this.#wiki, r.path);
+      });
+      li.append(b);
+      ul.append(li);
+    }
+    this.#content.replaceChildren(heading, ul);
+    this.#content.hidden = false;
   }
 
   /** 樹狀目錄裡只有 `active`（沒給就是目前的頁面或第一列）可以用 Tab 移到。 */
@@ -461,7 +598,11 @@ export class WikiPanel<W extends WikiInfo> {
       }
       if (changed && !this.#input.value.trim()) this.#render();
     }
-    for (const b of [...this.#quick.querySelectorAll<HTMLElement>(".wiki-page"), ...this.#list.querySelectorAll<HTMLElement>(".wiki-page")]) {
+    for (const b of [
+      ...this.#quick.querySelectorAll<HTMLElement>(".wiki-page"),
+      ...this.#list.querySelectorAll<HTMLElement>(".wiki-page"),
+      ...this.#content.querySelectorAll<HTMLElement>(".wiki-page"),
+    ]) {
       if (b.dataset.path === path) b.setAttribute("aria-current", "true");
       else b.removeAttribute("aria-current");
     }
