@@ -1366,6 +1366,9 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .git-setup p { margin: 6px 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 .git-setup-actions { display: flex; flex-direction: column; gap: 6px; }
 .git-setup-actions .btn { justify-content: center; }
+/* 側邊欄拉到最窄或字比較大時，按鈕文字換行，不要超出面板（圖示維持原本大小）。 */
+#sidebar .btn { max-width: 100%; min-width: 0; padding-block: 3px; white-space: normal; overflow-wrap: anywhere; text-align: center; line-height: 1.35; }
+#sidebar .btn > .icon { flex: none; }
 .git-account { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-soft); color: var(--muted); font-size: 12px; }
 /* 已經是儲存庫，但還不能同步（沒有遠端、還沒登入）。 */
 .git-hint { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; margin: 0 4px 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--fg); font-size: 12.5px; }
