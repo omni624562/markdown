@@ -3,6 +3,7 @@
  * 可以搜尋或輸入編號、用篩選列縮小範圍；點一下在主要區域開啟內容。
  */
 import { t } from "../i18n.ts";
+import { icon } from "./icons.ts";
 
 export interface IssueSummary {
   id: number;
@@ -21,6 +22,18 @@ export interface IssuesHandlers<T extends IssueSummary> {
   placeholder: string;
   /** 放在搜尋框下方的篩選列（改變時呼叫 `refresh()`）。 */
   filters?: HTMLElement;
+}
+
+/** 讀取失敗：顯示錯誤與「重試」按鈕（例如網路斷了又接上，不用重新啟動程式）。 */
+export function showLoadError(status: HTMLElement, e: unknown, retry: () => void): void {
+  const message = document.createElement("span");
+  message.textContent = e instanceof Error ? e.message : String(e);
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn btn-small load-retry";
+  b.append(icon("refresh-cw"), t("重試"));
+  b.addEventListener("click", retry);
+  status.replaceChildren(message, b);
 }
 
 /** 「10/20」這樣的短日期。 */
@@ -91,7 +104,9 @@ export class IssuesPanel<T extends IssueSummary> {
       this.#list.replaceChildren(...items.map((it) => this.#row(it)));
     } catch (e) {
       if (seq !== this.#seq) return;
-      this.#status.textContent = e instanceof Error ? e.message : String(e);
+      // 下次打開面板時再試一次。
+      this.#loaded = false;
+      showLoadError(this.#status, e, () => void this.refresh());
       this.#list.replaceChildren();
     }
   }

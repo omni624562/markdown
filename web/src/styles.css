@@ -1792,6 +1792,11 @@ button.git-info:disabled { cursor: default; }
 .ado-switch button span { overflow: hidden; text-overflow: ellipsis; }
 .ado-switch button .icon { flex: none; width: 14px; height: 14px; }
 #panel-ado .side-head .side-actions { flex: none; }
+/* 遠端的清單（工作項目、Wiki、Issues）常要重新讀取：重新整理按鈕一直顯示。 */
+#panel-ado .side-actions, #panel-issues .side-actions { opacity: 1; }
+/* 讀取失敗時錯誤訊息旁的「重試」。 */
+.load-retry { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; vertical-align: middle; }
+.load-retry .icon { width: 13px; height: 13px; }
 .wiki-tree { margin: 0; padding: 0; list-style: none; }
 .wiki-row { display: flex; align-items: center; padding-left: calc(var(--depth, 0) * 14px); }
 .wiki-toggle { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 24px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; }

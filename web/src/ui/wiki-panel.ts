@@ -5,6 +5,7 @@
 import { t } from "../i18n.ts";
 import { flattenPages, pageName, pushRecent } from "../wiki-text.ts";
 import { icon } from "./icons.ts";
+import { showLoadError } from "./issues-panel.ts";
 
 export interface WikiInfo {
   id: string;
@@ -136,7 +137,9 @@ export class WikiPanel<W extends WikiInfo> {
       await this.#loadPages(wiki);
     } catch (e) {
       if (seq !== this.#seq) return;
-      this.#status.textContent = e instanceof Error ? e.message : String(e);
+      // 下次打開面板時再試一次。
+      this.#loaded = false;
+      showLoadError(this.#status, e, () => void this.refresh());
       this.#list.replaceChildren();
     }
   }
@@ -161,7 +164,8 @@ export class WikiPanel<W extends WikiInfo> {
       this.#render();
     } catch (e) {
       if (seq !== this.#seq) return;
-      this.#status.textContent = e instanceof Error ? e.message : String(e);
+      this.#loaded = false;
+      showLoadError(this.#status, e, () => void this.#loadPages(wiki));
     }
   }
 
