@@ -659,4 +659,13 @@ export const main: Record<string, Translation> = {
   "最新版裡找不到原本這段（可能已經被別人改掉了），請改用「複製」或「插入到游標處」。": "Couldn't find the original text in the latest version (someone may have changed it). Use Copy or Insert at Cursor instead.",
   "找到原本的位置": "Find Original",
   "最新版裡找不到原本這段（可能已經被別人改掉了）。": "Couldn't find the original text in the latest version (someone may have changed it).",
+  "從程式碼儲存庫發佈的 Wiki 要在儲存庫裡新增 Markdown 檔（用 Git 提交）。": "For a wiki published from a code repository, add a Markdown file to the repository (commit it with Git).",
+  "新頁面會放在「{name}」底下。": "The new page will go under “{name}”.",
+  "新頁面會放在 Wiki 的最上層。": "The new page will go at the top level of the wiki.",
+  "請輸入頁面標題。": "Enter a page title.",
+  "頁面標題不能有 /、\\、#。": "Page titles can't contain /, \\, or #.",
+  "頁面標題不能以「.」開頭或結尾。": "Page titles can't start or end with “.”.",
+  "頁面標題太長了。": "The page title is too long.",
+  "已經有同名的頁面了，請換一個名稱": "A page with this name already exists. Please choose another name.",
+  "已建立 Wiki 頁面「{name}」": "Created wiki page “{name}”",
 };

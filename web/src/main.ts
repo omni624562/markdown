@@ -121,7 +121,7 @@ import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts"
 import { IssueView, type IssueOffline, type IssueSource } from "./ui/issue-view.ts";
 import { addImage, keep, parseKept, type KeptPage, type OfflineRef } from "./offline.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
-import { flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { childPagePath, flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl, wikiTitleProblem } from "./wiki-text.ts";
 import { markOf, markSeen, remember, type SeenMap, trimSeen } from "./workitem-seen.ts";
 import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { fenceLanguage, isMarkdownName, isReadableFileName, parseRepoFileLink, type RepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
@@ -2658,6 +2658,42 @@ async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
   toast(last ? `${hint} ${last}` : hint, { duration: 8000 });
 }
 
+/** 新增 Wiki 頁面（`parent` 是上層頁面，null 是最上層）：問標題、建立，然後直接開始編輯。 */
+async function createWikiPage(wiki: AdoWiki, parent: string | null): Promise<void> {
+  if (wiki.code) {
+    toast(t("從程式碼儲存庫發佈的 Wiki 要在儲存庫裡新增 Markdown 檔（用 Git 提交）。"));
+    return;
+  }
+  const where = parent ? t("新頁面會放在「{name}」底下。", { name: pageName(parent) }) : t("新頁面會放在 Wiki 的最上層。");
+  let title = "";
+  for (;;) {
+    const answer = await askText(parent ? t("新增子頁面") : t("新增頁面"), where, title, t("建立"));
+    if (answer === null) return;
+    title = answer.trim();
+    const problem = wikiTitleProblem(title);
+    const existing = new Set(flattenPages(wikiPanel?.pages ?? []).map((p) => p.toLowerCase()));
+    const message =
+      problem === "empty"
+        ? t("請輸入頁面標題。")
+        : problem === "chars"
+          ? t("頁面標題不能有 /、\\、#。")
+          : problem === "dot"
+            ? t("頁面標題不能以「.」開頭或結尾。")
+            : problem === "long"
+              ? t("頁面標題太長了。")
+              : existing.has(childPagePath(parent, title).toLowerCase())
+                ? t("已經有同名的頁面了，請換一個名稱")
+                : null;
+    if (!message) break;
+    toast(message, { tone: "error" });
+  }
+  const path = childPagePath(parent, title);
+  await desktop!.adoWikiCreate(wiki, path, `# ${title}\n\n`);
+  toast(t("已建立 Wiki 頁面「{name}」", { name: title }), { tone: "success" });
+  void wikiPanel?.refresh().then(() => wikiPanel?.select(path));
+  await editWikiPage(wiki, path);
+}
+
 /** 把分頁的內容存回 Wiki 頁面；伺服器上的版本被別人改過時回傳那個版本（交給衝突處理）。 */
 async function saveWikiPage(text: string, force: boolean): Promise<{ name: string; diskText: string } | void> {
   const doc = active;
@@ -3017,6 +3053,7 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
     fileName: issueFileName(wiki.name, title),
     // 程式碼 Wiki 的內容在 Git 儲存庫裡，要用 Git 改；專案 Wiki 可以直接編輯、存回。
     edit: wiki.code ? undefined : () => void editWikiPage(wiki, path).catch(reportError),
+    addChild: wiki.code ? undefined : () => void createWikiPage(wiki, path).catch(reportError),
     // 標頭顯示所在位置：Wiki 名稱 › 上層頁面…（點上層頁面切換過去）。
     crumbs: [
       { label: wiki.name },
@@ -3476,6 +3513,8 @@ const wikiPanel = desktop
       },
       savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
       link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
+      create: (wiki, parent) => void createWikiPage(wiki, parent).catch(reportError),
+      canCreate: (wiki) => !wiki.code,
       async searchContent(wiki, text) {
         const found = await desktop!.adoWikiSearch(wiki, text);
         const pages = flattenPages(wikiPanel?.pages ?? []);

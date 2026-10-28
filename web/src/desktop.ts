@@ -891,6 +891,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
         "ado_wiki_save",
         { projectId: w.projectId, wikiId: w.wikiId, path: w.path, content, etag },
       ),
+    /** 建立新的 Wiki 頁面（已經有同名的頁面時失敗），回傳新頁面的版本。 */
+    adoWikiCreate: (w: AdoWiki, path: string, content: string) =>
+      core.invoke<string | null>("ado_wiki_create", { projectId: w.projectId, wikiId: w.id, path, content }),
     /** Wiki 頁面目前的版本與最後修改的人（不讀內容）。 */
     adoWikiPageInfo: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
       core.invoke<WikiPageInfo>("ado_wiki_page_info", {
