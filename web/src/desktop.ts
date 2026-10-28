@@ -834,12 +834,18 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoWikiPages: (w: AdoWiki) =>
       core.invoke<AdoWikiPage[]>("ado_wiki_pages", { projectId: w.projectId, wikiId: w.id, version: w.code ? w.version : null }),
     adoWikiPage: (w: AdoWiki, path: string) =>
-      core.invoke<{ content: string; webUrl: string | null }>("ado_wiki_page", {
+      core.invoke<{ content: string; webUrl: string | null; etag: string | null }>("ado_wiki_page", {
         projectId: w.projectId,
         wikiId: w.id,
         path,
         version: w.code ? w.version : null,
       }),
+    /** 把內容存回 Wiki 頁面；`etag` 是開始編輯時的版本，伺服器上已經不同時回傳衝突。 */
+    adoWikiSave: (w: { projectId: string; wikiId: string; path: string }, content: string, etag: string) =>
+      core.invoke<{ status: "saved"; etag: string | null } | { status: "conflict"; content: string; etag: string | null }>(
+        "ado_wiki_save",
+        { projectId: w.projectId, wikiId: w.wikiId, path: w.path, content, etag },
+      ),
     /** Wiki 儲存庫裡的圖片，回傳 data: 網址。 */
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),

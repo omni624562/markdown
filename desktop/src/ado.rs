@@ -163,19 +163,33 @@ fn read(
     res: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
     what: &str,
 ) -> Result<Value, String> {
+    read_with_etag(res, what).map(|(v, _)| v)
+}
+
+/// 和 `read` 一樣，另外回傳回應的 ETag（Wiki 頁面的版本，存回去時用來確認沒有被別人改過）。
+fn read_with_etag(
+    res: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    what: &str,
+) -> Result<(Value, Option<String>), String> {
     match res {
         Ok(mut r) => {
+            let etag = r
+                .headers()
+                .get("ETag")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
             let text = r
                 .body_mut()
                 .read_to_string()
                 .map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))?;
             // 權杖不對時，雲端版會回傳登入網頁（HTML）而不是錯誤碼。
-            serde_json::from_str(&text).map_err(|_| {
+            let v = serde_json::from_str(&text).map_err(|_| {
                 tr!(
                     "{what}失敗：伺服器的回應不是預期的格式，請確認網址與個人存取權杖",
                     what = what
                 )
-            })
+            })?;
+            Ok((v, etag))
         }
         Err(ureq::Error::StatusCode(401)) => Err(tr!(
             "{what}失敗：個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖",
@@ -1383,6 +1397,88 @@ pub async fn ado_wiki_pages(
 pub struct WikiContent {
     content: String,
     web_url: Option<String>,
+    /// 頁面的版本（存回去時帶上，確認這段時間沒有被別人改過）。
+    etag: Option<String>,
+}
+
+/// 讀取 Wiki 頁面的內容、網址與版本。
+fn read_wiki_page(
+    base: &str,
+    pat: &str,
+    project_id: &str,
+    wiki_id: &str,
+    path: &str,
+    version: Option<&str>,
+) -> Result<WikiContent, String> {
+    let api = wiki_pages_path(project_id, wiki_id, path, version) + "&includeContent=true";
+    let (v, etag) = read_with_etag(
+        crate::update::agent()
+            .get(&format!("{base}{api}&api-version={API_VERSION}"))
+            .header("Authorization", &basic(pat))
+            .header("Accept", "application/json")
+            .call(),
+        &tr!("讀取 Wiki 頁面"),
+    )?;
+    Ok(WikiContent {
+        content: str_of(&v, "content").unwrap_or_default().to_string(),
+        web_url: str_of(&v, "remoteUrl").map(str::to_string),
+        etag,
+    })
+}
+
+#[derive(Serialize, Debug)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum WikiSaveOutcome {
+    /// 已存回伺服器；`etag` 是新的版本。
+    Saved { etag: Option<String> },
+    /// 開始編輯之後頁面被別人改過：回傳伺服器上的內容與版本，交給使用者決定。
+    Conflict {
+        content: String,
+        etag: Option<String>,
+    },
+}
+
+/// 把編輯好的內容存回 Wiki 頁面（只限專案 Wiki）。`etag` 是開始編輯時的版本：
+/// 伺服器上的版本不同（被別人改過）時不覆蓋，回傳衝突。
+#[tauri::command]
+pub async fn ado_wiki_save(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    content: String,
+    etag: String,
+) -> Result<WikiSaveOutcome, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .put(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .header("If-Match", &etag)
+            .send(&serde_json::json!({ "content": content }).to_string());
+        match res {
+            Err(ureq::Error::StatusCode(409 | 412)) => {
+                let page = read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?;
+                Ok(WikiSaveOutcome::Conflict {
+                    content: page.content,
+                    etag: page.etag,
+                })
+            }
+            res => {
+                let (_, etag) = read_with_etag(res, &tr!("儲存 Wiki 頁面"))?;
+                // 回應沒有帶版本時再讀一次，下次存檔才比得出有沒有被別人改過。
+                let etag = match etag {
+                    Some(etag) => Some(etag),
+                    None => read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?.etag,
+                };
+                Ok(WikiSaveOutcome::Saved { etag })
+            }
+        }
+    })
+    .await
 }
 
 /// 一個 Wiki 頁面的內容（Markdown）。
@@ -1396,13 +1492,14 @@ pub async fn ado_wiki_page(
 ) -> Result<WikiContent, String> {
     let (a, pat) = require(&app)?;
     crate::io::blocking_for(TIMEOUT, move || {
-        let path = wiki_pages_path(&project_id, &wiki_id, &path, version.as_deref())
-            + "&includeContent=true";
-        let v = get(&a.url, &pat, &path, &tr!("讀取 Wiki 頁面"))?;
-        Ok(WikiContent {
-            content: str_of(&v, "content").unwrap_or_default().to_string(),
-            web_url: str_of(&v, "remoteUrl").map(str::to_string),
-        })
+        read_wiki_page(
+            &a.url,
+            &pat,
+            &project_id,
+            &wiki_id,
+            &path,
+            version.as_deref(),
+        )
     })
     .await
 }
