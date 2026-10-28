@@ -33,7 +33,10 @@ export function showLoadError(status: HTMLElement, e: unknown, retry: () => void
   b.className = "btn btn-small load-retry";
   b.append(icon("refresh-cw"), t("重試"));
   b.addEventListener("click", retry);
-  status.replaceChildren(message, b);
+  const hint = document.createElement("span");
+  hint.className = "load-hint";
+  hint.textContent = t("網路恢復或切回這個視窗時會自動再試一次。");
+  status.replaceChildren(message, b, hint);
 }
 
 /** 「10/20」這樣的短日期。 */
@@ -53,6 +56,8 @@ export class IssuesPanel<T extends IssueSummary> {
   #current: number | null = null;
   #timer = 0;
   #loaded = false;
+  /** 上次讀取失敗：網路恢復時再試一次。 */
+  #failed = false;
 
   constructor(el: HTMLElement, handlers: IssuesHandlers<T>) {
     this.#h = handlers;
@@ -100,15 +105,22 @@ export class IssuesPanel<T extends IssueSummary> {
     try {
       const items = await this.#h.list(search);
       if (seq !== this.#seq) return;
+      this.#failed = false;
       this.#status.textContent = this.#h.status(items.length, search);
       this.#list.replaceChildren(...items.map((it) => this.#row(it)));
     } catch (e) {
       if (seq !== this.#seq) return;
       // 下次打開面板時再試一次。
       this.#loaded = false;
+      this.#failed = true;
       showLoadError(this.#status, e, () => void this.refresh());
       this.#list.replaceChildren();
     }
+  }
+
+  /** 上次讀取失敗就重新讀取（網路恢復、切回視窗時呼叫）。 */
+  retryFailed(): void {
+    if (this.#failed) void this.refresh();
   }
 
   #row(item: T): HTMLLIElement {

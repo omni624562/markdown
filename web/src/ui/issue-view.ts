@@ -112,6 +112,7 @@ export class IssueView {
   #back: HistoryEntry[] = [];
   #forward: HistoryEntry[] = [];
   #restoreScroll: number | null = null;
+  #failed = false;
   #backBtn: HTMLButtonElement;
   #forwardBtn: HTMLButtonElement;
   #matches: FindMatch[] = [];
@@ -287,6 +288,7 @@ export class IssueView {
     loading.className = "issue-status";
     loading.textContent = t("讀取中…");
     this.#body.replaceChildren(loading);
+    this.#failed = false;
     try {
       const md = await source.load();
       if (seq !== this.#seq) return;
@@ -305,7 +307,13 @@ export class IssueView {
       retry.append(icon("refresh-cw"), t("重試"));
       retry.addEventListener("click", () => void this.refresh());
       loading.append(retry);
+      this.#failed = true;
     }
+  }
+
+  /** 上次讀取失敗就重新讀取（網路恢復、切回視窗時呼叫）。 */
+  retryFailed(): void {
+    if (this.isOpen && this.#failed) void this.refresh();
   }
 
   /** 用已經讀到的內容重畫（主題或設定改變時，不用重新向伺服器讀取）。 */

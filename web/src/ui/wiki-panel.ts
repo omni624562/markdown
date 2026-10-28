@@ -59,6 +59,8 @@ export class WikiPanel<W extends WikiInfo> {
   #current: string | null = null;
   #seq = 0;
   #loaded = false;
+  /** 上次讀取失敗時要重做的事（網路恢復時再試一次）。 */
+  #retry: (() => void) | null = null;
 
   constructor(el: HTMLElement, hooks: WikiPanelHooks<W>) {
     this.#h = hooks;
@@ -139,7 +141,8 @@ export class WikiPanel<W extends WikiInfo> {
       if (seq !== this.#seq) return;
       // 下次打開面板時再試一次。
       this.#loaded = false;
-      showLoadError(this.#status, e, () => void this.refresh());
+      this.#retry = () => void this.refresh();
+      showLoadError(this.#status, e, this.#retry);
       this.#list.replaceChildren();
     }
   }
@@ -161,12 +164,21 @@ export class WikiPanel<W extends WikiInfo> {
       const pages = await this.#h.pages(wiki);
       if (seq !== this.#seq) return;
       this.#pages = pages;
+      this.#retry = null;
       this.#render();
     } catch (e) {
       if (seq !== this.#seq) return;
       this.#loaded = false;
-      showLoadError(this.#status, e, () => void this.#loadPages(wiki));
+      this.#retry = () => void this.#loadPages(wiki);
+      showLoadError(this.#status, e, this.#retry);
     }
+  }
+
+  /** 上次讀取失敗就重新讀取（網路恢復、切回視窗時呼叫）。 */
+  retryFailed(): void {
+    const retry = this.#retry;
+    this.#retry = null;
+    retry?.();
   }
 
   /** 目前選的 Wiki。 */

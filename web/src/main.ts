@@ -2367,6 +2367,22 @@ for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")
 setAdoTab(adoTab);
 $("#ado-refresh").addEventListener("click", () => void (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.refresh());
 
+/**
+ * 網路恢復或切回視窗時，重新讀取上次失敗的工作項目、Wiki、Issues 與開著的內容
+ * （面板沒開著的，下次打開時本來就會重讀）。
+ */
+let lastAutoRetry = 0;
+function retryRemoteLoads(force = false): void {
+  const now = Date.now();
+  if (!force && now - lastAutoRetry < 10_000) return;
+  lastAutoRetry = now;
+  if (sidePanel === "ado") (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.retryFailed();
+  if (sidePanel === "issues") issuesPanel?.retryFailed();
+  issueView.retryFailed();
+}
+window.addEventListener("online", () => retryRemoteLoads(true));
+window.addEventListener("focus", () => retryRemoteLoads());
+
 // 登入過期、權杖失效的錯誤通知：直接附上重新登入的按鈕。
 setErrorAction((message) => {
   const problem = authProblem(message);

@@ -472,4 +472,5 @@ export const ui: Record<string, Translation> = {
   "釘選這一頁": "Pin This Page",
   "最近看過": "Recently Viewed",
   "已釘選": "Pinned",
+  "網路恢復或切回這個視窗時會自動再試一次。": "It will try again automatically when the network is back or you return to this window.",
 };
