@@ -634,6 +634,8 @@ pub struct WorkItem {
     /// 指派給誰（清單上看所有人的工作項目時顯示）。
     assigned_to: Option<String>,
     changed: Option<String>,
+    /// 優先順序（1 最高）；流程範本沒有這個欄位時是空的。
+    priority: Option<u64>,
     web_url: String,
 }
 
@@ -646,7 +648,6 @@ pub struct WorkItemDetail {
     /// 區域與反覆項目（例如「產品\前端」「產品\Sprint 3」）。
     area: Option<String>,
     iteration: Option<String>,
-    priority: Option<u64>,
     tags: Vec<String>,
     /// 說明（HTML，前端轉成 Markdown 顯示）。
     description: Option<String>,
@@ -729,6 +730,8 @@ const CLOSED_STATES: &[&str] = &[
     "完成",   // i18n-ignore
 ];
 const FIELDS: &str = "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.AssignedTo,System.ChangedDate";
+/// 優先順序欄位（清單排序用）；自訂的流程範本可能沒有。
+const PRIORITY: &str = "Microsoft.VSTS.Common.Priority";
 
 fn wiql_string(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
@@ -856,6 +859,7 @@ fn item_of(base: &str, v: &Value) -> Option<WorkItem> {
         changed: field(v, "System.ChangedDate")
             .and_then(Value::as_str)
             .map(str::to_string),
+        priority: field(v, PRIORITY).and_then(Value::as_u64),
     })
 }
 
@@ -925,15 +929,23 @@ pub async fn ado_work_items(
             return Ok(vec![]);
         }
         let list: Vec<String> = ids.iter().map(u64::to_string).collect();
-        let res = get(
-            &base,
-            &pat,
-            &format!(
-                "/_apis/wit/workitems?ids={}&fields={FIELDS}&errorPolicy=omit",
-                list.join(",")
-            ),
-            &tr!("讀取工作項目"),
-        )?;
+        let fetch = |fields: &str| {
+            get(
+                &base,
+                &pat,
+                &format!(
+                    "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
+                    list.join(",")
+                ),
+                &tr!("讀取工作項目"),
+            )
+        };
+        // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
+        let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
+            Ok(res) => res,
+            Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+            Err(_) => fetch(FIELDS)?,
+        };
         let items: Vec<WorkItem> = values(&res)
             .iter()
             .filter_map(|v| item_of(&base, v))
@@ -950,6 +962,7 @@ pub async fn ado_work_items(
                 project: w.project.clone(),
                 assigned_to: w.assigned_to.clone(),
                 changed: w.changed.clone(),
+                priority: w.priority,
                 web_url: w.web_url.clone(),
             })
             .collect())
@@ -1486,7 +1499,6 @@ fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
         created_by: person(field(v, "System.CreatedBy")),
         area: text("System.AreaPath"),
         iteration: text("System.IterationPath"),
-        priority: field(v, "Microsoft.VSTS.Common.Priority").and_then(Value::as_u64),
         tags: field_str(v, "System.Tags")
             .split(';')
             .map(str::trim)
@@ -1859,7 +1871,7 @@ mod tests {
         }});
         let d = detail_of("https://tfs/DC", &v).unwrap();
         assert_eq!(d.tags, ["前端", "登入"]);
-        assert_eq!(d.priority, Some(2));
+        assert_eq!(d.item.priority, Some(2));
         assert_eq!(d.area.as_deref(), Some("產品\\前端"));
         assert_eq!(d.iteration, None);
         assert_eq!(d.item.title, "修正登入");

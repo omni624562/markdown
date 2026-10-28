@@ -32,6 +32,7 @@ const rel = (id: number, link: AdoWorkItemRelation["link"], linkName: string, ti
   project: "產品",
   assignedTo: null,
   changed: null,
+  priority: null,
   webUrl: `https://tfs/DC/x/_workitems/edit/${id}`,
   link,
   linkName,

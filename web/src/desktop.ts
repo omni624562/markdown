@@ -322,6 +322,8 @@ export interface AdoWorkItem {
   project: string;
   assignedTo: string | null;
   changed: string | null;
+  /** 優先順序（1 最高）；流程範本沒有這個欄位時是 null。 */
+  priority: number | null;
   webUrl: string;
 }
 
@@ -330,7 +332,6 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   /** 區域、反覆項目（例如「產品\\前端」）。 */
   area: string | null;
   iteration: string | null;
-  priority: number | null;
   tags: string[];
   /** 說明（HTML）。 */
   description: string | null;
