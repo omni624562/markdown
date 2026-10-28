@@ -54,11 +54,8 @@
           <button type="button" role="tab" id="side-tab-issues" data-panel="issues" aria-controls="panel-issues" aria-label="Issues（GitHub）" hidden>
             <i data-icon="circle-dot"></i>
           </button>
-          <button type="button" role="tab" id="side-tab-workitems" data-panel="workitems" aria-controls="panel-workitems" aria-label="工作項目（Azure DevOps）" hidden>
+          <button type="button" role="tab" id="side-tab-ado" data-panel="ado" aria-controls="panel-ado" aria-label="Azure DevOps（工作項目、Wiki）" hidden>
             <i data-icon="square-kanban"></i>
-          </button>
-          <button type="button" role="tab" id="side-tab-wiki" data-panel="wiki" aria-controls="panel-wiki" aria-label="Wiki（Azure DevOps）" hidden>
-            <i data-icon="book-open-text"></i>
           </button>
           <button type="button" role="tab" id="side-tab-git" data-panel="git" aria-controls="panel-git" aria-label="原始碼控制（Git）" hidden>
             <i data-icon="git-branch"></i><span class="activity-badge" id="git-badge" hidden></span>
@@ -131,24 +128,18 @@
           <div class="side-body" id="issues-host"></div>
         </section>
 
-        <section class="side-panel" id="panel-workitems" role="tabpanel" aria-labelledby="side-tab-workitems" hidden>
+        <section class="side-panel" id="panel-ado" role="tabpanel" aria-labelledby="side-tab-ado" hidden>
           <div class="side-head">
-            <h2>工作項目</h2>
+            <div class="segmented ado-switch" role="radiogroup" aria-label="Azure DevOps">
+              <button type="button" role="radio" data-ado="workitems" aria-checked="true"><i data-icon="square-kanban"></i><span>工作項目</span></button>
+              <button type="button" role="radio" data-ado="wiki" aria-checked="false"><i data-icon="book-open-text"></i><span>Wiki</span></button>
+            </div>
             <div class="side-actions">
-              <button type="button" class="btn icon-only" id="workitems-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
+              <button type="button" class="btn icon-only" id="ado-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
             </div>
           </div>
           <div class="side-body" id="workitems-host"></div>
-        </section>
-
-        <section class="side-panel" id="panel-wiki" role="tabpanel" aria-labelledby="side-tab-wiki" hidden>
-          <div class="side-head">
-            <h2>Wiki</h2>
-            <div class="side-actions">
-              <button type="button" class="btn icon-only" id="wiki-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
-            </div>
-          </div>
-          <div class="side-body" id="wiki-host"></div>
+          <div class="side-body" id="wiki-host" hidden></div>
         </section>
 
         <section class="side-panel" id="panel-git" role="tabpanel" aria-labelledby="side-tab-git" hidden>

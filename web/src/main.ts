@@ -1710,10 +1710,17 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "wiki" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "wiki", "git"];
+type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "ado" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "ado", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
-let sidePanel: SidePanel = SIDE_PANELS.find((p) => p === storage.load("side-panel")) ?? "outline";
+/** 舊版的「工作項目」「Wiki」是兩個面板，現在合成「Azure DevOps」一個面板（裡面再切換）。 */
+const LEGACY_ADO_PANELS = ["workitems", "wiki"];
+const savedSidePanel = storage.load("side-panel");
+let sidePanel: SidePanel =
+  SIDE_PANELS.find((p) => p === (LEGACY_ADO_PANELS.includes(savedSidePanel ?? "") ? "ado" : savedSidePanel)) ?? "outline";
+/** Azure DevOps 面板目前顯示工作項目還是 Wiki。 */
+type AdoTab = "workitems" | "wiki";
+let adoTab: AdoTab = (storage.load("ado-panel-tab") ?? savedSidePanel) === "wiki" ? "wiki" : "workitems";
 /** 目前開啟的資料夾（工作區）。 */
 let workspaceRoot: Folder | null = null;
 /** Ctrl+P 用的工作區檔案清單；資料夾內容變動時清掉重抓。 */
@@ -1821,7 +1828,7 @@ const ado = desktop
         renderAdoTab();
         workItemsPanel?.reset();
         wikiPanel?.reset();
-        if (sidePanel === "workitems" || sidePanel === "wiki") showPanel(sidePanel, false);
+        if (sidePanel === "ado") showPanel("ado", false);
         settingsDialog.refresh();
         void gitPanel?.refresh();
       },
@@ -2329,16 +2336,36 @@ async function renderIssuesTab(): Promise<void> {
 }
 $("#issues-refresh").addEventListener("click", () => void issuesPanel?.refresh());
 
-/** 連線到 Azure DevOps 後才顯示「工作項目」與「Wiki」圖示。 */
+/** 連線到 Azure DevOps 後才顯示「Azure DevOps」圖示（裡面切換工作項目與 Wiki）。 */
 function renderAdoTab(): void {
-  for (const panel of ["workitems", "wiki"] as const) {
-    const tab = $(`#side-tab-${panel}`);
-    tab.hidden = !ado?.account;
-    if (tab.hidden && sidePanel === panel) showPanel("files", false);
-  }
+  const tab = $("#side-tab-ado");
+  tab.hidden = !ado?.account;
+  if (tab.hidden && sidePanel === "ado") showPanel("files", false);
 }
-$("#workitems-refresh").addEventListener("click", () => void workItemsPanel?.refresh());
-$("#wiki-refresh").addEventListener("click", () => void wikiPanel?.refresh());
+
+/** 切換 Azure DevOps 面板裡的工作項目／Wiki（面板開著時才讀取內容）。 */
+function setAdoTab(tab: AdoTab): void {
+  adoTab = tab;
+  storage.save("ado-panel-tab", tab);
+  $("#workitems-host").hidden = tab !== "workitems";
+  $("#wiki-host").hidden = tab !== "wiki";
+  for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")) {
+    b.setAttribute("aria-checked", String(b.dataset.ado === tab));
+  }
+  if (sidePanel === "ado") (tab === "wiki" ? wikiPanel : workItemsPanel)?.shown();
+}
+
+/** 打開 Azure DevOps 面板的工作項目或 Wiki。 */
+function showAdo(tab: AdoTab): void {
+  setAdoTab(tab);
+  showPanel("ado");
+}
+
+for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")) {
+  b.addEventListener("click", () => setAdoTab(b.dataset.ado === "wiki" ? "wiki" : "workitems"));
+}
+setAdoTab(adoTab);
+$("#ado-refresh").addEventListener("click", () => void (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.refresh());
 
 // 登入過期、權杖失效的錯誤通知：直接附上重新登入的按鈕。
 setErrorAction((message) => {
@@ -2703,8 +2730,7 @@ function placeOutline(): void {
 
 function showPanel(panel: SidePanel, reveal = true): void {
   if (panel === "git" && $("#side-tab-git").hidden) panel = "files";
-  if (panel === "workitems" && $("#side-tab-workitems").hidden) panel = "files";
-  if (panel === "wiki" && $("#side-tab-wiki").hidden) panel = "files";
+  if (panel === "ado" && $("#side-tab-ado").hidden) panel = "files";
   if (panel === "issues" && $("#side-tab-issues").hidden) panel = "files";
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
   if (panel === "outline" && outlinePlacedRight()) {
@@ -2723,8 +2749,7 @@ function showPanel(panel: SidePanel, reveal = true): void {
   }
   if (reveal && !outlineShown) setOutline(true);
   if (panel === "outline") updateActiveHeading();
-  if (panel === "workitems") workItemsPanel?.shown();
-  if (panel === "wiki") wikiPanel?.shown();
+  if (panel === "ado") (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.shown();
   if (panel === "issues") issuesPanel?.shown();
   if (panel === "search" && searchStale) {
     searchStale = false;
@@ -4858,8 +4883,8 @@ commands.register(
       ["github-pages", t("GitHub：發佈成網站（GitHub Pages）…"), "globe", () => void publishPages(), () => !!github?.account && !!issuesRepo],
       ["github-gist", t("GitHub：分享成 Gist…"), "share-2", () => void shareGist(), () => !!github?.account],
       ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "briefcase-business", () => ado?.openRepo(), () => !!ado],
-      ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showPanel("workitems"), () => !!ado?.account],
-      ["ado-wiki", t("Azure DevOps／TFS：Wiki"), "book-open-text", () => showPanel("wiki"), () => !!ado?.account],
+      ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showAdo("workitems"), () => !!ado?.account],
+      ["ado-wiki", t("Azure DevOps／TFS：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!ado?.account],
       ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open(t("Azure DevOps／TFS")), () => !!ado],
     ] as const
   ).map(
@@ -5142,8 +5167,7 @@ const PANEL_LABELS: Record<SidePanel, () => string> = {
   tasks: () => t("待辦總覽"),
   tags: () => t("標籤"),
   issues: () => t("Issues（GitHub）"),
-  workitems: () => t("工作項目（Azure DevOps）"),
-  wiki: () => t("Wiki（Azure DevOps）"),
+  ado: () => t("Azure DevOps（工作項目、Wiki）"),
   git: () => t("原始碼控制（Git）"),
 };
 const PANEL_ICONS: Record<SidePanel, string> = {
@@ -5153,14 +5177,15 @@ const PANEL_ICONS: Record<SidePanel, string> = {
   tasks: "list-checks",
   tags: "tags",
   issues: "circle-dot",
-  workitems: "square-kanban",
-  wiki: "book-open-text",
+  ado: "square-kanban",
   git: "git-branch",
 };
 
 /** 依設定排列面板圖示（沒列到的照預設順序排在後面）、隱藏使用者不要的圖示。 */
 function panelOrder(): SidePanel[] {
-  const saved = settings.value.activityOrder.filter((p): p is SidePanel => (SIDE_PANELS as string[]).includes(p));
+  // 舊版存的「工作項目」「Wiki」換成合併後的「Azure DevOps」。
+  const ids = settings.value.activityOrder.map((p) => (LEGACY_ADO_PANELS.includes(p) ? "ado" : p));
+  const saved = [...new Set(ids)].filter((p): p is SidePanel => (SIDE_PANELS as string[]).includes(p));
   return [...saved, ...SIDE_PANELS.filter((p) => !saved.includes(p))];
 }
 
@@ -5168,7 +5193,9 @@ function applyActivityLayout(): void {
   const bar = $(".activity-tabs");
   for (const p of panelOrder()) bar.append($(`#side-tab-${p}`));
   const hidden = settings.value.activityHidden;
-  for (const tab of sideTabs) tab.classList.toggle("user-hidden", hidden.includes(tab.dataset.panel!));
+  // 舊版兩個都隱藏了，合併後的「Azure DevOps」也隱藏。
+  const isHidden = (p: string) => hidden.includes(p) || (p === "ado" && LEGACY_ADO_PANELS.every((x) => hidden.includes(x)));
+  for (const tab of sideTabs) tab.classList.toggle("user-hidden", isHidden(tab.dataset.panel!));
   renderActivityCommands();
 }
 
@@ -6362,7 +6389,7 @@ const settingsDialog = new SettingsDialog(
         connect: (url, pat) => ado!.connect(url, pat),
         disconnect: () => void ado!.disconnect(),
         openRepo: () => void ado!.openRepo(),
-        workItems: () => showPanel("workitems"),
+        workItems: () => showAdo("workitems"),
       }
     : null,
   {
