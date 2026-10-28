@@ -29,6 +29,7 @@ mod images;
 mod io;
 mod locales;
 mod navigation;
+mod offline;
 mod pdf;
 mod projects;
 mod secrets;
@@ -320,6 +321,9 @@ fn main() {
             ado::ado_wikis,
             ado::ado_wiki_pages,
             ado::ado_wiki_page,
+            offline::offline_put,
+            offline::offline_get,
+            offline::offline_release,
             ado::ado_wiki_search,
             ado::ado_work_items_by_ids,
             ado::ado_ping,

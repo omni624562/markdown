@@ -1849,6 +1849,8 @@ button.git-info:disabled { cursor: default; }
 .load-retry { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; vertical-align: middle; }
 .load-retry .icon { width: 13px; height: 13px; }
 .load-hint { display: block; margin-top: 4px; color: var(--subtle); font-size: 11.5px; }
+/* 「保留離線」按下時。 */
+.issue-actions .btn.active { background: var(--accent-soft); color: var(--accent); }
 .wiki-tree { margin: 0; padding: 0; list-style: none; }
 .wiki-row { display: flex; align-items: center; padding-left: calc(var(--depth, 0) * 14px); }
 .wiki-toggle { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 24px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; }

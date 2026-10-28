@@ -859,6 +859,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
         path,
         version: w.code ? w.version : null,
       }),
+    /** 離線副本：存一份（`kept` 時不會自動刪掉）、讀回來、取消保留。 */
+    offlinePut: (key: string, value: string, kept: boolean) => core.invoke<void>("offline_put", { key, value, kept }),
+    offlineGet: (key: string) => core.invoke<string | null>("offline_get", { key }),
+    offlineRelease: (key: string) => core.invoke<void>("offline_release", { key }),
     /** 搜尋 Wiki 內容（`path` 是 Wiki 儲存庫裡的檔案路徑）；伺服器沒有搜尋功能時 `available` 是 false。 */
     adoWikiSearch: (w: AdoWiki, text: string) =>
       core.invoke<{ available: boolean; results: { path: string; snippet: string }[] }>("ado_wiki_search", {
