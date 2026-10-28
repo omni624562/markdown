@@ -1400,6 +1400,9 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .wiki-mine-before { background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 50%, transparent); }
 .wiki-mine-after { background: color-mix(in srgb, var(--success) 10%, transparent); }
 .wiki-mine-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.choice.wiki-revision { width: min(720px, calc(100vw - 32px)); }
+.wiki-revision > p { color: var(--muted); font-size: 13px; }
+.wiki-revision .wiki-mine-list { max-height: min(55vh, 520px); margin: 8px 0 14px; padding: 0 4px 0 28px; }
 @media (max-width: 560px) {
   .wiki-mine-tools .btn { min-width: 32px; padding: 0 8px; }
   .wiki-mine-tools .btn span { display: none; }

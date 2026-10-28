@@ -24,6 +24,8 @@ pub static EN: &[(&str, &str)] = &[
     ("請先到設定的 Azure DevOps／TFS 頁連線", "Connect on the Azure DevOps/TFS page in Settings first."),
     ("讀取 Wiki", "Loading wikis"),
     ("讀取 Wiki 頁面", "Loading the wiki page"),
+    ("讀取 Wiki 頁面的修改記錄", "Loading the wiki page history"),
+    ("{what}失敗：伺服器沒有提供頁面的檔案位置", "{what} failed: The server didn't provide the page's file location."),
     ("搜尋 Wiki", "Searching the wiki"),
     ("個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖", "The personal access token is invalid or expired. Update it on the Azure DevOps/TFS page in Settings."),
     ("連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）", "Couldn't reach the Azure DevOps server. Check your network or VPN connection ({e})."),

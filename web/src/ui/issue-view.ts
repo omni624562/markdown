@@ -42,6 +42,8 @@ export interface IssueSource {
   toolbar?: HTMLElement;
   /** 「編輯」：在分頁裡編輯、存回伺服器（不能編輯的不給）。 */
   edit?(): void;
+  /** 「修改記錄」（Wiki 頁面）。 */
+  history?(): void;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -146,6 +148,7 @@ export class IssueView {
   /** 「保留離線」。 */
   #keepBtn: HTMLButtonElement;
   #editBtn: HTMLButtonElement;
+  #historyBtn: HTMLButtonElement;
   #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
   #current = 0;
@@ -189,6 +192,13 @@ export class IssueView {
     this.#editBtn.title = t("在分頁裡編輯，按 Ctrl+S 存回伺服器");
     this.#editBtn.hidden = true;
     this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
+    this.#historyBtn = document.createElement("button");
+    this.#historyBtn.type = "button";
+    this.#historyBtn.className = "btn btn-small";
+    this.#historyBtn.append(icon("history"), t("修改記錄"));
+    this.#historyBtn.title = t("誰、什麼時候改了這一頁，改了什麼");
+    this.#historyBtn.hidden = true;
+    this.#historyBtn.addEventListener("click", () => this.#source?.history?.());
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "btn btn-small";
@@ -212,6 +222,7 @@ export class IssueView {
     actions.append(
       insert,
       this.#editBtn,
+      this.#historyBtn,
       copy,
       this.#keepBtn,
       ...(this.#sideBtn ? [this.#sideBtn] : []),
@@ -395,6 +406,7 @@ export class IssueView {
     this.#toolbar.replaceChildren(...(source.toolbar ? [source.toolbar] : []));
     this.#toolbar.hidden = !source.toolbar;
     this.#editBtn.hidden = !source.edit;
+    this.#historyBtn.hidden = !source.history;
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();
