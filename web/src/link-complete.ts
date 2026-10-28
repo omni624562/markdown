@@ -33,6 +33,15 @@ export interface LinkSources {
   fileHeadings(path: string): Promise<HeadingRef[]>;
   /** `[[文件]]` 對應的檔案路徑。 */
   wikiPath?(target: string): Promise<string | null>;
+  /** `[[` 時另外列出的頁面（例如 Azure DevOps Wiki）：選了就把 `[[…` 換成 `link`。 */
+  remotePages?(): Promise<RemotePage[]>;
+}
+
+export interface RemotePage {
+  label: string;
+  detail: string;
+  /** 插入的 Markdown 連結。 */
+  link: string;
 }
 
 /** 正在輸入的 `[[文件`：回傳已經打的文字（還沒打 `|` 或 `]]`）。 */
@@ -57,8 +66,11 @@ async function completeWiki(ctx: CompletionContext, src: LinkSources, typed: str
       validFor: /^[^\]|#\n]*$/,
     };
   }
-  const files = (await src.files().catch(() => [])).filter((p) => MD.test(p) && p !== src.docPath());
-  if (ctx.aborted || !files.length) return null;
+  const [files, remote] = await Promise.all([
+    src.files().then((list) => list.filter((p) => MD.test(p) && p !== src.docPath())).catch(() => [] as string[]),
+    src.remotePages ? src.remotePages().catch(() => [] as RemotePage[]) : Promise.resolve([] as RemotePage[]),
+  ]);
+  if (ctx.aborted || (!files.length && !remote.length)) return null;
   const count = new Map<string, number>();
   for (const p of files) count.set(fileName(p).replace(MD, ""), (count.get(fileName(p).replace(MD, "")) ?? 0) + 1);
   const doc = src.docPath();
@@ -75,6 +87,20 @@ async function completeWiki(ctx: CompletionContext, src: LinkSources, typed: str
       apply: closing ? label : `${label}]]`,
     };
   });
+  // 遠端的頁面：選了就把整個 `[[…` 換成一般的 Markdown 連結。
+  const start = ctx.pos - typed.length - 2;
+  for (const page of remote) {
+    options.push({
+      label: page.label,
+      detail: page.detail,
+      type: "class",
+      boost: -1,
+      apply(view, _c, _from, to) {
+        const end = view.state.sliceDoc(to, to + 2) === "]]" ? to + 2 : to;
+        view.dispatch({ changes: { from: start, to: end, insert: page.link }, selection: { anchor: start + page.link.length }, userEvent: "input.complete" });
+      },
+    });
+  }
   return { from: ctx.pos - typed.length, options, validFor: /^[^[\]|#\n]*$/ };
 }
 

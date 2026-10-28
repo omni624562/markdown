@@ -1170,44 +1170,156 @@ pub async fn ado_work_items(
         if ids.is_empty() {
             return Ok(vec![]);
         }
-        let list: Vec<String> = ids.iter().map(u64::to_string).collect();
-        let fetch = |fields: &str| {
-            get(
-                &base,
-                &pat,
-                &format!(
-                    "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
-                    list.join(",")
-                ),
-                &tr!("讀取工作項目"),
-            )
+        fetch_work_items(&base, &pat, &ids)
+    })
+    .await
+}
+
+/// 讀取工作項目的摘要，保持 `ids` 的順序（查詢的排序）；讀不到的略過。
+fn fetch_work_items(base: &str, pat: &str, ids: &[u64]) -> Result<Vec<WorkItem>, String> {
+    let list: Vec<String> = ids.iter().map(u64::to_string).collect();
+    let fetch = |fields: &str| {
+        get(
+            base,
+            pat,
+            &format!(
+                "/_apis/wit/workitems?ids={}&fields={fields}&errorPolicy=omit",
+                list.join(",")
+            ),
+            &tr!("讀取工作項目"),
+        )
+    };
+    // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
+    let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
+        Ok(res) => res,
+        Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+        Err(_) => fetch(FIELDS)?,
+    };
+    let mut items: Vec<WorkItem> = values(&res)
+        .iter()
+        .filter_map(|v| item_of(base, v))
+        .collect();
+    // 保持查詢的排序（最近更新的在前面）。
+    items.sort_by_key(|w| ids.iter().position(|id| *id == w.id).unwrap_or(usize::MAX));
+    Ok(items)
+}
+
+/// TFS 上存的查詢（我的查詢、共用查詢）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedQuery {
+    id: String,
+    project: String,
+    name: String,
+    /// 所在的資料夾（例如 `Shared Queries/團隊`）。
+    folder: String,
+}
+
+/// 查詢樹（`wit/queries?$depth=2`）攤平成查詢清單（資料夾不列）。
+fn flatten_queries(project: &str, nodes: &[Value], out: &mut Vec<SavedQuery>) {
+    for node in nodes {
+        if node
+            .get("isFolder")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                flatten_queries(project, children, out);
+            }
+            continue;
+        }
+        let (Some(id), Some(name)) = (str_of(node, "id"), str_of(node, "name")) else {
+            continue;
         };
-        // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
-        let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
-            Ok(res) => res,
-            Err(e) if e.contains("401") || e.contains("403") => return Err(e),
-            Err(_) => fetch(FIELDS)?,
-        };
-        let items: Vec<WorkItem> = values(&res)
+        let path = str_of(node, "path").unwrap_or(name);
+        let folder = path.rsplit_once('/').map_or("", |(f, _)| f).to_string();
+        out.push(SavedQuery {
+            id: id.to_string(),
+            project: project.to_string(),
+            name: name.to_string(),
+            folder,
+        });
+    }
+}
+
+/// 所有專案（最多 20 個）存的查詢；讀不到的專案略過。
+#[tauri::command]
+pub async fn ado_queries(app: AppHandle) -> Result<Vec<SavedQuery>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = get(&a.url, &pat, "/_apis/projects?$top=1000", &tr!("讀取專案"))?;
+        let mut projects: Vec<String> = values(&res)
             .iter()
-            .filter_map(|v| item_of(&base, v))
+            .filter_map(|p| str_of(p, "name").map(str::to_string))
             .collect();
-        // 保持查詢的排序（最近更新的在前面）。
-        Ok(ids
-            .iter()
-            .filter_map(|id| items.iter().find(|w| w.id == *id))
-            .map(|w| WorkItem {
-                id: w.id,
-                title: w.title.clone(),
-                state: w.state.clone(),
-                kind: w.kind.clone(),
-                project: w.project.clone(),
-                assigned_to: w.assigned_to.clone(),
-                changed: w.changed.clone(),
-                priority: w.priority,
-                web_url: w.web_url.clone(),
-            })
-            .collect())
+        projects.sort_by_key(|p| p.to_lowercase());
+        let mut out = vec![];
+        for project in projects.iter().take(20) {
+            let path = format!(
+                "/{}/_apis/wit/queries?$depth=2&$expand=minimal",
+                encode_segment(project)
+            );
+            if let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取已儲存的查詢")) {
+                flatten_queries(project, values(&res), &mut out);
+            }
+        }
+        Ok(out)
+    })
+    .await
+}
+
+/// 查詢結果裡的工作項目編號（一般查詢是 `workItems`，樹狀、連結查詢是 `workItemRelations`），不重複、照順序。
+fn query_ids(v: &Value) -> Vec<u64> {
+    let mut ids: Vec<u64> = vec![];
+    let mut push = |id: Option<u64>| {
+        if let Some(id) = id {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    };
+    for w in v
+        .get("workItems")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        push(w.get("id").and_then(Value::as_u64));
+    }
+    for r in v
+        .get("workItemRelations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        push(r.pointer("/source/id").and_then(Value::as_u64));
+        push(r.pointer("/target/id").and_then(Value::as_u64));
+    }
+    ids.truncate(200);
+    ids
+}
+
+/// 執行存的查詢，回傳工作項目（最多 200 個，照查詢的排序）。
+#[tauri::command]
+pub async fn ado_query_run(
+    app: AppHandle,
+    project: String,
+    id: String,
+) -> Result<Vec<WorkItem>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let path = format!(
+            "/{}/_apis/wit/wiql/{}?$top=200",
+            encode_segment(&project),
+            encode_segment(&id)
+        );
+        let res = get(&a.url, &pat, &path, &tr!("執行查詢"))?;
+        let ids = query_ids(&res);
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        // 一次最多讀 200 個（伺服器的上限）。
+        fetch_work_items(&a.url, &pat, &ids)
     })
     .await
 }
@@ -1630,6 +1742,105 @@ pub async fn ado_work_item_update(
     .await
 }
 
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NewWorkItem {
+    pub project: String,
+    pub kind: String,
+    pub title: String,
+    /// 內容（HTML）；Bug 放在「重現步驟」，其他類型放在「描述」。
+    pub description: Option<String>,
+    pub assign_to_me: bool,
+    /// 上層工作項目的編號。
+    pub parent: Option<u64>,
+}
+
+/// 建立工作項目要送出的 JSON Patch。`me` 是登入的帳號，`base` 是集合的網址（上層連結用）。
+fn create_ops(item: &NewWorkItem, me: &str, base: &str) -> Vec<Value> {
+    let mut ops = vec![
+        serde_json::json!({ "op": "add", "path": "/fields/System.Title", "value": item.title.trim() }),
+    ];
+    if let Some(html) = item.description.as_deref().filter(|d| !d.trim().is_empty()) {
+        let field = if item.kind.eq_ignore_ascii_case("Bug") {
+            "Microsoft.VSTS.TCM.ReproSteps"
+        } else {
+            "System.Description"
+        };
+        ops.push(
+            serde_json::json!({ "op": "add", "path": format!("/fields/{field}"), "value": html }),
+        );
+    }
+    if item.assign_to_me {
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": me }),
+        );
+    }
+    if let Some(parent) = item.parent {
+        ops.push(serde_json::json!({
+            "op": "add",
+            "path": "/relations/-",
+            "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": format!("{}/_apis/wit/workItems/{parent}", base.trim_end_matches('/')),
+            }
+        }));
+    }
+    ops
+}
+
+/// 建立工作項目，回傳新的工作項目。
+#[tauri::command]
+pub async fn ado_work_item_create(app: AppHandle, item: NewWorkItem) -> Result<WorkItem, String> {
+    let (a, pat) = require(&app)?;
+    if item.title.trim().is_empty() {
+        return Err(tr!("請輸入標題"));
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let me = a.account.clone().unwrap_or_else(|| a.name.clone());
+        let ops = create_ops(&item, &me, &a.url);
+        let res = crate::update::agent()
+            .post(&format!(
+                "{}/{}/_apis/wit/workitems/${}?api-version={API_VERSION}",
+                a.url,
+                encode_segment(&item.project),
+                encode_segment(&item.kind)
+            ))
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json-patch+json")
+            .send(&Value::Array(ops).to_string());
+        let mut r = res.map_err(|e| {
+            tr!(
+                "建立工作項目失敗：連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）",
+                e = e
+            )
+        })?;
+        let code = r.status().as_u16();
+        let text = r.body_mut().read_to_string().unwrap_or_default();
+        let v = serde_json::from_str::<Value>(&text).ok();
+        if code < 400 {
+            return v
+                .as_ref()
+                .and_then(|v| item_of(&a.url, v))
+                .ok_or_else(|| tr!("建立工作項目失敗：伺服器的回應不是預期的格式"));
+        }
+        let message = v
+            .as_ref()
+            .and_then(|v| str_of(v, "message").map(str::to_string))
+            .unwrap_or_default();
+        Err(match code {
+            401 => tr!("建立工作項目失敗：個人存取權杖無效或已過期，或權杖沒有「工作項目：讀取與寫入」的權限"),
+            403 => tr!("建立工作項目失敗：沒有權限在這個專案建立工作項目"),
+            _ if message.is_empty() => tr!("建立工作項目失敗：伺服器回應 {code}", code = code),
+            _ => tr!("建立工作項目失敗：{message}", message = message),
+        })
+    })
+    .await
+}
+
 /// 工作項目內文裡的圖片：附件要用權杖才能讀，網頁元件自己載不到。
 /// 只讀取連線中那台伺服器上的網址，不跟隨轉址（權杖不會被送到別的地方），回傳 data: 網址。
 #[tauri::command]
@@ -1886,6 +2097,40 @@ pub async fn ado_wiki_save(
     .await
 }
 
+/// 建立新的 Wiki 頁面（只限專案 Wiki）：`path` 是完整路徑（例如 `/產品/新頁面`），上層頁面要已經存在。
+/// 已經有同名的頁面時不覆蓋。回傳新頁面的版本（之後存回時用）。
+#[tauri::command]
+pub async fn ado_wiki_create(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .put(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(&serde_json::json!({ "content": content }).to_string());
+        match res {
+            // 沒帶 If-Match 時，已經有這一頁會被拒絕（不會覆蓋）。
+            Err(ureq::Error::StatusCode(409 | 412)) => Err(tr!("已經有同名的頁面了，請換一個名稱")),
+            res => {
+                let (_, etag) = read_with_etag(res, &tr!("建立 Wiki 頁面"))?;
+                Ok(match etag {
+                    Some(etag) => Some(etag),
+                    None => read_wiki_page(&a.url, &pat, &project_id, &wiki_id, &path, None)?.etag,
+                })
+            }
+        }
+    })
+    .await
+}
+
 /// 一個 Wiki 頁面的內容（Markdown）。
 #[tauri::command]
 pub async fn ado_wiki_page(
@@ -1980,6 +2225,99 @@ pub async fn ado_wiki_page_info(
             None => (None, None),
         };
         Ok(WikiPageInfo { etag, author, date })
+    })
+    .await
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiRevision {
+    id: String,
+    author: String,
+    date: String,
+    comment: String,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistory {
+    /// 頁面在 Wiki 儲存庫裡的檔案路徑（讀某一版的內容時用）。
+    git_path: String,
+    /// 新的在前。
+    revisions: Vec<WikiRevision>,
+}
+
+/// 提交清單（`git/commits`）轉成修改記錄。
+fn revisions_of(v: &Value) -> Vec<WikiRevision> {
+    v.get("value")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let author = c.get("author");
+            Some(WikiRevision {
+                id: str_of(c, "commitId")?.to_string(),
+                author: author
+                    .and_then(|a| str_of(a, "name"))
+                    .unwrap_or_default()
+                    .to_string(),
+                date: author
+                    .and_then(|a| str_of(a, "date"))
+                    .unwrap_or_default()
+                    .to_string(),
+                comment: str_of(c, "comment").unwrap_or_default().trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Wiki 頁面的修改記錄（最近 100 次）：誰、什麼時候、說明。
+#[tauri::command]
+pub async fn ado_wiki_history(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    repository_id: Option<String>,
+    path: String,
+) -> Result<WikiHistory, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("讀取 Wiki 頁面的修改記錄");
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let page = read(
+            crate::update::agent()
+                .get(&format!("{}{api}&api-version={API_VERSION}", a.url))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        let git_path = str_of(&page, "gitItemPath")
+            .ok_or_else(|| tr!("{what}失敗：伺服器沒有提供頁面的檔案位置", what = what))?
+            .to_string();
+        let repo = repository_id
+            .as_deref()
+            .filter(|r| !r.is_empty())
+            .unwrap_or(&wiki_id);
+        let url = format!(
+            "{}/{}/_apis/git/repositories/{}/commits?searchCriteria.itemPath={}&searchCriteria.$top=100&api-version={API_VERSION}",
+            a.url,
+            encode_segment(&project_id),
+            encode_segment(repo),
+            encode_segment(&git_path)
+        );
+        let v = read(
+            crate::update::agent()
+                .get(&url)
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        Ok(WikiHistory {
+            git_path,
+            revisions: revisions_of(&v),
+        })
     })
     .await
 }
@@ -2546,6 +2884,77 @@ mod tests {
     }
 
     #[test]
+    fn flattens_saved_queries() {
+        let v = serde_json::json!({ "value": [
+            { "id": "f1", "name": "My Queries", "path": "My Queries", "isFolder": true, "children": [
+                { "id": "q1", "name": "我的 Bug", "path": "My Queries/我的 Bug" }
+            ] },
+            { "id": "f2", "name": "Shared Queries", "path": "Shared Queries", "isFolder": true, "children": [
+                { "id": "f3", "name": "團隊", "path": "Shared Queries/團隊", "isFolder": true, "children": [
+                    { "id": "q2", "name": "本週", "path": "Shared Queries/團隊/本週" }
+                ] }
+            ] }
+        ] });
+        let mut out = vec![];
+        flatten_queries("P", values(&v), &mut out);
+        assert_eq!(
+            out,
+            vec![
+                SavedQuery {
+                    id: "q1".into(),
+                    project: "P".into(),
+                    name: "我的 Bug".into(),
+                    folder: "My Queries".into()
+                },
+                SavedQuery {
+                    id: "q2".into(),
+                    project: "P".into(),
+                    name: "本週".into(),
+                    folder: "Shared Queries/團隊".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_wiki_revisions() {
+        let v = serde_json::json!({ "value": [
+            { "commitId": "b2", "comment": " 更新 安裝.md \n", "author": { "name": "王小明", "date": "2026-10-28T02:42:00Z" } },
+            { "commitId": "a1", "author": { "name": "陳大文" } },
+            { "comment": "沒有 id 的略過" }
+        ] });
+        assert_eq!(
+            revisions_of(&v),
+            vec![
+                WikiRevision {
+                    id: "b2".into(),
+                    author: "王小明".into(),
+                    date: "2026-10-28T02:42:00Z".into(),
+                    comment: "更新 安裝.md".into()
+                },
+                WikiRevision {
+                    id: "a1".into(),
+                    author: "陳大文".into(),
+                    date: String::new(),
+                    comment: String::new()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_query_result_ids() {
+        let flat = serde_json::json!({ "workItems": [{ "id": 3 }, { "id": 1 }, { "id": 3 }] });
+        assert_eq!(query_ids(&flat), vec![3, 1]);
+        let tree = serde_json::json!({ "workItemRelations": [
+            { "target": { "id": 10 } },
+            { "source": { "id": 10 }, "target": { "id": 11 } }
+        ] });
+        assert_eq!(query_ids(&tree), vec![10, 11]);
+        assert!(query_ids(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
     fn names_wiki_attachments_safely() {
         assert_eq!(attachment_name("截圖 1", "png", 42), "1-42.png");
         assert_eq!(attachment_name("", "jpg", 7), "image-7.jpg");
@@ -2570,6 +2979,35 @@ mod tests {
             (None, None)
         );
         assert_eq!(latest_author(&serde_json::json!({})), (None, None));
+    }
+
+    #[test]
+    fn builds_create_ops() {
+        let item = NewWorkItem {
+            project: "P".into(),
+            kind: "Bug".into(),
+            title: " 登入失敗 ".into(),
+            description: Some("<p>步驟</p>".into()),
+            assign_to_me: true,
+            parent: Some(42),
+        };
+        let ops = create_ops(&item, "me@corp", "https://tfs/DC/");
+        assert_eq!(ops[0]["value"], "登入失敗");
+        assert_eq!(ops[1]["path"], "/fields/Microsoft.VSTS.TCM.ReproSteps");
+        assert_eq!(ops[2]["value"], "me@corp");
+        assert_eq!(
+            ops[3]["value"]["url"],
+            "https://tfs/DC/_apis/wit/workItems/42"
+        );
+        let task = NewWorkItem {
+            kind: "Task".into(),
+            title: "x".into(),
+            description: Some("<p>a</p>".into()),
+            ..Default::default()
+        };
+        let ops = create_ops(&task, "me", "https://tfs/DC");
+        assert_eq!(ops.len(), 2);
+        assert_eq!(ops[1]["path"], "/fields/System.Description");
     }
 
     #[test]

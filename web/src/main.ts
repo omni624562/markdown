@@ -88,7 +88,8 @@ import {
 } from "./settings.ts";
 import { pasteAsMarkdown } from "./html-paste.ts";
 import { hiddenByCollapse, moveSection, sectionRange, subtreeEnd, swapSection } from "./sections.ts";
-import { type HeadingRef, encodeLinkPath, linkCompletion } from "./link-complete.ts";
+import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { type HeadingRef, type RemotePage, encodeLinkPath, linkCompletion } from "./link-complete.ts";
 import {
   type DocMeta,
   dropDraft,
@@ -122,7 +123,7 @@ import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts"
 import { IssueView, type IssueOffline, type IssueSource } from "./ui/issue-view.ts";
 import { addImage, keep, parseKept, type KeptPage, type OfflineRef } from "./offline.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
-import { flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { childPagePath, flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, wikiMarkdown, wikiPageLink, wikiPageUrl, wikiTitleProblem } from "./wiki-text.ts";
 import { markOf, markSeen, remember, type SeenMap, trimSeen } from "./workitem-seen.ts";
 import { githubIssueMarkdown, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { fenceLanguage, isMarkdownName, isReadableFileName, parseRepoFileLink, type RepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
@@ -148,7 +149,8 @@ import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
 import { sizeLabel, timeAgo, versionTitle } from "./history-label.ts";
 import { myChanges, recentEditor, type WikiPageInfo } from "./wiki-coedit.ts";
-import type { AdoWiki, AdoWikiPage, AdoWorkItem, AdoWorkItemDetail, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
+import { draftFromSelection } from "./workitem-create.ts";
+import type { AdoSavedQuery, AdoWiki, AdoWikiPage, AdoWorkItem, AdoWorkItemDetail, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
 import { findWikiPage, parseRemoteLink, type RemoteLink, urlAt } from "./remote-links.ts";
 import type { GitHistory } from "./ui/history-view.ts";
 import { clampSidebarWidth, setupSidebarResize } from "./ui/sidebar-resize.ts";
@@ -643,9 +645,11 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
           fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
           return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
         },
+        remotePages: () => wikiLinkPages(1000),
       },
       [
         (ctx) => (kind === "json" ? null : dateCompletion(ctx)),
+        (ctx) => (kind === "markdown" ? workItemIdCompletion(ctx) : null),
         (ctx) => (kind === "markdown" ? slashSource(ctx) : null),
       ],
     ),
@@ -2663,6 +2667,42 @@ async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
   toast(last ? `${hint} ${last}` : hint, { duration: 8000 });
 }
 
+/** 新增 Wiki 頁面（`parent` 是上層頁面，null 是最上層）：問標題、建立，然後直接開始編輯。 */
+async function createWikiPage(wiki: AdoWiki, parent: string | null): Promise<void> {
+  if (wiki.code) {
+    toast(t("從程式碼儲存庫發佈的 Wiki 要在儲存庫裡新增 Markdown 檔（用 Git 提交）。"));
+    return;
+  }
+  const where = parent ? t("新頁面會放在「{name}」底下。", { name: pageName(parent) }) : t("新頁面會放在 Wiki 的最上層。");
+  let title = "";
+  for (;;) {
+    const answer = await askText(parent ? t("新增子頁面") : t("新增頁面"), where, title, t("建立"));
+    if (answer === null) return;
+    title = answer.trim();
+    const problem = wikiTitleProblem(title);
+    const existing = new Set(flattenPages(wikiPanel?.pages ?? []).map((p) => p.toLowerCase()));
+    const message =
+      problem === "empty"
+        ? t("請輸入頁面標題。")
+        : problem === "chars"
+          ? t("頁面標題不能有 /、\\、#。")
+          : problem === "dot"
+            ? t("頁面標題不能以「.」開頭或結尾。")
+            : problem === "long"
+              ? t("頁面標題太長了。")
+              : existing.has(childPagePath(parent, title).toLowerCase())
+                ? t("已經有同名的頁面了，請換一個名稱")
+                : null;
+    if (!message) break;
+    toast(message, { tone: "error" });
+  }
+  const path = childPagePath(parent, title);
+  await desktop!.adoWikiCreate(wiki, path, `# ${title}\n\n`);
+  toast(t("已建立 Wiki 頁面「{name}」", { name: title }), { tone: "success" });
+  void wikiPanel?.refresh().then(() => wikiPanel?.select(path));
+  await editWikiPage(wiki, path);
+}
+
 /** 把分頁的內容存回 Wiki 頁面；伺服器上的版本被別人改過時回傳那個版本（交給衝突處理）。 */
 async function saveWikiPage(text: string, force: boolean): Promise<{ name: string; diskText: string } | void> {
   const doc = active;
@@ -2682,6 +2722,142 @@ async function saveWikiPage(text: string, force: boolean): Promise<{ name: strin
   renderTabs();
   renderWikiBar();
   toast(t("已存回 Wiki 頁面「{name}」", { name: pageName(target.path) }), { tone: "success" });
+}
+
+// ---- Wiki 頁面的修改記錄：誰、什麼時候改了什麼，和目前的內容比較 ----------------------
+
+interface WikiRevisionItem {
+  id: string;
+  author: string;
+  date: string;
+  comment: string;
+  /** 前一版（比這一版舊的那一次）；第一版是 null。 */
+  previous: string | null;
+}
+
+type WikiHistoryTarget = { projectId: string; wikiId: string; repositoryId?: string; path: string };
+
+/** 修改記錄要看的頁面（Wiki 頁面檢視或 Wiki 編輯分頁）。 */
+let wikiHistoryOf: (WikiHistoryTarget & { wiki: AdoWiki | null }) | null = null;
+let wikiHistoryLoad: Promise<{ gitPath: string; revisions: WikiRevisionItem[] }> | null = null;
+
+const wikiHistoryPicker = new Picker<WikiRevisionItem>({
+  label: t("修改記錄"),
+  placeholder: t("選擇一次修改，看那次改了什麼"),
+  empty: t("這一頁還沒有修改記錄。"),
+  async query(q) {
+    if (!wikiHistoryLoad) return [];
+    const { revisions } = await wikiHistoryLoad;
+    const needle = q.trim().toLowerCase();
+    return needle ? revisions.filter((r) => `${r.author} ${r.comment}`.toLowerCase().includes(needle)) : revisions;
+  },
+  render: (r) => ({
+    title: r.date ? t("{who} · {time}", { who: r.author || t("（不明）"), time: versionTitle(Date.parse(r.date)) }) : r.author,
+    detail: r.comment || r.id.slice(0, 8),
+    icon: "history",
+  }),
+  pick: (r) => void showWikiRevision(r).catch(reportError),
+});
+
+/** 打開修改記錄（Wiki 頁面檢視或編輯分頁）。 */
+function openWikiHistory(target: WikiHistoryTarget, wiki: AdoWiki | null): void {
+  wikiHistoryOf = { projectId: target.projectId, wikiId: target.wikiId, repositoryId: target.repositoryId, path: target.path, wiki };
+  wikiHistoryLoad = desktop!.adoWikiHistory(target).then(({ gitPath, revisions }) => ({
+    gitPath,
+    revisions: revisions.map((r, i) => ({ ...r, previous: revisions[i + 1]?.id ?? null })),
+  }));
+  wikiHistoryLoad.catch(reportError);
+  wikiHistoryPicker.open();
+}
+
+/** 讀某一版的內容（`null` 是還沒有這一頁之前，內容是空的）。 */
+async function wikiRevisionText(id: string | null): Promise<string> {
+  if (!id || !wikiHistoryOf || !wikiHistoryLoad) return "";
+  const { gitPath } = await wikiHistoryLoad;
+  const text = await desktop!.adoRepoText({
+    project: wikiHistoryOf.projectId,
+    repo: wikiHistoryOf.repositoryId ?? wikiHistoryOf.wikiId,
+    path: gitPath,
+    version: id,
+    versionType: "commit",
+  });
+  return text.replace(/\r\n?/g, "\n");
+}
+
+/** 一次修改的內容：列出那次改了哪幾段；可以和目前的內容比較（逐段還原）或複製那一版。 */
+async function showWikiRevision(r: WikiRevisionItem): Promise<void> {
+  const target = wikiHistoryOf;
+  if (!target) return;
+  const [text, before] = await Promise.all([wikiRevisionText(r.id), wikiRevisionText(r.previous)]);
+  const changes = myChanges(before, text);
+  const who = r.author || t("（不明）");
+  const when = r.date ? versionTitle(Date.parse(r.date)) : "";
+  const dialog = document.createElement("dialog");
+  dialog.className = "choice wiki-revision";
+  const h = document.createElement("h2");
+  h.textContent = r.previous ? t("{who}的修改", { who }) : t("{who}建立了這一頁", { who });
+  const p = document.createElement("p");
+  p.textContent = [when, r.comment].filter(Boolean).join(" · ");
+  const list = document.createElement("ol");
+  list.className = "wiki-mine-list";
+  for (const change of changes) {
+    const item = document.createElement("li");
+    if (change.before) {
+      item.append(
+        Object.assign(document.createElement("div"), { className: "wiki-mine-label", textContent: change.after ? t("原本") : t("刪除了") }),
+        Object.assign(document.createElement("pre"), { className: "wiki-mine-before", textContent: change.before }),
+      );
+    }
+    if (change.after) {
+      item.append(
+        Object.assign(document.createElement("div"), { className: "wiki-mine-label", textContent: change.before ? t("改成") : t("新增了") }),
+        Object.assign(document.createElement("pre"), { className: "wiki-mine-after", textContent: change.after }),
+      );
+    }
+    list.append(item);
+  }
+  if (!changes.length) list.append(Object.assign(document.createElement("li"), { textContent: t("這次修改沒有改到內容（例如只是改名或搬移）。") }));
+  const actions = document.createElement("div");
+  actions.className = "choice-actions";
+  const button = (label: string, run: () => void, primary = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `btn${primary ? " btn-primary" : ""}`;
+    b.textContent = label;
+    b.addEventListener("click", run);
+    return b;
+  };
+  actions.append(
+    button(t("複製這一版的內容"), () => {
+      void navigator.clipboard.writeText(text).then(() => toast(t("已複製"), { tone: "success", duration: 1500 }));
+    }),
+    button(t("和目前的內容比較"), () => {
+      dialog.close();
+      void compareWikiRevision(target, text, who, when).catch(reportError);
+    }),
+    button(t("關閉"), () => dialog.close(), true),
+  );
+  dialog.append(h, p, list, actions);
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+/** 在編輯分頁裡和某一版逐段比較（「採用這一版」把那一段換回去，處理完按 Ctrl+S 存回）。 */
+async function compareWikiRevision(target: WikiHistoryTarget & { wiki: AdoWiki | null }, text: string, who: string, when: string): Promise<void> {
+  const open = docs.find((d) => d.wiki?.wikiId === target.wikiId && d.wiki.path === target.path);
+  if (open) activate(open);
+  else if (target.wiki) await editWikiPage(target.wiki, target.path);
+  else return;
+  if (!active.wiki || active.wiki.path !== target.path) return;
+  if (review.active) review.finish();
+  const started = review.start(text, {
+    title: t("與 {who} {time} 的版本比較", { who, time: when }),
+    hint: t("「採用這一版」會把那一段換回那時的內容，可以用 Ctrl+Z 復原；處理完按 Ctrl+S 存回 Wiki"),
+    acceptLabel: t("採用這一版"),
+    rejectLabel: t("保留目前"),
+  });
+  if (!started) toast(t("這一版和目前的內容相同。"));
 }
 
 // ---- Wiki 共同編輯：編輯中定期檢查有沒有人改過；載入最新版時保留自己的修改 ----------
@@ -3022,6 +3198,10 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
     fileName: issueFileName(wiki.name, title),
     // 程式碼 Wiki 的內容在 Git 儲存庫裡，要用 Git 改；專案 Wiki 可以直接編輯、存回。
     edit: wiki.code ? undefined : () => void editWikiPage(wiki, path).catch(reportError),
+    history: wiki.code
+      ? undefined
+      : () => openWikiHistory({ projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path }, wiki),
+    addChild: wiki.code ? undefined : () => void createWikiPage(wiki, path).catch(reportError),
     // 標頭顯示所在位置：Wiki 名稱 › 上層頁面…（點上層頁面切換過去）。
     crumbs: [
       { label: wiki.name },
@@ -3226,6 +3406,58 @@ const showAssignee = () => !(workItemFilter.role === "assigned" && workItemFilte
 /** 讀取篩選列的選項（第一次列出工作項目時）。 */
 let loadWorkItemFilterOptions = (): void => {};
 
+// ---- TFS 的已儲存查詢 ------------------------------------------------------------
+
+/** 目前列出的查詢（null 是用篩選條件）。 */
+let workItemQuery: AdoSavedQuery | null = (() => {
+  try {
+    const v = JSON.parse(storage.load("workitem-query") ?? "null") as AdoSavedQuery | null;
+    return v && typeof v.id === "string" && typeof v.project === "string" ? v : null;
+  } catch {
+    return null;
+  }
+})();
+/** 篩選列建好後設定：更新按鈕上的數字並重新列出。 */
+let workItemFilterChanged: () => void = () => {};
+
+function setWorkItemQuery(q: AdoSavedQuery | null, refresh = true): void {
+  workItemQuery = q;
+  if (q) storage.save("workitem-query", JSON.stringify(q));
+  else storage.remove("workitem-query");
+  if (refresh) workItemFilterChanged();
+}
+
+/** 查詢結果裡再用搜尋框的文字（標題或編號）縮小範圍。 */
+function filterQueryResult(items: AdoWorkItem[], search: string): AdoWorkItem[] {
+  const q = search.trim().replace(/^#/, "").toLowerCase();
+  return q ? items.filter((w) => String(w.id).startsWith(q) || w.title.toLowerCase().includes(q)) : items;
+}
+
+let savedQueries: Promise<AdoSavedQuery[]> | null = null;
+type QueryChoice = AdoSavedQuery | { clear: true };
+
+const queryPicker = new Picker<QueryChoice>({
+  label: t("TFS 的已儲存查詢"),
+  placeholder: t("輸入查詢名稱或資料夾"),
+  empty: t("找不到已儲存的查詢（可以在 TFS 網頁版的「查詢」建立）"),
+  async query(text) {
+    if (!desktop) return [];
+    if (!savedQueries) {
+      savedQueries = desktop.adoQueries();
+      savedQueries.catch(() => (savedQueries = null));
+    }
+    const needle = text.trim().toLowerCase();
+    const all = await savedQueries;
+    const found = needle ? all.filter((q) => `${q.name} ${q.folder} ${q.project}`.toLowerCase().includes(needle)) : all;
+    return workItemQuery && !needle ? [{ clear: true }, ...found] : found;
+  },
+  render: (q) =>
+    "clear" in q
+      ? { title: t("不用查詢，回到篩選條件"), detail: t("目前：{name}", { name: workItemQuery?.name ?? "" }), icon: "x" }
+      : { title: q.name, detail: [q.project, q.folder].filter(Boolean).join(" › "), icon: "scroll-text" },
+  pick: (q) => setWorkItemQuery("clear" in q ? null : q),
+});
+
 /**
  * 工作項目的篩選列：人（指派給、建立者）、狀態、類型、專案、區域。
  * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
@@ -3261,17 +3493,40 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   clear.setAttribute("aria-label", clearLabel);
   clear.append(icon("x"));
   clear.addEventListener("click", () => reset.click());
+  // TFS 存的查詢：選了就改列查詢的結果（篩選條件暫時不用）。
+  const query = document.createElement("button");
+  query.type = "button";
+  query.className = "workitems-filter-toggle workitems-query";
+  query.append(icon("scroll-text"));
+  query.addEventListener("click", () => queryPicker.open());
   const group = document.createElement("span");
   group.className = "workitems-filter-group";
-  group.append(button, clear);
+  group.append(button, query, clear);
+  const queryOpen = document.createElement("button");
+  queryOpen.type = "button";
+  queryOpen.className = "btn btn-small workitems-query-open";
+  queryOpen.append(icon("scroll-text"), t("已儲存的查詢…"));
+  queryOpen.addEventListener("click", () => queryPicker.open());
+  const queryNote = document.createElement("p");
+  queryNote.className = "workitems-query-note";
   const updateBadge = () => {
+    const q = workItemQuery;
+    query.classList.toggle("active", !!q);
+    const queryLabel = q ? t("目前列出查詢「{name}」的結果（按一下換查詢或取消）", { name: q.name }) : t("TFS 的已儲存查詢");
+    query.title = queryLabel;
+    query.setAttribute("aria-label", queryLabel);
+    query.setAttribute("aria-pressed", String(!!q));
+    // 平常收在篩選列裡；正在用查詢時才放在搜尋框旁邊，看得出來、也方便換掉。
+    query.hidden = !q;
+    queryNote.hidden = !q;
+    queryNote.textContent = q ? t("目前列出查詢「{name}」的結果，下面的篩選條件暫時不套用。", { name: q.name }) : "";
     const n = [
       !(f.role === "assigned" && f.person === "@me"),
       f.state !== "open",
       !!f.kind,
       !!f.project,
       !!f.area,
-    ].filter(Boolean).length;
+    ].filter(Boolean).length + (q ? 1 : 0);
     badge.textContent = n ? String(n) : "";
     badge.hidden = !n;
     reset.hidden = !n;
@@ -3283,6 +3538,10 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   };
   const changed = () => {
     storage.save("workitem-filter", JSON.stringify(workItemFilter));
+    updateBadge();
+    void workItemsPanel?.refresh();
+  };
+  workItemFilterChanged = () => {
     updateBadge();
     void workItemsPanel?.refresh();
   };
@@ -3404,6 +3663,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   };
   reset.addEventListener("click", () => {
     clearTimeout(timer);
+    setWorkItemQuery(null, false);
     Object.assign(f, DEFAULT_WORK_ITEM_FILTER);
     person.value = "assigned:@me";
     name.hidden = true;
@@ -3414,7 +3674,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     loadScope();
     changed();
   });
-  bar.append(person, state, name, kind, project, area, people, reset);
+  bar.append(queryOpen, queryNote, person, state, name, kind, project, area, people, reset);
   updateBadge();
   setOpen(storage.load("workitem-filter-open") === "1");
   return { bar, button: group };
@@ -3450,8 +3710,11 @@ const workItemsPanel = desktop
       })(),
       list: async (search) => {
         loadWorkItemFilterOptions();
-        const found = await withOfflineCopy(`wi-list:${search}:${JSON.stringify(workItemFilter)}`, () => desktop!.adoWorkItems(search, workItemFilter));
-        noteWorkItems(found, !search && isDefaultFilter());
+        const q = workItemQuery;
+        const found = q
+          ? filterQueryResult(await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q)), search)
+          : await withOfflineCopy(`wi-list:${search}:${JSON.stringify(workItemFilter)}`, () => desktop!.adoWorkItems(search, workItemFilter));
+        noteWorkItems(found, !q && !search && isDefaultFilter());
         return found.map((w) => ({
           ...w,
           meta: [`${w.kind} ${w.id}`, w.state, showAssignee() ? w.assignedTo : "", shortDate(w.changed)]
@@ -3461,7 +3724,13 @@ const workItemsPanel = desktop
       },
       view: (item) => showWorkItem(item),
       status: (n, search) =>
-        n
+        workItemQuery
+          ? n
+            ? t("查詢「{name}」的結果（{n}）", { name: workItemQuery.name, n })
+            : search
+              ? t("查詢「{name}」的結果裡找不到符合的工作項目", { name: workItemQuery.name })
+              : t("查詢「{name}」沒有結果", { name: workItemQuery.name })
+          : n
           ? search
             ? t("找到 {n} 個工作項目", { n })
             : isDefaultFilter()
@@ -3494,6 +3763,8 @@ const wikiPanel = desktop
       },
       savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
       link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
+      create: (wiki, parent) => void createWikiPage(wiki, parent).catch(reportError),
+      canCreate: (wiki) => !wiki.code,
       async searchContent(wiki, text) {
         const found = await desktop!.adoWikiSearch(wiki, text);
         const pages = flattenPages(wikiPanel?.pages ?? []);
@@ -3760,6 +4031,8 @@ function setAdoTab(tab: AdoTab): void {
   storage.save("ado-panel-tab", tab);
   $("#workitems-host").hidden = tab !== "workitems";
   $("#wiki-host").hidden = tab !== "wiki";
+  const newBtn = document.getElementById("ado-new");
+  if (newBtn) newBtn.hidden = tab !== "workitems";
   for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")) {
     b.setAttribute("aria-checked", String(b.dataset.ado === tab));
   }
@@ -3777,6 +4050,16 @@ for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")
 }
 setAdoTab(adoTab);
 $("#ado-refresh").addEventListener("click", () => void (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.refresh());
+// 工作項目清單上方的「建立工作項目」。
+const adoNew = document.createElement("button");
+adoNew.type = "button";
+adoNew.className = "btn icon-only";
+adoNew.id = "ado-new";
+adoNew.title = t("建立工作項目");
+adoNew.setAttribute("aria-label", t("建立工作項目"));
+adoNew.append(icon("plus"));
+adoNew.addEventListener("click", () => createWorkItemDialog());
+$("#ado-refresh").before(adoNew);
 
 /**
  * 網路恢復或切回視窗時，重新讀取上次失敗的工作項目、Wiki、Issues 與開著的內容
@@ -4681,6 +4964,93 @@ async function quickRemoteItems(q: string): Promise<QuickItem[]> {
     remote: { icon: "book-open-text", open: () => showWikiPage(wiki, path) },
   }));
 }
+
+/** 連結用的 Wiki 頁面：編輯 Wiki 頁面時是那個 Wiki，否則是 Wiki 面板選的那個。等不到 `wait` 毫秒就先不列。 */
+async function wikiLinkPages(wait = 150): Promise<RemotePage[]> {
+  if (!desktop || !ado?.account) return [];
+  if (!wikiListCache) {
+    wikiListCache = desktop.adoWikis();
+    wikiListCache.catch(() => (wikiListCache = null));
+  }
+  const wikis = await soon(wikiListCache, wait);
+  const target = active.wiki;
+  const id = target?.wikiId ?? wikiPanel?.wiki?.id ?? storage.load("ado-wiki");
+  const wiki = wikis?.find((w) => w.id === id) ?? wikis?.[0];
+  if (!wiki) return [];
+  let pages = wikiPagesCache.get(wiki.id);
+  if (!pages) {
+    pages = desktop.adoWikiPages(wiki);
+    wikiPagesCache.set(wiki.id, pages);
+    pages.catch(() => wikiPagesCache.delete(wiki.id));
+  }
+  const paths = flattenPages((await soon(pages, wait)) ?? []);
+  // 在同一個 Wiki 裡用 Wiki 的相對連結（`/上層/頁面`），TFS 網頁版也點得到；其他文件用網頁網址。
+  const sameWiki = target?.wikiId === wiki.id;
+  return paths.flatMap((path) => {
+    const name = pageName(path);
+    const where = [wiki.name, path.slice(1, path.lastIndexOf("/"))].filter(Boolean).join(" › ");
+    if (sameWiki) return [{ label: name, detail: t("Wiki・{where}", { where }), link: `[${name.replace(/[[\]]/g, "")}](${encodeLinkPath(path)})` }];
+    if (!wiki.webUrl) return [];
+    return [{ label: name, detail: t("Wiki・{where}", { where }), link: wikiPageLink(name, wikiPageUrl(wiki.webUrl, path)) }];
+  });
+}
+
+/** 文件裡打 `#123`（編號）時列出符合的工作項目，選了就換成 `[#123 標題](網址)`。 */
+async function workItemIdCompletion(ctx: CompletionContext): Promise<CompletionResult | null> {
+  if (!desktop || !ado?.account) return null;
+  const m = ctx.matchBefore(/(?<=^|[\s(（「、，,:：])#\d{1,9}$/);
+  if (!m) return null;
+  // 打字停一下才查詢。
+  await new Promise((r) => setTimeout(r, 250));
+  if (ctx.aborted) return null;
+  const found = await desktop
+    .adoWorkItems(m.text.slice(1), { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" })
+    .catch(() => [] as AdoWorkItem[]);
+  if (ctx.aborted || !found.length) return null;
+  return {
+    from: m.from,
+    filter: false,
+    options: found.slice(0, 20).map((w) => ({
+      label: `#${w.id} ${w.title}`,
+      detail: `${w.kind}・${w.state}`,
+      type: "class",
+      apply: workItemLink(w),
+    })),
+  };
+}
+
+/** 插入工作項目連結：輸入標題關鍵字或編號搜尋（空白時列出指派給我的）。 */
+let workItemLinkSeq = 0;
+const workItemLinkPicker = new Picker<AdoWorkItem>({
+  label: t("插入工作項目連結"),
+  placeholder: t("輸入標題關鍵字或編號"),
+  empty: t("找不到符合的工作項目"),
+  async query(q) {
+    if (!desktop) return [];
+    const seq = ++workItemLinkSeq;
+    await new Promise((r) => setTimeout(r, 250));
+    if (seq !== workItemLinkSeq) return [];
+    const text = q.trim().replace(/^#/, "");
+    const filter = text ? { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" as const } : DEFAULT_WORK_ITEM_FILTER;
+    return (await desktop.adoWorkItems(text, filter)).slice(0, 50);
+  },
+  render: (w) => ({ title: w.title, detail: [`${w.kind} ${w.id}`, w.state].join("・"), icon: "square-kanban" }),
+  pick: (w) => insertIssueLink(w),
+});
+
+/** 插入 Wiki 頁面連結。 */
+const wikiLinkPicker = new Picker<RemotePage>({
+  label: t("插入 Wiki 頁面連結"),
+  placeholder: t("輸入頁面名稱"),
+  empty: t("找不到符合的 Wiki 頁面"),
+  async query(q) {
+    const needle = q.trim().toLowerCase();
+    const pages = await wikiLinkPages(3000);
+    return needle ? pages.filter((p) => `${p.label} ${p.detail}`.toLowerCase().includes(needle)) : pages;
+  },
+  render: (p) => ({ title: p.label, detail: p.detail, icon: "book-open-text" }),
+  pick: (p) => insertAtCursor(p.link),
+});
 
 /** `p` 在一小段時間內有結果就回傳結果，否則（或失敗時）回傳 null。 */
 function soon<T>(p: Promise<T>, ms = 150): Promise<T | null> {
@@ -6444,6 +6814,14 @@ commands.register(
       ["ado-wiki", t("Azure DevOps／TFS：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!ado?.account],
       ["ado-offline", t("Azure DevOps／TFS：保留離線的頁面…"), "download", () => keptPicker.open(), () => !!desktop && keptPages.length > 0],
       ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => settingsDialog.open(t("Azure DevOps／TFS")), () => !!ado],
+      ["ado-create-work-item", t("Azure DevOps／TFS：建立工作項目…"), "plus", () => createWorkItemDialog(), () => !!ado?.account],
+      [
+        "ado-create-from-selection",
+        t("Azure DevOps／TFS：用選取的文字建立工作項目…"),
+        "plus",
+        () => createWorkItemFromSelection(),
+        () => !!ado?.account && kind === "markdown" && !editor.view.state.selection.main.empty,
+      ],
     ] as const
   ).map(
     ([id, title, iconName, run, when]): Command => ({
@@ -6511,6 +6889,19 @@ commands.register(
     run: () => void copyWebLink().catch(reportError),
   },
   {
+    id: "wiki-history",
+    title: t("Wiki 頁面的修改記錄…"),
+    group: t("檔案"),
+    icon: "history",
+    when: () => !!desktop && (!!active.wiki || (issueView.isOpen && !!wikiPage && !wikiPage.wiki.code)),
+    run: () => {
+      if (issueView.isOpen && wikiPage) {
+        const { wiki, path } = wikiPage;
+        openWikiHistory({ projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path }, wiki);
+      } else if (active.wiki) openWikiHistory(active.wiki, null);
+    },
+  },
+  {
     id: "history",
     title: t("版本記錄…"),
     group: t("檔案"),
@@ -6545,6 +6936,22 @@ commands.register(
       run: () => void startAiTool(tool),
     }),
   ),
+  {
+    id: "insert-work-item-link",
+    title: t("插入工作項目連結…"),
+    group: t("插入"),
+    icon: "square-kanban",
+    when: () => !!desktop && !!ado?.account && kind === "markdown" && view !== "preview",
+    run: () => workItemLinkPicker.open(),
+  },
+  {
+    id: "insert-wiki-link",
+    title: t("插入 Wiki 頁面連結…"),
+    group: t("插入"),
+    icon: "book-open-text",
+    when: () => !!desktop && !!ado?.account && kind === "markdown" && view !== "preview",
+    run: () => wikiLinkPicker.open(),
+  },
   {
     id: "insert-symbol",
     title: t("插入符號…"),
@@ -7171,6 +7578,8 @@ const insertMenuUi = floatingMenu("insert-anchor", [
   "insert-toc",
   "-",
   "insert-symbol",
+  "insert-work-item-link",
+  "insert-wiki-link",
 ]);
 const openInsertMenu = (at: DOMRect) => insertMenuUi.open(at);
 
@@ -7192,6 +7601,8 @@ const SLASH_KEYWORDS: Record<string, string> = {
   "insert-toc": "toc 目錄", // i18n-ignore
   "insert-symbol": "symbol 符號 特殊", // i18n-ignore
   "insert-today": "date today 日期 今天", // i18n-ignore
+  "insert-work-item-link": "workitem work item issue bug task 工作項目 工單 連結", // i18n-ignore
+  "insert-wiki-link": "wiki page link 頁面 連結", // i18n-ignore
 };
 function slashItems(): SlashItem[] {
   return Object.entries(SLASH_KEYWORDS).flatMap(([id, keywords]) => {
@@ -7257,6 +7668,7 @@ const contextMenu = floatingMenu("context-anchor", [
   "-",
   "ai-actions",
   "send-to-terminal-ai",
+  "ado-create-from-selection",
   "-",
   "git-copy-link",
 ]);
@@ -7566,6 +7978,166 @@ async function copyDiagram(svg: string): Promise<void> {
     return;
   }
   toast(t("已把流程圖複製成圖片"), { tone: "success" });
+}
+
+// ---- 建立工作項目 ------------------------------------------------------------------
+
+/**
+ * 建立工作項目的對話框：專案、類型、標題、內容（Markdown，送出時轉成 HTML）、上層項目、指派給我。
+ * 建立成功後呼叫 `created`（例如在文件裡補上連結）。
+ */
+function createWorkItemDialog(draft: { title?: string; description?: string } = {}, created?: (w: AdoWorkItem) => void): void {
+  if (!desktop || !ado?.account) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "choice wi-create";
+  const form = document.createElement("form");
+  form.method = "dialog";
+  const h = document.createElement("h2");
+  h.textContent = t("建立工作項目");
+  const field = (label: string, control: HTMLElement) => {
+    const l = document.createElement("label");
+    l.className = "pdf-field";
+    l.append(Object.assign(document.createElement("span"), { textContent: label }), control);
+    return l;
+  };
+  const project = document.createElement("select");
+  const kindSel = document.createElement("select");
+  const row = document.createElement("div");
+  row.className = "wi-create-row";
+  row.append(field(t("專案"), project), field(t("類型"), kindSel));
+  const title = document.createElement("input");
+  title.type = "text";
+  title.value = draft.title ?? "";
+  title.maxLength = 255;
+  const body = document.createElement("textarea");
+  body.rows = 6;
+  body.value = draft.description ?? "";
+  body.placeholder = t("可以用 Markdown，送出時會轉成格式化的內容");
+  const parent = document.createElement("input");
+  parent.type = "text";
+  parent.inputMode = "numeric";
+  parent.placeholder = t("例如 1933599（可以不填）");
+  const assign = document.createElement("label");
+  assign.className = "pdf-check";
+  const assignBox = document.createElement("input");
+  assignBox.type = "checkbox";
+  assignBox.checked = storage.load("wi-create-assign") !== "0";
+  assign.append(assignBox, t("建立後指派給我"));
+  const error = document.createElement("p");
+  error.className = "wi-create-error";
+  error.hidden = true;
+  const actions = document.createElement("div");
+  actions.className = "choice-actions";
+  const cancel = Object.assign(document.createElement("button"), { type: "button", className: "btn", textContent: t("取消") });
+  cancel.addEventListener("click", () => dialog.close());
+  const ok = Object.assign(document.createElement("button"), { type: "submit", className: "btn btn-primary", textContent: t("建立") });
+  actions.append(cancel, ok);
+  form.append(h, row, field(t("標題（必填）"), title), field(t("內容"), body), field(t("上層工作項目編號"), parent), assign, error, actions);
+  dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  title.focus();
+
+  // 專案與類型：記住上次選的；第一次用篩選列選的專案。
+  const fill = (sel: HTMLSelectElement, values: string[], preferred: (string | null | undefined)[]) => {
+    sel.replaceChildren(...values.map((v) => new Option(v, v)));
+    const pick = preferred.find((p) => p && values.includes(p));
+    if (pick) sel.value = pick;
+  };
+  ok.disabled = true;
+  void desktop
+    .adoWorkItemFilters()
+    .then(({ projects, kinds }) => {
+      fill(project, projects, [storage.load("wi-create-project"), workItemFilter.project]);
+      fill(kindSel, kinds, [storage.load("wi-create-kind"), "Task", "User Story"]);
+      ok.disabled = false;
+    })
+    .catch((e) => {
+      error.hidden = false;
+      error.textContent = e instanceof Error ? e.message : String(e);
+    });
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = title.value.trim();
+    const parentId = parent.value.trim().replace(/^#/, "");
+    if (!name) {
+      error.hidden = false;
+      error.textContent = t("請輸入標題。");
+      title.focus();
+      return;
+    }
+    if (parentId && !/^\d+$/.test(parentId)) {
+      error.hidden = false;
+      error.textContent = t("上層工作項目要填編號（數字）。");
+      parent.focus();
+      return;
+    }
+    error.hidden = true;
+    ok.disabled = true;
+    ok.textContent = t("建立中…");
+    const markdown = body.value.trim();
+    void desktop!
+      .adoWorkItemCreate({
+        project: project.value,
+        kind: kindSel.value,
+        title: name,
+        description: markdown ? renderMarkdown(markdown, { kind: "markdown" }).html : null,
+        assignToMe: assignBox.checked,
+        parent: parentId ? Number(parentId) : null,
+      })
+      .then((w) => {
+        storage.save("wi-create-project", project.value);
+        storage.save("wi-create-kind", kindSel.value);
+        storage.save("wi-create-assign", assignBox.checked ? "1" : "0");
+        dialog.close();
+        void workItemsPanel?.refresh();
+        created?.(w);
+        toast(t("已建立 {kind} {id}「{title}」", { kind: w.kind, id: w.id, title: w.title }), {
+          tone: "success",
+          duration: 8000,
+          action: { label: t("開啟"), run: () => showWorkItem(w) },
+        });
+      })
+      .catch((err) => {
+        ok.disabled = false;
+        ok.textContent = t("建立");
+        error.hidden = false;
+        error.textContent = err instanceof Error ? err.message : String(err);
+      });
+  });
+}
+
+/** 用選取的文字建立工作項目，建立後在那一行後面補上 `[#編號](網址)`。 */
+function createWorkItemFromSelection(): void {
+  const view = editor.view;
+  const sel = view.state.selection.main;
+  if (sel.empty) {
+    createWorkItemDialog();
+    return;
+  }
+  const doc = active;
+  const text = view.state.sliceDoc(sel.from, sel.to);
+  const draft = draftFromSelection(text);
+  // 標題那一行（選取範圍裡第一個有字的行）。
+  const offset = text.search(/\S/);
+  const lineText = view.state.doc.lineAt(sel.from + Math.max(offset, 0)).text;
+  createWorkItemDialog(draft, (w) => {
+    if (active !== doc) return;
+    const state = editor.view.state;
+    // 文件在這段時間改過：找回那一行；找不到就放在游標處。
+    let line = null as ReturnType<typeof state.doc.line> | null;
+    for (let i = 1; i <= state.doc.lines; i++) {
+      if (state.doc.line(i).text === lineText) {
+        line = state.doc.line(i);
+        break;
+      }
+    }
+    const link = ` [#${w.id}](${w.webUrl})`;
+    const at = line ? line.to : state.selection.main.head;
+    editor.view.dispatch({ changes: { from: at, insert: link }, userEvent: "input" });
+  });
 }
 
 /** 選取範圍的文字（多重選取用換行連接）。 */
