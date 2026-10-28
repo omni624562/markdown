@@ -2396,6 +2396,19 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .issue-crumb:hover { background: var(--active-line); color: var(--fg); text-decoration: underline; }
 .issue-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .issue-crumb-sep { color: var(--subtle); }
+/* 工作項目內容上方的操作列：狀態、指派給我、新增留言（窄的時候換行）。 */
+.issue-toolbar-host { flex: none; border-bottom: 1px solid var(--border); background: var(--surface); }
+.issue-toolbar-host[hidden] { display: none; }
+.issue-toolbar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 6px 16px; }
+.issue-toolbar-field { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; }
+.issue-toolbar-select { max-width: 200px; height: 28px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
+.issue-toolbar-select:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.issue-toolbar .btn[hidden] { display: none; }
+.issue-comment-form { display: flex; flex: 1 1 100%; flex-direction: column; gap: 6px; }
+.issue-comment-form[hidden] { display: none; }
+.issue-comment-form textarea { box-sizing: border-box; width: 100%; min-height: 64px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--font-ui); resize: vertical; }
+.issue-comment-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.issue-comment-actions { display: flex; gap: 6px; justify-content: flex-end; }
 /* 文件裡連到工作項目、Wiki 頁面的摘要卡片（編輯器的提示框、預覽的浮動卡片）。 */
 .remote-card { --source: light-dark(#0b6bcb, #4ea1f3); max-width: min(360px, calc(100vw - 32px)); padding: 8px 12px; color: var(--fg); font: 12.5px/1.5 var(--font-ui); }
 .remote-card-floating { position: fixed; z-index: 60; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 20px rgb(0 0 0 / 14%); pointer-events: none; }

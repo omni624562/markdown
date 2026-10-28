@@ -308,6 +308,8 @@ fn main() {
             ado::ado_wikis,
             ado::ado_wiki_pages,
             ado::ado_wiki_page,
+            ado::ado_work_item_states,
+            ado::ado_work_item_update,
             ado::ado_wiki_save,
             ado::ado_wiki_image,
             pdf::pick_pdf_path,
