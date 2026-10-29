@@ -1,11 +1,12 @@
 /**
  * 工作項目、GitHub issue 開在主要區域的唯讀檢視（蓋在編輯區與預覽上面）：
- * 上方是標題與動作（插入連結、在瀏覽器開啟、重新整理、複製成 Markdown 文件、找字），
+ * 上方是位置、標題與動作（最常用的一個用文字按鈕，其他用圖示，少用的收在「更多動作」），
  * 內容由預覽同一套流程顯示。Ctrl+F 在內容裡找字，Esc 關閉。
  */
 import { formatKeys } from "../commands.ts";
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
+import { setupMenu } from "./menu.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
@@ -148,10 +149,9 @@ export class IssueView {
   #backBtn: HTMLButtonElement;
   #forwardBtn: HTMLButtonElement;
   /** 「保留離線」。 */
-  #keepBtn: HTMLButtonElement;
+  #insertBtn: HTMLButtonElement;
   #editBtn: HTMLButtonElement;
   #historyBtn: HTMLButtonElement;
-  #addChildBtn: HTMLButtonElement;
   #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
   #current = 0;
@@ -183,63 +183,64 @@ export class IssueView {
     nav.append(this.#backBtn, this.#forwardBtn);
     const actions = document.createElement("div");
     actions.className = "issue-actions";
-    const insert = document.createElement("button");
-    insert.type = "button";
-    insert.className = "btn btn-small btn-primary";
-    insert.append(icon("link"), t("插入連結"));
-    insert.addEventListener("click", () => this.#source?.insertLink());
+    // 主要動作：能編輯的（Wiki 頁面）是「編輯」，其他是「插入連結」；樣式在 #open 依內容切換。
+    this.#insertBtn = document.createElement("button");
+    this.#insertBtn.type = "button";
+    this.#insertBtn.addEventListener("click", () => this.#source?.insertLink());
     this.#editBtn = document.createElement("button");
     this.#editBtn.type = "button";
-    this.#editBtn.className = "btn btn-small";
+    this.#editBtn.className = "btn btn-small btn-primary";
     this.#editBtn.append(icon("pencil"), t("編輯"));
     this.#editBtn.title = t("在分頁裡編輯，按 Ctrl+S 存回伺服器");
     this.#editBtn.hidden = true;
     this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
-    this.#historyBtn = document.createElement("button");
-    this.#historyBtn.type = "button";
-    this.#historyBtn.className = "btn btn-small";
-    this.#historyBtn.append(icon("history"), t("修改記錄"));
-    this.#historyBtn.title = t("誰、什麼時候改了這一頁，改了什麼");
+    this.#historyBtn = iconButton(t("修改記錄：誰、什麼時候改了這一頁，改了什麼"), "history", () => this.#source?.history?.());
     this.#historyBtn.hidden = true;
-    this.#historyBtn.addEventListener("click", () => this.#source?.history?.());
-    this.#addChildBtn = document.createElement("button");
-    this.#addChildBtn.type = "button";
-    this.#addChildBtn.className = "btn btn-small";
-    this.#addChildBtn.append(icon("file-plus"), t("新增子頁面"));
-    this.#addChildBtn.title = t("在這一頁底下新增一頁，建立後直接編輯");
-    this.#addChildBtn.hidden = true;
-    this.#addChildBtn.addEventListener("click", () => this.#source?.addChild?.());
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "btn btn-small";
-    copy.append(icon("file-plus"), t("複製成 Markdown 文件"));
-    copy.title = t("開成一份可以編輯的 Markdown 分頁（修改不會回寫到伺服器）");
-    copy.addEventListener("click", () => {
-      if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
-    });
-    this.#keepBtn = iconButton(t("保留離線"), "download", () => {
-      if (!this.#source || !this.#markdown) return;
-      this.#h.offline?.toggle(this.#source, this.#markdown);
-      this.#updateKeep();
-    });
-    this.#keepBtn.hidden = true;
+    const more = iconButton(t("更多動作"), "ellipsis", () => {});
+    more.id = "issue-more";
+    setupMenu(more, null, [
+      {
+        label: t("新增子頁面"),
+        icon: "file-plus",
+        when: () => !!this.#source?.addChild,
+        run: () => this.#source?.addChild?.(),
+      },
+      {
+        label: t("複製成 Markdown 文件"),
+        icon: "copy",
+        run: () => {
+          if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
+        },
+      },
+      {
+        label: t("保留離線"),
+        icon: "download",
+        when: () => this.#kept() !== null,
+        checked: () => !!this.#kept(),
+        run: () => {
+          if (this.#source && this.#markdown) this.#h.offline?.toggle(this.#source, this.#markdown);
+        },
+      },
+    ]);
     const toggleSide = hooks.toggleSide;
     if (toggleSide) {
       this.#sideBtn = iconButton(t("和編輯區並排顯示"), "columns-2", () => toggleSide());
       this.#sideBtn.classList.add("issue-side-toggle");
       this.#sideBtn.setAttribute("aria-pressed", "false");
     }
+    const sep = document.createElement("span");
+    sep.className = "issue-actions-sep";
+    sep.setAttribute("aria-hidden", "true");
     actions.append(
-      insert,
       this.#editBtn,
+      this.#insertBtn,
       this.#historyBtn,
-      this.#addChildBtn,
-      copy,
-      this.#keepBtn,
+      iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
+      more,
+      sep,
       ...(this.#sideBtn ? [this.#sideBtn] : []),
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
-      iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
       iconButton(t("關閉"), "x", () => this.close(), "Escape"),
     );
     head.append(nav, heading, actions);
@@ -357,16 +358,9 @@ export class IssueView {
     this.#forwardBtn.title = label(t("前往下一頁"), this.#forward, "Alt-→");
   }
 
-  /** 「保留離線」按鈕：不能保留的不顯示；已保留的按下去是取消。 */
-  #updateKeep(): void {
-    const kept = this.#source ? (this.#h.offline?.kept(this.#source) ?? null) : null;
-    this.#keepBtn.hidden = kept === null;
-    this.#keepBtn.setAttribute("aria-pressed", String(!!kept));
-    this.#keepBtn.classList.toggle("active", !!kept);
-    this.#keepBtn.replaceChildren(icon(kept ? "check" : "download"));
-    const label = kept ? t("已保留離線（按一下取消）") : t("保留離線：沒有網路時也能看，連線時在背景更新");
-    this.#keepBtn.title = label;
-    this.#keepBtn.setAttribute("aria-label", label);
+  /** 有沒有「保留離線」；不能保留的回傳 null（「更多動作」裡不列出）。 */
+  #kept(): boolean | null {
+    return this.#source ? (this.#h.offline?.kept(this.#source) ?? null) : null;
   }
 
   /** 標頭上的位置：「P.wiki › 產品 › 安裝」，上層頁面可以點。 */
@@ -403,22 +397,27 @@ export class IssueView {
     this.#source = source;
     this.#h.opened(source);
     this.#updateNav();
-    this.#updateKeep();
     this.#pane.dataset.source = source.origin.kind;
     this.#pane.dataset.sourceName = source.origin.text;
-    this.#label.textContent = source.label;
     this.#label.replaceChildren(...this.#crumbs(source));
-    this.#meta.replaceChildren(
-      sourceBadge(source.origin.text, source.origin.icon),
-      sourceBadge(t("唯讀"), "lock", "source-badge source-readonly"),
-      this.#label,
-    );
+    // 來源只用一個圖示標示（狀態列和上方的色條也標了來源與「唯讀」），位置一列放完。
+    const origin = document.createElement("span");
+    origin.className = "issue-origin";
+    origin.title = source.origin.text;
+    origin.setAttribute("aria-label", source.origin.text);
+    origin.append(icon(source.origin.icon));
+    this.#meta.replaceChildren(origin, this.#label);
     this.#title.textContent = source.title;
     this.#toolbar.replaceChildren(...(source.toolbar ? [source.toolbar] : []));
     this.#toolbar.hidden = !source.toolbar;
     this.#editBtn.hidden = !source.edit;
     this.#historyBtn.hidden = !source.history;
-    this.#addChildBtn.hidden = !source.addChild;
+    // 有「編輯」時，「插入連結」退成圖示按鈕。
+    const label = t("插入連結");
+    this.#insertBtn.className = source.edit ? "btn icon-only" : "btn btn-small btn-primary";
+    this.#insertBtn.replaceChildren(icon("link"), ...(source.edit ? [] : [label]));
+    this.#insertBtn.title = t("在目前的文件插入連到這裡的連結");
+    this.#insertBtn.setAttribute("aria-label", label);
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();

@@ -2514,7 +2514,7 @@ const issueOffline: IssueOffline | undefined = desktop
 const keptPicker = new Picker<KeptPage>({
   label: t("保留離線的頁面"),
   placeholder: t("輸入標題"),
-  empty: t("還沒有保留離線的頁面。在工作項目或 Wiki 頁面上方按「保留離線」。"),
+  empty: t("還沒有保留離線的頁面。在工作項目或 Wiki 頁面上方的「更多動作」選「保留離線」。"),
   query(q) {
     const needle = q.trim().toLowerCase();
     return needle ? keptPages.filter((p) => `${p.label} ${p.title}`.toLowerCase().includes(needle)) : keptPages;
