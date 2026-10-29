@@ -2871,6 +2871,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .wiki-badge { --hue: 210; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: light-dark(hsl(var(--hue) 70% 91%), hsl(var(--hue) 30% 27%)); color: light-dark(hsl(var(--hue) 60% 28%), hsl(var(--hue) 70% 84%)); font: 600 13px/1 var(--font-ui); letter-spacing: -0.02em; }
 .activity-wiki-page:hover .wiki-badge { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 25%, transparent); }
 .activity-wiki-page[aria-current="page"] .wiki-badge { box-shadow: 0 0 0 2px var(--accent); }
+/* 捷徑拖到圖示列外面：放開就移除。 */
+.activity-wiki-page.activity-removing .wiki-badge { opacity: 0.5; text-decoration: line-through; box-shadow: 0 0 0 2px var(--danger); }
 .activity-wiki-drop { display: grid; flex: none; place-items: center; width: 34px; height: 34px; margin: 3px 0; border: 1.5px dashed var(--border-strong); border-radius: 8px; color: var(--subtle); }
 .activity-wiki-drop .icon { width: 16px; height: 16px; }
 .activity-wiki-drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
