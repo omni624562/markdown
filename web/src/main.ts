@@ -3921,7 +3921,7 @@ const wikiPanel = desktop
         const paths = (v: unknown) => (Array.isArray(v) ? v.filter((p): p is string => typeof p === "string") : []);
         try {
           const v = JSON.parse(storage.load(`ado-wiki-pages:${id}`) ?? "{}") as Record<string, unknown>;
-          return { recent: paths(v.recent), pinned: paths(v.pinned) };
+          return { recent: paths(v.recent), pinned: paths(v.pinned), shown: paths(v.shown) };
         } catch {
           return { recent: [], pinned: [] };
         }

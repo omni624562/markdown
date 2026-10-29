@@ -57,6 +57,8 @@ export interface WikiContentSearch {
 export interface WikiPrefs {
   recent: string[];
   pinned: string[];
+  /** 樹狀目錄只顯示這些最上層頁面（沒有或空的就是全部顯示）。 */
+  shown?: string[];
 }
 
 /** 最近看過列出幾頁、最多釘選幾頁。 */
@@ -97,6 +99,12 @@ export class WikiPanel<W extends WikiInfo> {
   #contentCache = new Map<string, WikiContentSearch | string>();
   /** 伺服器沒有搜尋功能（只提示一次，之後不再搜尋）。 */
   #contentUnavailable = false;
+  /** 「篩選」：勾選要顯示的最上層頁面。 */
+  #filterBtn: HTMLButtonElement;
+  #filterCount: HTMLElement;
+  #filterPop: HTMLElement;
+  /** 樹狀目錄下方的「已隱藏 N 個・全部顯示」。 */
+  #hiddenNote: HTMLElement;
 
   constructor(el: HTMLElement, hooks: WikiPanelHooks<W>) {
     this.#h = hooks;
@@ -158,7 +166,46 @@ export class WikiPanel<W extends WikiInfo> {
     this.#content.className = "wiki-content";
     this.#content.hidden = true;
     this.#content.addEventListener("keydown", (e) => this.#keydown(e));
-    el.append(bar, this.#input, this.#status, this.#quick, this.#list, this.#content);
+    // 搜尋框右邊的「篩選」：勾選要顯示的最上層頁面（每個 Wiki 各自記住；搜尋時還是搜全部）。
+    this.#filterBtn = document.createElement("button");
+    this.#filterBtn.type = "button";
+    this.#filterBtn.className = "workitems-filter-toggle wiki-filter-toggle";
+    this.#filterCount = document.createElement("span");
+    this.#filterCount.className = "workitems-filter-count";
+    this.#filterCount.hidden = true;
+    this.#filterBtn.append(icon("sliders-horizontal"), this.#filterCount);
+    this.#filterPop = document.createElement("div");
+    this.#filterPop.className = "wiki-filter-pop";
+    this.#filterPop.popover = "auto";
+    this.#filterPop.id = `wiki-filter-${Math.random().toString(36).slice(2)}`;
+    this.#filterBtn.popoverTargetElement = this.#filterPop;
+    this.#filterBtn.setAttribute("aria-haspopup", "dialog");
+    this.#filterPop.addEventListener("beforetoggle", (e) => {
+      const open = (e as ToggleEvent).newState === "open";
+      this.#filterBtn.setAttribute("aria-expanded", String(open));
+      if (open) this.#fillFilter();
+    });
+    this.#filterPop.addEventListener("toggle", (e) => {
+      if ((e as ToggleEvent).newState !== "open") return;
+      const r = this.#filterBtn.getBoundingClientRect();
+      const width = Math.min(280, window.innerWidth - 16);
+      Object.assign(this.#filterPop.style, {
+        left: `${Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))}px`,
+        top: `${r.bottom + 4}px`,
+        width: `${width}px`,
+        maxHeight: `${Math.max(160, window.innerHeight - r.bottom - 16)}px`,
+      });
+      this.#filterPop.querySelector<HTMLElement>("input")?.focus();
+    });
+    document.body.append(this.#filterPop);
+    const searchRow = document.createElement("div");
+    searchRow.className = "workitems-searchrow";
+    searchRow.append(this.#input, this.#filterBtn);
+    this.#hiddenNote = document.createElement("p");
+    this.#hiddenNote.className = "wiki-hidden-note";
+    this.#hiddenNote.hidden = true;
+    el.append(bar, searchRow, this.#status, this.#quick, this.#list, this.#hiddenNote, this.#content);
+    this.#updateFilter();
     // 把頁面拖到文件裡，插入 `[頁面名稱](網址)`。
     el.addEventListener("dragstart", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>(".wiki-page");
@@ -279,13 +326,16 @@ export class WikiPanel<W extends WikiInfo> {
   #render(): void {
     const q = this.#input.value.trim().toLowerCase();
     this.#renderQuick(!q);
+    this.#updateFilter();
     if (!this.#pages.length) {
+      this.#hiddenNote.hidden = true;
       this.#status.textContent = t("這個 Wiki 還沒有頁面");
       this.#list.replaceChildren();
       this.#renderContent("");
       return;
     }
     if (q) {
+      this.#hiddenNote.hidden = true;
       const found: WikiTreePage[] = [];
       const walk = (list: WikiTreePage[]) => {
         for (const p of list) {
@@ -302,6 +352,17 @@ export class WikiPanel<W extends WikiInfo> {
     }
     this.#renderContent("");
     this.#status.textContent = "";
+    const top = this.#topPages();
+    const hidden = this.#pages.length - top.length;
+    this.#hiddenNote.hidden = !hidden;
+    if (hidden) {
+      const show = document.createElement("button");
+      show.type = "button";
+      show.className = "wiki-hidden-show";
+      show.textContent = t("全部顯示");
+      show.addEventListener("click", () => this.#setShown([]));
+      this.#hiddenNote.replaceChildren(t("已隱藏 {n} 個最上層頁面", { n: hidden }), t("・"), show);
+    }
     const rows: HTMLLIElement[] = [];
     const walk = (list: WikiTreePage[], depth: number) => {
       for (const p of list) {
@@ -309,9 +370,85 @@ export class WikiPanel<W extends WikiInfo> {
         if (this.#expanded.has(p.path)) walk(p.children, depth + 1);
       }
     };
-    walk(this.#pages, 0);
+    walk(top, 0);
     this.#list.replaceChildren(...rows);
     this.#rove();
+  }
+
+  /** 篩選後要顯示的最上層頁面（勾的頁面都不在了，就全部顯示）。 */
+  #topPages(): WikiTreePage[] {
+    const shown = new Set(this.#prefs.shown ?? []);
+    const top = this.#pages.filter((p) => shown.has(p.path));
+    return top.length ? top : this.#pages;
+  }
+
+  #setShown(paths: string[]): void {
+    // 全部勾選等於沒有篩選。
+    this.#prefs.shown = paths.length >= this.#pages.length ? [] : paths;
+    this.#savePrefs();
+    this.#render();
+  }
+
+  /** 篩選按鈕：有隱藏頁面時標出數字。 */
+  #updateFilter(): void {
+    const hidden = this.#pages.length - this.#topPages().length;
+    this.#filterBtn.hidden = !this.#wiki || this.#pages.length < 2;
+    this.#filterBtn.classList.toggle("active", hidden > 0);
+    this.#filterCount.hidden = !hidden;
+    this.#filterCount.textContent = String(hidden);
+    const label = hidden ? t("篩選：已隱藏 {n} 個最上層頁面", { n: hidden }) : t("篩選：只顯示勾選的最上層頁面");
+    this.#filterBtn.title = label;
+    this.#filterBtn.setAttribute("aria-label", label);
+  }
+
+  /** 篩選的勾選清單：每個最上層頁面一列，勾了馬上套用。 */
+  #fillFilter(): void {
+    const top = new Set(this.#topPages().map((p) => p.path));
+    const all = this.#topPages().length === this.#pages.length;
+    const head = document.createElement("div");
+    head.className = "wiki-filter-head";
+    const title = document.createElement("strong");
+    title.textContent = t("顯示哪些最上層頁面");
+    const showAll = document.createElement("button");
+    showAll.type = "button";
+    showAll.className = "wiki-hidden-show";
+    showAll.textContent = t("全部顯示");
+    showAll.disabled = all;
+    showAll.addEventListener("click", () => {
+      this.#setShown([]);
+      this.#fillFilter();
+    });
+    head.append(title, showAll);
+    const list = document.createElement("div");
+    list.className = "wiki-filter-list";
+    for (const page of this.#pages) {
+      const label = document.createElement("label");
+      label.className = "wiki-filter-item";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      // 沒有篩選時全部都算勾選；第一次取消勾選就變成「只顯示其他的」。
+      box.checked = top.has(page.path);
+      box.value = page.path;
+      box.addEventListener("change", () => {
+        const checked = [...list.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value);
+        if (!checked.length) {
+          // 至少要留一個；全部取消時改回全部顯示。
+          this.#setShown([]);
+          this.#fillFilter();
+          return;
+        }
+        this.#setShown(checked);
+        showAll.disabled = checked.length === this.#pages.length;
+      });
+      const name = document.createElement("span");
+      name.textContent = pageName(page.path);
+      label.append(box, name);
+      list.append(label);
+    }
+    const hint = document.createElement("p");
+    hint.className = "wiki-filter-hint";
+    hint.textContent = t("沒勾的頁面不會出現在樹狀目錄（搜尋時還是會找）。每個 Wiki 各自記住。");
+    this.#filterPop.replaceChildren(head, list, hint);
   }
 
   /** 「釘選」「最近看過」、樹狀目錄與「內容符合」裡所有的頁面按鈕（由上而下）。 */

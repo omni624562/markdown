@@ -1934,6 +1934,21 @@ button.git-info:disabled { cursor: default; }
 .wiki-new svg { flex: none; width: 15px; height: 15px; }
 .wiki-quick { margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .wiki-quick[hidden] { display: none; }
+/* Wiki 篩選：只顯示勾選的最上層頁面。 */
+.wiki-hidden-note { margin: 6px 6px 0; color: var(--muted); font-size: 12px; }
+.wiki-hidden-note[hidden] { display: none; }
+.wiki-hidden-show { padding: 0 2px; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+.wiki-hidden-show:hover { text-decoration: underline; }
+.wiki-hidden-show:disabled { color: var(--subtle); text-decoration: none; cursor: default; }
+.wiki-filter-pop { position: fixed; inset: auto; box-sizing: border-box; margin: 0; padding: 10px 10px 8px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); box-shadow: 0 8px 24px rgb(0 0 0 / 16%); font: 13px/1.4 var(--font-ui); }
+.wiki-filter-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.wiki-filter-head strong { font-size: 12.5px; }
+.wiki-filter-list { display: flex; flex-direction: column; }
+.wiki-filter-item { display: flex; gap: 8px; align-items: center; min-height: 28px; padding: 0 4px; border-radius: 5px; cursor: pointer; }
+.wiki-filter-item:hover { background: var(--active-line); }
+.wiki-filter-item input { flex: none; width: 15px; height: 15px; margin: 0; }
+.wiki-filter-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiki-filter-hint { margin: 8px 4px 0; color: var(--muted); font-size: 11.5px; }
 .wiki-quick h3 { margin: 8px 6px 2px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
 .wiki-quick ul { margin: 0; padding: 0; list-style: none; }
 .wiki-where { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
