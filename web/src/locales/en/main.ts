@@ -722,4 +722,12 @@ export const main: Record<string, Translation> = {
   "找不到這個 Wiki（可能已經刪除或沒有權限），在捷徑上按右鍵可以移除。": "Can't find this wiki (it may have been deleted, or you may not have access). Right-click the shortcut to remove it.",
   "放到左側圖示列": "Add to the activity bar",
   "從左側圖示列移除": "Remove from the activity bar",
+  "「{name}」和底下的 {n} 個子頁面都會從伺服器刪除，大家都看不到了。": ["\"{name}\" and its {n} subpage will be deleted from the server for everyone.", "\"{name}\" and its {n} subpages will be deleted from the server for everyone."],
+  "「{name}」會從伺服器刪除，大家都看不到了。": "\"{name}\" will be deleted from the server for everyone.",
+  "正在編輯這些頁面的分頁會保留內容，但不能再存回伺服器。": "Tabs editing these pages keep their content but can no longer be saved back to the server.",
+  "刪除後只能從 Wiki 儲存庫的修改記錄找回。": "After deletion, it can only be recovered from the wiki repository's history.",
+  "刪除 Wiki 頁面？": "Delete wiki page?",
+  "刪除這一頁和子頁面": "Delete page and subpages",
+  "刪除這一頁": "Delete page",
+  "已刪除 Wiki 頁面「{name}」": "Deleted wiki page \"{name}\"",
 };
