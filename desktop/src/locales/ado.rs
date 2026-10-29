@@ -41,6 +41,7 @@ pub static EN: &[(&str, &str)] = &[
     ("{what}失敗：伺服器沒有提供頁面的檔案位置", "{what} failed: The server didn't provide the page's file location."),
     ("建立 Wiki 頁面", "Creating the wiki page"),
     ("刪除 Wiki 頁面", "Deleting the wiki page"),
+    ("讀取上層項目", "Loading parent work items"),
     ("已經有同名的頁面了，請換一個名稱", "A page with this name already exists. Please choose another name."),
     ("搜尋 Wiki", "Searching the wiki"),
     ("個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖", "The personal access token is invalid or expired. Update it on the Azure DevOps/TFS page in Settings."),

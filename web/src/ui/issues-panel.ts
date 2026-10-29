@@ -195,6 +195,8 @@ export class IssuesPanel<T extends IssueSummary> {
         const name = document.createElement("span");
         name.className = "workitems-group-name";
         name.textContent = group.title || t("（未設定）");
+        name.title = name.textContent;
+        name.classList.toggle("wrap", name.textContent.length > 24);
         const count = document.createElement("span");
         count.className = "workitems-group-count";
         count.textContent = String(group.items.length);
@@ -265,6 +267,11 @@ export class IssuesPanel<T extends IssueSummary> {
   /** 讀過清單、而且沒有在搜尋（顯示的是篩選列的清單）。 */
   get showingList(): boolean {
     return this.#loaded && !this.#input.value.trim();
+  }
+
+  /** 排列方式要的資料讀到了（例如分組用的上層項目）：依目前的排列方式重畫，不重新讀取清單。 */
+  rearrange(): void {
+    if (this.#loaded && !this.#failed) this.#render();
   }
 
   /** 重畫清單上的小圓點（例如開啟項目、背景檢查之後）。 */
