@@ -4048,7 +4048,6 @@ function showAdo(tab: AdoTab): void {
 for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")) {
   b.addEventListener("click", () => setAdoTab(b.dataset.ado === "wiki" ? "wiki" : "workitems"));
 }
-setAdoTab(adoTab);
 $("#ado-refresh").addEventListener("click", () => void (adoTab === "wiki" ? wikiPanel : workItemsPanel)?.refresh());
 // 工作項目清單上方的「建立工作項目」。
 const adoNew = document.createElement("button");
@@ -4060,6 +4059,8 @@ adoNew.setAttribute("aria-label", t("建立工作項目"));
 adoNew.append(icon("plus"));
 adoNew.addEventListener("click", () => createWorkItemDialog());
 $("#ado-refresh").before(adoNew);
+// 「+」建好後才套用上次的分頁，開在 Wiki 時才會把它藏起來。
+setAdoTab(adoTab);
 
 /**
  * 網路恢復或切回視窗時，重新讀取上次失敗的工作項目、Wiki、Issues 與開著的內容
