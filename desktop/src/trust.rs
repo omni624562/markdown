@@ -263,36 +263,20 @@ impl Trust {
         self.0.lock().unwrap().folders.iter().any(|p| p == path)
     }
 
-    /// 檔案在最近開啟清單中，或實際位於最近開啟的資料夾內。
+    /// 檔案在最近開啟的清單中（使用者自己在對話框選過、或從目前的資料夾開過的檔案）。
     ///
-    /// 資料夾用解析符號連結後的實際路徑判斷（和工作區的 `resolve_inside` 一致）：
-    /// 資料夾裡名叫 `notes.md`、實際指向 `~/.ssh/id_rsa` 的符號連結不算在資料夾內。
-    /// 需要讀取磁碟，請在背景執行緒呼叫。
+    /// 最近開啟的其他資料夾裡的檔案不算：那些資料夾不是目前的工作區，網頁端萬一被注入程式碼，
+    /// 也不能讀寫其他專案的檔案。目前工作區裡的檔案由呼叫端另外用 `Workspace::contains` 判斷。
     pub fn allows(&self, path: &Path) -> bool {
-        let r = self.snapshot();
-        allowed(&r, path, |p| crate::workspace::real_path(p).ok())
+        allowed(&self.snapshot(), path)
     }
 }
 
-fn allowed(r: &Recent, path: &Path, real: impl Fn(&Path) -> Option<PathBuf>) -> bool {
-    if path
+fn allowed(r: &Recent, path: &Path) -> bool {
+    !path
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
-        return false;
-    }
-    // 使用者在對話框選過的檔案本身。
-    if r.files.iter().any(|p| p == path) {
-        return true;
-    }
-    let mut candidates = r.folders.iter().filter(|f| path.starts_with(f)).peekable();
-    if candidates.peek().is_none() {
-        return false;
-    }
-    let Some(target) = real(path) else {
-        return false;
-    };
-    candidates.any(|f| real(f).is_some_and(|f| target.starts_with(f)))
+        && r.files.iter().any(|p| p == path)
 }
 
 #[cfg(test)]
@@ -345,46 +329,17 @@ mod tests {
     }
 
     #[test]
-    fn allows_files_inside_recent_folders_only() {
+    fn allows_only_recent_files() {
         let r = Recent {
             folders: vec!["/筆記".into()],
             files: vec!["/其他/單一.md".into()],
             ..Default::default()
         };
-        let same = |p: &Path| Some(p.to_path_buf());
-        assert!(allowed(&r, Path::new("/筆記/子/a.md"), same));
-        assert!(allowed(&r, Path::new("/其他/單一.md"), same));
-        assert!(!allowed(&r, Path::new("/其他/別的.md"), same));
-        assert!(!allowed(&r, Path::new("/筆記/../etc/passwd"), same));
-        // 資料夾內的符號連結實際指向資料夾外：不允許。
-        let link = |p: &Path| {
-            Some(if p == Path::new("/筆記/notes.md") {
-                PathBuf::from("/home/me/.ssh/id_rsa")
-            } else {
-                p.to_path_buf()
-            })
-        };
-        assert!(!allowed(&r, Path::new("/筆記/notes.md"), link));
-        assert!(allowed(&r, Path::new("/筆記/a.md"), link));
-        // 讀不到實際位置（例如網路斷線）時不允許。
-        assert!(!allowed(&r, Path::new("/筆記/a.md"), |_| None));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn symlinks_inside_trusted_folders_are_checked() {
-        let dir = std::env::temp_dir().join(format!("md-trust-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(dir.join("筆記")).unwrap();
-        fs::write(dir.join("祕密"), "x").unwrap();
-        fs::write(dir.join("筆記/a.md"), "a").unwrap();
-        std::os::unix::fs::symlink(dir.join("祕密"), dir.join("筆記/notes.md")).unwrap();
-        let t = Trust(Mutex::new(Recent {
-            folders: vec![dir.join("筆記")],
-            ..Default::default()
-        }));
-        assert!(t.allows(&dir.join("筆記/a.md")));
-        assert!(!t.allows(&dir.join("筆記/notes.md")));
-        fs::remove_dir_all(&dir).unwrap();
+        assert!(allowed(&r, Path::new("/其他/單一.md")));
+        assert!(!allowed(&r, Path::new("/其他/別的.md")));
+        // 最近開啟的資料夾不是目前的工作區：裡面的檔案不算。
+        assert!(!allowed(&r, Path::new("/筆記/子/a.md")));
+        assert!(!allowed(&r, Path::new("/筆記/.git/config")));
+        assert!(!allowed(&r, Path::new("/其他/../其他/單一.md")));
     }
 }
