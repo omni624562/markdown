@@ -2131,6 +2131,31 @@ pub async fn ado_wiki_create(
     .await
 }
 
+/// 刪除 Wiki 頁面（只限專案 Wiki）；底下的子頁面會一起刪除（和網頁版一樣）。
+#[tauri::command]
+pub async fn ado_wiki_delete(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+) -> Result<(), String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
+        let res = crate::update::agent()
+            .delete(&format!("{}{api}&api-version={API_VERSION}", a.url))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .call();
+        match res {
+            // 回應的內容是被刪掉的頁面，不需要讀。
+            Ok(_) => Ok(()),
+            res => read(res, &tr!("刪除 Wiki 頁面")).map(|_| ()),
+        }
+    })
+    .await
+}
+
 /// 一個 Wiki 頁面的內容（Markdown）。
 #[tauri::command]
 pub async fn ado_wiki_page(

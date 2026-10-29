@@ -2704,6 +2704,39 @@ async function createWikiPage(wiki: AdoWiki, parent: string | null): Promise<voi
   await editWikiPage(wiki, path);
 }
 
+/** 刪除 Wiki 頁面（子頁面一起刪除，和網頁版一樣）；先確認，刪除後關閉檢視、重新讀取清單、拿掉圖示列上的捷徑。 */
+async function deleteWikiPage(wiki: AdoWiki, path: string): Promise<void> {
+  const name = pageName(path);
+  const inside = (p: string) => p === path || p.startsWith(`${path}/`);
+  // 子頁面數：清單開著別的 Wiki 時另外讀這個 Wiki 的頁面樹（讀不到就不寫數字）。
+  const pages =
+    wikiPanel?.wiki?.id === wiki.id
+      ? wikiPanel.pages
+      : await withOfflineCopy(`wiki-pages:${wiki.id}`, () => desktop!.adoWikiPages(wiki)).catch(() => []);
+  const children = flattenPages(pages).filter((p) => p.startsWith(`${path}/`)).length;
+  const editing = docs.filter((d) => d.wiki?.wikiId === wiki.id && inside(d.wiki.path));
+  const parts = [
+    children
+      ? t("「{name}」和底下的 {n} 個子頁面都會從伺服器刪除，大家都看不到了。", { name, n: children })
+      : t("「{name}」會從伺服器刪除，大家都看不到了。", { name }),
+    editing.length ? t("正在編輯這些頁面的分頁會保留內容，但不能再存回伺服器。") : "",
+    t("刪除後只能從 Wiki 儲存庫的修改記錄找回。"),
+  ];
+  const choice = await choose(t("刪除 Wiki 頁面？"), parts.filter(Boolean).join(currentLang() === "en" ? " " : ""), [
+    { id: "delete", label: children ? t("刪除這一頁和子頁面") : t("刪除這一頁"), danger: true },
+    { id: "cancel", label: t("取消"), primary: true },
+  ]);
+  if (choice !== "delete") return;
+  await desktop!.adoWikiDelete(wiki, path);
+  toast(t("已刪除 Wiki 頁面「{name}」", { name }), { tone: "success" });
+  // 開著的是這一頁或子頁面時關閉；圖示列上的捷徑一併拿掉。
+  const [kind, id, ...rest] = (issueKey ?? "").split(":");
+  if (kind === "wiki" && id === wiki.id && inside(rest.join(":"))) issueView.close();
+  const left = wikiShortcuts.filter((s) => !(s.wiki === wiki.id && inside(s.path)));
+  if (left.length !== wikiShortcuts.length) setWikiShortcuts(left);
+  void wikiPanel?.refresh();
+}
+
 /** 把分頁的內容存回 Wiki 頁面；伺服器上的版本被別人改過時回傳那個版本（交給衝突處理）。 */
 async function saveWikiPage(text: string, force: boolean): Promise<{ name: string; diskText: string } | void> {
   const doc = active;
@@ -3203,6 +3236,7 @@ function showWikiPage(wiki: AdoWiki, path: string): void {
       ? undefined
       : () => openWikiHistory({ projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path }, wiki),
     addChild: wiki.code ? undefined : () => void createWikiPage(wiki, path).catch(reportError),
+    remove: wiki.code ? undefined : () => void deleteWikiPage(wiki, path).catch(reportError),
     // 標頭顯示所在位置：Wiki 名稱 › 上層頁面…（點上層頁面切換過去）。
     crumbs: [
       { label: wiki.name },

@@ -569,6 +569,7 @@ export const ui: Record<string, Translation> = {
   "全部顯示": "Show all",
   "・": " · ",
   "沒勾的頁面不會出現在樹狀目錄（搜尋時還是會找）。每個 Wiki 各自記住。": "Unchecked pages are hidden from the tree (search still finds them). Remembered per wiki.",
+  "刪除這一頁…": "Delete This Page…",
   "在目前的文件插入連到這裡的連結": "Insert a link to this into the current document",
   "新增子頁面": "New Subpage",
   "新增頁面": "New Page",
