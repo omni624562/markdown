@@ -1,21 +1,40 @@
 /**
  * 下方的終端機面板（桌面版）：可以開好幾個分頁，執行殼層、Claude Code 或 Codex。
  * AI 透過 MCP 執行的指令也會開一個分頁（由 Rust 端建立）。
- * xterm.js 只在第一次打開面板時才載入。
+ *
+ * 面板顯示在獨立的 webview（`terminal.html`），疊在主畫面留給它的位置上；主畫面不能直接寫入終端機，
+ * 只能透過 Rust 送幾種固定的要求（見 `terminal-main.ts`、`terminal-proxy.ts`）。
  */
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { WebLinksAddon } from "@xterm/addon-web-links";
-import type { Desktop, TermProgram } from "../desktop.ts";
 import { sanitizeForTerminal } from "../ai-text.ts";
 import { t } from "../i18n.ts";
-import * as storage from "../storage.ts";
 import { icon } from "./icons.ts";
 import type { MenuEntry } from "./menu.ts";
 import { toast } from "./toast.ts";
 
+export type TermProgram = "shell" | "claude" | "codex";
+
+/** 面板用到的原生指令。 */
+export interface TermBridge {
+  termOpen(program: TermProgram, cols: number, rows: number): Promise<number>;
+  termWrite(id: number, data: string): Promise<void>;
+  termResize(id: number, cols: number, rows: number): Promise<void>;
+  termClose(id: number): Promise<void>;
+  openExternal(url: string): Promise<void>;
+}
+
+/** 面板所在的頁面：顯示、隱藏由主畫面決定。 */
+export interface TermHost {
+  requestShow(): void;
+  requestHide(): void;
+  /** 讓終端機的 webview 取得鍵盤焦點。 */
+  focusView(): void;
+  openMenu(at: DOMRect, entries: MenuEntry[], closed: () => void): void;
+}
+
 const LABELS: Record<TermProgram, string> = { shell: t("終端機"), claude: "Claude Code", codex: "Codex" };
-const HEIGHT = { min: 120, default: 280 };
 
 interface Session {
   id: number;
@@ -89,7 +108,8 @@ export class TerminalPanel {
   #tabs: HTMLElement;
   #body: HTMLElement;
   #toolButtons: Partial<Record<TermProgram, HTMLButtonElement>> = {};
-  #d: Desktop;
+  #d: TermBridge;
+  #host: TermHost;
   #sessions: Session[] = [];
   #active: Session | null = null;
   /** 還沒對應到分頁的輸出（程式啟動得比前端登記分頁還快）。 */
@@ -99,22 +119,13 @@ export class TerminalPanel {
   /** 已經關閉的終端機：之後才到的輸出與結束事件直接丟掉，不要一直留在記憶體裡。 */
   #closed = new Set<number>();
   #resizeTimer = 0;
-  #onLayout: () => void;
-  #openMenu: (at: DOMRect, entries: MenuEntry[], closed: () => void) => void;
 
-  constructor(
-    el: HTMLElement,
-    d: Desktop,
-    onLayout: () => void,
-    openMenu: (at: DOMRect, entries: MenuEntry[], closed: () => void) => void,
-  ) {
+  constructor(el: HTMLElement, d: TermBridge, host: TermHost) {
     this.#el = el;
     this.#d = d;
-    this.#onLayout = onLayout;
-    this.#openMenu = openMenu;
-    const tr = { resize: t("調整終端機高度"), tabs: t("終端機分頁") };
+    this.#host = host;
+    const tr = { tabs: t("終端機分頁") };
     el.innerHTML = `
-      <div class="term-resize" role="separator" aria-orientation="horizontal" aria-label="${tr.resize}" tabindex="0"></div>
       <header class="term-head">
         <div class="term-tabs" role="tablist" aria-label="${tr.tabs}"></div>
         <div class="term-actions"></div>
@@ -140,31 +151,32 @@ export class TerminalPanel {
     button(t("新增終端機"), "plus", () => void this.start("shell"), true);
     button(t("隱藏終端機"), "chevron-down", () => this.hide(), true);
 
-    this.#el.style.setProperty("--term-height", `${Number(storage.load("terminal-height")) || HEIGHT.default}px`);
-    this.#setupResize(el.querySelector(".term-resize")!);
     new ResizeObserver(() => this.#scheduleFit()).observe(this.#body);
-
-    void d.onTermOutput(({ id, data }) => {
-      const s = this.#sessions.find((x) => x.id === id);
-      if (s) {
-        s.term.write(data);
-        s.lastOutput = Date.now();
-      } else if (!this.#closed.has(id)) {
-        const early = this.#early.get(id);
-        if (early) early.push(data);
-        else this.#early.set(id, [data]);
-      }
-    });
-    void d.onTermAttached(({ id, label }) => void this.#attach(id, label));
-    void d.onTermExit(({ id, code }) => {
-      const s = this.#sessions.find((x) => x.id === id);
-      if (s) this.#markExited(s, code);
-      else if (!this.#closed.delete(id)) this.#exitedEarly.set(id, code);
-    });
   }
 
-  get visible(): boolean {
-    return !this.#el.hidden;
+  /** 程式的輸出（Rust 的 `term-output` 事件）。 */
+  output({ id, data }: { id: number; data: string }): void {
+    const s = this.#sessions.find((x) => x.id === id);
+    if (s) {
+      s.term.write(data);
+      s.lastOutput = Date.now();
+    } else if (!this.#closed.has(id)) {
+      const early = this.#early.get(id);
+      if (early) early.push(data);
+      else this.#early.set(id, [data]);
+    }
+  }
+
+  /** Rust 端開了新的終端機（AI 執行的指令）。 */
+  attached({ id, label }: { id: number; label: string }): void {
+    void this.#attach(id, label);
+  }
+
+  /** 程式結束。 */
+  exited({ id, code }: { id: number; code: number | null }): void {
+    const s = this.#sessions.find((x) => x.id === id);
+    if (s) this.#markExited(s, code);
+    else if (!this.#closed.delete(id)) this.#exitedEarly.set(id, code);
   }
 
   /** 只顯示已安裝的 AI 工具按鈕。 */
@@ -175,21 +187,14 @@ export class TerminalPanel {
     }
   }
 
-  toggle(): void {
-    if (this.visible) this.hide();
-    else void this.show();
-  }
-
+  /** 主畫面顯示了面板：還沒有分頁時開一個殼層。 */
   async show(): Promise<void> {
-    this.#el.hidden = false;
-    this.#onLayout();
     if (!this.#sessions.length) await this.start("shell");
     else this.#activate(this.#active ?? this.#sessions[0]);
   }
 
   hide(): void {
-    this.#el.hidden = true;
-    this.#onLayout();
+    this.#host.requestHide();
   }
 
   /** 開一個新分頁執行指定的程式。 */
@@ -233,8 +238,7 @@ export class TerminalPanel {
       target = started;
       await this.#settled(target);
     } else {
-      this.#el.hidden = false;
-      this.#onLayout();
+      this.#host.requestShow();
       this.#activate(target);
     }
     await this.#d.termWrite(target.id, `\x1b[200~${sanitizeForTerminal(text)}\x1b[201~`);
@@ -260,8 +264,7 @@ export class TerminalPanel {
   }
 
   async #createView(): Promise<{ term: Terminal; fit: FitAddon; host: HTMLElement }> {
-    this.#el.hidden = false;
-    this.#onLayout();
+    this.#host.requestShow();
     const { Terminal, FitAddon, WebLinksAddon } = await loadXterm();
     const host = document.createElement("div");
     host.className = "term-host";
@@ -349,7 +352,7 @@ export class TerminalPanel {
       item(t("清除畫面"), "eraser", () => term.clear()),
     );
     // 關掉選單（例如按 Esc）後回到終端機繼續打字。
-    this.#openMenu(at, entries, () => term.focus());
+    this.#host.openMenu(at, entries, () => term.focus());
   }
 
   #register(
@@ -423,6 +426,7 @@ export class TerminalPanel {
   }
 
   focus(): void {
+    this.#host.focusView();
     this.#active?.term.focus();
   }
 
@@ -432,7 +436,7 @@ export class TerminalPanel {
     this.#renderTabs();
     requestAnimationFrame(() => {
       this.#fit(session);
-      if (focus) session.term.focus();
+      if (focus) this.focus();
     });
   }
 
@@ -475,7 +479,7 @@ export class TerminalPanel {
   }
 
   #fit(s: Session): void {
-    if (this.#el.hidden || s.host.hidden) return;
+    if (s.host.hidden) return;
     const { cols, rows } = s.term;
     s.fit.fit();
     if ((s.term.cols !== cols || s.term.rows !== rows) && !s.exited) {
@@ -505,36 +509,5 @@ export class TerminalPanel {
     };
     probe.remove();
     return theme;
-  }
-
-  #setupResize(handle: HTMLElement): void {
-    const set = (h: number) => {
-      const max = Math.max(HEIGHT.min, window.innerHeight - 220);
-      const height = Math.round(Math.min(max, Math.max(HEIGHT.min, h)));
-      this.#el.style.setProperty("--term-height", `${height}px`);
-      storage.save("terminal-height", String(height));
-    };
-    handle.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      handle.setPointerCapture(e.pointerId);
-      document.body.classList.add("resizing-rows");
-      const startY = e.clientY;
-      const startH = this.#el.getBoundingClientRect().height;
-      const move = (ev: PointerEvent) => set(startH + (startY - ev.clientY));
-      const up = () => {
-        document.body.classList.remove("resizing-rows");
-        handle.removeEventListener("pointermove", move);
-        handle.removeEventListener("pointerup", up);
-      };
-      handle.addEventListener("pointermove", move);
-      handle.addEventListener("pointerup", up);
-    });
-    handle.addEventListener("keydown", (e) => {
-      const h = this.#el.getBoundingClientRect().height;
-      if (e.key === "ArrowUp") set(h + 24);
-      else if (e.key === "ArrowDown") set(h - 24);
-      else return;
-      e.preventDefault();
-    });
   }
 }

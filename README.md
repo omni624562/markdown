@@ -201,7 +201,7 @@ crates/
   md-cli/    命令列工具 mdtool，跟網頁共用同一個核心
 desktop/     桌面版（Tauri 2）：沿用網頁介面，補上原生對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、
              資料夾文件索引（src/doc_index.rs）、直接匯出 PDF（src/pdf.rs）、
-             AI 協作（src/ai/：終端機、MCP 伺服器、快捷動作）、自動更新（src/update.rs）、
+             AI 協作（src/ai/：終端機與它專用的 webview、MCP 伺服器、快捷動作）、自動更新（src/update.rs）、
              版本記錄（src/history.rs）、Git（src/git.rs）、WebDAV 與 SSH 遠端資料夾（src/dav.rs、src/ssh.rs）、
              背景讀寫與網路磁碟逾時（src/io.rs）
 web/
@@ -230,6 +230,7 @@ web/
   src/session.ts     分頁清單與各分頁草稿的保存
   src/paths.ts       Windows／Unix 路徑處理（圖片相對路徑、改名後更新分頁）
   src/ai.ts          AI 協作：MCP 狀態同步、AI 提議、AI 執行指令的同意流程、選取段落快捷動作
+  src/terminal-proxy.ts、src/terminal-main.ts  終端機：在獨立的 webview（terminal.html）執行，主畫面只能透過 Rust 送固定的要求，不能寫入終端機
   src/ci-workflow.ts GitHub Actions 的 Claude Code 工作流程範本
   src/updater.ts     自動更新的檢查與提示
   src/git-ui.ts      Git 原始碼控制面板、檔案樹的變更標記、自動同步

@@ -1,7 +1,9 @@
 //! 內嵌終端機：用虛擬終端（Windows 上是 ConPTY）執行殼層或 Claude Code、Codex，
 //! 輸出以事件傳給前端的 xterm.js。
 //!
-//! 前端只能選擇「殼層／claude／codex」三種程式，參數由這裡決定，不能執行任意命令。
+//! 終端機顯示在獨立的 webview（見 `view`），這裡的指令只接受那個 webview 呼叫：
+//! 主畫面萬一被注入程式碼，也不能開殼層或寫入終端機。
+//! 終端機頁面只能選擇「殼層／claude／codex」三種程式，參數由這裡決定。
 //! AI 透過 MCP 要求執行的指令（`run_command`）一律先經過使用者在編輯器中同意。
 //!
 //! 每個終端機的輸出會保留最後一段（去掉控制碼），讓 AI 可以讀取執行結果。
@@ -14,13 +16,14 @@ use std::sync::Mutex;
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State, Webview};
 
 use super::mcp::Mcp;
 use super::tools::{program_for, Tool};
+use super::view;
 use crate::workspace::Workspace;
 
-#[derive(Deserialize, Clone, Copy, Debug)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Program {
     Shell,
@@ -200,7 +203,7 @@ impl Terminals {
                 {
                     log.push(&data);
                 }
-                let _ = out_app.emit("term-output", Output { id, data });
+                view::send(&out_app, "term-output", Output { id, data });
             }
         });
 
@@ -214,7 +217,7 @@ impl Terminals {
             if let Some(log) = terms.logs.lock().unwrap().get_mut(&id) {
                 log.exit = Some(code);
             }
-            let _ = exit_app.emit("term-exit", Exit { id, code });
+            view::send(&exit_app, "term-exit", Exit { id, code });
         });
         Ok(id)
     }
@@ -223,7 +226,8 @@ impl Terminals {
     pub fn run_command(&self, app: &AppHandle, command: &str) -> Result<u32, String> {
         let label = tr!("AI：{command}", command = shorten(command, 24));
         let id = self.spawn(app, command_line(command), 120, 30, label.clone())?;
-        let _ = app.emit("term-attached", Attached { id, label });
+        view::send(app, "term-attached", Attached { id, label });
+        view::ask_main_to_show(app);
         Ok(id)
     }
 }
@@ -467,10 +471,12 @@ fn tool_command(app: &AppHandle, tool: Tool) -> Result<CommandBuilder, String> {
 #[tauri::command]
 pub async fn term_open(
     app: AppHandle,
+    webview: Webview,
     program: Program,
     cols: u16,
     rows: u16,
 ) -> Result<u32, String> {
+    view::require_terminal(&webview)?;
     tauri::async_runtime::spawn_blocking(move || {
         let (cmd, label) = match program {
             // 開著 SSH 遠端資料夾時，終端機也連到同一台主機。
@@ -498,7 +504,13 @@ pub async fn term_open(
 }
 
 #[tauri::command]
-pub fn term_write(id: u32, data: String, terms: State<'_, Terminals>) -> Result<(), String> {
+pub fn term_write(
+    webview: Webview,
+    id: u32,
+    data: String,
+    terms: State<'_, Terminals>,
+) -> Result<(), String> {
+    view::require_terminal(&webview)?;
     let sessions = terms.sessions.lock().unwrap();
     let s = sessions.get(&id).ok_or_else(|| tr!("終端機已經結束"))?;
     s.input
@@ -508,11 +520,13 @@ pub fn term_write(id: u32, data: String, terms: State<'_, Terminals>) -> Result<
 
 #[tauri::command]
 pub fn term_resize(
+    webview: Webview,
     id: u32,
     cols: u16,
     rows: u16,
     terms: State<'_, Terminals>,
 ) -> Result<(), String> {
+    view::require_terminal(&webview)?;
     let sessions = terms.sessions.lock().unwrap();
     let s = sessions.get(&id).ok_or_else(|| tr!("終端機已經結束"))?;
     s.master
@@ -526,11 +540,13 @@ pub fn term_resize(
 }
 
 #[tauri::command]
-pub fn term_close(id: u32, terms: State<'_, Terminals>) {
+pub fn term_close(webview: Webview, id: u32, terms: State<'_, Terminals>) -> Result<(), String> {
+    view::require_terminal(&webview)?;
     if let Some(mut s) = terms.sessions.lock().unwrap().remove(&id) {
         let _ = s.killer.kill();
     }
     terms.logs.lock().unwrap().remove(&id);
+    Ok(())
 }
 
 #[cfg(test)]

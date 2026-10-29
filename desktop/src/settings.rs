@@ -46,7 +46,7 @@ pub fn require_ai(app: &AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn save_settings(
     app: AppHandle,
-    window: tauri::WebviewWindow,
+    window: tauri::Window,
     json: String,
 ) -> Result<bool, String> {
     // 一次只存一份，確認對話框不會重複跳出。

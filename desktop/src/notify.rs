@@ -97,7 +97,7 @@ mod imp {
             .title(title)
             .text1(body)
             .on_activated(move |_| {
-                if let Some(w) = handle.get_webview_window("main") {
+                if let Some(w) = handle.get_window("main") {
                     let _ = w.unminimize();
                     let _ = w.show();
                     let _ = w.set_focus();

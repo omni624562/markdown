@@ -7,3 +7,4 @@ pub mod mcp;
 pub mod run;
 pub mod term;
 pub mod tools;
+pub mod view;
