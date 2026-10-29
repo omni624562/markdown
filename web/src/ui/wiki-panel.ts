@@ -36,6 +36,17 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   /** 新增頁面：`parent` 是上層頁面（null 是最上層）；不能新增的 Wiki（例如程式碼 Wiki）回傳 false 時不顯示按鈕。 */
   create?(wiki: W, parent: string | null): void;
   canCreate?(wiki: W): boolean;
+  /** 釘選放在別的地方（例如左側圖示列）：給了就用它，面板上不列「已釘選」。 */
+  pins?: WikiPins<W>;
+  /** 拖曳頁面時另外帶的資料（型別 → 內容），例如拖到圖示列變成捷徑。 */
+  dragData?(wiki: W, path: string): Record<string, string>;
+}
+
+export interface WikiPins<W> {
+  has(wiki: W, path: string): boolean;
+  toggle(wiki: W, path: string): void;
+  /** 釘選按鈕的說明：[還沒釘選時, 已釘選時]。 */
+  labels: [string, string];
 }
 
 export interface WikiContentSearch {
@@ -151,9 +162,13 @@ export class WikiPanel<W extends WikiInfo> {
     // 把頁面拖到文件裡，插入 `[頁面名稱](網址)`。
     el.addEventListener("dragstart", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>(".wiki-page");
-      const link = b && this.#wiki ? this.#h.link?.(this.#wiki, b.dataset.path!) : null;
-      if (!link || !e.dataTransfer) return;
-      e.dataTransfer.setData("text/plain", link);
+      if (!b || !this.#wiki || !e.dataTransfer) return;
+      const path = b.dataset.path!;
+      const link = this.#h.link?.(this.#wiki, path);
+      const extra = this.#h.dragData?.(this.#wiki, path) ?? {};
+      if (!link && !Object.keys(extra).length) return;
+      if (link) e.dataTransfer.setData("text/plain", link);
+      for (const [type, value] of Object.entries(extra)) e.dataTransfer.setData(type, value);
       e.dataTransfer.effectAllowed = "copy";
     });
   }
@@ -372,7 +387,7 @@ export class WikiPanel<W extends WikiInfo> {
       b.className = "wiki-page";
       b.dataset.path = r.path;
       b.title = r.path;
-      b.draggable = !!this.#h.link;
+      b.draggable = !!(this.#h.link || this.#h.dragData);
       b.tabIndex = -1;
       const name = document.createElement("span");
       name.className = "wiki-name";
@@ -488,7 +503,7 @@ export class WikiPanel<W extends WikiInfo> {
     b.className = "wiki-page";
     b.dataset.path = page.path;
     b.title = page.path;
-    b.draggable = !!this.#h.link;
+    b.draggable = !!(this.#h.link || this.#h.dragData);
     const name = document.createElement("span");
     name.className = "wiki-name";
     name.textContent = pageName(page.path);
@@ -536,12 +551,13 @@ export class WikiPanel<W extends WikiInfo> {
 
   /** 釘選／取消釘選的按鈕（滑鼠移到列上才出現；已釘選的一直顯示）。 */
   #pinButton(path: string): HTMLButtonElement {
-    const pinned = this.#prefs.pinned.includes(path);
+    const pinned = this.#isPinned(path);
     const b = document.createElement("button");
     b.type = "button";
     b.className = "wiki-pin";
     b.classList.toggle("pinned", pinned);
-    const label = pinned ? t("取消釘選") : t("釘選這一頁");
+    const labels = this.#h.pins?.labels ?? [t("釘選這一頁"), t("取消釘選")];
+    const label = pinned ? labels[1] : labels[0];
     b.title = label;
     b.setAttribute("aria-label", label);
     b.setAttribute("aria-pressed", String(pinned));
@@ -550,7 +566,24 @@ export class WikiPanel<W extends WikiInfo> {
     return b;
   }
 
+  #isPinned(path: string): boolean {
+    const pins = this.#h.pins;
+    if (pins) return !!this.#wiki && pins.has(this.#wiki, path);
+    return this.#prefs.pinned.includes(path);
+  }
+
+  /** 釘選在別的地方改了（例如從圖示列移除），重畫釘選按鈕。 */
+  refreshPins(): void {
+    // 搜尋中不重畫（免得重新搜尋內容），下次重畫時自然更新。
+    if (this.#wiki && !this.#input.value.trim()) this.#render();
+  }
+
   #togglePin(path: string): void {
+    if (this.#h.pins) {
+      if (this.#wiki) this.#h.pins.toggle(this.#wiki, path);
+      this.#render();
+      return;
+    }
     const pinned = this.#prefs.pinned;
     this.#prefs.pinned = pinned.includes(path) ? pinned.filter((p) => p !== path) : [...pinned, path].slice(-PINNED_LIMIT);
     this.#savePrefs();
@@ -564,7 +597,8 @@ export class WikiPanel<W extends WikiInfo> {
   /** 樹狀目錄上方的「釘選」與「最近看過」（搜尋時不顯示；已刪除的頁面不列出）。 */
   #renderQuick(show: boolean): void {
     const exists = new Set(flattenPages(this.#pages));
-    const pinned = this.#prefs.pinned.filter((p) => exists.has(p));
+    // 釘選放在別的地方（圖示列）時，面板上只列最近看過。
+    const pinned = this.#h.pins ? [] : this.#prefs.pinned.filter((p) => exists.has(p));
     const recent = this.#prefs.recent.filter((p) => exists.has(p) && !pinned.includes(p));
     const groups: HTMLElement[] = [];
     const group = (title: string, paths: string[]) => {
@@ -581,7 +615,7 @@ export class WikiPanel<W extends WikiInfo> {
         b.className = "wiki-page";
         b.dataset.path = path;
         b.title = path.slice(1).replaceAll("/", " › ");
-        b.draggable = !!this.#h.link;
+        b.draggable = !!(this.#h.link || this.#h.dragData);
         const name = document.createElement("span");
         name.className = "wiki-name";
         name.textContent = pageName(path);
