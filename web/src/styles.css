@@ -629,6 +629,8 @@ kbd {
 @media (max-width: 960px) {
   .view-switch .label { display: none; }
 }
+/* 工作項目、Wiki 頁面、Git 歷史蓋住編輯區時，檢視切換用不到（按了反而會關掉那個畫面）：先藏起來，版面不動。並排顯示時編輯區還在，照常顯示。 */
+body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-switch { visibility: hidden; }
 @media (pointer: coarse) {
   .view-switch button { min-height: 30px; padding: 0 10px; }
 }
