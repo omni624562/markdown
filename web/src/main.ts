@@ -119,7 +119,7 @@ import { projectInitials, projectSections, samePath } from "./projects.ts";
 import { Review } from "./ui/review.ts";
 import { SearchPanel } from "./ui/search-panel.ts";
 import { TasksPanel } from "./ui/tasks-panel.ts";
-import { IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
+import { type IssueGroup, IssuesPanel, type IssueSummary, shortDate } from "./ui/issues-panel.ts";
 import { IssueView, type IssueOffline, type IssueSource } from "./ui/issue-view.ts";
 import { addImage, keep, parseKept, type KeptPage, type OfflineRef } from "./offline.ts";
 import { WikiPanel } from "./ui/wiki-panel.ts";
@@ -3720,10 +3720,12 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
 
 /** 「依上層項目分組」：每個工作項目的上層（null 是沒有）與讀到的上層項目；讀過的不再讀。 */
 const workItemParentOf = new Map<number, number | null>();
-const workItemParentItems = new Map<number, AdoWorkItem>();
+/** 目前清單上的工作項目（分組標題列上另外讀來的上層項目不算）。 */
+let workItemListed = new Set<number>();
+const workItemParentItems = new Map<number, AdoWorkItem & IssueSummary>();
 let workItemParentsLoading = false;
 
-function groupByParentItems<T extends AdoWorkItem>(items: T[]): { title: string | null; items: T[] }[] {
+function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
   const missing = items.map((w) => w.id).filter((id) => !workItemParentOf.has(id));
   if (missing.length) {
     // 先照原本的順序顯示，讀到上層項目後再重畫。
@@ -3734,7 +3736,7 @@ function groupByParentItems<T extends AdoWorkItem>(items: T[]): { title: string 
         .then(({ links, parents }) => {
           for (const id of missing) workItemParentOf.set(id, null);
           for (const [id, parent] of links) workItemParentOf.set(id, parent);
-          for (const p of parents) workItemParentItems.set(p.id, p);
+          for (const p of parents) workItemParentItems.set(p.id, workItemRow(p));
         })
         .catch((e) => {
           // 讀不到就當成都沒有上層（不要一直重試）。
@@ -3751,6 +3753,14 @@ function groupByParentItems<T extends AdoWorkItem>(items: T[]): { title: string 
   return groupByParent(items, workItemParentOf, workItemParentItems, t("沒有上層項目"), (item, id) =>
     item ? t("{kind} {id}：{title}", { kind: item.kind, id: item.id, title: item.title }) : `#${id}`,
   );
+}
+
+/** 清單上的一列：上面一行是類型、編號、狀態、指派對象與更新日期。 */
+function workItemRow(w: AdoWorkItem): AdoWorkItem & IssueSummary {
+  return {
+    ...w,
+    meta: [`${w.kind} ${w.id}`, w.state, showAssignee() ? w.assignedTo : "", shortDate(w.changed)].filter(Boolean).join("・"),
+  };
 }
 
 const workItemsPanel = desktop
@@ -3773,6 +3783,8 @@ const workItemsPanel = desktop
         save: (id) => storage.save("workitem-arrange", id),
       },
       mark: (item) => {
+        // 分組標題列上、不在清單裡的上層項目（不是指派給你的）不標。
+        if (!workItemListed.has(item.id)) return null;
         const mark = markOf(workItemSeen, item);
         if (!mark) return null;
         return { kind: mark, label: mark === "new" ? t("新指派給你，還沒看過") : t("上次看過之後有更新") };
@@ -3789,12 +3801,8 @@ const workItemsPanel = desktop
           ? filterQueryResult(await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q)), search)
           : await withOfflineCopy(`wi-list:${search}:${JSON.stringify(workItemFilter)}`, () => desktop!.adoWorkItems(search, workItemFilter));
         noteWorkItems(found, !q && !search && isDefaultFilter());
-        return found.map((w) => ({
-          ...w,
-          meta: [`${w.kind} ${w.id}`, w.state, showAssignee() ? w.assignedTo : "", shortDate(w.changed)]
-            .filter(Boolean)
-            .join("・"),
-        }));
+        workItemListed = new Set(found.map((w) => w.id));
+        return found.map(workItemRow);
       },
       view: (item) => showWorkItem(item),
       status: (n, search) =>

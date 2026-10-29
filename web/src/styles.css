@@ -1828,6 +1828,19 @@ button.git-info:disabled { cursor: default; }
 /* 依上層項目分組時標題比較長（「User Story 123：標題」）：最多兩行。 */
 .workitems-group-name.wrap { display: -webkit-box; line-height: 1.35; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .workitems-group-count { flex: none; min-width: 18px; padding: 0 5px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 8%, transparent); font-weight: 500; text-align: center; }
+/* 以項目當標題的一組（依上層項目分組）：標題列是那個項目的卡片，組與組之間有分隔；子項目縮排、左邊一條線。 */
+.workitems-group-card { display: flex; gap: 2px; align-items: flex-start; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.workitems-list > .workitems-group-card:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.workitems-group-card > .workitem { flex: 1; min-width: 0; }
+.workitems-group-card > .workitem .workitem-title { font-weight: 600; }
+.workitems-group-card > .workitems-group-count { margin-top: 8px; color: var(--muted); font-size: 11.5px; line-height: 18px; }
+.workitems-group-toggle { display: grid; flex: none; place-items: center; width: 22px; height: 22px; margin-top: 6px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }
+.workitems-group-toggle:hover { background: var(--active-line); color: var(--fg); }
+.workitems-group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.workitems-group-toggle .icon { width: 14px; height: 14px; }
+.workitems-child { margin-left: 24px; padding-left: 8px; border-left: 2px solid var(--border); }
+.workitems-child > .workitem { padding-top: 4px; padding-bottom: 4px; }
+.workitems-group-card ~ .workitems-group { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
 .workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
 .workitems-searchrow .workitems-search { flex: 1; min-width: 0; }
 .workitems-filter-toggle { display: inline-flex; flex: none; gap: 3px; align-items: center; justify-content: center; box-sizing: border-box; min-width: 30px; height: 30px; margin: 2px 0 6px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; }

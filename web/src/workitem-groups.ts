@@ -13,19 +13,23 @@ export interface ParentGroup<T> {
   /** 上層項目的編號；沒有上層的那一組是 null。 */
   parent: number | null;
   title: string | null;
+  /** 上層項目本身（當這一組的標題列；讀不到時沒有）。 */
+  head?: T;
+  /** 這一組的子項目（不含上層項目本身）。 */
   items: T[];
 }
 
 /**
  * 依上層項目分組，組的順序照清單上第一次出現的位置（清單是最近更新的在前面）。
- * `parentOf` 是每個項目的上層編號（沒有就是 null）；`parents` 是讀到的上層項目（標題用）。
+ * `parentOf` 是每個項目的上層編號（沒有就是 null）；`parents` 是讀到的上層項目（不在清單上的上層用）。
+ * 上層項目放在 `head`（清單上本身就有的也一樣，不會在組裡重複出現）。
  * 沒有上層、也不是別人上層的項目放在最後一組（標題是 `none`）。
  * `title` 產生組標題（`item` 是上層項目，讀不到時是 undefined）。
  */
 export function groupByParent<T extends GroupItem>(
   items: T[],
   parentOf: Map<number, number | null>,
-  parents: Map<number, GroupItem>,
+  parents: Map<number, T>,
   none: string,
   title: (item: GroupItem | undefined, id: number) => string,
 ): ParentGroup<T>[] {
@@ -38,25 +42,28 @@ export function groupByParent<T extends GroupItem>(
   }
   const groups = new Map<number | null, T[]>();
   const order: (number | null)[] = [];
-  const add = (key: number | null, it: T, first = false) => {
+  const add = (key: number | null, it: T) => {
     let list = groups.get(key);
     if (!list) {
       list = [];
       groups.set(key, list);
       if (key !== null) order.push(key);
     }
-    if (first) list.unshift(it);
-    else list.push(it);
+    list.push(it);
   };
   for (const it of items) {
-    if (heads.has(it.id)) add(it.id, it, true);
-    else add(parentOf.get(it.id) ?? null, it);
+    if (heads.has(it.id)) {
+      // 清單上的上層項目：只建立這一組（自己當標題列）。
+      if (!groups.has(it.id)) {
+        groups.set(it.id, []);
+        order.push(it.id);
+      }
+    } else add(parentOf.get(it.id) ?? null, it);
   }
-  const out: ParentGroup<T>[] = order.map((key) => ({
-    parent: key,
-    title: title(listed.get(key!) ?? parents.get(key!), key!),
-    items: groups.get(key)!,
-  }));
+  const out: ParentGroup<T>[] = order.map((key) => {
+    const head = listed.get(key!) ?? parents.get(key!);
+    return { parent: key, title: title(head, key!), head, items: groups.get(key)! };
+  });
   const rest = groups.get(null);
   if (rest?.length) out.push({ parent: null, title: none, items: rest });
   return out;
