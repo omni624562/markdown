@@ -91,7 +91,12 @@ export function summary(notes, max = 140) {
     .split("\n")
     .filter((l) => /^\s*[-*] /.test(l))
     .map((l) => l.replace(/^\s*[-*] /, "").replace(/`/g, "").trim());
-  const text = items.join("；");
+  // 以冒號結尾的項目後面接的是它的子項目，不再加「；」；句號結尾的換成「；」。
+  const text = items.reduce((out, item, i) => {
+    if (!i) return item;
+    if (/[：:]$/.test(out)) return out + item;
+    return out.replace(/。$/, "") + "；" + item;
+  }, "");
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 

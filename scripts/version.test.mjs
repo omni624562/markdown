@@ -24,4 +24,6 @@ test("取出某一版的說明與摘要", () => {
   assert.equal(notesOf(log, "2.0.0"), null);
   assert.equal(summary(notesOf(log, "1.1.0")), "斜線指令；@今天 日期");
   assert.equal(summary("- " + "很長".repeat(100), 10).length, 10);
+  // 巢狀清單：冒號後面直接接子項目，句號結尾不重複加分號。
+  assert.equal(summary("- 圖示列：\n  - 拖曳頁面。\n  - 右鍵移除。\n- 其他"), "圖示列：拖曳頁面；右鍵移除；其他");
 });
