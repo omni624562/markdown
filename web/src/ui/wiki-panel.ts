@@ -519,53 +519,63 @@ export class WikiPanel<W extends WikiInfo> {
     this.#filterBtn.setAttribute("aria-label", label);
   }
 
-  /** 篩選的勾選清單：每個最上層頁面一列，勾了馬上套用。 */
-  #fillFilter(): void {
-    const top = new Set(this.#topPages().map((p) => p.path));
-    const all = this.#topPages().length === this.#pages.length;
+  /** 篩選的勾選清單：每個最上層頁面一列，勾了馬上套用。`cleared`：全部取消勾選（還沒勾任何一頁）。 */
+  #fillFilter(cleared = false): void {
+    const top = new Set(cleared ? [] : this.#topPages().map((p) => p.path));
     const head = document.createElement("div");
     head.className = "wiki-filter-head";
     const title = document.createElement("strong");
     title.textContent = t("顯示哪些最上層頁面");
-    const showAll = document.createElement("button");
-    showAll.type = "button";
-    showAll.className = "wiki-hidden-show";
-    showAll.textContent = t("全部顯示");
-    showAll.disabled = all;
-    showAll.addEventListener("click", () => {
+    const link = (text: string, run: () => void) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "wiki-hidden-show";
+      b.textContent = text;
+      b.addEventListener("click", run);
+      return b;
+    };
+    // 全選＝全部顯示；全部取消＝先清空，再勾要看的幾頁（還沒勾任何一頁時照樣全部顯示）。
+    const selectAll = link(t("全選"), () => {
       this.#setShown([]);
       this.#fillFilter();
     });
-    head.append(title, showAll);
+    const clearAll = link(t("全部取消"), () => {
+      this.#setShown([]);
+      this.#fillFilter(true);
+    });
+    const actions = document.createElement("span");
+    actions.className = "wiki-filter-actions";
+    actions.append(selectAll, clearAll);
+    head.append(title, actions);
     const list = document.createElement("div");
     list.className = "wiki-filter-list";
+    const sync = () => {
+      const n = list.querySelectorAll("input:checked").length;
+      selectAll.disabled = n === this.#pages.length;
+      clearAll.disabled = n === 0;
+    };
     for (const page of this.#pages) {
       const label = document.createElement("label");
       label.className = "wiki-filter-item";
       const box = document.createElement("input");
       box.type = "checkbox";
-      // 沒有篩選時全部都算勾選；第一次取消勾選就變成「只顯示其他的」。
+      // 沒有篩選時全部都算勾選；取消勾選就變成「只顯示其他的」。
       box.checked = top.has(page.path);
       box.value = page.path;
       box.addEventListener("change", () => {
-        const checked = [...list.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value);
-        if (!checked.length) {
-          // 至少要留一個；全部取消時改回全部顯示。
-          this.#setShown([]);
-          this.#fillFilter();
-          return;
-        }
-        this.#setShown(checked);
-        showAll.disabled = checked.length === this.#pages.length;
+        // 一頁都沒勾時全部顯示（勾選框保持空白，接著勾要看的頁面）。
+        this.#setShown([...list.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value));
+        sync();
       });
       const name = document.createElement("span");
       name.textContent = pageName(page.path);
       label.append(box, name);
       list.append(label);
     }
+    sync();
     const hint = document.createElement("p");
     hint.className = "wiki-filter-hint";
-    hint.textContent = t("沒勾的頁面不會出現在樹狀目錄（搜尋時還是會找）。每個 Wiki 各自記住。");
+    hint.textContent = t("沒勾的頁面不會出現在樹狀目錄；一頁都沒勾時全部顯示。搜尋時還是會找全部頁面，每個 Wiki 各自記住。");
     this.#filterPop.replaceChildren(head, list, hint);
   }
 

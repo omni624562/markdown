@@ -1941,7 +1941,8 @@ button.git-info:disabled { cursor: default; }
 .wiki-hidden-show:hover { text-decoration: underline; }
 .wiki-hidden-show:disabled { color: var(--subtle); text-decoration: none; cursor: default; }
 .wiki-filter-pop { position: fixed; inset: auto; box-sizing: border-box; margin: 0; padding: 10px 10px 8px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); box-shadow: 0 8px 24px rgb(0 0 0 / 16%); font: 13px/1.4 var(--font-ui); }
-.wiki-filter-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.wiki-filter-head { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.wiki-filter-actions { display: inline-flex; gap: 10px; }
 .wiki-filter-head strong { font-size: 12.5px; }
 .wiki-filter-list { display: flex; flex-direction: column; }
 .wiki-filter-item { display: flex; gap: 8px; align-items: center; min-height: 28px; padding: 0 4px; border-radius: 5px; cursor: pointer; }
