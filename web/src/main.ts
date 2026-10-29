@@ -150,6 +150,7 @@ import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.
 import { sizeLabel, timeAgo, versionTitle } from "./history-label.ts";
 import { myChanges, recentEditor, type WikiPageInfo } from "./wiki-coedit.ts";
 import { draftFromSelection } from "./workitem-create.ts";
+import { migratePinned, parseDraggedPage, parseShortcuts, placeShortcut, sameShortcut, SHORTCUT_LIMIT, shortcutHue, shortcutInitial, WIKI_PAGE_DRAG_TYPE, type WikiShortcut } from "./wiki-shortcuts.ts";
 import type { AdoSavedQuery, AdoWiki, AdoWikiPage, AdoWorkItem, AdoWorkItemDetail, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
 import { findWikiPage, parseRemoteLink, type RemoteLink, urlAt } from "./remote-links.ts";
 import type { GitHistory } from "./ui/history-view.ts";
@@ -3298,6 +3299,7 @@ const issueView = new IssueView($(".workspace"), {
     workItemsPanel?.select(kind === "ado" ? Number(id) : null);
     issuesPanel?.select(kind === "github" ? Number(id) : null);
     wikiPanel?.select(kind === "wiki" && wikiPanel.wiki?.id === id ? rest.join(":") : null);
+    markWikiShortcuts();
   },
   toggleSide() {
     issueSide = !issueSide;
@@ -3308,6 +3310,7 @@ const issueView = new IssueView($(".workspace"), {
   },
   closed() {
     issueKey = null;
+    markWikiShortcuts();
     wikiPage = null;
     outlineView = null;
     renderOutline(docHeadings);
@@ -3744,6 +3747,159 @@ const workItemsPanel = desktop
     })
   : null;
 
+/** 左側圖示列上的 Wiki 頁面捷徑（常看的頁面：從 Wiki 清單拖過去，或按頁面旁的圖釘）。 */
+let wikiShortcuts: WikiShortcut[] = loadWikiShortcuts();
+/** 正在從 Wiki 清單拖曳頁面（圖示列上顯示放置區）。 */
+let wikiDragging = false;
+const wikiShortcutBar = document.createElement("div");
+wikiShortcutBar.className = "activity-wiki";
+wikiShortcutBar.setAttribute("role", "toolbar");
+wikiShortcutBar.setAttribute("aria-label", t("Wiki 捷徑"));
+wikiShortcutBar.setAttribute("aria-orientation", "vertical");
+wikiShortcutBar.hidden = true;
+const wikiDrop = document.createElement("div");
+wikiDrop.className = "activity-wiki-drop";
+wikiDrop.title = t("放到這裡，變成圖示列上的捷徑");
+wikiDrop.append(icon("plus"));
+$(".activity-cmds").after(wikiShortcutBar);
+
+function loadWikiShortcuts(): WikiShortcut[] {
+  const raw = storage.load("wiki-shortcuts");
+  if (raw !== null) return parseShortcuts(raw);
+  // 第一次：舊版每個 Wiki 各自的「已釘選」搬到圖示列。
+  const prefix = "ado-wiki-pages:";
+  const lists = storage.keys(prefix).map((key) => {
+    try {
+      const v = JSON.parse(storage.load(key) ?? "{}") as { pinned?: unknown };
+      const pinned = Array.isArray(v.pinned) ? v.pinned.filter((p): p is string => typeof p === "string") : [];
+      return { wiki: key.slice(prefix.length), pinned };
+    } catch {
+      return { wiki: key.slice(prefix.length), pinned: [] };
+    }
+  });
+  const list = migratePinned(lists);
+  storage.save("wiki-shortcuts", JSON.stringify(list));
+  return list;
+}
+
+function setWikiShortcuts(list: WikiShortcut[]): void {
+  wikiShortcuts = list;
+  storage.save("wiki-shortcuts", JSON.stringify(list));
+  renderWikiShortcuts();
+  wikiPanel?.refreshPins();
+}
+
+/** 放到圖示列（`index` 是位置，沒給放最後面）；已經有的移過去。 */
+function addWikiShortcut(item: WikiShortcut, index?: number): void {
+  const next = placeShortcut(wikiShortcuts, item, index);
+  if (!next) {
+    toast(t("左側圖示列最多放 {n} 個 Wiki 頁面，先移除一些再加。", { n: SHORTCUT_LIMIT }), { tone: "error" });
+    return;
+  }
+  const added = !wikiShortcuts.some((s) => sameShortcut(s, item));
+  setWikiShortcuts(next);
+  if (added) toast(t("已把「{name}」放到左側圖示列：點一下開啟，右鍵可以移除。", { name: pageName(item.path) }), { tone: "success" });
+}
+
+function removeWikiShortcut(item: WikiShortcut): void {
+  setWikiShortcuts(wikiShortcuts.filter((s) => !sameShortcut(s, item)));
+}
+
+function toggleWikiShortcut(wiki: AdoWiki, path: string): void {
+  const item = { wiki: wiki.id, wikiName: wiki.name, path };
+  if (wikiShortcuts.some((s) => sameShortcut(s, item))) removeWikiShortcut(item);
+  else addWikiShortcut(item);
+}
+
+async function openWikiShortcut(item: WikiShortcut): Promise<void> {
+  if (!desktop) return;
+  const wikis = await withOfflineCopy("wikis", () => desktop!.adoWikis());
+  const wiki = wikis.find((w) => w.id === item.wiki);
+  if (!wiki) {
+    toast(t("找不到這個 Wiki（可能已經刪除或沒有權限），在捷徑上按右鍵可以移除。"), { tone: "error" });
+    return;
+  }
+  // 舊的釘選搬過來時不知道 Wiki 名稱，開啟時補上（滑鼠提示用）。
+  if (item.wikiName !== wiki.name) setWikiShortcuts(wikiShortcuts.map((s) => (sameShortcut(s, item) ? { ...s, wikiName: wiki.name } : s)));
+  showWikiPage(wiki, item.path);
+}
+
+function renderWikiShortcuts(): void {
+  const buttons = wikiShortcuts.map((item, i) => {
+    const name = pageName(item.path);
+    const where = [item.wikiName, ...item.path.slice(1).split("/").slice(0, -1)].filter(Boolean).join(" › ");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "activity-btn activity-wiki-page";
+    b.dataset.index = String(i);
+    b.draggable = true;
+    b.title = where ? `${name}\n${where}` : name;
+    b.setAttribute("aria-label", name);
+    if (issueKey === `wiki:${item.wiki}:${item.path}`) b.setAttribute("aria-current", "page");
+    const badge = document.createElement("span");
+    badge.className = "wiki-badge";
+    badge.style.setProperty("--hue", String(shortcutHue(`${item.wiki}:${item.path}`)));
+    badge.textContent = shortcutInitial(name);
+    b.append(badge);
+    b.addEventListener("click", () => void openWikiShortcut(item).catch(reportError));
+    return b;
+  });
+  wikiDrop.classList.remove("over");
+  wikiDrop.hidden = !wikiDragging;
+  wikiShortcutBar.replaceChildren(...buttons, wikiDrop);
+  wikiShortcutBar.hidden = !desktop || (!wikiShortcuts.length && !wikiDragging);
+}
+
+/** 目前開著的頁面在圖示列上標出來。 */
+function markWikiShortcuts(): void {
+  for (const b of wikiShortcutBar.querySelectorAll<HTMLElement>(".activity-wiki-page")) {
+    const item = wikiShortcuts[Number(b.dataset.index)];
+    const on = !!item && issueKey === `wiki:${item.wiki}:${item.path}`;
+    if (on) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  }
+}
+
+// 從 Wiki 清單拖曳頁面時，圖示列上出現放置區；放下就變成捷徑。
+document.addEventListener("dragstart", (e) => {
+  if (!(e.target as HTMLElement).closest?.("#wiki-host .wiki-page")) return;
+  wikiDragging = true;
+  // 等瀏覽器取完拖曳的畫面再改版面。
+  requestAnimationFrame(() => renderWikiShortcuts());
+});
+document.addEventListener("dragend", () => {
+  if (!wikiDragging) return;
+  wikiDragging = false;
+  renderWikiShortcuts();
+});
+wikiShortcutBar.addEventListener("dragover", (e) => {
+  if (!e.dataTransfer?.types.includes(WIKI_PAGE_DRAG_TYPE)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+  wikiDrop.hidden = false;
+  wikiDrop.classList.add("over");
+  // 放置區移到滑鼠所在的位置（在哪個捷徑的上半或下半）。
+  const target = [...wikiShortcutBar.querySelectorAll<HTMLElement>(".activity-wiki-page")].find((b) => {
+    const r = b.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2;
+  });
+  if (target) {
+    if (wikiDrop.nextSibling !== target) wikiShortcutBar.insertBefore(wikiDrop, target);
+  } else if (wikiShortcutBar.lastChild !== wikiDrop) wikiShortcutBar.append(wikiDrop);
+});
+wikiShortcutBar.addEventListener("dragleave", (e) => {
+  if (!wikiShortcutBar.contains(e.relatedTarget as Node)) wikiDrop.classList.remove("over");
+});
+wikiShortcutBar.addEventListener("drop", (e) => {
+  const item = e.dataTransfer && parseDraggedPage(e.dataTransfer.getData(WIKI_PAGE_DRAG_TYPE));
+  if (!item) return;
+  e.preventDefault();
+  const index = [...wikiShortcutBar.children].indexOf(wikiDrop);
+  wikiDragging = false;
+  addWikiShortcut(item, index);
+});
+renderWikiShortcuts();
+
 /** Azure DevOps 的 Wiki：選一個 Wiki，看頁面樹狀目錄，點頁面在主要區域開啟（唯讀）。 */
 const wikiPanel = desktop
   ? new WikiPanel<AdoWiki>($("#wiki-host"), {
@@ -3765,6 +3921,13 @@ const wikiPanel = desktop
       link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
       create: (wiki, parent) => void createWikiPage(wiki, parent).catch(reportError),
       canCreate: (wiki) => !wiki.code,
+      // 釘選＝放到左側圖示列；拖曳頁面到圖示列也可以。
+      pins: {
+        has: (wiki, path) => wikiShortcuts.some((s) => s.wiki === wiki.id && s.path === path),
+        toggle: (wiki, path) => toggleWikiShortcut(wiki, path),
+        labels: [t("放到左側圖示列"), t("從左側圖示列移除")],
+      },
+      dragData: (wiki, path) => ({ [WIKI_PAGE_DRAG_TYPE]: JSON.stringify({ wiki: wiki.id, wikiName: wiki.name, path }) }),
       async searchContent(wiki, text) {
         const found = await desktop!.adoWikiSearch(wiki, text);
         const pages = flattenPages(wikiPanel?.pages ?? []);
@@ -7283,6 +7446,19 @@ function openActivityMenu(at: DOMRect): void {
     if ((e.target as HTMLElement).closest(".activity-project")) return;
     e.preventDefault();
     const at = new DOMRect(e.clientX, e.clientY, 0, 0);
+    // Wiki 捷徑：開啟或移除。
+    const shortcut = (e.target as HTMLElement).closest<HTMLElement>(".activity-wiki-page");
+    const item = shortcut ? wikiShortcuts[Number(shortcut.dataset.index)] : undefined;
+    if (item) {
+      for (const id of ["wiki-shortcut-anchor", "wiki-shortcut-anchor-popover"]) document.getElementById(id)?.remove();
+      const menu = floatingMenu("wiki-shortcut-anchor", [
+        { label: t("開啟"), icon: "book-open-text", run: () => void openWikiShortcut(item).catch(reportError) },
+        { label: t("從左側圖示列移除"), icon: "pin-off", run: () => removeWikiShortcut(item) },
+      ]);
+      if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => menu.open(at)), { once: true });
+      else menu.open(at);
+      return;
+    }
     // Linux 在按下右鍵時就觸發 contextmenu：等放開再開，免得放開時被當成點在選單外。
     if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => openActivityMenu(at)), { once: true });
     else openActivityMenu(at);
@@ -7290,7 +7466,7 @@ function openActivityMenu(at: DOMRect): void {
   // 拖曳圖示調整順序（面板圖示、釘選的按鈕各自排）。
   let dragging: HTMLElement | null = null;
   bar.addEventListener("dragstart", (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>(".activity-tabs [role=tab], .activity-cmd");
+    const el = (e.target as HTMLElement).closest<HTMLElement>(".activity-tabs [role=tab], .activity-cmd, .activity-wiki-page");
     if (!el || !e.dataTransfer) return;
     dragging = el;
     e.dataTransfer.effectAllowed = "move";
@@ -7299,7 +7475,7 @@ function openActivityMenu(at: DOMRect): void {
   });
   bar.addEventListener("dragover", (e) => {
     if (!dragging) return;
-    const over = (e.target as HTMLElement).closest<HTMLElement>(".activity-tabs [role=tab], .activity-cmd");
+    const over = (e.target as HTMLElement).closest<HTMLElement>(".activity-tabs [role=tab], .activity-cmd, .activity-wiki-page");
     if (!over || over === dragging || over.parentElement !== dragging.parentElement) return;
     e.preventDefault();
     const r = over.getBoundingClientRect();
@@ -7309,8 +7485,11 @@ function openActivityMenu(at: DOMRect): void {
     if (!dragging) return;
     dragging.classList.remove("activity-dragging");
     const fromTabs = dragging.parentElement === $(".activity-tabs");
+    const fromWiki = dragging.parentElement === wikiShortcutBar;
     dragging = null;
-    if (fromTabs) {
+    if (fromWiki) {
+      setWikiShortcuts([...wikiShortcutBar.querySelectorAll<HTMLElement>(".activity-wiki-page")].map((b) => wikiShortcuts[Number(b.dataset.index)]));
+    } else if (fromTabs) {
       setActivity({ activityOrder: [...$(".activity-tabs").querySelectorAll<HTMLElement>("[role=tab]")].map((b) => b.dataset.panel!) });
     } else {
       setActivity({ activityCommands: [...$(".activity-cmds").querySelectorAll<HTMLElement>(".activity-cmd")].map((b) => b.dataset.command!) });
