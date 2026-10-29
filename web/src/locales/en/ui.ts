@@ -562,6 +562,7 @@ export const ui: Record<string, Translation> = {
   "修改記錄": "History",
   "修改記錄：誰、什麼時候改了這一頁，改了什麼": "History: who changed this page, when, and what they changed",
   "更多動作": "More actions",
+  "刪除這一頁…": "Delete This Page…",
   "在目前的文件插入連到這裡的連結": "Insert a link to this into the current document",
   "新增子頁面": "New Subpage",
   "新增頁面": "New Page",

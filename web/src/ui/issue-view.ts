@@ -47,6 +47,8 @@ export interface IssueSource {
   history?(): void;
   /** 「新增子頁面」（Wiki 頁面；不能新增的不給）。 */
   addChild?(): void;
+  /** 「刪除這一頁」（Wiki 頁面；不能刪除的不給）。 */
+  remove?(): void;
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -211,6 +213,12 @@ export class IssueView {
         run: () => {
           if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
         },
+      },
+      {
+        label: t("刪除這一頁…"),
+        icon: "trash",
+        when: () => !!this.#source?.remove,
+        run: () => this.#source?.remove?.(),
       },
       {
         label: t("保留離線"),
