@@ -406,7 +406,8 @@ pub async fn reopen_file(
         // 信任清單與工作區的判斷需要讀取磁碟（解析符號連結後的實際路徑），也放在背景執行。
         let allowed = known_file
             || app2.state::<Trust>().allows(&p)
-            || app2.state::<crate::workspace::Workspace>().contains(&p);
+            || (crate::workspace::is_editable_doc(&p)
+                && app2.state::<crate::workspace::Workspace>().contains(&p));
         if !allowed {
             return Err(tr!(
                 "這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。"
