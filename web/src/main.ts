@@ -730,7 +730,11 @@ function scheduleRender(): void {
   };
   // 更新一次要花不少時間（大文件、慢的電腦）：打字期間每隔一段時間才更新一次，
   // 間隔依上次花的時間調整，停手後一樣會很快更新到最新。
-  if (lastRenderMs > 25 || editor.view.state.doc.length > LARGE_DOC) {
+  // 預覽沒有顯示時（即時預覽、原始碼）只更新大綱與字數，不必每個字都算：停手一下再更新。
+  if (!previewVisible()) {
+    clearTimeout(renderTimer);
+    renderTimer = window.setTimeout(run, Math.min(400, Math.max(250, lastRenderMs * 2)));
+  } else if (lastRenderMs > 25 || editor.view.state.doc.length > LARGE_DOC) {
     clearTimeout(renderTimer);
     renderTimer = window.setTimeout(run, Math.min(400, Math.max(120, lastRenderMs * 2)));
   } else {
@@ -754,9 +758,19 @@ function renderNow(full = false): void {
   renderStats(result);
   renderSaveState();
   editor.relint();
-  syncPreview();
-  updateActiveHeading();
+  // 對齊捲動位置、標示目前的標題都要量元素的位置（強制重新排版）：放到下一個畫面更新時一起做，
+  // 每次按鍵只排版一次。
+  scheduleLayoutWork();
   lastRenderMs = performance.now() - started;
+}
+
+let layoutFrame = 0;
+function scheduleLayoutWork(): void {
+  cancelAnimationFrame(layoutFrame);
+  layoutFrame = requestAnimationFrame(() => {
+    syncPreview();
+    updateActiveHeading();
+  });
 }
 
 function renderError({ error }: RenderResult): void {
@@ -786,7 +800,8 @@ let emptyStateKey = "";
  * 有預覽時放在預覽區；即時預覽、原始碼只有編輯區，改放在編輯區中間（不擋打字，打字就消失）。
  */
 function renderEmptyState(text: string): void {
-  const empty = text.trim() === "";
+  // 不用 trim()：大文件每次都會複製一份字串。
+  const empty = !/\S/.test(text);
   emptyStateEl.hidden = !empty;
   if (!empty) {
     emptyStateKey = "";
@@ -870,6 +885,8 @@ async function renderRecentFiles(card: HTMLElement, key: string): Promise<void> 
 }
 
 let outlineKey = "";
+/** 大綱的結構（範圍、能否搬移、各標題的層級）；一樣時只更新項目的文字與行號。 */
+let outlineShape = "";
 /** 大綱收合的標題（每個分頁各自記住，以「層級 標題文字」辨認，編輯後仍維持）。 */
 const outlineCollapsed = new Map<string, Set<string>>();
 const collapseKey = (h: Heading) => `${h.level} ${h.text}`;
@@ -954,10 +971,28 @@ function renderOutline(headings: Heading[]): void {
   const key = `${scope}\n${movable}\n${headings.map((h) => `${h.level} ${h.line} ${h.id} ${h.text}`).join("\n")}`;
   if (key === outlineKey && outlineList.childElementCount === headings.length) return;
   outlineKey = key;
+  const levels = headings.map((h) => h.level);
+  // 標題的數量與層級都沒變（例如正在改某個標題的文字、在上面加了一行）：只更新原本的項目，
+  // 不重建整份大綱（重建後要重新標示目前的段落、捲到它的位置，大文件每個字都要重新排版）。
+  const shape = `${scope}\n${movable}\n${levels.join(",")}`;
+  if (shape === outlineShape && outlineList.childElementCount === headings.length) {
+    const links = outlineList.querySelectorAll<HTMLAnchorElement>("a");
+    headings.forEach((h, i) => {
+      const a = links[i];
+      if (a.dataset.id !== h.id) {
+        a.href = `#${encodeURIComponent(h.id)}`;
+        a.dataset.id = h.id;
+      }
+      if (a.dataset.line !== String(h.line)) a.dataset.line = String(h.line);
+      const label = h.text || t("（空白標題）");
+      if (a.textContent !== label) a.textContent = label;
+    });
+    return;
+  }
+  outlineShape = shape;
   // 重新產生大綱時保留鍵盤焦點（例如用 Alt+↑／↓ 連續搬移章節）。
   const focused = document.activeElement as HTMLElement | null;
   const focusedIndex = focused && outlineList.contains(focused) ? Number(focused.dataset.index) : -1;
-  const levels = headings.map((h) => h.level);
   const top = Math.min(...levels);
   outlineList.replaceChildren(
     ...headings.map((h, i) => {
@@ -1580,8 +1615,15 @@ function renderStats({ stats }: RenderResult): void {
     (stats.readingMinutes ? t(" · 約 {n} 分鐘讀完", { n: stats.readingMinutes }) : "");
 }
 
+/** 雜湊（`hash()`）開頭記著內容的長度：長度不同就一定改過，不必算整份文件的雜湊。 */
+function sameLength(h: string | null, length: number): boolean {
+  if (h === null) return true;
+  const i = h.indexOf(":");
+  return i < 0 || h.slice(0, i) === String(length);
+}
+
 function renderSaveState(): void {
-  const dirty = baseline !== editorHash();
+  const dirty = !sameLength(baseline, editor.view.state.doc.length) || baseline !== editorHash();
   if (active.dirty !== dirty) {
     active.dirty = dirty;
     renderTabs();
