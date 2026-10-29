@@ -415,6 +415,7 @@ fn main() {
             ai::term::term_resize,
             ai::term::term_close,
             ai::mcp::mcp_start,
+            ai::mcp::mcp_copy_registration,
             ai::mcp::mcp_stop,
             ai::mcp::mcp_sync,
             ai::mcp::mcp_respond,

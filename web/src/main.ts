@@ -8860,7 +8860,7 @@ settings.subscribe(applySettings);
 const settingsDialog = new SettingsDialog(
   settings,
   { get: () => themePref, set: setTheme },
-  desktop && ai ? { available: () => desktop!.aiTools(), registration: () => ai!.registration() } : null,
+  desktop && ai ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => ai!.copyRegistration(tool) } : null,
   updater
     ? {
         async version() {

@@ -150,8 +150,6 @@ export type TermProgram = "shell" | AiTool;
 
 export interface McpInfo {
   url: string;
-  claudeAdd: string;
-  codexAdd: string;
 }
 
 /** 給 MCP 伺服器的編輯器狀態。 */
@@ -767,6 +765,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     termResize: (id: number, cols: number, rows: number) => core.invoke<void>("term_resize", { id, cols, rows }),
     termClose: (id: number) => core.invoke<void>("term_close", { id }),
     mcpStart: () => afterSettings(() => core.invoke<McpInfo>("mcp_start")),
+    /** 把手動註冊的指令（含權杖）放進剪貼簿；由原生端複製，權杖不經過網頁。 */
+    mcpCopyRegistration: (tool: AiTool) => core.invoke<void>("mcp_copy_registration", { tool }),
     mcpStop: () => core.invoke<void>("mcp_stop"),
     mcpSync: (snapshot: EditorSnapshot) => core.invoke<void>("mcp_sync", { snapshot }),
     /** 回傳 false 表示 AI 已經不在等這個決定（逾時）。 */

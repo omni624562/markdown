@@ -17,7 +17,7 @@ type ThemePref = "system" | "light" | "dark";
 /** 桌面版提供：偵測已安裝的 AI 工具、取得手動註冊 MCP 伺服器的指令。 */
 export interface AiHooks {
   available(): Promise<{ claude: string | null; codex: string | null }>;
-  registration(): Promise<{ claudeAdd: string; codexAdd: string }>;
+  copyRegistration(tool: "claude" | "codex"): Promise<void>;
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
@@ -527,8 +527,7 @@ export class SettingsDialog {
       b.dataset.aiDependent = "1";
       b.addEventListener("click", async () => {
         try {
-          const r = await this.#ai!.registration();
-          await navigator.clipboard.writeText(tool === "claude" ? r.claudeAdd : r.codexAdd);
+          await this.#ai!.copyRegistration(tool);
           toast(t("已複製。在終端機貼上執行一次，之後在任何地方啟動都能連到編輯器（編輯器要開著）。"), { duration: 8000 });
         } catch (e) {
           toast(t("無法取得註冊指令：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });

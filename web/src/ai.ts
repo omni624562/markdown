@@ -7,7 +7,7 @@
  * AI 的修改一律經過差異檢視，不會直接寫入檔案；使用者接受後仍需自己存檔。
  */
 import { applyEdits, buildPrompt, cleanResult } from "./ai-text.ts";
-import type { AiCommand, AiProposal, AiRunEvent, Desktop, EditorSnapshot } from "./desktop.ts";
+import type { AiCommand, AiProposal, AiRunEvent, AiTool, Desktop, EditorSnapshot } from "./desktop.ts";
 import type { Editor } from "./editor.ts";
 import { t } from "./i18n.ts";
 import type { QuickAction, Settings, SettingsStore } from "./settings.ts";
@@ -93,11 +93,12 @@ export class AiController {
     }, 250);
   }
 
-  /** 設定面板「複製註冊指令」用。 */
-  async registration(): Promise<{ claudeAdd: string; codexAdd: string }> {
+  /** 設定面板「複製註冊指令」用：由原生端放進剪貼簿（指令裡有權杖，不交給網頁）。 */
+  async copyRegistration(tool: AiTool): Promise<void> {
     const s = this.#settings.value;
     if (!s.aiEnabled || !s.mcpServer) throw new Error(t("請先開啟「啟用 AI 協作」與「讓 AI 讀取目前的文件」"));
-    return this.#d.mcpStart();
+    await this.#d.mcpStart();
+    await this.#d.mcpCopyRegistration(tool);
   }
 
   async #applyMcp(s: Readonly<Settings>): Promise<void> {
