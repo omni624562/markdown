@@ -3,6 +3,7 @@
 pub static EN: &[(&str, &str)] = &[
     ("更新資訊沒有正確的簽章，已取消更新", "The update information has no valid signature. The update was canceled."),
     ("更新資訊的簽章不符，可能被竄改，已取消更新", "The update information's signature doesn't match and may have been tampered with. The update was canceled."),
+    ("收到的更新資訊比之前看過的還舊，可能被竄改，已取消更新", "The update information is older than what was seen before and may have been tampered with. The update was canceled."),
     ("更新資訊中的下載網址不正確", "The download URL in the update information is invalid."),
     ("更新資訊中的檢查碼格式不正確", "The checksum in the update information is in an invalid format."),
     ("更新資訊中的檔案大小不正確", "The file size in the update information is invalid."),
