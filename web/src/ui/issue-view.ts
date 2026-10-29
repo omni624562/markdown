@@ -290,13 +290,22 @@ export class IssueView {
     this.#stale.hidden = true;
     this.#scroll.append(this.#stale, this.#body);
     // 內容裡的連結用瀏覽器開，不要把整個視窗導走。
+    // 流程圖裡的連結是 SVG 的 <a xlink:href>，`a[href]` 選不到，所以任何 <a> 都要攔下來。
     this.#body.addEventListener("click", (e) => {
-      const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
+      const a = (e.target as Element).closest("a");
       if (!a) return;
       e.preventDefault();
-      if (this.#source?.link?.(a.getAttribute("href")!)) return;
-      if (this.#h.follow?.(a.href)) return;
-      if (/^https?:/i.test(a.href)) this.#h.open(a.href);
+      const raw = a.getAttribute("href") ?? a.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+      if (!raw) return;
+      if (this.#source?.link?.(raw)) return;
+      let href: string;
+      try {
+        href = new URL(raw, document.baseURI).href;
+      } catch {
+        return;
+      }
+      if (this.#h.follow?.(href)) return;
+      if (/^https?:/i.test(href)) this.#h.open(href);
     });
     this.#toolbar = document.createElement("div");
     this.#toolbar.className = "issue-toolbar-host";

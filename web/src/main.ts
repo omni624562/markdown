@@ -71,7 +71,7 @@ import { mathPlugin, renderTex } from "./plugins/math.ts";
 import { imageSize, livePreview } from "./live-preview.ts";
 import { codeToolsPlugin } from "./plugins/code-tools.ts";
 import { tablesPlugin } from "./plugins/tables.ts";
-import { mermaidPlugin, mermaidTheme, renderMermaid } from "./plugins/mermaid.ts";
+import { mermaidPlugin, mermaidTheme, renderMermaid, setMermaidBlockRemote } from "./plugins/mermaid.ts";
 import { blockRemoteImages, blockRemoteImagesInHtml } from "./remote-images.ts";
 import { Preview, type PreviewPlugin } from "./preview.ts";
 import sampleEn from "./sample.en.md?raw";
@@ -1073,6 +1073,7 @@ const remoteAllowed = new Set<string>();
 function blockRemote(): boolean {
   return settings.value.blockRemoteImages && !remoteAllowed.has(active.id);
 }
+setMermaidBlockRemote(blockRemote);
 
 /** 載入這份文件的遠端圖片（不改設定，其他文件仍然封鎖）。 */
 function allowRemoteImages(): void {
@@ -8054,7 +8055,7 @@ async function startSlideshow(fromCursor: boolean): Promise<void> {
     toast(t("文件是空的，沒有可以播放的內容。"));
     return;
   }
-  slideshow ??= new Slideshow();
+  slideshow ??= new Slideshow((href) => void followLink(href).catch(reportError));
   const line = editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number;
   slideshow.open(slides, fromCursor ? slideAtLine(slides, line) : 0, () => editor.view.focus());
   if (slides.length === 1 && !editor.text.includes("\n---")) {

@@ -58,7 +58,11 @@ export class Slideshow {
   #onClose: (() => void) | null = null;
   #hideTimer = 0;
 
-  constructor() {
+  /** 點了投影片裡的連結（和預覽一樣處理，不讓整個視窗被導走）。 */
+  #onLink: (href: string) => void;
+
+  constructor(onLink: (href: string) => void) {
+    this.#onLink = onLink;
     this.#el = document.createElement("div");
     this.#el.className = "slideshow";
     this.#el.hidden = true;
@@ -88,8 +92,16 @@ export class Slideshow {
     this.#el.querySelector(".slide-next")!.addEventListener("click", () => this.go(this.#index + 1));
     this.#el.querySelector(".slide-exit")!.addEventListener("click", () => this.close());
     this.#stage.addEventListener("click", (e) => {
-      // 點連結、影片等不換頁；點左邊三分之一回上一頁，其他地方下一頁。
-      if ((e.target as HTMLElement).closest("a, button, input, video, audio, summary")) return;
+      // 連結（含流程圖裡 SVG 的 <a xlink:href>）交給編輯器處理，不讓整個視窗被導到別的網頁。
+      const link = (e.target as Element).closest("a");
+      if (link) {
+        e.preventDefault();
+        const href = link.getAttribute("href") ?? link.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+        if (href) this.#onLink(href);
+        return;
+      }
+      // 點影片等不換頁；點左邊三分之一回上一頁，其他地方下一頁。
+      if ((e.target as HTMLElement).closest("button, input, video, audio, summary")) return;
       this.go(this.#index + (e.clientX < innerWidth / 3 ? -1 : 1));
     });
     this.#el.addEventListener("keydown", (e) => this.#onKey(e));
