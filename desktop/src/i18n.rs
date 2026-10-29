@@ -197,7 +197,10 @@ mod tests {
                 if p.file_name().is_some_and(|n| n != "locales") {
                     sources(&p, out);
                 }
-            } else if p.extension().is_some_and(|x| x == "rs") {
+            } else if p.extension().is_some_and(|x| x == "rs")
+                // 獨立的測試檔（例如 ado/tests.rs）整份都是測試。
+                && p.file_name().is_some_and(|n| n != "tests.rs")
+            {
                 out.push(p);
             }
         }
@@ -223,7 +226,7 @@ mod tests {
     }
 
     /// 回給使用者的中文訊息都要經過 `tr!`，而且有英文翻譯；其他中文字串（例如送給 AI 的說明、
-    /// 比對用的關鍵字）標上 `i18n-ignore`（同一行或上一行）。測試區塊（`#[cfg(test)]` 以下）不檢查。
+    /// 比對用的關鍵字）標上 `i18n-ignore`（同一行或上一行）。測試區塊（`#[cfg(test)]` 以下）與 `tests.rs` 不檢查。
     #[test]
     fn messages_are_translated() {
         let mut files = vec![];
