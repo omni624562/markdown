@@ -2850,6 +2850,9 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .activity-wiki-drop { display: grid; flex: none; place-items: center; width: 34px; height: 34px; margin: 3px 0; border: 1.5px dashed var(--border-strong); border-radius: 8px; color: var(--subtle); }
 .activity-wiki-drop .icon { width: 16px; height: 16px; }
 .activity-wiki-drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+/* 拖曳中：放置區撐滿圖示列下面的空白，放在空白處也收得到。 */
+.activity-wiki.dropping { flex: 1 1 auto; }
+.activity-wiki.dropping .activity-wiki-drop:last-child { flex: 1 1 auto; min-height: 34px; max-height: 240px; }
 .settings-row.settings-row-block { flex-direction: column; align-items: stretch; gap: 10px; }
 .activity-settings { display: flex; flex-direction: column; gap: 2px; }
 .activity-setting { display: flex; gap: 8px; align-items: center; min-height: 34px; padding: 0 4px; border-radius: 6px; }
