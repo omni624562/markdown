@@ -1,6 +1,6 @@
 [package]
 name = "md-desktop"
-version = "1.56.2"
+version = "1.56.3"
 edition = "2021"
 license = "MIT"
 description = "oMarker（Markdown 編輯器）桌面版（Tauri）"
