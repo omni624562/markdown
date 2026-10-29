@@ -16,6 +16,8 @@ export interface IssueSummary {
 /** 清單的一組（分組時有標題）。 */
 export interface IssueGroup<T> {
   title: string | null;
+  /** 這一組的標題列是一個項目（例如 User Story）：顯示成卡片、點一下開啟，組裡的項目縮排。 */
+  head?: T;
   items: T[];
 }
 
@@ -184,6 +186,10 @@ export class IssuesPanel<T extends IssueSummary> {
     const groups = arrangement ? arrangement.arrange(this.#items) : [{ title: null, items: this.#items }];
     const rows: HTMLLIElement[] = [];
     for (const group of groups) {
+      if (group.head) {
+        rows.push(...this.#headGroup(group as IssueGroup<T> & { head: T }, `${arrangement?.id}:${group.title}`));
+        continue;
+      }
       if (group.title !== null) {
         const key = `${arrangement?.id}:${group.title}`;
         const open = !this.#collapsed.has(key);
@@ -215,6 +221,42 @@ export class IssuesPanel<T extends IssueSummary> {
       rows.push(...group.items.map((it) => this.#row(it)));
     }
     this.#list.replaceChildren(...rows);
+  }
+
+  /** 以項目當標題列的一組：左邊是收合箭頭，標題列本身可以點開那個項目；子項目縮排、左邊一條線。 */
+  #headGroup(group: IssueGroup<T> & { head: T }, key: string): HTMLLIElement[] {
+    const open = !this.#collapsed.has(key);
+    const li = this.#row(group.head);
+    li.classList.add("workitems-group-card");
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "workitems-group-toggle";
+    toggle.dataset.key = key;
+    toggle.setAttribute("aria-expanded", String(open));
+    const label = open ? t("收合 {n} 個子項目", { n: group.items.length }) : t("展開 {n} 個子項目", { n: group.items.length });
+    toggle.title = label;
+    toggle.setAttribute("aria-label", label);
+    toggle.append(icon(open ? "chevron-down" : "chevron-right"));
+    toggle.addEventListener("click", () => {
+      if (open) this.#collapsed.add(key);
+      else this.#collapsed.delete(key);
+      this.#render();
+      this.#list.querySelector<HTMLElement>(`.workitems-group-toggle[data-key="${CSS.escape(key)}"]`)?.focus();
+    });
+    const count = document.createElement("span");
+    count.className = "workitems-group-count";
+    count.textContent = String(group.items.length);
+    li.prepend(toggle);
+    li.append(count);
+    if (!open) return [li];
+    return [
+      li,
+      ...group.items.map((it) => {
+        const row = this.#row(it);
+        row.classList.add("workitems-child");
+        return row;
+      }),
+    ];
   }
 
   #row(item: T): HTMLLIElement {

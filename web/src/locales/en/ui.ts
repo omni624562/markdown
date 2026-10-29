@@ -568,6 +568,8 @@ export const ui: Record<string, Translation> = {
   "顯示哪些最上層頁面": "Top-level pages to show",
   "全部顯示": "Show all",
   "全部取消": "Clear all",
+  "收合 {n} 個子項目": ["Collapse {n} child item", "Collapse {n} child items"],
+  "展開 {n} 個子項目": ["Expand {n} child item", "Expand {n} child items"],
   "只看這裡": "Show Only This Folder",
   "顯示整個 Wiki": "Show Entire Wiki",
   "返回整個 Wiki": "All pages",
