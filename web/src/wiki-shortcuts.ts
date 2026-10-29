@@ -1,5 +1,5 @@
 /**
- * 左側圖示列上的 Wiki 頁面捷徑：常看的頁面放到圖示列，點一下開啟。
+ * 左側圖示列上的捷徑：常看的 Wiki 頁面、工作項目（例如 User Story、Feature）放到圖示列，點一下開啟。
  * 這裡只有資料的處理（讀寫、去重、顯示的字與顏色），畫面在 main.ts。
  */
 
@@ -12,40 +12,66 @@ export interface WikiShortcut {
   path: string;
 }
 
-/** 圖示列最多放幾個 Wiki 捷徑。 */
+export interface WorkItemShortcut {
+  /** 工作項目編號。 */
+  workItem: number;
+  /** 類型，例如 `User Story`（決定圖示的顏色）。 */
+  kind: string;
+  /** 標題（滑鼠提示、圖示上的字；開啟後更新）。 */
+  title: string;
+}
+
+export type Shortcut = WikiShortcut | WorkItemShortcut;
+
+/** 圖示列最多放幾個捷徑。 */
 export const SHORTCUT_LIMIT = 12;
 
-/** 拖曳 Wiki 頁面時帶的資料型別（放到圖示列上變成捷徑）。 */
-export const WIKI_PAGE_DRAG_TYPE = "application/x-omarker-wiki-page";
+/** 拖曳 Wiki 頁面、工作項目時帶的資料型別（放到圖示列上變成捷徑）。 */
+export const SHORTCUT_DRAG_TYPE = "application/x-omarker-shortcut";
 
-function isShortcut(v: unknown): v is WikiShortcut {
-  const s = v as WikiShortcut;
-  return !!s && typeof s.wiki === "string" && typeof s.path === "string" && s.path.startsWith("/") && typeof (s.wikiName ?? "") === "string";
+export function isWorkItemShortcut(s: Shortcut): s is WorkItemShortcut {
+  return "workItem" in s;
+}
+
+/** 檢查格式並只留需要的欄位；格式不對回傳 null。 */
+function toShortcut(v: unknown): Shortcut | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.workItem === "number") {
+    if (!Number.isInteger(o.workItem) || o.workItem <= 0 || typeof o.kind !== "string" || typeof o.title !== "string") return null;
+    return { workItem: o.workItem, kind: o.kind, title: o.title };
+  }
+  const wikiName = o.wikiName ?? "";
+  if (typeof o.wiki !== "string" || typeof o.path !== "string" || !o.path.startsWith("/") || typeof wikiName !== "string") return null;
+  return { wiki: o.wiki, wikiName, path: o.path };
 }
 
 /** 讀取存下的捷徑；格式不對的略過。 */
-export function parseShortcuts(raw: string | null): WikiShortcut[] {
+export function parseShortcuts(raw: string | null): Shortcut[] {
   if (!raw) return [];
   try {
     const v = JSON.parse(raw) as unknown;
     if (!Array.isArray(v)) return [];
-    return v.filter(isShortcut).map((s) => ({ wiki: s.wiki, wikiName: s.wikiName ?? "", path: s.path })).slice(0, SHORTCUT_LIMIT);
+    return v
+      .map(toShortcut)
+      .filter((s): s is Shortcut => s !== null)
+      .slice(0, SHORTCUT_LIMIT);
   } catch {
     return [];
   }
 }
 
-/** 讀取拖曳帶過來的頁面；不是 Wiki 頁面時回傳 null。 */
-export function parseDraggedPage(raw: string): WikiShortcut | null {
+/** 讀取拖曳帶過來的 Wiki 頁面或工作項目；都不是時回傳 null。 */
+export function parseDraggedShortcut(raw: string): Shortcut | null {
   try {
-    const v = JSON.parse(raw) as unknown;
-    return isShortcut(v) ? { wiki: v.wiki, wikiName: v.wikiName ?? "", path: v.path } : null;
+    return toShortcut(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
-export function sameShortcut(a: WikiShortcut, b: WikiShortcut): boolean {
+export function sameShortcut(a: Shortcut, b: Shortcut): boolean {
+  if (isWorkItemShortcut(a) || isWorkItemShortcut(b)) return isWorkItemShortcut(a) && isWorkItemShortcut(b) && a.workItem === b.workItem;
   return a.wiki === b.wiki && a.path === b.path;
 }
 
@@ -53,7 +79,7 @@ export function sameShortcut(a: WikiShortcut, b: WikiShortcut): boolean {
  * 把頁面放到第 `index` 個位置（沒給放最後面）；已經有的移過去。
  * 滿了回傳 null（已經有的不算新增，不會滿）。
  */
-export function placeShortcut(list: WikiShortcut[], item: WikiShortcut, index = list.length): WikiShortcut[] | null {
+export function placeShortcut(list: Shortcut[], item: Shortcut, index = list.length): Shortcut[] | null {
   const at = list.findIndex((s) => sameShortcut(s, item));
   if (at < 0 && list.length >= SHORTCUT_LIMIT) return null;
   const rest = list.filter((s) => !sameShortcut(s, item));
@@ -85,6 +111,24 @@ export function shortcutInitial(name: string): string {
   const two = chars.slice(0, 2);
   if (two.length > 1 && CJK.test(two[1])) two.pop();
   return two[0].toUpperCase() + (two[1] ?? "");
+}
+
+/** Azure DevOps 常見工作項目類型的顏色（色相，接近 ADO 網頁上的顏色）。 */
+const KIND_HUES: Record<string, number> = {
+  Epic: 28,
+  Feature: 280,
+  "User Story": 200,
+  "Product Backlog Item": 200,
+  Requirement: 200,
+  Bug: 355,
+  Task: 45,
+  Issue: 320,
+  Impediment: 320,
+};
+
+/** 工作項目圖示的色相：常見類型用固定的顏色，其他依類型名稱。 */
+export function workItemHue(kind: string): number {
+  return KIND_HUES[kind] ?? shortcutHue(kind);
 }
 
 /** 依頁面決定圖示的色相（0–359），同一頁每次都一樣。 */

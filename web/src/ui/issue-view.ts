@@ -49,6 +49,8 @@ export interface IssueSource {
   addChild?(): void;
   /** 「刪除這一頁」（Wiki 頁面；不能刪除的不給）。 */
   remove?(): void;
+  /** 「放到左側圖示列」：有沒有放、放上去或拿掉（不能放的不給）。 */
+  shortcut?: { has(): boolean; toggle(): void };
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
 }
@@ -206,6 +208,13 @@ export class IssueView {
         icon: "file-plus",
         when: () => !!this.#source?.addChild,
         run: () => this.#source?.addChild?.(),
+      },
+      {
+        label: t("放到左側圖示列"),
+        icon: "pin",
+        when: () => !!this.#source?.shortcut,
+        checked: () => !!this.#source?.shortcut?.has(),
+        run: () => this.#source?.shortcut?.toggle(),
       },
       {
         label: t("複製成 Markdown 文件"),

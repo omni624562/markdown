@@ -42,6 +42,8 @@ export interface IssuesHandlers<T extends IssueSummary> {
   mark?(item: T): { kind: string; label: string } | null;
   /** 拖曳項目時帶的 Markdown 連結（拖到文件裡插入）。 */
   link?(item: T): string;
+  /** 拖曳項目時另外帶的資料（型別對應內容，例如拖到左側圖示列變成捷徑）。 */
+  dragData?(item: T): Record<string, string>;
   /** 放在搜尋框下方的篩選列（改變時呼叫 `refresh()`）。 */
   filters?: HTMLElement;
   /** 放在搜尋框右邊的按鈕（例如展開、收合篩選列）。 */
@@ -280,12 +282,13 @@ export class IssuesPanel<T extends IssueSummary> {
       this.select(item.id);
       this.#h.view(item);
     });
-    const link = this.#h.link;
-    if (link) {
+    const { link, dragData } = this.#h;
+    if (link || dragData) {
       b.draggable = true;
       b.addEventListener("dragstart", (e) => {
         if (!e.dataTransfer) return;
-        e.dataTransfer.setData("text/plain", link(item));
+        if (link) e.dataTransfer.setData("text/plain", link(item));
+        for (const [type, data] of Object.entries(dragData?.(item) ?? {})) e.dataTransfer.setData(type, data);
         e.dataTransfer.effectAllowed = "copy";
       });
     }
