@@ -7506,16 +7506,51 @@ function openActivityMenu(at: DOMRect): void {
     if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => openActivityMenu(at)), { once: true });
     else openActivityMenu(at);
   });
-  // 拖曳圖示調整順序（面板圖示、釘選的按鈕各自排）。
+  // 拖曳圖示調整順序（面板圖示、釘選的按鈕各自排）。Wiki 捷徑拖到圖示列外面放開就移除。
   let dragging: HTMLElement | null = null;
+  /** 正在拖的 Wiki 捷徑被放在圖示列外面（放開後移除）。 */
+  let dropOutside = false;
+  const isShortcutDrag = () => !!dragging?.classList.contains("activity-wiki-page");
+  const outsideBar = (e: DragEvent) => {
+    const r = bar.getBoundingClientRect();
+    return e.clientX > r.right + 4 || e.clientX < r.left - 4 || e.clientY < r.top - 4 || e.clientY > r.bottom + 4;
+  };
   bar.addEventListener("dragstart", (e) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>(".activity-tabs [role=tab], .activity-cmd, .activity-wiki-page");
     if (!el || !e.dataTransfer) return;
     dragging = el;
+    dropOutside = false;
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", el.getAttribute("aria-label") ?? "");
+    // Wiki 捷徑不帶文字，放到編輯區時才不會插入頁名。
+    if (el.classList.contains("activity-wiki-page")) e.dataTransfer.setData("application/x-omarker-wiki-shortcut", "");
+    else e.dataTransfer.setData("text/plain", el.getAttribute("aria-label") ?? "");
     el.classList.add("activity-dragging");
   });
+  // Wiki 捷徑拖到圖示列外面：整個視窗都可以放（游標顯示可以放下），捷徑標成「放開就移除」。
+  window.addEventListener(
+    "dragover",
+    (e) => {
+      if (!isShortcutDrag()) return;
+      const out = outsideBar(e);
+      dragging!.classList.toggle("activity-removing", out);
+      if (!out) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    },
+    true,
+  );
+  window.addEventListener(
+    "drop",
+    (e) => {
+      if (!isShortcutDrag() || !outsideBar(e)) return;
+      // 不要讓編輯區或檔案樹處理這次放下。
+      e.preventDefault();
+      e.stopPropagation();
+      dropOutside = true;
+    },
+    true,
+  );
   bar.addEventListener("dragover", (e) => {
     if (!dragging) return;
     const over = (e.target as HTMLElement).closest<HTMLElement>(".activity-tabs [role=tab], .activity-cmd, .activity-wiki-page");
@@ -7526,11 +7561,20 @@ function openActivityMenu(at: DOMRect): void {
   });
   bar.addEventListener("dragend", () => {
     if (!dragging) return;
-    dragging.classList.remove("activity-dragging");
+    dragging.classList.remove("activity-dragging", "activity-removing");
     const fromTabs = dragging.parentElement === $(".activity-tabs");
     const fromWiki = dragging.parentElement === wikiShortcutBar;
+    const removed = fromWiki && dropOutside ? wikiShortcuts[Number(dragging.dataset.index)] : undefined;
     dragging = null;
-    if (fromWiki) {
+    dropOutside = false;
+    if (removed) {
+      // 拖出去放開：移除，提示裡可以復原（放回原本的位置）。
+      const before = wikiShortcuts;
+      removeWikiShortcut(removed);
+      toast(t("已從左側圖示列移除「{name}」", { name: pageName(removed.path) }), {
+        action: { label: t("復原"), run: () => setWikiShortcuts(before) },
+      });
+    } else if (fromWiki) {
       setWikiShortcuts([...wikiShortcutBar.querySelectorAll<HTMLElement>(".activity-wiki-page")].map((b) => wikiShortcuts[Number(b.dataset.index)]));
     } else if (fromTabs) {
       setActivity({ activityOrder: [...$(".activity-tabs").querySelectorAll<HTMLElement>("[role=tab]")].map((b) => b.dataset.panel!) });
