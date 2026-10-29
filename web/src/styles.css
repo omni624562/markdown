@@ -2464,7 +2464,10 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .issue-pane[data-source="ado"], .issue-pane[data-source="wiki"], .issue-pane[data-source="repo"] { --source: light-dark(#0b6bcb, #4ea1f3); }
 .issue-pane[data-source="github"] { --source: light-dark(#8250df, #a371f7); }
 .issue-pane[data-source="git"] { --source: light-dark(#d1491f, #f0784f); }
-.issue-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; margin-bottom: 2px; }
+.issue-meta { display: flex; gap: 6px; align-items: center; min-width: 0; margin-bottom: 2px; }
+/* 來源（Azure DevOps、GitHub…）：位置前面一個來源顏色的小圖示，滑鼠提示寫名稱。 */
+.issue-origin { display: inline-flex; flex: none; color: var(--source); }
+.issue-origin .icon { width: 14px; height: 14px; }
 .source-badge {
   display: inline-flex;
   flex: none;
@@ -2480,11 +2483,12 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
   white-space: nowrap;
 }
 .source-badge .icon { width: 13px; height: 13px; }
-.source-badge.source-readonly { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--muted); font-weight: 500; }
 /* 檢視開著時，分頁列上原本選取的本機分頁變淡（目前看的不是它）。 */
 body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
 body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
-.issue-label { display: inline-flex; flex-wrap: wrap; gap: 0 4px; align-items: baseline; min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+/* 位置一列放完，太長時截掉（每一層的完整名稱在滑鼠提示裡）。 */
+.issue-label { display: block; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.issue-label > * { margin-right: 4px; }
 .issue-crumb { padding: 0 2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
 .issue-crumb:hover { background: var(--active-line); color: var(--fg); text-decoration: underline; }
 .issue-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
@@ -2518,8 +2522,11 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .wi-chip[data-tone="resolved"] { --tone: light-dark(#7c3aed, #a78bfa); }
 .wi-chip[data-tone="done"] { --tone: var(--success); }
 .wi-chip[data-tone="removed"] { --tone: var(--subtle); text-decoration: line-through; }
-.issue-title { margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.issue-title { margin: 0; overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.issue-actions .btn-primary { margin-right: 4px; }
+/* 內容的動作和檢視的動作（並排、找字、重新整理、關閉）中間的分隔線。 */
+.issue-actions-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
 .issue-find[hidden] { display: none; }
 .issue-find input {
