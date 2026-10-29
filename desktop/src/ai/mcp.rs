@@ -323,6 +323,12 @@ impl EditorTools {
         if command.is_empty() {
             return Err("command 不能是空的".into()); // i18n-ignore
         }
+        if !crate::settings::ai_terminal_enabled(&self.app) {
+            // 回覆給 AI 的訊息（不是介面）。
+            let msg =
+                "使用者沒有開放讓 AI 在終端機執行指令（設定 → AI 協作 →「在終端機執行指令」）。"; // i18n-ignore
+            return Err(msg.into());
+        }
         let cwd = self
             .app
             .state::<Workspace>()
