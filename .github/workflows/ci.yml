@@ -70,7 +70,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test scripts/version.test.mjs
+      - run: node --test scripts/version.test.mjs scripts/branch-check.test.mjs
+      # 分支規則（CLAUDE.md）：PR 合併到 main，而且不能把其他還沒合併的分支疊進來。
+      - name: 檢查分支
+        if: github.event_name == 'pull_request'
+        run: node scripts/branch-check.mjs "${{ github.base_ref }}" "${{ github.event.pull_request.head.sha }}"
       - name: 檢查版本號
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
