@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { migratePinned, parseDraggedPage, parseShortcuts, placeShortcut, SHORTCUT_LIMIT, shortcutHue, shortcutInitial } from "./wiki-shortcuts.ts";
+import { migratePinned, parseDraggedShortcut, parseShortcuts, placeShortcut, sameShortcut, SHORTCUT_LIMIT, shortcutHue, shortcutInitial, workItemHue } from "./wiki-shortcuts.ts";
 
 const s = (path: string, wiki = "w1") => ({ wiki, wikiName: "", path });
 
@@ -10,10 +10,32 @@ test("捷徑：讀取時略過格式不對的", () => {
   assert.deepEqual(parseShortcuts(JSON.stringify([s("/A"), { wiki: 1, path: "/B" }, { wiki: "w1", path: "C" }, { wiki: "w2", path: "/D" }])), [s("/A"), s("/D", "w2")]);
 });
 
-test("捷徑：拖曳帶過來的頁面", () => {
-  assert.deepEqual(parseDraggedPage(JSON.stringify({ wiki: "w1", wikiName: "P.wiki", path: "/安裝" })), { wiki: "w1", wikiName: "P.wiki", path: "/安裝" });
-  assert.equal(parseDraggedPage("[文字](https://x)"), null);
-  assert.equal(parseDraggedPage(JSON.stringify({ wiki: "w1" })), null);
+const w = (workItem: number, kind = "User Story") => ({ workItem, kind, title: `S${workItem}` });
+
+test("捷徑：拖曳帶過來的頁面或工作項目", () => {
+  assert.deepEqual(parseDraggedShortcut(JSON.stringify({ wiki: "w1", wikiName: "P.wiki", path: "/安裝" })), { wiki: "w1", wikiName: "P.wiki", path: "/安裝" });
+  assert.deepEqual(parseDraggedShortcut(JSON.stringify({ workItem: 12, kind: "Feature", title: "匯出", state: "Active" })), { workItem: 12, kind: "Feature", title: "匯出" });
+  assert.equal(parseDraggedShortcut("[文字](https://x)"), null);
+  assert.equal(parseDraggedShortcut(JSON.stringify({ wiki: "w1" })), null);
+  assert.equal(parseDraggedShortcut(JSON.stringify({ workItem: 1.5, kind: "Task", title: "x" })), null);
+  assert.equal(parseDraggedShortcut(JSON.stringify({ workItem: 3, kind: "Task" })), null);
+});
+
+test("捷徑：Wiki 頁面與工作項目放在同一列", () => {
+  const list = parseShortcuts(JSON.stringify([s("/A"), w(7), { workItem: "8", kind: "Bug", title: "壞" }]));
+  assert.deepEqual(list, [s("/A"), w(7)]);
+  assert.ok(sameShortcut(w(7), { ...w(7), title: "改了標題" }));
+  assert.ok(!sameShortcut(w(7), s("/A")));
+  assert.ok(!sameShortcut(s("/A"), w(7)));
+  assert.deepEqual(placeShortcut(list, w(9, "Feature"), 0), [w(9, "Feature"), s("/A"), w(7)]);
+  // 已經有的工作項目只會移位置，不會重複。
+  assert.deepEqual(placeShortcut(list, w(7), 0), [w(7), s("/A")]);
+});
+
+test("工作項目圖示的顏色：常見類型固定，其他依類型名稱", () => {
+  assert.equal(workItemHue("Feature"), 280);
+  assert.equal(workItemHue("User Story"), workItemHue("Product Backlog Item"));
+  assert.equal(workItemHue("自訂類型"), shortcutHue("自訂類型"));
 });
 
 test("捷徑：放到指定位置，已經有的移過去，滿了不能再加", () => {

@@ -2886,6 +2886,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .activity-wiki[hidden] { display: none; }
 .activity-wiki .activity-btn { flex: none; }
 .wiki-badge { --hue: 210; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: light-dark(hsl(var(--hue) 70% 91%), hsl(var(--hue) 30% 27%)); color: light-dark(hsl(var(--hue) 60% 28%), hsl(var(--hue) 70% 84%)); font: 600 13px/1 var(--font-ui); letter-spacing: -0.02em; }
+/* 工作項目捷徑：左邊一條類型的顏色（Feature 紫、User Story 藍、Bug 紅…）。 */
+.workitem-badge { border-left: 3px solid light-dark(hsl(var(--hue) 65% 45%), hsl(var(--hue) 65% 62%)); border-radius: 4px 7px 7px 4px; }
 .activity-wiki-page:hover .wiki-badge { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 25%, transparent); }
 .activity-wiki-page[aria-current="page"] .wiki-badge { box-shadow: 0 0 0 2px var(--accent); }
 /* 捷徑拖到圖示列外面：放開就移除。 */
