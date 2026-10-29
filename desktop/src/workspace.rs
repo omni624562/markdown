@@ -74,6 +74,15 @@ pub fn is_doc(path: &Path) -> bool {
     }
 }
 
+/// 不是使用者自己選的檔案（資料夾裡的檔案、前端傳來的路徑）時，只能讀寫這些：副檔名是文件類型，
+/// 而且不在 `.git` 資料夾裡。`.git/config` 之類的設定被改掉，下次執行 git 時可能跑出別的程式。
+pub fn is_editable_doc(path: &Path) -> bool {
+    is_doc(path)
+        && !path
+            .components()
+            .any(|c| matches!(c, Component::Normal(n) if n.eq_ignore_ascii_case(".git")))
+}
+
 /// 解析符號連結後的實際位置（檔案可以還不存在：往上找到第一個存在的資料夾解析，再接上其餘部分）。
 pub fn real_path(path: &Path) -> Result<PathBuf, String> {
     if !path.is_absolute() || path.components().any(|c| matches!(c, Component::ParentDir)) {
@@ -943,6 +952,16 @@ mod tests {
         ] {
             assert!(!is_doc(Path::new(name)), "{name}");
         }
+    }
+
+    #[test]
+    fn editable_docs_exclude_git_folder() {
+        assert!(is_editable_doc(Path::new("/筆記/a.md")));
+        assert!(is_editable_doc(Path::new("/筆記/.github/workflows/ci.yml")));
+        assert!(!is_editable_doc(Path::new("/筆記/.git/config")));
+        assert!(!is_editable_doc(Path::new("/筆記/.git/info/a.md")));
+        assert!(!is_editable_doc(Path::new("/筆記/.Git/COMMIT_EDITMSG.txt")));
+        assert!(!is_editable_doc(Path::new("/筆記/工具.exe")));
     }
 
     #[test]
