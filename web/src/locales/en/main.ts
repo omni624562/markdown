@@ -733,4 +733,5 @@ export const main: Record<string, Translation> = {
   "依上層項目分組": "Group by parent",
   "沒有上層項目": "No parent",
   "{kind} {id}：{title}": "{kind} {id}: {title}",
+  "已從左側圖示列移除「{name}」": "Removed \"{name}\" from the activity bar",
 };
