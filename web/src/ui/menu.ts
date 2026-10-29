@@ -5,7 +5,8 @@ import { placeMenu } from "./menu-place.ts";
 export type MenuEntry =
   | string
   | "-"
-  | { label: string; icon?: string; checked: () => boolean; run(): void }
+  /** 一般動作（沒給 `checked`）或可勾選的項目；`when` 回傳 false 時不列出。 */
+  | { label: string; icon?: string; checked?: () => boolean; when?: () => boolean; run(): void }
   /** 子選單：滑鼠移上去、點一下或按 → 展開。 */
   | { label: string; icon?: string; items: MenuEntry[] };
 
@@ -49,7 +50,7 @@ function newMenu(): HTMLDivElement {
  * 下拉選單：用原生 Popover API（點外面、按 Esc 自動關閉），
  * 項目直接取自指令中心，名稱與快速鍵和指令面板一致。
  */
-export function setupMenu(button: HTMLButtonElement, commands: Commands, entries: MenuEntry[]): HTMLDivElement {
+export function setupMenu(button: HTMLButtonElement, commands: Commands | null, entries: MenuEntry[]): HTMLDivElement {
   const root = newMenu();
   root.id = `${button.id || "menu"}-popover`;
   document.body.append(root);
@@ -77,7 +78,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
       const item = document.createElement("button");
       item.type = "button";
       if (typeof entry === "string") {
-        const cmd = commands.get(entry);
+        const cmd = commands?.get(entry);
         if (!cmd || !(cmd.when?.() ?? true)) return [];
         item.role = "menuitem";
         if (cmd.icon) item.append(icon(cmd.icon));
@@ -86,7 +87,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
         if (keys) item.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys(keys) }));
         item.addEventListener("click", () => {
           root.hidePopover();
-          void commands.run(cmd.id);
+          void commands?.run(cmd.id);
         });
       } else if ("items" in entry) {
         const sub = newMenu();
@@ -139,11 +140,13 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands, entries
         menu.append(sub);
         return [item];
       } else {
-        item.role = "menuitemradio";
-        item.setAttribute("aria-checked", String(entry.checked()));
+        if (!(entry.when?.() ?? true)) return [];
+        const checked = entry.checked?.();
+        item.role = checked === undefined ? "menuitem" : "menuitemradio";
+        if (checked !== undefined) item.setAttribute("aria-checked", String(checked));
         if (entry.icon) item.append(icon(entry.icon));
         item.append(Object.assign(document.createElement("span"), { textContent: entry.label }));
-        if (entry.checked()) item.append(icon("check"));
+        if (checked) item.append(icon("check"));
         item.addEventListener("click", () => {
           root.hidePopover();
           entry.run();
