@@ -730,4 +730,5 @@ export const main: Record<string, Translation> = {
   "刪除這一頁和子頁面": "Delete page and subpages",
   "刪除這一頁": "Delete page",
   "已刪除 Wiki 頁面「{name}」": "Deleted wiki page \"{name}\"",
+  "已從左側圖示列移除「{name}」": "Removed \"{name}\" from the activity bar",
 };
