@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type InlineTag, blockMath, inlineMath, mermaidSource, pairTags, parseTag } from "./live-preview.ts";
+import { EditorState } from "@codemirror/state";
+import { Decoration } from "@codemirror/view";
+import { type InlineTag, blockMath, inlineMath, mapBlocks, mermaidSource, pairTags, parseTag } from "./live-preview.ts";
 import { rangeChecker } from "./ranges.ts";
 
 test("行內公式的規則和 md-core 一致", () => {
@@ -70,4 +72,22 @@ test("rangeChecker：合併重疊範圍後用二分搜尋判斷", () => {
   assert.equal(inside(140, 150), true);
   assert.equal(inside(200, 210), false);
   assert.equal(rangeChecker([])(0, 100), false);
+});
+
+test("打字沒有碰到表格、公式或流程圖時，區塊跟著位移，不必重建", () => {
+  const doc = "第一段\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n最後一段";
+  const table: [number, number] = [doc.indexOf("|"), doc.indexOf("2 |") + 3];
+  const value = { set: Decoration.none, blocks: [table] };
+  const state = EditorState.create({ doc });
+  // 在第一段打字：表格往後移兩個字。
+  const typed = mapBlocks(value, state.update({ changes: { from: 1, insert: "甲乙" } }));
+  assert.deepEqual(typed?.blocks, [[table[0] + 2, table[1] + 2]]);
+  // 在表格裡打字、在表格下一行打字、打出 `|` 或 `` ` ``：要重建。
+  assert.equal(mapBlocks(value, state.update({ changes: { from: table[0] + 2, insert: "x" } })), null);
+  assert.equal(mapBlocks(value, state.update({ changes: { from: table[1] + 1, insert: "x" } })), null);
+  assert.equal(mapBlocks(value, state.update({ changes: { from: 1, insert: "|" } })), null);
+  assert.equal(mapBlocks(value, state.update({ changes: { from: doc.length, insert: "\n```mermaid" } })), null);
+  // 刪掉含有 `$` 的文字也要重建。
+  const math = EditorState.create({ doc: "a $x$ b\n\nc" });
+  assert.equal(mapBlocks({ set: Decoration.none, blocks: [] }, math.update({ changes: { from: 2, to: 5 } })), null);
 });

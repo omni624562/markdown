@@ -94,6 +94,7 @@ import {
   type DocMeta,
   dropDraft,
   dropOrphanDrafts,
+  draftVersion,
   loadDraft,
   loadProjectView,
   loadSession,
@@ -140,6 +141,7 @@ import { PAPERS, PRINT_ROOT_CSS, type PdfOptions, coverHtml, pageCss, pageLayout
 import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
 import { type FileRef, backlinks, linkTarget, resolveWiki } from "./links.ts";
 import { type IndexedDoc, type OpenDoc, WorkspaceIndex } from "./workspace-index.ts";
+import { setBounded } from "./bounded.ts";
 import { isoDate, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
 import { REPO_URL, SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
@@ -380,6 +382,8 @@ function davImageCached(path: string): Promise<string> {
 // ---- 文件裡的工作項目連結：旁邊顯示目前的狀態（即時預覽、預覽、Wiki 內容） ----------------
 
 /** 讀過的狀態（五分鐘內不重新讀取；讀不到的記成 null）。 */
+/** 工作項目相關的快取最多記幾筆（`setBounded`）。 */
+const CACHE_MAX = 2000;
 const chipCache = new Map<number, { item: AdoWorkItem | null; at: number }>();
 const chipWanted = new Set<number>();
 let chipTimer = 0;
@@ -401,10 +405,10 @@ async function flushChips(): Promise<void> {
   chipWanted.clear();
   if (!ids.length) return;
   // 先記下時間，讀取期間不會重複排隊。
-  for (const id of ids) chipCache.set(id, { item: chipCache.get(id)?.item ?? null, at: Date.now() });
+  for (const id of ids) setBounded(chipCache, id, { item: chipCache.get(id)?.item ?? null, at: Date.now() }, CACHE_MAX);
   try {
     const items = await desktop!.adoWorkItemsByIds(ids);
-    for (const id of ids) chipCache.set(id, { item: items.find((w) => w.id === id) ?? null, at: Date.now() });
+    for (const id of ids) setBounded(chipCache, id, { item: items.find((w) => w.id === id) ?? null, at: Date.now() }, CACHE_MAX);
   } catch {
     // 連不到伺服器：留著舊的狀態，五分鐘後再試。
   }
@@ -1652,12 +1656,20 @@ previewScroller.addEventListener(
 let saveTimer: number | undefined;
 let pendingDraft: { id: string; doc: Text } | null = null;
 
+/**
+ * 草稿在停手多久後寫入：寫入瀏覽器的儲存空間是同步的，文件越大越久（會卡住畫面），
+ * 大文件不要每停一下就寫：100 KB 以下 0.4 秒，之後每 100 KB 多等 0.4 秒，最多 3 秒。
+ */
+function draftDelay(length: number): number {
+  return Math.min(3000, 400 * Math.max(1, Math.ceil(length / 100_000)));
+}
+
 function scheduleAutosave(doc: Text): void {
   clearTimeout(saveTimer);
   draftSaved = false;
   // 記下是哪個分頁的內容：計時器觸發前可能已經切換到別的分頁。
   pendingDraft = { id: active.id, doc };
-  saveTimer = window.setTimeout(flushDraft, 400);
+  saveTimer = window.setTimeout(flushDraft, draftDelay(doc.length));
 }
 
 // ---- 自動存檔（桌面版、已經存過的檔案） ---------------------------------------
@@ -2189,7 +2201,7 @@ function peekWorkItem(id: number): Promise<AdoWorkItemDetail> {
   const hit = workItemPeek.get(id);
   if (hit && Date.now() - hit.at < 60_000) return hit.item;
   const item = desktop!.adoWorkItem(id);
-  workItemPeek.set(id, { at: Date.now(), item });
+  setBounded(workItemPeek, id, { at: Date.now(), item }, 200);
   item.catch(() => workItemPeek.delete(id));
   return item;
 }
@@ -3744,7 +3756,7 @@ function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<A
         .then(({ links, parents }) => {
           for (const id of missing) workItemParentOf.set(id, null);
           for (const [id, parent] of links) workItemParentOf.set(id, parent);
-          for (const p of parents) workItemParentItems.set(p.id, workItemRow(p));
+          for (const p of parents) setBounded(workItemParentItems, p.id, workItemRow(p), CACHE_MAX);
         })
         .catch((e) => {
           // 讀不到就當成都沒有上層（不要一直重試）。
@@ -4243,7 +4255,7 @@ function saveSeen(next: SeenMap): void {
 
 /** 記下讀到的工作項目；`mine` 是指派給你、還沒結束的清單。 */
 function noteWorkItems(items: AdoWorkItem[], mine: boolean): void {
-  for (const w of items) knownWorkItems.set(w.id, w);
+  for (const w of items) setBounded(knownWorkItems, w.id, w, CACHE_MAX);
   const { seen, changed } = remember(workItemSeen, items, mine);
   if (changed) saveSeen(seen);
   if (mine) pollItems = items;
@@ -4541,12 +4553,18 @@ const docIndex = new WorkspaceIndex(
 function openDocsForIndex(): OpenDoc[] {
   return docs
     .filter((d) => (d === active ? kind : d.kind) === "markdown")
-    .map((d) => ({
-      id: d.id,
-      path: docPath(d),
-      name: d === active ? fileName : d.name,
-      text: d === active ? editor.text : (d.state?.doc.toString() ?? loadDraft(d.id) ?? ""),
-    }));
+    .map((d) => {
+      // 內容的版本：CodeMirror 的文件物件（內容不變時是同一個），還沒載入的分頁看草稿寫過幾次。
+      // 版本沒變就不必取出整份文字、也不必讀草稿（每次編輯後都會重新整理面板）。
+      const doc = d === active ? editor.view.state.doc : d.state?.doc;
+      return {
+        id: d.id,
+        path: docPath(d),
+        name: d === active ? fileName : d.name,
+        version: doc ?? `draft:${draftVersion(d.id)}`,
+        text: () => (doc ? doc.toString() : (loadDraft(d.id) ?? "")),
+      };
+    });
 }
 
 /** 資料夾（本機）中的所有文件加上已開啟的分頁；網頁版與遠端資料夾只有已開啟的分頁。 */
