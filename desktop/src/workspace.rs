@@ -671,83 +671,96 @@ fn shift_ranges(ranges: Vec<(usize, usize)>, by: usize) -> Vec<(usize, usize)> {
 
 /// 在指定資料夾中搜尋文字（遵守 .gitignore，只搜尋文件檔）。
 /// `cancelled()` 回傳 true 時停下來，回傳空的結果（已經有新的搜尋了）。
+/// 用多個執行緒同時走訪、搜尋（大資料夾快很多），結果依相對路徑排序。
 pub fn search_dir(
     root: &Path,
     query: &str,
     case_sensitive: bool,
     regex: bool,
-    cancelled: &dyn Fn() -> bool,
+    cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Result<SearchResult, String> {
+    let empty = || SearchResult {
+        files: vec![],
+        total: 0,
+        truncated: false,
+    };
     if query.is_empty() {
-        return Ok(SearchResult {
-            files: vec![],
-            total: 0,
-            truncated: false,
-        });
+        return Ok(empty());
     }
     let matcher = RegexMatcherBuilder::new()
         .case_insensitive(!case_sensitive)
         .fixed_strings(!regex)
         .build(query)
         .map_err(|e| tr!("搜尋條件無效：{e}", e = e))?;
-    // 副檔名對但內容是二進位的檔案（例如損壞或改錯副檔名）直接略過。
-    let mut searcher = SearcherBuilder::new()
-        .line_number(true)
-        .binary_detection(BinaryDetection::quit(0))
-        .build();
-    let mut files = Vec::new();
-    let mut total = 0;
-    let mut truncated = false;
-
-    for entry in walker(root).build().filter_map(Result::ok) {
-        if cancelled() {
-            return Ok(SearchResult {
-                files: vec![],
-                total: 0,
-                truncated: false,
-            });
-        }
-        if !entry.file_type().is_some_and(|t| t.is_file()) || !is_doc(entry.path()) {
-            continue;
-        }
-        let mut matches = Vec::new();
-        let _ = searcher.search_path(
-            &matcher,
-            entry.path(),
-            UTF8(|line_number, line| {
-                use grep_matcher::Matcher;
-                let mut ranges = Vec::new();
-                matcher.find_iter(line.as_bytes(), |m| {
-                    ranges.push((m.start(), m.end()));
-                    true
-                })?;
-                let (text, ranges, column) = excerpt(line, &ranges);
-                matches.push(LineMatch {
-                    line: line_number,
-                    text,
-                    ranges,
-                    column,
-                });
-                Ok(total + matches.len() < MAX_MATCHES && !cancelled())
-            }),
-        );
-        if !matches.is_empty() {
-            total += matches.len();
-            files.push(FileMatches {
+    let files = Mutex::new(Vec::new());
+    let total = std::sync::atomic::AtomicUsize::new(0);
+    let truncated = std::sync::atomic::AtomicBool::new(false);
+    walker(root).build_parallel().run(|| {
+        // 副檔名對但內容是二進位的檔案（例如損壞或改錯副檔名）直接略過。
+        let mut searcher = SearcherBuilder::new()
+            .line_number(true)
+            .binary_detection(BinaryDetection::quit(0))
+            .build();
+        let matcher = matcher.clone();
+        let (files, total, truncated) = (&files, &total, &truncated);
+        Box::new(move |entry| {
+            use ignore::WalkState;
+            if cancelled() || truncated.load(AtomicOrdering::Relaxed) {
+                return WalkState::Quit;
+            }
+            let Ok(entry) = entry else {
+                return WalkState::Continue;
+            };
+            if !entry.file_type().is_some_and(|t| t.is_file()) || !is_doc(entry.path()) {
+                return WalkState::Continue;
+            }
+            let mut matches = Vec::new();
+            let _ = searcher.search_path(
+                &matcher,
+                entry.path(),
+                UTF8(|line_number, line| {
+                    use grep_matcher::Matcher;
+                    let mut ranges = Vec::new();
+                    matcher.find_iter(line.as_bytes(), |m| {
+                        ranges.push((m.start(), m.end()));
+                        true
+                    })?;
+                    let (text, ranges, column) = excerpt(line, &ranges);
+                    matches.push(LineMatch {
+                        line: line_number,
+                        text,
+                        ranges,
+                        column,
+                    });
+                    let so_far = total.load(AtomicOrdering::Relaxed) + matches.len();
+                    Ok(so_far < MAX_MATCHES && !cancelled())
+                }),
+            );
+            if matches.is_empty() {
+                return WalkState::Continue;
+            }
+            let n = total.fetch_add(matches.len(), AtomicOrdering::Relaxed) + matches.len();
+            files.lock().unwrap().push(FileMatches {
                 rel: rel_path(root, entry.path()),
                 path: path_string(entry.path()),
                 matches,
             });
-        }
-        if total >= MAX_MATCHES {
-            truncated = true;
-            break;
-        }
+            if n >= MAX_MATCHES {
+                truncated.store(true, AtomicOrdering::Relaxed);
+                return WalkState::Quit;
+            }
+            WalkState::Continue
+        })
+    });
+    if cancelled() {
+        return Ok(empty());
     }
+    let mut files = files.into_inner().unwrap();
+    files.sort_by(|a, b| a.rel.cmp(&b.rel));
     Ok(SearchResult {
         files,
-        total,
-        truncated,
+        total: total.into_inner(),
+        truncated: truncated.into_inner(),
     })
 }
 

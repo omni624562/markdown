@@ -48,3 +48,30 @@ pub fn forget(service: &str, id: &str) {
         }
     }
 }
+
+/// 記在記憶體裡的帳號資料（GitHub、Azure DevOps 的 `*-account.json`）：每個指令都會用到，
+/// 不必每次讀檔、解析。登入、登出時由 `set` 更新。
+pub struct CachedAccount<T>(std::sync::Mutex<Option<Option<T>>>);
+
+impl<T: Clone + serde::de::DeserializeOwned> CachedAccount<T> {
+    pub const fn new() -> Self {
+        Self(std::sync::Mutex::new(None))
+    }
+
+    /// 帳號資料；第一次從 `path` 讀取（沒有檔案或格式不對時是 None）。
+    pub fn get(&self, path: impl FnOnce() -> Option<std::path::PathBuf>) -> Option<T> {
+        let mut cached = self.0.lock().unwrap();
+        if cached.is_none() {
+            let value = path()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .and_then(|text| serde_json::from_str(&text).ok());
+            *cached = Some(value);
+        }
+        cached.clone().flatten()
+    }
+
+    /// 存檔或刪掉帳號資料之後呼叫。
+    pub fn set(&self, value: Option<T>) {
+        *self.0.lock().unwrap() = Some(value);
+    }
+}

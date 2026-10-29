@@ -1705,7 +1705,9 @@ async function autoSaveNow(): Promise<void> {
       });
       return;
     }
-    gitPanel?.refreshSoon(300);
+    // 自動存檔：只更新這個檔案的 Git 狀態，不重新掃描整個資料夾。
+    if (out.handle?.path) void gitPanel?.fileSaved(out.handle.path);
+    else gitPanel?.refreshSoon(300);
     if (doc === active) {
       fileHandle = out.handle;
       setBaseline(text, true);
@@ -5538,8 +5540,13 @@ async function closeTab(id: string): Promise<void> {
   }
   if (pendingDraft?.id === doc.id) pendingDraft = null;
   rememberClosed(doc);
+  const closedPath = docPath(doc);
   const i = docs.indexOf(doc);
   docs.splice(i, 1);
+  // 遠端（WebDAV、SSH）的檔案：沒有其他分頁開著同一個檔案時，原生端不用再輪詢它、留著它的內容。
+  if (desktop && closedPath && isRemote(closedPath) && !docs.some((d) => docPath(d) === closedPath)) {
+    void desktop.davClose(closedPath).catch(() => {});
+  }
   dropDraft(doc.id);
   remoteAllowed.delete(doc.id);
   outlineCollapsed.delete(doc.id);

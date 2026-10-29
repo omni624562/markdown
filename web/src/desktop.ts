@@ -758,6 +758,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     davForget: (id: string) => core.invoke<void>("dav_forget", { id }),
     /** 遠端圖片（預覽用），回傳 data: 網址。 */
     davImage: (path: string) => core.invoke<string>("dav_image", { path }),
+    /** 關掉了遠端檔案的分頁：不再檢查它有沒有被改過。 */
+    davClose: (path: string) => core.invoke<void>("dav_close", { path }),
 
     aiTools: () => core.invoke<{ claude: string | null; codex: string | null }>("ai_tools"),
     listFonts: () => core.invoke<{ name: string; label?: string; mono: boolean }[]>("list_fonts"),
@@ -941,6 +943,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitPull: () => core.invoke<string>("git_pull"),
     /** 只向遠端抓取最新的提交（不合併），回傳更新後的狀態（知道遠端多了幾個提交）。 */
     gitFetch: () => core.invoke<GitStatus>("git_fetch"),
+    /** 一個檔案的 Git 狀態（存檔後只更新這一個）；沒有變更時是 null。 */
+    gitStatusFile: (path: string) => core.invoke<GitChange | null>("git_status_file", { path }),
     gitPush: () => core.invoke<string>("git_push"),
     historyList: (path: string) => core.invoke<FileVersion[]>("history_list", { path }),
     historyRead: (path: string, id: number) => core.invoke<string>("history_read", { path, id }),

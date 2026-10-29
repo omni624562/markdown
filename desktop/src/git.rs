@@ -825,6 +825,27 @@ pub async fn git_status(app: AppHandle) -> Result<Status, String> {
     crate::io::blocking(move || Ok(status_at(&dir))).await
 }
 
+/// 一個檔案的 Git 狀態：存檔後只更新這一個，不必重新掃描整個資料夾（大儲存庫要掃很久）。
+/// 沒有變更時回傳 None；檔案不在儲存庫裡時回傳錯誤（前端改成重新整理全部）。
+#[tauri::command]
+pub async fn git_status_file(app: AppHandle, path: String) -> Result<Option<Change>, String> {
+    let dir = workspace_root(&app)?;
+    crate::io::blocking(move || {
+        let repo = open(&dir).map_err(|e| e.to_string())?;
+        let root = workdir(&repo)?;
+        let path = PathBuf::from(path);
+        let rel = path
+            .strip_prefix(&root)
+            .map_err(|_| tr!("檔案不在這個儲存庫中"))?;
+        let status = repo.status_file(rel).map_err(err)?;
+        Ok(classify(status).map(|status| Change {
+            path: path_string(&root.join(rel)),
+            status,
+        }))
+    })
+    .await
+}
+
 /// 檢查遠端有沒有新的提交（只抓取，不合併），回傳更新後的狀態。
 #[tauri::command]
 pub async fn git_fetch(app: AppHandle) -> Result<Status, String> {
