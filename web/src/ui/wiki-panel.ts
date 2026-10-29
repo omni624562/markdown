@@ -580,17 +580,18 @@ export class WikiPanel<W extends WikiInfo> {
         b.type = "button";
         b.className = "wiki-page";
         b.dataset.path = path;
-        b.title = path;
+        b.title = path.slice(1).replaceAll("/", " › ");
         b.draggable = !!this.#h.link;
         const name = document.createElement("span");
         name.className = "wiki-name";
         name.textContent = pageName(path);
         b.append(name);
-        const where = path.slice(1, path.lastIndexOf("/"));
-        if (where) {
+        // 只標上一層（完整位置在滑鼠提示裡），一列放得下，清單才整齊。
+        const parent = path.slice(0, path.lastIndexOf("/"));
+        if (parent) {
           const meta = document.createElement("span");
           meta.className = "wiki-where";
-          meta.textContent = where;
+          meta.textContent = pageName(parent);
           b.append(meta);
         }
         if (path === this.#current) b.setAttribute("aria-current", "true");
