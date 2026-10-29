@@ -5,6 +5,7 @@
 import { t } from "../i18n.ts";
 import { flattenPages, pageName, pushRecent, snippetParts } from "../wiki-text.ts";
 import { icon } from "./icons.ts";
+import { setupMenu } from "./menu.ts";
 import { showLoadError } from "./issues-panel.ts";
 
 export interface WikiInfo {
@@ -59,6 +60,8 @@ export interface WikiPrefs {
   pinned: string[];
   /** 樹狀目錄只顯示這些最上層頁面（沒有或空的就是全部顯示）。 */
   shown?: string[];
+  /** 「只看這裡」：樹狀目錄從這個頁面底下開始（沒有就是整個 Wiki）。 */
+  root?: string;
 }
 
 /** 最近看過列出幾頁、最多釘選幾頁。 */
@@ -105,6 +108,11 @@ export class WikiPanel<W extends WikiInfo> {
   #filterPop: HTMLElement;
   /** 樹狀目錄下方的「已隱藏 N 個・全部顯示」。 */
   #hiddenNote: HTMLElement;
+  /** 「只看這裡」時，樹狀目錄上方的資料夾名稱與「返回整個 Wiki」。 */
+  #rootBar: HTMLElement;
+  /** 樹狀目錄的右鍵選單（對哪一頁）。 */
+  #menuAnchor: HTMLButtonElement;
+  #menuPath: string | null = null;
 
   constructor(el: HTMLElement, hooks: WikiPanelHooks<W>) {
     this.#h = hooks;
@@ -204,7 +212,65 @@ export class WikiPanel<W extends WikiInfo> {
     this.#hiddenNote = document.createElement("p");
     this.#hiddenNote.className = "wiki-hidden-note";
     this.#hiddenNote.hidden = true;
-    el.append(bar, searchRow, this.#status, this.#quick, this.#list, this.#hiddenNote, this.#content);
+    this.#rootBar = document.createElement("div");
+    this.#rootBar.className = "wiki-root";
+    this.#rootBar.hidden = true;
+    // 樹狀目錄的右鍵選單：只看這裡、新增子頁面、釘選。
+    this.#menuAnchor = document.createElement("button");
+    this.#menuAnchor.type = "button";
+    this.#menuAnchor.className = "insert-anchor";
+    this.#menuAnchor.tabIndex = -1;
+    this.#menuAnchor.id = `wiki-menu-${Math.random().toString(36).slice(2)}`;
+    document.body.append(this.#menuAnchor);
+    const hasChildren = () => !!this.#menuPath && !!this.#find(this.#menuPath)?.children.length;
+    setupMenu(this.#menuAnchor, null, [
+      {
+        label: t("只看這裡"),
+        icon: "folder-open",
+        when: () => hasChildren() && this.#menuPath !== this.#root()?.path,
+        run: () => this.#setRoot(this.#menuPath),
+      },
+      { label: t("顯示整個 Wiki"), icon: "list-tree", when: () => !!this.#root(), run: () => this.#setRoot(null) },
+      "-",
+      {
+        label: t("新增子頁面"),
+        icon: "file-plus",
+        when: () => this.#canCreate(),
+        run: () => {
+          if (this.#wiki && this.#menuPath) this.#h.create?.(this.#wiki, this.#menuPath);
+        },
+      },
+      {
+        label: this.#h.pins?.labels[0] ?? t("釘選這一頁"),
+        icon: "pin",
+        when: () => !!this.#menuPath && !this.#isPinned(this.#menuPath),
+        run: () => this.#menuPath && this.#togglePin(this.#menuPath),
+      },
+      {
+        label: this.#h.pins?.labels[1] ?? t("取消釘選"),
+        icon: "pin-off",
+        when: () => !!this.#menuPath && this.#isPinned(this.#menuPath),
+        run: () => this.#menuPath && this.#togglePin(this.#menuPath),
+      },
+    ]);
+    this.#list.addEventListener("contextmenu", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>(".wiki-row")?.querySelector<HTMLElement>(".wiki-page");
+      if (!b) return;
+      e.preventDefault();
+      this.#menuPath = b.dataset.path!;
+      // 用鍵盤（選單鍵、Shift+F10）開啟時沒有滑鼠位置，放在那一列下面。
+      const r = b.getBoundingClientRect();
+      const x = e.clientX || r.left + 16;
+      const y = e.clientY || r.bottom;
+      Object.assign(this.#menuAnchor.style, { left: `${x}px`, top: `${y}px`, width: "0px", height: "0px" });
+      const open = () => {
+        if (!document.getElementById(`${this.#menuAnchor.id}-popover`)?.matches(":popover-open")) this.#menuAnchor.click();
+      };
+      // Linux 在按下右鍵時就觸發 contextmenu：等放開再開，免得放開時被當成點在選單外。
+      if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(open), { once: true });
+      else open();
+    });
+    el.append(bar, searchRow, this.#status, this.#quick, this.#rootBar, this.#list, this.#hiddenNote, this.#content);
     this.#updateFilter();
     // 把頁面拖到文件裡，插入 `[頁面名稱](網址)`。
     el.addEventListener("dragstart", (e) => {
@@ -329,6 +395,7 @@ export class WikiPanel<W extends WikiInfo> {
     this.#updateFilter();
     if (!this.#pages.length) {
       this.#hiddenNote.hidden = true;
+      this.#rootBar.hidden = true;
       this.#status.textContent = t("這個 Wiki 還沒有頁面");
       this.#list.replaceChildren();
       this.#renderContent("");
@@ -336,6 +403,7 @@ export class WikiPanel<W extends WikiInfo> {
     }
     if (q) {
       this.#hiddenNote.hidden = true;
+      this.#rootBar.hidden = true;
       const found: WikiTreePage[] = [];
       const walk = (list: WikiTreePage[]) => {
         for (const p of list) {
@@ -352,8 +420,10 @@ export class WikiPanel<W extends WikiInfo> {
     }
     this.#renderContent("");
     this.#status.textContent = "";
-    const top = this.#topPages();
-    const hidden = this.#pages.length - top.length;
+    const root = this.#root();
+    this.#renderRoot(root);
+    const top = root ? root.children : this.#topPages();
+    const hidden = root ? 0 : this.#pages.length - top.length;
     this.#hiddenNote.hidden = !hidden;
     if (hidden) {
       const show = document.createElement("button");
@@ -375,6 +445,53 @@ export class WikiPanel<W extends WikiInfo> {
     this.#rove();
   }
 
+  #find(path: string): WikiTreePage | null {
+    const walk = (list: WikiTreePage[]): WikiTreePage | null => {
+      for (const p of list) {
+        if (p.path === path) return p;
+        if (path.startsWith(`${p.path}/`)) return walk(p.children);
+      }
+      return null;
+    };
+    return walk(this.#pages);
+  }
+
+  /** 「只看這裡」的資料夾（頁面不在了或沒有子頁面就當成沒有設定）。 */
+  #root(): WikiTreePage | null {
+    const path = this.#prefs.root;
+    const page = path ? this.#find(path) : null;
+    return page?.children.length ? page : null;
+  }
+
+  #setRoot(path: string | null): void {
+    this.#prefs.root = path ?? undefined;
+    if (path) this.#expanded.add(path);
+    this.#savePrefs();
+    this.#render();
+  }
+
+  /** 樹狀目錄上方：「只看這裡」的資料夾名稱（點一下開啟那一頁）與「返回整個 Wiki」。 */
+  #renderRoot(root: WikiTreePage | null): void {
+    this.#rootBar.hidden = !root;
+    if (!root) return;
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "wiki-root-name";
+    name.title = root.path.slice(1).replaceAll("/", " › ");
+    name.append(icon("folder-open"), Object.assign(document.createElement("span"), { textContent: pageName(root.path) }));
+    name.addEventListener("click", () => {
+      if (!this.#wiki) return;
+      this.select(root.path);
+      this.#h.open(this.#wiki, root.path);
+    });
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "wiki-hidden-show wiki-root-back";
+    back.textContent = t("返回整個 Wiki");
+    back.addEventListener("click", () => this.#setRoot(null));
+    this.#rootBar.replaceChildren(name, back);
+  }
+
   /** 篩選後要顯示的最上層頁面（勾的頁面都不在了，就全部顯示）。 */
   #topPages(): WikiTreePage[] {
     const shown = new Set(this.#prefs.shown ?? []);
@@ -392,7 +509,8 @@ export class WikiPanel<W extends WikiInfo> {
   /** 篩選按鈕：有隱藏頁面時標出數字。 */
   #updateFilter(): void {
     const hidden = this.#pages.length - this.#topPages().length;
-    this.#filterBtn.hidden = !this.#wiki || this.#pages.length < 2;
+    // 「只看這裡」時篩選最上層頁面沒有意義，先藏起來。
+    this.#filterBtn.hidden = !this.#wiki || this.#pages.length < 2 || !!this.#root();
     this.#filterBtn.classList.toggle("active", hidden > 0);
     this.#filterCount.hidden = !hidden;
     this.#filterCount.textContent = String(hidden);

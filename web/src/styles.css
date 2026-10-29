@@ -1949,6 +1949,14 @@ button.git-info:disabled { cursor: default; }
 .wiki-filter-item input { flex: none; width: 15px; height: 15px; margin: 0; }
 .wiki-filter-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wiki-filter-hint { margin: 8px 4px 0; color: var(--muted); font-size: 11.5px; }
+/* 「只看這裡」：樹狀目錄上方的資料夾名稱與「返回整個 Wiki」。 */
+.wiki-root { display: flex; gap: 6px; align-items: center; margin: 0 0 4px; padding: 4px 4px 6px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.wiki-root[hidden] { display: none; }
+.wiki-root-name { display: flex; flex: 1; gap: 6px; align-items: center; min-width: 0; padding: 2px 4px; border: 0; border-radius: 5px; background: none; color: var(--fg); font: 600 12.5px var(--font-ui); text-align: left; cursor: pointer; }
+.wiki-root-name:hover { background: var(--active-line); }
+.wiki-root-name .icon { flex: none; width: 15px; height: 15px; color: var(--accent); }
+.wiki-root-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiki-root-back { flex: none; font-size: 12px; }
 .wiki-quick h3 { margin: 8px 6px 2px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
 .wiki-quick ul { margin: 0; padding: 0; list-style: none; }
 .wiki-where { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
