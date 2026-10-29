@@ -3846,6 +3846,7 @@ function renderWikiShortcuts(): void {
   });
   wikiDrop.classList.remove("over");
   wikiDrop.hidden = !wikiDragging;
+  wikiShortcutBar.classList.toggle("dropping", wikiDragging);
   wikiShortcutBar.replaceChildren(...buttons, wikiDrop);
   wikiShortcutBar.hidden = !desktop || (!wikiShortcuts.length && !wikiDragging);
 }
@@ -3872,31 +3873,39 @@ document.addEventListener("dragend", () => {
   wikiDragging = false;
   renderWikiShortcuts();
 });
-wikiShortcutBar.addEventListener("dragover", (e) => {
-  if (!e.dataTransfer?.types.includes(WIKI_PAGE_DRAG_TYPE)) return;
+// 整條圖示列都可以放（包含下面的空白處），放置區跟著滑鼠移到要插入的位置。
+const activityBar = $(".activity-bar");
+const isWikiDrag = (e: DragEvent) => !!e.dataTransfer?.types.includes(WIKI_PAGE_DRAG_TYPE);
+const wikiDragOver = (e: DragEvent) => {
+  if (!isWikiDrag(e)) return;
   e.preventDefault();
-  e.dataTransfer.dropEffect = "copy";
-  wikiDrop.hidden = false;
+  e.dataTransfer!.dropEffect = "copy";
+  if (wikiShortcutBar.hidden || wikiDrop.hidden) {
+    wikiDragging = true;
+    renderWikiShortcuts();
+  }
   wikiDrop.classList.add("over");
-  // 放置區移到滑鼠所在的位置（在哪個捷徑的上半或下半）。
+  // 在哪個捷徑的上半就插在它前面；在所有捷徑下面（或圖示列其他地方）就放最後面。
   const target = [...wikiShortcutBar.querySelectorAll<HTMLElement>(".activity-wiki-page")].find((b) => {
     const r = b.getBoundingClientRect();
-    return e.clientY < r.top + r.height / 2;
+    return e.clientY < r.top + r.height / 2 && e.clientY >= wikiShortcutBar.getBoundingClientRect().top;
   });
   if (target) {
     if (wikiDrop.nextSibling !== target) wikiShortcutBar.insertBefore(wikiDrop, target);
   } else if (wikiShortcutBar.lastChild !== wikiDrop) wikiShortcutBar.append(wikiDrop);
+};
+activityBar.addEventListener("dragenter", wikiDragOver);
+activityBar.addEventListener("dragover", wikiDragOver);
+activityBar.addEventListener("dragleave", (e) => {
+  if (!activityBar.contains(e.relatedTarget as Node)) wikiDrop.classList.remove("over");
 });
-wikiShortcutBar.addEventListener("dragleave", (e) => {
-  if (!wikiShortcutBar.contains(e.relatedTarget as Node)) wikiDrop.classList.remove("over");
-});
-wikiShortcutBar.addEventListener("drop", (e) => {
-  const item = e.dataTransfer && parseDraggedPage(e.dataTransfer.getData(WIKI_PAGE_DRAG_TYPE));
+activityBar.addEventListener("drop", (e) => {
+  const item = isWikiDrag(e) ? parseDraggedPage(e.dataTransfer!.getData(WIKI_PAGE_DRAG_TYPE)) : null;
   if (!item) return;
   e.preventDefault();
-  const index = [...wikiShortcutBar.children].indexOf(wikiDrop);
+  const index = [...wikiShortcutBar.querySelectorAll(".activity-wiki-page, .activity-wiki-drop")].indexOf(wikiDrop);
   wikiDragging = false;
-  addWikiShortcut(item, index);
+  addWikiShortcut(item, index < 0 ? undefined : index);
 });
 renderWikiShortcuts();
 
