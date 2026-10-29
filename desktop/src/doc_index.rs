@@ -17,7 +17,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::files::{
     decode, display_name, encode, hash_bytes, path_string, write_atomic, KnownFiles,
 };
-use crate::workspace::{rel_path, resolve_inside, walker, Workspace};
+use crate::workspace::{is_editable_doc, rel_path, resolve_inside, walker, Workspace};
 
 /// 最多讀幾個檔案、單一檔案最大多少（太大的通常不是筆記）。
 const MAX_DOCS: usize = 5_000;
@@ -106,7 +106,7 @@ pub async fn read_docs(
             .iter()
             .map(|p| {
                 let path = resolve_inside(&root, Path::new(p)).ok()?;
-                if fs::metadata(&path).ok()?.len() > MAX_DOC_BYTES {
+                if !is_editable_doc(&path) || fs::metadata(&path).ok()?.len() > MAX_DOC_BYTES {
                     return None;
                 }
                 Some(decode(&fs::read(&path).ok()?).0)
@@ -143,7 +143,7 @@ pub async fn link_updates(
             .filter_map(|old| {
                 let now = rebase(old, &from, &to).unwrap_or_else(|| old.clone());
                 let path = resolve_inside(&root, Path::new(&now)).ok()?;
-                if fs::metadata(&path).ok()?.len() > MAX_DOC_BYTES {
+                if !is_editable_doc(&path) || fs::metadata(&path).ok()?.len() > MAX_DOC_BYTES {
                     return None;
                 }
                 let before = decode(&fs::read(&path).ok()?).0;
@@ -194,6 +194,12 @@ pub async fn update_doc(
 ) -> Result<(), String> {
     let root = app.state::<Workspace>().require_root()?;
     let path: PathBuf = resolve_inside(&root, Path::new(&path))?;
+    if !is_editable_doc(&path) {
+        return Err(tr!(
+            "「{name}」不是資料夾中的文件，不能修改",
+            name = display_name(&path)
+        ));
+    }
     crate::io::blocking(move || {
         let before = update(&path, &expected, &text)?;
         crate::history::on_save(&app, &path, Some(&before), &text);
