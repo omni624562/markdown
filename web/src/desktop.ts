@@ -852,6 +852,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
     /** 依編號讀取工作項目（讀不到的略過）。 */
     adoWorkItemsByIds: (ids: number[]) => core.invoke<AdoWorkItem[]>("ado_work_items_by_ids", { ids }),
+    /** 工作項目的上層項目（`links` 是 [項目, 上層]），「依上層項目分組」用。 */
+    adoWorkItemParents: (ids: number[]) =>
+      core.invoke<{ links: [number, number][]; parents: AdoWorkItem[] }>("ado_work_item_parents", { ids }),
     /** TFS 上存的查詢（我的查詢、共用查詢）。 */
     adoQueries: () => core.invoke<AdoSavedQuery[]>("ado_queries"),
     /** 執行存的查詢（最多 200 個工作項目）。 */

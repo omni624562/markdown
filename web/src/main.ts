@@ -150,6 +150,7 @@ import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.
 import { sizeLabel, timeAgo, versionTitle } from "./history-label.ts";
 import { myChanges, recentEditor, type WikiPageInfo } from "./wiki-coedit.ts";
 import { draftFromSelection } from "./workitem-create.ts";
+import { groupByParent } from "./workitem-groups.ts";
 import { migratePinned, parseDraggedPage, parseShortcuts, placeShortcut, sameShortcut, SHORTCUT_LIMIT, shortcutHue, shortcutInitial, WIKI_PAGE_DRAG_TYPE, type WikiShortcut } from "./wiki-shortcuts.ts";
 import type { AdoSavedQuery, AdoWiki, AdoWikiPage, AdoWorkItem, AdoWorkItemDetail, AdoWorkItemFilter, FileVersion, GitStatus, LinkUpdate } from "./desktop.ts";
 import { findWikiPage, parseRemoteLink, type RemoteLink, urlAt } from "./remote-links.ts";
@@ -3717,6 +3718,41 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   return { bar, button: group };
 }
 
+/** 「依上層項目分組」：每個工作項目的上層（null 是沒有）與讀到的上層項目；讀過的不再讀。 */
+const workItemParentOf = new Map<number, number | null>();
+const workItemParentItems = new Map<number, AdoWorkItem>();
+let workItemParentsLoading = false;
+
+function groupByParentItems<T extends AdoWorkItem>(items: T[]): { title: string | null; items: T[] }[] {
+  const missing = items.map((w) => w.id).filter((id) => !workItemParentOf.has(id));
+  if (missing.length) {
+    // 先照原本的順序顯示，讀到上層項目後再重畫。
+    if (!workItemParentsLoading && desktop) {
+      workItemParentsLoading = true;
+      void desktop
+        .adoWorkItemParents(missing)
+        .then(({ links, parents }) => {
+          for (const id of missing) workItemParentOf.set(id, null);
+          for (const [id, parent] of links) workItemParentOf.set(id, parent);
+          for (const p of parents) workItemParentItems.set(p.id, p);
+        })
+        .catch((e) => {
+          // 讀不到就當成都沒有上層（不要一直重試）。
+          for (const id of missing) workItemParentOf.set(id, null);
+          reportError(e);
+        })
+        .finally(() => {
+          workItemParentsLoading = false;
+          workItemsPanel?.rearrange();
+        });
+    }
+    return [{ title: null, items }];
+  }
+  return groupByParent(items, workItemParentOf, workItemParentItems, t("沒有上層項目"), (item, id) =>
+    item ? t("{kind} {id}：{title}", { kind: item.kind, id: item.id, title: item.title }) : `#${id}`,
+  );
+}
+
 const workItemsPanel = desktop
   ? new IssuesPanel<AdoWorkItem & IssueSummary>($("#workitems-host"), {
       placeholder: t("搜尋標題或內容，或輸入編號"),
@@ -3729,6 +3765,7 @@ const workItemsPanel = desktop
           arrange: (items) => [{ title: null, items: [...items].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99)) }],
         },
         { id: "state", label: t("依狀態分組"), arrange: (items) => groupItems(items, (w) => w.state) },
+        { id: "parent", label: t("依上層項目分組"), arrange: (items) => groupByParentItems(items) },
         { id: "kind", label: t("依類型分組"), arrange: (items) => groupItems(items, (w) => w.kind) },
       ],
       arrangement: {

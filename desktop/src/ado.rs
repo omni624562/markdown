@@ -1354,6 +1354,83 @@ pub async fn ado_work_items_by_ids(app: AppHandle, ids: Vec<u64>) -> Result<Vec<
     .await
 }
 
+/// 工作項目的上層項目（例如 Task 屬於哪個 User Story）：`links` 是 (項目, 上層)，`parents` 是上層項目本身（分組標題用）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemParents {
+    links: Vec<(u64, u64)>,
+    parents: Vec<WorkItem>,
+}
+
+/// 新版伺服器有 `System.Parent` 欄位。
+fn parent_field(v: &Value) -> Option<(u64, u64)> {
+    Some((v.get("id")?.as_u64()?, field(v, "System.Parent")?.as_u64()?))
+}
+
+/// 舊版（TFS 2019 以前）沒有那個欄位，從關聯裡找「上層」。
+fn parent_relation(v: &Value) -> Option<(u64, u64)> {
+    let id = v.get("id")?.as_u64()?;
+    let parent = relation_links(v)
+        .into_iter()
+        .find(|(link, ..)| *link == "parent")?
+        .2;
+    Some((id, parent))
+}
+
+/// 依清單上的工作項目讀出上層項目（「依上層項目分組」用）；最多 200 個。
+#[tauri::command]
+pub async fn ado_work_item_parents(
+    app: AppHandle,
+    ids: Vec<u64>,
+) -> Result<WorkItemParents, String> {
+    let (a, pat) = require(&app)?;
+    let mut ids = ids;
+    ids.sort_unstable();
+    ids.dedup();
+    ids.truncate(200);
+    if ids.is_empty() {
+        return Ok(WorkItemParents {
+            links: vec![],
+            parents: vec![],
+        });
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let list = ids.iter().map(u64::to_string).collect::<Vec<_>>().join(",");
+        let what = tr!("讀取上層項目");
+        let links: Vec<(u64, u64)> = match get(
+            &a.url,
+            &pat,
+            &format!(
+                "/_apis/wit/workitems?ids={list}&fields=System.Id,System.Parent&errorPolicy=omit"
+            ),
+            &what,
+        ) {
+            Ok(res) => values(&res).iter().filter_map(parent_field).collect(),
+            Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+            // 沒有 System.Parent 欄位的伺服器：改讀關聯（會帶回所有欄位，比較慢）。
+            Err(_) => {
+                let res = get(
+                    &a.url,
+                    &pat,
+                    &format!("/_apis/wit/workitems?ids={list}&$expand=relations&errorPolicy=omit"),
+                    &what,
+                )?;
+                values(&res).iter().filter_map(parent_relation).collect()
+            }
+        };
+        let mut parent_ids: Vec<u64> = links.iter().map(|(_, p)| *p).collect();
+        parent_ids.sort_unstable();
+        parent_ids.dedup();
+        let parents = if parent_ids.is_empty() {
+            vec![]
+        } else {
+            fetch_work_items(&a.url, &pat, &parent_ids)?
+        };
+        Ok(WorkItemParents { links, parents })
+    })
+    .await
+}
+
 /// 一個工作項目的內容。
 /// 篩選列的選項：專案與工作項目類型。
 #[derive(Serialize, Debug, Default)]
@@ -2965,6 +3042,22 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn reads_work_item_parents() {
+        let new = serde_json::json!({ "id": 5, "fields": { "System.Parent": 2 } });
+        assert_eq!(parent_field(&new), Some((5, 2)));
+        assert_eq!(
+            parent_field(&serde_json::json!({ "id": 5, "fields": {} })),
+            None
+        );
+        let old = serde_json::json!({ "id": 7, "relations": [
+            { "rel": "System.LinkTypes.Related", "url": "https://tfs/DC/_apis/wit/workItems/3" },
+            { "rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://tfs/DC/_apis/wit/workItems/4" }
+        ] });
+        assert_eq!(parent_relation(&old), Some((7, 4)));
+        assert_eq!(parent_relation(&serde_json::json!({ "id": 7 })), None);
     }
 
     #[test]
