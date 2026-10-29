@@ -136,7 +136,7 @@ export const sync: Record<string, Translation> = {
   "{reason}。執行位置：{cwd}。執行過程會顯示在下方的終端機。": "{reason}. Runs in: {cwd}. The output appears in the terminal below.",
   "執行位置：{cwd}。執行過程會顯示在下方的終端機。": "Runs in: {cwd}. The output appears in the terminal below.",
   "執行": "Run",
-  "這次開啟期間都直接執行": "Always Run Until I Close the App",
+  "這次開啟期間，這個指令都直接執行": "Always Run This Command Until I Close the App",
   "AI 等太久已經放棄，指令沒有執行。": "The AI stopped waiting, so the command wasn't run.",
   "上一個 AI 動作還在處理中。": "The previous AI action is still running.",
   "AI 處理失敗：{error}": "AI failed: {error}",

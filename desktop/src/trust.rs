@@ -285,6 +285,10 @@ fn allowed(r: &Recent, path: &Path, real: impl Fn(&Path) -> Option<PathBuf>) -> 
     if r.files.iter().any(|p| p == path) {
         return true;
     }
+    // 資料夾裡的檔案只限文件（不含 `.git` 裡的設定）。
+    if !crate::workspace::is_editable_doc(path) {
+        return false;
+    }
     let mut candidates = r.folders.iter().filter(|f| path.starts_with(f)).peekable();
     if candidates.peek().is_none() {
         return false;
@@ -356,6 +360,10 @@ mod tests {
         assert!(allowed(&r, Path::new("/其他/單一.md"), same));
         assert!(!allowed(&r, Path::new("/其他/別的.md"), same));
         assert!(!allowed(&r, Path::new("/筆記/../etc/passwd"), same));
+        // 資料夾裡不是文件的檔案、`.git` 裡的設定：不允許。
+        assert!(!allowed(&r, Path::new("/筆記/.git/config"), same));
+        assert!(!allowed(&r, Path::new("/筆記/.GIT/info/a.md"), same));
+        assert!(!allowed(&r, Path::new("/筆記/工具.exe"), same));
         // 資料夾內的符號連結實際指向資料夾外：不允許。
         let link = |p: &Path| {
             Some(if p == Path::new("/筆記/notes.md") {
