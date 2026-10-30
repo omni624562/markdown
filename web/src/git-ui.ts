@@ -173,7 +173,7 @@ export class GitPanel {
     this.#lastFetch = Date.now();
     if (manual) this.#render();
     try {
-      await this.#d.gitFetch();
+      await this.#d.gitFetch(!manual);
       this.#fetchError = null;
     } catch (e) {
       this.#fetchError = e instanceof Error ? e.message : String(e);

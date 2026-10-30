@@ -512,10 +512,10 @@ impl<'a> Session<'a> {
         cb
     }
 
-    fn fetch_options(&self) -> FetchOptions<'_> {
+    fn fetch_options(&self, url: &str) -> FetchOptions<'_> {
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(self.callbacks());
-        fo.proxy_options(proxy());
+        fo.proxy_options(proxy(url));
         fo
     }
 
@@ -558,10 +558,54 @@ impl<'a> Session<'a> {
     }
 }
 
-fn proxy() -> ProxyOptions<'static> {
+/// 連到 `url` 時使用的 Proxy：只看使用者自己的全域 Git 設定（`http.proxy`）與環境變數。
+/// 不用 libgit2 的自動偵測，因為它也會讀儲存庫自己的設定（`http.proxy`、`remote.*.proxy`），
+/// 別人給的儲存庫就能把連線導到他的 Proxy。都沒有設定時不指定，
+/// Windows 上照常使用系統的 Proxy 設定（WinHTTP 的預設值）。
+fn proxy(url: &str) -> ProxyOptions<'static> {
     let mut p = ProxyOptions::new();
-    p.auto();
+    let global = git2::Config::open_default()
+        .ok()
+        .and_then(|c| c.get_string("http.proxy").ok());
+    if let Some(proxy) = pick_proxy(url, global, |k| std::env::var(k).ok()) {
+        p.url(&proxy);
+    }
     p
+}
+
+/// 決定 Proxy：全域 Git 設定優先，其次是環境變數（`NO_PROXY` 列出的主機不用 Proxy）。
+fn pick_proxy(
+    url: &str,
+    global: Option<String>,
+    env: impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let nonempty = |v: Option<String>| v.map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    if let Some(p) = nonempty(global) {
+        return Some(p);
+    }
+    let host = crate::dav::host_of(url).to_ascii_lowercase();
+    let no_proxy = nonempty(env("NO_PROXY")).or_else(|| nonempty(env("no_proxy")));
+    if let Some(list) = no_proxy {
+        let skip = list.split(',').map(str::trim).any(|p| {
+            let p = p.trim_start_matches('.').to_ascii_lowercase();
+            p == "*" || (!p.is_empty() && (host == p || host.ends_with(&format!(".{p}"))))
+        });
+        if skip {
+            return None;
+        }
+    }
+    let keys: &[&str] = if url.to_ascii_lowercase().starts_with("https://") {
+        &["HTTPS_PROXY", "https_proxy"]
+    } else {
+        &["HTTP_PROXY", "http_proxy"]
+    };
+    keys.iter().find_map(|k| nonempty(env(k)))
+}
+
+/// 背景自動檢查遠端（不是使用者按的）只連到 GitHub 與已連線的 Azure DevOps：
+/// 別人給的儲存庫可能把遠端設到其他網站，光是開啟資料夾就會連過去、叫出認證視窗。
+fn auto_fetch_allowed(auth: &Auth, url: &str) -> bool {
+    is_github(url) || is_ado(auth, url)
 }
 
 /// 分支名稱、遠端名稱，以及遠端那邊的分支（`refs/heads/…`）。
@@ -619,13 +663,18 @@ pub fn conflict_message() -> String {
 
 /// 拉取遠端的新提交。有未提交的變更時不做；遇到衝突時放棄，不動任何檔案。
 /// 只向遠端抓取最新的提交（不合併、不動工作區），之後 `status_at` 就知道遠端多了幾個提交。
-pub fn fetch_at(dir: &Path, auth: &Auth) -> Result<(), String> {
+/// 抓取遠端的新提交。`background` 是背景的自動檢查：遠端不是 GitHub 或已連線的
+/// Azure DevOps 時不連線（見 `auto_fetch_allowed`）。
+pub fn fetch_at(dir: &Path, auth: &Auth, background: bool) -> Result<(), String> {
     let repo = open(dir)?;
     let (_, remote_name, _) = tracking(&repo)?;
     let url = remote_url(&repo, &remote_name)?;
+    if background && !auto_fetch_allowed(auth, &url) {
+        return Ok(());
+    }
     let session = Session::new(auth);
     let mut remote = repo.find_remote(&remote_name).map_err(err)?;
-    let result = remote.fetch::<&str>(&[], Some(&mut session.fetch_options()), None);
+    let result = remote.fetch::<&str>(&[], Some(&mut session.fetch_options(&url)), None);
     result.map_err(|e| session.describe(&e, &url, &tr!("檢查遠端")))
 }
 
@@ -640,7 +689,7 @@ pub fn pull_at(dir: &Path, auth: &Auth, who: Option<&Identity>) -> Result<String
     let session = Session::new(auth);
     repo.find_remote(&remote_name)
         .map_err(err)?
-        .fetch::<&str>(&[], Some(&mut session.fetch_options()), None)
+        .fetch::<&str>(&[], Some(&mut session.fetch_options(&url)), None)
         .map_err(|e| session.describe(&e, &url, &tr!("拉取")))?;
 
     let short = merge.trim_start_matches("refs/heads/");
@@ -733,7 +782,7 @@ pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
     });
     let mut po = PushOptions::new();
     po.remote_callbacks(cb);
-    po.proxy_options(proxy());
+    po.proxy_options(proxy(&url));
     let behind = tr!("遠端有你還沒拉取的提交，請先拉取再推送");
     repo.find_remote(&remote_name)
         .map_err(err)?
@@ -771,7 +820,7 @@ pub fn clone_to(url: &str, dest: &Path, auth: &Auth) -> Result<(), String> {
     require_https(url)?;
     let session = Session::new(auth);
     let mut builder = git2::build::RepoBuilder::new();
-    builder.fetch_options(session.fetch_options());
+    builder.fetch_options(session.fetch_options(url));
     let result = builder.clone(url, dest).map(|_| ());
     drop(builder);
     result.map_err(|e| session.describe(&e, url, &tr!("下載")))
@@ -827,11 +876,11 @@ pub async fn git_status(app: AppHandle) -> Result<Status, String> {
 
 /// 檢查遠端有沒有新的提交（只抓取，不合併），回傳更新後的狀態。
 #[tauri::command]
-pub async fn git_fetch(app: AppHandle) -> Result<Status, String> {
+pub async fn git_fetch(app: AppHandle, background: Option<bool>) -> Result<Status, String> {
     let dir = workspace_root(&app)?;
     let auth = auth(&app);
     crate::io::blocking_for(NETWORK_TIMEOUT, move || {
-        fetch_at(&dir, &auth)?;
+        fetch_at(&dir, &auth, background.unwrap_or(false))?;
         Ok(status_at(&dir))
     })
     .await
@@ -863,6 +912,47 @@ pub async fn git_push(app: AppHandle) -> Result<String, String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn proxy_comes_from_user_settings_not_the_repo() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |k: &str| {
+                pairs
+                    .iter()
+                    .find(|(n, _)| *n == k)
+                    .map(|(_, v)| v.to_string())
+            }
+        };
+        let none = env(&[]);
+        assert_eq!(pick_proxy("https://github.com/a/b", None, none), None);
+        assert_eq!(
+            pick_proxy(
+                "https://github.com/a/b",
+                Some("http://corp:8080".into()),
+                none
+            )
+            .as_deref(),
+            Some("http://corp:8080")
+        );
+        let vars = env(&[
+            ("HTTPS_PROXY", "http://p:3128"),
+            ("NO_PROXY", "localhost,.corp.example"),
+        ]);
+        assert_eq!(
+            pick_proxy("https://github.com/a/b", None, vars).as_deref(),
+            Some("http://p:3128")
+        );
+        assert_eq!(pick_proxy("https://tfs.corp.example/x", None, vars), None);
+        assert_eq!(pick_proxy("http://nas/x.git", None, vars), None);
+    }
+
+    #[test]
+    fn background_fetch_only_reaches_known_servers() {
+        let none = Auth::default();
+        assert!(auto_fetch_allowed(&none, "https://github.com/a/b.git"));
+        assert!(!auto_fetch_allowed(&none, "https://evil.example/x.git"));
+        assert!(!auto_fetch_allowed(&none, "http://nas/x.git"));
+    }
 
     fn temp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("md-git-{name}-{}", std::process::id()));
@@ -1061,7 +1151,7 @@ mod tests {
         assert_eq!(push_at(&b, &none).unwrap(), "已推送");
         // 檢查遠端：知道遠端多了 1 個提交，但檔案還沒變。
         assert_eq!(status_at(&a).branch.unwrap().behind, 0);
-        fetch_at(&a, &none).unwrap();
+        fetch_at(&a, &none, false).unwrap();
         assert_eq!(status_at(&a).branch.unwrap().behind, 1);
         assert_eq!(read(a.join("週報.md")).unwrap(), "# 週報\n");
         assert_eq!(

@@ -940,7 +940,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
     gitPull: () => core.invoke<string>("git_pull"),
     /** 只向遠端抓取最新的提交（不合併），回傳更新後的狀態（知道遠端多了幾個提交）。 */
-    gitFetch: () => core.invoke<GitStatus>("git_fetch"),
+    /** `background`：背景的自動檢查，只連到 GitHub 與已連線的 Azure DevOps。 */
+    gitFetch: (background = false) => core.invoke<GitStatus>("git_fetch", { background }),
     gitPush: () => core.invoke<string>("git_push"),
     historyList: (path: string) => core.invoke<FileVersion[]>("history_list", { path }),
     historyRead: (path: string, id: number) => core.invoke<string>("history_read", { path, id }),
