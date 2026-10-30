@@ -17,7 +17,7 @@
 
 **[下載最新版 omarker.exe](https://github.com/omni624562/markdown/releases/download/latest/omarker.exe)**（不需登入 GitHub），下載後直接執行，不需要安裝，之後會自動更新。
 
-桌面版另外有：開啟資料夾與多專案、資料夾全文搜尋與取代、版本記錄、內建 Git（GitHub、Azure DevOps／TFS 同步）、Azure DevOps 工作項目與 Wiki、WebDAV 與 SSH 遠端資料夾、內嵌終端機，以及搭配 Claude Code／Codex 的 AI 協作（預設關閉）。說明見 **[docs/desktop.md](docs/desktop.md)**。
+桌面版另外有：開啟資料夾與多專案、資料夾全文搜尋與取代、版本記錄、內建 Git（GitHub、Azure DevOps／TFS 同步）、Azure DevOps 工作項目（卡片式內容、附件直接開啟、可複選的篩選）與 Wiki、WebDAV 與 SSH 遠端資料夾、內嵌終端機，以及搭配 Claude Code／Codex 的 AI 協作（預設關閉）。說明見 **[docs/desktop.md](docs/desktop.md)**。
 
 ## 版本與更新紀錄
 
