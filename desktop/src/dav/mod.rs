@@ -249,25 +249,29 @@ impl Item {
     }
 }
 
+/// 遠端操作的結果。都是非同步的：等待網路時不佔住執行緒（SSH 本身就是非同步的；
+/// WebDAV 用的 HTTP 程式庫是同步的，在 blocking 執行緒上執行）。
+pub type FsFuture<'a, T> = futures_util::future::BoxFuture<'a, Result<T, DavError>>;
+
 /// 遠端資料夾的檔案操作（WebDAV 與 SSH 各自實作）。路徑都相對於連線的根目錄，以 `/` 分隔。
 pub trait RemoteFs: Send + Sync {
-    fn stat(&self, rel: &str) -> Result<Item, DavError>;
+    fn stat<'a>(&'a self, rel: &'a str) -> FsFuture<'a, Item>;
     /// 資料夾的直接子項目（可能也包含資料夾本身，呼叫端會略過）。
-    fn list(&self, rel: &str) -> Result<Vec<Item>, DavError>;
-    fn get(&self, rel: &str) -> Result<(Vec<u8>, Option<String>), DavError>;
+    fn list<'a>(&'a self, rel: &'a str) -> FsFuture<'a, Vec<Item>>;
+    fn get<'a>(&'a self, rel: &'a str) -> FsFuture<'a, (Vec<u8>, Option<String>)>;
     /// 上傳。`if_match` 為 `Some` 時只在遠端的版本相同時寫入（否則 `Changed`）；
     /// `None` 時只在檔案不存在時建立（已存在也是 `Changed`）。回傳新的版本標記。
-    fn put(
-        &self,
-        rel: &str,
-        bytes: &[u8],
-        if_match: Option<&str>,
-    ) -> Result<Option<String>, DavError>;
-    fn mkdir(&self, rel: &str) -> Result<(), DavError>;
+    fn put<'a>(
+        &'a self,
+        rel: &'a str,
+        bytes: &'a [u8],
+        if_match: Option<&'a str>,
+    ) -> FsFuture<'a, Option<String>>;
+    fn mkdir<'a>(&'a self, rel: &'a str) -> FsFuture<'a, ()>;
     /// 改名或搬移；目的地已經存在時失敗。
-    fn rename(&self, from: &str, to: &str) -> Result<(), DavError>;
+    fn rename<'a>(&'a self, from: &'a str, to: &'a str) -> FsFuture<'a, ()>;
     /// 刪除檔案或整個資料夾。
-    fn delete(&self, rel: &str) -> Result<(), DavError>;
+    fn delete<'a>(&'a self, rel: &'a str) -> FsFuture<'a, ()>;
 }
 
 // ---- 連線設定與狀態 -----------------------------------------------------------
@@ -621,10 +625,11 @@ pub fn dav_forget(app: AppHandle, id: String, dav: State<'_, Dav>) -> Result<(),
 pub async fn dav_list(path: String, dav: State<'_, Dav>) -> Result<Vec<Entry>, String> {
     let (session, rel) = dav.resolve(&path)?;
     let id = session.conn.prefix();
-    crate::io::blocking(move || {
+    crate::io::timed(async move {
         let items = session
             .client
             .list(&rel)
+            .await
             .map_err(|e| e.message(&tr!("無法讀取資料夾")))?;
         let mut entries: Vec<Entry> = items
             .into_iter()
@@ -643,36 +648,14 @@ pub async fn dav_list(path: String, dav: State<'_, Dav>) -> Result<Vec<Entry>, S
     .await
 }
 
-/// 用最多 `workers` 個執行緒同時處理 `items`，結果依原本的順序回傳。
-fn parallel_map<T: Sync, R: Send>(
-    items: &[T],
-    workers: usize,
-    f: &(dyn Fn(&T) -> R + Sync),
-) -> Vec<R> {
-    use std::sync::atomic::AtomicUsize;
-    let next = AtomicUsize::new(0);
-    let results: Mutex<Vec<Option<R>>> = Mutex::new(items.iter().map(|_| None).collect());
-    std::thread::scope(|scope| {
-        for _ in 0..workers.min(items.len()) {
-            scope.spawn(|| loop {
-                let i = next.fetch_add(1, Ordering::Relaxed);
-                let Some(item) = items.get(i) else { break };
-                let r = f(item);
-                results.lock().unwrap()[i] = Some(r);
-            });
-        }
-    });
-    results
-        .into_inner()
-        .unwrap()
-        .into_iter()
-        .map(|r| r.expect("每個項目都處理過")) // i18n-ignore：程式錯誤
-        .collect()
-}
-
-/// 一層一層列出遠端的文件（同一層的資料夾同時查詢），回傳相對路徑。
+/// 一層一層列出遠端的文件（同一層的資料夾同時查詢，最多 `LIST_WORKERS` 個），回傳相對路徑。
 /// `list` 查詢一個資料夾的直接子項目（Depth 1），失敗時回傳 `None`（略過那個資料夾）。
-fn walk_remote(list: &(dyn Fn(&str) -> Option<Vec<Item>> + Sync)) -> Vec<String> {
+async fn walk_remote<F, Fut>(list: F) -> Vec<String>
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = Option<Vec<Item>>>,
+{
+    use futures_util::StreamExt;
     let mut files = Vec::new();
     let mut level = vec![String::new()];
     let mut seen = std::collections::HashSet::from([String::new()]);
@@ -684,7 +667,11 @@ fn walk_remote(list: &(dyn Fn(&str) -> Option<Vec<Item>> + Sync)) -> Vec<String>
             break;
         }
         dirs += level.len();
-        let results = parallel_map(&level, LIST_WORKERS, &|dir: &String| list(dir));
+        let queries: Vec<Fut> = level.iter().map(|dir| list(dir.clone())).collect();
+        let results: Vec<Option<Vec<Item>>> = futures_util::stream::iter(queries)
+            .buffered(LIST_WORKERS)
+            .collect()
+            .await;
         let mut next = Vec::new();
         for (dir, items) in level.iter().zip(results) {
             for i in items
@@ -720,9 +707,13 @@ pub async fn dav_list_files(dav: State<'_, Dav>) -> Result<Vec<FileItem>, String
         .unwrap()
         .clone()
         .ok_or_else(|| tr!("還沒有連線到遠端資料夾"))?;
-    crate::io::blocking_for(Duration::from_secs(60), move || {
+    crate::io::timed_for(Duration::from_secs(60), async move {
         let id = session.conn.prefix();
-        let rels = walk_remote(&|dir: &str| session.client.list(dir).ok());
+        let rels = walk_remote(|dir| {
+            let session = session.clone();
+            async move { session.client.list(&dir).await.ok() }
+        })
+        .await;
         Ok(rels
             .into_iter()
             .map(|rel| FileItem::new(join(&id, &rel), rel))
@@ -734,10 +725,11 @@ pub async fn dav_list_files(dav: State<'_, Dav>) -> Result<Vec<FileItem>, String
 #[tauri::command]
 pub async fn dav_read(path: String, dav: State<'_, Dav>) -> Result<OpenedFile, String> {
     let (session, rel) = dav.resolve(&path)?;
-    let (bytes, etag) = crate::io::blocking(move || {
+    let (bytes, etag) = crate::io::timed(async move {
         session
             .client
             .get(&rel)
+            .await
             .map_err(|e| e.message(&tr!("無法讀取")))
     })
     .await?;
@@ -776,30 +768,40 @@ pub async fn dav_write(
     let p = path.clone();
     let t = text.clone();
     let last_read = dav.read.lock().unwrap().get(&path).cloned();
-    let result = crate::io::blocking(move || {
+    let result = crate::io::timed(async move {
         let (if_match, before) = if force {
             // 使用者確認要覆蓋：先取回遠端目前的內容（放進版本記錄），
             // 再用它的 ETag 覆蓋（檔案不存在時就建立）。
-            match session.client.get(&rel) {
+            match session.client.get(&rel).await {
                 Ok((bytes, etag)) => {
-                    let etag = etag
-                        .or_else(|| session.client.stat(&rel).ok().and_then(|i| i.etag))
-                        .or_else(|| Some(ANY_VERSION.into()));
+                    let etag = match etag {
+                        Some(etag) => Some(etag),
+                        None => session.client.stat(&rel).await.ok().and_then(|i| i.etag),
+                    }
+                    .or_else(|| Some(ANY_VERSION.into()));
                     (etag, Some(decode(&bytes).0))
                 }
-                Err(_) => (session.client.stat(&rel).ok().and_then(|i| i.etag), None),
+                Err(_) => (
+                    session.client.stat(&rel).await.ok().and_then(|i| i.etag),
+                    None,
+                ),
             }
         } else {
             (known, last_read)
         };
-        match session.client.put(&rel, t.as_bytes(), if_match.as_deref()) {
+        match session
+            .client
+            .put(&rel, t.as_bytes(), if_match.as_deref())
+            .await
+        {
             Ok(etag) => Ok(Ok((etag, before))),
-            Err(DavError::Changed) => match session.client.get(&rel) {
+            Err(DavError::Changed) => match session.client.get(&rel).await {
                 Ok((bytes, _)) => Ok(Err(decode(&bytes).0)),
                 // 遠端的檔案被刪掉了：和本機檔案一樣直接重新建立（建立時有人搶先建了同名檔才算衝突）。
-                Err(DavError::NotFound) => match session.client.put(&rel, t.as_bytes(), None) {
+                Err(DavError::NotFound) => match session.client.put(&rel, t.as_bytes(), None).await
+                {
                     Ok(etag) => Ok(Ok((etag, None))),
-                    Err(DavError::Changed) => match session.client.get(&rel) {
+                    Err(DavError::Changed) => match session.client.get(&rel).await {
                         Ok((bytes, _)) => Ok(Err(decode(&bytes).0)),
                         Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
                     },
@@ -853,11 +855,11 @@ pub async fn dav_create(
     };
     let id = session.conn.prefix();
     let t = target.clone();
-    crate::io::blocking(move || {
+    crate::io::timed(async move {
         if is_dir {
-            session.client.mkdir(&t)
+            session.client.mkdir(&t).await
         } else {
-            session.client.put(&t, b"", None).map(|_| ())
+            session.client.put(&t, b"", None).await.map(|_| ())
         }
         .map_err(|e| match e {
             DavError::Changed => DavError::Exists.message(&tr!("無法建立「{name}」", name = name)),
@@ -911,7 +913,7 @@ pub async fn dav_upload(
     let bytes = bytes.clone();
     let (session, rel) = dav.resolve(&dir)?;
     let id = session.conn.prefix();
-    let target = crate::io::blocking(move || {
+    let target = crate::io::timed(async move {
         for n in 1..100 {
             let file = numbered(&name, n);
             let target = if rel.is_empty() {
@@ -919,7 +921,7 @@ pub async fn dav_upload(
             } else {
                 format!("{rel}/{file}")
             };
-            match session.client.put(&target, &bytes, None) {
+            match session.client.put(&target, &bytes, None).await {
                 Ok(_) => return Ok(target),
                 Err(DavError::Changed) | Err(DavError::Exists) => continue,
                 Err(e) => return Err(e.message(&tr!("無法上傳「{name}」", name = name))),
@@ -945,11 +947,15 @@ pub async fn dav_download(path: String, dav: State<'_, Dav>) -> Result<Option<St
         return Ok(None);
     };
     let dest = dest.path().to_path_buf();
-    crate::io::blocking(move || {
-        let (bytes, _) = session
+    let (bytes, _) = crate::io::timed(async {
+        session
             .client
             .get(&rel)
-            .map_err(|e| e.message(&tr!("無法下載「{name}」", name = name)))?;
+            .await
+            .map_err(|e| e.message(&tr!("無法下載「{name}」", name = name)))
+    })
+    .await?;
+    crate::io::blocking(move || {
         std::fs::write(&dest, bytes).map_err(|e| crate::io::describe(&e, &tr!("無法存檔")))?;
         Ok(Some(crate::files::path_string(&dest)))
     })
@@ -976,10 +982,11 @@ pub async fn dav_rename(
     };
     let id = session.conn.prefix();
     let (from, to) = (rel.clone(), target.clone());
-    crate::io::blocking(move || {
+    crate::io::timed(async move {
         session
             .client
             .rename(&from, &to)
+            .await
             .map_err(|e| e.message(&tr!("無法重新命名")))
     })
     .await?;
@@ -1010,10 +1017,11 @@ pub async fn dav_delete(path: String, dav: State<'_, Dav>) -> Result<(), String>
     if rel.is_empty() {
         return Err(tr!("不能刪除遠端資料夾本身"));
     }
-    crate::io::blocking(move || {
+    crate::io::timed(async move {
         session
             .client
             .delete(&rel)
+            .await
             .map_err(|e| e.message(&tr!("無法刪除")))
     })
     .await?;
@@ -1042,13 +1050,13 @@ pub async fn dav_save_image(
         .map(|(s, _)| s)
         .unwrap_or(&stem)
         .to_string();
-    crate::io::blocking(move || {
+    crate::io::timed(async move {
         let assets = if dir.is_empty() {
             "assets".to_string()
         } else {
             format!("{dir}/assets")
         };
-        match session.client.mkdir(&assets) {
+        match session.client.mkdir(&assets).await {
             Ok(()) | Err(DavError::Exists) => {}
             Err(e) => return Err(e.message(&tr!("無法建立 assets 資料夾"))),
         }
@@ -1062,6 +1070,7 @@ pub async fn dav_save_image(
             match session
                 .client
                 .put(&format!("{assets}/{name}"), &bytes, None)
+                .await
             {
                 Ok(_) => return Ok(format!("assets/{name}")),
                 Err(DavError::Changed) => continue, // 同名檔案已存在
@@ -1080,10 +1089,11 @@ pub async fn dav_peek(path: String, dav: State<'_, Dav>) -> Result<String, Strin
     if !is_doc(std::path::Path::new(&rel)) {
         return Err(tr!("只能讀取文件"));
     }
-    let (bytes, _) = crate::io::blocking(move || {
+    let (bytes, _) = crate::io::timed(async move {
         session
             .client
             .get(&rel)
+            .await
             .map_err(|e| e.message(&tr!("無法讀取")))
     })
     .await?;
@@ -1108,10 +1118,11 @@ pub async fn dav_image(path: String, dav: State<'_, Dav>) -> Result<String, Stri
         "bmp" => "image/bmp",
         _ => return Err(tr!("不是圖片")),
     };
-    let (bytes, _) = crate::io::blocking(move || {
+    let (bytes, _) = crate::io::timed(async move {
         session
             .client
             .get(&rel)
+            .await
             .map_err(|e| e.message(&tr!("無法讀取圖片")))
     })
     .await?;
@@ -1134,8 +1145,8 @@ pub async fn dav_probe(path: String, dav: State<'_, Dav>) -> Result<bool, String
     let Ok((session, _)) = dav.resolve(&path) else {
         return Ok(false);
     };
-    Ok(crate::io::blocking_for(Duration::from_secs(10), move || {
-        Ok(session.client.stat("").is_ok())
+    Ok(crate::io::timed_for(Duration::from_secs(10), async move {
+        Ok(session.client.stat("").await.is_ok())
     })
     .await
     .unwrap_or(false))
@@ -1152,9 +1163,8 @@ struct Changed {
 /// 同一個資料夾有兩個以上的檔案時，用一次 Depth 1 的 PROPFIND 查整個資料夾，不必每個檔案各送一次；
 /// 在清單中找不到的檔案（例如伺服器的網址編碼和我們不同）再個別查詢，確認真的不見了才回報。
 /// 資料夾查詢失敗（網路斷線等）時，那些檔案這次都不回報，下次再試。
-fn remote_etags(
-    stat: &dyn Fn(&str) -> Result<Item, DavError>,
-    list: &dyn Fn(&str) -> Result<Vec<Item>, DavError>,
+async fn remote_etags(
+    fs: &dyn RemoteFs,
     rels: &[String],
 ) -> HashMap<String, Result<Option<String>, DavError>> {
     let mut groups: std::collections::BTreeMap<&str, Vec<&String>> = Default::default();
@@ -1166,7 +1176,7 @@ fn remote_etags(
     for (parent, files) in groups {
         let mut single: Vec<&String> = Vec::new();
         if files.len() >= 2 {
-            match list(parent) {
+            match fs.list(parent).await {
                 Ok(items) => {
                     let etags: HashMap<&str, &Option<String>> = items
                         .iter()
@@ -1189,7 +1199,7 @@ fn remote_etags(
             single = files;
         }
         for rel in single {
-            out.insert(rel.clone(), stat(rel).map(|i| i.etag));
+            out.insert(rel.clone(), fs.stat(rel).await.map(|i| i.etag));
         }
     }
     out
@@ -1202,59 +1212,57 @@ fn start_polling(app: &AppHandle) {
         return;
     }
     let app = app.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(POLL_INTERVAL);
-        let dav = app.state::<Dav>();
-        let Some(session) = dav.session.lock().unwrap().clone() else {
-            continue;
-        };
-        let open: Vec<(String, String, String)> = dav
-            .etags
-            .lock()
-            .unwrap()
-            .iter()
-            .filter_map(|(path, etag)| {
-                let (prefix, rel) = split(path)?;
-                (prefix == session.conn.prefix())
-                    .then(|| (path.clone(), rel.to_string(), etag.clone()))
-            })
-            .collect();
-        let rels: Vec<String> = open.iter().map(|(_, rel, _)| rel.clone()).collect();
-        let mut states = remote_etags(
-            &|rel| session.client.stat(rel),
-            &|dir| session.client.list(dir),
-            &rels,
-        );
-        for (path, rel, etag) in open {
-            let Some(state) = states.remove(&rel) else {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(POLL_INTERVAL).await;
+            let dav = app.state::<Dav>();
+            let Some(session) = dav.session.lock().unwrap().clone() else {
                 continue;
             };
-            match state {
-                Ok(remote) => {
-                    let Some(remote) = remote else { continue };
-                    let already = dav.notified.lock().unwrap().get(&path) == Some(&remote);
-                    if remote != etag && etag != ANY_VERSION && !already {
-                        if let Ok((bytes, _)) = session.client.get(&rel) {
-                            dav.notified.lock().unwrap().insert(path.clone(), remote);
-                            let _ = app.emit(
-                                "file-changed",
-                                Changed {
-                                    path: path.clone(),
-                                    text: decode(&bytes).0,
-                                },
-                            );
+            let open: Vec<(String, String, String)> = dav
+                .etags
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|(path, etag)| {
+                    let (prefix, rel) = split(path)?;
+                    (prefix == session.conn.prefix())
+                        .then(|| (path.clone(), rel.to_string(), etag.clone()))
+                })
+                .collect();
+            let rels: Vec<String> = open.iter().map(|(_, rel, _)| rel.clone()).collect();
+            let mut states = remote_etags(session.client.as_ref(), &rels).await;
+            for (path, rel, etag) in open {
+                let Some(state) = states.remove(&rel) else {
+                    continue;
+                };
+                match state {
+                    Ok(remote) => {
+                        let Some(remote) = remote else { continue };
+                        let already = dav.notified.lock().unwrap().get(&path) == Some(&remote);
+                        if remote != etag && etag != ANY_VERSION && !already {
+                            if let Ok((bytes, _)) = session.client.get(&rel).await {
+                                dav.notified.lock().unwrap().insert(path.clone(), remote);
+                                let _ = app.emit(
+                                    "file-changed",
+                                    Changed {
+                                        path: path.clone(),
+                                        text: decode(&bytes).0,
+                                    },
+                                );
+                            }
                         }
                     }
-                }
-                Err(DavError::NotFound) => {
-                    dav.etags.lock().unwrap().remove(&path);
-                    #[derive(Serialize, Clone)]
-                    struct Removed {
-                        path: String,
+                    Err(DavError::NotFound) => {
+                        dav.etags.lock().unwrap().remove(&path);
+                        #[derive(Serialize, Clone)]
+                        struct Removed {
+                            path: String,
+                        }
+                        let _ = app.emit("file-removed", Removed { path });
                     }
-                    let _ = app.emit("file-removed", Removed { path });
+                    Err(_) => {} // 暫時連不上就下次再試
                 }
-                Err(_) => {} // 暫時連不上就下次再試
             }
         }
     });
