@@ -236,6 +236,11 @@ kbd {
 .editor-pane { grid-area: editor; display: flex; flex-direction: column; overflow: hidden; }
 .editor-host { flex: 1; min-height: 0; }
 .preview-pane { grid-area: preview; position: relative; overflow: auto; background: var(--md-bg); }
+/* 網頁檔（.html）的預覽：iframe 填滿預覽區，照網頁本身的樣子（大多以白底為準）。 */
+.html-preview { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.html-preview[hidden] { display: none; }
+.preview-pane.html-mode { overflow: hidden; }
+.preview-pane.html-mode > #preview, .preview-pane.html-mode > .empty-state { display: none; }
 
 /* 側邊欄、右邊大綱的邊緣：拖曳調整寬度（把手跨在面板的邊框上）。 */
 .sidebar-resizer { position: absolute; top: 0; bottom: 0; z-index: 5; width: 7px; cursor: col-resize; touch-action: none; }

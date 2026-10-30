@@ -20,6 +20,7 @@ import { refreshLivePreview } from "./live-preview.ts";
 import { proofread } from "./proofread.ts";
 import { type DocKind, KINDS, isTextFileName } from "./kinds.ts";
 import { basename, dirname, localImagePath, resolvePath } from "./paths.ts";
+import { HtmlPreview, isHtmlName } from "./html-preview.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
 import { localImagesPlugin } from "./plugins/local-images.ts";
 import { mathPlugin, renderTex } from "./plugins/math.ts";
@@ -1083,6 +1084,22 @@ const preview = new Preview(previewEl, [
   },
 ]);
 
+/** 網頁檔（.html）的預覽。 */
+const htmlPreview = new HtmlPreview($("#preview-scroller"), (href) => void followLink(href).catch(reportError));
+
+function showHtmlPreview(text: string): void {
+  const dir = fileHandle?.path ? dirname(fileHandle.path) : null;
+  htmlPreview.show(text, active.id, {
+    blockRemote: blockRemote(),
+    image: (src) => {
+      // 本機資料夾的圖片用程式的 mdimg: 網址；遠端資料夾（WebDAV、SSH）的先不載入。
+      if (!desktop || !dir || /^(webdav|ssh):\/\//.test(dir)) return null;
+      const path = localImagePath(src, dir);
+      return path ? desktop.fileUrl(path) : null;
+    },
+  });
+}
+
 /** 表格排版：關閉自動對齊時只移動游標，不重排。 */
 const tableFormatter = (block: string) => (settings.value.tableAutoFormat ? formatTable(block) : undefined);
 
@@ -1311,7 +1328,12 @@ function scheduleRender(): void {
 function renderNow(full = false): void {
   const started = performance.now();
   const text = editor.text;
-  const result = preview.update(text, kind, !full && !previewVisible());
+  // 網頁檔：預覽照網頁本身的樣子顯示（iframe），一般的預覽只算統計。
+  const html = isHtmlName(fileName) && !full;
+  const result = preview.update(text, kind, html || (!full && !previewVisible()));
+  if (html && previewVisible()) showHtmlPreview(text);
+  else htmlPreview.hide();
+  $("#preview-scroller").classList.toggle("html-mode", htmlPreview.shown);
   blocks = null;
   renderError(result);
   renderEmptyState(text);
