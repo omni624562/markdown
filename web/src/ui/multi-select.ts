@@ -1,7 +1,10 @@
 /**
  * 可以複選的下拉選單（工作項目的類型、專案、區域篩選）：
- * 按鈕的樣子和一般的下拉選單一樣，打開是一排勾選框，上面有「全選」「全不選」，選項多時可以打字找。
- * 都不勾或全部勾都等於不限；選單關上時才套用，不會每勾一個就重新查一次。
+ * 按鈕的樣子和一般的下拉選單一樣，打開是一排勾選框。第一列「全部」一次勾或取消全部（部分勾選時顯示半勾），
+ * 滑鼠移到某一列時右邊有「只選這個」；選項多時可以打字找。
+ * 不限時全部都是勾的；選單關上（或按「完成」）時才套用，不會每勾一個就重新查一次。
+ *
+ * `single` 是單選（例如「人」）：同樣的按鈕與選單樣子，點一下就套用並關上。
  */
 
 import { t } from "../i18n.ts";
@@ -15,6 +18,8 @@ export interface MultiSelectOptions {
   all: string;
   /** 選單關上、選的值有變時呼叫（空的是不限）。 */
   onChange(values: string[]): void;
+  /** 單選：只能選一個，點了就套用。 */
+  single?: boolean;
 }
 
 /** 選項多到這個數目時，上面多一個搜尋框。 */
@@ -25,6 +30,10 @@ export class MultiSelect {
   #pop: HTMLDivElement;
   #list: HTMLDivElement;
   #search: HTMLInputElement;
+  #allRow: HTMLLabelElement;
+  #allBox: HTMLInputElement;
+  #allText: HTMLSpanElement;
+  #status: HTMLSpanElement;
   #options: [string, string][] = [];
   #value: string[] = [];
   /** 選單打開時勾選的（還沒套用）。 */
@@ -40,33 +49,44 @@ export class MultiSelect {
     this.el.setAttribute("aria-expanded", "false");
 
     this.#pop = document.createElement("div");
-    this.#pop.className = "menu multi-select-pop";
+    this.#pop.className = "multi-select-pop";
     this.#pop.popover = "auto";
     this.#pop.setAttribute("aria-label", o.label);
-    const tools = document.createElement("div");
-    tools.className = "multi-select-tools";
-    const allBtn = document.createElement("button");
-    allBtn.type = "button";
-    allBtn.textContent = t("全選");
-    allBtn.addEventListener("click", () => this.#setAll(true));
-    const noneBtn = document.createElement("button");
-    noneBtn.type = "button";
-    noneBtn.textContent = t("全不選");
-    noneBtn.addEventListener("click", () => this.#setAll(false));
-    tools.append(allBtn, noneBtn);
     this.#search = document.createElement("input");
     this.#search.type = "search";
     this.#search.className = "multi-select-search";
     this.#search.placeholder = t("搜尋…");
     this.#search.setAttribute("aria-label", t("搜尋{label}", { label: o.label }));
     this.#search.addEventListener("input", () => this.#filter());
+    // 「全部」：勾選或取消全部（有打字找時只動找到的那些）。
+    this.#allRow = document.createElement("label");
+    this.#allRow.className = "multi-select-item multi-select-all";
+    this.#allBox = document.createElement("input");
+    this.#allBox.type = "checkbox";
+    this.#allBox.addEventListener("change", () => this.#setAll(this.#allBox.checked));
+    this.#allText = document.createElement("span");
+    this.#allRow.append(this.#allBox, this.#allText);
     this.#list = document.createElement("div");
     this.#list.className = "multi-select-list";
     this.#list.role = "group";
-    const hint = document.createElement("p");
-    hint.className = "multi-select-hint";
-    hint.textContent = t("都不勾就是不限");
-    this.#pop.append(tools, this.#search, this.#list, hint);
+    const foot = document.createElement("div");
+    foot.className = "multi-select-foot";
+    this.#status = document.createElement("span");
+    const done = document.createElement("button");
+    done.type = "button";
+    done.className = "btn btn-small btn-primary";
+    done.textContent = t("完成");
+    done.addEventListener("click", () => {
+      this.#pop.hidePopover();
+      this.el.focus();
+    });
+    foot.append(this.#status, done);
+    this.#pop.append(this.#search, this.#allRow, this.#list, foot);
+    if (o.single) {
+      this.#pop.classList.add("single");
+      this.#allRow.hidden = true;
+      foot.hidden = true;
+    }
     document.body.append(this.#pop);
 
     this.el.addEventListener("click", () => {
@@ -93,7 +113,7 @@ export class MultiSelect {
   }
 
   set value(v: string[]) {
-    this.#value = normalizeChoice(v, this.#options.map(([o]) => o));
+    this.#value = this.#o.single ? v.slice(0, 1) : normalizeChoice(v, this.#options.map(([o]) => o));
     this.#render();
   }
 
@@ -119,61 +139,119 @@ export class MultiSelect {
     this.el.textContent = text;
     this.el.title = this.#value.length ? `${this.#o.label}：${this.#value.map(this.#labelOf).join(", ")}` : this.#o.label; // i18n-ignore（名稱與冒號）
     this.el.setAttribute("aria-label", `${this.#o.label}：${text}`); // i18n-ignore（名稱與冒號）
-    this.el.classList.toggle("chosen", this.#value.length > 0);
+  }
+
+  /** 全部的選項（還沒讀到的已選值也列出來，才取消得掉）。 */
+  #all(): [string, string][] {
+    const extra = this.#value.filter((v) => !this.#options.some(([o]) => o === v)).map((v): [string, string] => [v, v]);
+    return [...this.#options, ...extra];
   }
 
   #open(): void {
-    this.#draft = new Set(this.#value);
-    // 還沒讀到的選項（例如上次選的區域）也列出來，才取消得掉。
-    const extra = this.#value.filter((v) => !this.#options.some(([o]) => o === v)).map((v): [string, string] => [v, v]);
+    const all = this.#all();
+    // 不限時全部都勾著（和「全部」的意思一樣）。
+    this.#draft = new Set(this.#value.length ? this.#value : all.map(([v]) => v));
     this.#list.replaceChildren(
-      ...[...this.#options, ...extra].map(([v, text]) => {
+      ...all.map(([v, text]) => {
         const row = document.createElement("label");
         row.className = "multi-select-item";
+        row.title = text;
+        row.dataset.text = text.toLowerCase();
         const box = document.createElement("input");
-        box.type = "checkbox";
+        box.type = this.#o.single ? "radio" : "checkbox";
+        box.name = this.#o.label;
         box.value = v;
         box.checked = this.#draft.has(v);
+        const name = document.createElement("span");
+        name.textContent = text;
+        if (this.#o.single) {
+          // 單選：點了就套用並關上（點已經選的那個也一樣關上）。
+          row.addEventListener("click", (e) => {
+            e.preventDefault();
+            this.#pop.hidePopover();
+            this.el.focus();
+            if (this.#value[0] === v) return;
+            this.#value = [v];
+            this.#render();
+            this.#o.onChange(this.value);
+          });
+          row.append(box, name);
+          return row;
+        }
         box.addEventListener("change", () => {
           if (box.checked) this.#draft.add(v);
           else this.#draft.delete(v);
+          this.#sync();
         });
-        const name = document.createElement("span");
-        name.textContent = text;
-        row.title = text;
-        row.append(box, name);
+        const only = document.createElement("button");
+        only.type = "button";
+        only.className = "multi-select-only";
+        only.textContent = t("只選這個");
+        only.addEventListener("click", (e) => {
+          e.preventDefault();
+          this.#draft = new Set([v]);
+          for (const b of this.#boxes()) b.checked = b.value === v;
+          this.#sync();
+        });
+        row.append(box, name, only);
         return row;
       }),
     );
     this.#search.value = "";
-    this.#search.hidden = this.#options.length < SEARCH_FROM;
+    this.#search.hidden = all.length < SEARCH_FROM;
+    this.#filter();
     this.#pop.showPopover();
-    this.#pop.style.minWidth = `${this.el.offsetWidth}px`;
+    this.#pop.style.minWidth = `${Math.max(this.el.offsetWidth, 220)}px`;
     this.#pop.style.maxHeight = "";
     const { width, height } = this.#pop.getBoundingClientRect();
     const p = placeMenu(this.el.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight });
     Object.assign(this.#pop.style, { left: `${p.left}px`, top: `${p.top}px`, right: "auto", bottom: "auto", maxHeight: `${p.maxHeight}px` });
-    (this.#search.hidden ? this.#list.querySelector<HTMLInputElement>("input") : this.#search)?.focus();
+    const first = this.#o.single ? this.#list.querySelector<HTMLInputElement>("input:checked") : this.#allBox;
+    (this.#search.hidden ? first : this.#search)?.focus();
   }
 
-  /** 全選或全不選（有打字找時只動找到的那些）。 */
+  #boxes(): HTMLInputElement[] {
+    return [...this.#list.querySelectorAll<HTMLInputElement>("input")];
+  }
+
+  /** 「全部」的勾選狀態（全勾、半勾、沒勾）與下面的「已選幾項」。 */
+  #sync(): void {
+    const shown = this.#boxes().filter((b) => !b.closest<HTMLElement>(".multi-select-item")!.hidden);
+    const on = shown.filter((b) => b.checked).length;
+    this.#allBox.checked = shown.length > 0 && on === shown.length;
+    this.#allBox.indeterminate = on > 0 && on < shown.length;
+    const total = this.#boxes().length;
+    const picked = this.#draft.size;
+    // 都沒勾時查不到東西也沒意義，當成全部。
+    this.#status.textContent =
+      picked === 0 ? t("都沒勾：等於全部") : picked >= total ? t("全部") : t("已選 {n}／{total} 項", { n: picked, total });
+    this.#status.classList.toggle("warn", picked === 0);
+  }
+
+  /** 勾選或取消全部（有打字找時只動找到的那些）。 */
   #setAll(on: boolean): void {
-    for (const box of this.#list.querySelectorAll<HTMLInputElement>("input[type=checkbox]")) {
+    for (const box of this.#boxes()) {
       if (box.closest<HTMLElement>(".multi-select-item")!.hidden) continue;
       box.checked = on;
       if (on) this.#draft.add(box.value);
       else this.#draft.delete(box.value);
     }
+    this.#sync();
   }
 
   #filter(): void {
     const q = this.#search.value.trim().toLowerCase();
+    let shown = 0;
     for (const row of this.#list.querySelectorAll<HTMLElement>(".multi-select-item")) {
-      row.hidden = !!q && !(row.textContent ?? "").toLowerCase().includes(q);
+      row.hidden = !!q && !(row.dataset.text ?? "").includes(q);
+      if (!row.hidden) shown++;
     }
+    this.#allText.textContent = q ? t("全部符合的（{n}）", { n: shown }) : t("全部（{n}）", { n: shown });
+    this.#sync();
   }
 
   #apply(): void {
+    if (this.#o.single) return;
     const next = normalizeChoice([...this.#draft], this.#options.map(([o]) => o));
     const same = next.length === this.#value.length && next.every((v) => this.#value.includes(v));
     if (same) return;

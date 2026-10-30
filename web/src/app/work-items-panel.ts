@@ -135,13 +135,16 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     query.hidden = !q;
     queryNote.hidden = !q;
     queryNote.textContent = q ? t("目前列出查詢「{name}」的結果，下面的篩選條件暫時不套用。", { name: q.name }) : "";
-    const n = [
+    const set = [
       !(f.role === "assigned" && f.person === "@me"),
       f.state !== "open",
       f.kinds.length > 0,
       f.projects.length > 0,
       f.areas.length > 0,
-    ].filter(Boolean).length + (q ? 1 : 0);
+    ];
+    // 和預設不一樣的條件，按鈕用強調色（和徽章的數字一致）。
+    [person, state, kind, project, area].forEach((m, i) => m.el.classList.toggle("chosen", set[i]));
+    const n = set.filter(Boolean).length + (q ? 1 : 0);
     badge.textContent = n ? String(n) : "";
     badge.hidden = !n;
     reset.hidden = !n;
@@ -159,18 +162,6 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   workItemFilterChanged = () => {
     updateBadge();
     void workItemsPanel?.refresh();
-  };
-  const select = (label: string, options: [string, string][], value: string, change: (v: string) => void) => {
-    const sel = document.createElement("select");
-    sel.className = "workitems-select";
-    sel.setAttribute("aria-label", label);
-    sel.title = label;
-    for (const [v, text] of options) sel.append(new Option(text, v, false, v === value));
-    sel.addEventListener("change", () => {
-      change(sel.value);
-      changed();
-    });
-    return sel;
   };
   const pairs = (values: string[]): [string, string][] => values.map((v) => [v, v]);
 
@@ -196,32 +187,42 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
       changed();
     }, 500);
   });
-  const person = select(
-    t("人"),
-    [
-      ["assigned:@me", t("指派給我")],
-      ["created:@me", t("我建立的")],
-      ["any", t("所有人")],
-      ["assigned:", t("指派給…")],
-      ["created:", t("建立者是…")],
-    ],
-    personValue,
-    (v) => {
+  // 整排篩選用同一種下拉選單：人是單選（點了就套用），其他可以複選（選單關上時套用），
+  // 都不勾或全部勾都等於不限。
+  const person = new MultiSelect({
+    label: t("人"),
+    all: t("所有人"),
+    single: true,
+    onChange: ([v]) => {
       clearTimeout(timer);
       const [role, who] = v === "any" ? ["assigned", ""] : v.split(":");
       f.role = role as AdoWorkItemFilter["role"];
       name.hidden = !v.endsWith(":");
       f.person = who === "@me" ? "@me" : name.hidden ? "" : name.value.trim();
       if (!name.hidden) name.focus();
+      changed();
     },
-  );
-  const state = select(
-    t("狀態"),
-    [["open", t("進行中")], ["closed", t("已結束")], ["all", t("全部狀態")]],
-    f.state,
-    (v) => (f.state = v as AdoWorkItemFilter["state"]),
-  );
-  // 類型、專案、區域可以複選（選單關上時才套用）。
+  });
+  person.setOptions([
+    ["assigned:@me", t("指派給我")],
+    ["created:@me", t("我建立的")],
+    ["any", t("所有人")],
+    ["assigned:", t("指派給…")],
+    ["created:", t("建立者是…")],
+  ]);
+  person.value = [personValue];
+  // 狀態：進行中、已結束兩項，都勾（或都不勾）是全部。
+  const stateValue = (s: AdoWorkItemFilter["state"]) => (s === "all" ? [] : [s]);
+  const state = new MultiSelect({
+    label: t("狀態"),
+    all: t("全部狀態"),
+    onChange: (v) => {
+      f.state = v.length === 1 ? (v[0] as AdoWorkItemFilter["state"]) : "all";
+      changed();
+    },
+  });
+  state.setOptions([["open", t("進行中")], ["closed", t("已結束")]]);
+  state.value = stateValue(f.state);
   const kind = new MultiSelect({
     label: t("類型"),
     all: t("所有類型"),
@@ -299,17 +300,17 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     clearTimeout(timer);
     setWorkItemQuery(null, false);
     Object.assign(f, app.DEFAULT_WORK_ITEM_FILTER);
-    person.value = "assigned:@me";
+    person.value = ["assigned:@me"];
     name.hidden = true;
     name.value = "";
-    state.value = "open";
+    state.value = ["open"];
     kind.value = [];
     project.value = [];
     area.value = [];
     loadScope();
     changed();
   });
-  bar.append(queryOpen, queryNote, person, state, name, kind.el, project.el, area.el, people, reset);
+  bar.append(queryOpen, queryNote, person.el, state.el, name, kind.el, project.el, area.el, people, reset);
   updateBadge();
   setOpen(storage.load("workitem-filter-open") === "1");
   return { bar, button: group };
