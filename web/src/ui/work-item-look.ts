@@ -15,7 +15,7 @@ import { stateTone } from "../issue-doc.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { icon } from "./icons.ts";
 
-export type SectionKind = "desc" | "details" | "sysinfo" | "relations" | "comments" | "other";
+export type SectionKind = "desc" | "details" | "sysinfo" | "relations" | "attachments" | "comments" | "other";
 
 export interface WorkItemLookOptions {
   /** 上次看過這個項目時的最後更新時間（毫秒）：之後的留言標「新」。沒看過是 null。 */
@@ -39,6 +39,7 @@ const SECTION_ICONS: Record<SectionKind, string> = {
   details: "list-checks",
   sysinfo: "monitor",
   relations: "link",
+  attachments: "paperclip",
   comments: "message-square",
   other: "file-text",
 };
@@ -56,6 +57,7 @@ export function sectionKind(title: string): SectionKind {
   if (text === t("重現步驟") || text === t("驗收條件")) return "details";
   if (text === t("系統資訊")) return "sysinfo";
   if (countPattern((n) => t("相關工作項目（{n}）", { n })).test(text)) return "relations";
+  if (countPattern((n) => t("附件（{n}）", { n })).test(text)) return "attachments";
   if (countPattern((n) => t("留言（{n}）", { n })).test(text)) return "comments";
   return "other";
 }
@@ -77,6 +79,14 @@ function peekText(nodes: Element[]): string {
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
+  return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+}
+
+/** 附件段落收起來時：檔名（附件方塊裡的檔名，沒有方塊時是清單的文字）。 */
+function attachmentNames(nodes: Element[]): string {
+  const names = nodes.flatMap((n) => [...n.querySelectorAll(".ado-att-name")].map((a) => a.textContent ?? ""));
+  if (!names.length) return peekText(nodes);
+  const text = names.join(", ");
   return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }
 
@@ -136,7 +146,7 @@ function section(h2: HTMLElement, content: Element[], kind: SectionKind, opts: W
   ico.append(icon(SECTION_ICONS[kind]));
   const peek = document.createElement("span");
   peek.className = "ado-peek";
-  peek.textContent = kind === "comments" ? "" : peekText(content);
+  peek.textContent = kind === "comments" ? "" : kind === "attachments" ? attachmentNames(content) : peekText(content);
   head.append(chevron(), ico, h2, peek);
   const box = document.createElement("div");
   box.className = "ado-sec-body";

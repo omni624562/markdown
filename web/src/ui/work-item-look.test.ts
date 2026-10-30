@@ -9,6 +9,7 @@ test("工作項目段落：依標題認出是哪一種（有數字的標題任�
   assert.equal(sectionKind("系統資訊"), "sysinfo");
   assert.equal(sectionKind("相關工作項目（12）"), "relations");
   assert.equal(sectionKind("留言（3）"), "comments");
+  assert.equal(sectionKind("附件（4）"), "attachments");
   assert.equal(sectionKind("留言（3）多的字"), "other");
   assert.equal(sectionKind("自訂段落"), "other");
 });

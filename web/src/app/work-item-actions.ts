@@ -7,9 +7,11 @@ import { t } from "../i18n.ts";
 import { issueFileName, workItemMarkdown, workItemIdOf } from "../issue-doc.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
+import { decorateAttachments } from "../ui/work-item-attachments.ts";
 import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
 import * as storage from "../storage.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
+import { openAttachment, saveAttachment } from "./ado-files.ts";
 import { insertIssueLink } from "./ado-links.ts";
 import { offlineRefs } from "./offline-copies.ts";
 import { workItemSeen } from "./work-item-updates.ts";
@@ -191,7 +193,12 @@ export function showWorkItem(item: AdoWorkItem): void {
       actions.update(d);
       return workItemMarkdown(d);
     },
-    decorate: (body) =>
+    decorate: (body) => {
+      decorateAttachments(body, {
+        open: (href) => void openAttachment(href),
+        save: (href) => saveAttachment(href),
+        thumb: (href) => desktop!.adoImage(href),
+      });
       decorateWorkItem(body, {
         seenAt,
         folded: foldedSections(),
@@ -203,7 +210,8 @@ export function showWorkItem(item: AdoWorkItem): void {
         },
         newestFirst: storage.load("workitem-comment-order") !== "oldest",
         onOrder: (newest) => storage.save("workitem-comment-order", newest ? "newest" : "oldest"),
-      }),
+      });
+    },
     insertLink: () => insertIssueLink(item),
     toolbar: actions.el,
     shortcut: {
@@ -211,6 +219,8 @@ export function showWorkItem(item: AdoWorkItem): void {
       toggle: () => toggleWorkItemShortcut(item),
     },
     link: (href) => {
+      // 附件：文字檔、圖片在 oMarker 裡看，其他用預設的程式開啟。
+      if (openAttachment(href)) return true;
       const id = workItemIdOf(href);
       const target = id === null ? undefined : related.get(id);
       if (!target) return false;
