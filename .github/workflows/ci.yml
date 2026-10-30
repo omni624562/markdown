@@ -59,6 +59,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # 冒煙測試：用 Playwright 開啟建置好的網頁版，確認開啟、編輯、切換檢視、即時預覽、還原分頁沒有壞掉。
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
 
   # 版本號規範（VERSIONING.md）：版本號一致；PR 改到程式時要升版並寫好 CHANGELOG.md。
   version:

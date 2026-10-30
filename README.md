@@ -109,6 +109,7 @@ npm run dev    # 開發伺服器，預設 http://localhost:5173
 | `npm test`（在 `web/`） | 執行前端單元測試（Node 內建測試框架） |
 | `npm run typecheck` | TypeScript 型別檢查 |
 | `npm run build` | 建置正式版到 `web/dist`，可以直接部署到任何靜態網站主機 |
+| `npm run test:e2e` | 冒煙測試：用 Playwright 開啟 `web/dist`（先 `npm run build`；第一次要 `npx playwright install chromium`） |
 
 ## 命令列工具
 
