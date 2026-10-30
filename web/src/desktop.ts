@@ -359,6 +359,18 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   rev: number | null;
   /** 相關的工作項目；讀不到時是空的。 */
   relations: AdoWorkItemRelation[];
+  /** 附件（舊的離線副本沒有）。 */
+  attachments?: AdoWorkItemAttachment[];
+}
+
+export interface AdoWorkItemAttachment {
+  name: string;
+  /** 伺服器上的附件網址。 */
+  url: string;
+  size: number | null;
+  /** 上傳時間。 */
+  created: string | null;
+  comment: string | null;
 }
 
 export interface AdoWorkItemRelation extends AdoWorkItem {
@@ -922,6 +934,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
       }),
     /** 工作項目的附件（文字檔）。 */
     adoAttachmentText: (url: string) => core.invoke<string>("ado_attachment_text", { url }),
+    /** 附件下載到暫存資料夾，用預設的程式開啟（會自己執行的檔案不開）。 */
+    adoAttachmentOpen: (url: string, name: string) => core.invoke<void>("ado_attachment_open", { url, name }),
+    /** 附件另存新檔；按取消時回傳 null。 */
+    adoAttachmentSave: (url: string, name: string) => core.invoke<string | null>("ado_attachment_save", { url, name }),
     /** Git 儲存庫裡的圖片，回傳 data: 網址（儲存庫檔案內容裡的相對路徑圖片）。 */
     adoRepoImage: (project: string, repo: string, path: string, version: string | null) =>
       core.invoke<string>("ado_wiki_image", { projectId: project, repositoryId: repo, path, version }),
