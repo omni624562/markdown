@@ -182,10 +182,12 @@ pub struct WorkItemFilter {
     pub person: String,
     /// `open`（還沒結束）、`closed`（已結束）或 `all`。
     pub state: String,
-    pub kind: Option<String>,
-    pub project: Option<String>,
-    /// 區域路徑（例如 `產品\前端`），包含底下的區域。
-    pub area: Option<String>,
+    /// 類型（空的是不限）。
+    pub kinds: Vec<String>,
+    /// 專案（空的是不限）。
+    pub projects: Vec<String>,
+    /// 區域路徑（例如 `產品\前端`），包含底下的區域；空的是不限。
+    pub areas: Vec<String>,
 }
 
 impl Default for WorkItemFilter {
@@ -194,15 +196,27 @@ impl Default for WorkItemFilter {
             role: "assigned".into(),
             person: "@me".into(),
             state: "open".into(),
-            kind: None,
-            project: None,
-            area: None,
+            kinds: vec![],
+            projects: vec![],
+            areas: vec![],
         }
     }
 }
 
-pub(super) fn filled(v: &Option<String>) -> Option<&str> {
-    v.as_deref().map(str::trim).filter(|v| !v.is_empty())
+/// 多選的條件：去掉空白、重複的值，轉成 WIQL 的 `IN (...)` 清單；沒有值時是 None（不限）。
+fn any_of(values: &[String]) -> Option<String> {
+    let mut seen: Vec<&str> = vec![];
+    for v in values.iter().map(|v| v.trim()).filter(|v| !v.is_empty()) {
+        if !seen.contains(&v) {
+            seen.push(v);
+        }
+    }
+    (!seen.is_empty()).then(|| {
+        seen.iter()
+            .map(|v| wiql_string(v))
+            .collect::<Vec<_>>()
+            .join(", ")
+    })
 }
 
 /// 搜尋內容時一併搜尋的長文字欄位（全文搜尋）。伺服器沒有全文索引、或流程範本沒有某個欄位時
@@ -240,14 +254,21 @@ pub(super) fn wiql_for(search: &str, f: &WorkItemFilter, content: &[&str]) -> Op
         "closed" => cond.push(format!("[System.State] IN ({})", closed.join(", "))),
         _ => {}
     }
-    if let Some(k) = filled(&f.kind) {
-        cond.push(format!("[System.WorkItemType] = {}", wiql_string(k)));
+    if let Some(kinds) = any_of(&f.kinds) {
+        cond.push(format!("[System.WorkItemType] IN ({kinds})"));
     }
-    if let Some(p) = filled(&f.project) {
-        cond.push(format!("[System.TeamProject] = {}", wiql_string(p)));
+    if let Some(projects) = any_of(&f.projects) {
+        cond.push(format!("[System.TeamProject] IN ({projects})"));
     }
-    if let Some(a) = filled(&f.area) {
-        cond.push(format!("[System.AreaPath] UNDER {}", wiql_string(a)));
+    let areas: Vec<String> = f
+        .areas
+        .iter()
+        .map(|a| a.trim())
+        .filter(|a| !a.is_empty())
+        .map(|a| format!("[System.AreaPath] UNDER {}", wiql_string(a)))
+        .collect();
+    if !areas.is_empty() {
+        cond.push(format!("({})", areas.join(" OR ")));
     }
     if !q.is_empty() {
         let mut any = vec![format!("[System.Title] CONTAINS {}", wiql_string(q))];

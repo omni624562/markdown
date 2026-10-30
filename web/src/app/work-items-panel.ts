@@ -9,6 +9,7 @@ import { issueFileName, githubIssueMarkdown } from "../issue-doc.ts";
 import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { type IssueSummary, type IssueGroup, shortDate, IssuesPanel } from "../ui/issues-panel.ts";
+import { MultiSelect } from "../ui/multi-select.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { WikiPanel } from "../ui/wiki-panel.ts";
@@ -137,9 +138,9 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     const n = [
       !(f.role === "assigned" && f.person === "@me"),
       f.state !== "open",
-      !!f.kind,
-      !!f.project,
-      !!f.area,
+      f.kinds.length > 0,
+      f.projects.length > 0,
+      f.areas.length > 0,
     ].filter(Boolean).length + (q ? 1 : 0);
     badge.textContent = n ? String(n) : "";
     badge.hidden = !n;
@@ -170,12 +171,6 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
       changed();
     });
     return sel;
-  };
-  const fill = (sel: HTMLSelectElement, values: [string, string][], current: string | null) => {
-    sel.length = 1;
-    for (const [v, text] of values) sel.append(new Option(text, v, false, v === current));
-    if (current && !values.some(([v]) => v === current)) sel.append(new Option(current, current, true, true));
-    sel.value = current ?? "";
   };
   const pairs = (values: string[]): [string, string][] => values.map((v) => [v, v]);
 
@@ -226,38 +221,63 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     f.state,
     (v) => (f.state = v as AdoWorkItemFilter["state"]),
   );
-  const kind = select(t("類型"), [["", t("所有類型")]], "", (v) => (f.kind = v || null));
-  const area = select(t("區域"), [["", t("所有區域")]], "", (v) => (f.area = v || null));
-  area.classList.add("workitems-area");
-  const project = select(t("專案"), [["", t("所有專案")]], "", (v) => {
-    f.project = v || null;
-    f.area = null;
-    loadScope();
+  // 類型、專案、區域可以複選（選單關上時才套用）。
+  const kind = new MultiSelect({
+    label: t("類型"),
+    all: t("所有類型"),
+    onChange: (v) => {
+      f.kinds = v;
+      changed();
+    },
   });
-  // 還沒讀到選項前，先放上目前選的值，免得顯示成「所有類型」。
-  fill(kind, f.kind ? [[f.kind, f.kind]] : [], f.kind);
-  fill(project, f.project ? [[f.project, f.project]] : [], f.project);
-  fill(area, [], f.area);
-  area.hidden = !f.project;
+  const area = new MultiSelect({
+    label: t("區域"),
+    all: t("所有區域"),
+    onChange: (v) => {
+      f.areas = v;
+      changed();
+    },
+  });
+  area.el.classList.add("workitems-area");
+  const project = new MultiSelect({
+    label: t("專案"),
+    all: t("所有專案"),
+    onChange: (v) => {
+      f.projects = v;
+      // 區域跟著專案：留下還在選的專案底下的區域。
+      f.areas = f.areas.filter((a) => v.some((p) => a === p || a.startsWith(`${p}\\`)));
+      area.value = f.areas;
+      loadScope();
+      changed();
+    },
+  });
+  kind.value = f.kinds;
+  project.value = f.projects;
+  area.value = f.areas;
+  area.hidden = !f.projects.length;
 
   /** 區域（選了專案時）與人名建議；同一個專案只讀一次。 */
   const scopes = new Map<string, Promise<{ areas: string[]; people: string[] }>>();
-  const loadScope = () => {
-    const key = f.project ?? "";
-    area.hidden = !key;
-    fill(area, [], f.area);
-    if (!desktop) return;
+  const scopeOf = (key: string) => {
     let p = scopes.get(key);
     if (!p) {
-      p = desktop.adoWorkItemScope(f.project);
+      p = desktop!.adoWorkItemScope(key || null);
       scopes.set(key, p);
       p.catch(() => scopes.delete(key));
     }
-    void p
-      .then(({ areas, people: names }) => {
-        if ((f.project ?? "") !== key) return;
-        // 區域路徑的第一層是專案本身，顯示時省略。
-        fill(area, areas.map((a) => [a, a.slice(key.length + 1)]), f.area);
+    return p;
+  };
+  const loadScope = () => {
+    const keys = [...f.projects];
+    area.hidden = !keys.length;
+    if (!desktop) return;
+    const now = () => keys.join("\n") === f.projects.join("\n");
+    void Promise.all((keys.length ? keys : [""]).map(scopeOf))
+      .then((all) => {
+        if (!now()) return;
+        // 區域路徑的第一層是專案本身：只選一個專案時顯示時省略，選了幾個時留著才分得出來。
+        area.setOptions(all.flatMap(({ areas }, i) => areas.map((a): [string, string] => [a, keys.length === 1 ? a.slice(keys[i].length + 1) : a])));
+        const names = [...new Set(all.flatMap((s) => s.people))].sort((a, b) => a.localeCompare(b));
         people.replaceChildren(...names.map((n) => new Option(n)));
       })
       .catch(() => {});
@@ -270,8 +290,8 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     void desktop
       .adoWorkItemFilters()
       .then(({ projects, kinds }) => {
-        fill(kind, pairs(kinds), f.kind);
-        fill(project, pairs(projects), f.project);
+        kind.setOptions(pairs(kinds));
+        project.setOptions(pairs(projects));
       })
       .catch(() => (loaded = false));
   };
@@ -283,12 +303,13 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     name.hidden = true;
     name.value = "";
     state.value = "open";
-    kind.value = "";
-    project.value = "";
+    kind.value = [];
+    project.value = [];
+    area.value = [];
     loadScope();
     changed();
   });
-  bar.append(queryOpen, queryNote, person, state, name, kind, project, area, people, reset);
+  bar.append(queryOpen, queryNote, person, state, name, kind.el, project.el, area.el, people, reset);
   updateBadge();
   setOpen(storage.load("workitem-filter-open") === "1");
   return { bar, button: group };

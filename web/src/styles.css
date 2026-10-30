@@ -1948,6 +1948,21 @@ button.git-info:disabled { cursor: default; }
 .workitems-filters .workitems-person, .workitems-filters .workitems-area { grid-column: 1 / -1; }
 .workitems-filters [hidden], .workitems-filters[hidden] { display: none; }
 .workitems-filter-reset { grid-column: 1 / -1; justify-self: start; }
+/* 可以複選的篩選（類型、專案、區域）：按鈕和下拉選單同樣子，打開是勾選清單。 */
+.workitems-filters .multi-select { display: block; text-align: start; }
+.workitems-filters .multi-select.chosen { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
+.multi-select-pop { display: none; min-width: 200px; padding: 0; }
+.multi-select-pop:popover-open { display: flex; flex-direction: column; }
+.multi-select-tools { display: flex; flex: none; gap: 4px; padding: 6px 6px 4px; border-bottom: 1px solid var(--border); }
+.multi-select-tools button { flex: 1; padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font: 12px var(--font-ui); cursor: pointer; }
+.multi-select-tools button:hover { border-color: var(--accent); color: var(--accent); }
+.multi-select-search { flex: none; margin: 6px 6px 2px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font: 12.5px var(--font-ui); }
+.multi-select-list { flex: 1 1 auto; min-height: 0; padding: 4px; overflow-y: auto; }
+.multi-select-item { display: flex; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 5px; font-size: 13px; cursor: pointer; }
+.multi-select-item:hover { background: var(--active-line); }
+.multi-select-item input { flex: none; margin: 0; accent-color: var(--accent); }
+.multi-select-item span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.multi-select-hint { flex: none; margin: 0; padding: 5px 10px 6px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11.5px; }
 /* Wiki（Azure DevOps） */
 .wiki-filters { grid-template-columns: 1fr; }
 /* Azure DevOps 面板上方切換工作項目／Wiki。 */

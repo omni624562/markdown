@@ -60,6 +60,7 @@ import { TabBar } from "./ui/tabbar.ts";
 import { TerminalProxy } from "./terminal-proxy.ts";
 import { Updater } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
+import { choiceList } from "./multi-choice.ts";
 import type { AdoWiki, AdoWorkItem, AdoWorkItemFilter, FileVersion, GitStatus } from "./desktop.ts";
 import { parseRemoteLink, urlAt } from "./remote-links.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
@@ -2267,22 +2268,22 @@ const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {
   role: "assigned",
   person: "@me",
   state: "open",
-  kind: null,
-  project: null,
-  area: null,
+  kinds: [],
+  projects: [],
+  areas: [],
 };
 const workItemFilter: AdoWorkItemFilter = (() => {
-  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   try {
-    const v = JSON.parse(storage.load("workitem-filter") ?? "{}") as Partial<AdoWorkItemFilter>;
-    const project = text(v.project);
+    // 舊版存的是單一的 kind、project、area。
+    const v = JSON.parse(storage.load("workitem-filter") ?? "{}") as Partial<AdoWorkItemFilter> & Record<"kind" | "project" | "area", unknown>;
+    const projects = choiceList(v.projects ?? v.project);
     return {
       role: v.role === "created" ? "created" : "assigned",
       person: typeof v.person === "string" ? v.person : "@me",
       state: v.state === "closed" || v.state === "all" ? v.state : "open",
-      kind: text(v.kind),
-      project,
-      area: project ? text(v.area) : null,
+      kinds: choiceList(v.kinds ?? v.kind),
+      projects,
+      areas: projects.length ? choiceList(v.areas ?? v.area) : [],
     };
   } catch {
     return { ...DEFAULT_WORK_ITEM_FILTER };
@@ -2292,9 +2293,9 @@ const isDefaultFilter = () =>
   workItemFilter.role === "assigned" &&
   workItemFilter.person === "@me" &&
   workItemFilter.state === "open" &&
-  !workItemFilter.kind &&
-  !workItemFilter.project &&
-  !workItemFilter.area;
+  !workItemFilter.kinds.length &&
+  !workItemFilter.projects.length &&
+  !workItemFilter.areas.length;
 /** 清單上要不要顯示指派給誰（只看自己的就不必）。 */
 const showAssignee = () => !(workItemFilter.role === "assigned" && workItemFilter.person === "@me");
 
