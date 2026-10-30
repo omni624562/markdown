@@ -260,7 +260,7 @@ export function initCommands(): void {
       title: t("連線到遠端資料夾（WebDAV）…"),
       group: t("資料夾與專案"),
       icon: "cloud",
-      when: () => !!desktop,
+      when: () => app.features.remote,
       async run() {
         const folder = await app.davDialog?.open();
         if (!folder) return;
@@ -317,7 +317,7 @@ export function initCommands(): void {
       title: t("連線到遠端資料夾（SSH）…"),
       group: t("資料夾與專案"),
       icon: "server",
-      when: () => !!desktop,
+      when: () => app.features.remote,
       async run() {
         const folder = await app.sshDialog?.open();
         if (!folder) return;

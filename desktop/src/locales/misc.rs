@@ -53,6 +53,10 @@ pub static EN: &[(&str, &str)] = &[
     ("帳號不正確", "Invalid user name."),
     ("HTTP 不會加密，個人存取權杖可能被看到，只能用在公司內部網路的伺服器。請改用 https:// 開頭的網址", "HTTP isn't encrypted, so your personal access token could be seen. It's only allowed for servers on your company network. Use a URL starting with https:// instead."),
     ("請先在設定開啟「啟用 AI 協作」", "Turn on \"Enable AI Collaboration\" in Settings first."),
+    ("Git 與 GitHub", "Git and GitHub"),
+    ("Azure DevOps／TFS", "Azure DevOps/TFS"),
+    ("遠端資料夾（WebDAV、SSH）", "Remote folders (WebDAV, SSH)"),
+    ("「{name}」已在設定關閉，要使用請先到設定開啟。", "\"{name}\" is turned off in Settings. Turn it on there to use it."),
     ("啟用 AI 協作", "Enable AI Collaboration"),
     ("啟用後，oMarker 可以執行 Claude Code、Codex 等 AI 工具，並讓它們讀取目前的文件。要啟用嗎？", "Once enabled, oMarker can run AI tools such as Claude Code and Codex and let them read the current document. Enable it?"),
 ];
