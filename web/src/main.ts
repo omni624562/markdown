@@ -2222,8 +2222,8 @@ initWikiEdit();
 
 const statusView = $("#status-view");
 const issuePane = $(".issue-pane:not(.history-pane)");
-/** 內容區至少這麼寬，標頭才搬到頂端列。 */
-const HEAD_IN_TOPBAR_MIN = 680;
+/** 頂端列的分頁區（側邊欄右邊到視窗右緣）至少這麼寬，標頭才搬到頂端列。 */
+const HEAD_IN_TOPBAR_MIN = 760;
 /** 正在看的工作項目等內容的摘要（狀態、留言數…），顯示在狀態列右邊。 */
 let issueFacts: IssueFact[] = [];
 
@@ -2239,10 +2239,13 @@ function renderStatusView(): void {
   const viewing = issueOpen || historyOpen;
   $(".statusbar").classList.toggle("viewing", viewing);
   statusView.hidden = !viewing;
-  // 蓋住編輯區時，標頭（位置、標題、動作）搬到頂端列，省下一整列；內容區太窄（放不下標題與按鈕）時留在原處。
+  // 開著工作項目等內容時，標頭（位置、標題、動作）放在頂端列，省下一整列。並排顯示時也一樣，
+  // 切換並排時按鈕才不會跳到別的地方；頂端列太窄（放不下標題與按鈕）時才放回內容上方。
+  const topbar = $(".topbar");
+  const room = topbar.getBoundingClientRect().right - $("#tab-bar").getBoundingClientRect().left;
   const headUp =
-    issueOpen && !historyOpen && !workspace.classList.contains("narrow") && issuePane.getBoundingClientRect().width >= HEAD_IN_TOPBAR_MIN;
-  $(".topbar").classList.toggle("has-issue-head", headUp);
+    workspace.classList.contains("issue-open") && !historyOpen && !workspace.classList.contains("narrow") && room >= HEAD_IN_TOPBAR_MIN;
+  topbar.classList.toggle("has-issue-head", headUp);
   issueView?.placeHead(headUp ? $(".topbar .top-actions") : null);
   if (!viewing) return;
   const source = historyOpen ? "git" : (issuePane.dataset.source ?? "");
