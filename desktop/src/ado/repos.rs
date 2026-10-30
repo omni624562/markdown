@@ -99,7 +99,7 @@ pub async fn ado_clone(
     window: Window,
     clone_url: String,
     name: String,
-) -> Result<Option<crate::github::Cloned>, String> {
+) -> Result<Option<crate::git_clone::Cloned>, String> {
     let (a, _) = require(&app)?;
     // 只下載這台伺服器上的儲存庫，避免前端傳來任意網址時把權杖送到別的地方。
     if !starts_with_base(&clone_url, &a.url) {
@@ -111,12 +111,12 @@ pub async fn ado_clone(
     } else {
         folder
     };
-    let Some(dest) = crate::github::pick_clone_dest(&app, &window, &folder, &clone_url).await?
+    let Some(dest) = crate::git_clone::pick_clone_dest(&app, &window, &folder, &clone_url).await?
     else {
         return Ok(None);
     };
     let auth = crate::git::auth(&app);
-    crate::github::clone_and_open(&app, dest, clone_url, auth, "Azure DevOps")
+    crate::git_clone::clone_and_open(&app, dest, clone_url, auth, "Azure DevOps")
         .await
         .map(Some)
 }
