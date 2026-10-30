@@ -384,14 +384,14 @@ fn builds_wiql_for_each_search() {
     let all = WorkItemFilter {
         person: "".into(),
         state: "all".into(),
-        kind: Some("Bug".into()),
-        project: Some("產品".into()),
+        kinds: vec!["Bug".into()],
+        projects: vec!["產品".into()],
         ..Default::default()
     };
     let q = wiql_for("登入 bug", &all, CONTENT_FIELDS[0]).unwrap();
     assert!(!q.contains("@Me") && !q.contains("[System.State]"));
-    assert!(q.contains("[System.WorkItemType] = 'Bug'"));
-    assert!(q.contains("[System.TeamProject] = '產品'"));
+    assert!(q.contains("[System.WorkItemType] IN ('Bug')"));
+    assert!(q.contains("[System.TeamProject] IN ('產品')"));
     assert!(q.contains(
         "([System.Title] CONTAINS '登入 bug' OR [System.Description] CONTAINS WORDS '登入 bug'"
     ));
@@ -416,13 +416,24 @@ fn builds_wiql_for_each_search() {
     let by = WorkItemFilter {
         role: "created".into(),
         person: "王小明".into(),
-        area: Some(" 產品\\前端 ".into()),
+        areas: vec![" 產品\\前端 ".into(), "".into()],
         ..Default::default()
     };
     let q = wiql_for("", &by, &[]).unwrap();
     assert!(q.contains("[System.CreatedBy] CONTAINS '王小明'"));
     assert!(!q.contains("AssignedTo"));
-    assert!(q.contains("[System.AreaPath] UNDER '產品\\前端'"));
+    assert!(q.contains("([System.AreaPath] UNDER '產品\\前端')"));
+    // 多選：類型、專案用 IN，區域用 OR；重複與空白的值略過。
+    let many = WorkItemFilter {
+        kinds: vec!["Bug".into(), "Task".into(), "Bug".into()],
+        projects: vec!["A".into(), " ".into(), "B".into()],
+        areas: vec!["A\\前端".into(), "B".into()],
+        ..Default::default()
+    };
+    let q = wiql_for("", &many, &[]).unwrap();
+    assert!(q.contains("[System.WorkItemType] IN ('Bug', 'Task')"));
+    assert!(q.contains("[System.TeamProject] IN ('A', 'B')"));
+    assert!(q.contains("([System.AreaPath] UNDER 'A\\前端' OR [System.AreaPath] UNDER 'B')"));
     let me = WorkItemFilter {
         role: "created".into(),
         ..Default::default()

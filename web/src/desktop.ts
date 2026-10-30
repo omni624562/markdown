@@ -395,10 +395,11 @@ export interface AdoWorkItemFilter {
   /** `@me`（我）、空字串（不限）或名字（部分符合即可）。 */
   person: string;
   state: "open" | "closed" | "all";
-  kind: string | null;
-  project: string | null;
+  /** 類型、專案、區域都可以複選；空的是不限。 */
+  kinds: string[];
+  projects: string[];
   /** 區域路徑（包含底下的區域）。 */
-  area: string | null;
+  areas: string[];
 }
 
 /** 改過某個檔案的提交。 */

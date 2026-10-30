@@ -1948,6 +1948,29 @@ button.git-info:disabled { cursor: default; }
 .workitems-filters .workitems-person, .workitems-filters .workitems-area { grid-column: 1 / -1; }
 .workitems-filters [hidden], .workitems-filters[hidden] { display: none; }
 .workitems-filter-reset { grid-column: 1 / -1; justify-self: start; }
+/* 篩選列的下拉選單（人、狀態、類型、專案、區域）：按鈕和下拉選單同樣子，打開是勾選清單。 */
+.workitems-filters .multi-select { display: block; text-align: start; }
+.workitems-filters .multi-select.chosen { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
+.multi-select-pop { position: fixed; inset: auto; display: none; min-width: 220px; max-width: min(380px, calc(100vw - 16px)); margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px); background: var(--surface-raised); color: var(--fg); box-shadow: var(--shadow); }
+.multi-select-pop:popover-open { display: flex; flex-direction: column; }
+.multi-select-search { flex: none; margin: 6px 6px 2px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font: 12.5px var(--font-ui); }
+.multi-select-list { flex: 1 1 auto; min-height: 0; padding: 2px 4px 4px; overflow-y: auto; }
+.multi-select-item { display: flex; gap: 8px; align-items: center; min-height: 28px; padding: 0 8px; border-radius: 5px; font-size: 13px; cursor: pointer; }
+.multi-select-item[hidden] { display: none; }
+.multi-select-item:hover { background: var(--active-line); }
+.multi-select-item input { flex: none; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.multi-select-item > span { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 「全部」：和下面的選項隔開，字粗一點。 */
+.multi-select-all { margin: 4px 4px 0; padding-bottom: 2px; border-bottom: 1px solid var(--border); border-radius: 5px 5px 0 0; font-weight: 600; }
+/* 「只選這個」：滑鼠移上去（或鍵盤移到那一列）才出現。 */
+.multi-select-only { flex: none; padding: 1px 6px; border: 0; border-radius: 4px; background: none; color: var(--accent); font: 12px var(--font-ui); cursor: pointer; opacity: 0; }
+.multi-select-item:hover .multi-select-only, .multi-select-only:focus-visible { opacity: 1; }
+.multi-select-only:hover { background: var(--accent-soft); }
+.multi-select-foot { display: flex; flex: none; gap: 12px; align-items: center; justify-content: space-between; padding: 6px 6px 6px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.multi-select-foot .warn { color: light-dark(#b45309, #fbbf24); }
+.multi-select-foot[hidden] { display: none; }
+/* 單選（人）：選項前面是圓形的選取記號，點了就關上。 */
+.multi-select-pop.single .multi-select-list { padding-top: 4px; }
 /* Wiki（Azure DevOps） */
 .wiki-filters { grid-template-columns: 1fr; }
 /* Azure DevOps 面板上方切換工作項目／Wiki。 */
@@ -2250,6 +2273,11 @@ input[type="checkbox"]:not(.switch):hover { border-color: var(--accent); }
 input[type="checkbox"]:not(.switch):checked {
   border-color: var(--accent);
   background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") no-repeat center / 12px;
+}
+/* 部分勾選（例如「全部」底下只勾了幾項）：填滿強調色，中間一條橫線。 */
+input[type="checkbox"]:not(.switch):indeterminate {
+  border-color: var(--accent);
+  background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E") no-repeat center / 12px;
 }
 input[type="checkbox"]:not(.switch):focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 input[type="checkbox"]:not(.switch):disabled { opacity: 0.5; cursor: not-allowed; }

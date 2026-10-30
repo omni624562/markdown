@@ -79,7 +79,7 @@ export function createWorkItemDialog(draft: { title?: string; description?: stri
   void desktop
     .adoWorkItemFilters()
     .then(({ projects, kinds }) => {
-      fill(project, projects, [storage.load("wi-create-project"), app.workItemFilter.project]);
+      fill(project, projects, [storage.load("wi-create-project"), app.workItemFilter.projects[0]]);
       fill(kindSel, kinds, [storage.load("wi-create-kind"), "Task", "User Story"]);
       ok.disabled = false;
     })
