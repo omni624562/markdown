@@ -4,7 +4,9 @@
 import { render as renderMarkdown } from "../../pkg/md_wasm.js";
 import { type AdoWorkItem, type AdoWorkItemDetail, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
-import { issueFileName, workItemMarkdown, workItemIdOf } from "../issue-doc.ts";
+import { timeAgo } from "../history-label.ts";
+import { issueFileName, stateTone, workItemMarkdown, workItemIdOf } from "../issue-doc.ts";
+import type { IssueFact } from "../ui/issue-view.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { decorateAttachments } from "../ui/work-item-attachments.ts";
@@ -175,8 +177,26 @@ function foldedSections(): Set<SectionKind> {
 }
 
 /** 在主要區域開啟工作項目；內容裡的相關工作項目點一下在這裡切換。 */
+/** 狀態列上的摘要：狀態、留言、附件、相關項目的數目，最後更新時間。 */
+function workItemFacts(d: AdoWorkItemDetail): IssueFact[] {
+  const facts: IssueFact[] = [{ text: d.state, title: t("狀態"), dot: stateTone(d.state) }];
+  const count = (n: number, text: string) => {
+    if (n) facts.push({ text });
+  };
+  count(d.comments.length, t("留言 {n}", { n: d.comments.length }));
+  count(d.attachments?.length ?? 0, t("附件 {n}", { n: d.attachments?.length ?? 0 }));
+  count(d.relations.length, t("相關 {n}", { n: d.relations.length }));
+  const changed = d.changed ? Date.parse(d.changed) : NaN;
+  if (Number.isFinite(changed)) {
+    facts.push({ text: t("更新於 {ago}", { ago: timeAgo(changed) }), title: new Date(changed).toLocaleString() });
+  }
+  return facts;
+}
+
 export function showWorkItem(item: AdoWorkItem): void {
   let related = new Map<number, AdoWorkItem>();
+  /** 讀到的內容（狀態列上的摘要用）。 */
+  let detail: AdoWorkItemDetail | null = null;
   // 開啟之前記下「上次看過」的時間（開啟後會更新），之後的留言標「新」。
   const seenAt = workItemSeen?.[item.id] ?? null;
   offlineRefs.set(`ado:${item.id}`, { type: "ado", item });
@@ -191,9 +211,11 @@ export function showWorkItem(item: AdoWorkItem): void {
     load: async () => {
       const d = await desktop!.adoWorkItem(item.id);
       related = new Map(d.relations.map((r) => [r.id, r]));
+      detail = d;
       actions.update(d);
       return workItemMarkdown(d);
     },
+    facts: () => (detail ? workItemFacts(detail) : []),
     decorate: (body) => {
       // 標籤與檔案方塊先做：附件段落還是原本的連結清單，找得到同名附件。
       decorateMarks(body);

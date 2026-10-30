@@ -636,8 +636,8 @@ kbd {
   .view-switch .label { display: none; }
 }
 .view-switch-icons .view-switch .label { display: none; }
-/* 工作項目、Wiki 頁面、Git 歷史蓋住編輯區時，檢視切換用不到（按了反而會關掉那個畫面）：先藏起來，版面不動。並排顯示時編輯區還在，照常顯示。 */
-body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-switch { visibility: hidden; }
+/* 工作項目、Wiki 頁面、Git 歷史蓋住編輯區時，檢視切換用不到（按了反而會關掉那個畫面）：拿掉，位置讓給內容的摘要。並排顯示時編輯區還在，照常顯示。 */
+body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-switch { display: none; }
 @media (pointer: coarse) {
   .view-switch button { min-height: 30px; padding: 0 10px; }
 }
@@ -1199,6 +1199,11 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .status-view[hidden] { display: none; }
 .status-view-label { display: inline-flex; gap: 4px; align-items: center; color: var(--fg); }
 .status-view-label .icon { width: 13px; height: 13px; color: var(--muted); }
+/* 工作項目的摘要（狀態、留言數、更新時間）：放在狀態列最右邊。 */
+.status-facts { display: inline-flex; gap: 14px; align-items: center; margin-left: 8px; padding-left: 14px; border-left: 1px solid var(--border); }
+.status-facts:empty { display: none; }
+.status-facts > span { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.status-facts > span:first-child { color: var(--fg); }
 .statusbar.viewing #status-cursor,
 .statusbar.viewing #status-stats,
 .statusbar.viewing #doc-kind,
@@ -2636,6 +2641,15 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .wi-chip[data-tone="removed"] { --tone: var(--subtle); text-decoration: line-through; }
 .issue-title { margin: 0; overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+/* 蓋住編輯區時標頭搬到頂端列：一列放完（位置、標題接在一起），分頁列讓出空間。 */
+.topbar .issue-head.in-topbar { flex: 1 1 auto; flex-wrap: nowrap; gap: 10px; min-width: 0; padding: 0 4px 0 14px; border: 0; background: none; }
+.topbar .issue-head.in-topbar .issue-heading { flex: 1 1 auto; flex-direction: row; gap: 8px; align-items: center; }
+.topbar .issue-head.in-topbar .issue-meta { flex: 0 0 auto; max-width: 50%; margin: 0; }
+.topbar .issue-head.in-topbar .issue-label { overflow: visible; }
+.topbar .issue-head.in-topbar .issue-title { flex: 1 1 0; min-width: 0; font-size: 14px; }
+.topbar .issue-head.in-topbar .issue-actions { flex-wrap: nowrap; }
+.topbar .issue-head.in-topbar .issue-nav { margin-left: 0; }
+.topbar.has-issue-head .tab-bar { flex: 0 0 auto; max-width: 30%; border-right: 1px solid var(--border); }
 .issue-actions .btn-primary { margin-right: 4px; }
 /* 內容的動作和檢視的動作（並排、找字、重新整理、關閉）中間的分隔線。 */
 .issue-actions-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
