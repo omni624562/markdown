@@ -603,6 +603,15 @@ pub struct Dav {
     polling: AtomicBool,
 }
 
+/// 前端關掉了遠端檔案的分頁：不再輪詢它有沒有被改過，也不再留著讀到的內容
+/// （原本要等到刪除、重新連線才會清掉，開過的檔案越多，每 30 秒要檢查的越多）。
+#[tauri::command]
+pub fn dav_close(path: String, dav: State<'_, Dav>) {
+    dav.etags.lock().unwrap().remove(&path);
+    dav.read.lock().unwrap().remove(&path);
+    dav.notified.lock().unwrap().remove(&path);
+}
+
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_config_dir()

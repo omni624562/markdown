@@ -26,6 +26,9 @@ use crate::files::{decode, hash_bytes, is_temp_name, path_string, KnownFiles, MA
 
 const DEBOUNCE: Duration = Duration::from_millis(300);
 const POLL_INTERVAL: Duration = Duration::from_secs(10);
+/// 每多監看一個資料夾，輪詢間隔加長多少：每次輪詢要列出所有資料夾的內容，
+/// 資料夾很多時（最多 `MAX_POLL_DIRS` 個）不要讓網路磁碟一直忙著回應。
+const POLL_PER_DIR: Duration = Duration::from_millis(5);
 /// 輪詢最多監看幾個資料夾（淺的優先）。每個資料夾每次輪詢都要列出內容。
 const MAX_POLL_DIRS: usize = 2000;
 /// 找要輪詢的資料夾時最多看幾個（避免在很深、很大的資料夾裡走訪太久）。
@@ -60,7 +63,12 @@ pub struct Watcher {
     outside_dirs: Mutex<HashSet<PathBuf>>,
 }
 
-fn create(app: &AppHandle, poll: bool) -> notify::Result<Active> {
+/// 輪詢 `dirs` 個資料夾時的間隔：10 秒，加上每個資料夾 5 毫秒（2000 個資料夾是 20 秒）。
+fn poll_interval(dirs: usize) -> Duration {
+    POLL_INTERVAL + POLL_PER_DIR * dirs as u32
+}
+
+fn create(app: &AppHandle, poll: bool, dirs: usize) -> notify::Result<Active> {
     let app = app.clone();
     let handler = move |result: DebounceEventResult| {
         if let Ok(events) = result {
@@ -73,7 +81,7 @@ fn create(app: &AppHandle, poll: bool) -> notify::Result<Active> {
             None,
             handler,
             NoCache,
-            notify::Config::default().with_poll_interval(POLL_INTERVAL),
+            notify::Config::default().with_poll_interval(poll_interval(dirs)),
         )
         .map(Active::Poll)
     } else {
@@ -194,15 +202,11 @@ impl Watcher {
         } else {
             vec![]
         };
-        let mut slot = self.workspace.lock().unwrap();
-        // 這段期間又開了別的資料夾（各自在背景執行）：不要用舊資料夾蓋掉新的監看。
-        if app.state::<crate::workspace::Workspace>().root().as_deref() != Some(root) {
-            return;
-        }
-        *slot = None; // 先停止舊的監看
-        *self.poll_root.lock().unwrap() = poll.then(|| root.to_path_buf());
-        *self.poll_count.lock().unwrap() = dirs.len();
-        match create(app, poll).and_then(|mut w| {
+        // 先停止舊的監看。
+        *self.workspace.lock().unwrap() = None;
+        // 開始監看（輪詢時每個資料夾都要先列一次內容，網路磁碟可能要一陣子）也不佔著鎖，
+        // 其他要用到監看的指令（例如工作區外的檔案）不會被卡住。
+        let watcher = create(app, poll, dirs.len()).and_then(|mut w| {
             if poll {
                 // 每個資料夾各自不遞迴地監看，略過的資料夾（.git、node_modules…）就不會被輪詢。
                 // 之後新增的資料夾在 `handle_events` 補上。
@@ -214,7 +218,15 @@ impl Watcher {
                 w.watch(root, RecursiveMode::Recursive)?;
             }
             Ok(w)
-        }) {
+        });
+        let mut slot = self.workspace.lock().unwrap();
+        // 這段期間又開了別的資料夾（各自在背景執行）：不要用舊資料夾蓋掉新的監看。
+        if app.state::<crate::workspace::Workspace>().root().as_deref() != Some(root) {
+            return;
+        }
+        *self.poll_root.lock().unwrap() = poll.then(|| root.to_path_buf());
+        *self.poll_count.lock().unwrap() = dirs.len();
+        match watcher {
             Ok(w) => *slot = Some(w),
             // i18n-ignore：記錄檔
             Err(e) => eprintln!("無法監看資料夾 {}：{e}", root.display()),
@@ -273,7 +285,7 @@ impl Watcher {
             self.outside.lock().unwrap()
         };
         if slot.is_none() {
-            match create(app, poll) {
+            match create(app, poll, 0) {
                 Ok(w) => *slot = Some(w),
                 Err(e) => {
                     // i18n-ignore：記錄檔
@@ -378,6 +390,12 @@ fn handle_events(app: &AppHandle, events: Vec<notify_debouncer_full::DebouncedEv
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn poll_interval_grows_with_folder_count() {
+        assert_eq!(poll_interval(0), Duration::from_secs(10));
+        assert_eq!(poll_interval(2000), Duration::from_secs(20));
+    }
 
     #[test]
     fn polls_only_visible_folders_shallow_first() {

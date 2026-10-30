@@ -42,9 +42,10 @@ fn account_file(app: &AppHandle) -> Option<PathBuf> {
         .map(|d| d.join("ado-account.json"))
 }
 
+static ACCOUNT: crate::secrets::CachedAccount<Account> = crate::secrets::CachedAccount::new();
+
 fn account(app: &AppHandle) -> Option<Account> {
-    let text = fs::read_to_string(account_file(app)?).ok()?;
-    serde_json::from_str(&text).ok()
+    ACCOUNT.get(|| account_file(app))
 }
 
 fn token() -> Option<String> {
@@ -386,6 +387,7 @@ pub async fn ado_connect(app: AppHandle, url: String, pat: String) -> Result<Acc
     }
     let json = serde_json::to_string_pretty(&account).unwrap_or_default();
     crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存：{e}", e = e))?;
+    ACCOUNT.set(Some(account.clone()));
     crate::secrets::set(SERVICE, "pat", &pat);
     if let Ok(mut t) = TOKEN.lock() {
         *t = Some(pat);
@@ -402,6 +404,7 @@ pub fn ado_disconnect(app: AppHandle) {
     if let Some(p) = account_file(&app) {
         let _ = fs::remove_file(p);
     }
+    ACCOUNT.set(None);
 }
 
 fn require(app: &AppHandle) -> Result<(Account, String), String> {

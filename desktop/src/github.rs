@@ -52,9 +52,10 @@ fn token(app: &AppHandle) -> Option<String> {
     cached.clone().filter(|_| account(app).is_some())
 }
 
+static ACCOUNT: crate::secrets::CachedAccount<Account> = crate::secrets::CachedAccount::new();
+
 fn account(app: &AppHandle) -> Option<Account> {
-    let text = fs::read_to_string(account_file(app)?).ok()?;
-    serde_json::from_str(&text).ok()
+    ACCOUNT.get(|| account_file(app))
 }
 
 /// 連到 GitHub 時用的認證。
@@ -241,6 +242,7 @@ pub async fn github_login_wait(
     }
     let json = serde_json::to_string_pretty(&account).unwrap_or_default();
     crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存：{e}", e = e))?;
+    ACCOUNT.set(Some(account.clone()));
     crate::secrets::set(SERVICE, "token", &token);
     if let Ok(mut t) = TOKEN.lock() {
         *t = Some(token);
@@ -262,6 +264,7 @@ pub fn github_logout(app: AppHandle) {
     if let Some(p) = account_file(&app) {
         let _ = fs::remove_file(p);
     }
+    ACCOUNT.set(None);
 }
 
 // ---- 儲存庫 -----------------------------------------------------------------

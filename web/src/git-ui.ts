@@ -8,6 +8,7 @@ import type { GitHub } from "./github-ui.ts";
 import type { SettingsStore } from "./settings.ts";
 import type { FileTree } from "./ui/filetree.ts";
 import { currentLang, t } from "./i18n.ts";
+import { samePath } from "./links.ts";
 import { icon } from "./ui/icons.ts";
 import { choose } from "./ui/choice.ts";
 import { toast } from "./ui/toast.ts";
@@ -144,6 +145,30 @@ export class GitPanel {
     this.#refreshTimer = window.setTimeout(() => void this.refresh(), delay);
   }
 
+  /**
+   * 存檔後只更新這個檔案的狀態，不重新掃描整個資料夾（自動存檔每停手一次就會存一次）。
+   * 查不到（例如不在儲存庫裡）時改成重新整理全部。
+   */
+  async fileSaved(path: string): Promise<void> {
+    const status = this.#status;
+    if (!status?.repo || this.#busy) return this.refreshSoon(300);
+    let change: GitChange | null;
+    try {
+      change = await this.#d.gitStatusFile(path);
+    } catch {
+      return this.refreshSoon(300);
+    }
+    // 等待期間整份狀態可能已經重新整理過：以最新的為準。
+    const current = this.#status;
+    if (!current?.repo) return;
+    const same = (p: string) => samePath(p, path) || (change !== null && samePath(p, change.path));
+    const changes = current.changes.filter((c) => !same(c.path));
+    if (change) changes.push(change);
+    changes.sort((a, b) => a.path.localeCompare(b.path));
+    this.#status = { ...current, changes };
+    this.#apply();
+  }
+
   async refresh(): Promise<void> {
     if (!this.#hooks.root()) {
       this.#status = null;
@@ -154,13 +179,18 @@ export class GitPanel {
         this.#status = null;
       }
     }
+    this.#apply();
+    if (Date.now() - this.#lastFetch > FETCH_INTERVAL) void this.#fetchRemote();
+  }
+
+  /** 把目前的狀態畫到面板與檔案樹上。 */
+  #apply(): void {
     const marks = new Map<string, string>();
     for (const c of this.#status?.changes ?? []) marks.set(c.path, MARK[c.status]);
     this.#tree.setStatus(marks);
     this.#render();
     this.#hooks.changed(this.#status);
     this.#scheduleSync();
-    if (Date.now() - this.#lastFetch > FETCH_INTERVAL) void this.#fetchRemote();
   }
 
   /**
