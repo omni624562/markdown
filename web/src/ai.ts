@@ -7,12 +7,11 @@
  * AI 的修改一律經過差異檢視，不會直接寫入檔案；使用者接受後仍需自己存檔。
  */
 import { applyEdits, buildPrompt, cleanResult } from "./ai-text.ts";
-import type { AiCommand, AiProposal, AiRunEvent, AiTool, Desktop, EditorSnapshot } from "./desktop.ts";
+import type { AiProposal, AiRunEvent, AiTool, Desktop, EditorSnapshot } from "./desktop.ts";
 import type { Editor } from "./editor.ts";
 import { t } from "./i18n.ts";
 import type { QuickAction, Settings, SettingsStore } from "./settings.ts";
 import { icon } from "./ui/icons.ts";
-import { choose } from "./ui/choice.ts";
 import type { Review } from "./ui/review.ts";
 import { toast } from "./ui/toast.ts";
 
@@ -50,13 +49,6 @@ export class AiController {
   #handling = false;
   #run: Run | null = null;
   #nextRun = 1;
-  /**
-   * 使用者選了「這次開啟期間，這個指令都直接執行」的指令（連同執行位置）。只有一模一樣的指令才不再詢問：
-   * 文件裡藏的提示詞讓 AI 改要求別的指令時，仍然會先問。重新開啟編輯器後恢復詢問。
-   */
-  #allowCommands = new Set<string>();
-  /** 還在等使用者決定的指令（AI 不再等待時關閉對話框）。 */
-  #asking = new Map<number, AbortController>();
 
   constructor(d: Desktop, settings: SettingsStore, host: AiHost, bar: HTMLElement) {
     this.#d = d;
@@ -69,8 +61,6 @@ export class AiController {
       void this.#nextProposal();
     });
     void d.onAiRun((e) => this.#onRun(e));
-    void d.onAiCommand((c) => void this.#onCommand(c));
-    void d.onAiCommandExpired((id) => this.#asking.get(id)?.abort());
     settings.subscribe((s, changed) => {
       if (changed.some((k) => k === "aiEnabled" || k === "mcpServer")) void this.#applyMcp(s);
     });
@@ -189,53 +179,6 @@ export class AiController {
         resolve();
       }
     });
-  }
-
-  // ---- AI 要求在終端機執行的指令 ----------------------------------------------
-
-  async #onCommand(c: AiCommand): Promise<void> {
-    const reply = async (ok: boolean, message: string) => {
-      const waiting = await this.#d.mcpRespond(c.id, { ok, message }).catch(() => false);
-      if (ok && !waiting) toast(t("AI 已經不再等待這個指令，所以沒有執行。"), { tone: "error" });
-    };
-    const s = this.#settings.value;
-    if (!s.aiEnabled || !s.aiTerminal) {
-      // 回覆給 AI 的訊息（不是介面）。
-      await reply(false, "使用者沒有開放讓 AI 在終端機執行指令（設定 → AI 協作 →「讓 AI 在終端機執行指令」）。"); // i18n-ignore
-      return;
-    }
-    const key = `${c.cwd}\n${c.command}`;
-    if (this.#allowCommands.has(key)) {
-      await reply(true, "使用者已同意。"); // i18n-ignore（回覆給 AI）
-      return;
-    }
-    const ctl = new AbortController();
-    this.#asking.set(c.id, ctl);
-    const choice = await choose(
-      t("AI 要在終端機執行指令"),
-      c.reason
-        ? t("{reason}。執行位置：{cwd}。執行過程會顯示在下方的終端機。", { reason: c.reason, cwd: c.cwd })
-        : t("執行位置：{cwd}。執行過程會顯示在下方的終端機。", { cwd: c.cwd }),
-      [
-        { id: "run", label: t("執行"), primary: true },
-        { id: "always", label: t("這次開啟期間，這個指令都直接執行") },
-        { id: "deny", label: t("拒絕") },
-      ],
-      // 對話框可能在使用者打字時跳出來：預設聚焦「拒絕」，按 Enter 不會誤執行。
-      { code: c.command, signal: ctl.signal, focus: "deny" },
-    );
-    this.#asking.delete(c.id);
-    if (ctl.signal.aborted) {
-      toast(t("AI 等太久已經放棄，指令沒有執行。"), { duration: 6000 });
-      return;
-    }
-    if (choice === "run" || choice === "always") {
-      if (choice === "always") this.#allowCommands.add(key);
-      await reply(true, "使用者已同意。"); // i18n-ignore（回覆給 AI）
-    } else {
-      // 回覆給 AI 的訊息（不是介面）。
-      await reply(false, "使用者拒絕執行這個指令。請不要再要求執行相同的指令，可以改問使用者想怎麼做。"); // i18n-ignore
-    }
   }
 
   // ---- 選取段落快捷動作 ------------------------------------------------------

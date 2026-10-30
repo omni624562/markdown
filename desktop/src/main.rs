@@ -21,6 +21,7 @@ mod doc_index;
 mod files;
 mod fonts;
 mod git;
+mod git_clone;
 mod git_files;
 mod git_flow;
 mod git_log;
