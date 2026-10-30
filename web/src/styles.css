@@ -2730,6 +2730,14 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .issue-body .ado-att-btn.icon-only { padding: 4px; color: var(--muted); }
 .issue-body .ado-att-btn .icon { width: 15px; height: 15px; }
 .issue-body .ado-att-btn:hover { background: var(--accent-soft); color: var(--accent); }
+/* 標籤行（AI-CodeGen / Copilot / …）與檔案路徑。 */
+.issue-body .ado-tags { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; }
+.issue-body .ado-tag { --hue: 260; padding: 0 9px; border: 1px solid light-dark(hsl(var(--hue) 70% 82%), hsl(var(--hue) 40% 40%)); border-radius: 999px; background: light-dark(hsl(var(--hue) 80% 96%), hsl(var(--hue) 35% 20%)); color: light-dark(hsl(var(--hue) 60% 32%), hsl(var(--hue) 70% 82%)); font-size: 12px; line-height: 20px; white-space: nowrap; }
+.issue-body .ado-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised, var(--active-line)); color: var(--fg); font: 12.5px/1.6 var(--font-mono); text-decoration: none; vertical-align: middle; }
+.issue-body .ado-file > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.issue-body .ado-file .icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
+.issue-body a.ado-file:hover { border-color: var(--accent); color: var(--accent); }
+.issue-body a.ado-file:hover .icon { color: var(--accent); }
 .issue-status { color: var(--muted); }
 .issue-status.issue-error { color: var(--danger); }
 .issue-stale { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; padding: 6px 16px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); font-size: 12.5px; }

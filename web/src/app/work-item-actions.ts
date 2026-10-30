@@ -9,6 +9,7 @@ import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { decorateAttachments } from "../ui/work-item-attachments.ts";
 import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
+import { decorateMarks } from "../ui/work-item-marks.ts";
 import * as storage from "../storage.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { openAttachment, saveAttachment } from "./ado-files.ts";
@@ -194,6 +195,8 @@ export function showWorkItem(item: AdoWorkItem): void {
       return workItemMarkdown(d);
     },
     decorate: (body) => {
+      // 標籤與檔案方塊先做：附件段落還是原本的連結清單，找得到同名附件。
+      decorateMarks(body);
       decorateAttachments(body, {
         open: (href) => void openAttachment(href),
         save: (href) => saveAttachment(href),
