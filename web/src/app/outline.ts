@@ -143,7 +143,12 @@ export function initOutline(): void {
     if (!h) return;
     e.preventDefault();
     if (app.outlineView) {
-      viewHeading(h.id)?.scrollIntoView({ block: "start" });
+      const el = viewHeading(h.id);
+      // 標題在收合的卡片裡（例如工作項目的留言）：先展開。
+      for (let p = el?.parentElement; p && p !== app.outlineView.body; p = p.parentElement) {
+        if (p instanceof HTMLDetailsElement && !p.open) p.open = true;
+      }
+      el?.scrollIntoView({ block: "start" });
       if (app.narrowQuery.matches) app.setOutline(false);
       return;
     }

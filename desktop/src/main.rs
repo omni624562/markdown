@@ -366,6 +366,8 @@ fn main() {
             ado::ado_check,
             ado::ado_repo_text,
             ado::ado_attachment_text,
+            ado::ado_attachment_open,
+            ado::ado_attachment_save,
             ado::ado_work_item_states,
             ado::ado_work_item_update,
             notify::notify_work_items,

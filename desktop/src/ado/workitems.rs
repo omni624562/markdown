@@ -42,6 +42,56 @@ pub struct WorkItemDetail {
     pub(super) rev: Option<u64>,
     /// 相關的工作項目（上層、子項目、相關、前置、後續…）；讀不到時是空的。
     pub(super) relations: Vec<WorkItemRelation>,
+    /// 附件（上傳到工作項目的檔案）。
+    pub(super) attachments: Vec<WorkItemAttachment>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemAttachment {
+    pub(super) name: String,
+    /// 伺服器上的附件網址（`…/_apis/wit/attachments/<id>`）。
+    pub(super) url: String,
+    /// 大小（位元組）；舊的附件可能沒有。
+    pub(super) size: Option<u64>,
+    /// 上傳時間。
+    pub(super) created: Option<String>,
+    /// 上傳時填的說明。
+    pub(super) comment: Option<String>,
+}
+
+/// 關聯裡的附件（`AttachedFile`），依上傳時間排列（新的在前面）。
+pub(super) fn attachments_of(v: &Value) -> Vec<WorkItemAttachment> {
+    let mut list: Vec<WorkItemAttachment> = v
+        .get("relations")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter(|r| str_of(r, "rel") == Some("AttachedFile"))
+        .filter_map(|r| {
+            let url = str_of(r, "url")?.to_string();
+            let attr = r.get("attributes");
+            let text = |key: &str| {
+                attr.and_then(|a| str_of(a, key))
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+            };
+            let name = text("name")
+                .unwrap_or_else(|| url.rsplit('/').next().unwrap_or_default().to_string());
+            Some(WorkItemAttachment {
+                name,
+                size: attr
+                    .and_then(|a| a.get("resourceSize"))
+                    .and_then(Value::as_u64),
+                created: text("resourceCreatedDate").or_else(|| text("authorizedDate")),
+                comment: text("comment"),
+                url,
+            })
+        })
+        .collect();
+    list.sort_by(|a, b| b.created.cmp(&a.created));
+    list
 }
 
 #[derive(Serialize, Debug, PartialEq)]

@@ -614,3 +614,39 @@ fn reads_work_item_fields() {
         Some("王小明")
     );
 }
+
+#[test]
+fn reads_work_item_attachments_newest_first() {
+    let v = json!({"relations": [
+        {"rel": "AttachedFile", "url": "https://tfs/DC/_apis/wit/attachments/a1", "attributes": {"name": "舊.md", "resourceSize": 512, "resourceCreatedDate": "2026-10-05T06:38:00Z"}},
+        {"rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://tfs/DC/_apis/wit/workItems/7"},
+        {"rel": "AttachedFile", "url": "https://tfs/DC/_apis/wit/attachments/b2", "attributes": {"name": " 新.png ", "resourceSize": 2048, "resourceCreatedDate": "2026-10-29T03:00:00Z", "comment": "截圖"}},
+        {"rel": "AttachedFile", "url": "https://tfs/DC/_apis/wit/attachments/c3", "attributes": {}}
+    ]});
+    let list = attachments_of(&v);
+    assert_eq!(
+        list.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
+        ["新.png", "舊.md", "c3"]
+    );
+    assert_eq!(list[0].size, Some(2048));
+    assert_eq!(list[0].comment.as_deref(), Some("截圖"));
+    assert_eq!(list[2].created, None);
+}
+
+#[test]
+fn attachment_names_are_safe_and_runnable_files_are_flagged() {
+    assert_eq!(safe_file_name("..\\..\\evil.md"), ".._.._evil.md");
+    assert_eq!(safe_file_name("a/b:c?.txt"), "a_b_c_.txt");
+    assert_eq!(safe_file_name("報告.md. "), "報告.md");
+    assert_eq!(safe_file_name("CON.txt"), "_CON.txt");
+    assert_eq!(safe_file_name("com1"), "_com1");
+    assert_eq!(safe_file_name("company.txt"), "company.txt");
+    assert_eq!(safe_file_name("   "), tr!("附件"));
+    assert!(safe_file_name(&"字".repeat(300)).chars().count() <= 150);
+    assert!(is_runnable("setup.EXE"));
+    assert!(is_runnable("run.bat. "));
+    assert!(is_runnable("x.ps1"));
+    assert!(!is_runnable("報表.xlsx"));
+    assert!(!is_runnable("說明.md"));
+    assert!(!is_runnable("noext"));
+}

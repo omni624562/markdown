@@ -2630,8 +2630,6 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .issue-body { padding-top: 24px; padding-bottom: 80px; }
 /* 工作項目比照 TFS 網頁：欄位格狀排列、狀態顏色、段落分隔線、留言頭像（class 由 work-item-look.ts 加上）。 */
 .issue-pane[data-source="ado"] .issue-body > h1 { margin-bottom: 0.6em; font-size: 1.55em; line-height: 1.35; }
-.issue-pane[data-source="ado"] .issue-body > h2 { margin: 1.8em 0 0.7em; padding-bottom: 6px; border-bottom: 1px solid var(--border); font-size: 1.1em; font-weight: 600; }
-.issue-pane[data-source="ado"] .issue-body > h3 { font-size: 0.95em; }
 /* TFS 的內容一行一個 <div>，轉成段落後間距太大：段落之間只留一點空隙。 */
 .issue-pane[data-source="ado"] .issue-body > p { margin-block: 0.3em; }
 .issue-body table.ado-fields { display: block; width: auto; margin: 0 0 12px; padding: 12px 16px; border: 0; border-radius: 8px; background: var(--surface-raised, var(--active-line)); box-shadow: inset 0 0 0 1px var(--border-soft, var(--border)); overflow: visible; }
@@ -2646,10 +2644,77 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .ado-state-dot.resolved { background: #ff9d00; }
 .ado-state-dot.closed { background: #339933; }
 .ado-state-dot.removed { background: transparent; box-shadow: inset 0 0 0 1.5px #b2b2b2; }
-.issue-body .ado-comment-head { --hue: 210; position: relative; margin: 1.4em 0 0.3em; padding-left: 40px; font-size: 0.9em; font-weight: 600; line-height: 30px; }
-.issue-body .ado-comment-head::before { content: attr(data-initial); position: absolute; top: 0; left: 0; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: light-dark(hsl(var(--hue) 55% 42%), hsl(var(--hue) 45% 38%)); color: #fff; font-size: 13px; font-weight: 600; line-height: 1; }
-.issue-body .ado-comment-time { margin-left: 8px; color: var(--muted); font-weight: 400; }
-.issue-body .ado-comment-body { margin-left: 40px; }
+/* 段落卡片：標題列（圖示、標題、收起來時的摘要）可以點一下收合。 */
+.issue-body .ado-tools { display: flex; justify-content: flex-end; margin: 4px 0 -4px; }
+.issue-body .ado-tools .btn { gap: 5px; color: var(--muted); }
+.issue-body .ado-tools .btn .icon { width: 14px; height: 14px; }
+.issue-body .ado-sec { margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.issue-body .ado-sec-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-radius: 8px; background: var(--surface-raised, var(--active-line)); cursor: pointer; list-style: none; user-select: none; }
+.issue-body .ado-sec-head::-webkit-details-marker { display: none; }
+.issue-body .ado-sec[open] > .ado-sec-head { border-bottom: 1px solid var(--border); border-radius: 8px 8px 0 0; }
+.issue-body .ado-sec-head:hover { background: var(--active-line); }
+.issue-body .ado-sec-head:focus-visible, .issue-body .ado-card-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.issue-body .ado-sec-head h2 { flex: none; margin: 0; padding: 0; border: 0; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.issue-body .ado-sec-icon { display: grid; flex: none; place-items: center; width: 22px; height: 22px; border-radius: 5px; background: color-mix(in srgb, var(--source, var(--accent)) 14%, transparent); color: var(--source, var(--accent)); }
+.issue-body .ado-sec-icon .icon { width: 14px; height: 14px; }
+.issue-body .ado-sec[data-kind="comments"] .ado-sec-icon { background: color-mix(in srgb, #16a34a 14%, transparent); color: light-dark(#15803d, #4ade80); }
+.issue-body .ado-sec[data-kind="details"] .ado-sec-icon { background: color-mix(in srgb, #d97706 14%, transparent); color: light-dark(#b45309, #fbbf24); }
+.issue-body .ado-sec[data-kind="attachments"] .ado-sec-icon { background: color-mix(in srgb, #0891b2 14%, transparent); color: light-dark(#0e7490, #22d3ee); }
+.issue-body .ado-sec[data-kind="relations"] .ado-sec-icon { background: color-mix(in srgb, #7c3aed 14%, transparent); color: light-dark(#6d28d9, #a78bfa); }
+.issue-body .ado-chevron { display: grid; flex: none; place-items: center; color: var(--muted); transition: transform 0.12s; }
+.issue-body .ado-chevron .icon { width: 14px; height: 14px; }
+.issue-body details[open] > summary > .ado-chevron { transform: rotate(90deg); }
+.issue-body .ado-peek { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--muted); font-size: 13px; font-weight: 400; white-space: nowrap; text-overflow: ellipsis; }
+.issue-body details[open] > summary > .ado-peek { display: none; }
+.issue-body .ado-sec-body { padding: 8px 14px 10px; }
+.issue-body .ado-sec-body > :first-child { margin-top: 0; }
+.issue-body .ado-sec-body > :last-child { margin-bottom: 0; }
+.issue-body .ado-sec-body > h3 { margin: 0.8em 0 0.2em; font-size: 13px; color: var(--muted); }
+.issue-body .ado-sec-body > p { margin-block: 0.3em; }
+.issue-body .ado-sort { display: inline-flex; flex: none; align-items: center; gap: 4px; margin-left: auto; padding: 1px 6px; border: 0; border-radius: 5px; background: none; color: var(--accent); font: 12px var(--font-ui); cursor: pointer; }
+.issue-body .ado-sort .icon { width: 13px; height: 13px; }
+.issue-body .ado-sort:hover { background: var(--accent-soft); }
+.issue-body details:not([open]) > summary > .ado-sort { display: none; }
+/* 留言：頭像＋對話卡片（卡片頭是名字與「幾天前」，收起來時後面顯示第一句）。 */
+.issue-body .ado-comments { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.issue-body .ado-comment { display: flex; gap: 10px; min-width: 0; }
+.issue-body .ado-avatar { --hue: 210; display: grid; flex: none; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: light-dark(hsl(var(--hue) 55% 42%), hsl(var(--hue) 45% 38%)); color: #fff; font-size: 13px; font-weight: 600; line-height: 1; }
+.issue-body .ado-card { flex: 1 1 auto; min-width: 0; border: 1px solid var(--border); border-radius: 8px; }
+.issue-body .ado-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 10px; border-radius: 8px; background: color-mix(in srgb, var(--fg) 3%, transparent); cursor: pointer; list-style: none; }
+.issue-body .ado-card-head::-webkit-details-marker { display: none; }
+.issue-body .ado-card[open] > .ado-card-head { border-bottom: 1px solid var(--border); border-radius: 8px 8px 0 0; }
+.issue-body .ado-card-head h3 { display: flex; flex: none; align-items: baseline; gap: 8px; margin: 0; font-size: 13.5px; line-height: 1.6; }
+.issue-body .ado-comment-name { font-weight: 600; }
+.issue-body .ado-comment-time { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.issue-body .ado-new { flex: none; padding: 0 7px; border-radius: 9px; background: light-dark(#d97706, #b45309); color: #fff; font-size: 11px; font-weight: 600; line-height: 18px; }
+.issue-body .ado-card-body { padding: 6px 12px 8px; font-size: 14.5px; }
+.issue-body .ado-card-body > :first-child { margin-top: 0; }
+.issue-body .ado-card-body > :last-child { margin-bottom: 0; }
+.issue-body .ado-card-body > p { margin-block: 0.3em; }
+.issue-body .ado-card-body.clamped { position: relative; max-height: 320px; overflow: hidden; }
+.issue-body .ado-card-body.clamped::after { content: ""; position: absolute; right: 0; bottom: 0; left: 0; height: 64px; background: linear-gradient(transparent, var(--bg)); pointer-events: none; }
+.issue-body .clamp-more { display: block; width: 100%; padding: 3px 0 6px; border: 0; background: none; color: var(--accent); font: 12.5px var(--font-ui); cursor: pointer; }
+.issue-body .clamp-more:hover { text-decoration: underline; }
+/* 附件：檔案小方塊（副檔名或縮圖、檔名、大小與時間、開啟、另存新檔）。 */
+.issue-body .ado-atts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; margin: 0.5em 0 1em; }
+.issue-body .ado-att { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.issue-body .ado-att:hover { border-color: var(--border-strong); }
+.issue-body .ado-att-icon { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border-radius: 6px; background: #64748b no-repeat center / cover; color: #fff; font: 700 10.5px/1 var(--font-ui); letter-spacing: 0.02em; }
+.issue-body .ado-att-icon.text { background-color: #2563eb; }
+.issue-body .ado-att-icon.sheet { background-color: #16a34a; }
+.issue-body .ado-att-icon.doc { background-color: #1d4ed8; }
+.issue-body .ado-att-icon.pdf { background-color: #dc2626; }
+.issue-body .ado-att-icon.slide { background-color: #ea580c; }
+.issue-body .ado-att-icon.zip { background-color: #78716c; }
+.issue-body .ado-att-icon.thumb { background-color: var(--active-line); box-shadow: inset 0 0 0 1px var(--border); }
+.issue-body .ado-att-text { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; line-height: 1.4; }
+.issue-body .ado-att-name { overflow: hidden; color: var(--fg); font-size: 13.5px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; text-decoration: none; }
+.issue-body .ado-att-name:hover { color: var(--accent); text-decoration: underline; }
+.issue-body .ado-att-text small { overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.issue-body .ado-att-btn { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 3px 8px; border: 0; border-radius: 5px; background: none; color: var(--accent); font: 12.5px var(--font-ui); cursor: pointer; }
+.issue-body .ado-att-btn.icon-only { padding: 4px; color: var(--muted); }
+.issue-body .ado-att-btn .icon { width: 15px; height: 15px; }
+.issue-body .ado-att-btn:hover { background: var(--accent-soft); color: var(--accent); }
 /* 標籤行（AI-CodeGen / Copilot / …）與檔案路徑。 */
 .issue-body .ado-tags { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; }
 .issue-body .ado-tag { --hue: 260; padding: 0 9px; border: 1px solid light-dark(hsl(var(--hue) 70% 82%), hsl(var(--hue) 40% 40%)); border-radius: 999px; background: light-dark(hsl(var(--hue) 80% 96%), hsl(var(--hue) 35% 20%)); color: light-dark(hsl(var(--hue) 60% 32%), hsl(var(--hue) 70% 82%)); font-size: 12px; line-height: 20px; white-space: nowrap; }

@@ -630,6 +630,11 @@ export class IssueView {
     // 目前的符合處在收合的區塊（<details>）裡：展開，才看得到、捲得過去。
     for (let el = this.#matches[this.#current].node.parentElement; el; el = el.parentElement) {
       if (el instanceof HTMLDetailsElement && !el.open) el.open = true;
+      // 只顯示前面一段的長內容（例如很長的留言）：整段打開。
+      if (el.classList.contains("clamped")) {
+        el.classList.remove("clamped");
+        if (el.nextElementSibling?.classList.contains("clamp-more")) el.nextElementSibling.remove();
+      }
       if (el === this.#body) break;
     }
     const ranges = this.#matches.map((m) => this.#range(m));

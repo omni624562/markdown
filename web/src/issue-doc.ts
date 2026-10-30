@@ -3,7 +3,8 @@
  * 以及「複製成 Markdown 文件」都用這一份。工作項目的 HTML 轉成 Markdown 後，
  * 由預覽同一套流程顯示（Rust 端會移除原始 HTML 與危險的連結）。
  */
-import type { AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
+import { fileSize, withFileName } from "./attachments.ts";
+import type { AdoWorkItemAttachment, AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
 import { htmlToMarkdown } from "./html-paste.ts";
 import { t } from "./i18n.ts";
 
@@ -76,6 +77,16 @@ function relationsMarkdown(list: AdoWorkItemRelation[]): string {
     .join("\n\n");
 }
 
+/** 附件清單：檔名（連到附件）、大小、上傳時間、說明。 */
+function attachmentsMarkdown(list: AdoWorkItemAttachment[]): string {
+  return list
+    .map((a) => {
+      const meta = [a.size !== null ? fileSize(a.size) : "", dateTime(a.created), inlineText(a.comment ?? "")].filter(Boolean);
+      return `- [${inlineText(a.name)}](<${withFileName(a.url, a.name)}>)${meta.length ? `・${meta.join("・")}` : ""}`;
+    })
+    .join("\n");
+}
+
 /** 工作項目的 Markdown。 */
 export function workItemMarkdown(d: AdoWorkItemDetail): string {
   const fields = fieldTable([
@@ -101,6 +112,7 @@ export function workItemMarkdown(d: AdoWorkItemDetail): string {
     section(t("工作項目說明"), html(d.description)),
     section(d.kind === "Bug" ? t("重現步驟") : t("驗收條件"), html(d.details)),
     section(t("系統資訊"), html(d.systemInfo ?? null)),
+    section(t("附件（{n}）", { n: d.attachments?.length ?? 0 }), attachmentsMarkdown(d.attachments ?? [])),
     section(t("相關工作項目（{n}）", { n: d.relations.length }), relationsMarkdown(d.relations)),
     section(t("留言（{n}）", { n: d.comments.length }), comments.join("\n\n")),
   ]

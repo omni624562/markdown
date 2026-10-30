@@ -7,11 +7,15 @@ import { t } from "../i18n.ts";
 import { issueFileName, workItemMarkdown, workItemIdOf } from "../issue-doc.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
-import { decorateWorkItem } from "../ui/work-item-look.ts";
+import { decorateAttachments } from "../ui/work-item-attachments.ts";
+import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
 import { decorateMarks } from "../ui/work-item-marks.ts";
+import * as storage from "../storage.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
+import { openAttachment, saveAttachment } from "./ado-files.ts";
 import { insertIssueLink } from "./ado-links.ts";
 import { offlineRefs } from "./offline-copies.ts";
+import { workItemSeen } from "./work-item-updates.ts";
 import { workItemsPanel, barShortcuts, toggleWorkItemShortcut } from "./work-items-panel.ts";
 import { app } from "./context.ts";
 
@@ -160,11 +164,21 @@ export function groupItems<T>(items: T[], key: (item: T) => string): { title: st
   return [...groups].map(([title, list]) => ({ title, items: list }));
 }
 
+/** 工作項目內容裡收起來的段落（記住，開別的項目也一樣）。 */
+function foldedSections(): Set<SectionKind> {
+  try {
+    const v = JSON.parse(storage.load("workitem-folded") ?? "[]") as unknown;
+    return new Set(Array.isArray(v) ? v.filter((k): k is SectionKind => typeof k === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
 /** 在主要區域開啟工作項目；內容裡的相關工作項目點一下在這裡切換。 */
 export function showWorkItem(item: AdoWorkItem): void {
   let related = new Map<number, AdoWorkItem>();
-  /** 留言段落的標題（加頭像用）。 */
-  let comments = "";
+  // 開啟之前記下「上次看過」的時間（開啟後會更新），之後的留言標「新」。
+  const seenAt = workItemSeen?.[item.id] ?? null;
   offlineRefs.set(`ado:${item.id}`, { type: "ado", item });
   const actions = workItemActions(item);
   void app.showIssue({
@@ -177,13 +191,29 @@ export function showWorkItem(item: AdoWorkItem): void {
     load: async () => {
       const d = await desktop!.adoWorkItem(item.id);
       related = new Map(d.relations.map((r) => [r.id, r]));
-      comments = t("留言（{n}）", { n: d.comments.length });
       actions.update(d);
       return workItemMarkdown(d);
     },
     decorate: (body) => {
+      // 標籤與檔案方塊先做：附件段落還是原本的連結清單，找得到同名附件。
       decorateMarks(body);
-      decorateWorkItem(body, comments);
+      decorateAttachments(body, {
+        open: (href) => void openAttachment(href),
+        save: (href) => saveAttachment(href),
+        thumb: (href) => desktop!.adoImage(href),
+      });
+      decorateWorkItem(body, {
+        seenAt,
+        folded: foldedSections(),
+        onFold: (kind, folded) => {
+          const set = foldedSections();
+          if (folded) set.add(kind);
+          else set.delete(kind);
+          storage.save("workitem-folded", JSON.stringify([...set]));
+        },
+        newestFirst: storage.load("workitem-comment-order") !== "oldest",
+        onOrder: (newest) => storage.save("workitem-comment-order", newest ? "newest" : "oldest"),
+      });
     },
     insertLink: () => insertIssueLink(item),
     toolbar: actions.el,
@@ -192,6 +222,8 @@ export function showWorkItem(item: AdoWorkItem): void {
       toggle: () => toggleWorkItemShortcut(item),
     },
     link: (href) => {
+      // 附件：文字檔、圖片在 oMarker 裡看，其他用預設的程式開啟。
+      if (openAttachment(href)) return true;
       const id = workItemIdOf(href);
       const target = id === null ? undefined : related.get(id);
       if (!target) return false;

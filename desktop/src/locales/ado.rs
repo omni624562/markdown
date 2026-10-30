@@ -2,6 +2,13 @@
 
 pub static EN: &[(&str, &str)] = &[
     ("讀取留言", "Loading comments"),
+    ("下載附件", "Downloading the attachment"),
+    ("{what}失敗：伺服器上找不到這個附件（可能已經刪除）", "{what} failed: The attachment wasn't found on the server (it may have been deleted)."),
+    ("附件", "attachment"),
+    ("無法建立暫存資料夾", "Couldn't create a temporary folder"),
+    ("「{name}」是會自己執行的檔案，為了安全不直接開啟；需要的話請用「另存新檔」，確認來源可信再開啟。", "\"{name}\" is a file that runs by itself, so it isn't opened directly for safety. Use \"Save As\" if you need it, and open it only if you trust the source."),
+    ("無法開啟附件：{e}", "Couldn't open the attachment: {e}"),
+    ("另存附件", "Save Attachment"),
     ("讀取工作項目類型", "Loading work item types"),
     ("讀取區域", "Loading areas"),
     ("讀取團隊", "Loading teams"),

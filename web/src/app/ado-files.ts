@@ -1,6 +1,7 @@
 /**
  * Azure DevOps 儲存庫裡的文字檔、工作項目的附件、Wiki 頁面的編輯與儲存：在 oMarker 裡閱讀。
  */
+import { attachmentKind, attachmentLink } from "../attachments.ts";
 import { desktop, type AdoWiki } from "../desktop.ts";
 import { timeAgo } from "../history-label.ts";
 import { t, currentLang } from "../i18n.ts";
@@ -10,6 +11,7 @@ import { saveDraft } from "../session.ts";
 import * as storage from "../storage.ts";
 import { choose, askText } from "../ui/choice.ts";
 import type { IssueSource } from "../ui/issue-view.ts";
+import { openLightbox } from "../ui/lightbox.ts";
 import { toast } from "../ui/toast.ts";
 import { recentEditor } from "../wiki-coedit.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
@@ -45,6 +47,45 @@ export const repoImagesPlugin: PreviewPlugin = {
     }
   },
 };
+
+/**
+ * 工作項目的附件（連到連線中伺服器上的附件時回傳 true）：文字檔開成唯讀分頁，圖片放大檢視，
+ * 其他檔案下載後用預設的程式開啟；會自己執行的檔案改成另存新檔。
+ */
+export function openAttachment(href: string): boolean {
+  const base = app.ado?.account?.url;
+  const link = desktop && base ? attachmentLink(href, base) : null;
+  if (!link) return false;
+  const kind = attachmentKind(link.name);
+  if (kind === "text") {
+    showRepoFile({ kind: "attachment", url: link.url, name: link.name });
+  } else if (kind === "image") {
+    void desktop!
+      .adoImage(link.url)
+      .then((src) => openLightbox(src, link.name))
+      .catch(reportError);
+  } else if (kind === "runnable") {
+    toast(t("「{name}」是會自己執行的檔案，為了安全不直接開啟；需要的話請用「另存新檔」，確認來源可信再開啟。", { name: link.name }), {
+      tone: "error",
+      action: { label: t("另存新檔"), run: () => saveAttachment(href) },
+    });
+  } else {
+    toast(t("正在下載「{name}」…", { name: link.name }));
+    void desktop!.adoAttachmentOpen(link.url, link.name).catch(reportError);
+  }
+  return true;
+}
+
+/** 附件另存新檔。 */
+export function saveAttachment(href: string): void {
+  const base = app.ado?.account?.url;
+  const link = desktop && base ? attachmentLink(href, base) : null;
+  if (!link) return;
+  void desktop!
+    .adoAttachmentSave(link.url, link.name)
+    .then((path) => path && toast(t("已存到 {path}", { path }), { tone: "success" }))
+    .catch(reportError);
+}
 
 /** 連到連線中伺服器上、可以閱讀的儲存庫檔案或附件時，在主要區域開啟並回傳 true。 */
 export function openRepoFileLink(href: string): boolean {
