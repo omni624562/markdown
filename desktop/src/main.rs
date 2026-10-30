@@ -46,7 +46,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, Webview, Window};
 
 use files::{KnownFiles, OpenedFile};
 use trust::Trust;
@@ -63,7 +63,10 @@ pub fn track_file(app: &AppHandle, path: &Path) {
 
 /// 建立主視窗。視窗的設定寫在 tauri.conf.json（`create: false`，不自動建立），
 /// 在這裡建立是為了加上導覽限制：只能停留在 app 自己的頁面，也不能開新視窗（見 `navigation`）。
-fn create_main_window(app: &tauri::App) -> tauri::Result<WebviewWindow> {
+///
+/// 主畫面用子 webview 的方式放進視窗（隨視窗調整大小），終端機的 webview 之後才能疊在上面
+/// （見 `ai::view`）；Linux 上用一般的 webview 視窗時，加入第二個 webview 會被上下平分。
+fn create_main_window(app: &tauri::App) -> tauri::Result<Window> {
     let config = app
         .config()
         .app
@@ -72,10 +75,16 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<WebviewWindow> {
         .find(|w| w.label == "main")
         .cloned()
         .unwrap_or_default();
-    tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+    let window = tauri::window::WindowBuilder::from_config(app.handle(), &config)?.build()?;
+    let webview = tauri::webview::WebviewBuilder::from_config(&config)
+        .auto_resize()
         .on_navigation(navigation::is_app_url)
-        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-        .build()
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
+    let size = window
+        .inner_size()?
+        .to_logical::<f64>(window.scale_factor()?);
+    window.add_child(webview, tauri::LogicalPosition::new(0.0, 0.0), size)?;
+    Ok(window)
 }
 
 /// 啟動時從命令列帶入的檔案或資料夾。
@@ -126,7 +135,7 @@ async fn resolve_target(app: &AppHandle, path: PathBuf) -> Result<StartupTarget,
 /// 已經開著編輯器時再開一次 exe（例如在檔案總管雙擊另一個 .md）：
 /// 不開新視窗，把路徑交給原本的視窗開成新分頁。
 fn on_second_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
-    if let Some(w) = app.get_webview_window("main") {
+    if let Some(w) = app.get_window("main") {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
@@ -179,19 +188,20 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_title(window: WebviewWindow, title: String) -> Result<(), String> {
+fn set_title(window: Window, title: String) -> Result<(), String> {
     window.set_title(&title).map_err(|e| e.to_string())
 }
 
 /// 介面大小：整個視窗一起縮放（和瀏覽器的縮放一樣，版面會依縮放後的寬度重新排）。
 #[tauri::command]
-fn set_ui_zoom(window: WebviewWindow, scale: f64) -> Result<(), String> {
+fn set_ui_zoom(app: AppHandle, webview: Webview, scale: f64) -> Result<(), String> {
     if !scale.is_finite() {
         return Err("invalid scale".into());
     }
-    window
-        .set_zoom(scale.clamp(0.5, 3.0))
-        .map_err(|e| e.to_string())
+    let scale = scale.clamp(0.5, 3.0);
+    // 終端機的 webview 一起縮放，字才會一樣大。
+    ai::view::set_zoom(&app, scale);
+    webview.set_zoom(scale).map_err(|e| e.to_string())
 }
 
 /// Windows 不用系統的標題列，改由網頁的頂端列兼當標題列（拖曳、最小化、最大化、關閉）。
@@ -203,7 +213,7 @@ fn custom_title_bar() -> bool {
 }
 
 #[tauri::command]
-fn window_control(window: WebviewWindow, action: String) -> Result<bool, String> {
+fn window_control(window: Window, action: String) -> Result<bool, String> {
     let r = match action.as_str() {
         "minimize" => window.minimize(),
         "toggle-maximize" => {
@@ -236,6 +246,7 @@ fn main() {
         .manage(Workspace::default())
         .manage(Watcher::default())
         .manage(ai::term::Terminals::default())
+        .manage(ai::view::TermView::default())
         .manage(ai::mcp::Mcp::default())
         .manage(ai::run::Runs::default())
         .manage(dav::Dav::default())
@@ -252,7 +263,7 @@ fn main() {
             history::maintain(app.handle());
             create_main_window(app)?;
             if CUSTOM_TITLE_BAR {
-                if let Some(window) = app.get_webview_window("main") {
+                if let Some(window) = app.get_window("main") {
                     // 拿掉標題列後仍保留視窗陰影與可拖曳調整大小的邊框。
                     window.set_decorations(false)?;
                     let _ = window.set_shadow(true);
@@ -411,6 +422,10 @@ fn main() {
             history::history_read,
             ai::tools::ai_tools,
             ai::term::term_open,
+            ai::view::term_layout,
+            ai::view::term_forward,
+            ai::view::term_ready,
+            ai::view::term_notify,
             ai::term::term_write,
             ai::term::term_resize,
             ai::term::term_close,

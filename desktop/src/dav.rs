@@ -174,8 +174,15 @@ pub(crate) fn is_private_host(host: &str) -> bool {
             }
         };
     }
-    // 沒有點的主機名稱（例如 NAS 的電腦名稱）也是區域網路。
-    !host.contains('.')
+    // 沒有點的主機名稱（例如 NAS 的電腦名稱）也是區域網路。但全是數字或 `0x` 開頭的寫法
+    // （例如 `134744072`、`0x08080808`）會被系統當成 IPv4 位址，可能是網際網路上的主機。
+    !host.contains('.') && !looks_numeric(host)
+}
+
+/// 系統會把它當成數字寫法的 IPv4 位址（十進位、八進位或十六進位）。
+fn looks_numeric(host: &str) -> bool {
+    let lower = host.to_ascii_lowercase();
+    lower.starts_with("0x") || lower.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// 檢查並整理使用者輸入的網址：補上結尾的 `/`，HTTP 只在區域網路且使用者同意時可以用。
@@ -1679,6 +1686,12 @@ mod tests {
             "http://192.168.1.10:5005/"
         );
         assert!(normalize_url("http://diskstation:5005/", true).is_ok());
+        // 數字寫法的 IPv4 位址（134744072 就是 8.8.8.8）不算區域網路。
+        assert!(normalize_url("http://134744072/", true).is_err());
+        assert!(normalize_url("http://0x08080808/", true).is_err());
+        assert!(normalize_url("http://0X8080808:80/", true).is_err());
+        assert!(!is_private_host("2130706433"));
+        assert!(is_private_host("nas2"));
         assert!(normalize_url("ftp://nas/", true).is_err());
         assert!(normalize_url("https:///", false).is_err());
         // 主機名稱的判斷和實際連線一致，不能用 `#@`、`?@` 假裝成區域網路。

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-Hant-TW" class="terminal-page">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>oMarker 終端機</title>
+    <script>
+      // 在畫面繪製前套用主題（和主畫面相同），避免深色模式閃白。
+      try {
+        const t = localStorage.getItem("md-editor:theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <section class="terminal-panel" id="terminal-panel" aria-label="終端機"></section>
+    <script type="module" src="/src/terminal-main.ts"></script>
+  </body>
+</html>

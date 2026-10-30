@@ -50,8 +50,11 @@ export class AiController {
   #handling = false;
   #run: Run | null = null;
   #nextRun = 1;
-  /** 使用者選了「這次開啟期間都直接執行」。重新開啟編輯器後恢復詢問。 */
-  #allowCommands = false;
+  /**
+   * 使用者選了「這次開啟期間，這個指令都直接執行」的指令（連同執行位置）。只有一模一樣的指令才不再詢問：
+   * 文件裡藏的提示詞讓 AI 改要求別的指令時，仍然會先問。重新開啟編輯器後恢復詢問。
+   */
+  #allowCommands = new Set<string>();
   /** 還在等使用者決定的指令（AI 不再等待時關閉對話框）。 */
   #asking = new Map<number, AbortController>();
 
@@ -201,7 +204,8 @@ export class AiController {
       await reply(false, "使用者沒有開放讓 AI 在終端機執行指令（設定 → AI 協作 →「讓 AI 在終端機執行指令」）。"); // i18n-ignore
       return;
     }
-    if (this.#allowCommands) {
+    const key = `${c.cwd}\n${c.command}`;
+    if (this.#allowCommands.has(key)) {
       await reply(true, "使用者已同意。"); // i18n-ignore（回覆給 AI）
       return;
     }
@@ -214,7 +218,7 @@ export class AiController {
         : t("執行位置：{cwd}。執行過程會顯示在下方的終端機。", { cwd: c.cwd }),
       [
         { id: "run", label: t("執行"), primary: true },
-        { id: "always", label: t("這次開啟期間都直接執行") },
+        { id: "always", label: t("這次開啟期間，這個指令都直接執行") },
         { id: "deny", label: t("拒絕") },
       ],
       // 對話框可能在使用者打字時跳出來：預設聚焦「拒絕」，按 Enter 不會誤執行。
@@ -226,7 +230,7 @@ export class AiController {
       return;
     }
     if (choice === "run" || choice === "always") {
-      if (choice === "always") this.#allowCommands = true;
+      if (choice === "always") this.#allowCommands.add(key);
       await reply(true, "使用者已同意。"); // i18n-ignore（回覆給 AI）
     } else {
       // 回覆給 AI 的訊息（不是介面）。

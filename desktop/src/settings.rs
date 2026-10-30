@@ -32,6 +32,17 @@ pub fn ai_enabled(app: &AppHandle) -> bool {
         .is_some_and(|v| v["aiEnabled"] == true)
 }
 
+/// 設定檔裡的「在終端機執行指令」（沒有這一項時是預設的開啟）。AI 要求執行指令時，
+/// 原生端自己再檢查一次，不只靠網頁那一端。
+pub fn ai_terminal_enabled(app: &AppHandle) -> bool {
+    ai_enabled(app)
+        && settings_path(app)
+            .ok()
+            .and_then(|p| fs::read_to_string(p).ok())
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .is_some_and(|v| v["aiTerminal"] != false)
+}
+
 /// 需要 AI 協作的功能先呼叫：沒有開啟時回傳錯誤。
 pub fn require_ai(app: &AppHandle) -> Result<(), String> {
     if ai_enabled(app) {
@@ -46,7 +57,7 @@ pub fn require_ai(app: &AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn save_settings(
     app: AppHandle,
-    window: tauri::WebviewWindow,
+    window: tauri::Window,
     json: String,
 ) -> Result<bool, String> {
     // 一次只存一份，確認對話框不會重複跳出。

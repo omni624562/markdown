@@ -1,7 +1,11 @@
 //! 內嵌終端機：用虛擬終端（Windows 上是 ConPTY）執行殼層或 Claude Code、Codex，
 //! 輸出以事件傳給前端的 xterm.js。
 //!
-//! 前端只能選擇「殼層／claude／codex」三種程式，參數由這裡決定，不能執行任意命令。
+//! 終端機顯示在獨立的 webview（見 `view`），這裡的指令只接受那個 webview 呼叫：
+//! 主畫面萬一被注入程式碼，也不能開殼層或寫入終端機。
+//! 終端機頁面只能選擇「殼層／claude／codex」三種程式，參數由這裡決定。殼層可以執行任何指令，
+//! 所以第一次開啟前還要在系統的對話框同意；claude、codex 要先開啟「啟用 AI 協作」
+//! （同樣在系統的對話框確認）。
 //! AI 透過 MCP 要求執行的指令（`run_command`）一律先經過使用者在編輯器中同意。
 //!
 //! 每個終端機的輸出會保留最後一段（去掉控制碼），讓 AI 可以讀取執行結果。
@@ -14,13 +18,14 @@ use std::sync::Mutex;
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State, Webview, Window};
 
 use super::mcp::Mcp;
 use super::tools::{program_for, Tool};
+use super::view;
 use crate::workspace::Workspace;
 
-#[derive(Deserialize, Clone, Copy, Debug)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Program {
     Shell,
@@ -200,7 +205,7 @@ impl Terminals {
                 {
                     log.push(&data);
                 }
-                let _ = out_app.emit("term-output", Output { id, data });
+                view::send(&out_app, "term-output", Output { id, data });
             }
         });
 
@@ -214,7 +219,7 @@ impl Terminals {
             if let Some(log) = terms.logs.lock().unwrap().get_mut(&id) {
                 log.exit = Some(code);
             }
-            let _ = exit_app.emit("term-exit", Exit { id, code });
+            view::send(&exit_app, "term-exit", Exit { id, code });
         });
         Ok(id)
     }
@@ -223,7 +228,8 @@ impl Terminals {
     pub fn run_command(&self, app: &AppHandle, command: &str) -> Result<u32, String> {
         let label = tr!("AI：{command}", command = shorten(command, 24));
         let id = self.spawn(app, command_line(command), 120, 30, label.clone())?;
-        let _ = app.emit("term-attached", Attached { id, label });
+        view::send(app, "term-attached", Attached { id, label });
+        view::ask_main_to_show(app);
         Ok(id)
     }
 }
@@ -462,15 +468,58 @@ fn tool_command(app: &AppHandle, tool: Tool) -> Result<CommandBuilder, String> {
     Ok(cmd)
 }
 
+/// 記錄「使用者已經同意使用終端機」的檔案。放在設定資料夾，和前端寫的 settings.json 分開，
+/// 前端沒有指令可以建立它。
+fn shell_consent_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|d| d.join("terminal-allowed"))
+        .map_err(|e| e.to_string())
+}
+
+/// 開殼層前檢查使用者是否同意過；還沒有時用系統的對話框詢問（網頁無法代按），同意後記下來，
+/// 之後不再詢問。
+async fn require_shell_consent(app: &AppHandle, window: &Window) -> Result<(), String> {
+    // 一次只問一次，同時開好幾個終端機時對話框不會重複跳出。
+    static ASKING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _guard = ASKING.lock().await;
+    let path = shell_consent_path(app)?;
+    if path.is_file() {
+        return Ok(());
+    }
+    let answer = rfd::AsyncMessageDialog::new()
+        .set_parent(window)
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title(tr!("開啟終端機"))
+        .set_description(tr!(
+            "終端機可以用你的帳號執行任何指令。只有在你自己要開啟終端機時才選「是」；同意後，之後開啟終端機不會再詢問。要開啟嗎？"
+        ))
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        .await;
+    if answer != rfd::MessageDialogResult::Yes {
+        return Err(tr!("沒有開啟終端機"));
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
+    }
+    std::fs::write(&path, b"1").map_err(|e| tr!("無法儲存設定：{e}", e = e))
+}
+
 /// 開啟一個終端機，回傳編號。工作目錄是目前開啟的資料夾（沒有的話是使用者家目錄）。
 /// 搜尋程式與啟動子程序可能要一點時間，在背景執行緒進行，不會卡住視窗。
 #[tauri::command]
 pub async fn term_open(
     app: AppHandle,
+    webview: Webview,
     program: Program,
     cols: u16,
     rows: u16,
 ) -> Result<u32, String> {
+    view::require_terminal(&webview)?;
+    if matches!(program, Program::Shell) {
+        require_shell_consent(&app, &webview.window()).await?;
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let (cmd, label) = match program {
             // 開著 SSH 遠端資料夾時，終端機也連到同一台主機。
@@ -498,7 +547,13 @@ pub async fn term_open(
 }
 
 #[tauri::command]
-pub fn term_write(id: u32, data: String, terms: State<'_, Terminals>) -> Result<(), String> {
+pub fn term_write(
+    webview: Webview,
+    id: u32,
+    data: String,
+    terms: State<'_, Terminals>,
+) -> Result<(), String> {
+    view::require_terminal(&webview)?;
     let sessions = terms.sessions.lock().unwrap();
     let s = sessions.get(&id).ok_or_else(|| tr!("終端機已經結束"))?;
     s.input
@@ -508,11 +563,13 @@ pub fn term_write(id: u32, data: String, terms: State<'_, Terminals>) -> Result<
 
 #[tauri::command]
 pub fn term_resize(
+    webview: Webview,
     id: u32,
     cols: u16,
     rows: u16,
     terms: State<'_, Terminals>,
 ) -> Result<(), String> {
+    view::require_terminal(&webview)?;
     let sessions = terms.sessions.lock().unwrap();
     let s = sessions.get(&id).ok_or_else(|| tr!("終端機已經結束"))?;
     s.master
@@ -526,11 +583,13 @@ pub fn term_resize(
 }
 
 #[tauri::command]
-pub fn term_close(id: u32, terms: State<'_, Terminals>) {
+pub fn term_close(webview: Webview, id: u32, terms: State<'_, Terminals>) -> Result<(), String> {
+    view::require_terminal(&webview)?;
     if let Some(mut s) = terms.sessions.lock().unwrap().remove(&id) {
         let _ = s.killer.kill();
     }
     terms.logs.lock().unwrap().remove(&id);
+    Ok(())
 }
 
 #[cfg(test)]
