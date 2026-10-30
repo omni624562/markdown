@@ -89,6 +89,21 @@ enum HostKey {
     Changed,
     /// 主機憑證（目前不支援）。
     Certificate,
+    /// known_hosts 存在卻讀不了：不能當成第一次連線（金鑰換了也看不出來）。
+    Unreadable,
+}
+
+/// known_hosts 裡這台主機的金鑰。檔案不存在時是空的（第一次用 ssh）；
+/// 存在卻打不開、讀到一半出錯時回傳錯誤，不要當成沒有記錄。
+fn recorded_keys(host: &str, port: u16) -> Result<Vec<PublicKey>, ()> {
+    // 和 russh 的 `learn_known_hosts` 寫入的位置相同（家目錄的 .ssh/known_hosts）。
+    let path = home_dir().ok_or(())?.join(".ssh").join("known_hosts");
+    if path.exists() && std::fs::File::open(&path).is_err() {
+        return Err(());
+    }
+    russh::keys::known_hosts::known_host_keys_path(host, port, &path)
+        .map(|keys| keys.into_iter().map(|(_, k)| k).collect())
+        .map_err(|_| ())
 }
 
 struct Checker {
@@ -126,12 +141,10 @@ impl client::Handler for Checker {
     ) -> Result<bool, Self::Error> {
         let state = match key {
             PublicKeyOrCertificate::PublicKey { key, .. } => {
-                let recorded: Vec<PublicKey> =
-                    russh::keys::known_hosts::known_host_keys(&self.host, self.port)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|(_, k)| k)
-                        .collect();
+                let Ok(recorded) = recorded_keys(&self.host, self.port) else {
+                    *self.seen.lock().unwrap() = Some(HostKey::Unreadable);
+                    return Ok(false);
+                };
                 let state = judge(&recorded, key, self.trust.as_deref());
                 if matches!(state, HostKey::Trusted) && recorded.is_empty() {
                     // 使用者確認過：記進 known_hosts（寫不進去也讓這次連線）。
@@ -232,6 +245,10 @@ async fn handshake(
                 Some(HostKey::Certificate) => {
                     DavError::Other(tr!("這台主機使用憑證驗證主機金鑰，目前不支援"))
                 }
+                Some(HostKey::Unreadable) => DavError::Other(tr!(
+                    "無法讀取 ~/.ssh/known_hosts，不能確認 {host} 的主機金鑰。請檢查這個檔案的權限與內容後再連線。",
+                    host = host
+                )),
                 _ => net(e),
             })
         }
@@ -817,7 +834,18 @@ impl RemoteFs for SshFs {
                 if meta.size.unwrap_or(0) > MAX_READ {
                     return Err(DavError::Other(tr!("檔案太大")));
                 }
-                let bytes = live.sftp.read(path).await.map_err(sftp_err)?;
+                // 伺服器回報的大小不可信：讀的時候也限制長度，送來更多資料就停下來。
+                let file = live.sftp.open(path).await.map_err(sftp_err)?;
+                let mut bytes = Vec::new();
+                tokio::io::AsyncReadExt::read_to_end(
+                    &mut tokio::io::AsyncReadExt::take(file, MAX_READ + 1),
+                    &mut bytes,
+                )
+                .await
+                .map_err(net)?;
+                if bytes.len() as u64 > MAX_READ {
+                    return Err(DavError::Other(tr!("檔案太大")));
+                }
                 Ok((bytes, Some(version(&meta))))
             }
         })
@@ -1168,10 +1196,13 @@ pub fn terminal_command(user: &str, t: &SshTarget) -> Option<portable_pty::Comma
     // `--` 之後一定是目的地，不會被當成選項。
     cmd.arg("--");
     cmd.arg(format!("{user}@{}", t.host));
-    // 遠端的登入 shell 可能不是 sh（例如 fish）：交給 sh 切換資料夾，再換回使用者的 shell。
-    let root = t.root.replace('\'', r"'\''");
+    // 這一行會先經過遠端的登入 shell（可能是 fish、tcsh，引號的規則和 sh 不同），
+    // 所以資料夾路徑用 base64 傳（只有英數字與 `+/=`，在哪種 shell 都不需要跳脫），
+    // 交給 sh 解碼後切換資料夾，再換回使用者的 shell。
+    use base64::Engine;
+    let root = base64::engine::general_purpose::STANDARD.encode(t.root.as_bytes());
     cmd.arg(format!(
-        "sh -c 'cd \"$1\" 2>/dev/null; exec \"${{SHELL:-/bin/sh}}\" -l' sh '{root}'"
+        "sh -c 'cd \"$(printf %s \"$1\" | base64 -d)\" 2>/dev/null; exec \"${{SHELL:-/bin/sh}}\" -l' sh {root}"
     ));
     Some(cmd)
 }
@@ -1375,7 +1406,8 @@ mod tests {
                 "/keys/id",
                 "--",
                 "eric@srv",
-                "sh -c 'cd \"$1\" 2>/dev/null; exec \"${SHELL:-/bin/sh}\" -l' sh '/home/eric/it'\\''s 筆記'",
+                // base64 of "/home/eric/it's 筆記"
+                "sh -c 'cd \"$(printf %s \"$1\" | base64 -d)\" 2>/dev/null; exec \"${SHELL:-/bin/sh}\" -l' sh L2hvbWUvZXJpYy9pdCdzIOethuiomA==",
             ]
         );
     }
