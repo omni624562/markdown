@@ -9,6 +9,7 @@ import "../../crates/md-core/src/document.css";
 import "./styles.css";
 import { currentLang, loadLocale, t } from "./i18n.ts";
 import type { MenuEntry } from "./ui/menu.ts";
+import type { AiCommand } from "./ui/command-consent.ts";
 import type { TerminalPanel, TermProgram } from "./ui/terminal-panel.ts";
 
 type Request =
@@ -32,7 +33,11 @@ void start();
 async function start(): Promise<void> {
   // 先載入介面語言：面板的文字（分頁名稱等）在載入模組時就會用到。
   await loadLocale();
-  const [{ TerminalPanel }, { setupMenu }] = await Promise.all([import("./ui/terminal-panel.ts"), import("./ui/menu.ts")]);
+  const [{ TerminalPanel }, { setupMenu }, { CommandConsent }] = await Promise.all([
+    import("./ui/terminal-panel.ts"),
+    import("./ui/menu.ts"),
+    import("./ui/command-consent.ts"),
+  ]);
 
   /** 在指定位置開一個選單（右鍵選單）。 */
   const openMenu = (at: DOMRect, entries: MenuEntry[], closed: () => void): void => {
@@ -71,13 +76,22 @@ async function start(): Promise<void> {
     },
   );
 
+  // AI 要求執行指令時的同意提示：只在這個 webview 顯示，回覆也只接受這裡送出的。
+  const consent = new CommandConsent(
+    el,
+    (id, ok, message) => core.invoke<boolean>("mcp_respond", { id, decision: { ok, message } }),
+    () => notify({ kind: "focus" }),
+  );
+
   const handle = (name: string, payload: unknown): void => {
     if (name === "term-output") panel.output(payload as { id: number; data: string });
     else if (name === "term-attached") panel.attached(payload as { id: number; label: string });
     else if (name === "term-exit") panel.exited(payload as { id: number; code: number | null });
     else if (name === "term-request") request(panel, payload as Request);
+    else if (name === "ai-command") void consent.ask(payload as AiCommand);
+    else if (name === "ai-command-expired") consent.expired(payload as number);
   };
-  for (const name of ["term-output", "term-attached", "term-exit", "term-request"]) {
+  for (const name of ["term-output", "term-attached", "term-exit", "term-request", "ai-command", "ai-command-expired"]) {
     await event.listen(name, (e) => handle(name, e.payload));
   }
   // 先註冊好事件再取走排隊中的事件；中間到的輸出由面板先暫存，分頁建立後再補上。

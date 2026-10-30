@@ -989,8 +989,6 @@ function bridge(core: TauriCore, event: TauriEvent) {
       event.listen<{ dirs: string[] }>("tree-changed", (e) => fn(e.payload)),
     onTermNotice: (fn: (n: TermNotice) => void) => event.listen<TermNotice>("term-notice", (e) => fn(e.payload)),
     onAiProposal: (fn: (p: AiProposal) => void) => event.listen<AiProposal>("ai-proposal", (e) => fn(e.payload)),
-    onAiCommand: (fn: (c: AiCommand) => void) => event.listen<AiCommand>("ai-command", (e) => fn(e.payload)),
-    onAiCommandExpired: (fn: (id: number) => void) => event.listen<number>("ai-command-expired", (e) => fn(e.payload)),
     onAiRun: (fn: (p: AiRunEvent) => void) => event.listen<AiRunEvent>("ai-run", (e) => fn(e.payload)),
   };
 }
