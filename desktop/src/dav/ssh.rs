@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tokio::io::AsyncWriteExt;
 
-use crate::dav::{Conn, Dav, DavError, Item, RemoteFs};
+use crate::dav::{Conn, Dav, DavError, FsFuture, Item, RemoteFs};
 use crate::workspace::FolderInfo;
 
 pub const SCHEME: &str = "ssh://";
@@ -621,10 +621,10 @@ pub struct SshFs {
     user: String,
     secret: Option<String>,
     live: Mutex<Option<Arc<Live>>>,
-    /// 同時只重新連線一次。
-    reconnecting: Mutex<()>,
+    /// 同時只重新連線一次；其他操作等它連好（非同步的鎖，等待時不佔住執行緒）。
+    reconnecting: tokio::sync::Mutex<()>,
     /// 寫入一次只做一個（自動存檔和手動存檔不會同時寫同一個檔案）。
-    writing: Mutex<()>,
+    writing: tokio::sync::Mutex<()>,
 }
 
 impl SshFs {
@@ -649,39 +649,31 @@ impl SshFs {
             .filter(|l| !l.handle.is_closed())
     }
 
-    fn live(&self) -> Result<Arc<Live>, DavError> {
+    async fn live(&self) -> Result<Arc<Live>, DavError> {
         if let Some(live) = self.current() {
             return Ok(live);
         }
-        let _guard = self.reconnecting.lock().unwrap();
+        let _guard = self.reconnecting.lock().await;
         if let Some(live) = self.current() {
             return Ok(live);
         }
         // 連不上是 `Network`（前端顯示斷線提示並定時檢查恢復）；登入或主機金鑰的問題是 `Other`。
-        let live = tauri::async_runtime::block_on(connect(
-            &self.target,
-            &self.user,
-            self.secret.as_deref(),
-            None,
-        ))
-        .map(Arc::new)?;
+        let live = connect(&self.target, &self.user, self.secret.as_deref(), None)
+            .await
+            .map(Arc::new)?;
         *self.live.lock().unwrap() = Some(live.clone());
         Ok(live)
     }
 
     /// 在連線上執行一個操作。連線斷掉時丟掉它，下次自動重新連線；`retry` 的操作（只讀不寫）會馬上再試一次。
-    fn run<T, F, Fut>(&self, retry: bool, f: F) -> Result<T, DavError>
+    async fn run<T, F, Fut>(&self, retry: bool, f: F) -> Result<T, DavError>
     where
         F: Fn(Arc<Live>) -> Fut,
         Fut: Future<Output = Result<T, DavError>>,
     {
         for attempt in 0..2 {
-            let live = self.live()?;
-            let fut = f(live.clone());
-            let result = tauri::async_runtime::block_on(async {
-                tokio::time::timeout(OP_TIMEOUT, fut).await
-            });
-            let err = match result {
+            let live = self.live().await?;
+            let err = match tokio::time::timeout(OP_TIMEOUT, f(live.clone())).await {
                 Ok(Ok(v)) => return Ok(v),
                 Ok(Err(e)) => e,
                 Err(_) => DavError::Network(tr!("等了 {s} 秒沒有回應", s = OP_TIMEOUT.as_secs())),
@@ -775,211 +767,232 @@ async fn replace_file(
 }
 
 impl RemoteFs for SshFs {
-    fn stat(&self, rel: &str) -> Result<Item, DavError> {
-        let path = self.abs(rel);
-        self.run(true, |live| {
-            let path = path.clone();
-            async move {
-                let meta = live.sftp.metadata(path).await.map_err(sftp_err)?;
-                Ok(Item::new(
-                    rel.to_string(),
-                    meta.is_dir(),
-                    Some(version(&meta)),
-                ))
-            }
+    fn stat<'a>(&'a self, rel: &'a str) -> FsFuture<'a, Item> {
+        Box::pin(async move {
+            let path = self.abs(rel);
+            self.run(true, |live| {
+                let path = path.clone();
+                async move {
+                    let meta = live.sftp.metadata(path).await.map_err(sftp_err)?;
+                    Ok(Item::new(
+                        rel.to_string(),
+                        meta.is_dir(),
+                        Some(version(&meta)),
+                    ))
+                }
+            })
+            .await
         })
     }
 
-    fn list(&self, rel: &str) -> Result<Vec<Item>, DavError> {
-        let path = self.abs(rel);
-        self.run(true, |live| {
-            let path = path.clone();
-            async move {
-                let entries = live.sftp.read_dir(path.clone()).await.map_err(sftp_err)?;
-                let mut items = Vec::new();
-                for e in entries {
-                    let name = e.file_name();
-                    if name == "." || name == ".." {
-                        continue;
-                    }
-                    let mut meta = e.metadata();
-                    if meta.is_symlink() {
-                        // 連結：看它指到的是資料夾還是檔案（壞掉的連結略過）。
-                        match live.sftp.metadata(format!("{path}/{name}")).await {
-                            Ok(m) => meta = m,
-                            Err(_) => continue,
-                        }
-                    }
-                    let info = describe(&meta);
-                    items.push(
-                        Item::new(child(rel, &name), meta.is_dir(), Some(version(&meta)))
-                            .with_detail(info),
-                    );
-                }
-                Ok(items)
-            }
-        })
-    }
-
-    fn get(&self, rel: &str) -> Result<(Vec<u8>, Option<String>), DavError> {
-        let path = self.abs(rel);
-        self.run(true, |live| {
-            let path = path.clone();
-            async move {
-                // 先記下版本再讀：讀的期間被改的話，下次輪詢會發現。
-                let meta = live.sftp.metadata(path.clone()).await.map_err(sftp_err)?;
-                if meta.is_dir() {
-                    return Err(DavError::Other(tr!("這是資料夾")));
-                }
-                if meta.size.unwrap_or(0) > MAX_READ {
-                    return Err(DavError::Other(tr!("檔案太大")));
-                }
-                // 伺服器回報的大小不可信：讀的時候也限制長度，送來更多資料就停下來。
-                let file = live.sftp.open(path).await.map_err(sftp_err)?;
-                let mut bytes = Vec::new();
-                tokio::io::AsyncReadExt::read_to_end(
-                    &mut tokio::io::AsyncReadExt::take(file, MAX_READ + 1),
-                    &mut bytes,
-                )
-                .await
-                .map_err(net)?;
-                if bytes.len() as u64 > MAX_READ {
-                    return Err(DavError::Other(tr!("檔案太大")));
-                }
-                Ok((bytes, Some(version(&meta))))
-            }
-        })
-    }
-
-    fn put(
-        &self,
-        rel: &str,
-        bytes: &[u8],
-        if_match: Option<&str>,
-    ) -> Result<Option<String>, DavError> {
-        let path = self.abs(rel);
-        let _writing = self.writing.lock().unwrap_or_else(|e| e.into_inner());
-        self.run(false, |live| {
-            let path = path.clone();
-            async move {
-                match if_match {
-                    Some(expected) => {
-                        let meta = match live.sftp.symlink_metadata(path.clone()).await {
-                            Ok(m) => m,
-                            Err(e) => {
-                                return Err(match sftp_err(e) {
-                                    DavError::NotFound => DavError::Changed,
-                                    e => e,
-                                })
-                            }
-                        };
-                        let target = if meta.is_symlink() {
-                            live.sftp.metadata(path.clone()).await.map_err(sftp_err)?
-                        } else {
-                            meta.clone()
-                        };
-                        if expected != crate::dav::ANY_VERSION && version(&target) != expected {
-                            return Err(DavError::Changed);
-                        }
-                        if meta.is_symlink() {
-                            // 連結：寫到它指向的檔案（換掉連結本身會把連結變成一般檔案）。
-                            write_file(&live.sftp, &path, bytes, OpenFlags::TRUNCATE).await?;
-                        } else {
-                            replace_file(&live.sftp, &path, bytes, &meta).await?;
-                        }
-                    }
-                    None => {
-                        if exists(&live.sftp, &path).await? {
-                            return Err(DavError::Changed);
-                        }
-                        write_file(
-                            &live.sftp,
-                            &path,
-                            bytes,
-                            OpenFlags::CREATE | OpenFlags::EXCLUDE,
-                        )
-                        .await?;
-                    }
-                }
-                let meta = live.sftp.metadata(path).await.map_err(sftp_err)?;
-                Ok(Some(version(&meta)))
-            }
-        })
-    }
-
-    fn mkdir(&self, rel: &str) -> Result<(), DavError> {
-        let path = self.abs(rel);
-        self.run(false, |live| {
-            let path = path.clone();
-            async move {
-                if exists(&live.sftp, &path).await? {
-                    return Err(DavError::Exists);
-                }
-                live.sftp.create_dir(path).await.map_err(sftp_err)
-            }
-        })
-    }
-
-    fn rename(&self, from: &str, to: &str) -> Result<(), DavError> {
-        let (from, to) = (self.abs(from), self.abs(to));
-        self.run(false, |live| {
-            let (from, to) = (from.clone(), to.clone());
-            async move {
-                if exists(&live.sftp, &to).await? {
-                    return Err(DavError::Exists);
-                }
-                live.sftp.rename(from, to).await.map_err(sftp_err)
-            }
-        })
-    }
-
-    fn delete(&self, rel: &str) -> Result<(), DavError> {
-        let path = self.abs(rel);
-        self.run(false, |live| {
-            let path = path.clone();
-            async move {
-                let meta = live
-                    .sftp
-                    .symlink_metadata(path.clone())
-                    .await
-                    .map_err(sftp_err)?;
-                if !meta.is_dir() {
-                    return live.sftp.remove_file(path).await.map_err(sftp_err);
-                }
-                // 資料夾：先列出全部（連結只刪連結本身），再從最深的開始刪。
-                let mut dirs = vec![path];
-                let mut files = Vec::new();
-                let mut i = 0;
-                while i < dirs.len() {
-                    let dir = dirs[i].clone();
-                    for e in live.sftp.read_dir(dir.clone()).await.map_err(sftp_err)? {
+    fn list<'a>(&'a self, rel: &'a str) -> FsFuture<'a, Vec<Item>> {
+        Box::pin(async move {
+            let path = self.abs(rel);
+            self.run(true, |live| {
+                let path = path.clone();
+                async move {
+                    let entries = live.sftp.read_dir(path.clone()).await.map_err(sftp_err)?;
+                    let mut items = Vec::new();
+                    for e in entries {
                         let name = e.file_name();
                         if name == "." || name == ".." {
                             continue;
                         }
-                        let p = format!("{dir}/{name}");
-                        if e.metadata().is_dir() {
-                            dirs.push(p);
-                        } else {
-                            files.push(p);
+                        let mut meta = e.metadata();
+                        if meta.is_symlink() {
+                            // 連結：看它指到的是資料夾還是檔案（壞掉的連結略過）。
+                            match live.sftp.metadata(format!("{path}/{name}")).await {
+                                Ok(m) => meta = m,
+                                Err(_) => continue,
+                            }
                         }
-                        if dirs.len() + files.len() > MAX_DELETE {
-                            return Err(DavError::Other(tr!(
-                                "資料夾裡的項目超過 {n} 個，請改用終端機刪除",
-                                n = MAX_DELETE
-                            )));
+                        let info = describe(&meta);
+                        items.push(
+                            Item::new(child(rel, &name), meta.is_dir(), Some(version(&meta)))
+                                .with_detail(info),
+                        );
+                    }
+                    Ok(items)
+                }
+            })
+            .await
+        })
+    }
+
+    fn get<'a>(&'a self, rel: &'a str) -> FsFuture<'a, (Vec<u8>, Option<String>)> {
+        Box::pin(async move {
+            let path = self.abs(rel);
+            self.run(true, |live| {
+                let path = path.clone();
+                async move {
+                    // 先記下版本再讀：讀的期間被改的話，下次輪詢會發現。
+                    let meta = live.sftp.metadata(path.clone()).await.map_err(sftp_err)?;
+                    if meta.is_dir() {
+                        return Err(DavError::Other(tr!("這是資料夾")));
+                    }
+                    if meta.size.unwrap_or(0) > MAX_READ {
+                        return Err(DavError::Other(tr!("檔案太大")));
+                    }
+                    // 伺服器回報的大小不可信：讀的時候也限制長度，送來更多資料就停下來。
+                    let file = live.sftp.open(path).await.map_err(sftp_err)?;
+                    let mut bytes = Vec::new();
+                    tokio::io::AsyncReadExt::read_to_end(
+                        &mut tokio::io::AsyncReadExt::take(file, MAX_READ + 1),
+                        &mut bytes,
+                    )
+                    .await
+                    .map_err(net)?;
+                    if bytes.len() as u64 > MAX_READ {
+                        return Err(DavError::Other(tr!("檔案太大")));
+                    }
+                    Ok((bytes, Some(version(&meta))))
+                }
+            })
+            .await
+        })
+    }
+
+    fn put<'a>(
+        &'a self,
+        rel: &'a str,
+        bytes: &'a [u8],
+        if_match: Option<&'a str>,
+    ) -> FsFuture<'a, Option<String>> {
+        Box::pin(async move {
+            let path = self.abs(rel);
+            let _writing = self.writing.lock().await;
+            self.run(false, |live| {
+                let path = path.clone();
+                async move {
+                    match if_match {
+                        Some(expected) => {
+                            let meta = match live.sftp.symlink_metadata(path.clone()).await {
+                                Ok(m) => m,
+                                Err(e) => {
+                                    return Err(match sftp_err(e) {
+                                        DavError::NotFound => DavError::Changed,
+                                        e => e,
+                                    })
+                                }
+                            };
+                            let target = if meta.is_symlink() {
+                                live.sftp.metadata(path.clone()).await.map_err(sftp_err)?
+                            } else {
+                                meta.clone()
+                            };
+                            if expected != crate::dav::ANY_VERSION && version(&target) != expected {
+                                return Err(DavError::Changed);
+                            }
+                            if meta.is_symlink() {
+                                // 連結：寫到它指向的檔案（換掉連結本身會把連結變成一般檔案）。
+                                write_file(&live.sftp, &path, bytes, OpenFlags::TRUNCATE).await?;
+                            } else {
+                                replace_file(&live.sftp, &path, bytes, &meta).await?;
+                            }
+                        }
+                        None => {
+                            if exists(&live.sftp, &path).await? {
+                                return Err(DavError::Changed);
+                            }
+                            write_file(
+                                &live.sftp,
+                                &path,
+                                bytes,
+                                OpenFlags::CREATE | OpenFlags::EXCLUDE,
+                            )
+                            .await?;
                         }
                     }
-                    i += 1;
+                    let meta = live.sftp.metadata(path).await.map_err(sftp_err)?;
+                    Ok(Some(version(&meta)))
                 }
-                for f in files {
-                    live.sftp.remove_file(f).await.map_err(sftp_err)?;
+            })
+            .await
+        })
+    }
+
+    fn mkdir<'a>(&'a self, rel: &'a str) -> FsFuture<'a, ()> {
+        Box::pin(async move {
+            let path = self.abs(rel);
+            self.run(false, |live| {
+                let path = path.clone();
+                async move {
+                    if exists(&live.sftp, &path).await? {
+                        return Err(DavError::Exists);
+                    }
+                    live.sftp.create_dir(path).await.map_err(sftp_err)
                 }
-                for d in dirs.into_iter().rev() {
-                    live.sftp.remove_dir(d).await.map_err(sftp_err)?;
+            })
+            .await
+        })
+    }
+
+    fn rename<'a>(&'a self, from: &'a str, to: &'a str) -> FsFuture<'a, ()> {
+        Box::pin(async move {
+            let (from, to) = (self.abs(from), self.abs(to));
+            self.run(false, |live| {
+                let (from, to) = (from.clone(), to.clone());
+                async move {
+                    if exists(&live.sftp, &to).await? {
+                        return Err(DavError::Exists);
+                    }
+                    live.sftp.rename(from, to).await.map_err(sftp_err)
                 }
-                Ok(())
-            }
+            })
+            .await
+        })
+    }
+
+    fn delete<'a>(&'a self, rel: &'a str) -> FsFuture<'a, ()> {
+        Box::pin(async move {
+            let path = self.abs(rel);
+            self.run(false, |live| {
+                let path = path.clone();
+                async move {
+                    let meta = live
+                        .sftp
+                        .symlink_metadata(path.clone())
+                        .await
+                        .map_err(sftp_err)?;
+                    if !meta.is_dir() {
+                        return live.sftp.remove_file(path).await.map_err(sftp_err);
+                    }
+                    // 資料夾：先列出全部（連結只刪連結本身），再從最深的開始刪。
+                    let mut dirs = vec![path];
+                    let mut files = Vec::new();
+                    let mut i = 0;
+                    while i < dirs.len() {
+                        let dir = dirs[i].clone();
+                        for e in live.sftp.read_dir(dir.clone()).await.map_err(sftp_err)? {
+                            let name = e.file_name();
+                            if name == "." || name == ".." {
+                                continue;
+                            }
+                            let p = format!("{dir}/{name}");
+                            if e.metadata().is_dir() {
+                                dirs.push(p);
+                            } else {
+                                files.push(p);
+                            }
+                            if dirs.len() + files.len() > MAX_DELETE {
+                                return Err(DavError::Other(tr!(
+                                    "資料夾裡的項目超過 {n} 個，請改用終端機刪除",
+                                    n = MAX_DELETE
+                                )));
+                            }
+                        }
+                        i += 1;
+                    }
+                    for f in files {
+                        live.sftp.remove_file(f).await.map_err(sftp_err)?;
+                    }
+                    for d in dirs.into_iter().rev() {
+                        live.sftp.remove_dir(d).await.map_err(sftp_err)?;
+                    }
+                    Ok(())
+                }
+            })
+            .await
         })
     }
 }
@@ -1126,8 +1139,8 @@ pub async fn ssh_connect(
         user,
         secret: secret.clone(),
         live: Mutex::new(Some(Arc::new(live))),
-        reconnecting: Mutex::new(()),
-        writing: Mutex::new(()),
+        reconnecting: tokio::sync::Mutex::new(()),
+        writing: tokio::sync::Mutex::new(()),
     };
     crate::dav::install(&app, &dav, conn.clone(), Box::new(fs));
     if let Some(secret) = secret {
@@ -1157,8 +1170,8 @@ pub(crate) async fn reconnect(
         user: conn.username.clone(),
         secret,
         live: Mutex::new(Some(Arc::new(live))),
-        reconnecting: Mutex::new(()),
-        writing: Mutex::new(()),
+        reconnecting: tokio::sync::Mutex::new(()),
+        writing: tokio::sync::Mutex::new(()),
     };
     crate::dav::install(app, dav, conn, Box::new(fs));
     Ok(())
@@ -1210,6 +1223,7 @@ pub fn terminal_command(user: &str, t: &SshTarget) -> Option<portable_pty::Comma
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri::async_runtime::block_on;
 
     #[test]
     fn host_key_must_match_any_recorded_key() {
@@ -1311,8 +1325,8 @@ mod tests {
             user: "eric".into(),
             secret: None,
             live: Mutex::new(None),
-            reconnecting: Mutex::new(()),
-            writing: Mutex::new(()),
+            reconnecting: tokio::sync::Mutex::new(()),
+            writing: tokio::sync::Mutex::new(()),
         };
         assert_eq!(fs.abs(""), "/home/eric/筆記");
         assert_eq!(fs.abs("a/b.md"), "/home/eric/筆記/a/b.md");
@@ -1471,68 +1485,68 @@ mod tests {
             user,
             secret: pass,
             live: Mutex::new(Some(Arc::new(live))),
-            reconnecting: Mutex::new(()),
-            writing: Mutex::new(()),
+            reconnecting: tokio::sync::Mutex::new(()),
+            writing: tokio::sync::Mutex::new(()),
         };
-        let _ = fs.delete("測試 資料夾");
-        fs.mkdir("測試 資料夾").unwrap();
-        assert_eq!(fs.mkdir("測試 資料夾").unwrap_err(), DavError::Exists);
-        let v1 = fs
-            .put("測試 資料夾/週報.md", "第一版".as_bytes(), None)
+        let _ = block_on(fs.delete("測試 資料夾"));
+        block_on(fs.mkdir("測試 資料夾")).unwrap();
+        assert_eq!(
+            block_on(fs.mkdir("測試 資料夾")).unwrap_err(),
+            DavError::Exists
+        );
+        let v1 = block_on(fs.put("測試 資料夾/週報.md", "第一版".as_bytes(), None))
             .unwrap()
             .unwrap();
         assert_eq!(
-            fs.put("測試 資料夾/週報.md", b"x", None).unwrap_err(),
+            block_on(fs.put("測試 資料夾/週報.md", b"x", None)).unwrap_err(),
             DavError::Changed
         );
-        let (body, got) = fs.get("測試 資料夾/週報.md").unwrap();
+        let (body, got) = block_on(fs.get("測試 資料夾/週報.md")).unwrap();
         assert_eq!(String::from_utf8(body).unwrap(), "第一版");
         assert_eq!(got.as_deref(), Some(v1.as_str()));
-        let v2 = fs
-            .put(
-                "測試 資料夾/週報.md",
-                "第二版，比較長".as_bytes(),
-                Some(&v1),
-            )
-            .unwrap()
-            .unwrap();
+        let v2 = block_on(fs.put(
+            "測試 資料夾/週報.md",
+            "第二版，比較長".as_bytes(),
+            Some(&v1),
+        ))
+        .unwrap()
+        .unwrap();
         assert_ne!(v1, v2);
         assert_eq!(
-            fs.put("測試 資料夾/週報.md", b"x", Some(&v1)).unwrap_err(),
+            block_on(fs.put("測試 資料夾/週報.md", b"x", Some(&v1))).unwrap_err(),
             DavError::Changed
         );
         // 換檔不留下暫存檔，並保留原檔的權限。
-        let live = fs.live().unwrap();
+        let live = block_on(fs.live()).unwrap();
         let p = fs.abs("測試 資料夾/週報.md");
         let mut attrs = russh_sftp::protocol::FileAttributes::empty();
         attrs.permissions = Some(0o640);
         tauri::async_runtime::block_on(live.sftp.set_metadata(p.clone(), attrs)).unwrap();
-        let v3 = fs.stat("測試 資料夾/週報.md").unwrap().etag.unwrap();
-        fs.put("測試 資料夾/週報.md", "第三版".as_bytes(), Some(&v3))
+        let v3 = block_on(fs.stat("測試 資料夾/週報.md"))
+            .unwrap()
+            .etag
             .unwrap();
+        block_on(fs.put("測試 資料夾/週報.md", "第三版".as_bytes(), Some(&v3))).unwrap();
         let meta = tauri::async_runtime::block_on(live.sftp.metadata(p)).unwrap();
         assert_eq!(meta.permissions.unwrap() & 0o777, 0o640);
-        assert!(fs
-            .list("測試 資料夾")
+        assert!(block_on(fs.list("測試 資料夾"))
             .unwrap()
             .iter()
             .all(|i| !i.rel.contains(".omarker-")));
-        fs.mkdir("測試 資料夾/子").unwrap();
-        fs.put("測試 資料夾/子/a.md", b"a", None).unwrap();
-        let list = fs.list("測試 資料夾").unwrap();
+        block_on(fs.mkdir("測試 資料夾/子")).unwrap();
+        block_on(fs.put("測試 資料夾/子/a.md", b"a", None)).unwrap();
+        let list = block_on(fs.list("測試 資料夾")).unwrap();
         assert!(list
             .iter()
             .any(|i| i.rel == "測試 資料夾/週報.md" && !i.is_dir));
         assert!(list.iter().any(|i| i.rel == "測試 資料夾/子" && i.is_dir));
-        fs.rename("測試 資料夾/週報.md", "測試 資料夾/改名.md")
-            .unwrap();
+        block_on(fs.rename("測試 資料夾/週報.md", "測試 資料夾/改名.md")).unwrap();
         assert_eq!(
-            fs.rename("測試 資料夾/改名.md", "測試 資料夾/子")
-                .unwrap_err(),
+            block_on(fs.rename("測試 資料夾/改名.md", "測試 資料夾/子")).unwrap_err(),
             DavError::Exists
         );
         assert_eq!(
-            fs.stat("測試 資料夾/週報.md").unwrap_err(),
+            block_on(fs.stat("測試 資料夾/週報.md")).unwrap_err(),
             DavError::NotFound
         );
         // 連線斷掉：下一個操作自動重新連線。
@@ -1544,8 +1558,11 @@ mod tests {
         ))
         .unwrap();
         std::thread::sleep(Duration::from_millis(300));
-        assert!(fs.stat("測試 資料夾/改名.md").is_ok());
-        fs.delete("測試 資料夾").unwrap();
-        assert_eq!(fs.stat("測試 資料夾").unwrap_err(), DavError::NotFound);
+        assert!(block_on(fs.stat("測試 資料夾/改名.md")).is_ok());
+        block_on(fs.delete("測試 資料夾")).unwrap();
+        assert_eq!(
+            block_on(fs.stat("測試 資料夾")).unwrap_err(),
+            DavError::NotFound
+        );
     }
 }

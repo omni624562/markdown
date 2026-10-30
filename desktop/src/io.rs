@@ -28,9 +28,27 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
-    match tokio::time::timeout(timeout, tauri::async_runtime::spawn_blocking(f)).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(e)) => Err(e.to_string()),
+    timed_for(timeout, async {
+        tauri::async_runtime::spawn_blocking(f)
+            .await
+            .map_err(|e| e.to_string())?
+    })
+    .await
+}
+
+/// 非同步的操作（例如遠端資料夾）加上時間上限；逾時的訊息和 [`blocking`] 相同。
+pub async fn timed<T>(
+    fut: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    timed_for(TIMEOUT, fut).await
+}
+
+pub async fn timed_for<T>(
+    timeout: Duration,
+    fut: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    match tokio::time::timeout(timeout, fut).await {
+        Ok(result) => result,
         Err(_) => Err(tr!(
             "{offline}：等了 {timeout} 秒沒有回應",
             offline = offline(),
