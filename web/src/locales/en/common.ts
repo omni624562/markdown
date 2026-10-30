@@ -74,6 +74,8 @@ export const common: Record<string, Translation> = {
   "空白文件": "Blank Document",
   "中": "Medium",
   "大綱放在右邊": "Outline on the Right",
+  "檢視切換顯示文字": "Show View Switch Labels",
+  "狀態列右邊的「原始碼／即時預覽／分割／預覽」；關閉時只顯示圖示，名稱在滑鼠提示裡": "The Source / Live Preview / Split / Preview switch on the right of the status bar. When off, only icons are shown; names appear in tooltips.",
   "文件內容": "Document Content",
   "編輯區": "Editor",
   "專注模式": "Focus Mode",
