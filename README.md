@@ -49,8 +49,14 @@ desktop/src/  桌面版（Tauri 2）：沿用網頁介面，補上原生端的�
                 navigation.rs（導覽限制）、i18n.rs 與 locales/（後端訊息的英文翻譯）
 
 web/src/      網頁介面（桌面版也用同一份）
-  主程式        main.ts（組裝各個模組）、boot.ts（先載入語言）、commands.ts（指令中心：工具列、選單、指令面板、
-                快速鍵共用同一份清單）、settings.ts、session.ts（分頁與草稿）、storage.ts、desktop.ts（呼叫原生端）
+  主程式        main.ts（目前分頁的狀態、編輯器與預覽、分頁、存檔、版面）、boot.ts（先載入語言）、
+                commands.ts（指令中心：工具列、選單、指令面板、快速鍵共用同一份清單）、settings.ts、
+                session.ts（分頁與草稿）、storage.ts、desktop.ts（呼叫原生端）
+  介面功能      app/：從 main.ts 拆出來的功能，各自一個檔案（app/commands.ts 註冊所有指令、activity-bar.ts 左側
+                圖示列與選單、workspace-ui.ts 資料夾與文件索引、work-items-panel.ts 與 wiki-edit.ts 等 Azure DevOps
+                介面、git-actions.ts、settings-ui.ts、pdf-export.ts……）。它們透過 app/context.ts 的 `app`
+                取用 main.ts 的狀態與函式（main.ts 的 `app` 物件列出可以用的名稱），各自的 `init…()` 在 main.ts
+                原本的位置呼叫
   編輯器        editor.ts（CodeMirror 6）、live-preview.ts（即時預覽）、table-widget.ts 與 table-model.ts
                 （即時預覽中的表格）、table.ts、format.ts、inline-tools.ts、brackets.ts、auto-symbols.ts、words.ts、
                 writing-modes.ts、sections.ts（大綱拖曳重排）、slash-complete.ts、date-complete.ts、link-complete.ts
@@ -83,7 +89,7 @@ export interface PreviewPlugin {
 ```
 
 可參考 `web/src/plugins/highlight.ts`，然後在 `web/src/main.ts` 的 `new Preview(...)` 加進去即可。
-要新增功能時，在 `main.ts` 用 `commands.register(...)` 註冊一個指令，它就會自動出現在指令面板，並套用快速鍵。
+要新增功能時，在 `app/commands.ts` 用 `commands.register(...)` 註冊一個指令，它就會自動出現在指令面板，並套用快速鍵。
 
 安全性：核心一律不輸出原始 HTML（只有成對、不帶屬性的 `<u>`、`<mark>`、`<sup>`、`<sub>`、`<ins>` 與 `<br>` 會換成對應的格式），並會過濾 `javascript:` 等危險連結（`[[ ]]` 連結也一樣）；純文字與 JSON 的內容也都會跳脫，因此預覽可以直接把結果放進 DOM。
 
