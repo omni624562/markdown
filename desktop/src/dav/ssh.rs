@@ -1,7 +1,7 @@
 //! SSH 遠端資料夾：用 SFTP 直接編輯 Linux 主機上的檔案。
 //!
 //! - 前端用 `ssh://<連線代號>/路徑` 表示遠端檔案；開檔、存檔、檔案樹、Ctrl+P、衝突處理、
-//!   外部修改偵測都和 WebDAV 共用 `dav.rs`，這裡只負責連線與檔案操作（`RemoteFs`）。
+//!   外部修改偵測都和 WebDAV 共用 `dav/mod.rs`，這裡只負責連線與檔案操作（`RemoteFs`）。
 //! - 登入順序：輸入的密碼 → ssh-agent（Windows 的 OpenSSH 驗證代理或 Pageant）→
 //!   `~/.ssh` 裡的金鑰（id_ed25519、id_ecdsa、id_rsa）。指定金鑰檔時先用那把金鑰，
 //!   密碼欄當作金鑰的密語。都不行而且沒有輸入密碼時回傳 `NEED_PASSWORD`，前端再詢問。
