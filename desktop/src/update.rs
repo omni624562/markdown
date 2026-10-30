@@ -208,36 +208,27 @@ fn get(
 
 /// 開始下載 `url`，回傳內容的讀取器。Windows 上 ureq 連不上（例如公司的 Proxy 用自動設定指令碼，
 /// 或要用 Windows 帳號驗證）時，改用 WinHTTP 再試一次。
-fn open(url: &str, timeout: Option<Duration>) -> Result<Box<dyn Read>, String> {
-    match get(url, timeout) {
-        Ok(res) => Ok(Box::new(res.into_body().into_reader())),
-        // 檔案不存在不必換方式再試。
-        Err(e @ ureq::Error::StatusCode(404)) => Err(e.to_string()),
-        Err(e) => fallback(url, timeout, e),
-    }
-}
-
+/// Windows：先用 WinHTTP——和瀏覽器同一套 Proxy 設定（自動設定指令碼 PAC、WPAD）與 Windows 帳號驗證。
+/// 公司網路上 ureq 看不懂 PAC，會直接連 GitHub，常常很慢或要等到逾時；WinHTTP 不行時才改用 ureq。
 #[cfg(windows)]
-fn fallback(
-    url: &str,
-    timeout: Option<Duration>,
-    first: ureq::Error,
-) -> Result<Box<dyn Read>, String> {
+fn open(url: &str, timeout: Option<Duration>) -> Result<Box<dyn Read>, String> {
     // 下載執行檔時沒有整體的時間限制，WinHTTP 的逾時是每一次連線、讀取的等待時間。
     let wait = timeout.unwrap_or(Duration::from_secs(60));
     let agent = concat!("md-editor/", env!("CARGO_PKG_VERSION"));
-    crate::winhttp::get(url, wait, agent)
-        .map(|r| Box::new(r) as Box<dyn Read>)
+    let first = match crate::winhttp::get(url, wait, agent) {
+        Ok(r) => return Ok(Box::new(r)),
+        Err(e) => e,
+    };
+    get(url, timeout)
+        .map(|res| Box::new(res.into_body().into_reader()) as Box<dyn Read>)
         .map_err(|e| tr!("{e}（另一種連線方式的錯誤：{first}）", e = e, first = first))
 }
 
 #[cfg(not(windows))]
-fn fallback(
-    _url: &str,
-    _timeout: Option<Duration>,
-    first: ureq::Error,
-) -> Result<Box<dyn Read>, String> {
-    Err(first.to_string())
+fn open(url: &str, timeout: Option<Duration>) -> Result<Box<dyn Read>, String> {
+    get(url, timeout)
+        .map(|res| Box::new(res.into_body().into_reader()) as Box<dyn Read>)
+        .map_err(|e| e.to_string())
 }
 
 /// 記錄看過最新的更新資訊的流水號（app 資料夾的 `update-seen`）。

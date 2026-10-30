@@ -1,8 +1,8 @@
-//! 用 Windows 內建的 WinHTTP 下載（自動更新在公司網路上的備援）。
+//! 用 Windows 內建的 WinHTTP 下載（自動更新在 Windows 上優先用這個）。
 //!
 //! 公司網路常用自動設定指令碼（PAC、WPAD）指定 Proxy，Proxy 又要用 Windows 帳號驗證
 //! （NTLM、Kerberos）。瀏覽器和 Git（libgit2 也用 WinHTTP）都會自動處理，ureq 不會，
-//! 所以 ureq 連不上時改用 WinHTTP：Proxy 設定、帳號驗證與憑證都和系統一致。
+//! 所以自動更新先用 WinHTTP：Proxy 設定、帳號驗證與憑證都和系統一致，速度也和瀏覽器一樣。
 
 // 其他平台只有測試會用到網址拆解與錯誤說明。
 #![cfg_attr(not(windows), allow(dead_code))]
