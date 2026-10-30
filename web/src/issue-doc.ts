@@ -112,9 +112,10 @@ export function workItemMarkdown(d: AdoWorkItemDetail): string {
     section(t("工作項目說明"), html(d.description)),
     section(d.kind === "Bug" ? t("重現步驟") : t("驗收條件"), html(d.details)),
     section(t("系統資訊"), html(d.systemInfo ?? null)),
-    section(t("附件（{n}）", { n: d.attachments?.length ?? 0 }), attachmentsMarkdown(d.attachments ?? [])),
     section(t("相關工作項目（{n}）", { n: d.relations.length }), relationsMarkdown(d.relations)),
     section(t("留言（{n}）", { n: d.comments.length }), comments.join("\n\n")),
+    // 附件是要用時才去找的，放最下面。
+    section(t("附件（{n}）", { n: d.attachments?.length ?? 0 }), attachmentsMarkdown(d.attachments ?? [])),
   ]
     .filter(Boolean)
     .join("\n\n");
