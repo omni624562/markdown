@@ -804,9 +804,14 @@ pub(super) fn comments_of(v: &Value) -> Vec<WorkItemComment> {
         .iter()
         .filter_map(|c| {
             let text = str_of(c, "text")?.trim().to_string();
+            // 5.1 起是 createdBy／createdDate；TFS 2019（5.0-preview.2）是 revisedBy／revisedDate。
             (!text.is_empty()).then(|| WorkItemComment {
-                author: person(c.get("createdBy")).unwrap_or_default(),
-                created: str_of(c, "createdDate").map(str::to_string),
+                author: person(c.get("createdBy"))
+                    .or_else(|| person(c.get("revisedBy")))
+                    .unwrap_or_default(),
+                created: str_of(c, "createdDate")
+                    .or_else(|| str_of(c, "revisedDate"))
+                    .map(str::to_string),
                 text,
             })
         })

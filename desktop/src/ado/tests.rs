@@ -567,6 +567,25 @@ fn reads_comments_oldest_first() {
 }
 
 #[test]
+fn reads_tfs_2019_comments() {
+    // 5.0-preview.2 的留言用 revisedBy／revisedDate，不是 createdBy／createdDate。
+    let v = json!({"totalCount": 2, "comments": [
+        {"revision": 5, "text": "<div>已正常顯示</div>", "revisedBy": {"displayName": "晉萱", "uniqueName": "DOMAIN\\u1"}, "revisedDate": "2026-10-29T03:00:00Z"},
+        {"revision": 3, "text": "<div>請協助確認</div>", "revisedBy": {"displayName": "林冠霖"}, "revisedDate": "2026-10-28T03:00:00Z"}
+    ]});
+    let c = comments_of(&v);
+    assert_eq!(
+        c.iter()
+            .map(|c| (c.author.as_str(), c.created.as_deref()))
+            .collect::<Vec<_>>(),
+        [
+            ("林冠霖", Some("2026-10-28T03:00:00Z")),
+            ("晉萱", Some("2026-10-29T03:00:00Z"))
+        ]
+    );
+}
+
+#[test]
 fn reads_work_item_fields() {
     let v = json!({"id": 42, "fields": {
         "System.Title": "修正登入", "System.State": "Active", "System.WorkItemType": "Bug",
