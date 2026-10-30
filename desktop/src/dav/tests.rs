@@ -1,4 +1,5 @@
 use super::*;
+use tauri::async_runtime::block_on;
 
 fn item(rel: &str, is_dir: bool, etag: Option<&str>) -> Item {
     Item::new(rel.into(), is_dir, etag.map(Into::into))
@@ -22,7 +23,7 @@ fn remote_listing_is_bounded() {
         }
         Some(items)
     };
-    let files = walk_remote(&list);
+    let files = block_on(walk_remote(|dir: String| std::future::ready(list(&dir))));
     let calls = calls.load(Ordering::Relaxed);
     assert!(calls <= LIST_MAX_DIRS, "查了 {calls} 個資料夾");
     assert!(files.len() <= MAX_FILES);
@@ -47,40 +48,103 @@ fn walks_a_normal_tree_in_parallel() {
             _ => return None,
         })
     };
-    let mut files = walk_remote(&list);
+    let mut files = block_on(walk_remote(|dir: String| std::future::ready(list(&dir))));
     files.sort();
     assert_eq!(files, ["a.md", "筆記/b.md"]);
-    let doubled = parallel_map(&[1, 2, 3, 4, 5, 6, 7], 3, &|n: &i32| n * 2);
-    assert_eq!(doubled, [2, 4, 6, 8, 10, 12, 14]);
+}
+
+/// 記下被問了什麼的假遠端資料夾（輪詢的測試用）。
+#[derive(Default)]
+struct Fake {
+    stats: Mutex<Vec<String>>,
+    lists: Mutex<Vec<String>>,
+    offline: bool,
+}
+
+impl RemoteFs for Fake {
+    fn stat<'a>(&'a self, rel: &'a str) -> FsFuture<'a, Item> {
+        self.stats.lock().unwrap().push(rel.to_string());
+        let out = match rel {
+            "b/改名中.md" => Ok(item(rel, false, Some("\"s\""))),
+            "c.md" => Ok(item(rel, false, Some("\"c\""))),
+            _ => Err(DavError::NotFound),
+        };
+        Box::pin(std::future::ready(out))
+    }
+    fn list<'a>(&'a self, dir: &'a str) -> FsFuture<'a, Vec<Item>> {
+        self.lists.lock().unwrap().push(dir.to_string());
+        let out = if self.offline {
+            Err(DavError::Network("斷線".into()))
+        } else {
+            Ok(vec![
+                item(dir, true, None),
+                item("b/1.md", false, Some("\"1\"")),
+                item("b/2.md", false, None),
+            ])
+        };
+        Box::pin(std::future::ready(out))
+    }
+    fn get<'a>(&'a self, _: &'a str) -> FsFuture<'a, (Vec<u8>, Option<String>)> {
+        unimplemented!()
+    }
+    fn put<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a [u8],
+        _: Option<&'a str>,
+    ) -> FsFuture<'a, Option<String>> {
+        unimplemented!()
+    }
+    fn mkdir<'a>(&'a self, _: &'a str) -> FsFuture<'a, ()> {
+        unimplemented!()
+    }
+    fn rename<'a>(&'a self, _: &'a str, _: &'a str) -> FsFuture<'a, ()> {
+        unimplemented!()
+    }
+    fn delete<'a>(&'a self, _: &'a str) -> FsFuture<'a, ()> {
+        unimplemented!()
+    }
+}
+
+#[test]
+fn lists_a_level_concurrently_but_bounded() {
+    use std::sync::atomic::AtomicUsize;
+    let running = AtomicUsize::new(0);
+    let most = AtomicUsize::new(0);
+    let list = |dir: String| {
+        let (running, most) = (&running, &most);
+        async move {
+            let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+            most.fetch_max(now, Ordering::SeqCst);
+            for _ in 0..3 {
+                tokio::task::yield_now().await;
+            }
+            running.fetch_sub(1, Ordering::SeqCst);
+            Some(if dir.is_empty() {
+                (0..10)
+                    .map(|n| item(&format!("d{n}"), true, None))
+                    .collect()
+            } else {
+                vec![item(&format!("{dir}/a.md"), false, None)]
+            })
+        }
+    };
+    let files = block_on(walk_remote(list));
+    assert_eq!(files.len(), 10);
+    let most = most.load(Ordering::SeqCst);
+    assert!(most > 1 && most <= LIST_WORKERS, "同時查了 {most} 個資料夾");
 }
 
 #[test]
 fn polls_folders_with_several_open_files_at_once() {
-    let stats = std::cell::RefCell::new(Vec::new());
-    let lists = std::cell::RefCell::new(Vec::new());
-    let stat = |rel: &str| {
-        stats.borrow_mut().push(rel.to_string());
-        match rel {
-            "b/改名中.md" => Ok(item(rel, false, Some("\"s\""))),
-            "c.md" => Ok(item(rel, false, Some("\"c\""))),
-            _ => Err(DavError::NotFound),
-        }
-    };
-    let list = |dir: &str| {
-        lists.borrow_mut().push(dir.to_string());
-        Ok(vec![
-            item(dir, true, None),
-            item("b/1.md", false, Some("\"1\"")),
-            item("b/2.md", false, None),
-        ])
-    };
+    let fs = Fake::default();
     let rels: Vec<String> = ["b/1.md", "b/2.md", "b/改名中.md", "b/不見了.md", "c.md"]
         .iter()
         .map(|s| s.to_string())
         .collect();
-    let out = remote_etags(&stat, &list, &rels);
-    assert_eq!(*lists.borrow(), ["b"]);
-    let mut asked = stats.borrow().clone();
+    let out = block_on(remote_etags(&fs, &rels));
+    assert_eq!(*fs.lists.lock().unwrap(), ["b"]);
+    let mut asked = fs.stats.lock().unwrap().clone();
     asked.sort();
     assert_eq!(asked, ["b/不見了.md", "b/改名中.md", "c.md"]);
     assert_eq!(out["b/1.md"], Ok(Some("\"1\"".into())));
@@ -89,11 +153,11 @@ fn polls_folders_with_several_open_files_at_once() {
     assert_eq!(out["b/不見了.md"], Err(DavError::NotFound));
     assert_eq!(out["c.md"], Ok(Some("\"c\"".into())));
     // 資料夾查詢失敗（斷線）：這次都不回報。
-    let out = remote_etags(
-        &stat,
-        &|_| Err(DavError::Network("斷線".into())),
-        &rels[..2],
-    );
+    let fs = Fake {
+        offline: true,
+        ..Default::default()
+    };
+    let out = block_on(remote_etags(&fs, &rels[..2]));
     assert!(out.is_empty());
 }
 
@@ -269,4 +333,47 @@ fn dav_live() {
         DavError::NotFound
     );
     c.delete("測試 資料夾").unwrap();
+}
+
+/// 透過非同步的 `RemoteFs` 介面操作真的 WebDAV 伺服器（環境變數同 `dav_live`）。
+#[test]
+#[ignore]
+fn dav_live_async() {
+    let base = std::env::var("MD_DAV_TEST").unwrap();
+    let client = Client::new(
+        &base,
+        &std::env::var("MD_DAV_USER").unwrap(),
+        &std::env::var("MD_DAV_PASS").unwrap(),
+    );
+    let fs: &dyn RemoteFs = &client;
+    block_on(async {
+        let _ = fs.delete("非同步 測試").await;
+        fs.mkdir("非同步 測試").await.unwrap();
+        let v1 = fs.put("非同步 測試/a.md", b"one", None).await.unwrap();
+        assert_eq!(
+            fs.put("非同步 測試/a.md", b"x", None).await.unwrap_err(),
+            DavError::Changed
+        );
+        fs.put("非同步 測試/b.md", b"two", None).await.unwrap();
+        let (body, _) = fs.get("非同步 測試/a.md").await.unwrap();
+        assert_eq!(body, b"one");
+        let mut files = walk_remote(|dir| async move { fs.list(&dir).await.ok() }).await;
+        files.retain(|f| f.starts_with("非同步 測試/"));
+        files.sort();
+        assert_eq!(files, ["非同步 測試/a.md", "非同步 測試/b.md"]);
+        let rels = vec![
+            "非同步 測試/a.md".to_string(),
+            "非同步 測試/b.md".to_string(),
+        ];
+        let etags = remote_etags(fs, &rels).await;
+        assert_eq!(etags["非同步 測試/a.md"].as_ref().unwrap(), &v1);
+        fs.rename("非同步 測試/b.md", "非同步 測試/c.md")
+            .await
+            .unwrap();
+        assert_eq!(
+            fs.stat("非同步 測試/b.md").await.unwrap_err(),
+            DavError::NotFound
+        );
+        fs.delete("非同步 測試").await.unwrap();
+    });
 }
