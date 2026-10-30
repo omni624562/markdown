@@ -83,7 +83,7 @@ jobs:
 
   # 公開的「最新版」：標籤 latest 永遠指向 main 最新一次成功建置的版本。
   # 固定下載連結：https://github.com/<owner>/<repo>/releases/download/latest/omarker.exe
-  # 舊的連結（latest/md-editor.exe）也繼續提供同一個檔案，已經分享出去的連結不會失效。
+  # （改名前的 md-editor.exe 不再提供；程式的自動更新看 version.json 裡的網址，本來就是 omarker.exe。）
   latest:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: windows
@@ -157,8 +157,7 @@ jobs:
 
           ${howto}"
           gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          cp omarker.exe md-editor.exe
-          gh release create latest omarker.exe md-editor.exe version.json --repo "$GITHUB_REPOSITORY" \
+          gh release create latest omarker.exe version.json --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "最新版 v${version}（${today}）" --notes "$notes" --latest
 
   release:
