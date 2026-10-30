@@ -4,7 +4,7 @@
  * 圖片、表格、公式、待辦勾選框直接畫出來。文件內容永遠是原始碼，只改變顯示方式。
  */
 import { syntaxTree } from "@codemirror/language";
-import { type EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
+import { type EditorState, type Extension, type Range, StateEffect, StateField, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { type DetailsRegion, detailsRegions } from "./details-blocks.ts";
@@ -579,9 +579,32 @@ function activeSpans(state: EditorState): [number, number][] {
 }
 
 /** 區塊元件的結果：裝飾，加上所有可能畫成元件的區塊位置（判斷移動游標時要不要重算）。 */
-interface Blocks {
+export interface Blocks {
   set: DecorationSet;
   blocks: [number, number][];
+}
+
+/** 會形成區塊的字元：表格的 `|`、程式碼圍欄的 `` ` `` 與 `~`、公式的 `$`、`<details>` 的 `<`。 */
+const BLOCK_CHARS = /[|`~$<]/;
+
+/**
+ * 修改沒有碰到任何區塊（前後各留一個字元，改到區塊旁邊的那一行也算碰到），改動的行與刪掉的文字
+ * 也沒有會形成區塊的字元時：原本的區塊跟著修改位移就好。否則回傳 null，呼叫端重建。
+ */
+export function mapBlocks(value: Blocks, tr: Transaction): Blocks | null {
+  let touched = false;
+  const doc = tr.state.doc;
+  tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+    if (touched) return;
+    if (value.blocks.some(([from, to]) => fromA <= to + 1 && toA >= from - 1)) touched = true;
+    else if (BLOCK_CHARS.test(tr.startState.doc.sliceString(fromA, toA))) touched = true;
+    else if (BLOCK_CHARS.test(doc.sliceString(doc.lineAt(fromB).from, doc.lineAt(toB).to))) touched = true;
+  });
+  if (touched) return null;
+  return {
+    set: value.set.map(tr.changes),
+    blocks: value.blocks.map(([from, to]) => [tr.changes.mapPos(from), tr.changes.mapPos(to)]),
+  };
 }
 
 /**
@@ -1002,6 +1025,12 @@ export function livePreview(opts: LivePreviewOptions): Extension {
       if (!tr.docChanged && !treeChanged && !tr.reconfigured && !focusChanged(tr) && !forced) {
         // 只是移動游標，而且沒有跨進或跨出任何表格、公式、流程圖：沿用原本的結果。
         if (!tr.selection || !selectionTouchesBlock(value.blocks, tr.startState, tr.state)) return value;
+      }
+      // 打字但沒有碰到任何區塊：把原本的結果跟著位移就好，不必走過整份文件重建。
+      if (tr.docChanged && !tr.reconfigured && !focusChanged(tr) && !forced) {
+        const moved = !tr.selection || !selectionTouchesBlock(value.blocks, tr.startState, tr.state);
+        const mapped = moved ? mapBlocks(value, tr) : null;
+        if (mapped) return mapped;
       }
       return buildBlocks(tr.state, opts);
     },

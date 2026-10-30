@@ -157,15 +157,39 @@ fn clean_remote(url: &str) -> String {
     }
 }
 
-/// GitHub 遠端的擁有者與儲存庫名稱。
+/// 給使用者看的遠端網址：去掉網址裡的帳號與密碼（`https://user:token@host/…`），
+/// 錯誤訊息才不會把權杖顯示出來。
+pub fn display_remote(url: &str) -> String {
+    match url.split_once("://") {
+        Some((scheme, rest)) => {
+            let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+            let host = host.rsplit('@').next().unwrap_or(host);
+            format!(
+                "{scheme}://{host}{}{path}",
+                if path.is_empty() { "" } else { "/" }
+            )
+        }
+        None => url.to_string(),
+    }
+}
+
+/// GitHub 遠端的擁有者與儲存庫名稱。只接受 GitHub 允許的字元：名稱會直接放進
+/// `/repos/{owner}/{name}/…` 這樣的 API 網址，`..` 之類的寫法會讓請求跑到別的 API。
 pub fn github_repo(remote: &str) -> Option<(String, String)> {
     let clean = clean_remote(remote);
     let rest = clean
         .strip_prefix("https://github.com/")
         .or_else(|| clean.strip_prefix("http://github.com/"))?;
+    let valid = |s: &&str| {
+        !s.is_empty()
+            && *s != "."
+            && *s != ".."
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+    };
     let mut parts = rest.split('/');
-    let owner = parts.next().filter(|s| !s.is_empty())?;
-    let name = parts.next().filter(|s| !s.is_empty())?;
+    let owner = parts.next().filter(valid)?;
+    let name = parts.next().filter(valid)?;
     Some((owner.to_string(), name.to_string()))
 }
 
@@ -287,6 +311,19 @@ mod tests {
             Some(("omni".into(), "notes".into()))
         );
         assert_eq!(github_repo("https://gitlab.com/a/b"), None);
+        // 名稱會放進 API 網址：只接受 GitHub 允許的字元。
+        assert_eq!(github_repo("https://github.com/../user"), None);
+        assert_eq!(github_repo("https://github.com/a/.."), None);
+        assert_eq!(github_repo("https://github.com/a/b%2F..%2Fc"), None);
+        assert_eq!(
+            github_repo("https://github.com/my-org/repo.name_2"),
+            Some(("my-org".into(), "repo.name_2".into()))
+        );
+        assert_eq!(
+            display_remote("https://x-access-token:abc@github.com/a/b.git"),
+            "https://github.com/a/b.git"
+        );
+        assert_eq!(display_remote("http://nas"), "http://nas");
     }
 
     #[test]

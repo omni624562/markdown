@@ -443,7 +443,11 @@ impl EditorTools {
 
 impl EditorTools {
     /// 只允許已開啟的分頁，或工作區內的文件。
+    ///
+    /// 分頁清單是前端傳來的（`mcp_sync`），網頁端萬一被注入程式碼，可以把 `~/.ssh/id_rsa`
+    /// 之類的路徑列成「已開啟的分頁」。所以分頁也要是原生端真的開過的檔案（`KnownFiles`）。
     fn allowed_path(&self, path: &str) -> Result<PathBuf, String> {
+        let p = PathBuf::from(path);
         let open = self
             .snapshot
             .read()
@@ -451,8 +455,7 @@ impl EditorTools {
             .open
             .iter()
             .any(|d| d.path.as_deref() == Some(path));
-        let p = PathBuf::from(path);
-        if open {
+        if open && self.app.state::<crate::files::KnownFiles>().contains(&p) {
             return Ok(p);
         }
         let root = self
@@ -524,6 +527,9 @@ async fn require_token(
     req: Request,
     next: Next,
 ) -> Response {
+    if !local_host(req.headers()) {
+        return (StatusCode::FORBIDDEN, "只接受本機連線").into_response(); // i18n-ignore
+    }
     let given = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -534,6 +540,22 @@ async fn require_token(
     } else {
         (StatusCode::UNAUTHORIZED, "需要正確的權杖").into_response() // i18n-ignore
     }
+}
+
+/// `Host` 必須是本機位址：網頁用 DNS rebinding 把自己的網域指到 127.0.0.1 時，
+/// 送來的 `Host` 會是那個網域。
+fn local_host(headers: &axum::http::HeaderMap) -> bool {
+    let Some(host) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let name = match host.rsplit_once(':') {
+        Some((name, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => name,
+        _ => host,
+    };
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "127.0.0.1" | "localhost" | "[::1]"
+    )
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -574,28 +596,53 @@ fn load_token(dir: &Path) -> Result<String, String> {
     rotate_token(dir)
 }
 
+/// 回給前端的連線資訊。不含權杖：網頁端萬一被注入程式碼，也拿不到權杖。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpInfo {
     url: String,
-    /// 手動註冊到 Claude Code 的指令。
-    claude_add: String,
-    /// 手動註冊到 Codex 的指令（需要先把權杖設成環境變數）。
-    codex_add: String,
 }
 
 fn info(conn: &Connection) -> McpInfo {
     McpInfo {
         url: conn.url.clone(),
-        claude_add: format!(
+    }
+}
+
+/// 手動註冊到 Claude Code／Codex 的指令（含權杖）。Codex 要先把權杖設成環境變數。
+fn registration(conn: &Connection, tool: &str) -> Option<String> {
+    match tool {
+        "claude" => Some(format!(
             "claude mcp add --transport http {SERVER_NAME} {} --header \"Authorization: Bearer {}\"",
             conn.url, conn.token
-        ),
-        codex_add: format!(
+        )),
+        "codex" => Some(format!(
             "setx {TOKEN_ENV} {}\ncodex mcp add {SERVER_NAME} --url {} --bearer-token-env-var {TOKEN_ENV}",
             conn.token, conn.url
-        ),
+        )),
+        _ => None,
     }
+}
+
+/// 把註冊指令放進剪貼簿（設定的「複製註冊指令」）。由原生端複製，權杖不經過網頁。
+#[tauri::command]
+pub async fn mcp_copy_registration(
+    app: AppHandle,
+    tool: String,
+    mcp: State<'_, Mcp>,
+) -> Result<(), String> {
+    crate::settings::require_ai(&app)?;
+    let text = {
+        let running = mcp.running.lock().unwrap();
+        let conn = &running
+            .as_ref()
+            .ok_or_else(|| tr!("請先開啟「讓 AI 讀取目前的文件」"))?
+            .conn;
+        registration(conn, &tool).ok_or_else(|| tr!("不支援這個工具"))?
+    };
+    arboard::Clipboard::new()
+        .and_then(|mut c| c.set_text(text))
+        .map_err(|e| tr!("無法複製到剪貼簿：{e}", e = e))
 }
 
 /// 啟動 MCP 伺服器（已在執行時直接回傳連線資訊）。
@@ -713,6 +760,21 @@ mod tests {
         let t = tail("一二三四五", 2);
         assert!(t.ends_with("\n四五"));
         assert!(t.contains("省略 3 個字元"));
+    }
+
+    #[test]
+    fn only_accepts_local_host_header() {
+        let with = |host: &str| {
+            let mut h = axum::http::HeaderMap::new();
+            h.insert(header::HOST, host.parse().unwrap());
+            local_host(&h)
+        };
+        assert!(with("127.0.0.1:43821"));
+        assert!(with("localhost:43821"));
+        assert!(with("[::1]:43821"));
+        assert!(!with("evil.example:43821"));
+        assert!(!with("127.0.0.1.evil.example"));
+        assert!(!local_host(&axum::http::HeaderMap::new()));
     }
 
     #[test]

@@ -7,8 +7,12 @@
  *
  * 私鑰是 PKCS#8 DER 的 base64（一行），放在 GitHub 的 Actions secret「UPDATE_SIGNING_KEY」。
  * 簽章的內容要和 desktop/src/update.rs 的 `signed_message` 完全一致。
+ *
+ * 有兩種簽章：`signature`（v1，1.62.0 以前的版本驗證這個）與 `signatureV2`（v2，之後的版本驗證這個）。
+ * v2 另外簽了發佈時間、提交、日期，以及說明文字（`notes`、`changes`）的 SHA-256，
+ * 更新視窗顯示的說明也不能被改掉。
  */
-import { createPrivateKey, sign } from "node:crypto";
+import { createHash, createPrivateKey, sign } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -17,10 +21,31 @@ export function signedMessage(m) {
   return ["md-editor-update/v1", m.build, m.version, m.url, m.sha256.toLowerCase(), m.size].join("\n");
 }
 
-export function signManifest(manifest, keyBase64) {
+const sha256 = (text) => createHash("sha256").update(text ?? "", "utf8").digest("hex");
+
+/** v2 的簽章內容（desktop/src/update.rs 的 `signed_message_v2`）。 */
+export function signedMessageV2(m) {
+  return [
+    "md-editor-update/v2",
+    m.build,
+    m.version,
+    m.url,
+    m.sha256.toLowerCase(),
+    m.size,
+    m.issued,
+    m.commit ?? "",
+    m.date ?? "",
+    sha256(m.notes),
+    sha256(m.changes),
+  ].join("\n");
+}
+
+export function signManifest(manifest, keyBase64, now = new Date()) {
   const key = createPrivateKey({ key: Buffer.from(keyBase64.trim(), "base64"), format: "der", type: "pkcs8" });
-  const signature = sign(null, Buffer.from(signedMessage(manifest)), key).toString("base64");
-  return { ...manifest, signature };
+  const m = { ...manifest, issued: manifest.issued ?? now.toISOString() };
+  const signature = sign(null, Buffer.from(signedMessage(m)), key).toString("base64");
+  const signatureV2 = sign(null, Buffer.from(signedMessageV2(m)), key).toString("base64");
+  return { ...m, signature, signatureV2 };
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

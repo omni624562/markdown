@@ -33,4 +33,5 @@ pub static EN: &[(&str, &str)] = &[
     ("下載", "Clone"),
     ("無法建立 Git 儲存庫：{e}", "Couldn't create the Git repository: {e}"),
     ("初始版本", "Initial commit"),
+    ("檔案不在這個儲存庫中", "The file isn't in this repository."),
 ];

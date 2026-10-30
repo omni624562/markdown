@@ -44,3 +44,69 @@ export function shiftSourcepos(pos: string, delta: number): string {
   if (!m) return pos;
   return `${Number(m[1]) + delta}:${m[2]}-${Number(m[3]) + delta}:${m[4]}`;
 }
+
+/** 沒有結束標籤的元素。 */
+const VOID = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
+
+/**
+ * 把 Rust 產生的 HTML 依頂層節點切開（元素與元素之間的文字各一段），和瀏覽器解析出來的
+ * `childNodes` 一一對應。比對哪些段落改了只需要比字串，不必每次把整份文件解析成 DOM 再序列化。
+ *
+ * Rust 不輸出原始 HTML，屬性值與文字裡的 `<`、`>` 都已跳脫，所以只要數標籤的層數。
+ * 遇到看不懂的寫法時回傳 null，呼叫端改用一般的解析。
+ */
+export function splitTopLevel(html: string): string[] | null {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  let i = html.indexOf("<");
+  while (i !== -1) {
+    if (depth === 0 && i > start) {
+      parts.push(html.slice(start, i));
+      start = i;
+    }
+    if (html.startsWith("<!--", i)) {
+      const end = html.indexOf("-->", i + 4);
+      if (end === -1) return null;
+      i = end + 3;
+      if (depth === 0) {
+        parts.push(html.slice(start, i));
+        start = i;
+      }
+      i = html.indexOf("<", i);
+      continue;
+    }
+    const close = html.indexOf(">", i);
+    if (close === -1) return null;
+    const tag = html.slice(i + 1, close);
+    if (tag.startsWith("/")) {
+      depth--;
+      if (depth < 0) return null;
+    } else {
+      const name = /^[a-zA-Z][\w-]*/.exec(tag)?.[0].toLowerCase();
+      if (!name || name === "script" || name === "style" || name === "textarea" || name === "title") return null;
+      if (!tag.endsWith("/") && !VOID.has(name)) depth++;
+    }
+    i = close + 1;
+    if (depth === 0) {
+      parts.push(html.slice(start, i));
+      start = i;
+    }
+    i = html.indexOf("<", i);
+  }
+  if (depth !== 0) return null;
+  if (start < html.length) parts.push(html.slice(start));
+  return parts;
+}
+
+/** 頂層區塊的比對鍵：內容（不含行號）相同就視為同一段。 */
+export function partKey(part: string): string {
+  return part.startsWith("<") ? stripSourcepos(part) : `#text\u0000${part}`;
+}
+
+/** 區塊最外層元素的 `data-sourcepos`（文字段落是 null）。 */
+export function partSourcepos(part: string): string | null {
+  if (!part.startsWith("<")) return null;
+  const open = part.slice(0, part.indexOf(">") + 1);
+  return / data-sourcepos="([^"]*)"/.exec(open)?.[1] ?? null;
+}

@@ -220,6 +220,12 @@ pub fn read_at(root: &Path, path: &Path, id: u64) -> io::Result<String> {
 
 /// 檔案或資料夾改名後，版本記錄跟著搬過去。
 pub fn rename_at(root: &Path, from: &Path, to: &Path) {
+    // 改名的是一個檔案（大多數的情況）：版本記錄的資料夾名稱由路徑算出來，直接搬那一個，
+    // 不必讀遍所有檔案的 meta.json。
+    if to.is_file() {
+        move_dir(root, &file_dir(root, from), to);
+        return;
+    }
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
@@ -241,14 +247,19 @@ pub fn rename_at(root: &Path, from: &Path, to: &Path) {
         } else {
             to.join(rest)
         };
-        let target = file_dir(root, &new_path);
-        if target.exists() {
-            continue;
-        }
-        if fs::rename(entry.path(), &target).is_ok() {
-            let latest = read_meta(&target).and_then(|m| m["latest"].as_str().map(str::to_string));
-            let _ = write_meta(&target, &new_path.to_string_lossy(), latest.as_deref());
-        }
+        move_dir(root, &entry.path(), &new_path);
+    }
+}
+
+/// 把一個檔案的版本記錄（`dir`）搬到 `new_path` 對應的位置，並更新 meta.json 裡的路徑。
+fn move_dir(root: &Path, dir: &Path, new_path: &Path) {
+    let target = file_dir(root, new_path);
+    if !dir.is_dir() || target.exists() {
+        return;
+    }
+    if fs::rename(dir, &target).is_ok() {
+        let latest = read_meta(&target).and_then(|m| m["latest"].as_str().map(str::to_string));
+        let _ = write_meta(&target, &new_path.to_string_lossy(), latest.as_deref());
     }
 }
 
@@ -529,6 +540,23 @@ mod tests {
         assert_eq!(read_at(&root, Path::new("/w/c.md"), 1).unwrap(), "B");
         assert!(list_at(&root, Path::new("/w/舊/a.md")).is_empty());
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn renaming_one_file_moves_only_its_history() {
+        let root = temp("rename-file");
+        let work = temp("rename-work");
+        fs::create_dir_all(&work).unwrap();
+        let (from, to) = (work.join("a.md"), work.join("b.md"));
+        record_at(&root, &from, "A", Kind::Save, 1).unwrap();
+        record_at(&root, &work.join("其他.md"), "X", Kind::Save, 1).unwrap();
+        fs::write(&to, "A").unwrap();
+        rename_at(&root, &from, &to);
+        assert_eq!(read_at(&root, &to, 1).unwrap(), "A");
+        assert!(list_at(&root, &from).is_empty());
+        assert_eq!(list_at(&root, &work.join("其他.md")).len(), 1);
+        fs::remove_dir_all(&root).unwrap();
+        fs::remove_dir_all(&work).unwrap();
     }
 
     #[test]

@@ -1,7 +1,7 @@
 {
   "name": "md-editor-web",
   "private": true,
-  "version": "1.62.7",
+  "version": "1.62.8",
   "type": "module",
   "scripts": {
     "wasm": "wasm-pack build ../crates/md-wasm --release --target web --out-dir ../../web/pkg --out-name md_wasm",
@@ -9,7 +9,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc",
-    "test": "node --test \"src/**/*.test.ts\""
+    "test": "node --test \"src/**/*.test.ts\"",
+    "test:e2e": "node --test e2e/*.test.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/turndown": "^5.0.6",
+    "playwright": "1.63.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.7"
   }

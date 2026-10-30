@@ -25,6 +25,7 @@ pub static EN: &[(&str, &str)] = &[
     ("SSH：{host}", "SSH: {host}"),
     ("{host} 的主機金鑰和上次連線時不同：可能是伺服器重新安裝過，也可能有人在攔截連線。確定沒問題的話，請在終端機執行 ssh-keygen -R {host} 刪掉舊的記錄，再重新連線。", "The host key of {host} is different from last time. The server may have been reinstalled, or someone may be intercepting the connection. If you're sure it's fine, run ssh-keygen -R {host} in a terminal to remove the old record, then connect again."),
     ("這台主機使用憑證驗證主機金鑰，目前不支援", "This host uses a certificate for its host key, which isn't supported yet."),
+    ("無法讀取 ~/.ssh/known_hosts，不能確認 {host} 的主機金鑰。請檢查這個檔案的權限與內容後再連線。", "Couldn't read ~/.ssh/known_hosts, so the host key of {host} can't be verified. Check the file's permissions and contents, then connect again."),
     ("這台主機沒有開啟 SFTP：{e}", "SFTP isn't enabled on this host: {e}"),
     ("無法讀取金鑰檔「{path}」：{e}", "Couldn't read the key file \"{path}\": {e}"),
     ("無法登入：帳號、密碼或金鑰不正確", "Couldn't sign in: the user name, password or key is incorrect."),

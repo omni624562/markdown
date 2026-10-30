@@ -24,7 +24,10 @@ export interface OpenDoc {
   id: string;
   path: string | null;
   name: string;
-  text: string;
+  /** 內容；可以是函式，內容沒變（`version` 相同）時就不必取出整份文字。 */
+  text: string | (() => string);
+  /** 內容的版本（例如 CodeMirror 的文件物件）：和上次相同就沿用上次的分析結果。 */
+  version?: unknown;
 }
 
 interface Entry {
@@ -42,7 +45,7 @@ export class WorkspaceIndex {
   #root: string | null = null;
   #files = new Map<string, Entry>();
   /** 已開啟分頁的解析結果（內容沒變就沿用）。 */
-  #open = new Map<string, { text: string; info: DocInfo }>();
+  #open = new Map<string, { text: string; info: DocInfo; version?: unknown }>();
   #pending: Promise<void> | null = null;
   #scan: Scan;
   #read: Read;
@@ -119,12 +122,14 @@ export class WorkspaceIndex {
       const key = o.path ?? `tab:${o.id}`;
       keep.add(key);
       let cached = this.#open.get(key);
-      if (!cached || cached.text !== o.text) {
-        cached = { text: o.text, info: this.#parse(o.text) };
+      if (!cached || o.version === undefined || cached.version !== o.version) {
+        const text = typeof o.text === "function" ? o.text() : o.text;
+        if (!cached || cached.text !== text) cached = { text, info: this.#parse(text) };
+        cached = { ...cached, version: o.version };
         this.#open.set(key, cached);
       }
       const rel = (o.path && this.#files.get(o.path)?.rel) || o.name;
-      out.push({ path: o.path, rel, text: o.text, info: cached.info, tabId: o.id });
+      out.push({ path: o.path, rel, text: cached.text, info: cached.info, tabId: o.id });
     }
     for (const key of this.#open.keys()) if (!keep.has(key)) this.#open.delete(key);
     return out.sort((a, b) => collator.compare(a.rel, b.rel));

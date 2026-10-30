@@ -194,16 +194,6 @@ mod imp {
                 WINHTTP_FLAG_SECURE,
             )
         })?;
-        // 允許自動送出 Windows 帳號（只送給 Proxy；GitHub 不會要求）。
-        let policy = WINHTTP_AUTOLOGON_SECURITY_LEVEL_LOW;
-        unsafe {
-            WinHttpSetOption(
-                request.0,
-                WINHTTP_OPTION_AUTOLOGON_POLICY,
-                (&policy as *const u32).cast(),
-                std::mem::size_of::<u32>() as u32,
-            )
-        };
         for _ in 0..3 {
             check(unsafe { WinHttpSendRequest(request.0, null(), 0, null(), 0, 0, 0) })?;
             check(unsafe { WinHttpReceiveResponse(request.0, null_mut()) })?;
@@ -226,6 +216,17 @@ mod imp {
                 .into_iter()
                 .find(|s| supported & s != 0)
                 .ok_or_else(|| tr!("公司的 Proxy 需要輸入帳號密碼才能連外，請手動下載新版"))?;
+            // Proxy 要求驗證時才允許送出 Windows 帳號，而且只交給 Proxy（`TARGET_PROXY`）；
+            // 一開始就放寬的話，轉址到的其他伺服器要求驗證時也可能拿到。
+            let policy = WINHTTP_AUTOLOGON_SECURITY_LEVEL_LOW;
+            unsafe {
+                WinHttpSetOption(
+                    request.0,
+                    WINHTTP_OPTION_AUTOLOGON_POLICY,
+                    (&policy as *const u32).cast(),
+                    std::mem::size_of::<u32>() as u32,
+                )
+            };
             check(unsafe {
                 WinHttpSetCredentials(
                     request.0,

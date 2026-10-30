@@ -143,7 +143,15 @@ export function loadDraft(id: string): string | null {
   return storage.load(`draft:${id}`);
 }
 
+/** 每份草稿寫過幾次（這次開啟期間）：判斷草稿有沒有變，不必每次讀出來比對。 */
+const draftVersions = new Map<string, number>();
+
+export function draftVersion(id: string): number {
+  return draftVersions.get(id) ?? 0;
+}
+
 export function saveDraft(id: string, text: string): boolean {
+  draftVersions.set(id, draftVersion(id) + 1);
   return storage.save(`draft:${id}`, text);
 }
 
@@ -187,6 +195,7 @@ export function dropOrphanDrafts(): number {
 const WIKI_PREFIXES = ["wiki-base:", "wiki-mine:"];
 
 export function dropDraft(id: string): void {
+  draftVersions.set(id, draftVersion(id) + 1);
   storage.remove(`draft:${id}`);
   for (const prefix of WIKI_PREFIXES) storage.remove(prefix + id);
 }

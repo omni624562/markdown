@@ -1,5 +1,5 @@
 import { type DocKind, type RenderResult, render, renderDocument } from "../pkg/md_wasm.js";
-import { diffRange, lineDelta, shiftSourcepos, stripSourcepos } from "./preview-diff.ts";
+import { diffRange, lineDelta, partKey, partSourcepos, shiftSourcepos, splitTopLevel, stripSourcepos } from "./preview-diff.ts";
 
 /** 可以查詢元素的範圍：整個 DOM 節點，或這次新加入的段落（`Scope`）。 */
 export interface Queryable {
@@ -50,9 +50,9 @@ export interface PreviewPlugin {
   exportTransform?(root: HTMLElement): void | Promise<void>;
 }
 
-/** 頂層節點的比對鍵：內容（不含行號）相同就視為同一段。 */
+/** 頂層節點的比對鍵：內容（不含行號）相同就視為同一段。和 `partKey` 用不同的寫法（不能混用）。 */
 function nodeKey(node: Node): string {
-  if (node instanceof Element) return stripSourcepos(node.outerHTML);
+  if (node instanceof Element) return `dom\u0000${stripSourcepos(node.outerHTML)}`;
   return `${node.nodeName}\u0000${node.textContent ?? ""}`;
 }
 
@@ -98,17 +98,8 @@ export class Preview {
     this.#stale = false;
     if (result.error) return result;
 
-    // 先在 <template> 裡解析（不會載入圖片），讓外掛有機會在發出任何連線前換掉網址。
-    const tpl = document.createElement("template");
-    tpl.innerHTML = result.html;
-    for (const plugin of this.#plugins) {
-      try {
-        plugin.prepare?.(tpl.content);
-      } catch (e) {
-        console.error(`[${plugin.name}]`, e);
-      }
-    }
-    const added = this.#patch([...tpl.content.childNodes]);
+    const parts = splitTopLevel(result.html);
+    const added = (parts && this.#patchParts(parts)) ?? this.#patch(this.#parse(result.html));
     const scope = new Scope(added.filter((n): n is Element => n instanceof Element));
     for (const plugin of this.#plugins) {
       try {
@@ -121,6 +112,87 @@ export class Preview {
     // 外掛應該一對一替換節點；數量對不上就不再比對，下次整個重建。
     if (this.#keys && this.#root.childNodes.length !== this.#keys.length) this.#keys = null;
     return result;
+  }
+
+  /**
+   * 解析 HTML：先在 <template> 裡解析（不會載入圖片），讓外掛有機會在發出任何連線前換掉網址。
+   */
+  #parse(html: string): Node[] {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html;
+    for (const plugin of this.#plugins) {
+      try {
+        plugin.prepare?.(tpl.content);
+      } catch (e) {
+        console.error(`[${plugin.name}]`, e);
+      }
+    }
+    return [...tpl.content.childNodes];
+  }
+
+  /**
+   * 和 `#patch` 相同，但用 HTML 字串比對：只有改動的段落才解析成 DOM（大文件每次按鍵不用整份解析、
+   * 再把每個段落序列化回字串）。解析出來的節點數和切出來的段落對不上時回傳 null，改用 `#patch`。
+   */
+  #patchParts(parts: string[]): Node[] | null {
+    const keys = parts.map(partKey);
+    const pos = parts.map(partSourcepos);
+    const old = [...this.#root.childNodes];
+    const oldKeys = this.#keys;
+    const oldPos = this.#pos;
+    const parseExactly = (from: number, to: number): Node[] | null => {
+      if (from === to) return [];
+      const nodes = this.#parse(parts.slice(from, to).join(""));
+      return nodes.length === to - from ? nodes : null;
+    };
+    if (!oldKeys || oldKeys.length !== old.length) {
+      const all = parseExactly(0, parts.length);
+      if (!all) return null;
+      this.#keys = keys;
+      this.#pos = pos;
+      this.#root.replaceChildren(...all);
+      return all;
+    }
+    const { prefix, suffix } = diffRange(oldKeys, keys);
+    const middle = parseExactly(prefix, parts.length - suffix);
+    if (!middle) return null;
+    const added: Node[] = [];
+    // 保留的節點：內容一樣但行號可能移動了（前面增減了行），平移行號；欄位也變了就換成新的。
+    const keep = (oldIndex: number, newIndex: number): boolean => {
+      const node = old[oldIndex];
+      const delta = lineDelta(oldPos[oldIndex], pos[newIndex]);
+      if (delta === 0) return true;
+      if (delta === null || !(node instanceof Element)) {
+        const fresh = parseExactly(newIndex, newIndex + 1);
+        if (!fresh) return false;
+        node.replaceWith(fresh[0]);
+        added.push(fresh[0]);
+        return true;
+      }
+      const targets = node.hasAttribute("data-sourcepos") ? [node] : [];
+      targets.push(...node.querySelectorAll("[data-sourcepos]"));
+      for (const el of targets) el.setAttribute("data-sourcepos", shiftSourcepos(el.getAttribute("data-sourcepos")!, delta));
+      return true;
+    };
+    for (let i = 0; i < prefix; i++) if (!keep(i, i)) return this.#rebuild(parts, keys, pos);
+    for (let i = 0; i < suffix; i++) {
+      if (!keep(old.length - suffix + i, parts.length - suffix + i)) return this.#rebuild(parts, keys, pos);
+    }
+    this.#keys = keys;
+    this.#pos = pos;
+    const anchor = suffix ? (this.#root.childNodes[this.#root.childNodes.length - suffix] ?? null) : null;
+    for (const node of old.slice(prefix, old.length - suffix)) node.remove();
+    for (const node of middle) this.#root.insertBefore(node, anchor);
+    return [...added, ...middle];
+  }
+
+  /** 比對到一半發現對不上：整個重建。 */
+  #rebuild(parts: string[], keys: string[], pos: (string | null)[]): Node[] {
+    const all = this.#parse(parts.join(""));
+    this.#keys = all.length === parts.length ? keys : null;
+    this.#pos = pos;
+    this.#root.replaceChildren(...all);
+    return all;
   }
 
   /**

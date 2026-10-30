@@ -71,7 +71,7 @@ import { mathPlugin, renderTex } from "./plugins/math.ts";
 import { imageSize, livePreview } from "./live-preview.ts";
 import { codeToolsPlugin } from "./plugins/code-tools.ts";
 import { tablesPlugin } from "./plugins/tables.ts";
-import { mermaidPlugin, mermaidTheme, renderMermaid } from "./plugins/mermaid.ts";
+import { mermaidPlugin, mermaidTheme, renderMermaid, setMermaidBlockRemote } from "./plugins/mermaid.ts";
 import { blockRemoteImages, blockRemoteImagesInHtml } from "./remote-images.ts";
 import { Preview, type PreviewPlugin } from "./preview.ts";
 import sampleEn from "./sample.en.md?raw";
@@ -94,6 +94,7 @@ import {
   type DocMeta,
   dropDraft,
   dropOrphanDrafts,
+  draftVersion,
   loadDraft,
   loadProjectView,
   loadSession,
@@ -140,6 +141,7 @@ import { PAPERS, PRINT_ROOT_CSS, type PdfOptions, coverHtml, pageCss, pageLayout
 import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
 import { type FileRef, backlinks, linkTarget, resolveWiki } from "./links.ts";
 import { type IndexedDoc, type OpenDoc, WorkspaceIndex } from "./workspace-index.ts";
+import { setBounded } from "./bounded.ts";
 import { isoDate, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
 import { REPO_URL, SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
@@ -380,6 +382,8 @@ function davImageCached(path: string): Promise<string> {
 // ---- 文件裡的工作項目連結：旁邊顯示目前的狀態（即時預覽、預覽、Wiki 內容） ----------------
 
 /** 讀過的狀態（五分鐘內不重新讀取；讀不到的記成 null）。 */
+/** 工作項目相關的快取最多記幾筆（`setBounded`）。 */
+const CACHE_MAX = 2000;
 const chipCache = new Map<number, { item: AdoWorkItem | null; at: number }>();
 const chipWanted = new Set<number>();
 let chipTimer = 0;
@@ -401,10 +405,10 @@ async function flushChips(): Promise<void> {
   chipWanted.clear();
   if (!ids.length) return;
   // 先記下時間，讀取期間不會重複排隊。
-  for (const id of ids) chipCache.set(id, { item: chipCache.get(id)?.item ?? null, at: Date.now() });
+  for (const id of ids) setBounded(chipCache, id, { item: chipCache.get(id)?.item ?? null, at: Date.now() }, CACHE_MAX);
   try {
     const items = await desktop!.adoWorkItemsByIds(ids);
-    for (const id of ids) chipCache.set(id, { item: items.find((w) => w.id === id) ?? null, at: Date.now() });
+    for (const id of ids) setBounded(chipCache, id, { item: items.find((w) => w.id === id) ?? null, at: Date.now() }, CACHE_MAX);
   } catch {
     // 連不到伺服器：留著舊的狀態，五分鐘後再試。
   }
@@ -730,7 +734,11 @@ function scheduleRender(): void {
   };
   // 更新一次要花不少時間（大文件、慢的電腦）：打字期間每隔一段時間才更新一次，
   // 間隔依上次花的時間調整，停手後一樣會很快更新到最新。
-  if (lastRenderMs > 25 || editor.view.state.doc.length > LARGE_DOC) {
+  // 預覽沒有顯示時（即時預覽、原始碼）只更新大綱與字數，不必每個字都算：停手一下再更新。
+  if (!previewVisible()) {
+    clearTimeout(renderTimer);
+    renderTimer = window.setTimeout(run, Math.min(400, Math.max(250, lastRenderMs * 2)));
+  } else if (lastRenderMs > 25 || editor.view.state.doc.length > LARGE_DOC) {
     clearTimeout(renderTimer);
     renderTimer = window.setTimeout(run, Math.min(400, Math.max(120, lastRenderMs * 2)));
   } else {
@@ -754,9 +762,19 @@ function renderNow(full = false): void {
   renderStats(result);
   renderSaveState();
   editor.relint();
-  syncPreview();
-  updateActiveHeading();
+  // 對齊捲動位置、標示目前的標題都要量元素的位置（強制重新排版）：放到下一個畫面更新時一起做，
+  // 每次按鍵只排版一次。
+  scheduleLayoutWork();
   lastRenderMs = performance.now() - started;
+}
+
+let layoutFrame = 0;
+function scheduleLayoutWork(): void {
+  cancelAnimationFrame(layoutFrame);
+  layoutFrame = requestAnimationFrame(() => {
+    syncPreview();
+    updateActiveHeading();
+  });
 }
 
 function renderError({ error }: RenderResult): void {
@@ -786,7 +804,8 @@ let emptyStateKey = "";
  * 有預覽時放在預覽區；即時預覽、原始碼只有編輯區，改放在編輯區中間（不擋打字，打字就消失）。
  */
 function renderEmptyState(text: string): void {
-  const empty = text.trim() === "";
+  // 不用 trim()：大文件每次都會複製一份字串。
+  const empty = !/\S/.test(text);
   emptyStateEl.hidden = !empty;
   if (!empty) {
     emptyStateKey = "";
@@ -870,6 +889,8 @@ async function renderRecentFiles(card: HTMLElement, key: string): Promise<void> 
 }
 
 let outlineKey = "";
+/** 大綱的結構（範圍、能否搬移、各標題的層級）；一樣時只更新項目的文字與行號。 */
+let outlineShape = "";
 /** 大綱收合的標題（每個分頁各自記住，以「層級 標題文字」辨認，編輯後仍維持）。 */
 const outlineCollapsed = new Map<string, Set<string>>();
 const collapseKey = (h: Heading) => `${h.level} ${h.text}`;
@@ -954,10 +975,28 @@ function renderOutline(headings: Heading[]): void {
   const key = `${scope}\n${movable}\n${headings.map((h) => `${h.level} ${h.line} ${h.id} ${h.text}`).join("\n")}`;
   if (key === outlineKey && outlineList.childElementCount === headings.length) return;
   outlineKey = key;
+  const levels = headings.map((h) => h.level);
+  // 標題的數量與層級都沒變（例如正在改某個標題的文字、在上面加了一行）：只更新原本的項目，
+  // 不重建整份大綱（重建後要重新標示目前的段落、捲到它的位置，大文件每個字都要重新排版）。
+  const shape = `${scope}\n${movable}\n${levels.join(",")}`;
+  if (shape === outlineShape && outlineList.childElementCount === headings.length) {
+    const links = outlineList.querySelectorAll<HTMLAnchorElement>("a");
+    headings.forEach((h, i) => {
+      const a = links[i];
+      if (a.dataset.id !== h.id) {
+        a.href = `#${encodeURIComponent(h.id)}`;
+        a.dataset.id = h.id;
+      }
+      if (a.dataset.line !== String(h.line)) a.dataset.line = String(h.line);
+      const label = h.text || t("（空白標題）");
+      if (a.textContent !== label) a.textContent = label;
+    });
+    return;
+  }
+  outlineShape = shape;
   // 重新產生大綱時保留鍵盤焦點（例如用 Alt+↑／↓ 連續搬移章節）。
   const focused = document.activeElement as HTMLElement | null;
   const focusedIndex = focused && outlineList.contains(focused) ? Number(focused.dataset.index) : -1;
-  const levels = headings.map((h) => h.level);
   const top = Math.min(...levels);
   outlineList.replaceChildren(
     ...headings.map((h, i) => {
@@ -1073,6 +1112,7 @@ const remoteAllowed = new Set<string>();
 function blockRemote(): boolean {
   return settings.value.blockRemoteImages && !remoteAllowed.has(active.id);
 }
+setMermaidBlockRemote(blockRemote);
 
 /** 載入這份文件的遠端圖片（不改設定，其他文件仍然封鎖）。 */
 function allowRemoteImages(): void {
@@ -1580,8 +1620,15 @@ function renderStats({ stats }: RenderResult): void {
     (stats.readingMinutes ? t(" · 約 {n} 分鐘讀完", { n: stats.readingMinutes }) : "");
 }
 
+/** 雜湊（`hash()`）開頭記著內容的長度：長度不同就一定改過，不必算整份文件的雜湊。 */
+function sameLength(h: string | null, length: number): boolean {
+  if (h === null) return true;
+  const i = h.indexOf(":");
+  return i < 0 || h.slice(0, i) === String(length);
+}
+
 function renderSaveState(): void {
-  const dirty = baseline !== editorHash();
+  const dirty = !sameLength(baseline, editor.view.state.doc.length) || baseline !== editorHash();
   if (active.dirty !== dirty) {
     active.dirty = dirty;
     renderTabs();
@@ -1652,12 +1699,20 @@ previewScroller.addEventListener(
 let saveTimer: number | undefined;
 let pendingDraft: { id: string; doc: Text } | null = null;
 
+/**
+ * 草稿在停手多久後寫入：寫入瀏覽器的儲存空間是同步的，文件越大越久（會卡住畫面），
+ * 大文件不要每停一下就寫：100 KB 以下 0.4 秒，之後每 100 KB 多等 0.4 秒，最多 3 秒。
+ */
+function draftDelay(length: number): number {
+  return Math.min(3000, 400 * Math.max(1, Math.ceil(length / 100_000)));
+}
+
 function scheduleAutosave(doc: Text): void {
   clearTimeout(saveTimer);
   draftSaved = false;
   // 記下是哪個分頁的內容：計時器觸發前可能已經切換到別的分頁。
   pendingDraft = { id: active.id, doc };
-  saveTimer = window.setTimeout(flushDraft, 400);
+  saveTimer = window.setTimeout(flushDraft, draftDelay(doc.length));
 }
 
 // ---- 自動存檔（桌面版、已經存過的檔案） ---------------------------------------
@@ -1705,7 +1760,9 @@ async function autoSaveNow(): Promise<void> {
       });
       return;
     }
-    gitPanel?.refreshSoon(300);
+    // 自動存檔：只更新這個檔案的 Git 狀態，不重新掃描整個資料夾。
+    if (out.handle?.path) void gitPanel?.fileSaved(out.handle.path);
+    else gitPanel?.refreshSoon(300);
     if (doc === active) {
       fileHandle = out.handle;
       setBaseline(text, true);
@@ -2189,7 +2246,7 @@ function peekWorkItem(id: number): Promise<AdoWorkItemDetail> {
   const hit = workItemPeek.get(id);
   if (hit && Date.now() - hit.at < 60_000) return hit.item;
   const item = desktop!.adoWorkItem(id);
-  workItemPeek.set(id, { at: Date.now(), item });
+  setBounded(workItemPeek, id, { at: Date.now(), item }, 200);
   item.catch(() => workItemPeek.delete(id));
   return item;
 }
@@ -3744,7 +3801,7 @@ function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<A
         .then(({ links, parents }) => {
           for (const id of missing) workItemParentOf.set(id, null);
           for (const [id, parent] of links) workItemParentOf.set(id, parent);
-          for (const p of parents) workItemParentItems.set(p.id, workItemRow(p));
+          for (const p of parents) setBounded(workItemParentItems, p.id, workItemRow(p), CACHE_MAX);
         })
         .catch((e) => {
           // 讀不到就當成都沒有上層（不要一直重試）。
@@ -4243,7 +4300,7 @@ function saveSeen(next: SeenMap): void {
 
 /** 記下讀到的工作項目；`mine` 是指派給你、還沒結束的清單。 */
 function noteWorkItems(items: AdoWorkItem[], mine: boolean): void {
-  for (const w of items) knownWorkItems.set(w.id, w);
+  for (const w of items) setBounded(knownWorkItems, w.id, w, CACHE_MAX);
   const { seen, changed } = remember(workItemSeen, items, mine);
   if (changed) saveSeen(seen);
   if (mine) pollItems = items;
@@ -4541,12 +4598,18 @@ const docIndex = new WorkspaceIndex(
 function openDocsForIndex(): OpenDoc[] {
   return docs
     .filter((d) => (d === active ? kind : d.kind) === "markdown")
-    .map((d) => ({
-      id: d.id,
-      path: docPath(d),
-      name: d === active ? fileName : d.name,
-      text: d === active ? editor.text : (d.state?.doc.toString() ?? loadDraft(d.id) ?? ""),
-    }));
+    .map((d) => {
+      // 內容的版本：CodeMirror 的文件物件（內容不變時是同一個），還沒載入的分頁看草稿寫過幾次。
+      // 版本沒變就不必取出整份文字、也不必讀草稿（每次編輯後都會重新整理面板）。
+      const doc = d === active ? editor.view.state.doc : d.state?.doc;
+      return {
+        id: d.id,
+        path: docPath(d),
+        name: d === active ? fileName : d.name,
+        version: doc ?? `draft:${draftVersion(d.id)}`,
+        text: () => (doc ? doc.toString() : (loadDraft(d.id) ?? "")),
+      };
+    });
 }
 
 /** 資料夾（本機）中的所有文件加上已開啟的分頁；網頁版與遠端資料夾只有已開啟的分頁。 */
@@ -5538,8 +5601,13 @@ async function closeTab(id: string): Promise<void> {
   }
   if (pendingDraft?.id === doc.id) pendingDraft = null;
   rememberClosed(doc);
+  const closedPath = docPath(doc);
   const i = docs.indexOf(doc);
   docs.splice(i, 1);
+  // 遠端（WebDAV、SSH）的檔案：沒有其他分頁開著同一個檔案時，原生端不用再輪詢它、留著它的內容。
+  if (desktop && closedPath && isRemote(closedPath) && !docs.some((d) => docPath(d) === closedPath)) {
+    void desktop.davClose(closedPath).catch(() => {});
+  }
   dropDraft(doc.id);
   remoteAllowed.delete(doc.id);
   outlineCollapsed.delete(doc.id);
@@ -8054,7 +8122,7 @@ async function startSlideshow(fromCursor: boolean): Promise<void> {
     toast(t("文件是空的，沒有可以播放的內容。"));
     return;
   }
-  slideshow ??= new Slideshow();
+  slideshow ??= new Slideshow((href) => void followLink(href).catch(reportError));
   const line = editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number;
   slideshow.open(slides, fromCursor ? slideAtLine(slides, line) : 0, () => editor.view.focus());
   if (slides.length === 1 && !editor.text.includes("\n---")) {
@@ -8861,7 +8929,7 @@ settings.subscribe(applySettings);
 const settingsDialog = new SettingsDialog(
   settings,
   { get: () => themePref, set: setTheme },
-  desktop && ai ? { available: () => desktop!.aiTools(), registration: () => ai!.registration() } : null,
+  desktop && ai ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => ai!.copyRegistration(tool) } : null,
   updater
     ? {
         async version() {

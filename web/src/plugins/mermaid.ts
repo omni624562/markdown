@@ -1,6 +1,7 @@
 import type { PreviewPlugin, Queryable } from "../preview.ts";
 import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
+import { blockRemoteInMermaid, blockRemoteInSvg } from "../remote-images.ts";
 
 type Mermaid = typeof import("mermaid").default;
 
@@ -34,15 +35,25 @@ export function mermaidTheme(): "dark" | "default" {
   return isDark() ? "dark" : "default";
 }
 
+/** 目前是否封鎖遠端圖片（設定「封鎖遠端圖片」，由主程式提供）。 */
+let blockRemote: () => boolean = () => false;
+
+/** 封鎖遠端圖片時，流程圖裡的遠端圖片與 CSS 網址也要拿掉（`%%{init: {"themeCSS": …}}%%` 可以寫 `url(…)`）。 */
+export function setMermaidBlockRemote(fn: () => boolean): void {
+  blockRemote = fn;
+}
+
 /** 把 Mermaid 原始碼畫成 SVG（同樣的原始碼與主題只畫一次）。語法錯誤時丟出例外。 */
 export async function renderMermaid(code: string): Promise<string> {
   const mermaid = await loadMermaid();
-  const key = `${initializedTheme}\u0000${code}`;
+  const block = blockRemote();
+  const key = `${initializedTheme}\u0000${block ? 1 : 0}\u0000${code}`;
   let svg = cache.get(key);
   if (svg === undefined) {
     const id = `mermaid-${++seq}`;
     try {
-      ({ svg } = await mermaid.render(id, code));
+      ({ svg } = await mermaid.render(id, block ? blockRemoteInMermaid(code) : code));
+      if (block) svg = blockRemoteInSvg(svg);
     } finally {
       // 語法錯誤時 Mermaid 會把繪圖用的暫存元素留在 body 裡。
       document.getElementById(`d${id}`)?.remove();
