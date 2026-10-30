@@ -2657,6 +2657,9 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .topbar .issue-head.in-topbar .issue-title { flex: 1 1 0; min-width: 0; font-size: 14px; }
 .topbar .issue-head.in-topbar .issue-actions { flex-wrap: nowrap; }
 .topbar .issue-head.in-topbar .issue-nav { margin-left: 0; }
+/* 標頭在頂端列時只留主選單的「⋯」（內容的「更多動作」併進去）；內容的按鈕和程式的按鈕之間一條分隔線。 */
+.topbar .issue-head.in-topbar #issue-more { display: none; }
+.topbar.has-issue-head .top-actions { margin-left: 4px; border-left: 1px solid var(--border); }
 .topbar.has-issue-head .tab-bar { flex: 0 0 auto; max-width: 30%; border-right: 1px solid var(--border); }
 /* 並排顯示時還在編輯文件，分頁列多留一點空間。 */
 body:has(.workspace.issue-side) .topbar.has-issue-head .tab-bar { max-width: 45%; }
