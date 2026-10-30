@@ -81,6 +81,7 @@ export function workItemMarkdown(d: AdoWorkItemDetail): string {
   const fields = fieldTable([
     [t("類型"), inlineText(d.kind)],
     [t("狀態"), inlineText(d.state)],
+    [t("原因"), inlineText(d.reason ?? "")],
     [t("指派給"), inlineText(d.assignedTo ?? "")],
     [t("建立者"), inlineText(d.createdBy ?? "")],
     [t("專案"), inlineText(d.project)],
@@ -99,11 +100,28 @@ export function workItemMarkdown(d: AdoWorkItemDetail): string {
     // 「說明」在共用的翻譯是選單的「Help」；這裡是工作項目的 Description 欄位。
     section(t("工作項目說明"), html(d.description)),
     section(d.kind === "Bug" ? t("重現步驟") : t("驗收條件"), html(d.details)),
+    section(t("系統資訊"), html(d.systemInfo ?? null)),
     section(t("相關工作項目（{n}）", { n: d.relations.length }), relationsMarkdown(d.relations)),
     section(t("留言（{n}）", { n: d.comments.length }), comments.join("\n\n")),
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/** 狀態的分類（決定顏色，比照 TFS 網頁）：新增灰、進行中藍、已解決橘、完成綠、移除淡灰。 */
+export type StateTone = "new" | "active" | "resolved" | "closed" | "removed";
+
+const STATE_TONES: [StateTone, string[]][] = [
+  // 中文的流程範本狀態名稱（不是介面文字）。
+  ["resolved", ["resolved", "已解決"]], // i18n-ignore
+  ["closed", ["closed", "done", "completed", "已關閉", "已完成", "完成", "關閉"]], // i18n-ignore
+  ["removed", ["removed", "cut", "inactive", "已移除", "已刪除"]], // i18n-ignore
+  ["active", ["active", "committed", "in progress", "doing", "approved", "open", "作用中", "進行中"]], // i18n-ignore
+];
+
+export function stateTone(state: string): StateTone {
+  const s = state.trim().toLowerCase();
+  return STATE_TONES.find(([, names]) => names.includes(s))?.[0] ?? "new";
 }
 
 /** 工作項目網址裡的編號（`…/_workitems/edit/123`）；不是工作項目的網址回傳 null。 */

@@ -341,6 +341,8 @@ export interface AdoWorkItem {
 
 export interface AdoWorkItemDetail extends AdoWorkItem {
   createdBy: string | null;
+  /** 狀態的原因（例如 Fixed）；舊版或讀不到時沒有。 */
+  reason?: string | null;
   /** 區域、反覆項目（例如「產品\\前端」）。 */
   area: string | null;
   iteration: string | null;
@@ -349,6 +351,8 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   description: string | null;
   /** 驗收條件或重現步驟（HTML）。 */
   details: string | null;
+  /** 系統資訊（Bug，HTML）。 */
+  systemInfo?: string | null;
   /** 留言（舊到新，內容是 HTML）。 */
   comments: { author: string; created: string | null; text: string }[];
   /** 修訂版本（更新時用來確認這段時間沒有被別人改過）。 */

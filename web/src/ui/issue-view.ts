@@ -53,6 +53,8 @@ export interface IssueSource {
   shortcut?: { has(): boolean; toggle(): void };
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
   link?(href: string): boolean;
+  /** 內容畫好之後調整樣子（例如工作項目比照 TFS 網頁）；每次重畫都會呼叫。 */
+  decorate?(body: HTMLElement): void;
 }
 
 export interface IssueViewHooks {
@@ -513,6 +515,7 @@ export class IssueView {
     const top = this.#scroll.scrollTop;
     this.#markdown = md;
     this.#h.render(md, this.#body);
+    this.#decorate();
     this.#scroll.scrollTop = keepScroll ? top : (this.#restoreScroll ?? 0);
     if (!keepScroll) this.#restoreScroll = null;
     if (!this.#find.hidden) this.#search();
@@ -525,7 +528,14 @@ export class IssueView {
 
   /** 用已經讀到的內容重畫（主題或設定改變時，不用重新向伺服器讀取）。 */
   rerender(): void {
-    if (this.isOpen && this.#markdown) this.#h.render(this.#markdown, this.#body);
+    if (this.isOpen && this.#markdown) {
+      this.#h.render(this.#markdown, this.#body);
+      this.#decorate();
+    }
+  }
+
+  #decorate(): void {
+    this.#source?.decorate?.(this.#body);
   }
 
   close(): void {

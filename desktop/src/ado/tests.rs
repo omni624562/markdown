@@ -590,7 +590,8 @@ fn reads_work_item_fields() {
     let v = json!({"id": 42, "fields": {
         "System.Title": "修正登入", "System.State": "Active", "System.WorkItemType": "Bug",
         "System.TeamProject": "產品", "System.AssignedTo": {"displayName": "王小明"},
-        "Microsoft.VSTS.TCM.ReproSteps": "<div>步驟</div>",
+        "Microsoft.VSTS.TCM.ReproSteps": "<div>步驟</div>", "Microsoft.VSTS.TCM.SystemInfo": "<div>Chrome</div>",
+        "System.Reason": "Fixed",
         "System.Tags": "前端; 登入 ;", "Microsoft.VSTS.Common.Priority": 2,
         "System.AreaPath": "產品\\前端"
     }});
@@ -602,6 +603,8 @@ fn reads_work_item_fields() {
     assert_eq!(d.item.title, "修正登入");
     assert_eq!(d.item.assigned_to.as_deref(), Some("王小明"));
     assert_eq!(d.details.as_deref(), Some("<div>步驟</div>"));
+    assert_eq!(d.system_info.as_deref(), Some("<div>Chrome</div>"));
+    assert_eq!(d.reason.as_deref(), Some("Fixed"));
     assert_eq!(
         d.item.web_url,
         "https://tfs/DC/%E7%94%A2%E5%93%81/_workitems/edit/42"

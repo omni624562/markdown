@@ -117,6 +117,8 @@ export const common: Record<string, Translation> = {
   // 好幾個區域共用的字。
   "標籤": "Tags",
   "重現步驟": "Repro Steps",
+  "原因": "Reason",
+  "系統資訊": "System Info",
   "驗收條件": "Acceptance Criteria",
   "已關閉": "Closed",
   "專案": "Project",

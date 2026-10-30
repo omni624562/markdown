@@ -24,6 +24,8 @@ pub struct WorkItemDetail {
     #[serde(flatten)]
     pub(super) item: WorkItem,
     pub(super) created_by: Option<String>,
+    /// 狀態的原因（例如 Fixed、Moved to the backlog）。
+    pub(super) reason: Option<String>,
     /// 區域與反覆項目（例如「產品\前端」「產品\Sprint 3」）。
     pub(super) area: Option<String>,
     pub(super) iteration: Option<String>,
@@ -32,6 +34,8 @@ pub struct WorkItemDetail {
     pub(super) description: Option<String>,
     /// 驗收條件或重現步驟（HTML）。
     pub(super) details: Option<String>,
+    /// 系統資訊（Bug 的環境說明，HTML）。
+    pub(super) system_info: Option<String>,
     /// 留言（舊到新）；伺服器不支援或讀不到時是空的。
     pub(super) comments: Vec<WorkItemComment>,
     /// 修訂版本（改狀態、指派時用來確認這段時間沒有被別人改過）。
