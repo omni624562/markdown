@@ -2,7 +2,7 @@
  * 可以複選的下拉選單（工作項目的類型、專案、區域篩選）：
  * 按鈕的樣子和一般的下拉選單一樣，打開是一排勾選框。第一列「全部」一次勾或取消全部（部分勾選時顯示半勾），
  * 滑鼠移到某一列時右邊有「只選這個」；選項多時可以打字找。
- * 不限時全部都是勾的；選單關上（或按「完成」）時才套用，不會每勾一個就重新查一次。
+ * 不限時全部都是勾的；離開選單（點外面、按 Esc 或 Enter）時才套用，不會每勾一個就重新查一次。
  *
  * `single` 是單選（例如「人」）：同樣的按鈕與選單樣子，點一下就套用並關上。
  */
@@ -72,15 +72,7 @@ export class MultiSelect {
     const foot = document.createElement("div");
     foot.className = "multi-select-foot";
     this.#status = document.createElement("span");
-    const done = document.createElement("button");
-    done.type = "button";
-    done.className = "btn btn-small btn-primary";
-    done.textContent = t("完成");
-    done.addEventListener("click", () => {
-      this.#pop.hidePopover();
-      this.el.focus();
-    });
-    foot.append(this.#status, done);
+    foot.append(this.#status);
     this.#pop.append(this.#search, this.#allRow, this.#list, foot);
     if (o.single) {
       this.#pop.classList.add("single");
