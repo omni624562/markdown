@@ -125,6 +125,7 @@ pub(super) fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
     Some(WorkItemDetail {
         item: item_of(base, v)?,
         created_by: person(field(v, "System.CreatedBy")),
+        reason: text("System.Reason"),
         area: text("System.AreaPath"),
         iteration: text("System.IterationPath"),
         tags: field_str(v, "System.Tags")
@@ -139,5 +140,6 @@ pub(super) fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
         description: html("System.Description"),
         details: html("Microsoft.VSTS.Common.AcceptanceCriteria")
             .or_else(|| html("Microsoft.VSTS.TCM.ReproSteps")),
+        system_info: html("Microsoft.VSTS.TCM.SystemInfo"),
     })
 }

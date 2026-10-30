@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
-import { githubIssueMarkdown, inlineText, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
+import { githubIssueMarkdown, inlineText, issueFileName, stateTone, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { findMatches } from "./ui/issue-view.ts";
 
 const item: AdoWorkItemDetail = {
@@ -120,4 +120,19 @@ test("內容裡找字：不分大小寫，同一段文字裡找出每一個", ()
     ],
   );
   assert.deepEqual(findMatches(nodes, ""), []);
+});
+
+test("工作項目：狀態的原因放在狀態後面，Bug 的系統資訊另成一段", () => {
+  const md = workItemMarkdown({ ...item, state: "Resolved", reason: "Fixed", systemInfo: "<div>Chrome 120</div>" });
+  assert.match(md, /\| 狀態 \| Resolved \|\n\| 原因 \| Fixed \|/);
+  assert.match(md, /## 系統資訊\n\nChrome 120/);
+  // 舊的離線副本沒有這兩個欄位。
+  assert.doesNotMatch(workItemMarkdown(item), /原因|系統資訊/);
+});
+
+test("狀態的顏色分類（比照 TFS 網頁）", () => {
+  assert.deepEqual(
+    ["New", "Active", "In Progress", "Resolved", "Closed", "Done", "Removed", "已關閉", "自訂狀態"].map(stateTone),
+    ["new", "active", "active", "resolved", "closed", "closed", "removed", "closed", "new"],
+  );
 });

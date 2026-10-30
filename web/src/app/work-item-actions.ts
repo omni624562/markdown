@@ -7,6 +7,7 @@ import { t } from "../i18n.ts";
 import { issueFileName, workItemMarkdown, workItemIdOf } from "../issue-doc.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
+import { decorateWorkItem } from "../ui/work-item-look.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { insertIssueLink } from "./ado-links.ts";
 import { offlineRefs } from "./offline-copies.ts";
@@ -161,6 +162,8 @@ export function groupItems<T>(items: T[], key: (item: T) => string): { title: st
 /** 在主要區域開啟工作項目；內容裡的相關工作項目點一下在這裡切換。 */
 export function showWorkItem(item: AdoWorkItem): void {
   let related = new Map<number, AdoWorkItem>();
+  /** 留言段落的標題（加頭像用）。 */
+  let comments = "";
   offlineRefs.set(`ado:${item.id}`, { type: "ado", item });
   const actions = workItemActions(item);
   void app.showIssue({
@@ -173,9 +176,11 @@ export function showWorkItem(item: AdoWorkItem): void {
     load: async () => {
       const d = await desktop!.adoWorkItem(item.id);
       related = new Map(d.relations.map((r) => [r.id, r]));
+      comments = t("留言（{n}）", { n: d.comments.length });
       actions.update(d);
       return workItemMarkdown(d);
     },
+    decorate: (body) => decorateWorkItem(body, comments),
     insertLink: () => insertIssueLink(item),
     toolbar: actions.el,
     shortcut: {
