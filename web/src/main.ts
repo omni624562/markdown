@@ -143,7 +143,7 @@ import { type IndexedDoc, type OpenDoc, WorkspaceIndex } from "./workspace-index
 import { isoDate, plainTaskText, setTaskDone, setTaskLine } from "./doc-index.ts";
 import { REPO_URL, SettingsDialog } from "./ui/settings-dialog.ts";
 import { TabBar } from "./ui/tabbar.ts";
-import { TerminalPanel } from "./ui/terminal-panel.ts";
+import { TerminalProxy } from "./terminal-proxy.ts";
 import { WebDavDialog } from "./ui/webdav-dialog.ts";
 import { SshDialog, confirmHostKey } from "./ui/ssh-dialog.ts";
 import { Updater, versionDetail, versionLabel, versionTooltip } from "./updater.ts";
@@ -527,7 +527,7 @@ const tableFormatter = (block: string) => (settings.value.tableAutoFormat ? form
 const review = new Review($("#review-bar"));
 /** AI 協作與終端機（桌面版才有，在下面的「AI 協作」段落建立）。 */
 let ai: AiController | null = null;
-let terminal: TerminalPanel | null = null;
+let terminal: TerminalProxy | null = null;
 let updater: Updater | null = null;
 
 /** 按下 Ctrl+Shift+V 後的短時間內，貼上一律用純文字。 */
@@ -6584,13 +6584,13 @@ const TERMINAL_KEYS = new Set(["palette", "toggle-terminal"]);
 // ---- AI 協作與終端機（桌面版） ------------------------------------------------
 
 if (desktop) {
-  terminal = new TerminalPanel(
+  terminal = new TerminalProxy(
     $("#terminal-panel"),
     desktop,
     () => editor.view.requestMeasure(),
-    (at, entries, closed) => {
-      for (const id of ["term-menu-anchor", "term-menu-anchor-popover"]) document.getElementById(id)?.remove();
-      floatingMenu("term-menu-anchor", entries, closed).open(at);
+    () => Number(settings.value.uiScale) / 100 || 1,
+    (id) => {
+      if (TERMINAL_KEYS.has(id)) commands.get(id)?.run();
     },
   );
   ai = new AiController(
@@ -6668,7 +6668,7 @@ async function sendSelectionToAi(): Promise<void> {
     return;
   }
   const preferred = settings.value.aiTool === "codex" ? (aiFound.codex ? "codex" : "claude") : aiFound.claude ? "claude" : "codex";
-  await terminal.sendToAi(text, preferred);
+  terminal.sendToAi(text, preferred);
 }
 
 /** 在工作區（Git 儲存庫）加入 Claude Code 的 GitHub Actions 工作流程。 */
@@ -6693,7 +6693,7 @@ async function addClaudeWorkflow(): Promise<void> {
       { id: "done", label: t("知道了") },
     ],
   );
-  if (next === "token") await terminal?.runInShell("claude setup-token");
+  if (next === "token") terminal?.runSetupToken();
 }
 
 /** 上次同步給 MCP 的文件內容（CodeMirror 的文件物件，內容不變時是同一個）。 */
@@ -8743,6 +8743,7 @@ function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): voi
   // 介面大小：整個視窗縮放（啟動時預設 100% 就不用呼叫）。
   if (desktop && (changed ? changed.includes("uiScale") : s.uiScale !== "100")) {
     void desktop.setUiZoom(Number(s.uiScale) / 100).catch(reportError);
+    terminal?.relayout();
   }
   if (!changed) return;
   const fontKeys: (keyof Settings)[] = ["docFont", "docFontCustom", "codeFont", "docLineHeight"];

@@ -11,7 +11,7 @@ use std::time::Duration;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, Window};
 
 use crate::git::{AdoCred, Identity};
 
@@ -730,7 +730,7 @@ pub async fn ado_repos(app: AppHandle) -> Result<Vec<Repo>, String> {
 #[tauri::command]
 pub async fn ado_clone(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     clone_url: String,
     name: String,
 ) -> Result<Option<crate::github::Cloned>, String> {

@@ -28,4 +28,5 @@ pub static EN: &[(&str, &str)] = &[
     ("名稱", "The name"),
     ("群組名稱", "The group name"),
     ("不支援這個顏色", "This color isn't supported."),
+    ("「{name}」不是資料夾中的文件，不能修改", "\"{name}\" isn't a document in the folder, so it can't be changed."),
 ];

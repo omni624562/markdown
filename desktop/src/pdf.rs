@@ -9,7 +9,7 @@ use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 
 use serde::Deserialize;
-use tauri::{State, WebviewWindow};
+use tauri::{State, Webview, Window};
 
 /// 使用者在「匯出 PDF」對話框選的位置。`print_to_pdf` 只能寫到這裡，而且只能用一次，
 /// 前端不能自己指定要寫到哪個路徑。
@@ -30,7 +30,7 @@ pub struct PageLayout {
 /// 選擇 PDF 的存檔位置；取消時回傳 None。
 #[tauri::command]
 pub async fn pick_pdf_path(
-    window: WebviewWindow,
+    window: Window,
     suggested_name: String,
     target: State<'_, PdfTarget>,
 ) -> Result<Option<String>, String> {
@@ -58,14 +58,14 @@ fn take_target(target: &PdfTarget, path: &str) -> Result<PathBuf, String> {
 /// 把主視窗目前的內容（列印樣式）存成 PDF。`path` 必須是剛才用 `pick_pdf_path` 選的位置。
 #[tauri::command]
 pub async fn print_to_pdf(
-    window: WebviewWindow,
+    webview: Webview,
     path: String,
     layout: PageLayout,
     target: State<'_, PdfTarget>,
 ) -> Result<(), String> {
     let path = take_target(&target, &path)?;
     let (tx, rx) = mpsc::channel::<Result<(), String>>();
-    start(&window, path, layout, tx)?;
+    start(&webview, path, layout, tx)?;
     tauri::async_runtime::spawn_blocking(move || {
         rx.recv_timeout(Duration::from_secs(120))
             .unwrap_or_else(|_| Err(tr!("匯出 PDF 逾時")))
@@ -76,7 +76,7 @@ pub async fn print_to_pdf(
 
 #[cfg(windows)]
 fn start(
-    window: &WebviewWindow,
+    webview: &Webview,
     path: PathBuf,
     layout: PageLayout,
     tx: mpsc::Sender<Result<(), String>>,
@@ -89,7 +89,7 @@ fn start(
 
     const MM_PER_INCH: f64 = 25.4;
     let fail = tx.clone();
-    window
+    webview
         .with_webview(move |webview| {
             let run = || -> windows_core::Result<()> {
                 unsafe {
@@ -132,14 +132,14 @@ fn start(
 
 #[cfg(target_os = "linux")]
 fn start(
-    window: &WebviewWindow,
+    webview: &Webview,
     path: PathBuf,
     layout: PageLayout,
     tx: mpsc::Sender<Result<(), String>>,
 ) -> Result<(), String> {
     use webkit2gtk::PrintOperationExt;
 
-    window
+    webview
         .with_webview(move |webview| {
             let op = webkit2gtk::PrintOperation::new(&webview.inner());
             let settings = gtk::PrintSettings::new();
@@ -177,7 +177,7 @@ fn start(
 
 #[cfg(not(any(windows, target_os = "linux")))]
 fn start(
-    _window: &WebviewWindow,
+    _webview: &Webview,
     _path: PathBuf,
     _layout: PageLayout,
     _tx: mpsc::Sender<Result<(), String>>,

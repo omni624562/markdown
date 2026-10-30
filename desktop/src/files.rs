@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, Window};
 
 use crate::trust::Trust;
 
@@ -371,7 +371,7 @@ fn saved(path: &Path) -> SaveOutcome {
 #[tauri::command]
 pub async fn open_file(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     trust: State<'_, Trust>,
 ) -> Result<Option<OpenedFile>, String> {
     let picked = rfd::AsyncFileDialog::new()
@@ -406,7 +406,8 @@ pub async fn reopen_file(
         // 信任清單與工作區的判斷需要讀取磁碟（解析符號連結後的實際路徑），也放在背景執行。
         let allowed = known_file
             || app2.state::<Trust>().allows(&p)
-            || app2.state::<crate::workspace::Workspace>().contains(&p);
+            || (crate::workspace::is_editable_doc(&p)
+                && app2.state::<crate::workspace::Workspace>().contains(&p));
         if !allowed {
             return Err(tr!(
                 "這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。"
@@ -428,7 +429,7 @@ pub async fn read_in_background(app: &AppHandle, path: PathBuf) -> Result<Opened
 /// 匯出二進位檔（例如 Word .docx）：讓使用者選位置後寫入。取消時回傳 None。
 #[tauri::command]
 pub async fn export_binary(
-    window: WebviewWindow,
+    window: Window,
     suggested_name: String,
     data_base64: String,
     filter_name: String,
@@ -497,7 +498,7 @@ pub fn unique_md_path(path: &Path) -> PathBuf {
 #[tauri::command]
 pub async fn import_docx(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
 ) -> Result<Option<DocxImport>, String> {
@@ -614,7 +615,7 @@ pub async fn export_docx(
 #[allow(clippy::too_many_arguments)]
 pub async fn save_file(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
     path: Option<String>,

@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, Window};
 
 use crate::files::path_string;
 use crate::git::{Auth, Identity};
@@ -313,7 +313,7 @@ pub async fn github_repos(app: AppHandle) -> Result<Vec<Repo>, String> {
 #[tauri::command]
 pub async fn github_clone(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     full_name: String,
 ) -> Result<Option<Cloned>, String> {
     let auth = Auth {
@@ -341,7 +341,7 @@ pub async fn github_clone(
 /// 選擇下載到哪個資料夾：回傳「選的資料夾／名稱」；使用者取消時回傳 None。
 pub(crate) async fn pick_clone_dest(
     app: &AppHandle,
-    window: &WebviewWindow,
+    window: &Window,
     name: &str,
     url: &str,
 ) -> Result<Option<CloneDest>, String> {

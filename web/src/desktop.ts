@@ -148,6 +148,19 @@ export interface ProjectChange {
 export type AiTool = "claude" | "codex";
 export type TermProgram = "shell" | AiTool;
 
+/** 主畫面能送給終端機的要求（Rust 的 `view::Request`）。 */
+export type TermRequest =
+  | { kind: "show" }
+  | { kind: "start"; program: TermProgram }
+  | { kind: "sendToAi"; text: string; preferred: TermProgram }
+  | { kind: "setupToken" }
+  | { kind: "available"; claude: boolean; codex: boolean }
+  | { kind: "style"; theme: string | null; fontSize: number }
+  | { kind: "focus" };
+
+/** 終端機送給主畫面的通知（Rust 的 `view::Notice`）。 */
+export type TermNotice = { kind: "show" } | { kind: "hide" } | { kind: "command"; id: string };
+
 export interface McpInfo {
   url: string;
   claudeAdd: string;
@@ -761,11 +774,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
 
     aiTools: () => core.invoke<{ claude: string | null; codex: string | null }>("ai_tools"),
     listFonts: () => core.invoke<{ name: string; label?: string; mono: boolean }[]>("list_fonts"),
-    termOpen: (program: TermProgram, cols: number, rows: number) =>
-      afterSettings(() => core.invoke<number>("term_open", { program, cols, rows })),
-    termWrite: (id: number, data: string) => core.invoke<void>("term_write", { id, data }),
-    termResize: (id: number, cols: number, rows: number) => core.invoke<void>("term_resize", { id, cols, rows }),
-    termClose: (id: number) => core.invoke<void>("term_close", { id }),
+    /**
+     * 終端機面板在視窗中的位置（null 表示隱藏）。終端機本身在獨立的 webview，主畫面不能寫入。
+     * 回傳 true 表示終端機排在主畫面下方（Linux），不是疊在面板的位置上。
+     */
+    termLayout: (bounds: { x: number; y: number; width: number; height: number } | null) =>
+      afterSettings(() => core.invoke<boolean>("term_layout", { bounds })),
+    termForward: (request: TermRequest) => core.invoke<void>("term_forward", { request }),
     mcpStart: () => afterSettings(() => core.invoke<McpInfo>("mcp_start")),
     mcpStop: () => core.invoke<void>("mcp_stop"),
     mcpSync: (snapshot: EditorSnapshot) => core.invoke<void>("mcp_sync", { snapshot }),
@@ -940,7 +955,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
     gitPull: () => core.invoke<string>("git_pull"),
     /** 只向遠端抓取最新的提交（不合併），回傳更新後的狀態（知道遠端多了幾個提交）。 */
-    gitFetch: () => core.invoke<GitStatus>("git_fetch"),
+    /** `background`：背景的自動檢查，只連到 GitHub 與已連線的 Azure DevOps。 */
+    gitFetch: (background = false) => core.invoke<GitStatus>("git_fetch", { background }),
     gitPush: () => core.invoke<string>("git_push"),
     historyList: (path: string) => core.invoke<FileVersion[]>("history_list", { path }),
     historyRead: (path: string, id: number) => core.invoke<string>("history_read", { path, id }),
@@ -967,16 +983,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
       event.listen<{ path: string }>("file-removed", (e) => fn(e.payload)),
     onTreeChanged: (fn: (p: { dirs: string[] }) => void) =>
       event.listen<{ dirs: string[] }>("tree-changed", (e) => fn(e.payload)),
-    onTermOutput: (fn: (p: { id: number; data: string }) => void) =>
-      event.listen<{ id: number; data: string }>("term-output", (e) => fn(e.payload)),
-    onTermExit: (fn: (p: { id: number; code: number | null }) => void) =>
-      event.listen<{ id: number; code: number | null }>("term-exit", (e) => fn(e.payload)),
+    onTermNotice: (fn: (n: TermNotice) => void) => event.listen<TermNotice>("term-notice", (e) => fn(e.payload)),
     onAiProposal: (fn: (p: AiProposal) => void) => event.listen<AiProposal>("ai-proposal", (e) => fn(e.payload)),
     onAiCommand: (fn: (c: AiCommand) => void) => event.listen<AiCommand>("ai-command", (e) => fn(e.payload)),
     onAiCommandExpired: (fn: (id: number) => void) => event.listen<number>("ai-command-expired", (e) => fn(e.payload)),
-    /** AI 執行的指令開了一個新的終端機（由 Rust 端建立，前端只要顯示）。 */
-    onTermAttached: (fn: (t: { id: number; label: string }) => void) =>
-      event.listen<{ id: number; label: string }>("term-attached", (e) => fn(e.payload)),
     onAiRun: (fn: (p: AiRunEvent) => void) => event.listen<AiRunEvent>("ai-run", (e) => fn(e.payload)),
   };
 }

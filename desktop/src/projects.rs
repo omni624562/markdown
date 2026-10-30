@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{AppHandle, State, Window};
 
 use crate::files::{display_name, path_string};
 use crate::trust::{ProjectMeta, Trust};
@@ -130,7 +130,7 @@ pub fn project_forget(app: AppHandle, trust: State<'_, Trust>, path: String) {
 #[tauri::command]
 pub async fn project_relocate(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     trust: State<'_, Trust>,
     path: String,
 ) -> Result<Option<ProjectInfo>, String> {
