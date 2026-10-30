@@ -1859,6 +1859,14 @@ button.git-info:disabled { cursor: default; }
 .workitem-dot.updated { background: light-dark(#c2410c, #fb923c); }
 .workitem.workitem-marked .workitem-title { font-weight: 600; }
 /* 清單上方：狀態文字與排列方式（側邊欄窄時換行）。 */
+/* 工作項目、Issue 面板：搜尋框、篩選、清單說明固定在上面，只有清單捲動。 */
+.side-body.workitems { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+.side-body.workitems[hidden] { display: none; }
+.side-body.workitems > * { flex: none; }
+/* 篩選展開時太高（視窗很矮）也不會把清單擠不見：篩選自己捲動。 */
+.side-body.workitems > .workitems-filters { max-height: 55%; overflow-y: auto; }
+.side-body.workitems > .workitems-list { flex: 1 1 auto; min-height: 0; margin: 0 -8px; padding: 0 8px 12px; overflow-y: auto; border-top: 1px solid transparent; }
+.side-body.workitems > .workitems-list.scrolled { border-top-color: var(--border); }
 .workitems-statusrow { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; justify-content: space-between; }
 .workitems-statusrow .workitems-status { flex: 1 1 120px; min-width: 0; }
 .workitems-tools { display: inline-flex; flex: none; gap: 2px; align-items: center; max-width: 100%; }
