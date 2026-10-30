@@ -91,6 +91,10 @@ export class IssuesPanel<T extends IssueSummary> {
   #arrange: HTMLSelectElement | null = null;
   /** 收起來的分組。 */
   #collapsed = new Set<string>();
+  /** 「全部收合／全部展開」（有分組時才出現）。 */
+  #foldAll: HTMLButtonElement | null = null;
+  /** 目前畫面上可以收合的分組。 */
+  #groupKeys: string[] = [];
 
   constructor(el: HTMLElement, handlers: IssuesHandlers<T>) {
     this.#h = handlers;
@@ -127,9 +131,28 @@ export class IssuesPanel<T extends IssueSummary> {
         this.#render();
       });
       this.#arrange = select;
+      const fold = document.createElement("button");
+      fold.type = "button";
+      fold.className = "workitems-fold";
+      fold.hidden = true;
+      fold.addEventListener("click", () => {
+        // 有任何一組開著就全部收合，否則全部展開。
+        const collapse = this.#groupKeys.some((k) => !this.#collapsed.has(k));
+        for (const k of this.#groupKeys) {
+          if (collapse) this.#collapsed.add(k);
+          else this.#collapsed.delete(k);
+        }
+        this.#render();
+        this.#list.scrollTop = 0;
+        fold.focus();
+      });
+      this.#foldAll = fold;
       statusRow = document.createElement("div");
       statusRow.className = "workitems-statusrow";
-      statusRow.append(this.#status, select);
+      const tools = document.createElement("span");
+      tools.className = "workitems-tools";
+      tools.append(select, fold);
+      statusRow.append(this.#status, tools);
     }
     this.#list = document.createElement("ul");
     this.#list.className = "workitems-list";
@@ -187,6 +210,7 @@ export class IssuesPanel<T extends IssueSummary> {
     const arrangement = this.#h.arrangements?.find((a) => a.id === this.#arrange?.value);
     const groups = arrangement ? arrangement.arrange(this.#items) : [{ title: null, items: this.#items }];
     const rows: HTMLLIElement[] = [];
+    this.#groupKeys = groups.filter((g) => g.head || g.title !== null).map((g) => `${arrangement?.id}:${g.title}`);
     for (const group of groups) {
       if (group.head) {
         rows.push(...this.#headGroup(group as IssueGroup<T> & { head: T }, `${arrangement?.id}:${group.title}`));
@@ -223,6 +247,19 @@ export class IssuesPanel<T extends IssueSummary> {
       rows.push(...group.items.map((it) => this.#row(it)));
     }
     this.#list.replaceChildren(...rows);
+    this.#updateFoldAll();
+  }
+
+  /** 「全部收合／全部展開」：兩組以上才顯示；有任何一組開著就是「全部收合」。 */
+  #updateFoldAll(): void {
+    const b = this.#foldAll;
+    if (!b) return;
+    b.hidden = this.#groupKeys.length < 2;
+    const collapse = this.#groupKeys.some((k) => !this.#collapsed.has(k));
+    const label = collapse ? t("全部收合") : t("全部展開");
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.replaceChildren(icon(collapse ? "chevrons-down-up" : "chevrons-up-down"));
   }
 
   /** 以項目當標題列的一組：左邊是收合箭頭，標題列本身可以點開那個項目；子項目縮排、左邊一條線。 */
