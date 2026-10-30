@@ -467,6 +467,7 @@ export function initWikiEdit(): void {
       toast(t("已複製成新的 Markdown 分頁，修改不會回寫到伺服器"));
     },
     offline: issueOffline,
+    facts: (list) => app.setIssueFacts(list),
     opened(source) {
       app.issueKey = source.key;
       app.outlineView = { key: source.key, headings: [], body: null };

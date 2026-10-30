@@ -55,6 +55,17 @@ export interface IssueSource {
   link?(href: string): boolean;
   /** 內容畫好之後調整樣子（例如工作項目比照 TFS 網頁）；每次重畫都會呼叫。 */
   decorate?(body: HTMLElement): void;
+  /** 狀態列上顯示的摘要（例如工作項目的狀態、留言數、更新時間）；還沒讀到時回傳空的。 */
+  facts?(): IssueFact[];
+}
+
+/** 狀態列上的一項摘要。 */
+export interface IssueFact {
+  text: string;
+  /** 滑鼠提示（完整的說明）。 */
+  title?: string;
+  /** 前面的狀態圓點（`ado-state-dot` 的顏色，例如 `active`、`closed`）。 */
+  dot?: string;
 }
 
 export interface IssueViewHooks {
@@ -70,6 +81,8 @@ export interface IssueViewHooks {
   closed(): void;
   /** 切換「和編輯區並排顯示」。 */
   toggleSide?(): void;
+  /** 狀態列上的摘要換了（關閉時是空的）。 */
+  facts?(list: IssueFact[]): void;
   /** 本機的離線副本：讀到內容就存一份，連不上時拿來顯示。 */
   offline?: IssueOffline;
 }
@@ -138,6 +151,8 @@ export class IssueView {
   #scroll: HTMLElement;
   #find: HTMLElement;
   #toolbar: HTMLElement;
+  /** 位置、標題與動作（蓋住編輯區時搬到頂端列，省下一列）。 */
+  #head: HTMLElement;
   #findInput: HTMLInputElement;
   #findCount: HTMLElement;
   #source: IssueSource | null = null;
@@ -313,7 +328,12 @@ export class IssueView {
     this.#toolbar.className = "issue-toolbar-host";
     this.#toolbar.hidden = true;
     pane.append(head, this.#toolbar, this.#find, this.#scroll);
+    this.#head = head;
     pane.addEventListener("keydown", (e) => this.#keydown(e));
+    // 標頭搬到頂端列時不在 pane 裡面，按鍵（Esc、Ctrl+F、Alt+←）要另外接。
+    head.addEventListener("keydown", (e) => {
+      if (!pane.contains(head)) this.#keydown(e);
+    });
     // 滑鼠的「上一頁」「下一頁」側鍵。
     pane.addEventListener("mouseup", (e) => {
       if (e.button !== 3 && e.button !== 4) return;
@@ -327,6 +347,16 @@ export class IssueView {
 
   get isOpen(): boolean {
     return !this.#pane.hidden;
+  }
+
+  /** 標頭放在哪裡：`before` 是頂端列裡的某個元素（放在它前面），null 是放回內容上方。 */
+  placeHead(before: Element | null): void {
+    if (before) {
+      if (this.#head.nextElementSibling !== before) before.before(this.#head);
+    } else if (this.#pane.firstElementChild !== this.#head) {
+      this.#pane.prepend(this.#head);
+    }
+    this.#head.classList.toggle("in-topbar", !!before);
   }
 
   /** 焦點在這個檢視裡（並排顯示時，用來分辨 Ctrl+F 要在哪邊找）。 */
@@ -424,6 +454,7 @@ export class IssueView {
   async #open(source: IssueSource): Promise<void> {
     this.#source = source;
     this.#h.opened(source);
+    this.#h.facts?.([]);
     this.#updateNav();
     this.#pane.dataset.source = source.origin.kind;
     this.#pane.dataset.sourceName = source.origin.text;
@@ -436,6 +467,7 @@ export class IssueView {
     origin.append(icon(source.origin.icon));
     this.#meta.replaceChildren(origin, this.#label);
     this.#title.textContent = source.title;
+    this.#title.title = source.title;
     this.#toolbar.replaceChildren(...(source.toolbar ? [source.toolbar] : []));
     this.#toolbar.hidden = !source.toolbar;
     this.#editBtn.hidden = !source.edit;
@@ -481,6 +513,8 @@ export class IssueView {
       this.#cache.set(source.key, md);
       if (this.#cache.size > CACHE_LIMIT) this.#cache.delete(this.#cache.keys().next().value!);
       if (md !== this.#markdown || loading) this.#display(md, cached !== undefined);
+      // 內容沒變也要更新摘要（例如「更新於幾分鐘前」）。
+      else this.#h.facts?.(source.facts?.() ?? []);
       this.#h.offline?.save(source, md);
     } catch (e) {
       if (seq !== this.#seq) return;
@@ -516,6 +550,7 @@ export class IssueView {
     this.#markdown = md;
     this.#h.render(md, this.#body);
     this.#decorate();
+    this.#h.facts?.(this.#source?.facts?.() ?? []);
     this.#scroll.scrollTop = keepScroll ? top : (this.#restoreScroll ?? 0);
     if (!keepScroll) this.#restoreScroll = null;
     if (!this.#find.hidden) this.#search();
@@ -549,6 +584,7 @@ export class IssueView {
     this.#forward = [];
     this.#restoreScroll = null;
     this.#body.replaceChildren();
+    this.#h.facts?.([]);
     this.#h.closed();
   }
 
