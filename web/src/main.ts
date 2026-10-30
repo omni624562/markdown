@@ -117,6 +117,19 @@ hydrateIcons();
 // 同時載入核心（WebAssembly）與設定。
 const [, { store: settings, recovered: settingsRecovered }] = await Promise.all([init(), SettingsStore.load()]);
 
+/**
+ * 在設定開啟的整合功能（桌面版）。關掉的功能不建立、不顯示；原生端也會拒絕它的指令（desktop/src/features.rs）。
+ * 開關改了就重新載入介面（開著的分頁和沒存的內容都會保留），不必在各處處理「用到一半被關掉」。
+ */
+const features = {
+  git: !!desktop && settings.value.gitEnabled,
+  ado: !!desktop && settings.value.adoEnabled,
+  remote: !!desktop && settings.value.remoteEnabled,
+};
+settings.subscribe((_, changed) => {
+  if (changed.some((k) => k === "gitEnabled" || k === "adoEnabled" || k === "remoteEnabled")) void settings.saved().then(() => location.reload());
+});
+
 // ---- 給 app/ 模組用的狀態與函式 ---------------------------------------------
 
 /**
@@ -124,6 +137,9 @@ const [, { store: settings, recovered: settingsRecovered }] = await Promise.all(
  * 所以模組拿到的永遠是目前的值（例如切換分頁後的 fileName）。
  */
 const app = {
+  get features() {
+    return features;
+  },
   get $() {
     return $;
   },
@@ -2008,13 +2024,13 @@ const projectUi = desktop
       open: (path) => openRecentFolder(path),
       openFolder: () => void commands.run("open-folder").catch(reportError),
       close: () => void commands.run("close-folder").catch(reportError),
-      remotes: () => desktop!.davConnections(),
+      remotes: () => (features.remote ? desktop!.davConnections() : Promise.resolve([])),
       openRemote: (c) => void openRemote(c).catch(reportError),
       changed: () => void renderProjectName().then(renderFilesEmpty),
       unsaved: (path) =>
         (peekSession(path)?.docs ?? []).some((m) => m.baseline !== null && draftState(m).dirty),
       repoSources: () => [
-        { id: "github", title: t("從 GitHub 下載儲存庫…"), icon: "github", run: () => void github?.openRepo() },
+        ...(github ? [{ id: "github", title: t("從 GitHub 下載儲存庫…"), icon: "github", run: () => void github.openRepo() }] : []),
         ...(ado ? [{ id: "ado", title: t("從 Azure DevOps／TFS 下載儲存庫…"), icon: "briefcase-business", run: () => void ado?.openRepo() }] : []),
       ],
     })
@@ -2061,7 +2077,7 @@ function renderFolderBranch(status: GitStatus | null): void {
 $("#folder-branch").addEventListener("click", () => void switchBranch().catch(reportError));
 
 /** 用 GitHub 帳號同步（桌面版）：登入、從 GitHub 開啟儲存庫、上傳資料夾。 */
-const github = desktop
+const github = desktop && features.git
   ? new GitHub(desktop, {
       root: () => workspaceRoot,
       openFolder: async (folder) => {
@@ -2077,7 +2093,7 @@ const github = desktop
   : null;
 
 /** Azure DevOps（桌面版）：用個人存取權杖連線、從 ADO 開啟儲存庫或 Wiki、查看工作項目。 */
-const ado = desktop
+const ado = desktop && features.ado
   ? new Ado(desktop, {
       openFolder: async (folder) => {
         await setWorkspace(folder);

@@ -310,9 +310,12 @@ export async function renderFilesEmpty(): Promise<void> {
     b.addEventListener("click", () => source.run());
     actions.append(b);
   }
-  actions.append(remote, ssh);
+  if (app.features.remote) actions.append(remote, ssh);
   box.replaceChildren(p, actions);
-  const [projects, conns] = await Promise.all([app.projectUi!.refresh(), desktop.davConnections().catch(() => [])]);
+  const [projects, conns] = await Promise.all([
+    app.projectUi!.refresh(),
+    app.features.remote ? desktop.davConnections().catch(() => []) : [],
+  ]);
   const folders = projectSections(projects).flatMap((s) => s.items).slice(0, 10);
   if ((!folders.length && !conns.length) || app.workspaceRoot) return;
   const h = document.createElement("h3");

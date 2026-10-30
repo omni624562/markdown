@@ -72,6 +72,13 @@ export interface Settings {
   math: boolean;
   /** 顯示 ```mermaid 流程圖。 */
   mermaid: boolean;
+  /**
+   * 整合功能（桌面版）：Git 與 GitHub、Azure DevOps／TFS、遠端資料夾（WebDAV、SSH）。
+   * 關掉時介面不顯示，原生端也拒絕它們的指令（見 desktop/src/features.rs）。
+   */
+  gitEnabled: boolean;
+  adoEnabled: boolean;
+  remoteEnabled: boolean;
   /** AI 協作總開關（桌面版）。預設關閉；關閉時下面的 AI 選項都不會生效。 */
   aiEnabled: boolean;
   /** 快捷動作使用的命令列工具。 */
@@ -136,6 +143,9 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   uiScale: "100",
   math: true,
   mermaid: true,
+  gitEnabled: true,
+  adoEnabled: true,
+  remoteEnabled: true,
   aiEnabled: false,
   aiTool: "claude",
   mcpServer: true,
@@ -203,6 +213,9 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("typewriterMode");
   bool("math");
   bool("mermaid");
+  bool("gitEnabled");
+  bool("adoEnabled");
+  bool("remoteEnabled");
   bool("aiEnabled");
   bool("mcpServer");
   bool("aiTerminal");
@@ -349,10 +362,17 @@ export class SettingsStore {
     this.#listeners.add(listener);
   }
 
+  /** 等目前的設定存好（例如存好之後才重新載入介面）。 */
+  saved(): Promise<void> {
+    return this.#saving;
+  }
+
+  #saving: Promise<void> = Promise.resolve();
+
   #persist(): void {
     const json = JSON.stringify(this.#value, null, 2);
     if (desktop) {
-      desktop
+      this.#saving = desktop
         .saveSettings(json)
         .then((accepted) => {
           // 使用者在系統的確認對話框拒絕啟用 AI 協作：開關改回關閉。

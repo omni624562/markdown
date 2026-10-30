@@ -16,6 +16,7 @@ mod ado;
 mod ai;
 mod dav;
 mod doc_index;
+mod features;
 mod files;
 mod fonts;
 mod git;
@@ -235,6 +236,20 @@ fn window_control(window: Window, action: String) -> Result<bool, String> {
     window.is_maximized().map_err(|e| e.to_string())
 }
 
+/// 原生指令先經過整合功能的開關（見 `features`）：在設定關掉的功能，它的指令一律拒絕。
+fn with_features<R: tauri::Runtime>(
+    handler: impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    move |invoke| {
+        let app = invoke.message.webview_ref().app_handle().clone();
+        if let Err(e) = features::check(&app, invoke.message.command()) {
+            invoke.resolver.reject(e);
+            return true;
+        }
+        handler(invoke)
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         // 必須最先註冊，第二個執行個體才會在建立視窗前就結束。
@@ -261,6 +276,9 @@ fn main() {
         )
         .setup(|app| {
             app.manage(Trust::load(app.handle()));
+            app.manage(features::Features::load(
+                settings::read_value(app.handle()).as_ref(),
+            ));
             history::maintain(app.handle());
             create_main_window(app)?;
             if CUSTOM_TITLE_BAR {
@@ -272,7 +290,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(with_features(tauri::generate_handler![
             startup_target,
             probe_path,
             open_external,
@@ -443,7 +461,7 @@ fn main() {
             update::update_check,
             update::update_install,
             update::update_restart,
-        ])
+        ]))
         .build(tauri::generate_context!())
         .expect("無法啟動應用程式") // i18n-ignore：程式錯誤，不是介面文字
         .run(|app, event| {
