@@ -6,7 +6,7 @@
 import { formatKeys } from "../commands.ts";
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
-import { setupMenu } from "./menu.ts";
+import { type MenuEntry, setupMenu } from "./menu.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
@@ -153,6 +153,8 @@ export class IssueView {
   #toolbar: HTMLElement;
   /** 位置、標題與動作（蓋住編輯區時搬到頂端列，省下一列）。 */
   #head: HTMLElement;
+  /** 「更多動作」的項目；標頭在頂端列時這個按鈕藏起來，項目併到主選單（只留一個「⋯」）。 */
+  readonly moreEntries: MenuEntry[];
   #findInput: HTMLInputElement;
   #findCount: HTMLElement;
   #source: IssueSource | null = null;
@@ -219,7 +221,7 @@ export class IssueView {
     this.#historyBtn.hidden = true;
     const more = iconButton(t("更多動作"), "ellipsis", () => {});
     more.id = "issue-more";
-    setupMenu(more, null, [
+    this.moreEntries = [
       {
         label: t("新增子頁面"),
         icon: "file-plus",
@@ -255,7 +257,8 @@ export class IssueView {
           if (this.#source && this.#markdown) this.#h.offline?.toggle(this.#source, this.#markdown);
         },
       },
-    ]);
+    ];
+    setupMenu(more, null, this.moreEntries);
     const toggleSide = hooks.toggleSide;
     if (toggleSide) {
       this.#sideBtn = iconButton(t("和編輯區並排顯示"), "columns-2", () => toggleSide());

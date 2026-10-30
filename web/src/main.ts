@@ -43,7 +43,7 @@ import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
-import { setupMenu } from "./ui/menu.ts";
+import { type MenuEntry, setupMenu } from "./ui/menu.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
@@ -3022,7 +3022,14 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
   if (btn.classList.contains("icon-only")) btn.setAttribute("aria-label", cmd.title);
   btn.addEventListener("click", () => commands.run(cmd.id).catch(reportError));
 });
+// 工作項目等內容的標頭在頂端列時，它的「更多動作」併到主選單最上面（頂端列只留一個「⋯」）。
+const issueMoreInMenu = () => $(".topbar").classList.contains("has-issue-head");
 setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
+  ...issueView.moreEntries.map((e): MenuEntry => {
+    if (typeof e === "string" || "items" in e) return e;
+    return { ...e, when: () => issueMoreInMenu() && (e.when?.() ?? true) };
+  }),
+  "-",
   "new",
   "new-from-template",
   "open",
