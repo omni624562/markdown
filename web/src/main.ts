@@ -82,6 +82,7 @@ import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady, initAi
 import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, refreshActivityCommands, refreshToc, separator, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
+import type { IssueFact } from "./ui/issue-view.ts";
 import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
 import { NOT_CONNECTED, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlineOnRight, outlinePlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
@@ -204,6 +205,9 @@ const app = {
   },
   get applyLayout() {
     return applyLayout;
+  },
+  get setIssueFacts() {
+    return setIssueFacts;
   },
   get autoSaveNow() {
     return autoSaveNow;
@@ -2218,6 +2222,15 @@ initWikiEdit();
 
 const statusView = $("#status-view");
 const issuePane = $(".issue-pane:not(.history-pane)");
+/** 內容區至少這麼寬，標頭才搬到頂端列。 */
+const HEAD_IN_TOPBAR_MIN = 680;
+/** 正在看的工作項目等內容的摘要（狀態、留言數…），顯示在狀態列右邊。 */
+let issueFacts: IssueFact[] = [];
+
+function setIssueFacts(list: IssueFact[]): void {
+  issueFacts = list;
+  renderStatusView();
+}
 
 function renderStatusView(): void {
   // 並排顯示時編輯區還在，狀態列照常顯示文件的資訊。
@@ -2226,6 +2239,11 @@ function renderStatusView(): void {
   const viewing = issueOpen || historyOpen;
   $(".statusbar").classList.toggle("viewing", viewing);
   statusView.hidden = !viewing;
+  // 蓋住編輯區時，標頭（位置、標題、動作）搬到頂端列，省下一整列；內容區太窄（放不下標題與按鈕）時留在原處。
+  const headUp =
+    issueOpen && !historyOpen && !workspace.classList.contains("narrow") && issuePane.getBoundingClientRect().width >= HEAD_IN_TOPBAR_MIN;
+  $(".topbar").classList.toggle("has-issue-head", headUp);
+  issueView?.placeHead(headUp ? $(".topbar .top-actions") : null);
   if (!viewing) return;
   const source = historyOpen ? "git" : (issuePane.dataset.source ?? "");
   const names: Record<string, string> = {
@@ -2249,9 +2267,29 @@ function renderStatusView(): void {
     issueView.close();
     historyView?.close();
   });
-  statusView.replaceChildren(label, back);
+  const facts = document.createElement("span");
+  facts.className = "status-facts";
+  if (issueOpen && !historyOpen) {
+    for (const f of issueFacts) {
+      const item = document.createElement("span");
+      if (f.dot) {
+        const dot = document.createElement("span");
+        dot.className = `ado-state-dot ${f.dot}`;
+        dot.setAttribute("aria-hidden", "true");
+        item.append(dot);
+      }
+      item.append(f.text);
+      if (f.title) item.title = f.title;
+      facts.append(item);
+    }
+  }
+  statusView.replaceChildren(label, back, facts);
 }
 new MutationObserver(renderStatusView).observe(workspace, { attributes: true, attributeFilter: ["class"] });
+// 視窗或側邊欄寬度改變時，重新決定標頭放在頂端列還是內容上方。
+new ResizeObserver(() => {
+  if (workspace.classList.contains("issue-open")) renderStatusView();
+}).observe(issuePane);
 issueView.setSide(issueSide);
 // 並排顯示時，檢視打開或關閉要重新排版（編輯區讓出右半邊）。
 let issueWasOpen = false;
