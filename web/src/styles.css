@@ -1239,6 +1239,12 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
   background: var(--surface);
 }
 .terminal-panel[hidden] { display: none; }
+/* Linux：終端機排在主畫面下方，這裡只留框線與調整高度的把手。 */
+.terminal-panel.stacked { height: 4px; }
+/* 終端機自己的 webview（terminal.html）：面板佔滿整頁；上緣的框線與調整高度的把手在主畫面。 */
+.terminal-page, .terminal-page body { height: 100%; }
+.terminal-page body { display: block; overflow: hidden; }
+.terminal-page .terminal-panel { height: 100%; border-top: 0; }
 .term-resize { position: absolute; inset: -4px 0 auto; z-index: 3; height: 8px; cursor: row-resize; }
 .term-resize:hover, .term-resize:focus-visible { background: color-mix(in srgb, var(--accent) 50%, transparent); outline: none; }
 .term-head { display: flex; flex: none; gap: 8px; align-items: center; min-height: 34px; padding: 0 6px 0 4px; border-bottom: 1px solid var(--border); }

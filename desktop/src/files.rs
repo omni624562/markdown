@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, Window};
 
 use crate::trust::Trust;
 
@@ -371,7 +371,7 @@ fn saved(path: &Path) -> SaveOutcome {
 #[tauri::command]
 pub async fn open_file(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     trust: State<'_, Trust>,
 ) -> Result<Option<OpenedFile>, String> {
     let picked = rfd::AsyncFileDialog::new()
@@ -429,7 +429,7 @@ pub async fn read_in_background(app: &AppHandle, path: PathBuf) -> Result<Opened
 /// 匯出二進位檔（例如 Word .docx）：讓使用者選位置後寫入。取消時回傳 None。
 #[tauri::command]
 pub async fn export_binary(
-    window: WebviewWindow,
+    window: Window,
     suggested_name: String,
     data_base64: String,
     filter_name: String,
@@ -498,7 +498,7 @@ pub fn unique_md_path(path: &Path) -> PathBuf {
 #[tauri::command]
 pub async fn import_docx(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
 ) -> Result<Option<DocxImport>, String> {
@@ -615,7 +615,7 @@ pub async fn export_docx(
 #[allow(clippy::too_many_arguments)]
 pub async fn save_file(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
     path: Option<String>,

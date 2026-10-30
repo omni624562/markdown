@@ -13,7 +13,7 @@ use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{sinks::UTF8, BinaryDetection, SearcherBuilder};
 use ignore::WalkBuilder;
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, Window};
 
 use crate::files::{display_name, path_string, KnownFiles};
 use crate::trust::Trust;
@@ -294,7 +294,7 @@ fn activate(app: &AppHandle, root: PathBuf, workspace: &Workspace, trust: &Trust
 #[tauri::command]
 pub async fn open_folder(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     workspace: State<'_, Workspace>,
     trust: State<'_, Trust>,
 ) -> Result<Option<FolderInfo>, String> {
