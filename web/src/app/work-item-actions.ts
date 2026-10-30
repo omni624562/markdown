@@ -8,6 +8,7 @@ import { issueFileName, workItemMarkdown, workItemIdOf } from "../issue-doc.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { decorateWorkItem } from "../ui/work-item-look.ts";
+import { decorateMarks } from "../ui/work-item-marks.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { insertIssueLink } from "./ado-links.ts";
 import { offlineRefs } from "./offline-copies.ts";
@@ -180,7 +181,10 @@ export function showWorkItem(item: AdoWorkItem): void {
       actions.update(d);
       return workItemMarkdown(d);
     },
-    decorate: (body) => decorateWorkItem(body, comments),
+    decorate: (body) => {
+      decorateMarks(body);
+      decorateWorkItem(body, comments);
+    },
     insertLink: () => insertIssueLink(item),
     toolbar: actions.el,
     shortcut: {
