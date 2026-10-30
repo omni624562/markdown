@@ -263,6 +263,7 @@ fn main() {
         .setup(|app| {
             app.manage(Trust::load(app.handle()));
             history::maintain(app.handle());
+            std::thread::spawn(update::remove_leftovers);
             create_main_window(app)?;
             if CUSTOM_TITLE_BAR {
                 if let Some(window) = app.get_window("main") {

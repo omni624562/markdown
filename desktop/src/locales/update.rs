@@ -22,6 +22,7 @@ pub static EN: &[(&str, &str)] = &[
     ("找不到執行檔所在的資料夾", "Couldn't find the folder that contains the program."),
     ("沒有權限更新「{dir}」裡的執行檔。請把 oMarker 的執行檔放到自己的資料夾（例如桌面或文件），或改為手動下載新版。", "You don't have permission to update the program in \"{dir}\". Move the oMarker program to one of your own folders (for example, Desktop or Documents), or download the new version manually."),
     ("無法取代執行檔：{e}", "Couldn't replace the program: {e}"),
+    ("下載的新版不見了（可能被防毒軟體移走）：{path}", "The downloaded update is missing (it may have been removed by antivirus software): {path}"),
     ("只能下載 HTTPS 網址", "Only HTTPS URLs can be downloaded."),
     ("伺服器回應 {code}", "The server responded with {code}."),
     ("公司的 Proxy 需要輸入帳號密碼才能連外，請手動下載新版", "Your company's proxy requires a user name and password to connect. Download the new version manually."),
