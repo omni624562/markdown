@@ -15,6 +15,8 @@ mod i18n;
 mod ado;
 mod ai;
 mod dav;
+// SSH 遠端資料夾放在 dav/ 底下（和 WebDAV 共用連線、輪詢與指令），保留 crate::ssh 的路徑。
+use dav::ssh;
 mod doc_index;
 mod files;
 mod fonts;
@@ -36,7 +38,6 @@ mod pdf;
 mod projects;
 mod secrets;
 mod settings;
-mod ssh;
 mod trust;
 mod update;
 mod watch;

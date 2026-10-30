@@ -5,7 +5,7 @@ members = ["crates/md-core", "crates/md-text", "crates/md-docx", "crates/md-wasm
 exclude = ["desktop"]
 
 [workspace.package]
-version = "1.62.11"
+version = "1.62.12"
 edition = "2021"
 license = "MIT"
 

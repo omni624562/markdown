@@ -40,8 +40,8 @@ desktop/src/  桌面版（Tauri 2）：沿用網頁介面，補上原生端的�
                 images.rs（貼上圖片）、image_protocol.rs（預覽的本機圖片 mdimg:）、pdf.rs（直接匯出 PDF）、fonts.rs
   Git           git.rs（狀態、提交、拉取、推送；libgit2）、git_flow.rs（分支、合併衝突）、
                 git_log.rs（提交歷史與線圖）、git_files.rs（單一檔案的歷史、網頁網址）
-  遠端與帳號    github.rs（GitHub 登入、儲存庫、Issues）、ado.rs（Azure DevOps：儲存庫、工作項目、Wiki）、
-                dav.rs（WebDAV 遠端資料夾與共用的 RemoteFs）、ssh.rs（SSH／SFTP 遠端資料夾）、
+  遠端與帳號    github.rs（GitHub 登入、儲存庫、Issues）、ado/（Azure DevOps：儲存庫、工作項目、Wiki）、
+                dav/（遠端資料夾：mod.rs 共用的 RemoteFs、輪詢與指令，webdav.rs WebDAV 用戶端，ssh.rs SSH／SFTP）、
                 offline.rs（工作項目與 Wiki 的離線副本）、secrets.rs（Windows 認證管理員）、notify.rs（系統通知）
   AI 協作       ai/term.rs（內嵌終端機）、ai/view.rs（終端機專用的 webview）、ai/mcp.rs（編輯器 MCP 伺服器）、
                 ai/run.rs（選取段落快捷動作）、ai/tools.rs
