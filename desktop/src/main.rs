@@ -281,6 +281,7 @@ fn main() {
                 settings::read_value(app.handle()).as_ref(),
             ));
             history::maintain(app.handle());
+            std::thread::spawn(update::remove_leftovers);
             create_main_window(app)?;
             if CUSTOM_TITLE_BAR {
                 if let Some(window) = app.get_window("main") {

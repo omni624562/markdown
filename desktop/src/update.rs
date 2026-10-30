@@ -399,7 +399,7 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
             let _ = app.emit("update-progress", Progress { downloaded, total });
         };
         let result = download(&manifest, file, report).and_then(|_| {
-            self_replace::self_replace(&tmp).map_err(|e| {
+            replace_exe(&exe, &tmp).map_err(|e| {
                 if e.kind() == std::io::ErrorKind::PermissionDenied {
                     no_permission()
                 } else {
@@ -412,6 +412,82 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// 用下載好的新版（`new`，和執行檔在同一個資料夾）取代執行檔 `exe`。
+///
+/// Windows 不能覆寫執行中的檔案，但可以改名：先把目前的執行檔改名成 `.<名稱>.old.<隨機>.exe`，
+/// 再把新版改名成原本的名稱。兩步都只是同一個資料夾裡的改名，不必複製；第二步失敗時把舊檔改回原名，
+/// 資料夾裡一定有一個能執行的版本。舊檔在下次啟動時刪掉（見 `remove_leftovers`）。
+///
+/// 執行檔原本的位置已經沒有檔案時（之前的更新做到一半），直接把新版放回去。
+fn replace_exe(exe: &std::path::Path, new: &std::path::Path) -> std::io::Result<()> {
+    if !new.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            tr!(
+                "下載的新版不見了（可能被防毒軟體移走）：{path}",
+                path = new.display()
+            ),
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(exe).map_or(0o755, |m| m.permissions().mode());
+        std::fs::set_permissions(new, std::fs::Permissions::from_mode(mode))?;
+    }
+    if !exe.exists() {
+        return std::fs::rename(new, exe);
+    }
+    let name = exe
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("omarker");
+    let suffix = random_suffix().map_err(std::io::Error::other)?;
+    let old = exe.with_file_name(format!(".{name}.old.{suffix}.exe"));
+    std::fs::rename(exe, &old)?;
+    if let Err(e) = std::fs::rename(new, exe) {
+        let _ = std::fs::rename(&old, exe);
+        return Err(e);
+    }
+    // Linux、macOS 可以直接刪掉（執行中的程式不受影響）；Windows 要等程式結束，留到下次啟動。
+    let _ = std::fs::remove_file(&old);
+    Ok(())
+}
+
+/// 啟動時刪掉之前更新留下的檔案：被取代的舊版、沒下載完的暫存檔，
+/// 以及舊版更新方式（self-replace）留下的 `.__relocated__.exe`、`.__temp__.exe`。
+pub fn remove_leftovers() {
+    if !current().updatable {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let (Some(dir), Some(name)) = (exe.parent(), exe.file_stem().and_then(|s| s.to_str())) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file = entry.file_name();
+        let Some(file) = file.to_str() else {
+            continue;
+        };
+        if is_leftover(file, name) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+fn is_leftover(file: &str, name: &str) -> bool {
+    let old = file.starts_with(&format!(".{name}.old.")) && file.ends_with(".exe");
+    let partial = file.starts_with(".md-editor.update.") && file.ends_with(".tmp");
+    let relocated = file.starts_with(&format!(".{name}."))
+        && (file.ends_with(".__relocated__.exe") || file.ends_with(".__temp__.exe"));
+    old || partial || relocated
 }
 
 fn random_suffix() -> Result<String, String> {
@@ -432,6 +508,51 @@ pub fn update_restart(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replaces_the_program_and_keeps_it_on_failure() {
+        let dir = std::env::temp_dir().join(format!("md-replace-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("omarker.exe");
+        let new = dir.join(".md-editor.update.1.tmp");
+        std::fs::write(&exe, "old").unwrap();
+        std::fs::write(&new, "new").unwrap();
+        replace_exe(&exe, &new).unwrap();
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
+        assert!(!new.exists());
+        // 新版不見了：舊的執行檔原封不動。
+        assert!(replace_exe(&exe, &new).is_err());
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
+        // 只留下新版，舊版已經刪掉（Windows 以外）。
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn puts_the_program_back_when_it_is_missing() {
+        let dir = std::env::temp_dir().join(format!("md-replace-missing-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("omarker.exe");
+        let new = dir.join(".md-editor.update.2.tmp");
+        std::fs::write(&new, "new").unwrap();
+        replace_exe(&exe, &new).unwrap();
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn recognizes_leftovers() {
+        assert!(is_leftover(".omarker.old.0123abcd.exe", "omarker"));
+        assert!(is_leftover(".md-editor.update.0123abcd.tmp", "omarker"));
+        assert!(is_leftover(
+            ".omarker.abcdefgh.__relocated__.exe",
+            "omarker"
+        ));
+        assert!(is_leftover(".omarker.abcdefgh.__temp__.exe", "omarker"));
+        assert!(!is_leftover("omarker.exe", "omarker"));
+        assert!(!is_leftover(".other.old.1.exe", "omarker"));
+        assert!(!is_leftover("notes.md", "omarker"));
+    }
 
     fn manifest() -> Manifest {
         Manifest {
