@@ -1,6 +1,7 @@
 /**
  * 工作項目檢視比照 TFS 網頁，把 TFS 的內容一塊一塊分開：
- * - 欄位改成精簡的格狀排列，狀態前面加顏色。
+ * - 標題上面是類型標籤與編號；最常看的欄位（狀態、指派給、優先順序、反覆項目、更新時間）是一排小標籤，
+ *   其他欄位收在「詳細欄位」裡（展開是完整的欄位表）。
  * - 每個段落（說明、重現步驟、相關項目、留言…）是一張可以收合的卡片，記住收合了哪些段落。
  * - 留言是對話卡片：頭像、名字、「幾天前」、上次看過之後的新留言標「新」；
  *   預設只展開最新的幾則，很長的先顯示前面一段；可以切換最新的在上面或下面。
@@ -72,6 +73,33 @@ export function parseCommentHeading(text: string): { name: string; at: number | 
   return { name: text.slice(0, sep).trim(), at: new Date(y, mo - 1, d, h, mi).getTime() };
 }
 
+/** 工作項目的標題「Bug 123：標題」拆成類型、編號、標題；不是這個格式時回傳 null。 */
+export function splitWorkItemTitle(text: string): { kind: string; id: string; title: string } | null {
+  const m = /^(.+?) (\d+)\s*[：:]\s*([\s\S]*)$/.exec(text.trim());
+  return m ? { kind: m[1], id: m[2], title: m[3] } : null;
+}
+
+/** 欄位表裡的時間「2026-10-29 03:00」（本地時間）；讀不出來是 null。 */
+export function parseFieldTime(text: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(text.trim());
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m.map(Number);
+  return new Date(y, mo - 1, d, h, mi).getTime();
+}
+
+/** 路徑的最後一段（區域、反覆項目：`專案\Sprint 102` → `Sprint 102`）。 */
+export function lastSegment(path: string): string {
+  const parts = path.split("\\").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+/** 附件收起來時的摘要：檔名，同名的合併成「檔名 ×3」。 */
+export function attachmentSummary(names: string[]): string {
+  const counts = new Map<string, number>();
+  for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1);
+  return [...counts].map(([n, c]) => (c > 1 ? `${n} ×${c}` : n)).join(", ");
+}
+
 /** 收起來時標題後面顯示的摘要（第一段文字）。 */
 function peekText(nodes: Element[]): string {
   const text = nodes
@@ -86,7 +114,7 @@ function peekText(nodes: Element[]): string {
 function attachmentNames(nodes: Element[]): string {
   const names = nodes.flatMap((n) => [...n.querySelectorAll(".ado-att-name")].map((a) => a.textContent ?? ""));
   if (!names.length) return peekText(nodes);
-  const text = names.join(", ");
+  const text = attachmentSummary(names);
   return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }
 
@@ -120,17 +148,115 @@ export function decorateWorkItem(body: HTMLElement, opts: WorkItemLookOptions): 
 }
 
 function decorateFields(body: HTMLElement): void {
+  const h1 = body.querySelector<HTMLElement>(":scope > h1");
   const table = body.querySelector<HTMLTableElement>(":scope > h1 + table");
-  if (!table) return;
+  if (!h1 || !table || h1.closest(".ado-hero")) return;
   table.classList.add("ado-fields");
+  const fields = new Map<string, HTMLTableCellElement>();
   for (const row of table.tBodies[0]?.rows ?? []) {
     const [label, value] = row.cells;
-    if (!label || !value || label.textContent !== t("狀態") || value.querySelector(".ado-state-dot")) continue;
-    const dot = document.createElement("span");
-    dot.className = `ado-state-dot ${stateTone(value.textContent ?? "")}`;
-    dot.setAttribute("aria-hidden", "true");
-    value.prepend(dot);
+    if (label && value) fields.set(label.textContent?.trim() ?? "", value);
   }
+  const text = (label: string) => fields.get(label)?.textContent?.trim() ?? "";
+  const state = text(t("狀態"));
+  const stateCell = fields.get(t("狀態"));
+  if (stateCell && !stateCell.querySelector(".ado-state-dot")) stateCell.prepend(stateDot(state));
+
+  const hero = document.createElement("header");
+  hero.className = "ado-hero";
+  h1.before(hero);
+  // 標題：上面是類型標籤與編號，標題本身小一點。
+  const parts = splitWorkItemTitle(h1.textContent ?? "");
+  if (parts) {
+    const kindRow = document.createElement("div");
+    kindRow.className = "ado-hero-kind";
+    const badge = document.createElement("span");
+    badge.className = "ado-kind-badge";
+    badge.dataset.kind = parts.kind.toLowerCase().replace(/\s+/g, "-");
+    badge.textContent = parts.kind;
+    const id = document.createElement("span");
+    id.textContent = parts.id;
+    kindRow.append(badge, id);
+    hero.append(kindRow);
+    h1.textContent = parts.title;
+  }
+  hero.append(h1);
+
+  // 最常看的欄位：一排小標籤（滑鼠提示是欄位名稱）。
+  const facts = document.createElement("div");
+  facts.className = "ado-facts";
+  const fact = (label: string, ...content: (Node | string)[]) => {
+    const chip = document.createElement("span");
+    chip.className = "ado-fact";
+    chip.title = label;
+    chip.append(...content);
+    facts.append(chip);
+    return chip;
+  };
+  if (state) {
+    const name = document.createElement("b");
+    name.textContent = state;
+    const reason = text(t("原因"));
+    const chip = fact(t("狀態"), stateDot(state), name);
+    if (reason) {
+      const r = document.createElement("span");
+      r.className = "ado-fact-muted";
+      r.textContent = `· ${reason}`;
+      chip.append(r);
+      chip.title = t("狀態") + " · " + t("原因");
+    }
+  }
+  const assignee = text(t("指派給"));
+  if (assignee) {
+    const avatar = document.createElement("span");
+    avatar.className = "ado-fact-avatar";
+    avatar.textContent = shortcutInitial(assignee);
+    avatar.style.setProperty("--hue", String(shortcutHue(assignee)));
+    fact(t("指派給"), avatar, assignee);
+  }
+  const priority = text(t("優先順序"));
+  if (priority) fact(t("優先順序"), `P${priority}`);
+  const iteration = text(t("反覆項目"));
+  if (iteration) fact(t("反覆項目") + "\n" + iteration, icon("calendar"), lastSegment(iteration));
+  const changed = parseFieldTime(text(t("最後更新")));
+  if (changed !== null) {
+    const chip = fact(t("最後更新") + "\n" + text(t("最後更新")), t("更新於 {ago}", { ago: timeAgo(changed) }));
+    chip.classList.add("ado-fact-muted");
+  }
+  hero.append(facts);
+
+  // 其他欄位收起來：摘要是專案、區域、建立者與標籤，展開是完整的欄位表。
+  const more = document.createElement("details");
+  more.className = "ado-more-fields";
+  const summary = document.createElement("summary");
+  const brief = [text(t("專案")), text(t("區域")) && lastSegment(text(t("區域"))), text(t("建立者")) && t("建立者 {name}", { name: text(t("建立者")) })]
+    .filter(Boolean)
+    .join("・");
+  const label = document.createElement("span");
+  label.textContent = t("詳細欄位");
+  const briefEl = document.createElement("span");
+  briefEl.className = "ado-more-brief";
+  briefEl.textContent = brief;
+  summary.append(icon("chevron-right"), label, briefEl);
+  for (const tag of text(t("標籤")).split(/[、,]\s*/).filter(Boolean)) {
+    const chip = document.createElement("span");
+    chip.className = "ado-field-tag";
+    chip.textContent = tag;
+    summary.append(chip);
+  }
+  more.append(summary, table);
+  hero.append(more);
+  // 「在瀏覽器開啟」：頂端列已經有同樣的按鈕，畫面上不重複（複製成 Markdown 文件時還在）。
+  const web = hero.nextElementSibling;
+  // （連結後面可能多了狀態標籤，所以只看第一個連結。）
+  if (web?.tagName === "P" && web.querySelector(":scope > a")?.textContent?.trim() === t("在瀏覽器開啟")) web.remove();
+}
+
+function stateDot(state: string): HTMLElement {
+  const dot = document.createElement("span");
+  dot.className = `ado-state-dot ${stateTone(state)}`;
+  dot.setAttribute("aria-hidden", "true");
+  return dot;
 }
 
 /** 一個段落包成卡片：標題列（圖示、標題、收起來時的摘要），內容在下面。 */
