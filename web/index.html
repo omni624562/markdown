@@ -9,13 +9,8 @@
     <title>oMarker</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <script>
-      // 在畫面繪製前套用主題，避免深色模式使用者看到白色閃爍。
-      try {
-        const t = localStorage.getItem("md-editor:theme");
-        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-      } catch {}
-    </script>
+    <!-- 在畫面繪製前套用主題，避免深色模式使用者看到白色閃爍（外部檔案：CSP 不允許行內腳本）。 -->
+    <script src="theme-init.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#editor">跳到編輯區</a>
