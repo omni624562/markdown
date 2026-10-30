@@ -70,7 +70,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test scripts/version.test.mjs
+      - run: node --test scripts/version.test.mjs scripts/sign-update.test.mjs
       - name: 檢查版本號
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then

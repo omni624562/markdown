@@ -6,6 +6,8 @@
 //!
 //! `version.json` 另外有 Ed25519 簽章（`scripts/sign-update.mjs`，私鑰只在 GitHub Secrets），
 //! 用內建的公鑰驗證。只有 SHA-256 時，能改 Release 檔案的人可以連檢查碼一起換掉；有簽章就做不到。
+//! 這一版起驗證 v2 簽章（連說明文字、發佈時間也簽了），並記住看過最新的流水號，
+//! 不接受比它舊的更新資訊（拿舊的、簽過的 version.json 讓程式以為沒有新版）。
 //!
 //! 自己編譯的版本沒有流水號，不會檢查更新，避免把開發中的版本換掉。
 
@@ -76,21 +78,34 @@ pub struct Manifest {
     url: String,
     sha256: String,
     size: u64,
-    /// `signed_message` 的 Ed25519 簽章（base64）。
+    /// 簽章的時間（ISO 8601），在 v2 簽章範圍內。
+    #[serde(default)]
+    issued: String,
+    /// v1 的 Ed25519 簽章（base64，`scripts/sign-update.mjs` 的 `signedMessage`）。
+    /// 1.62.0 以前的版本驗證這個；這一版起只驗證 `signature_v2`。
     #[serde(default)]
     signature: String,
+    /// `signed_message_v2` 的 Ed25519 簽章（base64）。
+    #[serde(default, rename = "signatureV2")]
+    signature_v2: String,
 }
 
 impl Manifest {
-    /// 簽章的內容；要和 `scripts/sign-update.mjs` 的 `signedMessage` 完全一致。
-    fn signed_message(&self) -> String {
+    /// v2 的簽章內容；要和 `scripts/sign-update.mjs` 的 `signedMessageV2` 完全一致。
+    /// 說明文字可能很長、有換行，簽的是它們的 SHA-256。
+    fn signed_message_v2(&self) -> String {
         format!(
-            "md-editor-update/v1\n{}\n{}\n{}\n{}\n{}",
+            "md-editor-update/v2\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             self.build,
             self.version,
             self.url,
             self.sha256.to_ascii_lowercase(),
-            self.size
+            self.size,
+            self.issued,
+            self.commit,
+            self.date,
+            hex(&Sha256::digest(self.notes.as_bytes())),
+            hex(&Sha256::digest(self.changes.as_bytes())),
         )
     }
 
@@ -99,10 +114,12 @@ impl Manifest {
         let b64 = base64::engine::general_purpose::STANDARD;
         let key = b64.decode(public_key).map_err(|e| e.to_string())?;
         let sig = b64
-            .decode(self.signature.trim())
-            .map_err(|_| tr!("更新資訊沒有正確的簽章，已取消更新"))?;
+            .decode(self.signature_v2.trim())
+            .ok()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| tr!("更新資訊沒有正確的簽章，已取消更新"))?;
         ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
-            .verify(self.signed_message().as_bytes(), &sig)
+            .verify(self.signed_message_v2().as_bytes(), &sig)
             .map_err(|_| tr!("更新資訊的簽章不符，可能被竄改，已取消更新"))
     }
 
@@ -223,7 +240,40 @@ fn fallback(
     Err(first.to_string())
 }
 
-fn fetch_manifest() -> Result<Manifest, String> {
+/// 記錄看過最新的更新資訊的流水號（app 資料夾的 `update-seen`）。
+fn seen_path(app: &AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    app.path()
+        .app_local_data_dir()
+        .ok()
+        .map(|d| d.join("update-seen"))
+}
+
+/// 更新資訊不能比之前看過的舊：有人拿以前簽過的 version.json 回應時，程式會以為沒有新版，
+/// 一直停在有問題的舊版。看過更新的就記下來。
+fn check_not_older(app: &AppHandle, manifest: &Manifest) -> Result<(), String> {
+    let Some(path) = seen_path(app) else {
+        return Ok(());
+    };
+    let seen = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    if manifest.build < seen {
+        return Err(tr!(
+            "收到的更新資訊比之前看過的還舊，可能被竄改，已取消更新"
+        ));
+    }
+    if manifest.build > seen {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = crate::files::write_atomic(&path, manifest.build.to_string().as_bytes());
+    }
+    Ok(())
+}
+
+fn fetch_manifest(app: &AppHandle) -> Result<Manifest, String> {
     let mut text = String::new();
     open(MANIFEST_URL, Some(Duration::from_secs(30)))
         .map_err(|e| tr!("無法連線到 GitHub：{e}", e = e))?
@@ -233,12 +283,13 @@ fn fetch_manifest() -> Result<Manifest, String> {
     let manifest: Manifest =
         serde_json::from_str(&text).map_err(|e| tr!("更新資訊格式不正確：{e}", e = e))?;
     manifest.validate()?;
+    check_not_older(app, &manifest)?;
     Ok(manifest)
 }
 
 /// 檢查有沒有新版。
 #[tauri::command]
-pub async fn update_check() -> Result<CheckResult, String> {
+pub async fn update_check(app: AppHandle) -> Result<CheckResult, String> {
     let current = current();
     if !current.updatable {
         return Ok(CheckResult {
@@ -246,7 +297,7 @@ pub async fn update_check() -> Result<CheckResult, String> {
             latest: None,
         });
     }
-    let manifest = tauri::async_runtime::spawn_blocking(fetch_manifest)
+    let manifest = tauri::async_runtime::spawn_blocking(move || fetch_manifest(&app))
         .await
         .map_err(|e| e.to_string())??;
     let newer = current.build.is_some_and(|b| manifest.build > b);
@@ -266,12 +317,15 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// 下載到暫存檔，邊下載邊算 SHA-256；大小或檢查碼不符就刪掉暫存檔並回報錯誤。
-fn download(m: &Manifest, dest: &PathBuf, mut progress: impl FnMut(u64)) -> Result<(), String> {
+/// 下載到暫存檔（已經建立好的 `file`），邊下載邊算 SHA-256；大小或檢查碼不符就回報錯誤。
+fn download(
+    m: &Manifest,
+    mut file: std::fs::File,
+    mut progress: impl FnMut(u64),
+) -> Result<(), String> {
     let mut reader = open(&m.url, None)
         .map_err(|e| tr!("無法下載新版：{e}", e = e))?
         .take(MAX_SIZE);
-    let mut file = std::fs::File::create(dest).map_err(|e| tr!("無法建立暫存檔：{e}", e = e))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     let mut downloaded = 0u64;
@@ -316,29 +370,35 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
         return Err(tr!("這個版本不支援自動更新"));
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let manifest = fetch_manifest()?;
+        let manifest = fetch_manifest(&app)?;
         if !current.build.is_some_and(|b| manifest.build > b) {
             return Err(tr!("已經是最新版本"));
         }
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let dir = exe.parent().ok_or_else(|| tr!("找不到執行檔所在的資料夾"))?;
-        let tmp = dir.join(".md-editor.update.tmp");
+        // 隨機的檔名、只建立新檔：執行檔所在的資料夾別人也能寫入時，
+        // 不會被事先放好的同名檔案或符號連結導到別的地方。
+        let tmp = dir.join(format!(".md-editor.update.{}.tmp", random_suffix()?));
         let no_permission = || {
             tr!("沒有權限更新「{dir}」裡的執行檔。請把 oMarker 的執行檔放到自己的資料夾（例如桌面或文件），或改為手動下載新版。", dir = dir.display())
         };
         // 先確認能在執行檔旁邊寫入，避免下載完才發現沒有權限。
-        if let Err(e) = std::fs::File::create(&tmp) {
-            return Err(if e.kind() == std::io::ErrorKind::PermissionDenied {
-                no_permission()
-            } else {
-                tr!("無法建立暫存檔：{e}", e = e)
-            });
-        }
+        let file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                return Err(no_permission())
+            }
+            Err(e) => return Err(tr!("無法建立暫存檔：{e}", e = e)),
+        };
         let total = manifest.size;
         let report = |downloaded| {
             let _ = app.emit("update-progress", Progress { downloaded, total });
         };
-        let result = download(&manifest, &tmp, report).and_then(|_| {
+        let result = download(&manifest, file, report).and_then(|_| {
             self_replace::self_replace(&tmp).map_err(|e| {
                 if e.kind() == std::io::ErrorKind::PermissionDenied {
                     no_permission()
@@ -352,6 +412,15 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn random_suffix() -> Result<String, String> {
+    use ring::rand::SecureRandom;
+    let mut bytes = [0u8; 8];
+    ring::rand::SystemRandom::new()
+        .fill(&mut bytes)
+        .map_err(|_| tr!("無法建立暫存檔：{e}", e = "random"))?;
+    Ok(hex(&bytes))
 }
 
 /// 重新啟動以套用更新。
@@ -376,7 +445,9 @@ mod tests {
                 .into(),
             sha256: "a".repeat(64),
             size: 1234,
+            issued: "2026-10-30T00:00:00.000Z".into(),
             signature: String::new(),
+            signature_v2: String::new(),
         }
     }
 
@@ -435,7 +506,10 @@ mod tests {
             url: serve_once(body.clone()),
             ..good.clone()
         };
-        download(&m, &dest, |n| reported.push(n)).unwrap();
+        download(&m, std::fs::File::create(&dest).unwrap(), |n| {
+            reported.push(n)
+        })
+        .unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         // 每下載 512 KB 左右回報一次（每次讀到的大小不固定）。
         assert_eq!(reported.len(), 1);
@@ -446,7 +520,7 @@ mod tests {
             sha256: "0".repeat(64),
             ..good.clone()
         };
-        assert!(download(&m, &dest, |_| {})
+        assert!(download(&m, std::fs::File::create(&dest).unwrap(), |_| {})
             .unwrap_err()
             .contains("檢查碼不符"));
 
@@ -454,7 +528,7 @@ mod tests {
             url: serve_once(body[..1000].to_vec()),
             ..good
         };
-        assert!(download(&m, &dest, |_| {})
+        assert!(download(&m, std::fs::File::create(&dest).unwrap(), |_| {})
             .unwrap_err()
             .contains("大小不符"));
         std::fs::remove_dir_all(&dir).unwrap();
@@ -483,9 +557,11 @@ mod tests {
     }
 
     /// 測試用的金鑰對（不是正式的金鑰）；簽章由 `scripts/sign-update.mjs` 產生。
-    const TEST_PUBLIC_KEY: &str = "k/jJUUWf7oXHqNQDFWjbWsMjxZs8uadP4DACFnpFhCM=";
+    const TEST_PUBLIC_KEY: &str = "iKtKRYUwNq8kJFwRaur2UppGh0e7ZBbP7cXz0+2qzbY=";
     const TEST_SIGNATURE: &str =
-        "FPPn4B7cOrF1yqA2r+4aOkoLWiu9rF7bQAtDJUSoORlBt/H0gG/Ts92rK4Bhd+k3tKAGIWyeaT7nK9svdJCWBA==";
+        "ZXeXyeCdK0/A446jaNSg+C90JGrtKjE12ef2QpNJcEjB98iWXRHGFUgBbOXShR2N8oeY54nBt4W/j2T1ELFtAg==";
+    const TEST_SIGNATURE_V2: &str =
+        "TKCrpxq7e9DE+lyIWLpJP1F3+2v9pYfvVU2iqG1HWHnpod4Ox9GxPiRsRs9WxKyg6u4fsP/9JiTnFjrlKHnbBA==";
 
     fn signed() -> Manifest {
         Manifest {
@@ -494,6 +570,7 @@ mod tests {
             sha256: "AB".repeat(32),
             size: 4096,
             signature: TEST_SIGNATURE.into(),
+            signature_v2: TEST_SIGNATURE_V2.into(),
             ..manifest()
         }
     }
@@ -511,15 +588,21 @@ mod tests {
             |m: &mut Manifest| m.size += 1,
             |m: &mut Manifest| m.url.push('x'),
             |m: &mut Manifest| m.version = "9.9.9".into(),
-            |m: &mut Manifest| m.signature.clear(),
+            |m: &mut Manifest| m.signature_v2.clear(),
+            // v2 也簽了說明文字、發佈時間、提交與日期。
+            |m: &mut Manifest| m.notes = "請改下載 evil.exe".into(),
+            |m: &mut Manifest| m.changes = "其他說明".into(),
+            |m: &mut Manifest| m.issued = "2020-01-01T00:00:00.000Z".into(),
+            |m: &mut Manifest| m.commit = "fff0000".into(),
+            |m: &mut Manifest| m.date = "2020-01-01".into(),
         ] {
             let mut m = signed();
             tamper(&mut m);
             assert!(m.verify_signature(TEST_PUBLIC_KEY).is_err());
         }
-        // 沒有簽到的說明文字可以改。
+        // 只有 v1 簽章（舊版程式用的）不夠。
         let mut m = signed();
-        m.notes = "其他說明".into();
-        assert_eq!(m.verify_signature(TEST_PUBLIC_KEY), Ok(()));
+        m.signature_v2.clear();
+        assert!(m.verify_signature(TEST_PUBLIC_KEY).is_err());
     }
 }
