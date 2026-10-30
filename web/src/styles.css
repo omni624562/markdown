@@ -610,9 +610,10 @@ kbd {
   white-space: nowrap;
   overflow: hidden;
 }
-/* 檢視切換在狀態列左邊：選中的用強調色；視窗窄時只顯示圖示（名稱在滑鼠提示中）。 */
+/* 檢視切換在狀態列最右邊：選中的用強調色；視窗窄時（或設定關掉文字時）只顯示圖示（名稱在滑鼠提示中）。 */
 .view-switch {
-  margin: 0 auto 0 -8px;
+  order: 99;
+  margin: 0 -8px 0 4px;
   padding: 1px;
   gap: 1px;
   border-radius: 7px;
@@ -629,6 +630,7 @@ kbd {
 @media (max-width: 960px) {
   .view-switch .label { display: none; }
 }
+.view-switch-icons .view-switch .label { display: none; }
 /* 工作項目、Wiki 頁面、Git 歷史蓋住編輯區時，檢視切換用不到（按了反而會關掉那個畫面）：先藏起來，版面不動。並排顯示時編輯區還在，照常顯示。 */
 body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-switch { visibility: hidden; }
 @media (pointer: coarse) {

@@ -67,6 +67,7 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
   if (codeFont) root.setProperty("--font-mono", codeFont);
   else root.removeProperty("--font-mono");
   root.setProperty("--doc-line-height", DOC_LINE_HEIGHT[s.docLineHeight]);
+  document.body.classList.toggle("view-switch-icons", !s.viewSwitchLabels);
   // 介面大小：整個視窗縮放（啟動時預設 100% 就不用呼叫）。
   if (desktop && (changed ? changed.includes("uiScale") : s.uiScale !== "100")) {
     void desktop.setUiZoom(Number(s.uiScale) / 100).catch(reportError);
