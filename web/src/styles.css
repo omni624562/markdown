@@ -1849,6 +1849,12 @@ button.git-info:disabled { cursor: default; }
 /* 清單上方：狀態文字與排列方式（側邊欄窄時換行）。 */
 .workitems-statusrow { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; justify-content: space-between; }
 .workitems-statusrow .workitems-status { flex: 1 1 120px; min-width: 0; }
+.workitems-tools { display: inline-flex; flex: none; gap: 2px; align-items: center; max-width: 100%; }
+.workitems-fold { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.workitems-fold[hidden] { display: none; }
+.workitems-fold .icon { width: 14px; height: 14px; }
+.workitems-fold:hover { color: var(--fg); background: var(--active-line); }
+.workitems-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .workitems-arrange { flex: none; max-width: 100%; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 12px var(--font-ui); cursor: pointer; }
 .workitems-arrange:hover { color: var(--fg); background: var(--active-line); }
 .workitems-arrange:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
