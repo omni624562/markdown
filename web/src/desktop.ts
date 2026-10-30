@@ -163,8 +163,6 @@ export type TermNotice = { kind: "show" } | { kind: "hide" } | { kind: "command"
 
 export interface McpInfo {
   url: string;
-  claudeAdd: string;
-  codexAdd: string;
 }
 
 /** 給 MCP 伺服器的編輯器狀態。 */
@@ -782,6 +780,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       afterSettings(() => core.invoke<boolean>("term_layout", { bounds })),
     termForward: (request: TermRequest) => core.invoke<void>("term_forward", { request }),
     mcpStart: () => afterSettings(() => core.invoke<McpInfo>("mcp_start")),
+    /** 把手動註冊的指令（含權杖）放進剪貼簿；由原生端複製，權杖不經過網頁。 */
+    mcpCopyRegistration: (tool: AiTool) => core.invoke<void>("mcp_copy_registration", { tool }),
     mcpStop: () => core.invoke<void>("mcp_stop"),
     mcpSync: (snapshot: EditorSnapshot) => core.invoke<void>("mcp_sync", { snapshot }),
     /** 回傳 false 表示 AI 已經不在等這個決定（逾時）。 */
