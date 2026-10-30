@@ -156,6 +156,8 @@ export class IssuesPanel<T extends IssueSummary> {
     }
     this.#list = document.createElement("ul");
     this.#list.className = "workitems-list";
+    // 清單自己捲動（上面的搜尋與篩選固定不動）；捲下去時上緣出現分隔線。
+    this.#list.addEventListener("scroll", () => this.#list.classList.toggle("scrolled", this.#list.scrollTop > 0), { passive: true });
     let search: HTMLElement = this.#input;
     if (handlers.filterButton) {
       search = document.createElement("div");
