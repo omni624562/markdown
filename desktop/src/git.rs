@@ -449,13 +449,13 @@ fn require_https(url: &str) -> Result<(), String> {
         } else {
             Err(tr!(
                 "遠端網址用的是沒有加密的 HTTP，密碼和內容可能被看到，只能用在區域網路。請改用 HTTPS 的網址：{url}",
-                url = url
+                url = crate::git_files::display_remote(url)
             ))
         }
     } else {
         Err(tr!(
             "目前只支援 HTTPS 的遠端網址（例如 https://github.com/…）。這個儲存庫的遠端是：{url}",
-            url = url
+            url = crate::git_files::display_remote(url)
         ))
     }
 }
@@ -540,7 +540,7 @@ impl<'a> Session<'a> {
                 tr!(
                     "{what}失敗：需要登入遠端儲存庫（{url}）。",
                     what = what,
-                    url = url
+                    url = crate::git_files::display_remote(url)
                 )
             }
         } else if matches!(
