@@ -22,25 +22,24 @@ pub fn load_settings(app: AppHandle) -> Result<Option<String>, String> {
     }
 }
 
-/// 設定檔裡的「啟用 AI 協作」。執行 AI 工具、啟動 MCP 伺服器前，原生端自己再檢查一次，
-/// 不只靠網頁那一端（網頁萬一被注入程式碼，也不能自己偷偷開啟）。
-pub fn ai_enabled(app: &AppHandle) -> bool {
+/// 設定檔的內容（沒有設定檔或讀不了時是 `None`）。
+pub fn read_value(app: &AppHandle) -> Option<serde_json::Value> {
     settings_path(app)
         .ok()
         .and_then(|p| fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .is_some_and(|v| v["aiEnabled"] == true)
+        .and_then(|s| serde_json::from_str(&s).ok())
+}
+
+/// 設定檔裡的「啟用 AI 協作」。執行 AI 工具、啟動 MCP 伺服器前，原生端自己再檢查一次，
+/// 不只靠網頁那一端（網頁萬一被注入程式碼，也不能自己偷偷開啟）。
+pub fn ai_enabled(app: &AppHandle) -> bool {
+    read_value(app).is_some_and(|v| v["aiEnabled"] == true)
 }
 
 /// 設定檔裡的「在終端機執行指令」（沒有這一項時是預設的開啟）。AI 要求執行指令時，
 /// 原生端自己再檢查一次，不只靠網頁那一端。
 pub fn ai_terminal_enabled(app: &AppHandle) -> bool {
-    ai_enabled(app)
-        && settings_path(app)
-            .ok()
-            .and_then(|p| fs::read_to_string(p).ok())
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .is_some_and(|v| v["aiTerminal"] != false)
+    read_value(app).is_some_and(|v| v["aiEnabled"] == true && v["aiTerminal"] != false)
 }
 
 /// 需要 AI 協作的功能先呼叫：沒有開啟時回傳錯誤。
@@ -90,5 +89,9 @@ pub async fn save_settings(
     }
     crate::files::write_atomic(&path, json.as_bytes())
         .map_err(|e| tr!("無法儲存設定：{e}", e = e))?;
+    // 整合功能的開關立刻生效（關掉的功能，原生指令從現在起一律拒絕）。
+    if let Some(features) = app.try_state::<crate::features::Features>() {
+        features.update(serde_json::from_str(&json).ok().as_ref());
+    }
     Ok(accepted)
 }

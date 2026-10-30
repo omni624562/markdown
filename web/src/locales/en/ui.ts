@@ -221,6 +221,11 @@ export const ui: Record<string, Translation> = {
     "How syncing works, for both GitHub and Azure DevOps/TFS. Git is built in; nothing else to install.",
   "GitHub 帳號、下載與上傳儲存庫": "GitHub account, downloading and uploading repositories",
   "Azure DevOps／TFS": "Azure DevOps/TFS",
+  "整合功能": "Integrations",
+  "Git 與 GitHub": "Git and GitHub",
+  "關掉後不顯示，也不能使用；切換後會重新載入介面": "When off, it's hidden and can't be used. The window reloads after switching.",
+  "工作項目、Wiki 與儲存庫": "Work items, wikis and repositories",
+  "遠端資料夾（WebDAV、SSH）": "Remote folders (WebDAV, SSH)",
   "公司自架的 Azure DevOps Server（TFS）或雲端版：連線、下載儲存庫與工作項目":
     "Your company's Azure DevOps Server (TFS) or the cloud version: connection, repositories and work items",
   "更新權杖": "Update Token",

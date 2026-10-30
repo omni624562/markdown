@@ -309,6 +309,17 @@ export class SettingsDialog {
     general.append(
       ...this.#group(t("介面"), [langRow, themeRow]),
       ...this.#group(t("存檔"), this.#rows([{ key: "autoSave", label: t("自動存檔"), hint: t("已經存過的檔案，停止打字後自動存回磁碟") }])),
+      // 整合功能：關掉的功能不顯示，原生端也拒絕它的指令。切換後重新載入介面（見 main.ts）。
+      ...(desktop
+        ? this.#group(
+            t("整合功能"),
+            this.#rows([
+              { key: "gitEnabled", label: t("Git 與 GitHub"), hint: t("關掉後不顯示，也不能使用；切換後會重新載入介面") },
+              { key: "adoEnabled", label: t("Azure DevOps／TFS"), hint: t("工作項目、Wiki 與儲存庫") },
+              { key: "remoteEnabled", label: t("遠端資料夾（WebDAV、SSH）") },
+            ]),
+          )
+        : []),
       ...this.#group(t("重設"), [this.#row("reset", t("所有設定"), t("恢復成預設值；主題、版面配置不受影響"), () => reset)]),
     );
     body.append(general);
