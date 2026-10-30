@@ -159,6 +159,11 @@ const LOOK_GROUPS: Group[] = [
       { key: "previewWidth", label: t("文字欄寬"), hint: t("預覽與匯出的版面寬度") },
       { key: "fixedToolbar", label: t("固定顯示格式工具列"), hint: t("關閉時，選取文字才會浮出格式按鈕") },
       { key: "outlineRight", label: t("大綱放在右邊"), hint: t("視窗夠寬時，大綱固定在內文右邊，目前的章節會亮起來") },
+      {
+        key: "viewSwitchLabels",
+        label: t("檢視切換顯示文字"),
+        hint: t("狀態列右邊的「原始碼／即時預覽／分割／預覽」；關閉時只顯示圖示，名稱在滑鼠提示裡"),
+      },
       { key: "lineNumbers", label: t("顯示行號"), hint: t("原始碼檢視") },
     ],
   },

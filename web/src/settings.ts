@@ -38,6 +38,8 @@ export interface Settings {
   fixedToolbar: boolean;
   /** 大綱固定顯示在內文右邊（視窗夠寬時）；檔案、搜尋等面板仍在左邊。 */
   outlineRight: boolean;
+  /** 狀態列的檢視切換（原始碼／即時預覽／分割／預覽）顯示文字；關閉時只有圖示。視窗窄時一律只有圖示。 */
+  viewSwitchLabels: boolean;
   /** 不載入文件中的遠端圖片（避免對方知道你何時開啟文件、你的 IP）。 */
   blockRemoteImages: boolean;
   /** 桌面版：已經存過的檔案，停止打字一下子後自動存回磁碟。 */
@@ -125,6 +127,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   smartPaste: true,
   fixedToolbar: false,
   outlineRight: false,
+  viewSwitchLabels: true,
   // 預設封鎖：開啟別人給的文件時，對方的伺服器不會知道你的 IP 與開啟時間。按一下圖片就能載入。
   blockRemoteImages: true,
   autoSymbols: true,
@@ -203,6 +206,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("smartPaste");
   bool("fixedToolbar");
   bool("outlineRight");
+  bool("viewSwitchLabels");
   bool("blockRemoteImages");
   bool("autoSymbols");
   bool("autoSave");
