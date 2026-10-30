@@ -1245,6 +1245,30 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 .terminal-page, .terminal-page body { height: 100%; }
 .terminal-page body { display: block; overflow: hidden; }
 .terminal-page .terminal-panel { height: 100%; border-top: 0; }
+/* AI 要在終端機執行指令時的同意提示（終端機面板上方）。 */
+.command-consent {
+  display: grid;
+  flex: none;
+  gap: 4px 10px;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--accent-soft);
+}
+.command-consent strong { grid-column: 1; font-size: 13px; }
+.command-consent-code {
+  grid-column: 1;
+  overflow-x: auto;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  font-family: var(--font-term);
+  font-size: 12.5px;
+  white-space: pre;
+}
+.command-consent-detail { grid-column: 1; color: var(--muted); font-size: 12px; }
+.command-consent-actions { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 2; grid-row: 1 / span 3; justify-content: flex-end; }
 .term-resize { position: absolute; inset: -4px 0 auto; z-index: 3; height: 8px; cursor: row-resize; }
 .term-resize:hover, .term-resize:focus-visible { background: color-mix(in srgb, var(--accent) 50%, transparent); outline: none; }
 .term-head { display: flex; flex: none; gap: 8px; align-items: center; min-height: 34px; padding: 0 6px 0 4px; border-bottom: 1px solid var(--border); }

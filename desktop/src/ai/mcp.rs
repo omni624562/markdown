@@ -89,6 +89,8 @@ struct Running {
 pub struct Mcp {
     snapshot: Arc<RwLock<Snapshot>>,
     pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Decision>>>>,
+    /// `pending` 裡哪些是要執行指令的要求：只能由終端機的 webview 回覆（見 `mcp_respond`）。
+    commands: Arc<Mutex<std::collections::HashSet<u64>>>,
     next: Arc<AtomicU64>,
     running: Mutex<Option<Running>>,
 }
@@ -201,6 +203,7 @@ struct EditorTools {
     app: AppHandle,
     snapshot: Arc<RwLock<Snapshot>>,
     pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Decision>>>>,
+    commands: Arc<Mutex<std::collections::HashSet<u64>>>,
     next: Arc<AtomicU64>,
 }
 
@@ -472,16 +475,28 @@ impl EditorTools {
     }
 
     /// 請使用者同意執行指令。等太久就取消，避免使用者稍後按下同意時 AI 已經不在等結果。
-    async fn ask(&self, id: u64, event: &str, payload: CommandEvent) -> Result<Decision, String> {
+    ///
+    /// 同意的畫面在終端機的 webview（不顯示任何文件內容），回覆也只接受那裡送來的：
+    /// 主畫面萬一被注入程式碼，也不能替使用者按下同意。
+    async fn ask(
+        &self,
+        id: u64,
+        event: &'static str,
+        payload: CommandEvent,
+    ) -> Result<Decision, String> {
         let (tx, rx) = oneshot::channel();
         self.pending.lock().unwrap().insert(id, tx);
-        self.app.emit(event, payload).map_err(|e| e.to_string())?;
-        match tokio::time::timeout(DECISION_WAIT, rx).await {
+        self.commands.lock().unwrap().insert(id);
+        super::view::send(&self.app, event, payload);
+        super::view::ask_main_to_show(&self.app);
+        let result = tokio::time::timeout(DECISION_WAIT, rx).await;
+        self.commands.lock().unwrap().remove(&id);
+        match result {
             Ok(Ok(d)) => Ok(d),
             Ok(Err(_)) => Err("編輯器已取消這個要求".into()), // i18n-ignore
             Err(_) => {
                 self.pending.lock().unwrap().remove(&id);
-                let _ = self.app.emit("ai-command-expired", id);
+                super::view::send(&self.app, "ai-command-expired", id);
                 Err(
                     "使用者沒有在時間內同意，指令沒有執行。需要的話可以請使用者準備好後再試一次。" // i18n-ignore
                         .into(),
@@ -687,6 +702,7 @@ pub async fn mcp_start(app: AppHandle, mcp: State<'_, Mcp>) -> Result<McpInfo, S
         app: app.clone(),
         snapshot: mcp.snapshot.clone(),
         pending: mcp.pending.clone(),
+        commands: mcp.commands.clone(),
         next: mcp.next.clone(),
     };
     let service: StreamableHttpService<EditorTools, LocalSessionManager> =
@@ -743,11 +759,20 @@ pub async fn mcp_sync(mut snapshot: Snapshot, mcp: State<'_, Mcp>) -> Result<(),
 
 /// 使用者對提議或指令的決定。回傳 false 表示 AI 已經不在等了（逾時或伺服器已停止）。
 #[tauri::command]
-pub fn mcp_respond(id: u64, decision: Decision, mcp: State<'_, Mcp>) -> bool {
-    match mcp.pending.lock().unwrap().remove(&id) {
+pub fn mcp_respond(
+    webview: tauri::Webview,
+    id: u64,
+    decision: Decision,
+    mcp: State<'_, Mcp>,
+) -> Result<bool, String> {
+    // 執行指令的要求只能在終端機的 webview 同意。
+    if mcp.commands.lock().unwrap().contains(&id) {
+        super::view::require_terminal(&webview)?;
+    }
+    Ok(match mcp.pending.lock().unwrap().remove(&id) {
         Some(tx) => tx.send(decision).is_ok(),
         None => false,
-    }
+    })
 }
 
 #[cfg(test)]
