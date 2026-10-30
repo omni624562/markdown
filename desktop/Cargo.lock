@@ -3071,6 +3071,7 @@ dependencies = [
  "dunce",
  "encoding_rs",
  "fontdb",
+ "futures-util",
  "getrandom 0.4.3",
  "git2",
  "grep-matcher",

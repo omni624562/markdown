@@ -2,6 +2,7 @@
 
 use super::*;
 
+#[derive(Clone)]
 pub struct Client {
     pub(super) base: String,
     pub(super) auth: String,
@@ -170,32 +171,58 @@ impl Client {
     }
 }
 
-impl RemoteFs for Client {
-    fn stat(&self, rel: &str) -> Result<Item, DavError> {
-        Client::stat(self, rel)
-    }
-    fn list(&self, rel: &str) -> Result<Vec<Item>, DavError> {
-        self.propfind(rel, 1)
-    }
-    fn get(&self, rel: &str) -> Result<(Vec<u8>, Option<String>), DavError> {
-        Client::get(self, rel)
-    }
-    fn put(
+impl Client {
+    /// 在 blocking 執行緒上執行同步的 HTTP 操作，不佔住非同步的執行緒。
+    fn off_thread<T: Send + 'static>(
         &self,
-        rel: &str,
-        bytes: &[u8],
-        if_match: Option<&str>,
-    ) -> Result<Option<String>, DavError> {
-        Client::put(self, rel, bytes, if_match)
+        f: impl FnOnce(&Client) -> Result<T, DavError> + Send + 'static,
+    ) -> FsFuture<'static, T> {
+        let client = self.clone();
+        Box::pin(async move {
+            tauri::async_runtime::spawn_blocking(move || f(&client))
+                .await
+                .map_err(|e| DavError::Other(e.to_string()))?
+        })
     }
-    fn mkdir(&self, rel: &str) -> Result<(), DavError> {
-        self.mkcol(rel)
+}
+
+impl RemoteFs for Client {
+    fn stat<'a>(&'a self, rel: &'a str) -> FsFuture<'a, Item> {
+        let rel = rel.to_string();
+        self.off_thread(move |c| c.stat(&rel))
     }
-    fn rename(&self, from: &str, to: &str) -> Result<(), DavError> {
-        self.move_to(from, to)
+    fn list<'a>(&'a self, rel: &'a str) -> FsFuture<'a, Vec<Item>> {
+        let rel = rel.to_string();
+        self.off_thread(move |c| c.propfind(&rel, 1))
     }
-    fn delete(&self, rel: &str) -> Result<(), DavError> {
-        Client::delete(self, rel)
+    fn get<'a>(&'a self, rel: &'a str) -> FsFuture<'a, (Vec<u8>, Option<String>)> {
+        let rel = rel.to_string();
+        self.off_thread(move |c| c.get(&rel))
+    }
+    fn put<'a>(
+        &'a self,
+        rel: &'a str,
+        bytes: &'a [u8],
+        if_match: Option<&'a str>,
+    ) -> FsFuture<'a, Option<String>> {
+        let (rel, bytes, if_match) = (
+            rel.to_string(),
+            bytes.to_vec(),
+            if_match.map(str::to_string),
+        );
+        self.off_thread(move |c| c.put(&rel, &bytes, if_match.as_deref()))
+    }
+    fn mkdir<'a>(&'a self, rel: &'a str) -> FsFuture<'a, ()> {
+        let rel = rel.to_string();
+        self.off_thread(move |c| c.mkcol(&rel))
+    }
+    fn rename<'a>(&'a self, from: &'a str, to: &'a str) -> FsFuture<'a, ()> {
+        let (from, to) = (from.to_string(), to.to_string());
+        self.off_thread(move |c| c.move_to(&from, &to))
+    }
+    fn delete<'a>(&'a self, rel: &'a str) -> FsFuture<'a, ()> {
+        let rel = rel.to_string();
+        self.off_thread(move |c| c.delete(&rel))
     }
 }
 
