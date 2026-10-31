@@ -82,8 +82,6 @@ export interface IssueViewHooks {
   closed(): void;
   /** 按 Esc：回到文件（分頁留著）；沒給時關閉。 */
   dismiss?(): void;
-  /** 按標頭的「關閉」：關掉這個分頁；沒給時關閉檢視。 */
-  closeTab?(): void;
   /** 切換「和編輯區並排顯示」。 */
   toggleSide?(): void;
   /** 狀態列上的摘要換了（關閉時是空的）。 */
@@ -286,7 +284,6 @@ export class IssueView {
       ...(this.#sideBtn ? [this.#sideBtn] : []),
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
-      iconButton(t("關閉分頁"), "x", () => (hooks.closeTab ? hooks.closeTab() : this.close())),
     );
     head.append(nav, heading, actions);
 
@@ -335,10 +332,12 @@ export class IssueView {
       if (this.#h.follow?.(href)) return;
       if (/^https?:/i.test(href)) this.#h.open(href);
     });
+    // 操作列（例如工作項目的狀態、新增留言）放在標頭裡、取代位置與標題（分頁與內容上方都看得到是哪一項），省下一列。
     this.#toolbar = document.createElement("div");
     this.#toolbar.className = "issue-toolbar-host";
     this.#toolbar.hidden = true;
-    pane.append(head, this.#toolbar, this.#find, this.#scroll);
+    heading.after(this.#toolbar);
+    pane.append(head, this.#find, this.#scroll);
     pane.addEventListener("keydown", (e) => this.#keydown(e));
     // 滑鼠的「上一頁」「下一頁」側鍵。
     pane.addEventListener("mouseup", (e) => {

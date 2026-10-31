@@ -2628,9 +2628,11 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .issue-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .issue-crumb-sep { color: var(--subtle); }
 /* 工作項目內容上方的操作列：狀態、指派給我、新增留言（窄的時候換行）。 */
-.issue-toolbar-host { flex: none; border-bottom: 1px solid var(--border); background: var(--surface); }
+.issue-toolbar-host { flex: 1 1 auto; min-width: 0; }
+/* 有操作列（工作項目）時，標頭不顯示位置與標題（分頁與內容上方都有），操作列接在上一頁、下一頁後面。 */
+.issue-head:has(> .issue-toolbar-host:not([hidden])) > .issue-heading { display: none; }
 .issue-toolbar-host[hidden] { display: none; }
-.issue-toolbar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 6px 16px; }
+.issue-toolbar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
 .issue-toolbar-field { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; }
 .issue-toolbar-select { max-width: 200px; height: 28px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
 .issue-toolbar-select:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
