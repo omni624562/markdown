@@ -185,6 +185,27 @@ export function outlineOnRight(): boolean {
   return outlinePlacedRight() && app.rightOutlineShown;
 }
 
+/** 使用者要把 Wiki 面板放在右側（和左邊的面板同時開著）。 */
+export let wikiRightWanted = storage.load("wiki-right") === "1";
+/** Wiki 面板真的在右側：視窗夠寬、連線到 Azure DevOps 時才放（否則留在左邊）。 */
+export function wikiPlacedRight(): boolean {
+  return wikiRightWanted && !!app.ado?.account && wideQuery.matches && !app.narrowQuery.matches;
+}
+/** 右側欄有東西（大綱或 Wiki）而且沒有收起來。 */
+export function rightColumnOn(): boolean {
+  return (outlinePlacedRight() || wikiPlacedRight()) && app.rightOutlineShown;
+}
+
+/** 把 Wiki 面板移到右側或移回左邊。 */
+export function setWikiRight(on: boolean): void {
+  wikiRightWanted = on;
+  storage.save("wiki-right", on ? "1" : "");
+  if (on && !app.rightOutlineShown) setRightOutline(true);
+  else app.applyLayout();
+  if (on && !wikiPlacedRight()) toast(t("視窗寬一點時 Wiki 才會放在右側（現在先留在左邊）。"));
+  if (!on) showPanel("wiki");
+}
+
 export function setRightOutline(shown: boolean): void {
   app.rightOutlineShown = shown;
   storage.save("outline-right", shown ? "shown" : "hidden");
@@ -202,7 +223,8 @@ export function placeOutline(): void {
   const onRight = outlinePlacedRight();
   const outlineTab = app.$<HTMLButtonElement>("#side-tab-outline");
   if (onRight && panel.parentElement !== right) {
-    right.append(panel);
+    // 右側欄裡大綱放上面（Wiki 也在右側時排在下面）。
+    right.prepend(panel);
     panel.hidden = false;
     outlineTab.hidden = true;
     if (app.sidePanel === "outline") showPanel("files", false);
@@ -213,7 +235,35 @@ export function placeOutline(): void {
     outlineTab.hidden = false;
     panel.hidden = app.sidePanel !== "outline";
   }
-  right.hidden = !outlineOnRight();
+  placeWiki(right);
+  right.hidden = !rightColumnOn();
+}
+
+/** 依設定把 Wiki 面板移到右側欄或放回左邊的側邊欄。 */
+function placeWiki(right: HTMLElement): void {
+  const panel = app.$("#panel-wiki");
+  const tab = app.$("#side-tab-wiki");
+  const onRight = wikiPlacedRight();
+  if (onRight && panel.parentElement !== right) {
+    right.append(panel);
+    panel.hidden = false;
+    // 圖示列的 Wiki 圖示先藏起來（不用 hidden：連線狀態也用它）。
+    tab.classList.add("placed-right");
+    if (app.sidePanel === "wiki") showPanel("workitems", false);
+    if (app.rightOutlineShown) wikiPanel?.shown();
+  } else if (!onRight && panel.parentElement === right) {
+    app.$("#panel-workitems").after(panel);
+    tab.classList.remove("placed-right");
+    panel.hidden = app.sidePanel !== "wiki";
+  }
+  const dock = document.getElementById("wiki-dock");
+  if (dock) {
+    const label = onRight ? t("移回左邊的側邊欄") : t("移到右側（和左邊的面板同時開著）");
+    dock.title = label;
+    dock.setAttribute("aria-label", label);
+    dock.replaceChildren(icon(onRight ? "panel-left" : "panel-right"));
+    dock.hidden = !onRight && !wideQuery.matches;
+  }
 }
 
 /**
@@ -246,6 +296,12 @@ export function showPanel(panel: SidePanel, reveal = true): void {
     else app.updateActiveHeading();
     return;
   }
+  // Wiki 在右側時一直顯示（右側欄收起來時打開），不用切換左邊的側邊欄。
+  if (panel === "wiki" && wikiPlacedRight()) {
+    if (!app.rightOutlineShown) setRightOutline(true);
+    wikiPanel?.shown();
+    return;
+  }
   app.sidePanel = panel;
   if (!pendingPanel) storage.save("side-panel", panel);
   for (const tab of app.sideTabs) {
@@ -253,6 +309,7 @@ export function showPanel(panel: SidePanel, reveal = true): void {
     tab.setAttribute("aria-selected", String(on));
     tab.tabIndex = on ? 0 : -1;
     if (tab.dataset.panel === "outline" && outlinePlacedRight()) continue;
+    if (tab.dataset.panel === "wiki" && wikiPlacedRight()) continue;
     app.$(`#panel-${tab.dataset.panel}`).hidden = !on;
   }
   if (reveal && !app.outlineShown) app.setOutline(true);

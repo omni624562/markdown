@@ -85,7 +85,7 @@ import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focuse
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
 import type { IssueFact } from "./ui/issue-view.ts";
 import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
-import { NOT_CONNECTED, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlineOnRight, outlinePlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
+import { NOT_CONNECTED, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, renderStats, updateActiveHeading, initOutline } from "./app/outline.ts";
@@ -447,6 +447,9 @@ const app = {
   },
   get outlinePlacedRight() {
     return outlinePlacedRight;
+  },
+  get wikiPlacedRight() {
+    return wikiPlacedRight;
   },
   get outlineShown() {
     return outlineShown;
@@ -3170,7 +3173,7 @@ function applyLayout(): void {
     layout === "preview" ? "0px" : layout === "split" ? `minmax(0, ${splitRatio}fr)` : "minmax(0, 1fr)",
     layout === "split" ? "var(--splitter-width)" : "0px",
     layout === "editor" ? "0px" : layout === "split" ? `minmax(0, ${1 - splitRatio}fr)` : "minmax(0, 1fr)",
-    outlineOnRight() ? "var(--outline-right-width)" : "0px",
+    rightColumnOn() ? "var(--outline-right-width)" : "0px",
   ];
   workspace.style.gridTemplateColumns = cols.join(" ");
   document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((b) => {
@@ -3180,7 +3183,7 @@ function applyLayout(): void {
   $(".topbar").classList.toggle("with-sidebar", outlineShown && !narrow);
   // 右上角的按鈕：大綱放在右邊時，收起或打開右邊那一欄。
   const rightToggle = $("[data-command='toggle-outline-right']");
-  rightToggle.hidden = !outlinePlacedRight();
+  rightToggle.hidden = !outlinePlacedRight() && !wikiPlacedRight();
   if (rightToggle.getAttribute("aria-pressed") !== String(rightOutlineShown)) {
     rightToggle.setAttribute("aria-pressed", String(rightOutlineShown));
     rightToggle.replaceChildren(icon(rightOutlineShown ? "panel-right-close" : "panel-right"));

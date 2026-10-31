@@ -39,6 +39,7 @@ import { selectedText } from "./new-work-item.ts";
 import { issueSide, toggleIssueSide } from "./wiki-edit.ts";
 import { barShortcuts, openBarShortcut, removeBarShortcut, shortcutBar, shortcutName, setBarShortcuts } from "./work-items-panel.ts";
 import type { SidePanel } from "../main.ts";
+import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
 import { app } from "./context.ts";
 
 
@@ -176,6 +177,13 @@ function openActivityMenu(at: DOMRect): void {
         checked: () => !app.settings.value.activityHidden.includes(p),
         run: () => toggleHidden(p),
       })),
+    {
+      label: t("Wiki 放在右側"),
+      icon: "panel-right",
+      when: () => !!app.ado?.account,
+      checked: () => wikiRightWanted,
+      run: () => setWikiRight(!wikiRightWanted),
+    },
     "-",
     ...app.settings.value.activityCommands.flatMap((id) => {
       const cmd = app.commands.get(id);

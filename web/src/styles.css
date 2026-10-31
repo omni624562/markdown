@@ -232,6 +232,11 @@ kbd {
   background: var(--surface);
 }
 
+/* 大綱和 Wiki 都在右側：上下各一半，中間一條線。 */
+.outline-right > .side-panel + .side-panel { border-top: 1px solid var(--border); }
+/* Wiki 面板移到右側時，圖示列上的 Wiki 圖示藏起來。 */
+.activity-tabs [role="tab"].placed-right { display: none; }
+
 .pane { min-width: 0; min-height: 0; }
 .editor-pane { grid-area: editor; display: flex; flex-direction: column; overflow: hidden; }
 .editor-host { flex: 1; min-height: 0; }

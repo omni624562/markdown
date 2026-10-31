@@ -21,4 +21,5 @@ export const html: Record<string, Translation> = {
   "重新讀取檔案清單": "Reload File List",
   "工作項目（Azure DevOps）": "Work Items (Azure DevOps)",
   "Wiki（Azure DevOps）": "Wiki (Azure DevOps)",
+  "右側欄": "Right Sidebar",
 };
