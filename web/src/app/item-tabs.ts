@@ -1,19 +1,27 @@
 /**
- * 工作項目、Wiki 頁面、GitHub issue 等唯讀內容的分頁：和文件的分頁排在同一列（文件在前）。
+ * 工作項目、Wiki 頁面、GitHub issue 等唯讀內容的分頁：和文件的分頁排在同一列，新的放在目前分頁的右邊，
+ * 也可以固定；右鍵選單、Ctrl+Tab、Ctrl+Shift+T、Ctrl+P 和文件一樣。
  * 點清單上的項目開在「預覽分頁」（名稱斜體），再點別的會換掉它；雙擊分頁（或右鍵「保留分頁」）才留下來。
  * 一次顯示一個（蓋住編輯區，或並排在文件右邊）；切換分頁時換上那個分頁的內容、上一頁與捲動位置。
  */
 import { t } from "../i18n.ts";
-import { SAVED_ITEM_TABS_LIMIT, type SavedItemTab, neighborAfterClose, parseSavedItemTabs, placeItem } from "../item-tabs.ts";
+import {
+  SAVED_ITEM_TABS_LIMIT,
+  type SavedItemTab,
+  arrangeTabs,
+  neighborAfterClose,
+  parseSavedItemTabs,
+  placeItem,
+  placeNewItem,
+} from "../item-tabs.ts";
 import * as storage from "../storage.ts";
 import type { IssueSource, IssueViewState } from "../ui/issue-view.ts";
 import type { TabInfo } from "../ui/tabbar.ts";
 import type { Shortcut } from "../wiki-shortcuts.ts";
-import { floatingMenu } from "./activity-bar.ts";
 import { app } from "./context.ts";
 import { historyView } from "./git-history.ts";
 import { offlineRefs } from "./offline-copies.ts";
-import { issueSide, issueView, toggleIssueSide } from "./wiki-edit.ts";
+import { issueView } from "./wiki-edit.ts";
 import { openBarShortcut } from "./work-items-panel.ts";
 
 export interface ItemTab {
@@ -32,6 +40,20 @@ export interface ItemTab {
   state: IssueViewState | null;
   /** 下次開啟時怎麼重新開啟（工作項目、Wiki 頁面才有）。 */
   ref: Shortcut | null;
+  /** 接在哪個文件分頁後面（null 是一般分頁的最前面）。 */
+  after: string | null;
+  /** 固定的分頁：排在最左邊，不會被換掉，關閉按鈕換成圖釘。 */
+  pinned: boolean;
+}
+
+/** 關掉的項目分頁（Ctrl+Shift+T 重新開啟用）。 */
+export interface ClosedItem {
+  name: string;
+  origin: string;
+  icon: string;
+  key: string;
+  state: IssueViewState | null;
+  ref: Shortcut | null;
 }
 
 const ORIGIN_ICONS: Record<string, string> = { ado: "square-kanban", wiki: "book-open-text", github: "circle-dot", repo: "git-branch" };
@@ -39,7 +61,7 @@ const ORIGIN_ICONS: Record<string, string> = { ado: "square-kanban", wiki: "book
 let seq = 0;
 const newId = () => `item-${Date.now().toString(36)}-${++seq}`;
 
-/** 開著的項目分頁（分頁列上排在文件後面）。 */
+/** 開著的項目分頁（在分頁列上的位置看 `after` 與 `pinned`，見 `tabOrder()`）。 */
 export const itemTabs: ItemTab[] = parseSavedItemTabs(storage.load("item-tabs")).map((s) => ({
   id: newId(),
   key: s.key,
@@ -50,19 +72,18 @@ export const itemTabs: ItemTab[] = parseSavedItemTabs(storage.load("item-tabs"))
   preview: s.preview,
   state: null,
   ref: s.ref,
+  after: s.after,
+  pinned: s.pinned,
 }));
 
 /** 顯示中的分頁（蓋住編輯區或並排在右邊）；都沒有顯示時是 null。 */
 export let shownItem: ItemTab | null = null;
 
-/** 按右鍵的項目分頁。 */
-let menuItem: ItemTab | null = null;
-
 function persist(): void {
   const saved: SavedItemTab[] = itemTabs
     .filter((tab): tab is ItemTab & { ref: Shortcut; origin: "ado" | "wiki" } => !!tab.ref && (tab.origin === "ado" || tab.origin === "wiki"))
     .slice(0, SAVED_ITEM_TABS_LIMIT)
-    .map(({ key, name, title, origin, preview, ref }) => ({ key, name, title, origin, preview, ref }));
+    .map(({ key, name, title, origin, preview, ref, after, pinned }) => ({ key, name, title, origin, preview, ref, after, pinned }));
   storage.save("item-tabs", JSON.stringify(saved));
 }
 
@@ -76,16 +97,21 @@ export function sideShown(): boolean {
   return !!shownItem && app.workspace.classList.contains("issue-side");
 }
 
-/** 分頁列上的項目分頁。 */
-export function itemTabInfos(): TabInfo[] {
-  const side = sideShown();
-  return itemTabs.map((tab) => ({
+/** 分頁列上所有分頁（文件與項目）的順序。 */
+export function tabOrder(): string[] {
+  return arrangeTabs(app.docs, itemTabs);
+}
+
+/** 分頁列上的一個項目分頁。 */
+export function itemTabInfo(tab: ItemTab): TabInfo {
+  return {
     id: tab.id,
     name: tab.name,
     title: tab.preview ? t("{title}（預覽：點別的項目會換掉這個分頁，雙擊留下來）", { title: tab.title }) : tab.title,
     dirty: false,
-    item: { icon: tab.icon, origin: tab.origin, preview: tab.preview, side: side && tab === shownItem },
-  }));
+    pinned: tab.pinned,
+    item: { icon: tab.icon, origin: tab.origin, preview: tab.preview, side: sideShown() && tab === shownItem },
+  };
 }
 
 /** 分頁列上要標成目前分頁的項目分頁（蓋住編輯區時）；並排或沒有顯示時是 null。 */
@@ -119,6 +145,10 @@ async function showTab(tab: ItemTab, state = tab.state): Promise<void> {
  */
 export function openItem(source: IssueSource, keep = false): Promise<void> {
   historyView?.close();
+  // 指定了位置（例如 Wiki 頁面結束編輯，換回閱讀）：新開一個留下來的分頁放在那裡。
+  const near = besideNext;
+  besideNext = undefined;
+  if (near !== undefined) keep = true;
   if (!keep && shownItem && issueView.isOpen && issueView.hasFocus) return issueView.show(source);
   const place = placeItem(itemTabs, source.key, keep);
   if (place.kind === "same") {
@@ -139,21 +169,51 @@ export function openItem(source: IssueSource, keep = false): Promise<void> {
     const back = old ? [...old.back, { source: old.source, scroll: old.scroll }].slice(-50) : [];
     return showTab(tab, { source, back, forward: [], scroll: 0 });
   }
-  const tab: ItemTab = {
-    id: newId(),
-    key: source.key,
-    name: source.title,
-    title: source.title,
-    origin: source.origin.kind,
-    icon: source.origin.icon,
-    preview: !keep,
-    state: null,
-    ref: null,
-  };
-  // 新的分頁放在顯示中的分頁右邊（沒有顯示時放最後面）。
-  const at = shownItem ? itemTabs.indexOf(shownItem) + 1 : itemTabs.length;
-  itemTabs.splice(at, 0, tab);
+  const tab = addItemTab({ key: source.key, name: source.title, origin: source.origin.kind, icon: source.origin.icon, ref: null }, !keep, near);
   return showTab(tab, { source, back: [], forward: [], scroll: 0 });
+}
+
+/** 下一個開啟的項目放在這個分頁的右邊（id；null 是一般分頁的最前面）；undefined 是照平常的規則。 */
+let besideNext: string | null | undefined;
+
+/** 下一個開啟的項目新開一個留下來的分頁，放在 `id` 這個分頁的右邊（null 是一般分頁的最前面）；`undefined` 取消。 */
+export function openNextBeside(id: string | null | undefined): void {
+  besideNext = id;
+}
+
+/**
+ * 項目分頁換成文件分頁時，文件放在哪裡：接在哪個文件後面（null 是一般分頁的最前面），
+ * 以及原本在它右邊、接在同一個文件後面的項目分頁（要改接在新的文件後面，位置才不變）。
+ */
+export function itemSlot(key: string): { after: string | null; right: ItemTab[] } | null {
+  const tab = itemTabs.find((x) => x.key === key);
+  if (!tab) return null;
+  const unpinned = app.docs.filter((d) => !d.pinned).map((d) => d.id);
+  const after = !tab.pinned && tab.after && unpinned.includes(tab.after) ? tab.after : null;
+  const order = tabOrder();
+  const at = order.indexOf(tab.id);
+  const right = itemTabs.filter((x) => x !== tab && !x.pinned && x.after === tab.after && order.indexOf(x.id) > at);
+  return { after, right };
+}
+
+/** 這些項目分頁改接在 `docId` 這個文件後面。 */
+export function anchorItems(tabs: ItemTab[], docId: string): void {
+  for (const tab of tabs) tab.after = docId;
+  changed();
+}
+
+/** 新增一個項目分頁，放在目前分頁（顯示中的項目，或目前的文件）的右邊。 */
+function addItemTab(
+  from: { key: string; name: string; origin: string; icon: string; ref: Shortcut | null },
+  preview: boolean,
+  near?: string | null,
+): ItemTab {
+  const id = newId();
+  // 放在 `near` 的右邊（null：一般分頁的最前面）；沒給時放在目前分頁的右邊。
+  const at = placeNewItem(app.docs, itemTabs, near === undefined ? (shownItem?.id ?? app.active.id) : (near ?? ""));
+  const tab: ItemTab = { id, ...from, title: from.name, preview, state: null, after: at.after, pinned: false };
+  itemTabs.splice(at.index, 0, tab);
+  return tab;
 }
 
 /** 檢視換上了一項內容（開啟、上一頁、內容裡的連結）：更新分頁的名稱與還原用的資料。 */
@@ -203,12 +263,19 @@ export function keepItem(id: string): void {
   changed();
 }
 
+/** 關掉的項目分頁，記下來給「重新開啟關閉的分頁」用。 */
+function rememberClosed(tab: ItemTab): void {
+  const state = tab === shownItem && issueView.isOpen ? issueView.snapshot() : tab.state;
+  app.rememberClosedItem({ name: tab.name, origin: tab.origin, icon: tab.icon, key: tab.key, state, ref: tab.ref });
+}
+
 /** 關掉項目分頁；關掉的是顯示中的分頁時，切到旁邊的分頁（並排時換上另一個項目，沒有就只留文件）。 */
 export function closeItem(id: string): void {
   const tab = findItemTab(id);
   if (!tab) return;
-  const order = sideShown() ? itemTabs.map((x) => x.id) : [...app.docs.map((d) => d.id), ...itemTabs.map((x) => x.id)];
+  const order = sideShown() ? tabOrder().filter((x) => findItemTab(x)) : tabOrder();
   const next = neighborAfterClose(order, id);
+  rememberClosed(tab);
   itemTabs.splice(itemTabs.indexOf(tab), 1);
   if (tab === shownItem) {
     shownItem = null;
@@ -223,61 +290,55 @@ export function closeItem(id: string): void {
   changed();
 }
 
-/** 一次關掉好幾個分頁（不會逐一切換過去）；顯示中的也關掉時，改顯示 `then`（沒給就回到文件）。 */
-function closeMany(tabs: ItemTab[], then?: ItemTab): void {
+/**
+ * 一次關掉好幾個分頁（不會逐一切換過去）；顯示中的也關掉時回到文件。
+ * `remember`：記下來給「重新開啟關閉的分頁」用（刪掉的 Wiki 頁面不記）。
+ */
+export function closeItems(tabs: ItemTab[], remember = true): void {
   if (!tabs.length) return;
-  const shownClosed = !!shownItem && tabs.includes(shownItem);
-  if (shownClosed) hideItem();
+  if (remember) tabs.forEach(rememberClosed);
+  if (shownItem && tabs.includes(shownItem)) hideItem();
   for (const tab of tabs) itemTabs.splice(itemTabs.indexOf(tab), 1);
-  if (shownClosed && then) void showTab(then);
   changed();
 }
 
 /** 關掉符合條件的項目分頁（例如刪除的 Wiki 頁面）。 */
 export function closeItemsWhere(test: (key: string) => boolean): void {
-  closeMany(itemTabs.filter((x) => test(x.key)));
+  closeItems(
+    itemTabs.filter((x) => test(x.key)),
+    false,
+  );
+}
+
+/** 重新開啟關掉的項目分頁（Ctrl+Shift+T）：看過的內容直接顯示，從上次還原、還沒開過的重新讀取。 */
+export function reopenItem(closed: ClosedItem): void {
+  const tab = addItemTab({ key: closed.key, name: closed.name, origin: closed.origin, icon: closed.icon, ref: closed.ref }, false);
+  tab.state = closed.state;
+  changed();
+  void showTab(tab);
+}
+
+/** 固定或取消固定項目分頁（固定的不是預覽分頁）。 */
+export function setItemPinned(id: string, pinned: boolean): void {
+  const tab = findItemTab(id);
+  if (!tab) return;
+  tab.pinned = pinned;
+  if (pinned) tab.preview = false;
+  changed();
+}
+
+/** 文件分頁要關了：接在它後面的項目分頁改接在它左邊的文件後面（位置不變）。 */
+export function docClosing(id: string): void {
+  const docs = app.docs.filter((d) => !d.pinned);
+  const i = docs.findIndex((d) => d.id === id);
+  if (i < 0) return;
+  const prev = docs[i - 1]?.id ?? null;
+  for (const tab of itemTabs) if (tab.after === id) tab.after = prev;
+  persist();
 }
 
 /** 目前的項目分頁（Ctrl+W 用）：顯示中而且（並排時）焦點在檢視裡。 */
 export function focusedItem(): ItemTab | null {
   if (!shownItem || !issueView.isOpen) return null;
   return !sideShown() || issueView.hasFocus ? shownItem : null;
-}
-
-let itemMenu: { open(at: DOMRect): void } | null = null;
-
-/** 項目分頁的右鍵選單。 */
-export function openItemMenu(id: string, at: DOMRect): void {
-  menuItem = findItemTab(id) ?? null;
-  if (!menuItem) return;
-  itemMenu ??= floatingMenu(
-    "item-tab-menu-anchor",
-    [
-      { label: t("關閉"), icon: "x", run: () => menuItem && closeItem(menuItem.id) },
-      {
-        label: t("關閉其他工作項目分頁"),
-        icon: "x",
-        when: () => itemTabs.length > 1,
-        run: () => {
-          const keep = menuItem;
-          if (keep) closeMany(itemTabs.filter((x) => x !== keep), keep);
-        },
-      },
-      { label: t("關閉所有工作項目分頁"), icon: "x", run: () => closeMany([...itemTabs]) },
-      "-",
-      { label: t("保留分頁"), icon: "pin", when: () => !!menuItem?.preview, run: () => menuItem && keepItem(menuItem.id) },
-      {
-        label: t("在文件右邊並排顯示"),
-        icon: "columns-2",
-        checked: () => issueSide,
-        run: () => {
-          const tab = menuItem;
-          toggleIssueSide();
-          if (tab && tab !== shownItem) void showTab(tab);
-        },
-      },
-    ],
-    () => setTimeout(() => (menuItem = null)),
-  );
-  itemMenu.open(at);
 }

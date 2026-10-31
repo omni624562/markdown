@@ -24,7 +24,7 @@ import { openDiagram, copyDiagram } from "./activity-bar.ts";
 import { finishWikiEdit } from "./ado-files.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
-import { closeItem, hideItem, itemOpened, shownItem } from "./item-tabs.ts";
+import { hideItem, itemOpened } from "./item-tabs.ts";
 import { offlineRefs, issueOffline } from "./offline-copies.ts";
 import { openWikiHistory } from "./wiki-history.ts";
 import { workItemOpened } from "./work-item-updates.ts";
@@ -512,10 +512,6 @@ export function initWikiEdit(): void {
     },
     toggleSide: toggleIssueSide,
     dismiss: hideItem,
-    closeTab() {
-      if (shownItem) closeItem(shownItem.id);
-      else issueView.close();
-    },
     closed() {
       app.issueKey = null;
       markBarShortcuts();

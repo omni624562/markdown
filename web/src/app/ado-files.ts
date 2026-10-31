@@ -18,7 +18,7 @@ import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { wikiPageLink, pageName, wikiTitleProblem, flattenPages, childPagePath } from "../wiki-text.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
-import { closeItemsWhere, itemTabs, keepItem, openItem } from "./item-tabs.ts";
+import { anchorItems, closeItemsWhere, itemSlot, openItem, openNextBeside, tabOrder } from "./item-tabs.ts";
 import { withOfflineCopy } from "./offline-copies.ts";
 import { adoMe, wikiCheckedAt, wikiNewer, renderWikiBar } from "./wiki-edit.ts";
 import { wikiPanel, barShortcuts, setBarShortcuts, openBarShortcut } from "./work-items-panel.ts";
@@ -178,8 +178,10 @@ export async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
   if (!page.etag) throw new Error(t("伺服器沒有提供這一頁的版本，無法確認存回時有沒有蓋掉別人的修改，所以不能在這裡編輯。"));
   // 編輯器一律用 \n 換行，先統一，免得一開就顯示成有變更。
   const content = page.content.replace(/\r\n?/g, "\n");
-  // 閱讀這一頁的分頁換成編輯（同一頁只有一個分頁）。
-  closeItemsWhere((key) => key === `wiki:${wiki.id}:${path}`);
+  // 閱讀這一頁的分頁換成編輯（同一頁只有一個分頁，位置不變）。
+  const key = `wiki:${wiki.id}:${path}`;
+  const slot = itemSlot(key);
+  closeItemsWhere((k) => k === key);
   const doc = app.makeDoc({
     name: `${pageName(path)}.md`,
     kind: "markdown",
@@ -189,7 +191,8 @@ export async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
   saveDraft(doc.id, content);
   storage.save(`wiki-base:${doc.id}`, content);
   wikiCheckedAt.set(doc.id, Date.now());
-  app.addTab(doc);
+  app.addTab(doc, slot ? slot.after : undefined);
+  if (slot) anchorItems(slot.right, doc.id);
   const last = info?.author && info.date && Number.isFinite(Date.parse(info.date))
     ? t("最後修改：{who}，{ago}。", { who: info.author, ago: timeAgo(Date.parse(info.date)) })
     : "";
@@ -205,12 +208,17 @@ export async function finishWikiEdit(): Promise<void> {
   const doc = app.active;
   const target = doc.wiki;
   if (!target) return;
+  // 閱讀的分頁放回編輯分頁原本的位置（它左邊那個分頁的右邊）。
+  const order = tabOrder();
+  const left = order[order.indexOf(doc.id) - 1] ?? null;
   await app.closeTab(doc.id);
   if (app.docs.includes(doc)) return;
-  await openBarShortcut({ wiki: target.wikiId, wikiName: target.wikiName, path: target.path });
-  const key = `wiki:${target.wikiId}:${target.path}`;
-  const tab = itemTabs.find((x) => x.key === key);
-  if (tab) keepItem(tab.id);
+  openNextBeside(left && left !== doc.id ? left : null);
+  try {
+    await openBarShortcut({ wiki: target.wikiId, wikiName: target.wikiName, path: target.path });
+  } finally {
+    openNextBeside(undefined);
+  }
 }
 
 /** 新增 Wiki 頁面（`parent` 是上層頁面，null 是最上層）：問標題、建立，然後直接開始編輯。 */
