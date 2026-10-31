@@ -18,10 +18,10 @@ import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { wikiPageLink, pageName, wikiTitleProblem, flattenPages, childPagePath } from "../wiki-text.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
-import { closeItemsWhere, openItem } from "./item-tabs.ts";
+import { closeItemsWhere, itemTabs, keepItem, openItem } from "./item-tabs.ts";
 import { withOfflineCopy } from "./offline-copies.ts";
 import { adoMe, wikiCheckedAt, wikiNewer, renderWikiBar } from "./wiki-edit.ts";
-import { wikiPanel, barShortcuts, setBarShortcuts } from "./work-items-panel.ts";
+import { wikiPanel, barShortcuts, setBarShortcuts, openBarShortcut } from "./work-items-panel.ts";
 import { app } from "./context.ts";
 
 
@@ -178,6 +178,8 @@ export async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
   if (!page.etag) throw new Error(t("伺服器沒有提供這一頁的版本，無法確認存回時有沒有蓋掉別人的修改，所以不能在這裡編輯。"));
   // 編輯器一律用 \n 換行，先統一，免得一開就顯示成有變更。
   const content = page.content.replace(/\r\n?/g, "\n");
+  // 閱讀這一頁的分頁換成編輯（同一頁只有一個分頁）。
+  closeItemsWhere((key) => key === `wiki:${wiki.id}:${path}`);
   const doc = app.makeDoc({
     name: `${pageName(path)}.md`,
     kind: "markdown",
@@ -191,8 +193,24 @@ export async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
   const last = info?.author && info.date && Number.isFinite(Date.parse(info.date))
     ? t("最後修改：{who}，{ago}。", { who: info.author, ago: timeAgo(Date.parse(info.date)) })
     : "";
-  const hint = t("編輯完按 Ctrl+S 存回 Wiki。編輯中有人存檔時，上方會出現提示。");
+  const hint = t("按 Ctrl+S 存回 Wiki，編完按狀態列的「完成編輯」換回閱讀。編輯中有人存檔時，上方會出現提示。");
   toast(last ? `${hint} ${last}` : hint, { duration: 8000 });
+}
+
+/**
+ * 結束編輯 Wiki 頁面：關掉編輯的分頁（還沒存回的修改先問要不要存），換回閱讀這一頁。
+ * 取消或存回失敗（例如有衝突要處理）時留在編輯。
+ */
+export async function finishWikiEdit(): Promise<void> {
+  const doc = app.active;
+  const target = doc.wiki;
+  if (!target) return;
+  await app.closeTab(doc.id);
+  if (app.docs.includes(doc)) return;
+  await openBarShortcut({ wiki: target.wikiId, wikiName: target.wikiName, path: target.path });
+  const key = `wiki:${target.wikiId}:${target.path}`;
+  const tab = itemTabs.find((x) => x.key === key);
+  if (tab) keepItem(tab.id);
 }
 
 /** 新增 Wiki 頁面（`parent` 是上層頁面，null 是最上層）：問標題、建立，然後直接開始編輯。 */
