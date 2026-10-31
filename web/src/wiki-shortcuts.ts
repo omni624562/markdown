@@ -34,7 +34,7 @@ export function isWorkItemShortcut(s: Shortcut): s is WorkItemShortcut {
 }
 
 /** 檢查格式並只留需要的欄位；格式不對回傳 null。 */
-function toShortcut(v: unknown): Shortcut | null {
+export function toShortcut(v: unknown): Shortcut | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   if (typeof o.workItem === "number") {

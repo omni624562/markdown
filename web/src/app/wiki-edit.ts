@@ -23,6 +23,7 @@ import { pageName, wikiMarkdown, wikiPageLink, resolvePageLink, flattenPages } f
 import { openDiagram, copyDiagram } from "./activity-bar.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
+import { closeItem, hideItem, itemOpened, shownItem } from "./item-tabs.ts";
 import { offlineRefs, issueOffline } from "./offline-copies.ts";
 import { openWikiHistory } from "./wiki-history.ts";
 import { workItemOpened } from "./work-item-updates.ts";
@@ -412,6 +413,15 @@ export function rerenderIssue(): void {
 /** 工作項目、Wiki、Issue 和編輯區並排顯示（不蓋住正在寫的文件）；記住上次的選擇。 */
 export let issueSide = storage.load("issue-side") === "1";
 
+/** 切換並排顯示（文件在左、工作項目等在右）或佔滿整個區域。 */
+export function toggleIssueSide(): void {
+  issueSide = !issueSide;
+  storage.save("issue-side", issueSide ? "1" : "");
+  issueView.setSide(issueSide);
+  app.applyLayout();
+  toast(issueSide ? t("已改成並排顯示：文件在左邊，工作項目等內容在右邊") : t("已改成佔滿整個區域：點分頁切換文件與工作項目"));
+}
+
 export // 在 init 時建立。
 let issueView: IssueView;
 
@@ -460,7 +470,6 @@ export function initWikiEdit(): void {
     open: (url) => void desktop?.openExternal(url).catch(reportError),
     follow: (href) => app.openRepoFileLink(href),
     copyAsDocument(name, markdown) {
-      issueView.close();
       const doc = app.makeDoc({ name, kind: "markdown", baseline: app.hash("") });
       saveDraft(doc.id, markdown);
       app.addTab(doc);
@@ -469,6 +478,7 @@ export function initWikiEdit(): void {
     offline: issueOffline,
     facts: (list) => app.setIssueFacts(list),
     opened(source) {
+      itemOpened(source);
       app.issueKey = source.key;
       app.outlineView = { key: source.key, headings: [], body: null };
       app.renderOutline([]);
@@ -482,12 +492,11 @@ export function initWikiEdit(): void {
       wikiPanel?.select(kind === "wiki" && wikiPanel.wiki?.id === id ? rest.join(":") : null);
       markBarShortcuts();
     },
-    toggleSide() {
-      issueSide = !issueSide;
-      storage.save("issue-side", issueSide ? "1" : "");
-      issueView.setSide(issueSide);
-      app.applyLayout();
-      toast(issueSide ? t("已改成和編輯區並排顯示") : t("已改回蓋住編輯區顯示"));
+    toggleSide: toggleIssueSide,
+    dismiss: hideItem,
+    closeTab() {
+      if (shownItem) closeItem(shownItem.id);
+      else issueView.close();
     },
     closed() {
       app.issueKey = null;

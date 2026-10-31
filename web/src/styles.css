@@ -1189,7 +1189,16 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .tab.pinned .tab-name { max-width: 12em; }
 .tab-new { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 4px; color: var(--muted); }
 .tab-new:hover { color: var(--fg); }
-.tab-bar.blank > * { visibility: hidden; }
+.tab-bar.blank:not(.has-items) > * { visibility: hidden; }
+/* 工作項目、Wiki 頁面等的分頁：排在文件後面（中間一條分隔線），圖示標出來源；預覽分頁的名稱斜體。 */
+.tab.tab-item::before { display: none; }
+.tab:not(.tab-item) + .tab-item { border-left: 1px solid var(--border); }
+.tab-icon { flex: none; width: 14px; height: 14px; color: light-dark(#0b6bcb, #4ea1f3); opacity: 0.9; }
+.tab[data-origin="github"] .tab-icon { color: var(--fg); opacity: 0.7; }
+.tab[data-origin="repo"] .tab-icon { color: light-dark(#c2410c, #fb923c); }
+.tab.preview .tab-name { font-style: italic; }
+/* 並排顯示在文件右邊的那一個：底下一條線（目前的分頁是左邊的文件）。 */
+.tab.side-shown { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
 @media (pointer: coarse) {
   .tab-close { width: 32px; height: 32px; }
 }
@@ -2649,20 +2658,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 .wi-chip[data-tone="removed"] { --tone: var(--subtle); text-decoration: line-through; }
 .issue-title { margin: 0; overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-/* 蓋住編輯區時標頭搬到頂端列：一列放完（位置、標題接在一起），分頁列讓出空間。 */
-.topbar .issue-head.in-topbar { flex: 1 1 auto; flex-wrap: nowrap; gap: 10px; min-width: 0; padding: 0 4px 0 14px; border: 0; background: none; }
-.topbar .issue-head.in-topbar .issue-heading { flex: 1 1 auto; flex-direction: row; gap: 8px; align-items: center; }
-.topbar .issue-head.in-topbar .issue-meta { flex: 0 0 auto; max-width: 50%; margin: 0; }
-.topbar .issue-head.in-topbar .issue-label { overflow: visible; }
-.topbar .issue-head.in-topbar .issue-title { flex: 1 1 0; min-width: 0; font-size: 14px; }
-.topbar .issue-head.in-topbar .issue-actions { flex-wrap: nowrap; }
-.topbar .issue-head.in-topbar .issue-nav { margin-left: 0; }
-/* 標頭在頂端列時只留主選單的「⋯」（內容的「更多動作」併進去）；內容的按鈕和程式的按鈕之間一條分隔線。 */
-.topbar .issue-head.in-topbar #issue-more { display: none; }
-.topbar.has-issue-head .top-actions { margin-left: 4px; border-left: 1px solid var(--border); }
-.topbar.has-issue-head .tab-bar { flex: 0 0 auto; max-width: 30%; border-right: 1px solid var(--border); }
-/* 並排顯示時還在編輯文件，分頁列多留一點空間。 */
-body:has(.workspace.issue-side) .topbar.has-issue-head .tab-bar { max-width: 45%; }
+/* 工作項目的內容上方已經有大標題（分頁上也有名稱），標頭只留位置與動作。 */
+.issue-pane:has(.ado-hero) .issue-head .issue-title { display: none; }
 .issue-actions .btn-primary { margin-right: 4px; }
 /* 內容的動作和檢視的動作（並排、找字、重新整理、關閉）中間的分隔線。 */
 .issue-actions-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }

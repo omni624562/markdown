@@ -14,6 +14,16 @@ export interface TabInfo {
   pinned?: boolean;
   /** 不是本機檔案：`wiki` 是編輯中的 Azure DevOps Wiki 頁面（存檔時寫回伺服器）。 */
   source?: "wiki";
+  /** 工作項目、Wiki 頁面等唯讀內容的分頁（不是文件）。 */
+  item?: {
+    icon: string;
+    /** 來源（`ado`、`wiki`…），決定圖示的顏色。 */
+    origin: string;
+    /** 預覽分頁（名稱斜體）：點別的項目時會換掉。 */
+    preview: boolean;
+    /** 並排顯示在文件右邊。 */
+    side: boolean;
+  };
 }
 
 export interface TabBarHandlers {
@@ -26,6 +36,8 @@ export interface TabBarHandlers {
   /** 在分頁上按右鍵（或 Shift+F10、選單鍵）。 */
   menu(id: string, at: DOMRect): void;
   unpin(id: string): void;
+  /** 雙擊預覽分頁：留下來。 */
+  keep(id: string): void;
 }
 
 /**
@@ -134,9 +146,18 @@ export class TabBar {
         tab.classList.toggle("missing", !!info.missing);
         tab.classList.toggle("pinned", !!info.pinned);
         tab.classList.toggle("tab-wiki", info.source === "wiki");
+        tab.classList.toggle("tab-item", !!info.item);
+        tab.classList.toggle("preview", !!info.item?.preview);
+        tab.classList.toggle("side-shown", !!info.item?.side);
+        if (info.item) tab.dataset.origin = info.item.origin;
         const name = document.createElement("span");
         name.className = "tab-name";
         name.textContent = info.name;
+        if (info.item) {
+          const mark = icon(info.item.icon);
+          mark.classList.add("tab-icon");
+          tab.append(mark);
+        }
         const close = document.createElement("button");
         close.type = "button";
         close.className = "tab-close";
@@ -167,7 +188,8 @@ export class TabBar {
         tab.addEventListener("click", () => this.#handlers.select(info.id));
         tab.addEventListener("dblclick", (e) => {
           if ((e.target as HTMLElement).closest(".tab-close")) return;
-          this.startRename(info.id);
+          if (info.item) this.#handlers.keep(info.id);
+          else this.startRename(info.id);
         });
         tab.addEventListener("auxclick", (e) => {
           if (e.button === 1) {
@@ -201,7 +223,7 @@ export class TabBar {
         const current = t.id === this.#activeId;
         item.setAttribute("aria-checked", String(current));
         item.title = t.title;
-        item.append(icon(t.pinned ? "pin" : "file"));
+        item.append(icon(t.item?.icon ?? (t.pinned ? "pin" : "file")));
         item.append(Object.assign(document.createElement("span"), { textContent: `${t.name}${t.dirty ? "  ●" : ""}` }));
         if (current) item.append(icon("check"));
         item.addEventListener("click", () => {

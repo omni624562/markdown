@@ -5,6 +5,7 @@ import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import type { GitHistory } from "../ui/history-view.ts";
 import { SearchPanel } from "../ui/search-panel.ts";
+import { hideItem } from "./item-tabs.ts";
 import { app } from "./context.ts";
 
 
@@ -68,7 +69,7 @@ export function markHistoryButtons(): void {
 export async function openGitHistory(path: string | null = null): Promise<void> {
   const view = await gitHistory();
   if (!view) return;
-  app.issueView.close();
+  hideItem();
   await view.open({ path });
   markHistoryButtons();
 }

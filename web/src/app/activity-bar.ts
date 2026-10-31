@@ -359,7 +359,7 @@ export function formatBubble(): HTMLElement {
  * 浮動選單（插入選單、更多格式、右鍵選單）：用一個看不見的定位按鈕決定選單出現的位置。
  * 按 Esc 或點外面關閉時，焦點回到編輯器。
  */
-function floatingMenu(id: string, entries: MenuEntry[], onClose?: () => void): { open(at: DOMRect): void } {
+export function floatingMenu(id: string, entries: MenuEntry[], onClose?: () => void): { open(at: DOMRect): void } {
   const anchor = document.createElement("button");
   anchor.type = "button";
   anchor.id = id;
