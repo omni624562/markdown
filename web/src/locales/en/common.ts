@@ -126,6 +126,8 @@ export const common: Record<string, Translation> = {
   "更新於 {ago}": "Updated {ago}",
   "建立者 {name}": "created by {name}",
   "下載": "Download",
+  "按一下另存新檔（為了安全不直接開啟）": "Click to save a copy (not opened directly, for safety)",
+  "按一下開啟": "Click to open",
   "另存「{name}」": "Save \"{name}\" As",
   "已存到 {path}": "Saved to {path}",
   "「{name}」是會自己執行的檔案，為了安全不直接開啟；需要的話請用「另存新檔」，確認來源可信再開啟。": "\"{name}\" is a file that runs by itself, so it isn't opened directly for safety. Use \"Save As\" if you need it, and open it only if you trust the source.",

@@ -2763,7 +2763,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[a
 /* 附件：檔案小方塊（副檔名或縮圖、檔名、大小與時間、開啟、另存新檔）。 */
 .issue-body .ado-atts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; margin: 0.5em 0 1em; }
 .issue-body .ado-att { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-.issue-body .ado-att:hover { border-color: var(--border-strong); }
+.issue-body .ado-att { cursor: pointer; }
+.issue-body .ado-att:hover { border-color: var(--accent); background: var(--accent-soft); }
 .issue-body .ado-att-icon { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border-radius: 6px; background: #64748b no-repeat center / cover; color: #fff; font: 700 10.5px/1 var(--font-ui); letter-spacing: 0.02em; }
 .issue-body .ado-att-icon.text { background-color: #2563eb; }
 .issue-body .ado-att-icon.sheet { background-color: #16a34a; }
