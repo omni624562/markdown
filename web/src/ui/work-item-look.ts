@@ -1,7 +1,7 @@
 /**
  * 工作項目檢視比照 TFS 網頁，把 TFS 的內容一塊一塊分開：
  * - 標題上面是類型標籤與編號；最常看的欄位（狀態、指派給、優先順序、反覆項目、更新時間）是一排小標籤，
- *   其他欄位收在「詳細欄位」裡（展開是完整的欄位表）。
+ *   下面一行是專案與區域、建立者、標籤（原本的欄位表每一欄都有了，不再顯示）。
  * - 每個段落（說明、重現步驟、相關項目、留言…）是一張可以收合的卡片，記住收合了哪些段落。
  * - 留言是對話卡片：頭像、名字、「幾天前」、上次看過之後的新留言標「新」；
  *   預設只展開最新的幾則，很長的先顯示前面一段；可以切換最新的在上面或下面。
@@ -91,6 +91,13 @@ export function parseFieldTime(text: string): number | null {
 export function lastSegment(path: string): string {
   const parts = path.split("\\").filter(Boolean);
   return parts[parts.length - 1] ?? path;
+}
+
+/** 專案與區域合成一條路徑（區域通常以專案名稱開頭，不重複）：「專案 › 前端 › 登入」。 */
+export function areaTrail(project: string, area: string): string[] {
+  const parts = area.split("\\").filter(Boolean);
+  if (!project) return parts;
+  return parts[0] === project ? parts : [project, ...parts];
 }
 
 /** 附件收起來時的摘要：檔名，同名的合併成「檔名 ×3」。 */
@@ -225,27 +232,27 @@ function decorateFields(body: HTMLElement): void {
   }
   hero.append(facts);
 
-  // 其他欄位收起來：摘要是專案、區域、建立者與標籤，展開是完整的欄位表。
-  const more = document.createElement("details");
-  more.className = "ado-more-fields";
-  const summary = document.createElement("summary");
-  const brief = [text(t("專案")), text(t("區域")) && lastSegment(text(t("區域"))), text(t("建立者")) && t("建立者 {name}", { name: text(t("建立者")) })]
-    .filter(Boolean)
-    .join("・");
-  const label = document.createElement("span");
-  label.textContent = t("詳細欄位");
-  const briefEl = document.createElement("span");
-  briefEl.className = "ado-more-brief";
-  briefEl.textContent = brief;
-  summary.append(icon("chevron-right"), label, briefEl);
+  // 其他欄位排成一行（專案與區域、建立者、標籤）；欄位表的每一欄上面都有了，不再顯示（複製成 Markdown 文件時還在）。
+  const meta = document.createElement("div");
+  meta.className = "ado-hero-meta";
+  const trail = areaTrail(text(t("專案")), text(t("區域")));
+  if (trail.length) {
+    const where = document.createElement("span");
+    where.title = t("專案") + "\n" + text(t("專案")) + (text(t("區域")) ? "\n" + t("區域") + "\n" + text(t("區域")) : "");
+    where.append(icon("folder-kanban"), trail.join(" › "));
+    meta.append(where);
+  }
+  const creator = text(t("建立者"));
+  if (creator) meta.append(Object.assign(document.createElement("span"), { textContent: t("建立者 {name}", { name: creator }) }));
   for (const tag of text(t("標籤")).split(/[、,]\s*/).filter(Boolean)) {
     const chip = document.createElement("span");
     chip.className = "ado-field-tag";
+    chip.title = t("標籤");
     chip.textContent = tag;
-    summary.append(chip);
+    meta.append(chip);
   }
-  more.append(summary, table);
-  hero.append(more);
+  if (meta.childElementCount) hero.append(meta);
+  table.remove();
   // 「在瀏覽器開啟」：頂端列已經有同樣的按鈕，畫面上不重複（複製成 Markdown 文件時還在）。
   const web = hero.nextElementSibling;
   // （連結後面可能多了狀態標籤，所以只看第一個連結。）
