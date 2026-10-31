@@ -34,7 +34,9 @@ import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { aiFound } from "./ai-terminal.ts";
 import { reportError } from "./git-actions.ts";
 import { HISTORY_COMMANDS, historyView, markHistoryButtons } from "./git-history.ts";
+import { keepItem, selectItem } from "./item-tabs.ts";
 import { selectedText } from "./new-work-item.ts";
+import { issueSide, toggleIssueSide } from "./wiki-edit.ts";
 import { barShortcuts, openBarShortcut, removeBarShortcut, shortcutBar, shortcutName, setBarShortcuts } from "./work-items-panel.ts";
 import type { SidePanel } from "../main.ts";
 import { app } from "./context.ts";
@@ -920,7 +922,25 @@ export function initActivityBar(): void {
       "tab-close-right",
       "tab-close-saved",
       "-",
-      { label: t("固定分頁"), icon: "pin", checked: () => !!app.menuTab().pinned, run: () => app.setPinned(app.menuTab(), !app.menuTab().pinned) },
+      {
+        label: t("固定分頁"),
+        icon: "pin",
+        checked: () => app.tabPinned(app.menuItemTab()?.id ?? app.menuTab().id),
+        run: () => void app.commands.run("tab-pin"),
+      },
+      // 工作項目等的分頁：預覽分頁留下來、和文件並排。
+      { label: t("保留分頁"), icon: "pin", when: () => !!app.menuItemTab()?.preview, run: () => keepItem(app.menuItemTab()!.id) },
+      {
+        label: t("在文件右邊並排顯示"),
+        icon: "columns-2",
+        when: () => !!app.menuItemTab(),
+        checked: () => issueSide,
+        run: () => {
+          const tab = app.menuItemTab()!;
+          toggleIssueSide();
+          selectItem(tab.id);
+        },
+      },
       "-",
       "tab-copy-path",
       "tab-reveal",
