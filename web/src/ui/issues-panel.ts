@@ -170,6 +170,8 @@ export class IssuesPanel<T extends IssueSummary> {
   /** 第一次顯示面板時才讀取。 */
   shown(): void {
     if (!this.#loaded) void this.refresh();
+    // 面板藏著時標出的項目捲不過去：顯示出來後再捲到看得到的地方。
+    else requestAnimationFrame(() => this.#list.querySelector<HTMLElement>('.workitem[aria-current="true"]')?.scrollIntoView({ block: "nearest" }));
   }
 
   /** 連線狀態或資料夾改變時清掉舊的內容。 */
@@ -369,9 +371,20 @@ export class IssuesPanel<T extends IssueSummary> {
   /** 標示目前在主要區域開著的項目（null 表示都沒開）。 */
   select(id: number | null): void {
     this.#current = id;
+    // 分組收起來時，展開它所在的那一組（和檔案面板展開資料夾一樣），才看得到。
+    if (id !== null) {
+      const arrangement = this.#h.arrangements?.find((a) => a.id === this.#arrange?.value);
+      const group = arrangement?.arrange(this.#items).find((g) => g.items.some((it) => it.id === id));
+      const key = group && (group.head || group.title !== null) ? `${arrangement?.id}:${group.title}` : null;
+      if (key && this.#collapsed.has(key)) {
+        this.#collapsed.delete(key);
+        this.#render();
+      }
+    }
     for (const b of this.#list.querySelectorAll<HTMLElement>(".workitem")) {
       if (b.dataset.id === String(id)) b.setAttribute("aria-current", "true");
       else b.removeAttribute("aria-current");
     }
+    this.#list.querySelector<HTMLElement>('.workitem[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
   }
 }
