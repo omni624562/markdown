@@ -2617,9 +2617,17 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
   white-space: nowrap;
 }
 .source-badge .icon { width: 13px; height: 13px; }
-/* 檢視開著時，分頁列上原本選取的本機分頁變淡（目前看的不是它）。 */
-body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
-body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .tab[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
+/*
+ * Git 歷史蓋住編輯區時，分頁列上原本選取的文件分頁變淡（目前看的不是它）。
+ * 工作項目、Wiki 頁面有自己的分頁，選取時和文件分頁一樣（上方藍線、和下面的內容連成一片），不變淡。
+ */
+body:has(.workspace.history-open) .tab[aria-selected="true"],
+body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
+body:has(.workspace.history-open) .tab[aria-selected="true"]::before,
+body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
+/* 蓋住編輯區時：選取的分頁就標出正在看哪一個，內容上方不再畫整條來源顏色的線；標頭和分頁同底色，連成一片。 */
+.workspace.issue-open:not(.issue-side) > .issue-pane:not(.history-pane) { border-top: 0; }
+.workspace.issue-open:not(.issue-side) > .issue-pane:not(.history-pane) > .issue-head { background: var(--bg); }
 /* 位置一列放完，太長時截掉（每一層的完整名稱在滑鼠提示裡）。 */
 .issue-label { display: block; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .issue-label > * { margin-right: 4px; }
