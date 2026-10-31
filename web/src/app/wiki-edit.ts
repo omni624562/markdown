@@ -507,7 +507,9 @@ export function initWikiEdit(): void {
       if (kind === "ado") workItemOpened(Number(id));
       workItemsPanel?.select(kind === "ado" ? Number(id) : null);
       issuesPanel?.select(kind === "github" ? Number(id) : null);
-      wikiPanel?.select(kind === "wiki" && wikiPanel.wiki?.id === id ? rest.join(":") : null);
+      // Wiki 頁面：在樹上標出來（另一個 Wiki 或還沒讀到時，讀到後再標）。
+      if (kind === "wiki") wikiPanel?.reveal(id, rest.join(":"));
+      else wikiPanel?.select(null);
       markBarShortcuts();
     },
     toggleSide: toggleIssueSide,

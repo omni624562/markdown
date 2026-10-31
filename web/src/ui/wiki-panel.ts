@@ -90,6 +90,8 @@ export class WikiPanel<W extends WikiInfo> {
   #pages: WikiTreePage[] = [];
   #expanded = new Set<string>();
   #current: string | null = null;
+  /** 要標出的頁面（`reveal`），Wiki 清單或頁面還沒讀到時先記著，讀到後再標。 */
+  #pendingReveal: { wiki: string; path: string } | null = null;
   #seq = 0;
   #loaded = false;
   /** 上次讀取失敗時要重做的事（網路恢復時再試一次）。 */
@@ -289,6 +291,12 @@ export class WikiPanel<W extends WikiInfo> {
   /** 第一次顯示面板時才讀取。 */
   shown(): void {
     if (!this.#loaded) void this.refresh();
+    // 面板藏著時標出的頁面捲不過去：顯示出來後再捲到看得到的地方。
+    else requestAnimationFrame(() => this.#scrollToCurrent());
+  }
+
+  #scrollToCurrent(): void {
+    this.#list.querySelector<HTMLElement>('.wiki-page[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
   }
 
   /** 連線狀態改變時清掉舊的內容。 */
@@ -329,7 +337,8 @@ export class WikiPanel<W extends WikiInfo> {
         }),
       );
       this.#select.hidden = wikis.length < 2;
-      const keep = this.#wiki?.id ?? this.#h.load();
+      // 等著要標出的頁面在另一個 Wiki：直接讀那一個。
+      const keep = this.#pendingReveal?.wiki ?? this.#wiki?.id ?? this.#h.load();
       const wiki = wikis.find((w) => w.id === keep) ?? wikis[0] ?? null;
       if (wiki) this.#select.value = wiki.id;
       await this.#loadPages(wiki);
@@ -364,6 +373,11 @@ export class WikiPanel<W extends WikiInfo> {
       this.#pages = pages;
       this.#retry = null;
       this.#render();
+      const pending = this.#pendingReveal;
+      if (pending && pending.wiki === wiki.id) {
+        this.#pendingReveal = null;
+        this.select(pending.path);
+      }
     } catch (e) {
       if (seq !== this.#seq) return;
       this.#loaded = false;
@@ -917,8 +931,29 @@ export class WikiPanel<W extends WikiInfo> {
     this.#render();
   }
 
+  /**
+   * 在樹上標出這一頁（和檔案面板標出目前的檔案一樣）：是另一個 Wiki 時先切過去，
+   * Wiki 清單或頁面還沒讀到時等讀到再標；展開上層、捲到看得到的地方。
+   */
+  reveal(wikiId: string, path: string): void {
+    if (this.#wiki?.id === wikiId && this.#pages.length) {
+      this.#pendingReveal = null;
+      this.select(path);
+      return;
+    }
+    this.#pendingReveal = { wiki: wikiId, path };
+    this.#current = path;
+    const target = this.#wikis.find((w) => w.id === wikiId);
+    // 清單已經讀到、正在看別的 Wiki：切過去（讀到頁面後再標）。
+    if (target && this.#wiki?.id !== wikiId) {
+      this.#select.value = wikiId;
+      void this.#loadPages(target);
+    }
+  }
+
   /** 標示目前開著的頁面（null 表示都沒開）；展開它所在的資料夾，並記到「最近看過」。 */
   select(path: string | null): void {
+    if (path === null) this.#pendingReveal = null;
     this.#current = path;
     if (path && this.#wiki && this.#prefs.recent[0] !== path) {
       this.#prefs.recent = pushRecent(this.#prefs.recent, path, RECENT_LIMIT + PINNED_LIMIT);
@@ -944,5 +979,7 @@ export class WikiPanel<W extends WikiInfo> {
       if (b.dataset.path === path) b.setAttribute("aria-current", "true");
       else b.removeAttribute("aria-current");
     }
+    // 樹上的這一頁捲到看得到的地方。
+    this.#scrollToCurrent();
   }
 }
