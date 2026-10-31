@@ -2698,10 +2698,11 @@ function activate(doc: Doc): void {
 }
 
 /** 新增一個分頁並切換過去（不會寫入內容，呼叫端負責）。 */
-function addTab(doc: Doc): void {
-  // 放在目前分頁的右邊，但不插進固定的分頁之間。
+/** 新增分頁：放在目前分頁的右邊；給了 `after` 時放在那個文件後面（null 是一般分頁的最前面）。都不插進固定的分頁之間。 */
+function addTab(doc: Doc, after?: string | null): void {
   const lastPinned = docs.reduce((n, d, i) => (d.pinned ? i + 1 : n), 0);
-  docs.splice(Math.max(docs.indexOf(active) + 1, lastPinned), 0, doc);
+  const left = after === undefined ? docs.indexOf(active) : after === null ? -1 : docs.findIndex((d) => d.id === after);
+  docs.splice(Math.max(left + 1, lastPinned), 0, doc);
   activate(doc);
 }
 

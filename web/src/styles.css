@@ -1246,6 +1246,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
   cursor: pointer;
 }
 .status-btn .icon { width: 14px; height: 14px; }
+/* 編輯 Wiki 頁面時的「完成編輯」：強調色，看得出可以換回閱讀。 */
+.status-btn.wiki-done { color: var(--accent); font-weight: 600; }
 .status-btn:hover, .status-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 
 /* ---- 終端機面板 ---- */

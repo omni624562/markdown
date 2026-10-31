@@ -524,7 +524,7 @@ export const ui: Record<string, Translation> = {
   "已把狀態改成「{state}」": "Changed the state to \"{state}\"",
   "已指派給你": "Assigned to you",
   "已新增留言": "Comment added",
-  "在分頁裡編輯，按 Ctrl+S 存回伺服器": "Edit in a tab and press Ctrl+S to save back to the server",
+  "在同一個分頁編輯，按 Ctrl+S 存回伺服器；按狀態列的「完成編輯」換回閱讀": "Edit in this tab and press Ctrl+S to save back to the server; \"Done Editing\" in the status bar goes back to reading",
   "Azure DevOps Wiki：{wiki}{path}（按 Ctrl+S 存回伺服器）": "Azure DevOps Wiki: {wiki}{path} (Ctrl+S saves back to the server)",
   "Wiki 頁面已被別人修改": "The wiki page was changed by someone else",
   "「{name}」在你開始編輯之後被別人改過了。要怎麼處理？": "\"{name}\" was changed by someone else after you started editing. What would you like to do?",
