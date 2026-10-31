@@ -14,6 +14,7 @@ import { timeAgo } from "../history-label.ts";
 import { t } from "../i18n.ts";
 import { stateTone } from "../issue-doc.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
+import { kindKey } from "../work-item-colors.ts";
 import { icon } from "./icons.ts";
 
 export type SectionKind = "desc" | "details" | "sysinfo" | "relations" | "attachments" | "comments" | "other";
@@ -179,7 +180,7 @@ function decorateFields(body: HTMLElement): void {
     kindRow.className = "ado-hero-kind";
     const badge = document.createElement("span");
     badge.className = "ado-kind-badge";
-    badge.dataset.kind = parts.kind.toLowerCase().replace(/\s+/g, "-");
+    badge.dataset.wiKind = kindKey(parts.kind);
     badge.textContent = parts.kind;
     const id = document.createElement("span");
     id.textContent = parts.id;

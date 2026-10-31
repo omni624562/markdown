@@ -11,6 +11,7 @@ import { fontStack, installedFonts } from "../fonts.ts";
 import { type LangPref, langPref, langPrefs, setLangPref, t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
+import { COMMON_KINDS, isCustomKind, kindColor, kindKey } from "../work-item-colors.ts";
 
 type ThemePref = "system" | "light" | "dark";
 
@@ -74,6 +75,8 @@ export interface AdoSettingsHooks {
   disconnect(): void;
   openRepo(): void;
   workItems(): void;
+  /** 伺服器上的工作項目類型（設定類型的顏色時列出來）。 */
+  kinds(): Promise<string[]>;
   /** 逐項檢查權杖能做什麼。 */
   check(): Promise<{ label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>;
 }
@@ -1040,6 +1043,7 @@ export class SettingsDialog {
         .finally(() => (checkBtn.disabled = false));
     });
     const checkRow = this.#row("ado-check", t("權限檢查"), t("確認這個權杖能讀寫哪些東西（不會修改任何資料）"), () => checkBtn);
+    const colors = this.#kindColors(ado);
     const refresh = () => {
       const a = ado.account();
       if (!a) editing = false;
@@ -1047,7 +1051,8 @@ export class SettingsDialog {
       urlRow.hidden = patRow.hidden = !asking;
       // 上面兩列藏起來時，帳號是第一列，不需要分隔線。
       statusRow.style.borderTop = asking ? "" : "0";
-      openRow.hidden = itemsRow.hidden = notifyRow.hidden = checkRow.hidden = !a;
+      openRow.hidden = itemsRow.hidden = notifyRow.hidden = checkRow.hidden = colors.row.hidden = colors.grid.hidden = !a;
+      colors.account(a?.url ?? null);
       if (!a) results.hidden = true;
       label.textContent = a ? t("帳號") : t("連線");
       hint.textContent = a
@@ -1061,9 +1066,102 @@ export class SettingsDialog {
     refresh();
     section.append(
       ...this.#group(t("連線"), [urlRow, patRow, statusRow, checkRow, results]),
-      ...this.#group(t("儲存庫與工作項目"), [openRow, itemsRow, notifyRow]),
+      ...this.#group(t("儲存庫與工作項目"), [openRow, itemsRow, notifyRow, colors.row, colors.grid]),
     );
     return { section, refresh };
+  }
+
+  /**
+   * 工作項目類型的顏色：每種類型一個色塊，點一下挑顏色；改過的可以個別恢復，也可以全部恢復預設。
+   * 列出伺服器上的類型（讀不到時列常見的類型），加上改過顏色的類型。
+   */
+  #kindColors(ado: AdoSettingsHooks): { row: HTMLElement; grid: HTMLElement; account(url: string | null): void } {
+    let serverKinds: string[] = [];
+    /** 目前的伺服器，和讀過類型的伺服器（打開設定時才讀，啟動時不連線）。 */
+    let shownFor: string | null = null;
+    let loadedFor: string | null = null;
+    const grid = document.createElement("div");
+    grid.className = "kind-colors";
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "btn";
+    reset.append(icon("rotate-ccw"), t("恢復預設"));
+    reset.setAttribute("aria-label", t("所有類型恢復預設顏色"));
+    reset.addEventListener("click", () => this.#store.update({ workItemColors: {} }));
+    const row = this.#row(
+      "ado-kind-colors",
+      t("工作項目類型的顏色"),
+      t("分頁的圖示、工作項目的類型標籤、左側圖示列的捷徑都用這個顏色；點色塊可以換"),
+      () => reset,
+    );
+    const without = (kind: string) =>
+      Object.fromEntries(Object.entries(this.#store.value.workItemColors).filter(([k]) => kindKey(k) !== kindKey(kind)));
+    const render = () => {
+      const custom = this.#store.value.workItemColors;
+      const seen = new Set<string>();
+      const kinds = [...(serverKinds.length ? serverKinds : COMMON_KINDS), ...Object.keys(custom)].filter((k) => {
+        const key = kindKey(k);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      reset.disabled = !Object.keys(custom).length;
+      grid.replaceChildren(
+        ...kinds.map((kind) => {
+          const chip = document.createElement("div");
+          chip.className = "kind-color";
+          chip.dataset.wiKind = kindKey(kind);
+          const label = document.createElement("label");
+          const input = document.createElement("input");
+          input.type = "color";
+          input.value = kindColor(kind, custom);
+          input.addEventListener("change", () => this.#store.update({ workItemColors: { ...without(kind), [kind]: input.value } }));
+          const name = document.createElement("span");
+          name.textContent = kind;
+          label.append(input, name);
+          chip.append(label);
+          if (isCustomKind(kind, custom)) {
+            chip.classList.add("custom");
+            const undo = document.createElement("button");
+            undo.type = "button";
+            undo.className = "kind-color-reset";
+            undo.title = t("恢復「{kind}」的預設顏色", { kind });
+            undo.setAttribute("aria-label", undo.title);
+            undo.append(icon("x"));
+            undo.addEventListener("click", () => this.#store.update({ workItemColors: without(kind) }));
+            chip.append(undo);
+          }
+          return chip;
+        }),
+      );
+    };
+    render();
+    this.#store.subscribe((_, changed) => {
+      if (changed.includes("workItemColors")) render();
+    });
+    return {
+      row,
+      grid,
+      // 換了伺服器時先列常見的類型；設定打開著時讀一次伺服器上的類型（讀不到就維持常見的類型）。
+      account: (url) => {
+        if (url !== shownFor) {
+          shownFor = url;
+          loadedFor = null;
+          serverKinds = [];
+          render();
+        }
+        if (!url || loadedFor === url || !this.#dialog.open) return;
+        loadedFor = url;
+        ado
+          .kinds()
+          .then((kinds) => {
+            if (shownFor !== url) return;
+            serverKinds = kinds;
+            render();
+          })
+          .catch(() => (loadedFor = null));
+      },
+    };
   }
 
   /** 字型名稱：可以直接輸入，也可以從電腦上安裝的字型挑選；輸入框用該字型顯示當作預覽。 */

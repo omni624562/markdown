@@ -13,6 +13,7 @@ import {
   arrangeTabs,
   followInTab,
   itemGroup,
+  itemTabText,
   neighborAfterClose,
   parseSavedItemTabs,
   placeItem,
@@ -111,13 +112,14 @@ export function tabOrder(): string[] {
 
 /** 分頁列上的一個項目分頁。 */
 export function itemTabInfo(tab: ItemTab): TabInfo {
+  const text = itemTabText(tab.name, tab.title, tab.ref);
   return {
     id: tab.id,
-    name: tab.name,
-    title: tab.preview ? t("{title}（預覽：點別的項目會換掉這個分頁，雙擊留下來）", { title: tab.title }) : tab.title,
+    name: text.name,
+    title: tab.preview ? t("{title}（預覽：點別的項目會換掉這個分頁，雙擊留下來）", { title: text.title }) : text.title,
     dirty: false,
     pinned: tab.pinned,
-    item: { icon: tab.icon, origin: tab.origin, preview: tab.preview, side: sideShown() && tab === shownItem },
+    item: { icon: tab.icon, origin: tab.origin, preview: tab.preview, side: sideShown() && tab === shownItem, kind: text.kind },
   };
 }
 
