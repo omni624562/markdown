@@ -15,6 +15,7 @@ import { REPO_URL } from "../ui/settings-dialog.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, showShortcuts, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { searchPanel } from "./git-history.ts";
+import { closeItem, focusedItem } from "./item-tabs.ts";
 import { imageInput } from "./new-work-item.ts";
 import { runTableEdit } from "./offline-drive.ts";
 import { exportPdf } from "./pdf-export.ts";
@@ -113,7 +114,11 @@ export function initCommands(): void {
       group: t("分頁"),
       icon: "x",
       keys: desktop ? "Mod-w" : "Mod-Alt-w",
-      run: () => app.closeTab(app.menuTab().id),
+      run: () => {
+        // 顯示中的工作項目等（並排時焦點要在那一邊）：關掉它的分頁。
+        const item = app.menuTabId ? null : focusedItem();
+        return item ? closeItem(item.id) : app.closeTab(app.menuTab().id);
+      },
     },
     {
       id: "fold-all",

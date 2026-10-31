@@ -1,12 +1,13 @@
 /**
- * 工作項目、GitHub issue 開在主要區域的唯讀檢視（蓋在編輯區與預覽上面）：
+ * 工作項目、GitHub issue 開在主要區域的唯讀檢視（蓋在編輯區與預覽上面，或並排在右邊）：
  * 上方是位置、標題與動作（最常用的一個用文字按鈕，其他用圖示，少用的收在「更多動作」），
- * 內容由預覽同一套流程顯示。Ctrl+F 在內容裡找字，Esc 關閉。
+ * 內容由預覽同一套流程顯示。Ctrl+F 在內容裡找字，Esc 回到文件。
+ * 每一項是分頁列上的一個分頁（app/item-tabs.ts）；這個檢視一次顯示一個，切換分頁時換上那個分頁的狀態。
  */
 import { formatKeys } from "../commands.ts";
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
-import { type MenuEntry, setupMenu } from "./menu.ts";
+import { setupMenu } from "./menu.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
@@ -79,6 +80,10 @@ export interface IssueViewHooks {
   follow?(href: string): boolean;
   /** 檢視關閉了（例如清掉側邊欄清單上的標示）。 */
   closed(): void;
+  /** 按 Esc：回到文件（分頁留著）；沒給時關閉。 */
+  dismiss?(): void;
+  /** 按標頭的「關閉」：關掉這個分頁；沒給時關閉檢視。 */
+  closeTab?(): void;
   /** 切換「和編輯區並排顯示」。 */
   toggleSide?(): void;
   /** 狀態列上的摘要換了（關閉時是空的）。 */
@@ -135,6 +140,14 @@ interface HistoryEntry {
   scroll: number;
 }
 
+/** 一個分頁的狀態：顯示的內容、上一頁與下一頁、捲動位置（切換分頁時存下、換回來時還原）。 */
+export interface IssueViewState {
+  source: IssueSource;
+  back: HistoryEntry[];
+  forward: HistoryEntry[];
+  scroll: number;
+}
+
 /** 上一頁、下一頁各記住幾筆。 */
 const HISTORY_LIMIT = 50;
 /** 記住最近看過幾份內容（上一頁、下一頁、重新開啟時先顯示，背景再更新）。 */
@@ -151,10 +164,6 @@ export class IssueView {
   #scroll: HTMLElement;
   #find: HTMLElement;
   #toolbar: HTMLElement;
-  /** 位置、標題與動作（蓋住編輯區時搬到頂端列，省下一列）。 */
-  #head: HTMLElement;
-  /** 「更多動作」的項目；標頭在頂端列時這個按鈕藏起來，項目併到主選單（只留一個「⋯」）。 */
-  readonly moreEntries: MenuEntry[];
   #findInput: HTMLInputElement;
   #findCount: HTMLElement;
   #source: IssueSource | null = null;
@@ -221,7 +230,7 @@ export class IssueView {
     this.#historyBtn.hidden = true;
     const more = iconButton(t("更多動作"), "ellipsis", () => {});
     more.id = "issue-more";
-    this.moreEntries = [
+    setupMenu(more, null, [
       {
         label: t("新增子頁面"),
         icon: "file-plus",
@@ -257,11 +266,10 @@ export class IssueView {
           if (this.#source && this.#markdown) this.#h.offline?.toggle(this.#source, this.#markdown);
         },
       },
-    ];
-    setupMenu(more, null, this.moreEntries);
+    ]);
     const toggleSide = hooks.toggleSide;
     if (toggleSide) {
-      this.#sideBtn = iconButton(t("和編輯區並排顯示"), "columns-2", () => toggleSide());
+      this.#sideBtn = iconButton(t("在文件右邊並排顯示"), "columns-2", () => toggleSide());
       this.#sideBtn.classList.add("issue-side-toggle");
       this.#sideBtn.setAttribute("aria-pressed", "false");
     }
@@ -278,7 +286,7 @@ export class IssueView {
       ...(this.#sideBtn ? [this.#sideBtn] : []),
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
-      iconButton(t("關閉"), "x", () => this.close(), "Escape"),
+      iconButton(t("關閉分頁"), "x", () => (hooks.closeTab ? hooks.closeTab() : this.close())),
     );
     head.append(nav, heading, actions);
 
@@ -331,12 +339,7 @@ export class IssueView {
     this.#toolbar.className = "issue-toolbar-host";
     this.#toolbar.hidden = true;
     pane.append(head, this.#toolbar, this.#find, this.#scroll);
-    this.#head = head;
     pane.addEventListener("keydown", (e) => this.#keydown(e));
-    // 標頭搬到頂端列時不在 pane 裡面，按鍵（Esc、Ctrl+F、Alt+←）要另外接。
-    head.addEventListener("keydown", (e) => {
-      if (!pane.contains(head)) this.#keydown(e);
-    });
     // 滑鼠的「上一頁」「下一頁」側鍵。
     pane.addEventListener("mouseup", (e) => {
       if (e.button !== 3 && e.button !== 4) return;
@@ -352,28 +355,33 @@ export class IssueView {
     return !this.#pane.hidden;
   }
 
-  /** 標頭放在哪裡：`before` 是頂端列裡的某個元素（放在它前面），null 是放回內容上方。 */
-  placeHead(before: Element | null): void {
-    if (before) {
-      if (this.#head.nextElementSibling !== before) before.before(this.#head);
-    } else if (this.#pane.firstElementChild !== this.#head) {
-      this.#pane.prepend(this.#head);
-    }
-    this.#head.classList.toggle("in-topbar", !!before);
-  }
-
   /** 焦點在這個檢視裡（並排顯示時，用來分辨 Ctrl+F 要在哪邊找）。 */
   get hasFocus(): boolean {
     return this.#pane.contains(document.activeElement);
   }
 
-  /** 更新「並排顯示」按鈕的狀態。 */
+  /** 更新「並排顯示」按鈕：並排時按一下改成佔滿整個區域，否則改成並排在文件右邊。 */
   setSide(on: boolean): void {
     if (!this.#sideBtn) return;
-    this.#sideBtn.setAttribute("aria-pressed", String(on));
-    const label = on ? t("改回蓋住編輯區顯示") : t("和編輯區並排顯示");
+    const label = on ? t("佔滿整個區域（不和文件並排）") : t("在文件右邊並排顯示");
     this.#sideBtn.title = label;
     this.#sideBtn.setAttribute("aria-label", label);
+    this.#sideBtn.replaceChildren(icon(on ? "maximize-2" : "columns-2"));
+  }
+
+  /** 目前分頁的狀態（切換到別的分頁前存下）；沒有開著時回傳 null。 */
+  snapshot(): IssueViewState | null {
+    if (!this.#source) return null;
+    return { source: this.#source, back: [...this.#back], forward: [...this.#forward], scroll: this.#scroll.scrollTop };
+  }
+
+  /** 換上一個分頁的狀態（看過的內容先顯示在原本的捲動位置，背景再更新）。 */
+  async restore(state: IssueViewState): Promise<void> {
+    this.#seq++;
+    this.#back = [...state.back];
+    this.#forward = [...state.forward];
+    this.#restoreScroll = state.scroll;
+    await this.#open(state.source);
   }
 
   /** 開啟（或切換到）一個工作項目、issue、Wiki 頁面；原本開著的記到「上一頁」。 */
@@ -617,7 +625,8 @@ export class IssueView {
       if (!this.#find.hidden) {
         this.#closeFind();
         this.#pane.focus();
-      } else this.close();
+      } else if (this.#h.dismiss) this.#h.dismiss();
+      else this.close();
     } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
       if (e.key === "ArrowLeft") this.back();

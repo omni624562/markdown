@@ -17,10 +17,10 @@ import { recentEditor } from "../wiki-coedit.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { wikiPageLink, pageName, wikiTitleProblem, flattenPages, childPagePath } from "../wiki-text.ts";
 import { reportError } from "./git-actions.ts";
-import { historyView } from "./git-history.ts";
 import { insertAtCursor } from "./image-paste.ts";
+import { closeItemsWhere, openItem } from "./item-tabs.ts";
 import { withOfflineCopy } from "./offline-copies.ts";
-import { issueView, adoMe, wikiCheckedAt, wikiNewer, renderWikiBar } from "./wiki-edit.ts";
+import { adoMe, wikiCheckedAt, wikiNewer, renderWikiBar } from "./wiki-edit.ts";
 import { wikiPanel, barShortcuts, setBarShortcuts } from "./work-items-panel.ts";
 import { app } from "./context.ts";
 
@@ -137,10 +137,9 @@ function showRepoFile(link: RepoFileLink): void {
   });
 }
 
-/** 開啟工作項目、issue、Wiki 頁面（Git 歷史開著時先關掉）。 */
+/** 開啟工作項目、issue、Wiki 頁面（開在分頁裡；Git 歷史開著時先關掉）。 */
 export function showIssue(source: IssueSource): Promise<void> {
-  historyView?.close();
-  return issueView.show(source);
+  return openItem(source);
 }
 
 /** 存回 Wiki 時伺服器上比較新的版本（發生衝突後，使用者選擇覆蓋時用它）。 */
@@ -179,7 +178,6 @@ export async function editWikiPage(wiki: AdoWiki, path: string): Promise<void> {
   if (!page.etag) throw new Error(t("伺服器沒有提供這一頁的版本，無法確認存回時有沒有蓋掉別人的修改，所以不能在這裡編輯。"));
   // 編輯器一律用 \n 換行，先統一，免得一開就顯示成有變更。
   const content = page.content.replace(/\r\n?/g, "\n");
-  issueView.close();
   const doc = app.makeDoc({
     name: `${pageName(path)}.md`,
     kind: "markdown",
@@ -259,8 +257,10 @@ export async function deleteWikiPage(wiki: AdoWiki, path: string): Promise<void>
   await desktop!.adoWikiDelete(wiki, path);
   toast(t("已刪除 Wiki 頁面「{name}」", { name }), { tone: "success" });
   // 開著的是這一頁或子頁面時關閉；圖示列上的捷徑一併拿掉。
-  const [kind, id, ...rest] = (app.issueKey ?? "").split(":");
-  if (kind === "wiki" && id === wiki.id && inside(rest.join(":"))) issueView.close();
+  closeItemsWhere((key) => {
+    const [kind, id, ...rest] = key.split(":");
+    return kind === "wiki" && id === wiki.id && inside(rest.join(":"));
+  });
   const left = barShortcuts.filter((s) => isWorkItemShortcut(s) || !(s.wiki === wiki.id && inside(s.path)));
   if (left.length !== barShortcuts.length) setBarShortcuts(left);
   void wikiPanel?.refresh();

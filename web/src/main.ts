@@ -43,7 +43,7 @@ import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
-import { type MenuEntry, setupMenu } from "./ui/menu.ts";
+import { setupMenu } from "./ui/menu.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
@@ -81,6 +81,7 @@ import { createPullRequest, reportError, resolveMergeConflict, showExternalChang
 import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady, initAiTerminal } from "./app/ai-terminal.ts";
 import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, refreshActivityCommands, refreshToc, separator, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
+import { closeItem, findItemTab, hideItem, itemTabInfos, itemTabs, keepItem, openItemMenu, selectItem, selectedItemId } from "./app/item-tabs.ts";
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
 import type { IssueFact } from "./ui/issue-view.ts";
 import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
@@ -1946,10 +1947,14 @@ function setBaseline(text: string, backed: boolean): void {
 
 const tabBar = new TabBar($("#tab-bar"), {
   select: (id) => {
+    if (findItemTab(id)) return selectItem(id);
     const doc = docs.find((d) => d.id === id);
     if (doc) activate(doc);
   },
-  close: (id) => void closeTab(id).catch(reportError),
+  close: (id) => {
+    if (findItemTab(id)) closeItem(id);
+    else void closeTab(id).catch(reportError);
+  },
   create: () => void commands.run("new"),
   canRename: (id) => {
     const doc = docs.find((d) => d.id === id);
@@ -1960,6 +1965,7 @@ const tabBar = new TabBar($("#tab-bar"), {
   },
   rename: (id, name) => renameDoc(id, name),
   menu: (id, at) => {
+    if (findItemTab(id)) return openItemMenu(id, at);
     menuTabId = id;
     tabMenu.open(at);
   },
@@ -1967,6 +1973,7 @@ const tabBar = new TabBar($("#tab-bar"), {
     const doc = docs.find((d) => d.id === id);
     if (doc) setPinned(doc, false);
   },
+  keep: (id) => keepItem(id),
 });
 
 // ---- 分頁選單：關閉其他、關閉右側、固定分頁…… ---------------------------------
@@ -2222,8 +2229,6 @@ initWikiEdit();
 
 const statusView = $("#status-view");
 const issuePane = $(".issue-pane:not(.history-pane)");
-/** 頂端列的分頁區（側邊欄右邊到視窗右緣）至少這麼寬，標頭才搬到頂端列。 */
-const HEAD_IN_TOPBAR_MIN = 760;
 /** 正在看的工作項目等內容的摘要（狀態、留言數…），顯示在狀態列右邊。 */
 let issueFacts: IssueFact[] = [];
 
@@ -2239,14 +2244,6 @@ function renderStatusView(): void {
   const viewing = issueOpen || historyOpen;
   $(".statusbar").classList.toggle("viewing", viewing);
   statusView.hidden = !viewing;
-  // 開著工作項目等內容時，標頭（位置、標題、動作）放在頂端列，省下一整列。並排顯示時也一樣，
-  // 切換並排時按鈕才不會跳到別的地方；頂端列太窄（放不下標題與按鈕）時才放回內容上方。
-  const topbar = $(".topbar");
-  const room = topbar.getBoundingClientRect().right - $("#tab-bar").getBoundingClientRect().left;
-  const headUp =
-    workspace.classList.contains("issue-open") && !historyOpen && !workspace.classList.contains("narrow") && room >= HEAD_IN_TOPBAR_MIN;
-  topbar.classList.toggle("has-issue-head", headUp);
-  issueView?.placeHead(headUp ? $(".topbar .top-actions") : null);
   if (!viewing) return;
   const source = historyOpen ? "git" : (issuePane.dataset.source ?? "");
   const names: Record<string, string> = {
@@ -2265,9 +2262,9 @@ function renderStatusView(): void {
   back.type = "button";
   back.className = "status-btn";
   back.append(icon("arrow-left"), t("回到文件"));
-  back.title = t("關閉這個畫面，回到編輯中的文件（Esc）");
+  back.title = t("回到編輯中的文件（Esc）；工作項目等的分頁留著，點分頁就切換回來");
   back.addEventListener("click", () => {
-    issueView.close();
+    hideItem();
     historyView?.close();
   });
   const facts = document.createElement("span");
@@ -2289,10 +2286,6 @@ function renderStatusView(): void {
   statusView.replaceChildren(label, back, facts);
 }
 new MutationObserver(renderStatusView).observe(workspace, { attributes: true, attributeFilter: ["class"] });
-// 視窗或側邊欄寬度改變時，重新決定標頭放在頂端列還是內容上方。
-new ResizeObserver(() => {
-  if (workspace.classList.contains("issue-open")) renderStatusView();
-}).observe(issuePane);
 issueView.setSide(issueSide);
 // 並排顯示時，檢視打開或關閉要重新排版（編輯區讓出右半邊）。
 let issueWasOpen = false;
@@ -2600,19 +2593,25 @@ function persistSession(): void {
 
 function renderTabs(): void {
   tabBar.render(
-    docs.map((d) => ({
-      id: d.id,
-      name: d === active ? fileName : d.name,
-      title: d.wiki
-        ? t("Azure DevOps Wiki：{wiki}{path}（按 Ctrl+S 存回伺服器）", { wiki: d.wiki.wikiName, path: d.wiki.path })
-        : (((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name)),
-      source: d.wiki ? ("wiki" as const) : undefined,
-      dirty: d.dirty,
-      missing: d.missing,
-      pinned: d.pinned,
-    })),
-    active.id,
+    [
+      ...docs.map((d) => ({
+        id: d.id,
+        name: d === active ? fileName : d.name,
+        title: d.wiki
+          ? t("Azure DevOps Wiki：{wiki}{path}（按 Ctrl+S 存回伺服器）", { wiki: d.wiki.wikiName, path: d.wiki.path })
+          : (((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name)),
+        source: d.wiki ? ("wiki" as const) : undefined,
+        dirty: d.dirty,
+        missing: d.missing,
+        pinned: d.pinned,
+      })),
+      // 工作項目、Wiki 頁面等排在文件後面；蓋住編輯區顯示時，標成目前的分頁。
+      ...itemTabInfos(),
+    ],
+    selectedItemId() ?? active.id,
   );
+  // 只有一份空白文件時藏起分頁列的內容；有工作項目等分頁時照常顯示（才點得回文件）。
+  $("#tab-bar").classList.toggle("has-items", itemTabs.length > 0);
   const path = fileHandle?.path ?? null;
   if (path !== treeActive) {
     treeActive = path;
@@ -2622,8 +2621,8 @@ function renderTabs(): void {
 
 /** 切換到另一個分頁。 */
 function activate(doc: Doc): void {
-  // 點分頁（包括目前的分頁）就回到文件，關掉工作項目、Git 歷史的檢視（並排顯示時留著）。
-  if (!issueSide) issueView.close();
+  // 點分頁（包括目前的分頁）就回到文件，收起工作項目等（分頁留著；並排顯示時留在右邊）與 Git 歷史。
+  if (!issueSide) hideItem();
   historyView?.close();
   if (doc === active) return;
   flushDraft();
@@ -3022,14 +3021,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
   if (btn.classList.contains("icon-only")) btn.setAttribute("aria-label", cmd.title);
   btn.addEventListener("click", () => commands.run(cmd.id).catch(reportError));
 });
-// 工作項目等內容的標頭在頂端列時，它的「更多動作」併到主選單最上面（頂端列只留一個「⋯」）。
-const issueMoreInMenu = () => $(".topbar").classList.contains("has-issue-head");
 setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
-  ...issueView.moreEntries.map((e): MenuEntry => {
-    if (typeof e === "string" || "items" in e) return e;
-    return { ...e, when: () => issueMoreInMenu() && (e.when?.() ?? true) };
-  }),
-  "-",
   "new",
   "new-from-template",
   "open",
@@ -3117,7 +3109,11 @@ function applyLayout(): void {
   const effective: ViewMode = narrow && view === "split" ? "editor" : view;
   // 工作項目等內容和編輯區並排：版面當成分割，右半邊放內容（預覽藏起來）。
   const side = issueSide && !narrow && workspace.classList.contains("issue-open");
-  workspace.classList.toggle("issue-side", side);
+  if (workspace.classList.contains("issue-side") !== side) {
+    workspace.classList.toggle("issue-side", side);
+    // 分頁列上標成目前分頁的換了（並排時是文件，蓋住編輯區時是工作項目等）。
+    renderTabs();
+  }
   // 即時預覽的版面和只顯示編輯區相同，差別在編輯區裡直接顯示排版。
   const layout = side ? "split" : effective === "live" ? "editor" : effective;
   workspace.dataset.view = layout;
@@ -3164,7 +3160,7 @@ function applyLayout(): void {
 }
 
 function setView(mode: ViewMode): void {
-  if (!issueSide) issueView.close();
+  if (!issueSide) hideItem();
   historyView?.close();
   view = mode;
   storage.save("view", mode);
