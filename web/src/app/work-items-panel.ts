@@ -556,12 +556,14 @@ export async function renderIssuesTab(): Promise<void> {
   else app.panelAvailable("issues");
 }
 
-/** 連線到 Azure DevOps 後才顯示「Azure DevOps」圖示（裡面切換工作項目與 Wiki）。 */
+/** 連線到 Azure DevOps 後才顯示「工作項目」「Wiki」圖示。 */
 export function renderAdoTab(): void {
-  const tab = app.$("#side-tab-ado");
-  tab.hidden = !app.ado?.account;
-  if (tab.hidden) app.panelUnavailable("ado");
-  else app.panelAvailable("ado");
+  for (const panel of ["workitems", "wiki"] as const) {
+    const tab = app.$(`#side-tab-${panel}`);
+    tab.hidden = !app.ado?.account;
+    if (tab.hidden) app.panelUnavailable(panel);
+    else app.panelAvailable(panel);
+  }
   void pingAdo();
   if (app.ado?.account) void app.pollWorkItems();
   else {

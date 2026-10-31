@@ -1997,19 +1997,8 @@ button.git-info:disabled { cursor: default; }
 .multi-select-pop.single .multi-select-list { padding-top: 4px; }
 /* Wiki（Azure DevOps） */
 .wiki-filters { grid-template-columns: 1fr; }
-/* Azure DevOps 面板上方切換工作項目／Wiki。 */
-.ado-switch { flex: 1 1 auto; min-width: 0; margin-left: -6px; }
-.ado-switch button { flex: 1 1 0; min-width: 0; gap: 5px; min-height: 26px; padding: 0 8px; font-size: 12.5px; white-space: nowrap; }
-.ado-switch button span { overflow: hidden; text-overflow: ellipsis; }
-.ado-switch button .icon { flex: none; width: 14px; height: 14px; }
-/* 側邊欄很窄時，切換只留圖示（文字會被截成「工…」看不懂）；名稱在提示與 aria-label 裡。 */
-#panel-ado .side-head { container: ado-head / inline-size; }
-@container ado-head (max-width: 230px) {
-  .ado-switch button span { display: none; }
-}
-#panel-ado .side-head .side-actions { flex: none; }
 /* 遠端的清單（工作項目、Wiki、Issues）常要重新讀取：重新整理按鈕一直顯示。 */
-#panel-ado .side-actions, #panel-issues .side-actions { opacity: 1; }
+#panel-workitems .side-actions, #panel-wiki .side-actions, #panel-issues .side-actions { opacity: 1; }
 /* 讀取失敗時錯誤訊息旁的「重試」。 */
 .load-retry { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; vertical-align: middle; }
 .load-retry .icon { width: 13px; height: 13px; }

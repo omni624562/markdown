@@ -236,7 +236,7 @@ export function panelAvailable(panel: SidePanel): void {
 export function showPanel(panel: SidePanel, reveal = true): void {
   const requested = panel;
   if (panel === "git" && app.$("#side-tab-git").hidden) panel = "files";
-  if (panel === "ado" && app.$("#side-tab-ado").hidden) panel = "files";
+  if ((panel === "workitems" || panel === "wiki") && app.$(`#side-tab-${panel}`).hidden) panel = "files";
   if (panel === "issues" && app.$("#side-tab-issues").hidden) panel = "files";
   // 不能用而改開檔案時不記住（下次啟動仍然開原本要的面板）。
   pendingPanel = panel === requested ? null : requested;
@@ -257,7 +257,8 @@ export function showPanel(panel: SidePanel, reveal = true): void {
   }
   if (reveal && !app.outlineShown) app.setOutline(true);
   if (panel === "outline") app.updateActiveHeading();
-  if (panel === "ado") (app.adoTab === "wiki" ? wikiPanel : workItemsPanel)?.shown();
+  if (panel === "workitems") workItemsPanel?.shown();
+  if (panel === "wiki") wikiPanel?.shown();
   if (panel === "issues") issuesPanel?.shown();
   if (panel === "search" && app.searchStale) {
     app.searchStale = false;

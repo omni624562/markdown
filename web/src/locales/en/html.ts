@@ -19,5 +19,6 @@ export const html: Record<string, Translation> = {
   "支援 Markdown、文字檔、YAML、CSV、HTML、程式碼檔；圖片會插入到文件中": "Markdown, text, YAML, CSV, HTML and code files are supported. Images are inserted into the document.",
   "重新讀取檔案清單（不會和 Git 同步）": "Reload the file list from disk (doesn't sync with Git)",
   "重新讀取檔案清單": "Reload File List",
-  "Azure DevOps（工作項目、Wiki）": "Azure DevOps (Work Items, Wiki)",
+  "工作項目（Azure DevOps）": "Work Items (Azure DevOps)",
+  "Wiki（Azure DevOps）": "Wiki (Azure DevOps)",
 };
