@@ -15,7 +15,7 @@ import { REPO_URL } from "../ui/settings-dialog.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, showShortcuts, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { searchPanel } from "./git-history.ts";
-import { closeItem, focusedItem } from "./item-tabs.ts";
+import { closeItem, itemTabs, setItemPinned, tabOrder } from "./item-tabs.ts";
 import { imageInput } from "./new-work-item.ts";
 import { runTableEdit } from "./offline-drive.ts";
 import { exportPdf } from "./pdf-export.ts";
@@ -41,6 +41,22 @@ function fmt(id: string, title: string, iconName: string, run: () => void, keys?
 
 const palette = new Palette(commands);
 export const TERMINAL_KEYS = new Set(["palette", "toggle-terminal"]);
+
+/** 按右鍵的分頁（從指令面板執行時是目前的分頁）的 id：工作項目等或文件。 */
+const menuTabId = (): string => app.menuItemTab()?.id ?? app.menuTab().id;
+
+/** `id` 右邊沒有固定的分頁。 */
+function rightOf(id: string): string[] {
+  const order = tabOrder();
+  return order.slice(order.indexOf(id) + 1).filter((x) => !app.tabPinned(x));
+}
+
+/** 沒有未存變更、沒有固定的分頁（工作項目等沒有要存的，也算）。 */
+function savedTabs(): string[] {
+  return tabOrder().filter(
+    (id) => !app.tabPinned(id) && (itemTabs.some((tab) => tab.id === id) || app.docs.some((d) => d.id === id && !d.dirty)),
+  );
+}
 
 export function initCommands(): void {
   commands.register(
@@ -96,7 +112,7 @@ export function initCommands(): void {
       group: t("分頁"),
       icon: "arrow-right",
       keys: desktop ? "Ctrl-Tab" : "Alt-PageDown",
-      when: () => app.docs.length > 1,
+      when: () => tabOrder().length > 1,
       run: () => app.cycleTab(1),
     },
     {
@@ -105,7 +121,7 @@ export function initCommands(): void {
       group: t("分頁"),
       icon: "arrow-left",
       keys: desktop ? "Ctrl-Shift-Tab" : "Alt-PageUp",
-      when: () => app.docs.length > 1,
+      when: () => tabOrder().length > 1,
       run: () => app.cycleTab(-1),
     },
     {
@@ -115,8 +131,8 @@ export function initCommands(): void {
       icon: "x",
       keys: desktop ? "Mod-w" : "Mod-Alt-w",
       run: () => {
-        // 顯示中的工作項目等（並排時焦點要在那一邊）：關掉它的分頁。
-        const item = app.menuTabId ? null : focusedItem();
+        // 工作項目等的分頁（按右鍵的，或顯示中而且並排時焦點在那一邊）：關掉它。
+        const item = app.menuItemTab();
         return item ? closeItem(item.id) : app.closeTab(app.menuTab().id);
       },
     },
@@ -141,10 +157,10 @@ export function initCommands(): void {
       title: t("關閉其他分頁"),
       group: t("分頁"),
       icon: "x",
-      when: () => app.docs.some((d) => d !== app.menuTab() && !d.pinned),
+      when: () => tabOrder().some((id) => id !== menuTabId() && !app.tabPinned(id)),
       run() {
-        const keep = app.menuTab();
-        return app.closeTabs(app.docs.filter((d) => d !== keep && !d.pinned));
+        const keep = menuTabId();
+        return app.closeTabIds(tabOrder().filter((id) => id !== keep && !app.tabPinned(id)));
       },
     },
     {
@@ -153,26 +169,25 @@ export function initCommands(): void {
       group: t("分頁"),
       icon: "x",
       // 固定的分頁保留（和「關閉其他分頁」一致）；沒存的分頁會逐一詢問。
-      when: () => app.docs.some((d) => !d.pinned),
-      run: () => app.closeTabs(app.docs.filter((d) => !d.pinned)),
+      when: () => tabOrder().some((id) => !app.tabPinned(id)),
+      run: () => app.closeTabIds(tabOrder().filter((id) => !app.tabPinned(id))),
     },
     {
       id: "tab-close-right",
       title: t("關閉右側的分頁"),
       group: t("分頁"),
       icon: "x",
-      when: () => app.docs.slice(app.docs.indexOf(app.menuTab()) + 1).some((d) => !d.pinned),
-      run() {
-        return app.closeTabs(app.docs.slice(app.docs.indexOf(app.menuTab()) + 1).filter((d) => !d.pinned));
-      },
+      when: () => rightOf(menuTabId()).length > 0,
+      run: () => app.closeTabIds(rightOf(menuTabId())),
     },
     {
       id: "tab-close-saved",
       title: t("關閉已儲存的分頁"),
       group: t("分頁"),
       icon: "x",
-      when: () => app.docs.some((d) => !d.dirty && !d.pinned),
-      run: () => app.closeTabs(app.docs.filter((d) => !d.dirty && !d.pinned)),
+      // 工作項目等沒有要存的，也算已儲存。
+      when: () => savedTabs().length > 0,
+      run: () => app.closeTabIds(savedTabs()),
     },
     {
       id: "tab-pin",
@@ -180,6 +195,8 @@ export function initCommands(): void {
       group: t("分頁"),
       icon: "pin",
       run() {
+        const item = app.menuItemTab();
+        if (item) return setItemPinned(item.id, !item.pinned);
         const doc = app.menuTab();
         app.setPinned(doc, !doc.pinned);
       },
@@ -189,7 +206,7 @@ export function initCommands(): void {
       title: t("複製檔案路徑"),
       group: t("檔案"),
       icon: "copy",
-      when: () => !!app.tabPath(app.menuTab()),
+      when: () => !app.menuItemTab() && !!app.tabPath(app.menuTab()),
       async run() {
         await navigator.clipboard.writeText(displayPath(app.tabPath(app.menuTab())!));
         toast(t("已複製路徑"));
@@ -200,7 +217,7 @@ export function initCommands(): void {
       title: t("在檔案總管中顯示"),
       group: t("檔案"),
       icon: "folder-open",
-      when: () => !!desktop && !!app.tabPath(app.menuTab()),
+      when: () => !!desktop && !app.menuItemTab() && !!app.tabPath(app.menuTab()),
       run: () => desktop!.revealEntry(app.tabPath(app.menuTab())!),
     },
     {

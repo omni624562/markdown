@@ -56,7 +56,7 @@ import { dateCompletion } from "./date-complete.ts";
 import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
 import { resolveWiki } from "./links.ts";
 import { setBounded } from "./bounded.ts";
-import { TabBar } from "./ui/tabbar.ts";
+import { type TabInfo, TabBar } from "./ui/tabbar.ts";
 import { TerminalProxy } from "./terminal-proxy.ts";
 import { Updater } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
@@ -81,7 +81,7 @@ import { createPullRequest, reportError, resolveMergeConflict, showExternalChang
 import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady, initAiTerminal } from "./app/ai-terminal.ts";
 import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, refreshActivityCommands, refreshToc, separator, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
-import { closeItem, findItemTab, hideItem, itemTabInfos, itemTabs, keepItem, openItemMenu, selectItem, selectedItemId } from "./app/item-tabs.ts";
+import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focusedItem, hideItem, itemTabInfo, itemTabs, keepItem, reopenItem, selectItem, selectedItemId, setItemPinned, tabOrder } from "./app/item-tabs.ts";
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
 import type { IssueFact } from "./ui/issue-view.ts";
 import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
@@ -398,6 +398,18 @@ const app = {
   },
   get menuTab() {
     return menuTab;
+  },
+  get menuItemTab() {
+    return menuItemTab;
+  },
+  get closeTabIds() {
+    return closeTabIds;
+  },
+  get tabPinned() {
+    return tabPinned;
+  },
+  get rememberClosedItem() {
+    return rememberClosedItem;
   },
   get menuTabId() {
     return menuTabId;
@@ -1946,11 +1958,7 @@ function setBaseline(text: string, backed: boolean): void {
 // ---- 分頁 ---------------------------------------------------------------
 
 const tabBar = new TabBar($("#tab-bar"), {
-  select: (id) => {
-    if (findItemTab(id)) return selectItem(id);
-    const doc = docs.find((d) => d.id === id);
-    if (doc) activate(doc);
-  },
+  select: (id) => selectTab(id),
   close: (id) => {
     if (findItemTab(id)) closeItem(id);
     else void closeTab(id).catch(reportError);
@@ -1965,11 +1973,11 @@ const tabBar = new TabBar($("#tab-bar"), {
   },
   rename: (id, name) => renameDoc(id, name),
   menu: (id, at) => {
-    if (findItemTab(id)) return openItemMenu(id, at);
     menuTabId = id;
     tabMenu.open(at);
   },
   unpin: (id) => {
+    if (findItemTab(id)) return setItemPinned(id, false);
     const doc = docs.find((d) => d.id === id);
     if (doc) setPinned(doc, false);
   },
@@ -1981,6 +1989,24 @@ const tabBar = new TabBar($("#tab-bar"), {
 /** 按右鍵的分頁；從指令面板執行時是目前的分頁。 */
 let menuTabId: string | null = null;
 const menuTab = (): Doc => docs.find((d) => d.id === menuTabId) ?? active;
+/** 按右鍵的是工作項目等的分頁時是它（從指令面板執行時是顯示中的那一個）；文件的分頁時是 null。 */
+const menuItemTab = () => (menuTabId ? (findItemTab(menuTabId) ?? null) : focusedItem());
+
+/** 關掉好幾個分頁（文件或工作項目等）：沒存的文件會逐一詢問。 */
+async function closeTabIds(ids: string[]): Promise<void> {
+  closeItems(itemTabs.filter((tab) => ids.includes(tab.id)));
+  await closeTabs(docs.filter((d) => ids.includes(d.id)));
+}
+
+/** 分頁固定了沒有（文件或工作項目等）。 */
+const tabPinned = (id: string): boolean => !!(findItemTab(id)?.pinned ?? docs.find((d) => d.id === id)?.pinned);
+
+/** 切換到分頁（文件或工作項目等）。 */
+function selectTab(id: string): void {
+  if (findItemTab(id)) return selectItem(id);
+  const doc = docs.find((d) => d.id === id);
+  if (doc) activate(doc);
+}
 const tabPath = (doc: Doc): string | null => (doc === active ? fileHandle?.path : doc.path) ?? null;
 
 /** 固定或取消固定分頁：固定的分頁排在最左邊（依固定的先後）。 */
@@ -2525,12 +2551,14 @@ const quickOpen = new Picker<QuickItem>({
   empty: t("找不到符合的檔案"),
   async query(q) {
     stash();
-    // 已開啟的分頁優先，目前分頁放最後（按 Enter 不會停在原地）。
-    const items: QuickItem[] = [...docs.filter((d) => d !== active), active].map((d) => ({
-      title: d.name,
-      detail: d === active ? t("目前分頁") : t("已開啟"),
-      doc: d,
-    }));
+    // 已開啟的分頁優先（工作項目等的分頁也算），目前分頁放最後（按 Enter 不會停在原地）。
+    const current = selectedItemId();
+    const openItems = itemTabs.filter((tab) => tab.id !== current);
+    const items: QuickItem[] = [
+      ...docs.filter((d) => d !== active || current).map((d) => ({ title: d.name, detail: t("已開啟"), doc: d })),
+      ...openItems.map((tab) => ({ title: tab.name, detail: t("已開啟"), remote: { icon: tab.icon, open: () => selectItem(tab.id) } })),
+      ...(current ? [] : [{ title: active.name, detail: t("目前分頁"), doc: active }]),
+    ];
     const seen = new Set(docs.map((d) => d.path).filter(Boolean));
     if (desktop) {
       if (workspaceRoot) {
@@ -2592,9 +2620,10 @@ function persistSession(): void {
 }
 
 function renderTabs(): void {
-  tabBar.render(
-    [
-      ...docs.map((d) => ({
+  const infos = new Map<string, TabInfo>([
+    ...docs.map((d): [string, TabInfo] => [
+      d.id,
+      {
         id: d.id,
         name: d === active ? fileName : d.name,
         title: d.wiki
@@ -2604,10 +2633,13 @@ function renderTabs(): void {
         dirty: d.dirty,
         missing: d.missing,
         pinned: d.pinned,
-      })),
-      // 工作項目、Wiki 頁面等排在文件後面；蓋住編輯區顯示時，標成目前的分頁。
-      ...itemTabInfos(),
-    ],
+      },
+    ]),
+    ...itemTabs.map((tab): [string, TabInfo] => [tab.id, itemTabInfo(tab)]),
+  ]);
+  // 工作項目、Wiki 頁面等和文件排在一起；蓋住編輯區顯示時，標成目前的分頁。
+  tabBar.render(
+    tabOrder().map((id) => infos.get(id)!),
     selectedItemId() ?? active.id,
   );
   // 只有一份空白文件時藏起分頁列的內容；有工作項目等分頁時照常顯示（才點得回文件）。
@@ -2693,6 +2725,7 @@ async function closeTab(id: string): Promise<void> {
   }
   if (pendingDraft?.id === doc.id) pendingDraft = null;
   rememberClosed(doc);
+  docClosing(doc.id);
   const closedPath = docPath(doc);
   const i = docs.indexOf(doc);
   docs.splice(i, 1);
@@ -2728,7 +2761,13 @@ interface ClosedTab {
   text: string;
   dirty: boolean;
 }
-const closedTabs: ClosedTab[] = [];
+/** 關閉的文件或工作項目等的分頁（`item`）。 */
+const closedTabs: (ClosedTab | { item: ClosedItem })[] = [];
+
+function rememberClosedItem(item: ClosedItem): void {
+  closedTabs.push({ item });
+  while (closedTabs.length > 20) closedTabs.shift();
+}
 /** 重新開啟分頁的清單，保留的內容合計上限（字元數，約 16 MB）。 */
 const CLOSED_TABS_TEXT_LIMIT = 8_000_000;
 
@@ -2738,8 +2777,9 @@ function rememberClosed(doc: Doc): void {
   if (!path && !text.trim()) return; // 空白的新文件不用記
   closedTabs.push({ name: doc === active ? fileName : doc.name, kind: doc.kind, path, text, dirty: doc.dirty });
   // 最多記 20 個；內容合計太大時（例如關掉好幾份大文件）先丟掉最舊的，避免一直佔著記憶體。
-  let total = closedTabs.reduce((n, c) => n + c.text.length, 0);
-  while (closedTabs.length > 20 || (closedTabs.length > 1 && total > CLOSED_TABS_TEXT_LIMIT)) total -= closedTabs.shift()!.text.length;
+  const size = (c: (typeof closedTabs)[number]) => ("text" in c ? c.text.length : 0);
+  let total = closedTabs.reduce((n, c) => n + size(c), 0);
+  while (closedTabs.length > 20 || (closedTabs.length > 1 && total > CLOSED_TABS_TEXT_LIMIT)) total -= size(closedTabs.shift()!);
 }
 
 async function reopenClosedTab(): Promise<void> {
@@ -2748,6 +2788,7 @@ async function reopenClosedTab(): Promise<void> {
     toast(t("沒有剛關閉的分頁。"));
     return;
   }
+  if ("item" in closed) return reopenItem(closed.item);
   if (closed.path && desktop) {
     try {
       await openPath(closed.path);
@@ -2766,9 +2807,11 @@ async function reopenClosedTab(): Promise<void> {
   if (closed.path) toast(t("找不到「{name}」，已用關閉時的內容開成新分頁。", { name: closed.name }), { duration: 8000 });
 }
 
+/** 切換到下一個（`step` 是 1）或上一個分頁，工作項目等的分頁也算。 */
 function cycleTab(step: number): void {
-  const i = docs.indexOf(active);
-  activate(docs[(i + step + docs.length) % docs.length]);
+  const order = tabOrder();
+  const i = order.indexOf(selectedItemId() ?? active.id);
+  selectTab(order[(i + step + order.length) % order.length]);
 }
 
 /** 找出已經開啟同一個檔案的分頁。 */
