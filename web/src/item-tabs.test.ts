@@ -1,18 +1,39 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type ItemPlacing, arrangeTabs, neighborAfterClose, parseSavedItemTabs, placeItem, placeNewItem } from "./item-tabs.ts";
+import { type ItemPlacing, arrangeTabs, followInTab, itemGroup, neighborAfterClose, parseSavedItemTabs, placeItem, placeNewItem } from "./item-tabs.ts";
 
 test("開啟時：已經開著就切過去，否則換掉預覽分頁，要留著的或沒有預覽分頁時新開", () => {
+  const w = "workitem" as const;
   const tabs = [
-    { key: "ado:1", preview: false },
-    { key: "ado:2", preview: true },
+    { key: "ado:1", preview: false, group: w },
+    { key: "ado:2", preview: true, group: w },
   ];
-  assert.deepEqual(placeItem(tabs, "ado:2", false), { kind: "same", index: 1 });
-  assert.deepEqual(placeItem(tabs, "ado:1", true), { kind: "same", index: 0 });
-  assert.deepEqual(placeItem(tabs, "ado:3", false), { kind: "preview", index: 1 });
-  assert.deepEqual(placeItem(tabs, "ado:3", true), { kind: "new" });
-  assert.deepEqual(placeItem([{ key: "ado:1", preview: false }], "ado:3", false), { kind: "new" });
-  assert.deepEqual(placeItem([], "ado:3", false), { kind: "new" });
+  assert.deepEqual(placeItem(tabs, "ado:2", false, w), { kind: "same", index: 1 });
+  assert.deepEqual(placeItem(tabs, "ado:1", true, w), { kind: "same", index: 0 });
+  assert.deepEqual(placeItem(tabs, "ado:3", false, w), { kind: "preview", index: 1 });
+  assert.deepEqual(placeItem(tabs, "ado:3", true, w), { kind: "new" });
+  assert.deepEqual(placeItem([{ key: "ado:1", preview: false, group: w }], "ado:3", false, w), { kind: "new" });
+  assert.deepEqual(placeItem([], "ado:3", false, w), { kind: "new" });
+});
+
+test("工作項目與 Wiki 頁面各自有預覽分頁，互不覆蓋", () => {
+  const tabs = [
+    { key: "ado:2", preview: true, group: "workitem" as const },
+    { key: "wiki:w:/a", preview: true, group: "wiki" as const },
+  ];
+  assert.deepEqual(placeItem(tabs, "wiki:w:/b", false, "wiki"), { kind: "preview", index: 1 });
+  assert.deepEqual(placeItem(tabs, "ado:3", false, "workitem"), { kind: "preview", index: 0 });
+  // 只有工作項目的預覽分頁時，開 Wiki 頁面是新的分頁。
+  assert.deepEqual(placeItem([tabs[0]], "wiki:w:/b", false, "wiki"), { kind: "new" });
+  assert.equal(itemGroup("ado"), "workitem");
+  assert.equal(itemGroup("github"), "workitem");
+  assert.equal(itemGroup("wiki"), "wiki");
+  assert.equal(itemGroup("repo"), null);
+  // 工作項目裡的附件留在同一個分頁；Wiki 連結開在 Wiki 的分頁。
+  assert.ok(followInTab("workitem", "repo"));
+  assert.ok(followInTab("workitem", "ado"));
+  assert.ok(!followInTab("workitem", "wiki"));
+  assert.ok(!followInTab("wiki", "ado"));
 });
 
 test("關掉分頁後切到右邊那一個，最右邊時切到左邊", () => {

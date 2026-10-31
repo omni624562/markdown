@@ -8,15 +8,34 @@ import { type Shortcut, toShortcut } from "./wiki-shortcuts.ts";
 /** 開啟一項內容時放在哪裡：`same` 已經開著、`preview` 換掉預覽分頁、`new` 新開一個分頁。 */
 export type ItemPlace = { kind: "same" | "preview"; index: number } | { kind: "new" };
 
+/** 內容的種類：工作項目（含 GitHub issue）與 Wiki 頁面各自有預覽分頁，互不覆蓋。 */
+export type ItemGroup = "workitem" | "wiki";
+
 /**
- * 決定開在哪個分頁：已經開著就切過去；否則換掉預覽分頁（點清單上的另一項時不會開出一排分頁）；
- * `keep` 是要留著的（例如雙擊清單上的項目），或沒有預覽分頁時新開一個。
+ * 依來源分種類；附件、儲存庫的檔案沒有自己的種類（null），跟著開啟它的分頁
+ * （例如工作項目的附件留在工作項目的分頁裡，按「上一頁」回去）。
  */
-export function placeItem(tabs: readonly { key: string; preview: boolean }[], key: string, keep: boolean): ItemPlace {
+export function itemGroup(origin: string): ItemGroup | null {
+  if (origin === "wiki") return "wiki";
+  if (origin === "ado" || origin === "github") return "workitem";
+  return null;
+}
+
+/**
+ * 決定開在哪個分頁：已經開著就切過去；否則換掉同一種內容的預覽分頁（點清單上的另一項時不會開出一排分頁，
+ * 開 Wiki 頁面也不會換掉工作項目）；`keep` 是要留著的（例如雙擊清單上的項目），或沒有預覽分頁時新開一個。
+ */
+export function placeItem(tabs: readonly { key: string; preview: boolean; group: ItemGroup }[], key: string, keep: boolean, group: ItemGroup): ItemPlace {
   const same = tabs.findIndex((t) => t.key === key);
   if (same >= 0) return { kind: "same", index: same };
-  const preview = keep ? -1 : tabs.findIndex((t) => t.preview);
+  const preview = keep ? -1 : tabs.findIndex((t) => t.preview && t.group === group);
   return preview >= 0 ? { kind: "preview", index: preview } : { kind: "new" };
+}
+
+/** 檢視裡的連結開在同一個分頁（可以按「上一頁」回去）嗎：同一種內容，或附件之類沒有種類的才是；不然開在它自己那種的分頁。 */
+export function followInTab(current: ItemGroup, target: string): boolean {
+  const g = itemGroup(target);
+  return g === null || g === current;
 }
 
 /** 關掉 `closing` 之後切到哪一個分頁：右邊那一個，最右邊時改左邊；沒有其他分頁時回傳 null。 */
