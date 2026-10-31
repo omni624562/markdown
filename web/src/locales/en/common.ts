@@ -125,7 +125,6 @@ export const common: Record<string, Translation> = {
   "相關 {n}": ["{n} related", "{n} related"],
   "更新於 {ago}": "Updated {ago}",
   "建立者 {name}": "created by {name}",
-  "詳細欄位": "More fields",
   "下載": "Download",
   "另存「{name}」": "Save \"{name}\" As",
   "已存到 {path}": "Saved to {path}",

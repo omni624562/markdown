@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachmentSummary, lastSegment, parseCommentHeading, parseFieldTime, sectionKind, splitWorkItemTitle } from "./work-item-look.ts";
+import { areaTrail, attachmentSummary, lastSegment, parseCommentHeading, parseFieldTime, sectionKind, splitWorkItemTitle } from "./work-item-look.ts";
 
 test("工作項目段落：依標題認出是哪一種（有數字的標題任何數字都算）", () => {
   assert.equal(sectionKind("工作項目說明"), "desc");
@@ -34,4 +34,11 @@ test("欄位的時間、路徑最後一段、附件摘要", () => {
   assert.equal(lastSegment("Mgt-Digital_Cloud_Platform\\DGT Sprint\\Sprint 101"), "Sprint 101");
   assert.equal(lastSegment("P"), "P");
   assert.equal(attachmentSummary(["a.md", "a.md", "b.png", "a.md"]), "a.md ×3, b.png");
+});
+
+test("專案與區域合成一條路徑", () => {
+  assert.deepEqual(areaTrail("Mgt-Digital_Cloud_Platform", "Mgt-Digital_Cloud_Platform\\Comet"), ["Mgt-Digital_Cloud_Platform", "Comet"]);
+  assert.deepEqual(areaTrail("P", "Other\\前端"), ["P", "Other", "前端"]);
+  assert.deepEqual(areaTrail("P", ""), ["P"]);
+  assert.deepEqual(areaTrail("", "A\\B"), ["A", "B"]);
 });
