@@ -14,7 +14,6 @@ import { openGitHistory, historyView } from "./git-history.ts";
 import { createWorkItemDialog } from "./new-work-item.ts";
 import { refreshKeptPages } from "./offline-copies.ts";
 import { workItemsPanel, wikiPanel, issuesPanel } from "./work-items-panel.ts";
-import type { AdoTab } from "../main.ts";
 import { app } from "./context.ts";
 
 
@@ -60,8 +59,8 @@ export function renderAdoBadge(): void {
   const n = app.pollItems.filter((w) => markOf(workItemSeen, w)).length;
   badge.hidden = !n;
   badge.textContent = n > 99 ? "99+" : String(n);
-  const tab = app.$("#side-tab-ado");
-  const label = t("Azure DevOps（工作項目、Wiki）");
+  const tab = app.$("#side-tab-workitems");
+  const label = t("工作項目（Azure DevOps）");
   tab.setAttribute("aria-label", n ? t("{label}：{n} 個工作項目有更新", { label, n }) : label);
 }
 
@@ -109,24 +108,9 @@ function notifyNewWorkItems(): void {
   void desktop.notifyWorkItems(fresh.map((w) => ({ id: w.id, title: w.title, kind: w.kind }))).catch(() => {});
 }
 
-/** 切換 Azure DevOps 面板裡的工作項目／Wiki（面板開著時才讀取內容）。 */
-function setAdoTab(tab: AdoTab): void {
-  app.adoTab = tab;
-  storage.save("ado-panel-tab", tab);
-  app.$("#workitems-host").hidden = tab !== "workitems";
-  app.$("#wiki-host").hidden = tab !== "wiki";
-  const newBtn = document.getElementById("ado-new");
-  if (newBtn) newBtn.hidden = tab !== "workitems";
-  for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")) {
-    b.setAttribute("aria-checked", String(b.dataset.ado === tab));
-  }
-  if (app.sidePanel === "ado") (tab === "wiki" ? wikiPanel : workItemsPanel)?.shown();
-}
-
-/** 打開 Azure DevOps 面板的工作項目或 Wiki。 */
-export function showAdo(tab: AdoTab): void {
-  setAdoTab(tab);
-  app.showPanel("ado");
+/** 打開「工作項目」或「Wiki」面板。 */
+export function showAdo(panel: "workitems" | "wiki"): void {
+  app.showPanel(panel);
 }
 // 工作項目清單上方的「建立工作項目」。
 const adoNew = document.createElement("button");
@@ -140,7 +124,8 @@ function retryRemoteLoads(force = false): void {
   const now = Date.now();
   if (!force && now - lastAutoRetry < 10_000) return;
   lastAutoRetry = now;
-  if (app.sidePanel === "ado") (app.adoTab === "wiki" ? wikiPanel : workItemsPanel)?.retryFailed();
+  if (app.sidePanel === "workitems") workItemsPanel?.retryFailed();
+  if (app.sidePanel === "wiki") wikiPanel?.retryFailed();
   if (app.sidePanel === "issues") issuesPanel?.retryFailed();
   app.issueView.retryFailed();
 }
@@ -159,10 +144,8 @@ export function initWorkItemUpdates(): void {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) void pollWorkItems();
   });
-  for (const b of document.querySelectorAll<HTMLElement>(".ado-switch [data-ado]")) {
-    b.addEventListener("click", () => setAdoTab(b.dataset.ado === "wiki" ? "wiki" : "workitems"));
-  }
-  app.$("#ado-refresh").addEventListener("click", () => void (app.adoTab === "wiki" ? wikiPanel : workItemsPanel)?.refresh());
+  app.$("#workitems-refresh").addEventListener("click", () => void workItemsPanel?.refresh());
+  app.$("#wiki-refresh").addEventListener("click", () => void wikiPanel?.refresh());
   adoNew.type = "button";
   adoNew.className = "btn icon-only";
   adoNew.id = "ado-new";
@@ -170,9 +153,7 @@ export function initWorkItemUpdates(): void {
   adoNew.setAttribute("aria-label", t("建立工作項目"));
   adoNew.append(icon("plus"));
   adoNew.addEventListener("click", () => createWorkItemDialog());
-  app.$("#ado-refresh").before(adoNew);
-  // 「+」建好後才套用上次的分頁，開在 Wiki 時才會把它藏起來。
-  setAdoTab(app.adoTab);
+  app.$("#workitems-refresh").before(adoNew);
   window.addEventListener("online", () => {
     retryRemoteLoads(true);
     void refreshKeptPages();

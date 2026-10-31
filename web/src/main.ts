@@ -156,8 +156,8 @@ const app = {
   get DOWNLOAD_URL() {
     return DOWNLOAD_URL;
   },
-  get LEGACY_ADO_PANELS() {
-    return LEGACY_ADO_PANELS;
+  get LEGACY_ADO_PANEL() {
+    return LEGACY_ADO_PANEL;
   },
   get SIDE_PANELS() {
     return SIDE_PANELS;
@@ -186,12 +186,7 @@ const app = {
   get adoImagesPlugin() {
     return adoImagesPlugin;
   },
-  get adoTab() {
-    return adoTab;
-  },
-  set adoTab(v: typeof adoTab) {
-    adoTab = v;
-  },
+
   get ai() {
     return ai;
   },
@@ -2045,17 +2040,16 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-export type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "ado" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "ado", "git"];
+export type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "wiki" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "wiki", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
-/** 舊版的「工作項目」「Wiki」是兩個面板，現在合成「Azure DevOps」一個面板（裡面再切換）。 */
-const LEGACY_ADO_PANELS = ["workitems", "wiki"];
+/** 前幾版的「Azure DevOps」面板（裡面切換工作項目與 Wiki）；現在拆成「工作項目」「Wiki」兩個面板。 */
+const LEGACY_ADO_PANEL = "ado";
+/** 舊設定的「Azure DevOps」面板換成當時切到的那一邊。 */
+const legacyAdoTab = (): SidePanel => (storage.load("ado-panel-tab") === "wiki" ? "wiki" : "workitems");
 const savedSidePanel = storage.load("side-panel");
 let sidePanel: SidePanel =
-  SIDE_PANELS.find((p) => p === (LEGACY_ADO_PANELS.includes(savedSidePanel ?? "") ? "ado" : savedSidePanel)) ?? "outline";
-/** Azure DevOps 面板目前顯示工作項目還是 Wiki。 */
-export type AdoTab = "workitems" | "wiki";
-let adoTab: AdoTab = (storage.load("ado-panel-tab") ?? savedSidePanel) === "wiki" ? "wiki" : "workitems";
+  SIDE_PANELS.find((p) => p === (savedSidePanel === LEGACY_ADO_PANEL ? legacyAdoTab() : savedSidePanel)) ?? "outline";
 /** 目前開啟的資料夾（工作區）。 */
 let workspaceRoot: Folder | null = null;
 /** Ctrl+P 用的工作區檔案清單；資料夾內容變動時清掉重抓。 */
@@ -2163,7 +2157,7 @@ const ado = desktop && features.ado
         renderAdoTab();
         workItemsPanel?.reset();
         wikiPanel?.reset();
-        if (sidePanel === "ado") showPanel("ado", false);
+        if (sidePanel === "workitems" || sidePanel === "wiki") showPanel(sidePanel, false);
         settingsDialog.refresh();
         void gitPanel?.refresh();
       },

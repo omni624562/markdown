@@ -50,7 +50,8 @@ export const PANEL_LABELS: Record<SidePanel, () => string> = {
   tasks: () => t("待辦總覽"),
   tags: () => t("標籤"),
   issues: () => t("Issues（GitHub）"),
-  ado: () => t("Azure DevOps（工作項目、Wiki）"),
+  workitems: () => t("工作項目（Azure DevOps）"),
+  wiki: () => t("Wiki（Azure DevOps）"),
   git: () => t("原始碼控制（Git）"),
 };
 export const PANEL_ICONS: Record<SidePanel, string> = {
@@ -60,14 +61,15 @@ export const PANEL_ICONS: Record<SidePanel, string> = {
   tasks: "list-checks",
   tags: "tags",
   issues: "circle-dot",
-  ado: "square-kanban",
+  workitems: "square-kanban",
+  wiki: "book-open-text",
   git: "git-branch",
 };
 
 /** 依設定排列面板圖示（沒列到的照預設順序排在後面）、隱藏使用者不要的圖示。 */
 export function panelOrder(): SidePanel[] {
-  // 舊版存的「工作項目」「Wiki」換成合併後的「Azure DevOps」。
-  const ids = app.settings.value.activityOrder.map((p) => (app.LEGACY_ADO_PANELS.includes(p) ? "ado" : p));
+  // 前幾版的「Azure DevOps」一個圖示，換成拆開後的「工作項目」「Wiki」兩個（位置不變）。
+  const ids = app.settings.value.activityOrder.flatMap((p) => (p === app.LEGACY_ADO_PANEL ? ["workitems", "wiki"] : [p]));
   const saved = [...new Set(ids)].filter((p): p is SidePanel => (app.SIDE_PANELS as string[]).includes(p));
   return [...saved, ...app.SIDE_PANELS.filter((p) => !saved.includes(p))];
 }
@@ -76,8 +78,8 @@ export function applyActivityLayout(): void {
   const bar = app.$(".activity-tabs");
   for (const p of panelOrder()) bar.append(app.$(`#side-tab-${p}`));
   const hidden = app.settings.value.activityHidden;
-  // 舊版兩個都隱藏了，合併後的「Azure DevOps」也隱藏。
-  const isHidden = (p: string) => hidden.includes(p) || (p === "ado" && app.LEGACY_ADO_PANELS.every((x) => hidden.includes(x)));
+  // 前幾版隱藏了「Azure DevOps」：拆開後的兩個也隱藏。
+  const isHidden = (p: string) => hidden.includes(p) || ((p === "workitems" || p === "wiki") && hidden.includes(app.LEGACY_ADO_PANEL));
   for (const tab of app.sideTabs) tab.classList.toggle("user-hidden", isHidden(tab.dataset.panel!));
   renderActivityCommands();
 }
