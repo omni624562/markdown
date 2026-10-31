@@ -145,6 +145,10 @@ async function showTab(tab: ItemTab, state = tab.state): Promise<void> {
  */
 export function openItem(source: IssueSource, keep = false): Promise<void> {
   historyView?.close();
+  // 指定了位置（例如 Wiki 頁面結束編輯，換回閱讀）：新開一個留下來的分頁放在那裡。
+  const near = besideNext;
+  besideNext = undefined;
+  if (near !== undefined) keep = true;
   if (!keep && shownItem && issueView.isOpen && issueView.hasFocus) return issueView.show(source);
   const place = placeItem(itemTabs, source.key, keep);
   if (place.kind === "same") {
@@ -165,14 +169,48 @@ export function openItem(source: IssueSource, keep = false): Promise<void> {
     const back = old ? [...old.back, { source: old.source, scroll: old.scroll }].slice(-50) : [];
     return showTab(tab, { source, back, forward: [], scroll: 0 });
   }
-  const tab = addItemTab({ key: source.key, name: source.title, origin: source.origin.kind, icon: source.origin.icon, ref: null }, !keep);
+  const tab = addItemTab({ key: source.key, name: source.title, origin: source.origin.kind, icon: source.origin.icon, ref: null }, !keep, near);
   return showTab(tab, { source, back: [], forward: [], scroll: 0 });
 }
 
+/** 下一個開啟的項目放在這個分頁的右邊（id；null 是一般分頁的最前面）；undefined 是照平常的規則。 */
+let besideNext: string | null | undefined;
+
+/** 下一個開啟的項目新開一個留下來的分頁，放在 `id` 這個分頁的右邊（null 是一般分頁的最前面）；`undefined` 取消。 */
+export function openNextBeside(id: string | null | undefined): void {
+  besideNext = id;
+}
+
+/**
+ * 項目分頁換成文件分頁時，文件放在哪裡：接在哪個文件後面（null 是一般分頁的最前面），
+ * 以及原本在它右邊、接在同一個文件後面的項目分頁（要改接在新的文件後面，位置才不變）。
+ */
+export function itemSlot(key: string): { after: string | null; right: ItemTab[] } | null {
+  const tab = itemTabs.find((x) => x.key === key);
+  if (!tab) return null;
+  const unpinned = app.docs.filter((d) => !d.pinned).map((d) => d.id);
+  const after = !tab.pinned && tab.after && unpinned.includes(tab.after) ? tab.after : null;
+  const order = tabOrder();
+  const at = order.indexOf(tab.id);
+  const right = itemTabs.filter((x) => x !== tab && !x.pinned && x.after === tab.after && order.indexOf(x.id) > at);
+  return { after, right };
+}
+
+/** 這些項目分頁改接在 `docId` 這個文件後面。 */
+export function anchorItems(tabs: ItemTab[], docId: string): void {
+  for (const tab of tabs) tab.after = docId;
+  changed();
+}
+
 /** 新增一個項目分頁，放在目前分頁（顯示中的項目，或目前的文件）的右邊。 */
-function addItemTab(from: { key: string; name: string; origin: string; icon: string; ref: Shortcut | null }, preview: boolean): ItemTab {
+function addItemTab(
+  from: { key: string; name: string; origin: string; icon: string; ref: Shortcut | null },
+  preview: boolean,
+  near?: string | null,
+): ItemTab {
   const id = newId();
-  const at = placeNewItem(app.docs, itemTabs, shownItem?.id ?? app.active.id);
+  // 放在 `near` 的右邊（null：一般分頁的最前面）；沒給時放在目前分頁的右邊。
+  const at = placeNewItem(app.docs, itemTabs, near === undefined ? (shownItem?.id ?? app.active.id) : (near ?? ""));
   const tab: ItemTab = { id, ...from, title: from.name, preview, state: null, after: at.after, pinned: false };
   itemTabs.splice(at.index, 0, tab);
   return tab;

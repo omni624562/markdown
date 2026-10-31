@@ -221,7 +221,7 @@ export class IssueView {
     this.#editBtn.type = "button";
     this.#editBtn.className = "btn btn-small btn-primary";
     this.#editBtn.append(icon("pencil"), t("編輯"));
-    this.#editBtn.title = t("在分頁裡編輯，按 Ctrl+S 存回伺服器");
+    this.#editBtn.title = t("在同一個分頁編輯，按 Ctrl+S 存回伺服器；按狀態列的「完成編輯」換回閱讀");
     this.#editBtn.hidden = true;
     this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
     this.#historyBtn = iconButton(t("修改記錄：誰、什麼時候改了這一頁，改了什麼"), "history", () => this.#source?.history?.());

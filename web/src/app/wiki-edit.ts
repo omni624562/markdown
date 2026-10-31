@@ -21,6 +21,7 @@ import { type WikiPageInfo, myChanges } from "../wiki-coedit.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { pageName, wikiMarkdown, wikiPageLink, resolvePageLink, flattenPages } from "../wiki-text.ts";
 import { openDiagram, copyDiagram } from "./activity-bar.ts";
+import { finishWikiEdit } from "./ado-files.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { hideItem, itemOpened } from "./item-tabs.ts";
@@ -36,6 +37,8 @@ import { app } from "./context.ts";
 let wikiBar: HTMLElement;
 // 在 init 時建立。
 let wikiMine: HTMLElement;
+/** 狀態列的「完成編輯」（編輯 Wiki 頁面時出現）：換回閱讀。 */
+let wikiDone: HTMLButtonElement;
 /** 編輯中多久檢查一次伺服器上的版本。 */
 const WIKI_CHECK_MS = 90_000;
 /** 切回視窗、切換分頁時，距離上次檢查至少多久才再檢查。 */
@@ -78,6 +81,7 @@ function sameUser(a: string, b: string): boolean {
 
 /** 編輯中的 Wiki 頁面有新版本時，上方的提示列。 */
 export function renderWikiBar(): void {
+  wikiDone.hidden = !app.active.wiki;
   const newer = app.active.wiki ? wikiNewer.get(app.active.id) : undefined;
   wikiBar.hidden = !newer || newer.dismissed;
   if (!newer || newer.dismissed) return;
@@ -348,6 +352,12 @@ export function renderWikiMine(): void {
 
 /** 在主要區域開啟 Wiki 頁面；內容裡連到其他頁面的連結直接在這裡切換。 */
 export function showWikiPage(wiki: AdoWiki, path: string): void {
+  // 正在編輯這一頁：切換到編輯的分頁（同一頁只有一個分頁）。
+  const editing = app.docs.find((d) => d.wiki?.wikiId === wiki.id && d.wiki.path === path);
+  if (editing) {
+    app.activate(editing);
+    return;
+  }
   let webUrl = wiki.webUrl ?? "";
   const title = pageName(path);
   offlineRefs.set(`wiki:${wiki.id}:${path}`, { type: "wiki", wiki, path });
@@ -427,6 +437,14 @@ let issueView: IssueView;
 
 export function initWikiEdit(): void {
   wikiBar = app.$("#wiki-bar");
+  wikiDone = document.createElement("button");
+  wikiDone.type = "button";
+  wikiDone.className = "status-btn wiki-done";
+  wikiDone.hidden = true;
+  wikiDone.title = t("結束編輯，在同一個位置換回閱讀（還沒存回的修改會先問要不要存）");
+  wikiDone.append(icon("book-open-text"), Object.assign(document.createElement("span"), { textContent: t("完成編輯") }));
+  wikiDone.addEventListener("click", () => void finishWikiEdit().catch(reportError));
+  app.$("#status-save").before(wikiDone);
   wikiMine = app.$("#wiki-mine");
   wikiMine.setAttribute("aria-label", t("我的修改"));
   window.setInterval(() => {
