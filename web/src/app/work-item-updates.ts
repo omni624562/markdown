@@ -15,6 +15,7 @@ import { createWorkItemDialog } from "./new-work-item.ts";
 import { refreshKeptPages } from "./offline-copies.ts";
 import { workItemsPanel, wikiPanel, issuesPanel } from "./work-items-panel.ts";
 import { app } from "./context.ts";
+import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
 
 
 export let workItemSeen: SeenMap | null = (() => {
@@ -146,6 +147,7 @@ export function initWorkItemUpdates(): void {
   });
   app.$("#workitems-refresh").addEventListener("click", () => void workItemsPanel?.refresh());
   app.$("#wiki-refresh").addEventListener("click", () => void wikiPanel?.refresh());
+  app.$("#wiki-dock").addEventListener("click", () => setWikiRight(!wikiRightWanted));
   adoNew.type = "button";
   adoNew.className = "btn icon-only";
   adoNew.id = "ado-new";

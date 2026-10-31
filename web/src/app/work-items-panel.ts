@@ -564,6 +564,8 @@ export function renderAdoTab(): void {
     if (tab.hidden) app.panelUnavailable(panel);
     else app.panelAvailable(panel);
   }
+  // Wiki 放在右側的：連線或中斷時放上去或拿下來。
+  app.applyLayout();
   void pingAdo();
   if (app.ado?.account) void app.pollWorkItems();
   else {

@@ -738,11 +738,11 @@ export function initCommands(): void {
     },
     {
       id: "toggle-outline-right",
-      title: t("顯示／隱藏右邊的大綱"),
+      title: t("顯示／隱藏右側欄（大綱、Wiki）"),
       group: t("檢視"),
       icon: "panel-right",
       keys: "Mod-Alt-b",
-      when: () => app.outlinePlacedRight(),
+      when: () => app.outlinePlacedRight() || app.wikiPlacedRight(),
       run: () => app.setRightOutline(!app.rightOutlineShown),
     },
     ...(["system", "light", "dark"] as const).map(
