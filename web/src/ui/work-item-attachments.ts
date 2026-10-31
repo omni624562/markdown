@@ -1,6 +1,6 @@
 /**
  * 工作項目的「附件」段落：清單換成檔案小方塊（副檔名或縮圖、檔名、大小與時間），
- * 每個附件有「開啟」與「另存新檔」。內容還是同一份 Markdown（複製成文件時是附件連結清單）。
+ * 點小方塊就開啟（會自己執行的檔案改成另存），右邊是「另存新檔」。內容還是同一份 Markdown（複製成文件時是附件連結清單）。
  */
 import { attachmentKind, extLabel } from "../attachments.ts";
 import { t } from "../i18n.ts";
@@ -68,11 +68,16 @@ export function decorateAttachments(body: HTMLElement, h: AttachmentHandlers): v
     const small = document.createElement("small");
     small.textContent = meta;
     text.append(link, small);
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "ado-att-btn";
-    open.textContent = kind === "image" ? t("檢視") : kind === "runnable" ? t("下載") : t("開啟");
-    open.addEventListener("click", () => (kind === "runnable" ? h.save(href) : h.open(href)));
+    // 整個小方塊都可以點：開啟（圖片放大）；會自己執行的檔案為了安全只能另存。
+    tile.title =
+      kind === "image" ? t("按一下放大") : kind === "runnable" ? t("按一下另存新檔（為了安全不直接開啟）") : t("按一下開啟");
+    tile.addEventListener("click", (e) => {
+      if ((e.target as Element).closest(".ado-att-btn")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (kind === "runnable") h.save(href);
+      else h.open(href);
+    });
     const save = document.createElement("button");
     save.type = "button";
     save.className = "ado-att-btn icon-only";
@@ -80,7 +85,7 @@ export function decorateAttachments(body: HTMLElement, h: AttachmentHandlers): v
     save.setAttribute("aria-label", t("另存「{name}」", { name }));
     save.append(icon("download"));
     save.addEventListener("click", () => h.save(href));
-    tile.append(badge, text, open, ...(kind === "runnable" ? [] : [save]));
+    tile.append(badge, text, save);
     grid.append(tile);
   }
   list.replaceWith(grid);
