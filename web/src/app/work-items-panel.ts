@@ -13,7 +13,8 @@ import { MultiSelect } from "../ui/multi-select.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { WikiPanel } from "../ui/wiki-panel.ts";
-import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, workItemHue, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
+import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
+import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
 import { groupByParent } from "../workitem-groups.ts";
 import { markOf } from "../workitem-seen.ts";
@@ -480,7 +481,7 @@ function renderBarShortcuts(): void {
       b.title = name;
       b.setAttribute("aria-label", name);
       badge.classList.add("workitem-badge");
-      badge.style.setProperty("--hue", String(workItemHue(item.kind)));
+      badge.dataset.wiKind = kindKey(item.kind);
       badge.textContent = shortcutInitial(item.title);
     } else {
       const name = pageName(item.path);

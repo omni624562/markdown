@@ -20,6 +20,7 @@ import { reportError } from "./git-actions.ts";
 import { buildFormatBar } from "./new-work-item.ts";
 import { showAdo, gitPanel } from "./work-item-updates.ts";
 import { renderAdoTab, renderIssuesTab } from "./work-items-panel.ts";
+import { kindColorCss } from "../work-item-colors.ts";
 import type { ViewUpdate } from "@codemirror/view";
 import type { ViewMode } from "../main.ts";
 import { app } from "./context.ts";
@@ -54,6 +55,17 @@ export function changeFontSize(delta: number): void {
   app.settings.update({ editorFontSize: size });
 }
 
+/** 工作項目類型的顏色：產生一段 CSS（分頁、標頭的類型標籤、左側捷徑用 `data-wi-kind` 套用）。 */
+function applyKindColors(custom: Readonly<Record<string, string>>): void {
+  let style = document.getElementById("wi-kind-colors");
+  if (!style) {
+    style = document.createElement("style");
+    style.id = "wi-kind-colors";
+    document.head.append(style);
+  }
+  style.textContent = kindColorCss(custom);
+}
+
 export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[]): void {
   if (!changed || changed.some((k) => k.startsWith("activity"))) applyActivityLayout();
   const root = document.documentElement.style;
@@ -68,6 +80,7 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
   else root.removeProperty("--font-mono");
   root.setProperty("--doc-line-height", DOC_LINE_HEIGHT[s.docLineHeight]);
   document.body.classList.toggle("view-switch-icons", !s.viewSwitchLabels);
+  if (!changed || changed.includes("workItemColors")) applyKindColors(s.workItemColors);
   // 介面大小：整個視窗縮放（啟動時預設 100% 就不用呼叫）。
   if (desktop && (changed ? changed.includes("uiScale") : s.uiScale !== "100")) {
     void desktop.setUiZoom(Number(s.uiScale) / 100).catch(reportError);
@@ -223,6 +236,7 @@ export function initSettingsUi(): void {
           disconnect: () => void app.ado!.disconnect(),
           openRepo: () => void app.ado!.openRepo(),
           workItems: () => showAdo("workitems"),
+          kinds: () => desktop!.adoWorkItemFilters().then((f) => f.kinds),
           check: () => desktop!.adoCheck(),
         }
       : null,

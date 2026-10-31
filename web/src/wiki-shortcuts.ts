@@ -113,24 +113,6 @@ export function shortcutInitial(name: string): string {
   return two[0].toUpperCase() + (two[1] ?? "");
 }
 
-/** Azure DevOps 常見工作項目類型的顏色（色相，接近 ADO 網頁上的顏色）。 */
-const KIND_HUES: Record<string, number> = {
-  Epic: 28,
-  Feature: 280,
-  "User Story": 200,
-  "Product Backlog Item": 200,
-  Requirement: 200,
-  Bug: 355,
-  Task: 45,
-  Issue: 320,
-  Impediment: 320,
-};
-
-/** 工作項目圖示的色相：常見類型用固定的顏色，其他依類型名稱。 */
-export function workItemHue(kind: string): number {
-  return KIND_HUES[kind] ?? shortcutHue(kind);
-}
-
 /** 依頁面決定圖示的色相（0–359），同一頁每次都一樣。 */
 export function shortcutHue(key: string): number {
   let h = 0;

@@ -3,7 +3,8 @@
  * 這裡只有資料的處理（開在哪個分頁、關掉後切到哪裡、存下與讀回），畫面在 app/item-tabs.ts。
  */
 
-import { type Shortcut, toShortcut } from "./wiki-shortcuts.ts";
+import { kindKey } from "./work-item-colors.ts";
+import { type Shortcut, isWorkItemShortcut, toShortcut } from "./wiki-shortcuts.ts";
 
 /** 開啟一項內容時放在哪裡：`same` 已經開著、`preview` 換掉預覽分頁、`new` 新開一個分頁。 */
 export type ItemPlace = { kind: "same" | "preview"; index: number } | { kind: "new" };
@@ -154,4 +155,15 @@ export function parseSavedItemTabs(raw: string | null): SavedItemTab[] {
     seen ||= t.preview;
   }
   return out.slice(0, SAVED_ITEM_TABS_LIMIT);
+}
+
+/**
+ * 項目分頁上顯示的字：工作項目名稱前面加編號、圖示用類型的顏色（`kind` 是 `kindKey`）；
+ * Wiki 頁面的滑鼠提示是完整位置（Wiki › 上層 › 頁面），和文件分頁提示完整路徑一樣。
+ */
+export function itemTabText(name: string, title: string, ref: Shortcut | null): { name: string; title: string; kind?: string } {
+  if (!ref) return { name, title };
+  if (isWorkItemShortcut(ref)) return { name: `${ref.workItem} ${name}`, title, kind: kindKey(ref.kind) };
+  const where = [ref.wikiName, ...ref.path.split("/").filter(Boolean)].filter(Boolean);
+  return { name, title: where.length ? where.join(" › ") : title };
 }

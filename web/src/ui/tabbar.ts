@@ -23,6 +23,8 @@ export interface TabInfo {
     preview: boolean;
     /** 並排顯示在文件右邊。 */
     side: boolean;
+    /** 工作項目的類型（`kindKey`）：圖示用這個類型的顏色。 */
+    kind?: string;
   };
 }
 
@@ -150,6 +152,7 @@ export class TabBar {
         tab.classList.toggle("preview", !!info.item?.preview);
         tab.classList.toggle("side-shown", !!info.item?.side);
         if (info.item) tab.dataset.origin = info.item.origin;
+        if (info.item?.kind) tab.dataset.wiKind = info.item.kind;
         const name = document.createElement("span");
         name.className = "tab-name";
         name.textContent = info.name;

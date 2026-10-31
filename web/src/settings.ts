@@ -8,6 +8,7 @@ import { cleanFontName } from "./fonts.ts";
 import { t } from "./i18n.ts";
 import * as storage from "./storage.ts";
 import { TEMPLATE_LIMITS, type Template } from "./templates.ts";
+import { sanitizeKindColors } from "./work-item-colors.ts";
 
 /** 選取段落後可以執行的 AI 快捷動作。 */
 export interface QuickAction {
@@ -46,6 +47,8 @@ export interface Settings {
   autoSave: boolean;
   /** 新指派給我的工作項目：oMarker 在背景時跳出系統通知。 */
   adoNotify: boolean;
+  /** 工作項目類型的自訂顏色（類型名稱 → `#rrggbb`）；沒列到的用預設顏色（見 work-item-colors.ts）。 */
+  workItemColors: Record<string, string>;
   /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
   autoSymbols: boolean;
   /** 標示中國用語與常見錯字（波浪底線），滑鼠移上去可以替換。 */
@@ -133,6 +136,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   autoSymbols: true,
   autoSave: true,
   adoNotify: true,
+  workItemColors: {},
   termCheck: true,
   termIgnore: [],
   imageCompress: true,
@@ -190,6 +194,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     activityOrder: [],
     activityHidden: [],
     activityCommands: [...DEFAULTS.activityCommands],
+    workItemColors: {},
   };
   let problems = raw && typeof raw === "object" ? 0 : 1;
   type BoolKey = {
@@ -269,6 +274,13 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     if (list) {
       out[key] = list;
       if (list.length !== (input[key] as unknown[]).length) problems++;
+    } else problems++;
+  }
+  if ("workItemColors" in input) {
+    const v = sanitizeKindColors(input.workItemColors);
+    if (v) {
+      out.workItemColors = v.colors;
+      if (v.dropped) problems++;
     } else problems++;
   }
   if ("termIgnore" in input) {

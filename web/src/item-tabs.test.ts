@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type ItemPlacing, arrangeTabs, followInTab, itemGroup, neighborAfterClose, parseSavedItemTabs, placeItem, placeNewItem } from "./item-tabs.ts";
+import { type ItemPlacing, arrangeTabs, followInTab, itemGroup, itemTabText, neighborAfterClose, parseSavedItemTabs, placeItem, placeNewItem } from "./item-tabs.ts";
 
 test("開啟時：已經開著就切過去，否則換掉預覽分頁，要留著的或沒有預覽分頁時新開", () => {
   const w = "workitem" as const;
@@ -106,4 +106,19 @@ test("新的項目分頁放在目前分頁的右邊", () => {
   const at = placeNewItem(docs, items, "a");
   next.splice(at.index, 0, { id: "new", after: at.after, pinned: false });
   assert.deepEqual(arrangeTabs(docs, next), ["p", "i9", "a", "new", "i1", "i2", "b", "i3"]);
+});
+
+test("分頁上的字：工作項目加編號與類型，Wiki 頁面提示完整位置", () => {
+  assert.deepEqual(itemTabText("定義需求", "Task 12：定義需求", { workItem: 12, kind: "User Story", title: "定義需求" }), {
+    name: "12 定義需求",
+    title: "Task 12：定義需求",
+    kind: "user-story",
+  });
+  assert.deepEqual(itemTabText("安裝", "P.wiki：安裝", { wiki: "w1", wikiName: "P.wiki", path: "/產品/說明/安裝" }), {
+    name: "安裝",
+    title: "P.wiki › 產品 › 說明 › 安裝",
+  });
+  // 不知道 Wiki 名稱時只列路徑；沒有對應的捷徑（GitHub issue、附件）維持原樣。
+  assert.equal(itemTabText("A", "x", { wiki: "w1", wikiName: "", path: "/A" }).title, "A");
+  assert.deepEqual(itemTabText("#3 問題", "GitHub：#3", null), { name: "#3 問題", title: "GitHub：#3" });
 });

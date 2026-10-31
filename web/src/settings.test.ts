@@ -72,3 +72,14 @@ test("左側圖示列：只接受合法的 id，去掉重複", () => {
   assert.deepEqual(sanitize({}).settings.activityCommands, ["git-history"]);
   assert.deepEqual(sanitize({ activityCommands: "x" }).settings.activityCommands, DEFAULTS.activityCommands);
 });
+
+test("工作項目類型的顏色：只留格式正確的", () => {
+  assert.deepEqual(sanitize({}).settings.workItemColors, {});
+  const { settings, problems } = sanitize({ workItemColors: { Bug: "#00AA00", Task: "yellow" } });
+  assert.deepEqual(settings.workItemColors, { Bug: "#00aa00" });
+  assert.equal(problems, 1);
+  assert.equal(sanitize({ workItemColors: "red" }).problems, 1);
+  // 預設值不會被改到（每次都是新的物件）。
+  sanitize({}).settings.workItemColors.Bug = "#000000";
+  assert.deepEqual(DEFAULTS.workItemColors, {});
+});
