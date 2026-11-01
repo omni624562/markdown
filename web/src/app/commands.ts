@@ -505,8 +505,8 @@ export function initCommands(): void {
       title: t("檢查連結"),
       group: t("編輯"),
       icon: "unlink",
-      // 要在本機查檔案存不存在：桌面版，而且不是遠端資料夾。
-      when: () => !!desktop && !isRemote(app.workspaceRoot?.path),
+      // 要在本機查檔案存不存在：桌面版，而且不是遠端資料夾；看 Wiki 頁面時檢查頁面連結。
+      when: () => !!desktop && (!isRemote(app.workspaceRoot?.path) || !!app.active.wiki || !!app.issueView.shownKey?.startsWith("wiki:")),
       run: () => checkLinks(),
     },
     {
