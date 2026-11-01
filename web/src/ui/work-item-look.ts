@@ -29,9 +29,12 @@ export interface WorkItemLookOptions {
   /** 留言最新的在上面（和 TFS 網頁一樣）。 */
   newestFirst: boolean;
   onOrder(newestFirst: boolean): void;
-  /** 沒有留言時也放一個「留言」段落（可以在裡面寫留言）。 */
-  commentsAlways?: boolean;
+  /** 沒有內容也要放的段落（例如可以在裡面寫留言、新增說明）：依段落的固定順序放進去。 */
+  ensureSections?: { kind: SectionKind; title: string }[];
 }
+
+/** 段落的固定順序（沒有內容時補上的段落依這個順序放）。 */
+const SECTION_ORDER: SectionKind[] = ["desc", "details", "sysinfo", "relations", "comments", "attachments", "other"];
 
 /** 最新的幾則留言預設展開，比較舊的收成一行。 */
 const OPEN_COMMENTS = 3;
@@ -154,14 +157,15 @@ export function decorateWorkItem(body: HTMLElement, opts: WorkItemLookOptions): 
     sections.push(sec);
     h2 = next as HTMLElement | null;
   }
-  if (opts.commentsAlways && !sections.some((s) => s.dataset.kind === "comments")) {
+  for (const want of opts.ensureSections ?? []) {
+    if (sections.some((s) => s.dataset.kind === want.kind)) continue;
     const h2 = document.createElement("h2");
-    h2.textContent = t("留言（{n}）", { n: 0 });
-    // 放在附件前面（和有留言時的順序一樣）。
-    const attachments = sections.find((s) => s.dataset.kind === "attachments");
-    if (attachments) attachments.before(h2);
+    h2.textContent = want.title;
+    const rank = SECTION_ORDER.indexOf(want.kind);
+    const later = sections.findIndex((s) => SECTION_ORDER.indexOf(s.dataset.kind as SectionKind) > rank);
+    if (later >= 0) sections[later].before(h2);
     else body.append(h2);
-    sections.splice(attachments ? sections.indexOf(attachments) : sections.length, 0, section(h2, [], "comments", opts));
+    sections.splice(later >= 0 ? later : sections.length, 0, section(h2, [], want.kind, opts));
   }
   if (sections.length > 1) sections[0].before(foldAllBar(sections));
 }
