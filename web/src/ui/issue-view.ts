@@ -40,8 +40,6 @@ export interface IssueSource {
   /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
   crumbs?: { label: string; open?(): void }[];
   insertLink(): void;
-  /** 標頭下方的操作列（例如工作項目的狀態、指派給我、留言）。 */
-  toolbar?: HTMLElement;
   /** 「編輯」：在分頁裡編輯、存回伺服器（不能編輯的不給）。 */
   edit?(): void;
   /** 「修改記錄」（Wiki 頁面）。 */
@@ -159,7 +157,6 @@ export class IssueView {
   #body: HTMLElement;
   #scroll: HTMLElement;
   #find: HTMLElement;
-  #toolbar: HTMLElement;
   #findInput: HTMLInputElement;
   #findCount: HTMLElement;
   #source: IssueSource | null = null;
@@ -322,11 +319,6 @@ export class IssueView {
       if (this.#h.follow?.(href)) return;
       if (/^https?:/i.test(href)) this.#h.open(href);
     });
-    // 操作列（例如工作項目的狀態、新增留言）放在標頭裡、取代位置與標題（分頁與內容上方都看得到是哪一項），省下一列。
-    this.#toolbar = document.createElement("div");
-    this.#toolbar.className = "issue-toolbar-host";
-    this.#toolbar.hidden = true;
-    heading.after(this.#toolbar);
     pane.append(head, this.#find, this.#scroll);
     pane.addEventListener("keydown", (e) => this.#keydown(e));
     // 滑鼠的「上一頁」「下一頁」側鍵。
@@ -469,8 +461,6 @@ export class IssueView {
     this.#meta.replaceChildren(origin, this.#label);
     this.#title.textContent = source.title;
     this.#title.title = source.title;
-    this.#toolbar.replaceChildren(...(source.toolbar ? [source.toolbar] : []));
-    this.#toolbar.hidden = !source.toolbar;
     this.#editBtn.hidden = !source.edit;
     this.#historyBtn.hidden = !source.history;
     this.#pane.hidden = false;

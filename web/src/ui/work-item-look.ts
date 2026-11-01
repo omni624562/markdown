@@ -29,6 +29,8 @@ export interface WorkItemLookOptions {
   /** 留言最新的在上面（和 TFS 網頁一樣）。 */
   newestFirst: boolean;
   onOrder(newestFirst: boolean): void;
+  /** 沒有留言時也放一個「留言」段落（可以在裡面寫留言）。 */
+  commentsAlways?: boolean;
 }
 
 /** 最新的幾則留言預設展開，比較舊的收成一行。 */
@@ -152,6 +154,15 @@ export function decorateWorkItem(body: HTMLElement, opts: WorkItemLookOptions): 
     sections.push(sec);
     h2 = next as HTMLElement | null;
   }
+  if (opts.commentsAlways && !sections.some((s) => s.dataset.kind === "comments")) {
+    const h2 = document.createElement("h2");
+    h2.textContent = t("留言（{n}）", { n: 0 });
+    // 放在附件前面（和有留言時的順序一樣）。
+    const attachments = sections.find((s) => s.dataset.kind === "attachments");
+    if (attachments) attachments.before(h2);
+    else body.append(h2);
+    sections.splice(attachments ? sections.indexOf(attachments) : sections.length, 0, section(h2, [], "comments", opts));
+  }
   if (sections.length > 1) sections[0].before(foldAllBar(sections));
 }
 
@@ -188,6 +199,7 @@ function decorateFields(body: HTMLElement): void {
     hero.append(kindRow);
     h1.textContent = parts.title;
   }
+  h1.dataset.field = "title";
   hero.append(h1);
 
   // 最常看的欄位：一排小標籤（滑鼠提示是欄位名稱）。
@@ -206,6 +218,7 @@ function decorateFields(body: HTMLElement): void {
     name.textContent = state;
     const reason = text(t("原因"));
     const chip = fact(t("狀態"), stateDot(state), name);
+    chip.dataset.field = "state";
     if (reason) {
       const r = document.createElement("span");
       r.className = "ado-fact-muted";
@@ -220,12 +233,12 @@ function decorateFields(body: HTMLElement): void {
     avatar.className = "ado-fact-avatar";
     avatar.textContent = shortcutInitial(assignee);
     avatar.style.setProperty("--hue", String(shortcutHue(assignee)));
-    fact(t("指派給"), avatar, assignee);
+    fact(t("指派給"), avatar, assignee).dataset.field = "assignee";
   }
   const priority = text(t("優先順序"));
-  if (priority) fact(t("優先順序"), `P${priority}`);
+  if (priority) fact(t("優先順序"), `P${priority}`).dataset.field = "priority";
   const iteration = text(t("反覆項目"));
-  if (iteration) fact(t("反覆項目") + "\n" + iteration, icon("calendar"), lastSegment(iteration));
+  if (iteration) fact(t("反覆項目") + "\n" + iteration, icon("calendar"), lastSegment(iteration)).dataset.field = "iteration";
   const changed = parseFieldTime(text(t("最後更新")));
   if (changed !== null) {
     const chip = fact(t("最後更新") + "\n" + text(t("最後更新")), t("更新於 {ago}", { ago: timeAgo(changed) }));
@@ -250,6 +263,7 @@ function decorateFields(body: HTMLElement): void {
     chip.className = "ado-field-tag";
     chip.title = t("標籤");
     chip.textContent = tag;
+    chip.dataset.tag = tag;
     meta.append(chip);
   }
   if (meta.childElementCount) hero.append(meta);

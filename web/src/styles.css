@@ -2661,34 +2661,6 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-crumb:hover { background: var(--active-line); color: var(--fg); text-decoration: underline; }
 .issue-crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .issue-crumb-sep { color: var(--subtle); }
-/* 工作項目內容上方的操作列：狀態、指派給我、新增留言（窄的時候換行）。 */
-.issue-toolbar-host { flex: 1 1 auto; min-width: 0; }
-/* 留言、編輯欄位的表單打開時：上一頁、操作列、右邊的按鈕留在第一列，表單在操作列下面展開（不把右邊的按鈕擠到下一列）。 */
-.issue-head:has(.issue-comment-form:not([hidden])) { align-items: flex-start; }
-.issue-head:has(.issue-comment-form:not([hidden])) > .issue-toolbar-host { flex-basis: 0; }
-/* 有操作列（工作項目）時，標頭不顯示位置與標題（分頁與內容上方都有），操作列接在上一頁、下一頁後面。 */
-.issue-head:has(> .issue-toolbar-host:not([hidden])) > .issue-heading { display: none; }
-.issue-toolbar-host[hidden] { display: none; }
-.issue-toolbar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
-.issue-toolbar-field { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; }
-.issue-toolbar-select { max-width: 200px; height: 28px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
-.issue-toolbar-select:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-.issue-toolbar .btn[hidden] { display: none; }
-.issue-comment-form { display: flex; flex: 1 1 100%; flex-direction: column; gap: 6px; }
-.issue-comment-form[hidden] { display: none; }
-.issue-comment-form textarea { box-sizing: border-box; width: 100%; min-height: 64px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--font-ui); resize: vertical; }
-.issue-comment-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-/* 編輯欄位：標題一整列，優先順序、Sprint、標籤一列（窄時換行）。 */
-.issue-edit-form { gap: 8px; }
-.issue-edit-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
-.issue-edit-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; color: var(--muted); font-size: 12px; }
-.issue-edit-field[hidden] { display: none; }
-.issue-edit-row .issue-edit-tags { flex: 1 1 220px; }
-.issue-edit-field input { box-sizing: border-box; width: 100%; height: 28px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); }
-.issue-edit-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-.issue-edit-title input { font-size: 14px; font-weight: 600; }
-.issue-edit-sprint { max-width: 260px; }
-.issue-comment-actions { display: flex; gap: 6px; justify-content: flex-end; }
 /* 文件裡連到工作項目、Wiki 頁面的摘要卡片（編輯器的提示框、預覽的浮動卡片）。 */
 .remote-card { --source: light-dark(#0b6bcb, #4ea1f3); max-width: min(360px, calc(100vw - 32px)); padding: 8px 12px; color: var(--fg); font: 12.5px/1.5 var(--font-ui); }
 .remote-card-floating { position: fixed; z-index: 60; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 20px rgb(0 0 0 / 14%); pointer-events: none; }
@@ -2749,6 +2721,39 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-body .ado-hero-meta > span { display: inline-flex; gap: 4px; align-items: center; min-width: 0; }
 .issue-body .ado-hero-meta .icon { width: 13px; height: 13px; }
 .issue-body .ado-field-tag { padding: 0 8px; border-radius: 999px; background: var(--active-line); color: var(--fg); font-size: 12px; line-height: 20px; }
+/* 在哪裡看到就在哪裡改：狀態、指派、優先順序、Sprint 的小標籤是按鈕，點一下出現選單（後面有向下的箭頭）。 */
+.issue-body .ado-fact-edit { color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
+.issue-body .ado-fact-edit.ado-fact-muted { color: var(--muted); }
+.issue-body .ado-fact-edit > .icon:last-child { width: 12px; height: 12px; margin: 0 -4px 0 -2px; color: var(--subtle); }
+.issue-body .ado-fact-edit:hover, .issue-body .ado-fact-edit[aria-expanded="true"] { border-color: var(--border-strong); background: var(--active-line); }
+.issue-body .ado-fact-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 送出變更時：先不能再點，等重新讀取。 */
+.issue-body .ado-hero.busy { opacity: 0.6; pointer-events: none; }
+/* 標題：滑鼠移上去出現鉛筆；改的時候換成輸入框。 */
+.issue-body .ado-title-edit { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-left: 4px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--subtle); vertical-align: middle; cursor: pointer; opacity: 0; }
+.issue-body .ado-hero h1:hover .ado-title-edit, .issue-body .ado-title-edit:focus-visible { opacity: 1; }
+.issue-body .ado-title-edit:hover { background: var(--active-line); color: var(--fg); }
+.issue-body .ado-title-edit .icon { width: 15px; height: 15px; }
+.issue-body .ado-title-input { box-sizing: border-box; width: 100%; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 6px; outline: 2px solid var(--accent-soft); background: var(--bg); color: var(--fg); font: inherit; }
+/* 標籤：滑鼠移上去出現 ×；最後面是「＋ 標籤」。 */
+.issue-body .ado-field-tag { display: inline-flex; align-items: center; }
+.issue-body .ado-tag-remove { display: none; place-items: center; width: 16px; height: 16px; margin: 0 -5px 0 2px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+.issue-body .ado-field-tag:hover .ado-tag-remove, .issue-body .ado-tag-remove:focus-visible { display: inline-grid; }
+.issue-body .ado-tag-remove:hover { background: var(--border); color: var(--fg); }
+.issue-body .ado-tag-remove .icon { width: 11px; height: 11px; }
+.issue-body .ado-tag-add { display: inline-flex; gap: 2px; align-items: center; padding: 0 8px; border: 1px dashed var(--border-strong); border-radius: 999px; background: none; color: var(--muted); font: 12px/20px var(--font-ui); cursor: pointer; }
+.issue-body .ado-tag-add:hover { border-style: solid; color: var(--fg); }
+.issue-body .ado-tag-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.issue-body .ado-tag-add .icon { width: 12px; height: 12px; }
+.issue-body .ado-tag-input { width: 140px; height: 22px; padding: 0 8px; border: 1px solid var(--accent); border-radius: 999px; outline: none; background: var(--bg); color: var(--fg); font: 12px var(--font-ui); }
+/* 留言框：在留言段落的最上面，平常一行，點一下展開。 */
+.issue-body .ado-compose { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; }
+.issue-body .ado-compose-main { flex: 1; min-width: 0; }
+.issue-body .ado-compose textarea { box-sizing: border-box; display: block; width: 100%; height: 34px; padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--font-ui); resize: none; }
+.issue-body .ado-compose.open textarea { height: auto; min-height: 84px; border-color: var(--accent); outline: 2px solid var(--accent-soft); resize: vertical; }
+.issue-body .ado-compose-actions { display: none; gap: 6px; align-items: center; margin-top: 6px; }
+.issue-body .ado-compose.open .ado-compose-actions { display: flex; }
+.issue-body .ado-compose-hint { margin-right: auto; color: var(--subtle); font-size: 12px; }
 .issue-body table.ado-fields { display: block; width: auto; margin: 0 0 12px; padding: 12px 16px; border: 0; border-radius: 8px; background: var(--surface-raised, var(--active-line)); box-shadow: inset 0 0 0 1px var(--border-soft, var(--border)); overflow: visible; }
 .issue-body table.ado-fields thead { display: none; }
 .issue-body table.ado-fields tbody { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px 24px; }

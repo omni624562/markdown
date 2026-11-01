@@ -148,6 +148,8 @@ import {
   GitGraph,
   Eraser,
   SquareDashedText,
+  User,
+  LoaderCircle,
   type IconNode,
 } from "lucide";
 
@@ -216,6 +218,8 @@ const ICONS: Record<string, IconNode> = {
   tag: Tag,
   tags: Tags,
   "link-2": Link2,
+  user: User,
+  loader: LoaderCircle,
   "file-input": FileInput,
   "file-down": FileDown,
   "maximize-2": Maximize2,
