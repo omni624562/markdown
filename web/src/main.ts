@@ -80,7 +80,7 @@ import { gitPanel, noteWorkItems, pollWorkItems, renderAdoBadge, workItemSeen, i
 import { groupItems, showWorkItem } from "./app/work-item-actions.ts";
 import { createPullRequest, reportError, resolveMergeConflict, showExternalChanges, switchBranch, initGitActions } from "./app/git-actions.ts";
 import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady, initAiTerminal } from "./app/ai-terminal.ts";
-import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, openWelcome, refreshActivityCommands, refreshToc, separator, showShortcuts, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
+import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, openWelcome, refreshActivityCommands, refreshToc, separator, showActivityLabels, showShortcuts, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
 import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focusedItem, hideItem, itemTabInfo, itemTabs, keepItem, reopenItem, selectItem, selectedItemId, setItemPinned, tabOrder } from "./app/item-tabs.ts";
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
@@ -874,7 +874,9 @@ let tabScope: string | null = desktop ? (storage.load("tab-scope") ?? storage.lo
 let docsLoaded = false;
 const restored = loadSession(tabScope);
 let docs: Doc[] = docsFrom(restored);
-if (!docs.length) {
+/** 第一次使用（沒有可以還原的分頁）。 */
+const firstLaunch = !docs.length;
+if (firstLaunch) {
   // 第一次使用：空白文件，畫面上是起始頁（新增、開啟、連線、「3 分鐘認識 oMarker」）。
   // 歡迎文件很長，不再一開始就塞給使用者；想看時從起始頁或「說明」開啟。
   docs = [makeDoc({ name: t("未命名.md"), kind: "markdown", baseline: hash("") })];
@@ -3282,6 +3284,8 @@ renderNow();
 renderTabs();
 persistSession();
 updateCursor(editor.view);
+// 第一次使用：圖示列旁邊短暫顯示每個圖示的名稱（畫面排好之後）。
+if (firstLaunch) window.setTimeout(() => showActivityLabels(), 800);
 // 分頁關掉、專案移除後留下的草稿會一直佔著儲存空間：啟動一陣子後（分頁都存好了）清掉。
 setTimeout(() => dropOrphanDrafts(), 10_000);
 

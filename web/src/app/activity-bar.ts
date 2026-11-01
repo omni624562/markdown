@@ -85,6 +85,49 @@ export function applyActivityLayout(): void {
   renderActivityCommands();
 }
 
+/**
+ * 第一次開啟：在圖示列每個圖示旁邊短暫顯示名稱（圖示沒有文字，第一次用的人不知道是什麼），
+ * 最下面提示按右鍵可以選要顯示的圖示。幾秒後、點任何地方或按任何鍵就收起來。
+ */
+export function showActivityLabels(duration = 9000): void {
+  const bar = app.$(".activity-bar");
+  const shown = (el: HTMLElement) => el.getClientRects().length > 0;
+  if (!shown(bar) || document.querySelector(".activity-labels")) return;
+  const buttons = [...bar.querySelectorAll<HTMLElement>("#activity-project, .activity-tabs [role=tab], .activity-cmds button")].filter(shown);
+  if (!buttons.length) return;
+  const box = document.createElement("div");
+  box.className = "activity-labels";
+  // 只是看的提示：名稱已經在每個按鈕的 aria-label 裡。
+  box.setAttribute("aria-hidden", "true");
+  const left = bar.getBoundingClientRect().right + 8;
+  const label = (text: string, top: number, className = "activity-label") => {
+    const el = document.createElement("span");
+    el.className = className;
+    el.textContent = text;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    box.append(el);
+  };
+  for (const b of buttons) {
+    const r = b.getBoundingClientRect();
+    const panel = b.dataset.panel as SidePanel | undefined;
+    label(panel ? PANEL_LABELS[panel]() : (b.getAttribute("aria-label") ?? ""), r.top + r.height / 2);
+  }
+  const last = buttons[buttons.length - 1].getBoundingClientRect();
+  label(t("按右鍵可以調整要顯示的圖示"), last.bottom + 22, "activity-label activity-label-hint");
+  document.body.append(box);
+  const stop = new AbortController();
+  const close = () => {
+    stop.abort();
+    clearTimeout(timer);
+    box.classList.add("closing");
+    window.setTimeout(() => box.remove(), 300);
+  };
+  const timer = window.setTimeout(close, duration);
+  for (const type of ["pointerdown", "keydown", "wheel"] as const) window.addEventListener(type, close, { capture: true, signal: stop.signal });
+  window.addEventListener("resize", close, { signal: stop.signal });
+}
+
 /** 釘上去的指令按鈕。 */
 function renderActivityCommands(): void {
   const box = app.$(".activity-cmds");
