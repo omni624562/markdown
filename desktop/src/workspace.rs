@@ -959,7 +959,10 @@ mod tests {
         let dir = temp_ws("exists");
         let png = path_string(&dir.join("圖片.png"));
         assert_eq!(path_exists(&png), Some(true));
-        assert_eq!(path_exists(&path_string(&dir.join("沒有.png"))), Some(false));
+        assert_eq!(
+            path_exists(&path_string(&dir.join("沒有.png"))),
+            Some(false)
+        );
         // 網路路徑、相對路徑、網址都不檢查。
         assert_eq!(path_exists("\\\\server\\share\\a.png"), None);
         assert_eq!(path_exists("//server/share/a.png"), None);
