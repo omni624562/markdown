@@ -396,6 +396,7 @@ fn main() {
             projects::project_reveal,
             workspace::list_dir,
             workspace::list_files,
+            workspace::paths_exist,
             workspace::create_entry,
             workspace::create_workflow,
             workspace::rename_entry,

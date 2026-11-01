@@ -14,6 +14,7 @@ import { Palette } from "../ui/palette.ts";
 import { REPO_URL } from "../ui/settings-dialog.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, showShortcuts, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { checkLinks } from "./link-check-ui.ts";
 import { searchPanel } from "./git-history.ts";
 import { closeItem, itemTabs, setItemPinned, tabOrder } from "./item-tabs.ts";
 import { imageInput } from "./new-work-item.ts";
@@ -498,6 +499,15 @@ export function initCommands(): void {
       icon: "spell-check",
       when: () => app.kind !== "json" && app.view !== "preview",
       run: () => fixTerms(),
+    },
+    {
+      id: "check-links",
+      title: t("檢查連結"),
+      group: t("編輯"),
+      icon: "unlink",
+      // 要在本機查檔案存不存在：桌面版，而且不是遠端資料夾。
+      when: () => !!desktop && !isRemote(app.workspaceRoot?.path),
+      run: () => checkLinks(),
     },
     {
       id: "s2t",

@@ -148,6 +148,9 @@ import {
   GitGraph,
   Eraser,
   SquareDashedText,
+  Unlink,
+  ImageOff,
+  FileX,
   type IconNode,
 } from "lucide";
 
@@ -216,6 +219,9 @@ const ICONS: Record<string, IconNode> = {
   tag: Tag,
   tags: Tags,
   "link-2": Link2,
+  unlink: Unlink,
+  "image-off": ImageOff,
+  "file-x": FileX,
   "file-input": FileInput,
   "file-down": FileDown,
   "maximize-2": Maximize2,

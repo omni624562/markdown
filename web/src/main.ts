@@ -3115,7 +3115,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     icon: "download",
     items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich", "-", "import-docx"],
   },
-  { label: t("文件工具"), icon: "wand-sparkles", items: ["history", "-", "fix-terms", "s2t", "-", "slideshow"] },
+  { label: t("文件工具"), icon: "wand-sparkles", items: ["history", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
   "-",
   { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
   { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark"] },
@@ -3138,6 +3138,8 @@ setupMenu($<HTMLButtonElement>("#files-more"), commands, [
   "connect-webdav",
   "connect-ssh",
   "open-recent",
+  "-",
+  "check-links",
 ]);
 // 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。
 for (const [tab, id] of [
