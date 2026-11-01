@@ -820,7 +820,11 @@ export class SettingsDialog {
       reset.className = "btn";
       reset.append(icon("rotate-ccw"), t("恢復預設"));
       reset.addEventListener("click", () =>
-        this.#store.update({ activityOrder: [], activityHidden: [], activityCommands: [...DEFAULTS.activityCommands] }),
+        this.#store.update({
+          activityOrder: [],
+          activityHidden: [...DEFAULTS.activityHidden],
+          activityCommands: [...DEFAULTS.activityCommands],
+        }),
       );
       actions.append(add, reset);
       list.replaceChildren(...rows, actions);

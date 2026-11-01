@@ -335,6 +335,28 @@ kbd {
   background: var(--accent);
 }
 .activity-tabs button:focus-visible, .activity-btn:focus-visible { outline-offset: -2px; }
+/* 第一次開啟：圖示旁邊短暫顯示名稱（不擋滑鼠，點任何地方就收起來）。 */
+.activity-labels { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+.activity-label {
+  position: absolute;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: var(--fg);
+  color: var(--bg);
+  font: 500 12.5px/1.5 var(--font-ui);
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  transform: translateY(-50%);
+  animation: activity-label-in 0.25s ease-out both;
+  transition: opacity 0.3s;
+}
+/* 指向圖示的小三角形。 */
+.activity-label::before { content: ""; position: absolute; top: 50%; left: -4px; width: 8px; height: 8px; background: inherit; transform: translateY(-50%) rotate(45deg); }
+.activity-label-hint { background: var(--surface); color: var(--muted); font-weight: 400; border: 1px solid var(--border); }
+.activity-label-hint::before { display: none; }
+.activity-labels.closing .activity-label { opacity: 0; }
+@keyframes activity-label-in { from { opacity: 0; transform: translate(-6px, -50%); } }
+@media (prefers-reduced-motion: reduce) { .activity-label { animation: none; } }
 .activity-badge {
   position: absolute;
   right: 3px;
