@@ -200,6 +200,11 @@ const EDIT_GROUPS: Group[] = [
         label: t("檢查兩國用語、錯字與標點"),
         hint: t("中國用語、常見錯字與中文裡的半形標點畫上波浪底線，滑鼠移上去就能修正"),
       },
+      {
+        key: "spellCheck",
+        label: t("英文拼字檢查"),
+        hint: t("拼錯的英文字畫上紅色波浪底線，滑鼠移上去可以換成建議的拼法或加入字典；程式碼、網址與縮寫不檢查"),
+      },
     ],
   },
   {
@@ -721,7 +726,7 @@ export class SettingsDialog {
       };
       section.append(
         ...this.#group(t("說明"), [
-          this.#row("shortcuts", t("快速鍵一覽"), t("也可以按 F1"), button("shortcuts", t("開啟"), "command", about.shortcuts)),
+          this.#row("shortcuts", t("快速鍵"), t("查看所有快速鍵，也可以換成你習慣的按法"), button("shortcuts", t("開啟"), "keyboard", about.shortcuts)),
           this.#row("welcome", t("歡迎文件"), t("3 分鐘認識主要功能"), button("welcome", t("開啟"), "book-open-text", about.welcome)),
           this.#row("changelog", t("更新紀錄"), t("每一版改了什麼"), button("changelog", t("開啟"), "scroll-text", about.changelog)),
         ]),

@@ -348,6 +348,25 @@ export class IssueView {
     return !this.#pane.hidden;
   }
 
+  /** 顯示中內容的 Markdown（連結檢查用）；還沒讀到是空字串。 */
+  get markdown(): string {
+    return this.#markdown;
+  }
+
+  /** 捲到內容裡的某個元素並閃一下（例如連結檢查找到的連結）。 */
+  reveal(el: HTMLElement): void {
+    if (!this.#body.contains(el)) return;
+    el.scrollIntoView({ block: "center" });
+    el.classList.remove("issue-flash");
+    void el.offsetWidth;
+    el.classList.add("issue-flash");
+  }
+
+  /** 內容的根元素（找連結等用）。 */
+  get body(): HTMLElement {
+    return this.#body;
+  }
+
   /** 顯示中的內容（沒有開著時是 null），分頁的右鍵選單用來判斷按的是不是這一個。 */
   get shownKey(): string | null {
     return this.isOpen ? (this.#source?.key ?? null) : null;

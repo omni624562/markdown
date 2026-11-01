@@ -3,6 +3,7 @@
  * 網頁版存在 localStorage；桌面版存在 app 設定資料夾的 settings.json，
  * 不會因為清除 WebView 快取而遺失。
  */
+import { validKeys } from "./commands.ts";
 import { desktop } from "./desktop.ts";
 import { cleanFontName } from "./fonts.ts";
 import { t } from "./i18n.ts";
@@ -55,6 +56,10 @@ export interface Settings {
   termCheck: boolean;
   /** 選擇「不再提示」的詞。 */
   termIgnore: string[];
+  /** 英文拼字檢查（拼錯的字畫紅色波浪底線）。 */
+  spellCheck: boolean;
+  /** 個人字典：「加入字典」的英文字（小寫）。 */
+  spellIgnore: string[];
   /** 貼上或拖進很大的圖片時，自動縮小並壓縮。 */
   imageCompress: boolean;
   /** 專注模式：淡化目前段落以外的文字。 */
@@ -108,6 +113,8 @@ export interface Settings {
   activityHidden: string[];
   /** 左側圖示列：釘上去的指令按鈕（指令的 id），例如「Git：顯示歷史」。 */
   activityCommands: string[];
+  /** 自訂的快速鍵：指令 id → 快速鍵（`Mod-Shift-p`）；空字串是拿掉這個指令的快速鍵。沒列到的用內建的。 */
+  keybindings: Record<string, string>;
 }
 
 /** 內建的快捷動作（第一次使用時存進設定；英文介面用英文的名稱與指示）。 */
@@ -139,6 +146,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   workItemColors: {},
   termCheck: true,
   termIgnore: [],
+  spellCheck: true,
+  spellIgnore: [],
   imageCompress: true,
   focusMode: false,
   typewriterMode: false,
@@ -168,6 +177,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   activityHidden: ["tasks", "tags"],
   // Git 歷史藏在選單裡不好找：預設放在圖示列（開啟的資料夾是 Git 儲存庫時才會出現）。
   activityCommands: ["git-history"],
+  keybindings: {},
 });
 
 /** 圖示列最多釘幾個指令按鈕。 */
@@ -179,8 +189,25 @@ function idList(v: unknown, limit = ACTIVITY_LIMIT): string[] | null {
   return [...new Set(v.filter((x): x is string => typeof x === "string" && /^[a-z0-9-]{1,60}$/.test(x)))].slice(0, limit);
 }
 
+/** 自訂快速鍵最多記幾個。 */
+export const KEYBINDING_LIMIT = 300;
+
+/** 自訂快速鍵：id 只接受英數字與連字號，快速鍵要是正確的寫法（或空字串）。 */
+function keybindings(v: unknown): { map: Record<string, string>; dropped: boolean } | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const map: Record<string, string> = {};
+  const entries = Object.entries(v as Record<string, unknown>);
+  for (const [id, keys] of entries.slice(0, KEYBINDING_LIMIT)) {
+    if (/^[a-z0-9-]{1,60}$/.test(id) && typeof keys === "string" && (keys === "" || validKeys(keys))) map[id] = keys;
+  }
+  return { map, dropped: Object.keys(map).length !== entries.length };
+}
+
 /** 「不再提示」的詞最多記幾個。 */
 export const TERM_IGNORE_LIMIT = 500;
+
+/** 個人字典最多記幾個字。 */
+export const SPELL_IGNORE_LIMIT = 2000;
 
 export const FONT_SIZE_RANGE = { min: 12, max: 24 } as const;
 
@@ -192,10 +219,12 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })),
     templates: [],
     termIgnore: [],
+    spellIgnore: [],
     activityOrder: [],
     activityHidden: [...DEFAULTS.activityHidden],
     activityCommands: [...DEFAULTS.activityCommands],
     workItemColors: {},
+    keybindings: {},
   };
   let problems = raw && typeof raw === "object" ? 0 : 1;
   type BoolKey = {
@@ -218,6 +247,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("autoSave");
   bool("adoNotify");
   bool("termCheck");
+  bool("spellCheck");
   bool("imageCompress");
   bool("focusMode");
   bool("typewriterMode");
@@ -284,6 +314,13 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
       if (v.dropped) problems++;
     } else problems++;
   }
+  if ("keybindings" in input) {
+    const v = keybindings(input.keybindings);
+    if (v) {
+      out.keybindings = v.map;
+      if (v.dropped) problems++;
+    } else problems++;
+  }
   if ("termIgnore" in input) {
     const list = input.termIgnore;
     if (Array.isArray(list)) {
@@ -292,6 +329,14 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
         TERM_IGNORE_LIMIT,
       );
       if (out.termIgnore.length !== list.length) problems++;
+    } else problems++;
+  }
+  if ("spellIgnore" in input) {
+    const list = input.spellIgnore;
+    if (Array.isArray(list)) {
+      const words = list.filter((w): w is string => typeof w === "string" && /^[a-z][a-z']{0,39}$/.test(w));
+      out.spellIgnore = [...new Set(words)].slice(-SPELL_IGNORE_LIMIT);
+      if (out.spellIgnore.length !== list.length) problems++;
     } else problems++;
   }
   if ("editorFontSize" in input) {
