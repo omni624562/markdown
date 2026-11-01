@@ -1972,7 +1972,14 @@ button.git-info:disabled { cursor: default; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
 .workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }
 .workitem:hover, .workitem:focus-visible { background: var(--active-line); }
-.workitem-meta { margin: 0; color: var(--muted); font-size: 11.5px; }
+.workitem-meta { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; margin: 0; color: var(--muted); font-size: 11.5px; }
+.workitem-meta-text { min-width: 0; }
+/* 狀態放在小字右邊，圓點顏色和工作項目內容上方的狀態一樣。 */
+.workitem-state { margin-left: auto; white-space: nowrap; }
+.workitem-state .ado-state-dot { width: 7px; height: 7px; margin-right: 4px; vertical-align: 0; }
+/* 類型的色條（顏色和分頁圖示一樣，設定裡可以改）。 */
+.workitem[data-wi-kind] { position: relative; padding-left: 13px; }
+.workitem[data-wi-kind]::before { content: ""; position: absolute; top: 7px; bottom: 7px; left: 4px; width: 3px; border-radius: 2px; background: var(--kind); }
 .workitem-title { overflow-wrap: anywhere; }
 .workitem[aria-current="true"] { background: var(--accent-soft); }
 .workitem[aria-current="true"] .workitem-title { color: var(--accent); }
