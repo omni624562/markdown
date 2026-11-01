@@ -7,6 +7,7 @@ import { t } from "../i18n.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { myChanges } from "../wiki-coedit.ts";
+import { revisionNote } from "../wiki-text.ts";
 import { app } from "./context.ts";
 
 
@@ -133,6 +134,8 @@ export function initWikiHistory(): void {
   wikiHistoryPicker = new Picker<WikiRevisionItem>({
     label: t("修改記錄"),
     placeholder: t("選擇一次修改，看那次改了什麼"),
+    // 第一行是誰、什麼時候，第二行是修改說明（很長時截掉）。
+    stacked: true,
     empty: t("這一頁還沒有修改記錄。"),
     async query(q) {
       if (!wikiHistoryLoad) return [];
@@ -142,7 +145,7 @@ export function initWikiHistory(): void {
     },
     render: (r) => ({
       title: r.date ? t("{who} · {time}", { who: r.author || t("（不明）"), time: versionTitle(Date.parse(r.date)) }) : r.author,
-      detail: r.comment || r.id.slice(0, 8),
+      detail: (r.comment && revisionNote(r.comment, wikiHistoryOf?.path ?? "")) || r.id.slice(0, 8),
       icon: "history",
     }),
     pick: (r) => void showWikiRevision(r).catch(app.reportError),

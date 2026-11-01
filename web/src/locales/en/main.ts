@@ -760,4 +760,11 @@ export const main: Record<string, Translation> = {
   "沒有上層項目": "No parent",
   "{kind} {id}：{title}": "{kind} {id}: {title}",
   "已從左側圖示列移除「{name}」": "Removed \"{name}\" from the activity bar",
+  "移動：{from} → {to}": "Moved: {from} → {to}",
+  "新增這一頁": "Added this page",
+  "新增「{name}」": "Added \"{name}\"",
+  "修改這一頁": "Edited this page",
+  "修改「{name}」": "Edited \"{name}\"",
+  "刪除了這一頁": "Deleted this page",
+  "刪除了「{name}」": "Deleted \"{name}\"",
 };

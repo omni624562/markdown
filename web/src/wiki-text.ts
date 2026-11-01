@@ -1,4 +1,5 @@
 /** Azure DevOps Wiki 的文字處理：頁面連結、圖片路徑與 Wiki 特有的語法（不碰畫面，方便測試）。 */
+import { t } from "./i18n.ts";
 
 /** 頁面名稱（路徑最後一段）。 */
 export function pageName(path: string): string {
@@ -169,4 +170,22 @@ export function snippetParts(snippet: string): { text: string; hit: boolean }[] 
   }
   if (last < snippet.length) out.push({ text: snippet.slice(last), hit: false });
   return out.map((p) => ({ ...p, text: p.text.replace(/\s+/g, " ") })).filter((p) => p.text);
+}
+
+/**
+ * 修改記錄的說明：Azure DevOps 自動產生的英文說明（`Updated page '/產品/安裝'.`）換成簡短的說法，
+ * 說的是 `path` 這一頁就寫「修改這一頁」，其他頁面寫頁面名稱。自己寫的說明照原樣。
+ */
+export function revisionNote(comment: string, path: string): string {
+  const text = comment.trim();
+  const same = (p: string) => p.replace(/\/+$/, "").toLowerCase() === path.replace(/\/+$/, "").toLowerCase();
+  const move = /^(?:Renamed|Moved) page '(.+)' to '(.+)'\.?$/i.exec(text);
+  if (move) return t("移動：{from} → {to}", { from: pageName(move[1]), to: pageName(move[2]) });
+  const m = /^(Added|Updated|Deleted) page '(.+)'\.?$/i.exec(text);
+  if (!m) return text;
+  const verb = m[1].toLowerCase();
+  const name = pageName(m[2]);
+  if (verb === "added") return same(m[2]) ? t("新增這一頁") : t("新增「{name}」", { name });
+  if (verb === "updated") return same(m[2]) ? t("修改這一頁") : t("修改「{name}」", { name });
+  return same(m[2]) ? t("刪除了這一頁") : t("刪除了「{name}」", { name });
 }
