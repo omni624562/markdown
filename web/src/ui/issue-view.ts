@@ -152,6 +152,7 @@ export class IssueView {
   #h: IssueViewHooks;
   #pane: HTMLElement;
   #meta: HTMLElement;
+  #heading: HTMLElement;
   #label: HTMLElement;
   #title: HTMLElement;
   #body: HTMLElement;
@@ -193,6 +194,7 @@ export class IssueView {
     head.className = "issue-head";
     const heading = document.createElement("div");
     heading.className = "issue-heading";
+    this.#heading = heading;
     this.#meta = document.createElement("div");
     this.#meta.className = "issue-meta";
     this.#label = document.createElement("span");
@@ -295,6 +297,16 @@ export class IssueView {
 
     this.#scroll = document.createElement("div");
     this.#scroll.className = "issue-scroll";
+    let frame = 0;
+    this.#scroll.addEventListener(
+      "scroll",
+      () => {
+        if (!frame) frame = requestAnimationFrame(() => ((frame = 0), this.#updateHeroHead()));
+      },
+      { passive: true },
+    );
+    // 視窗或側邊欄的寬度改變時，標頭的類型標籤重新對齊標題。
+    new ResizeObserver(() => this.#updateHeroHead()).observe(this.#scroll);
     this.#body = document.createElement("article");
     this.#body.className = "markdown-body issue-body";
     this.#stale = document.createElement("p");
@@ -451,6 +463,7 @@ export class IssueView {
     this.#updateNav();
     this.#pane.dataset.source = source.origin.kind;
     this.#pane.dataset.sourceName = source.origin.text;
+    this.#pane.classList.remove("issue-hero", "issue-scrolled", "issue-title-away");
     this.#label.replaceChildren(...this.#crumbs(source));
     // 來源只用一個圖示標示（狀態列和上方的色條也標了來源與「唯讀」），位置一列放完。
     const origin = document.createElement("span");
@@ -556,6 +569,30 @@ export class IssueView {
 
   #decorate(): void {
     this.#source?.decorate?.(this.#body);
+    // 工作項目：內容最上面的類型標籤與編號搬到標頭這一列（和上一頁、下一頁、右邊的按鈕同一列），
+    // 標題接在下面，不再多佔一列；往下捲到看不到標題時，標頭帶出標題。
+    const kind = this.#body.querySelector<HTMLElement>(".ado-hero > .ado-hero-kind");
+    if (kind) this.#meta.replaceChildren(kind);
+    this.#pane.classList.toggle("issue-hero", !!kind);
+    this.#updateHeroHead();
+  }
+
+  /**
+   * 標頭的類型標籤往右推到和內容的標題對齊（內容置中、寬度有上限）；
+   * 捲動時：內容捲到標頭下面就畫出分隔線，看不到標題時標頭顯示標題。
+   */
+  #updateHeroHead(): void {
+    const hero = this.#pane.classList.contains("issue-hero");
+    const h1 = hero ? this.#body.querySelector<HTMLElement>(".ado-hero h1") : null;
+    const heading = this.#heading;
+    if (h1 && !this.#pane.hidden) {
+      // padding 在 heading 裡面，不影響它自己的位置：直接量兩者左邊的距離。
+      const indent = Math.max(0, Math.round(h1.getBoundingClientRect().left - heading.getBoundingClientRect().left));
+      heading.style.paddingLeft = indent ? `${indent}px` : "";
+    } else heading.style.paddingLeft = "";
+    this.#pane.classList.toggle("issue-scrolled", hero && this.#scroll.scrollTop > 2);
+    const away = !!h1 && h1.getBoundingClientRect().bottom <= this.#scroll.getBoundingClientRect().top + 2;
+    this.#pane.classList.toggle("issue-title-away", away);
   }
 
   close(): void {
