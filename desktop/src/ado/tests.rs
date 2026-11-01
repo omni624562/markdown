@@ -583,6 +583,28 @@ fn builds_work_item_field_changes() {
 }
 
 #[test]
+fn builds_long_text_field_changes() {
+    let change = WorkItemChange {
+        description: Some(" <p>說明</p> ".into()),
+        acceptance_criteria: Some("".into()),
+        repro_steps: Some("<ol><li>步驟</li></ol>".into()),
+        ..Default::default()
+    };
+    let ops = change_ops(&change, "me");
+    assert_eq!(
+        ops[0],
+        json!({"op": "add", "path": "/fields/System.Description", "value": "<p>說明</p>"})
+    );
+    // 空字串：清除欄位。
+    assert_eq!(
+        ops[1],
+        json!({"op": "add", "path": "/fields/Microsoft.VSTS.Common.AcceptanceCriteria", "value": ""})
+    );
+    assert_eq!(ops[2]["path"], "/fields/Microsoft.VSTS.TCM.ReproSteps");
+    assert!(change_ops(&WorkItemChange::default(), "me").is_empty());
+}
+
+#[test]
 fn flattens_iterations() {
     let v = json!({
         "name": "P",

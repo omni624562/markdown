@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { linkKind, planLinkCheck } from "./link-check.ts";
+import { linkKind, planLinkCheck, wikiLinkProblems, wikiPageLinkCount } from "./link-check.ts";
 
 const files = [
   { path: "C:\\筆記\\週報.md", rel: "週報.md" },
@@ -48,4 +48,19 @@ test("不檢查：沒開資料夾時的 [[文件]]、網址、網站根目錄、
     null,
   );
   assert.deepEqual(plan, { broken: [], paths: [], checked: 0 });
+});
+
+test("Wiki 頁面連結：找不到的頁面列出來，附件與檔案不檢查", () => {
+  const pages = ["/產品", "/產品/安裝 指南", "/產品/說明", "/FAQ"];
+  const links = [
+    { line: 1, target: "/產品/安裝-指南", kind: "markdown" as const },
+    { line: 2, target: "./說明", kind: "markdown" as const },
+    { line: 3, target: "/產品/已刪除的頁面", kind: "markdown" as const },
+    { line: 4, target: "/.attachments/flow-1234.png", kind: "markdown" as const },
+    { line: 5, target: "附件/規格.pdf", kind: "markdown" as const },
+    { line: 6, target: "../FAQ.md", kind: "markdown" as const },
+    { line: 7, target: "週報", kind: "wiki" as const },
+  ];
+  assert.deepEqual(wikiLinkProblems(links, "/產品/說明", pages), [{ line: 3, target: "/產品/已刪除的頁面", kind: "page" }]);
+  assert.equal(wikiPageLinkCount(links), 4);
 });
