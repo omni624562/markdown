@@ -1,5 +1,6 @@
 import "../../crates/md-core/src/document.css";
 import "./styles.css";
+import "./palettes.css";
 
 import { undo } from "@codemirror/commands";
 import { Decoration, type DecorationSet, EditorView, hoverTooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
@@ -10,6 +11,8 @@ import { AiController } from "./ai.ts";
 import { GitHub } from "./github-ui.ts";
 import { Ado } from "./ado-ui.ts";
 import { workItemLink } from "./ado-text.ts";
+import { type PaletteId, applyPalette, isDark, loadAccent, loadPalette, savePalette } from "./palette.ts";
+import { initTopbarTitle, setTopbarProject } from "./app/topbar-title.ts";
 import { formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, type EditorHandlers, type EditorOptions, cursorInfo } from "./editor.ts";
 import { type FileCommit, type FileItem, type Folder, desktop, displayPath, isRemote } from "./desktop.ts";
@@ -716,6 +719,18 @@ const app = {
   get themePref() {
     return themePref;
   },
+  get palette() {
+    return palette;
+  },
+  get accent() {
+    return accent;
+  },
+  get setPalette() {
+    return setPalette;
+  },
+  get setAccent() {
+    return setAccent;
+  },
   get toggleOutline() {
     return toggleOutline;
   },
@@ -930,6 +945,9 @@ let indexStale = true;
 let liveApplied = false;
 let splitRatio = Number(storage.load("split")) || 0.5;
 let themePref: ThemePref = (storage.load("theme") as ThemePref | null) ?? "system";
+/** 配色風格與強調色（設定 → 外觀 → 配色）；畫面繪製前已由 theme-init.js 套用。 */
+let palette: PaletteId = loadPalette();
+let accent = loadAccent();
 let blocks: BlockRef[] | null = null;
 let editorTopLine = 1;
 
@@ -2047,6 +2065,8 @@ const tabBar = new TabBar($("#tab-bar"), {
   },
   keep: (id) => keepItem(id),
 });
+// 頂端列中間的「● 專案 · 文件名稱」，跟著目前的分頁更新。
+initTopbarTitle($("#tab-bar"));
 
 // ---- 分頁選單：關閉其他、關閉右側、固定分頁…… ---------------------------------
 
@@ -2186,6 +2206,10 @@ async function renderProjectName(): Promise<void> {
   avatar.classList.toggle("empty", !workspaceRoot);
   if (color) avatar.dataset.color = color;
   else delete avatar.dataset.color;
+  // 頂端列中間的專案名稱；「專案色」配色的上方列用專案的顏色。
+  setTopbarProject(workspaceRoot ? { label, color } : null);
+  if (workspaceRoot && color) document.documentElement.dataset.projectColor = color;
+  else delete document.documentElement.dataset.projectColor;
 }
 
 /** 檔案總管上方顯示目前的分支（不是 Git 儲存庫時隱藏）；按一下切換或建立分支。 */
@@ -3422,7 +3446,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   { label: t("文件工具"), icon: "wand-sparkles", items: ["history", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
   "-",
   { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
-  { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark"] },
+  { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark", "-", "choose-palette"] },
   {
     label: t("說明"),
     icon: "circle-help",
@@ -3554,25 +3578,44 @@ function setTheme(pref: ThemePref): void {
   storage.save("theme", pref);
   if (pref === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = pref;
-  // 流程圖的配色跟著主題，需要重畫。
-  if (settings.value.mermaid) {
-    preview.invalidate();
-    scheduleRender();
-    for (const ed of allEditors()) refreshLivePreview(ed.view);
-    rerenderIssue();
-  }
+  colorsChanged();
+}
+
+function setPalette(id: PaletteId): void {
+  palette = id;
+  savePalette(palette, accent);
+  applyPalette(document.documentElement, palette, accent);
+  colorsChanged();
+}
+
+/** `value` 是空字串（用配色風格自己的強調色）、預設的顏色名稱或自訂的 #rrggbb。 */
+function setAccent(value: string): void {
+  accent = value;
+  savePalette(palette, accent);
+  applyPalette(document.documentElement, palette, accent);
+  colorsChanged();
+}
+
+/** 上一次畫流程圖時是不是深色（配色改了但明暗沒變時，不必重畫）。 */
+let drawnDark: boolean | null = null;
+
+/** 明暗或配色改了：終端機跟著換色；流程圖的配色跟著明暗，變了才重畫。 */
+function colorsChanged(): void {
   terminal?.applyTheme();
+  const dark = isDark();
+  if (drawnDark === dark) return;
+  const first = drawnDark === null;
+  drawnDark = dark;
+  if (first || !settings.value.mermaid) return;
+  preview.invalidate();
+  scheduleRender();
+  for (const ed of allEditors()) refreshLivePreview(ed.view);
+  rerenderIssue();
 }
 
 // 跟隨系統時，系統切換深淺色也要重畫流程圖。
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-  if (themePref === "system") terminal?.applyTheme();
-  if (themePref === "system" && settings.value.mermaid) {
-    preview.invalidate();
-    scheduleRender();
-    for (const ed of allEditors()) refreshLivePreview(ed.view);
-    rerenderIssue();
-  }
+  if (themePref === "system") colorsChanged();
 });
 
 initSettingsUi();

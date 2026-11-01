@@ -1,0 +1,164 @@
+/* 配色風格（設定 → 外觀 → 配色）。根元素的 data-palette 決定用哪一組；
+   設定頁的小縮圖也加上 data-palette，所以同一組規則不寫 :root，縮圖裡也套得到。
+   每組都用 light-dark() 定義淺色與深色兩種，跟著明暗設定切換（夜森林固定是深色）。
+   文字對比都依 WCAG 2.1 算過：本文與次要文字至少 4.5:1，輸入框邊框、Markdown 符號至少 3:1。
+   這個檔案要在 styles.css 之後載入（同樣權重時，後面的蓋過前面的）。 */
+
+/* ---- 基本配色：清爽白、經典灰、專案色共用，其他風格再覆寫 ----
+   淺色參考 MarkText：乾淨的白底與柔和的灰；深色接近 One Dark。
+   由其他變數推算的（強調色的淡底、選取範圍、頂端列等）也寫在這裡，縮圖裡才會用縮圖自己的顏色重算。 */
+:root,
+[data-palette] {
+  --bg: light-dark(#ffffff, #282c34);
+  --surface: light-dark(#f7f7f8, #21252b);
+  --surface-raised: light-dark(#ffffff, #2f343e);
+  --fg: light-dark(#2c2e33, #d7dae0);
+  --muted: light-dark(#666a71, #9da5b4);
+  /* 次要中的次要文字（程式碼語言、提示）：仍要約 4.5:1，小字也看得清楚。 */
+  --subtle: light-dark(#71757d, #8a91a0);
+  --border: light-dark(#e3e4e7, #3a404b);
+  --border-soft: light-dark(#eeeff1, #31353d);
+  --border-strong: light-dark(#c6c8cd, #4b5263);
+  /* 輸入框、下拉選單的下緣（和 Windows 11 的文字框一樣）：至少 3:1，白底上也看得出範圍。 */
+  --input-border: light-dark(#8d9199, #727a88);
+  --accent: light-dark(#2f6fd6, #61afef);
+  --accent-fg: light-dark(#ffffff, #1d2026);
+  --active-line: light-dark(rgba(0, 0, 0, 0.028), rgba(255, 255, 255, 0.035));
+  /* 頂端列與圖示列的圖示：比次要文字深一階，比較清楚。 */
+  --chrome-icon: light-dark(#4b4f56, #b4bac4);
+  --syn-heading: light-dark(#2c2e33, #e5c07b);
+  /* Markdown 標記符號（#、**）與註解：比本文淡，但至少 3:1。 */
+  --syn-meta: light-dark(#868a91, #8b919c);
+  --syn-comment: light-dark(#868a91, #8b919c);
+
+  /* 由上面推算：淡淡的強調色底、選取範圍、連結跟著強調色（自訂強調色時一起改）。 */
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --selection: color-mix(in srgb, var(--accent) 22%, transparent);
+  --syn-link: var(--accent);
+  --topbar-bg: var(--surface);
+  --topbar-border: var(--border);
+  /* 下拉選單的邊框比一般的框深，滑鼠指著的項目用中性的灰底（不用強調色，畫面比較安靜）。 */
+  --menu-border: color-mix(in srgb, var(--fg) 22%, var(--surface-raised));
+  --menu-hover: color-mix(in srgb, var(--fg) 8%, transparent);
+  --menu-open: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+
+/* ---- 森林綠（預設）：沉穩的深綠，深色時就是夜森林 ---- */
+[data-palette="forest"],
+[data-palette="night"] {
+  --bg: light-dark(#ffffff, #1c2420);
+  --surface: light-dark(#f2f6f3, #161d1a);
+  --surface-raised: light-dark(#ffffff, #232c27);
+  --fg: light-dark(#25302a, #d6e2da);
+  --muted: light-dark(#56645b, #97aa9e);
+  --subtle: light-dark(#5c6a61, #8a9d91);
+  --border: light-dark(#dbe5de, #2f3b34);
+  --border-soft: light-dark(#e8efea, #28322c);
+  --border-strong: light-dark(#bfcdc3, #3e4d44);
+  --input-border: light-dark(#82938a, #6d8075);
+  --accent: light-dark(#2e7d4f, #5cc08a);
+  --accent-fg: light-dark(#ffffff, #0f1a14);
+  --active-line: light-dark(rgba(46, 125, 79, 0.045), rgba(255, 255, 255, 0.035));
+  --chrome-icon: light-dark(#3f4f45, #a9bcb0);
+  --syn-heading: light-dark(#1f5f3a, #7fd3a5);
+  --syn-meta: light-dark(#7a887f, #7f9186);
+  --syn-comment: light-dark(#7a887f, #7f9186);
+}
+/* 夜森林：森林綠的深色版，不管明暗的設定都是深色。 */
+[data-palette="night"],
+:root[data-palette="night"][data-theme] { color-scheme: dark; }
+
+/* ---- 薄荷綠：明亮清新的青綠 ---- */
+[data-palette="mint"] {
+  --bg: light-dark(#ffffff, #172220);
+  --surface: light-dark(#eff9f6, #121b19);
+  --surface-raised: light-dark(#ffffff, #1f2b28);
+  --fg: light-dark(#21302c, #d3e5df);
+  --muted: light-dark(#52675f, #93aca4);
+  --subtle: light-dark(#58706a, #869f97);
+  --border: light-dark(#d4ebe4, #2a3a36);
+  --border-soft: light-dark(#e3f2ed, #23302d);
+  --border-strong: light-dark(#b6d8ce, #3a4d48);
+  --input-border: light-dark(#759389, #6a8780);
+  --accent: light-dark(#0b7f6c, #4fd1b5);
+  --accent-fg: light-dark(#ffffff, #0b1a16);
+  --active-line: light-dark(rgba(11, 127, 108, 0.045), rgba(255, 255, 255, 0.035));
+  --chrome-icon: light-dark(#3c544d, #a6c2b9);
+  --syn-heading: light-dark(#0b6e5e, #7fe0c8);
+  --syn-meta: light-dark(#73908a, #7d968f);
+  --syn-comment: light-dark(#73908a, #7d968f);
+}
+
+/* ---- 抹茶（護眼）：米色紙張底、柔和的橄欖綠，文字是深灰不是純黑 ---- */
+[data-palette="matcha"] {
+  --bg: light-dark(#fbfaf2, #22231c);
+  --surface: light-dark(#f0efe1, #1c1d17);
+  --surface-raised: light-dark(#fdfcf6, #2a2b23);
+  --fg: light-dark(#33362a, #e2e0cc);
+  --muted: light-dark(#5d614b, #aaa890);
+  --subtle: light-dark(#636750, #9c9a82);
+  --border: light-dark(#e0decb, #3a3a2f);
+  --border-soft: light-dark(#e9e7d7, #313128);
+  --border-strong: light-dark(#ccc9ad, #4b4b3d);
+  --input-border: light-dark(#949178, #7c7b66);
+  --accent: light-dark(#5a7728, #a9c46e);
+  --accent-fg: light-dark(#ffffff, #1a1c12);
+  --active-line: light-dark(rgba(90, 119, 40, 0.05), rgba(255, 255, 255, 0.035));
+  --chrome-icon: light-dark(#4d5240, #bdbba3);
+  --syn-heading: light-dark(#4a6322, #c9dc8f);
+  --syn-meta: light-dark(#7f826b, #8f8d77);
+  --syn-comment: light-dark(#7f826b, #8f8d77);
+}
+
+/* ---- 清爽白：上方列和內容一樣白（顏色沿用基本配色） ---- */
+[data-palette="clean"] { --topbar-bg: var(--bg); }
+
+/* ---- 經典灰：淺灰的框加深一點，和內容清楚分開 ---- */
+[data-palette="classic"] {
+  --surface: light-dark(#f1f2f4, #21252b);
+  --border: light-dark(#dcdee2, #3a404b);
+  --border-soft: light-dark(#e8e9ec, #31353d);
+  --muted: light-dark(#61656c, #9da5b4);
+  --subtle: light-dark(#6a6e76, #8a91a0);
+}
+
+/* ---- 專案色：上方列跟著目前專案的顏色淡淡上色（沒有設定顏色時用強調色） ---- */
+[data-palette="project"] {
+  --topbar-bg: color-mix(in srgb, var(--project-color) 11%, var(--bg));
+  --topbar-border: color-mix(in srgb, var(--project-color) 28%, var(--bg));
+}
+
+/* ---- 高對比：黑白分明、線條與焦點框加粗 ---- */
+[data-palette="contrast"] {
+  --bg: light-dark(#ffffff, #000000);
+  --surface: light-dark(#f3f3f3, #0d0d0d);
+  --surface-raised: light-dark(#ffffff, #141414);
+  --fg: light-dark(#000000, #ffffff);
+  --muted: light-dark(#2e2e2e, #d6d6d6);
+  --subtle: light-dark(#3d3d3d, #c4c4c4);
+  --border: light-dark(#767676, #8c8c8c);
+  --border-soft: light-dark(#9a9a9a, #6b6b6b);
+  --border-strong: light-dark(#000000, #ffffff);
+  --input-border: light-dark(#000000, #ffffff);
+  --accent: light-dark(#0047b3, #7cc4ff);
+  --accent-fg: light-dark(#ffffff, #000000);
+  --active-line: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.08));
+  --chrome-icon: var(--fg);
+  --syn-heading: var(--fg);
+  --syn-meta: light-dark(#4a4a4a, #b0b0b0);
+  --syn-comment: light-dark(#4a4a4a, #b0b0b0);
+  --menu-border: var(--fg);
+}
+:root[data-palette="contrast"] :focus-visible { outline-width: 3px; }
+:root[data-palette="contrast"] .tab[aria-selected="true"] { box-shadow: inset 0 4px 0 var(--accent); }
+
+/* ---- 專案的顏色（和專案圓點同一組顏色），給「專案色」的上方列用 ---- */
+:root[data-project-color="red"] { --project-color: light-dark(#d1453b, #e06c75); }
+:root[data-project-color="orange"] { --project-color: light-dark(#d9730d, #e5a050); }
+:root[data-project-color="yellow"] { --project-color: light-dark(#c29a00, #e5c07b); }
+:root[data-project-color="green"] { --project-color: light-dark(#2e9e5b, #98c379); }
+:root[data-project-color="teal"] { --project-color: light-dark(#0f9a9a, #56b6c2); }
+:root[data-project-color="blue"] { --project-color: light-dark(#2f6fd6, #61afef); }
+:root[data-project-color="purple"] { --project-color: light-dark(#8250df, #c678dd); }
+:root[data-project-color="pink"] { --project-color: light-dark(#d4458f, #f08fc0); }
+:root[data-project-color="gray"] { --project-color: light-dark(#8a8f98, #7f8794); }

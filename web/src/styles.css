@@ -1,40 +1,25 @@
 /* 介面樣式。顏色用 light-dark() 一次定義兩種主題；
-   跟隨系統時由 color-scheme 決定，手動切換時由 data-theme 覆寫（見 document.css）。 */
+   跟隨系統時由 color-scheme 決定，手動切換時由 data-theme 覆寫（見 document.css）。
+   背景、文字、邊框、強調色等顏色變數在 palettes.css（依配色風格切換）。 */
 :root {
-  /* 配色參考 MarkText：淺色是乾淨的白底與柔和的灰，深色接近 One Dark。 */
-  --bg: light-dark(#ffffff, #282c34);
-  --surface: light-dark(#f7f7f8, #21252b);
-  --surface-raised: light-dark(#ffffff, #2f343e);
-  --fg: light-dark(#2c2e33, #d7dae0);
+  /* 介面的顏色（背景、文字、邊框、強調色等）寫在 palettes.css，跟著配色風格改變；這裡是各配色共用的。 */
   /* Git「已修改」：淺色底也要有 4.5:1 以上的對比。 */
   --git-modified: light-dark(#8a6a00, #d29922);
-  --muted: light-dark(#666a71, #9da5b4);
-  /* 次要中的次要文字（程式碼語言、提示）：仍要約 4.5:1，小字也看得清楚。 */
-  --subtle: light-dark(#71757d, #8a91a0);
-  --border: light-dark(#e3e4e7, #3a404b);
-  --border-soft: light-dark(#eeeff1, #31353d);
-  --border-strong: light-dark(#c6c8cd, #4b5263);
-  /* 輸入框、下拉選單的下緣（和 Windows 11 的文字框一樣）：至少 3:1，白底上也看得出範圍。 */
-  --input-border: light-dark(#8d9199, #727a88);
-  --accent: light-dark(#2f6fd6, #61afef);
-  --accent-soft: light-dark(rgba(47, 111, 214, 0.1), rgba(97, 175, 239, 0.15));
-  --accent-fg: light-dark(#ffffff, #1d2026);
   --danger: light-dark(#cf2f3a, #ec7c85);
   --danger-soft: light-dark(#fdecee, rgba(224, 108, 117, 0.14));
   --success: light-dark(#277a3c, #98c379);
-  --active-line: light-dark(rgba(0, 0, 0, 0.028), rgba(255, 255, 255, 0.035));
-  --selection: light-dark(rgba(47, 111, 214, 0.18), rgba(97, 175, 239, 0.25));
-  --shadow: light-dark(0 6px 24px rgba(30, 32, 36, 0.12), 0 8px 24px rgba(0, 0, 0, 0.45));
+  /* light-dark() 只能放顏色，陰影要把它放在顏色的位置（整個陰影放進去會失效，變成沒有陰影）。 */
+  --shadow: 0 6px 24px light-dark(rgba(30, 32, 36, 0.14), rgba(0, 0, 0, 0.45));
+  /* 下拉選單：比頁面明顯浮起來（較深的邊框、兩層陰影；邊框與滑鼠指著時的底色見 palettes.css）。 */
+  --menu-shadow: 0 1px 2px light-dark(rgba(20, 24, 30, 0.1), rgba(0, 0, 0, 0.35)),
+    0 10px 30px light-dark(rgba(20, 24, 30, 0.2), rgba(0, 0, 0, 0.5));
+  /* 「專案色」配色用；沒有專案顏色時用強調色（palettes.css 依專案改寫）。 */
+  --project-color: var(--accent);
 
-  --syn-heading: light-dark(#2c2e33, #e5c07b);
-  --syn-link: light-dark(#2f6fd6, #61afef);
   --syn-code: light-dark(#b0451e, #d19a66);
-  /* Markdown 標記符號（#、**）與註解：比本文淡，但至少 3:1。 */
-  --syn-meta: light-dark(#868a91, #8b919c);
   --syn-keyword: light-dark(#a626a4, #c678dd);
   --syn-string: light-dark(#2f7d32, #98c379);
   --syn-number: light-dark(#986801, #d19a66);
-  --syn-comment: light-dark(#868a91, #8b919c);
   --syn-function: light-dark(#4078f2, #61afef);
 
   --font-ui: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
@@ -60,6 +45,14 @@
   --splitter-width: 9px;
   --control-h: 32px;
   --radius: 8px;
+
+  /* 預覽（document.css）的顏色跟著介面的配色；匯出的檔案仍用 document.css 自己的顏色。 */
+  --md-bg: var(--bg);
+  --md-fg: var(--fg);
+  --md-muted: var(--muted);
+  --md-subtle: var(--surface);
+  --md-border: var(--border);
+  --md-link: var(--accent);
 }
 
 * { box-sizing: border-box; }
@@ -141,8 +134,8 @@ kbd {
   min-width: 0;
   height: var(--topbar-h);
   padding-top: env(safe-area-inset-top);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  border-bottom: 1px solid var(--topbar-border);
+  background: var(--topbar-bg);
 }
 /* 側邊欄（含圖示列）預設收起，用左上角的按鈕叫出來；寬度和下面的圖示列對齊。 */
 .nav-toggle {
@@ -153,7 +146,7 @@ kbd {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--chrome-icon);
   cursor: pointer;
 }
 .nav-toggle .icon { padding: 5px; box-sizing: content-box; border-radius: 6px; transition: background 0.12s, color 0.12s; }
@@ -182,11 +175,11 @@ kbd {
 .custom-titlebar { --topbar-h: 42px; }
 .custom-titlebar .topbar { user-select: none; }
 /* 圖示列一直顯示（窄螢幕除外），頂端的側邊欄按鈕和它對齊。 */
-.nav-toggle { border-right: 1px solid var(--border); }
-.topbar.with-sidebar .topbar-side { display: block; border-right: 1px solid var(--border); }
+.nav-toggle { border-right: 1px solid var(--topbar-border); }
+.topbar.with-sidebar .topbar-side { display: block; border-right: 1px solid var(--topbar-border); }
 .workspace.narrow.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; align-items: center; padding: 0 8px 0 12px; }
-.top-actions .btn.icon-only { color: var(--muted); }
+.top-actions .btn.icon-only { color: var(--chrome-icon); }
 .top-actions .btn.icon-only:hover { color: var(--fg); }
 .segmented {
   display: inline-flex;
@@ -334,7 +327,7 @@ kbd {
   border: 0;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--subtle);
+  color: var(--chrome-icon);
   cursor: pointer;
 }
 .activity-tabs button .icon, .activity-btn .icon { width: 22px; height: 22px; stroke-width: 1.6; }
@@ -343,7 +336,7 @@ kbd {
 /* 釘上去的按鈕對應的畫面開著時（例如 Git 歷史），再按一次就關閉。 */
 .activity-cmd[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 /* 側邊欄收起時，圖示都用一般的顏色（沒有哪個面板是打開的）。 */
-.workspace.outline-hidden .activity-tabs button[aria-selected="true"]:not(:hover) { color: var(--subtle); }
+.workspace.outline-hidden .activity-tabs button[aria-selected="true"]:not(:hover) { color: var(--chrome-icon); }
 /* 目前的面板：左邊一條強調色。側邊欄收起時不顯示。 */
 .workspace:not(.outline-hidden) .activity-tabs button[aria-selected="true"]::before {
   content: "";
@@ -741,11 +734,11 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
   padding: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--border);
+  border: 1px solid var(--menu-border);
   border-radius: calc(var(--radius) + 2px);
   background: var(--surface-raised);
   color: var(--fg);
-  box-shadow: var(--shadow);
+  box-shadow: var(--menu-shadow);
 }
 .menu button {
   display: flex;
@@ -763,13 +756,15 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
   cursor: pointer;
 }
 .menu button span { flex: 1; }
-.menu button:hover, .menu button:focus-visible { background: var(--accent-soft); outline: none; }
+/* 一次只反白一項：滑鼠移過去時焦點也跟著移過去（menu.ts），鍵盤操作時反白焦點所在的項目。 */
+.menu button:hover, .menu button:focus-visible { background: var(--menu-hover); outline: none; }
 .menu button .icon { color: var(--muted); }
 .menu button[aria-checked="true"] .icon:last-child { color: var(--accent); }
 .menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .menu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu button.has-submenu .icon:last-child { width: 15px; height: 15px; margin-right: -2px; }
-.menu button.has-submenu.open { background: var(--accent-soft); }
+/* 展開子選單的那一項：淡淡的底色，看得出子選單從哪裡出來。 */
+.menu button.has-submenu.open:not(:hover):not(:focus-visible) { background: var(--menu-open); }
 .menu kbd { flex: none; margin-left: 12px; }
 
 /* ---- 指令面板 ---- */
@@ -1166,10 +1161,32 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 /* 頂端列是淺灰色，目前的分頁是白色並蓋住下面的分隔線，和編輯區連成一塊。 */
 .tab-bar {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   align-items: stretch;
   min-width: 0;
   margin-bottom: -1px;
+}
+/* 頂端列中間的「● 專案 · 文件名稱」（app/topbar-title.ts）：佔用分頁右邊剩下的空間，
+   位置由程式算到盡量在視窗正中間；不擋滑鼠（自訂標題列時一樣可以拖曳視窗）。 */
+.topbar-title {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+.topbar-title.hidden .topbar-title-inner, .topbar-title.empty .topbar-title-inner { visibility: hidden; }
+.topbar-title-inner { display: inline-flex; gap: 7px; align-items: center; min-width: 0; max-width: 100%; white-space: nowrap; }
+.topbar-project { flex: 0 1 auto; min-width: 3em; overflow: hidden; color: var(--fg); font-weight: 600; text-overflow: ellipsis; }
+.topbar-sep { flex: none; color: var(--subtle); }
+.topbar-doc { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.topbar-title-inner > [hidden] { display: none; }
+/* 手機或很窄的視窗：頂端列留給分頁。 */
+@media (max-width: 640px) {
+  .topbar-title { display: none; }
 }
 .tabs { display: flex; flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
@@ -1177,7 +1194,7 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .tabs.more-left { mask-image: linear-gradient(to right, transparent, #000 32px); }
 .tabs.more-right { mask-image: linear-gradient(to left, transparent, #000 32px); }
 .tabs.more-left.more-right { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
-.tab-more { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 2px; color: var(--muted); }
+.tab-more { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 2px; color: var(--chrome-icon); }
 .tab-more:hover { color: var(--fg); }
 .tab-more-menu { max-width: min(420px, 90vw); }
 .tab-more-menu span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1265,7 +1282,7 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .tab.pinned .tab-close { visibility: visible !important; color: var(--muted); }
 .tab.pinned .tab-close .icon { transform: rotate(45deg); }
 .tab.pinned .tab-name { max-width: 12em; }
-.tab-new { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 4px; color: var(--muted); }
+.tab-new { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 4px; color: var(--chrome-icon); }
 .tab-new:hover { color: var(--fg); }
 .tab-bar.blank:not(.has-items) > * { visibility: hidden; }
 /* 工作項目、Wiki 頁面等的分頁：排在文件後面（中間一條分隔線），圖示標出來源；預覽分頁的名稱斜體。 */
@@ -2069,7 +2086,7 @@ button.git-info:disabled { cursor: default; }
 /* 篩選列的下拉選單（人、狀態、類型、專案、區域）：按鈕和下拉選單同樣子，打開是勾選清單。 */
 .workitems-filters .multi-select { display: block; text-align: start; }
 .workitems-filters .multi-select.chosen { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
-.multi-select-pop { position: fixed; inset: auto; display: none; min-width: 220px; max-width: min(380px, calc(100vw - 16px)); margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px); background: var(--surface-raised); color: var(--fg); box-shadow: var(--shadow); }
+.multi-select-pop { position: fixed; inset: auto; display: none; min-width: 220px; max-width: min(380px, calc(100vw - 16px)); margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--menu-border); border-radius: calc(var(--radius) + 2px); background: var(--surface-raised); color: var(--fg); box-shadow: var(--menu-shadow); }
 .multi-select-pop:popover-open { display: flex; flex-direction: column; }
 .multi-select-caption { flex: none; padding: 8px 12px 2px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .multi-select-search { flex: none; margin: 6px 6px 2px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font: 12.5px var(--font-ui); }
@@ -3268,6 +3285,94 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .activity-wiki.dropping { flex: 1 1 auto; }
 .activity-wiki.dropping .activity-wiki-drop:last-child { flex: 1 1 auto; min-height: 34px; max-height: 240px; }
 .settings-row.settings-row-block { flex-direction: column; align-items: stretch; gap: 10px; }
+/* ---- 設定 → 外觀 → 配色 ---- */
+/* 配色風格：附小縮圖的卡片。縮圖加了 data-palette，用那個配色自己的顏色畫（palettes.css）。 */
+.palette-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.palette-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.palette-card:hover { border-color: var(--border-strong); }
+.palette-card[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.palette-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.palette-card-name { margin-top: 5px; font-size: 13px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.palette-card[aria-checked="true"] .palette-card-name { color: var(--accent); }
+.palette-card-hint {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.palette-thumb {
+  display: grid;
+  grid-template-columns: 18% 1fr;
+  grid-template-rows: 13px 1fr;
+  height: 66px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.pt-top { display: flex; grid-column: 1 / -1; align-items: flex-end; padding-left: 18%; border-bottom: 1px solid var(--topbar-border); background: var(--topbar-bg); }
+.pt-tab { width: 32%; height: 10px; margin-bottom: -1px; background: var(--bg); box-shadow: inset 0 2px 0 var(--accent); }
+.pt-dot { width: 9px; height: 3px; margin: auto 6px auto auto; border-radius: 2px; background: var(--chrome-icon); }
+.pt-side { border-right: 1px solid var(--border); background: var(--surface); }
+.pt-body { display: flex; flex-direction: column; gap: 4px; padding: 7px 8px 6px; background: var(--bg); }
+.pt-line { width: 86%; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 28%, transparent); }
+.pt-line.pt-heading { width: 52%; height: 4px; background: var(--fg); }
+.pt-line.pt-short { width: 60%; }
+.pt-button { width: 28px; height: 8px; margin-top: auto; border-radius: 3px; background: var(--accent); }
+/* 強調色：「配色預設」＋七種顏色＋自訂。 */
+.accent-swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.accent-swatch {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--swatch, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 14%, transparent);
+}
+.accent-swatch:hover { transform: scale(1.08); }
+.accent-swatch[aria-checked="true"], .accent-custom.checked { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fg); }
+.accent-swatch:focus-visible, .accent-custom:focus-within { outline: 2px solid var(--accent); outline-offset: 4px; }
+/* 「配色預設」：圓點是目前配色自己的強調色，旁邊寫字，看得出是「不另外指定」。 */
+.accent-swatch.accent-auto {
+  display: inline-flex;
+  gap: 6px;
+  width: auto;
+  padding: 0 10px 0 5px;
+  border-radius: 13px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+}
+.accent-auto .accent-auto-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); }
+.accent-auto:hover { transform: none; background: var(--surface); }
+.accent-custom { overflow: hidden; border: 1px dashed var(--border-strong); box-shadow: none; }
+.accent-custom.checked { border-style: solid; border-color: transparent; color: var(--accent-fg); }
+.accent-custom input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.accent-custom .icon { width: 14px; height: 14px; pointer-events: none; }
 .activity-settings { display: flex; flex-direction: column; gap: 2px; }
 .activity-setting { display: flex; gap: 8px; align-items: center; min-height: 34px; padding: 0 4px; border-radius: 6px; }
 .activity-setting:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }

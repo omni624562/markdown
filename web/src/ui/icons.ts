@@ -156,6 +156,7 @@ import {
   Keyboard,
   ArrowLeftRight,
   type IconNode,
+  Pipette,
 } from "lucide";
 
 /**
@@ -200,6 +201,7 @@ const ICONS: Record<string, IconNode> = {
   "arrow-left": ArrowLeft,
   server: Server,
   palette: Palette,
+  pipette: Pipette,
   "pen-line": PenLine,
   "sliders-horizontal": SlidersHorizontal,
   "rotate-ccw": RotateCcw,

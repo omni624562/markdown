@@ -215,7 +215,14 @@ export function initSettingsUi(): void {
   app.settings.subscribe(applySettings);
   settingsDialog = new SettingsDialog(
     app.settings,
-    { get: () => app.themePref, set: app.setTheme },
+    {
+      theme: () => app.themePref,
+      setTheme: app.setTheme,
+      palette: () => app.palette,
+      setPalette: app.setPalette,
+      accent: () => app.accent,
+      setAccent: app.setAccent,
+    },
     desktop && app.ai ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => app.ai!.copyRegistration(tool) } : null,
     app.updater
       ? {

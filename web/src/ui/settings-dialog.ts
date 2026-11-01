@@ -12,8 +12,20 @@ import { type LangPref, langPref, langPrefs, setLangPref, t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
 import { COMMON_KINDS, isCustomKind, kindColor, kindKey } from "../work-item-colors.ts";
+import { ACCENTS, DEFAULT_PALETTE, PALETTES, type PaletteId, accentColors, parseAccent } from "../palette.ts";
 
 type ThemePref = "system" | "light" | "dark";
+
+/** 「外觀 → 配色」：明暗、配色風格與強調色（和主題一樣存在這台電腦的瀏覽器資料裡，不在設定檔）。 */
+export interface LookHooks {
+  theme(): ThemePref;
+  setTheme(pref: ThemePref): void;
+  palette(): PaletteId;
+  setPalette(id: PaletteId): void;
+  /** 空字串（配色預設）、預設顏色的名稱或自訂的 #rrggbb。 */
+  accent(): string;
+  setAccent(value: string): void;
+}
 
 /** 桌面版提供：偵測已安裝的 AI 工具、取得手動註冊 MCP 伺服器的指令。 */
 export interface AiHooks {
@@ -233,7 +245,7 @@ export class SettingsDialog {
 
   constructor(
     store: SettingsStore,
-    theme: { get(): ThemePref; set(t: ThemePref): void },
+    lookHooks: LookHooks,
     ai: AiHooks | null = null,
     update: UpdateHooks | null = null,
     github: GitHubHooks | null = null,
@@ -295,21 +307,6 @@ export class SettingsDialog {
       });
       return sel;
     });
-    // 外觀：主題沿用標題列主題選單的同一份狀態。
-    const themeRow = this.#row("theme", t("主題"), undefined, () => {
-      const sel = document.createElement("select");
-      sel.id = "setting-theme";
-      for (const [v, l] of [
-        ["system", t("跟隨系統")],
-        ["light", t("淺色")],
-        ["dark", t("深色")],
-      ] as const) {
-        sel.append(new Option(l, v, false, theme.get() === v));
-      }
-      sel.addEventListener("change", () => theme.set(sel.value as ThemePref));
-      d.addEventListener("toggle", () => (sel.value = theme.get()));
-      return sel;
-    });
     const reset = document.createElement("button");
     reset.type = "button";
     reset.className = "btn";
@@ -318,9 +315,9 @@ export class SettingsDialog {
       store.reset();
       this.#sync();
     });
-    const general = this.#section(t("一般"), "settings", t("語言、主題與存檔"));
+    const general = this.#section(t("一般"), "settings", t("語言與存檔"));
     general.append(
-      ...this.#group(t("介面"), [langRow, themeRow]),
+      ...this.#group(t("介面"), [langRow]),
       ...this.#group(t("存檔"), this.#rows([{ key: "autoSave", label: t("自動存檔"), hint: t("已經存過的檔案，停止打字後自動存回磁碟") }])),
       // 整合功能：關掉的功能不顯示，原生端也拒絕它的指令。切換後重新載入介面（見 main.ts）。
       ...(desktop
@@ -333,11 +330,12 @@ export class SettingsDialog {
             ]),
           )
         : []),
-      ...this.#group(t("重設"), [this.#row("reset", t("所有設定"), t("恢復成預設值；主題、版面配置不受影響"), () => reset)]),
+      ...this.#group(t("重設"), [this.#row("reset", t("所有設定"), t("恢復成預設值；明暗、配色與版面配置不受影響"), () => reset)]),
     );
     body.append(general);
 
-    const look = this.#section(t("外觀"), "palette", t("字型、版面與文件內容的顯示方式"));
+    const look = this.#section(t("外觀"), "palette", t("配色、字型、版面與文件內容的顯示方式"));
+    look.append(...this.#paletteGroup(lookHooks, d));
     for (const g of LOOK_GROUPS) look.append(...this.#group(g.title, this.#rows(g.fields)));
     if (activityHooks) look.append(...this.#activityGroup(activityHooks));
     body.append(look);
@@ -740,6 +738,167 @@ export class SettingsDialog {
   }
 
   /** 左側圖示列：可以上下移動、隱藏面板圖示，新增或移除指令按鈕。 */
+  /** 外觀 → 配色：配色風格（附小縮圖的卡片）、強調色、明暗。挑了馬上套用。 */
+  #paletteGroup(look: LookHooks, d: HTMLDialogElement): HTMLElement[] {
+    // ---- 配色風格：每張卡片的縮圖用那個配色自己的顏色畫（data-palette，見 palettes.css）。
+    const cards = document.createElement("div");
+    cards.className = "palette-cards";
+    cards.role = "radiogroup";
+    cards.id = "setting-palette";
+    cards.setAttribute("aria-label", t("配色風格"));
+    const part = (cls: string, ...children: HTMLElement[]) => {
+      const el = document.createElement("span");
+      el.className = cls;
+      el.append(...children);
+      return el;
+    };
+    const cardEls = PALETTES.map((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.role = "radio";
+      b.className = "palette-card";
+      b.dataset.id = p.id;
+      b.title = p.hint;
+      const thumb = part(
+        "palette-thumb",
+        part("pt-top", part("pt-tab"), part("pt-dot")),
+        part("pt-side"),
+        part("pt-body", part("pt-line pt-heading"), part("pt-line"), part("pt-line pt-short"), part("pt-button")),
+      );
+      thumb.dataset.palette = p.id;
+      thumb.setAttribute("aria-hidden", "true");
+      const name = part("palette-card-name");
+      name.textContent = p.label;
+      const hint = part("palette-card-hint");
+      hint.textContent = p.hint;
+      b.append(thumb, name, hint);
+      b.addEventListener("click", () => {
+        look.setPalette(p.id);
+        render();
+      });
+      return b;
+    });
+    cards.append(...cardEls);
+    // 方向鍵在卡片間移動並直接套用（和其他單選按鈕一樣）。
+    cards.addEventListener("keydown", (e) => {
+      const keys: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+      const step = keys[e.key];
+      if (!step) return;
+      e.preventDefault();
+      const i = cardEls.indexOf(document.activeElement as HTMLButtonElement);
+      const next = cardEls[(Math.max(i, 0) + step + cardEls.length) % cardEls.length];
+      next.click();
+      next.focus();
+    });
+    const paletteRow = this.#row("palette", t("配色風格"), t("介面的底色、邊框與強調色；選了馬上套用"), () => cards);
+    paletteRow.classList.add("settings-row-block");
+
+    // ---- 強調色：配色預設＋七種顏色＋自訂。
+    const swatches = document.createElement("div");
+    swatches.className = "accent-swatches";
+    swatches.role = "radiogroup";
+    swatches.id = "setting-accent";
+    swatches.setAttribute("aria-label", t("強調色"));
+    const swatch = (value: string, label: string, color: string | null) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.role = "radio";
+      b.className = "accent-swatch";
+      b.dataset.value = value;
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      if (color) b.style.setProperty("--swatch", color);
+      b.addEventListener("click", () => {
+        look.setAccent(value);
+        render();
+      });
+      return b;
+    };
+    // 「配色預設」：用目前配色風格自己的強調色（顏色跟著風格改）。
+    const auto = swatch("", t("配色預設"), null);
+    auto.classList.add("accent-auto");
+    const autoDot = document.createElement("span");
+    autoDot.className = "accent-auto-dot";
+    auto.append(autoDot, t("配色預設"));
+    const presets = ACCENTS.map((a) => swatch(a.id, a.label, `light-dark(${a.light}, ${a.dark})`));
+    // 自訂：瀏覽器的顏色選擇器。太淺或太深時自動調整，按鈕上的字也自動選白色或深色。
+    const custom = document.createElement("label");
+    custom.className = "accent-swatch accent-custom";
+    custom.title = t("自訂顏色…");
+    const picker = document.createElement("input");
+    picker.type = "color";
+    picker.setAttribute("aria-label", t("自訂顏色…"));
+    picker.addEventListener("input", () => {
+      look.setAccent(parseAccent(picker.value));
+      render();
+    });
+    custom.append(picker, icon("pipette"));
+    swatches.append(auto, ...presets, custom);
+    const accentRow = this.#row("accent", t("強調色"), t("按鈕、連結、選取範圍、目前的分頁與焦點框；自訂顏色時，按鈕上的字會自動選看得清楚的顏色"), () => swatches);
+
+    // ---- 明暗：和 ⋯ →「主題」同一份狀態。
+    const themeSelect = document.createElement("select");
+    themeSelect.id = "setting-theme";
+    for (const [v, l] of [
+      ["system", t("跟隨系統")],
+      ["light", t("淺色")],
+      ["dark", t("深色")],
+    ] as const) {
+      themeSelect.append(new Option(l, v));
+    }
+    themeSelect.addEventListener("change", () => {
+      look.setTheme(themeSelect.value as ThemePref);
+      render();
+    });
+    const themeRow = this.#row("theme", t("明暗"), t("跟隨系統、淺色或深色；也可以在 ⋯ →「主題」切換"), () => themeSelect);
+    const themeHint = themeRow.querySelector("small")!;
+
+    // ---- 一鍵還原：森林綠、配色預設的強調色（明暗不變）。
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "btn";
+    resetBtn.append(icon("rotate-ccw"), t("恢復預設"));
+    resetBtn.addEventListener("click", () => {
+      look.setPalette(DEFAULT_PALETTE);
+      look.setAccent("");
+      render();
+    });
+    const resetRow = this.#row("palette-reset", t("恢復預設配色"), t("森林綠、配色預設的強調色"), () => resetBtn);
+
+    const render = () => {
+      const current = look.palette();
+      const info = PALETTES.find((p) => p.id === current);
+      for (const b of cardEls) {
+        const on = b.dataset.id === current;
+        b.setAttribute("aria-checked", String(on));
+        b.tabIndex = on ? 0 : -1;
+      }
+      // 圓點用目前配色自己的強調色（不受自訂強調色影響）。
+      autoDot.dataset.palette = current;
+      const accent = look.accent();
+      const isCustom = accent.startsWith("#");
+      for (const b of [auto, ...presets]) {
+        const on = b.dataset.value === accent;
+        b.setAttribute("aria-checked", String(on));
+        b.tabIndex = on || (isCustom && b === auto) ? 0 : -1;
+      }
+      custom.classList.toggle("checked", isCustom);
+      custom.style.setProperty("--swatch", isCustom ? accentColors(accent)!.light : "transparent");
+      if (isCustom && picker.value !== accent) picker.value = accent;
+      // 夜森林固定是深色：明暗的選項沒有作用，先停用並說明。
+      themeSelect.value = look.theme();
+      themeSelect.disabled = !!info?.darkOnly;
+      themeHint.textContent = info?.darkOnly
+        ? t("「{name}」固定是深色；換成其他配色後，這個選項才有作用", { name: info.label })
+        : t("跟隨系統、淺色或深色；也可以在 ⋯ →「主題」切換");
+      resetBtn.disabled = current === DEFAULT_PALETTE && !accent;
+    };
+    render();
+    // 從 ⋯ 選單或指令面板換了配色、明暗：打開設定時更新。
+    d.addEventListener("toggle", render);
+    return this.#group(t("配色"), [paletteRow, accentRow, themeRow, resetRow]);
+  }
+
   #activityGroup(h: ActivityHooks): HTMLElement[] {
     const list = document.createElement("div");
     list.className = "activity-settings";

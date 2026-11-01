@@ -13,6 +13,7 @@ import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 import type { MenuEntry } from "./menu.ts";
 import { toast } from "./toast.ts";
+import { isDark } from "../palette.ts";
 
 export type TermProgram = "shell" | "claude" | "codex";
 
@@ -496,9 +497,7 @@ export class TerminalPanel {
       probe.style.color = `var(${name})`;
       return getComputedStyle(probe).color || undefined;
     };
-    const dark = document.documentElement.dataset.theme
-      ? document.documentElement.dataset.theme === "dark"
-      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const dark = isDark();
     const theme = {
       background: color("--surface"),
       foreground: color("--fg"),

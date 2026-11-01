@@ -2,16 +2,13 @@ import type { PreviewPlugin, Queryable } from "../preview.ts";
 import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 import { blockRemoteInMermaid, blockRemoteInSvg } from "../remote-images.ts";
+import { isDark } from "../palette.ts";
 
 type Mermaid = typeof import("mermaid").default;
 
 let mermaidPromise: Promise<Mermaid> | null = null;
 let initializedTheme = "";
 
-function isDark(): boolean {
-  const theme = document.documentElement.dataset.theme;
-  return theme ? theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-}
 
 /** 第一次遇到流程圖時才下載 Mermaid（檔案很大）。 */
 async function loadMermaid(): Promise<Mermaid> {
