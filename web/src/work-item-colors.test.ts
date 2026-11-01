@@ -46,7 +46,7 @@ test("深色主題：太暗的顏色提高亮度，夠亮的不變", () => {
 
 test("產生的 CSS：預設類型都有規則，自訂的蓋過預設，名稱跳脫", () => {
   const css = kindColorCss({ Bug: "#00aa00", 'a"b': "#123456" });
-  assert.match(css, /:root \[data-wi-kind="task"\] \{ --kind: light-dark\(#a37c00, #f2cb1d\); \}/);
+  assert.match(css, /:root \[data-wi-kind="task"\] \{ --kind: light-dark\(#8a6a00, #f2cb1d\); \}/);
   assert.match(css, /\[data-wi-kind="bug"\] \{ --kind: light-dark\(#00aa00, #[0-9a-f]{6}\); \}/);
   assert.doesNotMatch(css, /#cc293d/);
   assert.match(css, /\[data-wi-kind="a\\"b"\]/);
