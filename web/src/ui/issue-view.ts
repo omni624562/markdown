@@ -1,13 +1,13 @@
 /**
  * 工作項目、GitHub issue 開在主要區域的唯讀檢視（蓋在編輯區與預覽上面，或並排在右邊）：
- * 上方是位置、標題與動作（最常用的一個用文字按鈕，其他用圖示，少用的收在「更多動作」），
+ * 上方是位置、標題與動作（最常用的一個用文字按鈕，其他用圖示，少用的放在分頁的右鍵選單），
  * 內容由預覽同一套流程顯示。Ctrl+F 在內容裡找字，Esc 回到文件。
  * 每一項是分頁列上的一個分頁（app/item-tabs.ts）；這個檢視一次顯示一個，切換分頁時換上那個分頁的狀態。
  */
 import { formatKeys } from "../commands.ts";
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
-import { setupMenu } from "./menu.ts";
+import type { MenuEntry } from "./menu.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
@@ -180,6 +180,7 @@ export class IssueView {
   #insertBtn: HTMLButtonElement;
   #editBtn: HTMLButtonElement;
   #historyBtn: HTMLButtonElement;
+  #actions: MenuEntry[] = [];
   #matches: FindMatch[] = [];
   #current = 0;
 
@@ -223,9 +224,9 @@ export class IssueView {
     this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
     this.#historyBtn = iconButton(t("修改記錄：誰、什麼時候改了這一頁，改了什麼"), "history", () => this.#source?.history?.());
     this.#historyBtn.hidden = true;
-    const more = iconButton(t("更多動作"), "ellipsis", () => {});
-    more.id = "issue-more";
-    setupMenu(more, null, [
+    // 新增子頁面、放到左側圖示列、複製成 Markdown、刪除、保留離線：放在分頁的右鍵選單（標頭不再放「⋯」，
+    // 免得和視窗右上角的「⋯」選單搞混）。
+    this.#actions = [
       {
         label: t("新增子頁面"),
         icon: "file-plus",
@@ -261,7 +262,7 @@ export class IssueView {
           if (this.#source && this.#markdown) this.#h.offline?.toggle(this.#source, this.#markdown);
         },
       },
-    ]);
+    ];
     const sep = document.createElement("span");
     sep.className = "issue-actions-sep";
     sep.setAttribute("aria-hidden", "true");
@@ -270,7 +271,6 @@ export class IssueView {
       this.#insertBtn,
       this.#historyBtn,
       iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
-      more,
       sep,
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
@@ -344,6 +344,16 @@ export class IssueView {
     return !this.#pane.hidden;
   }
 
+  /** 顯示中的內容（沒有開著時是 null），分頁的右鍵選單用來判斷按的是不是這一個。 */
+  get shownKey(): string | null {
+    return this.isOpen ? (this.#source?.key ?? null) : null;
+  }
+
+  /** 對顯示中內容的動作（新增子頁面、放到左側圖示列、複製成 Markdown、刪除、保留離線），放在分頁的右鍵選單。 */
+  get actions(): readonly MenuEntry[] {
+    return this.#actions;
+  }
+
   /** 焦點在這個檢視裡（並排顯示時，用來分辨 Ctrl+F 要在哪邊找）。 */
   get hasFocus(): boolean {
     return this.#pane.contains(document.activeElement);
@@ -407,7 +417,7 @@ export class IssueView {
     this.#forwardBtn.title = label(t("前往下一頁"), this.#forward, "Alt-→");
   }
 
-  /** 有沒有「保留離線」；不能保留的回傳 null（「更多動作」裡不列出）。 */
+  /** 有沒有「保留離線」；不能保留的回傳 null（分頁的右鍵選單裡不列出）。 */
   #kept(): boolean | null {
     return this.#source ? (this.#h.offline?.kept(this.#source) ?? null) : null;
   }
