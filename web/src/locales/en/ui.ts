@@ -584,7 +584,7 @@ export const ui: Record<string, Translation> = {
   "・": " · ",
   "沒勾的頁面不會出現在樹狀目錄；一頁都沒勾時全部顯示。搜尋時還是會找全部頁面，每個 Wiki 各自記住。": "Unchecked pages are hidden from the tree; with nothing checked, everything shows. Search still finds all pages. Remembered per wiki.",
   "刪除這一頁…": "Delete This Page…",
-  "在目前的文件插入連到這裡的連結": "Insert a link to this into the current document",
+  "插入連結到目前的文件": "Insert Link in Current Document",
   "新增子頁面": "New Subpage",
   "新增頁面": "New Page",
   "在這一頁底下新增一頁，建立後直接編輯": "Add a page under this one and start editing it",
