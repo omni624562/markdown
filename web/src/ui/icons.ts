@@ -150,6 +150,9 @@ import {
   SquareDashedText,
   User,
   LoaderCircle,
+  Unlink,
+  ImageOff,
+  FileX,
   type IconNode,
 } from "lucide";
 
@@ -220,6 +223,9 @@ const ICONS: Record<string, IconNode> = {
   "link-2": Link2,
   user: User,
   loader: LoaderCircle,
+  unlink: Unlink,
+  "image-off": ImageOff,
+  "file-x": FileX,
   "file-input": FileInput,
   "file-down": FileDown,
   "maximize-2": Maximize2,

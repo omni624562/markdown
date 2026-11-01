@@ -63,7 +63,7 @@ function openDocsForIndex(): OpenDoc[] {
 }
 
 /** 資料夾（本機）中的所有文件加上已開啟的分頁；網頁版與遠端資料夾只有已開啟的分頁。 */
-async function indexedDocs(): Promise<IndexedDoc[]> {
+export async function indexedDocs(): Promise<IndexedDoc[]> {
   const root = desktop && app.workspaceRoot && !isRemote(app.workspaceRoot.path) ? app.workspaceRoot.path : null;
   if (app.indexStale || !root) {
     app.indexStale = false;
@@ -76,7 +76,7 @@ async function indexedDocs(): Promise<IndexedDoc[]> {
   return docIndex.docs(openDocsForIndex());
 }
 
-function indexScope(): string {
+export function indexScope(): string {
   if (desktop && app.workspaceRoot && !isRemote(app.workspaceRoot.path)) return "folder";
   return "tabs";
 }
@@ -149,7 +149,7 @@ function tabOfIndexed(doc: IndexedDoc): Doc | undefined {
 }
 
 /** 打開索引中的文件並跳到某一行。 */
-function openIndexed(doc: IndexedDoc, line: number): void {
+export function openIndexed(doc: IndexedDoc, line: number): void {
   const tab = tabOfIndexed(doc);
   if (tab) {
     if (tab !== app.active) app.activate(tab);
