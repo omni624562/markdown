@@ -5,13 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>oMarker 終端機</title>
-    <script>
-      // 在畫面繪製前套用主題（和主畫面相同），避免深色模式閃白。
-      try {
-        const t = localStorage.getItem("md-editor:theme");
-        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-      } catch {}
-    </script>
+    <!-- 在畫面繪製前套用主題與配色（和主畫面共用同一個檔案），避免深色模式閃白。 -->
+    <script src="theme-init.js"></script>
   </head>
   <body>
     <section class="terminal-panel" id="terminal-panel" aria-label="終端機"></section>

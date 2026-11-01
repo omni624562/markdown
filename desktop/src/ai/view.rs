@@ -109,11 +109,17 @@ pub enum Request {
         claude: bool,
         codex: bool,
     },
-    /// 配色與字級跟著主畫面。
+    /// 明暗、配色、強調色與字級跟著主畫面。
     #[serde(rename_all = "camelCase")]
     Style {
         theme: Option<String>,
         font_size: f64,
+        /// 配色風格的名稱（例如 `forest`）；舊版的主畫面不會送。
+        #[serde(default)]
+        palette: Option<String>,
+        /// 強調色：預設顏色的名稱（例如 `blue`）或自訂的 `#rrggbb`。
+        #[serde(default)]
+        accent: Option<String>,
     },
     Focus,
 }
@@ -131,17 +137,34 @@ impl Request {
                     preferred,
                 }
             }
-            Request::Style { theme, font_size } => Request::Style {
+            Request::Style {
+                theme,
+                font_size,
+                palette,
+                accent,
+            } => Request::Style {
                 theme: theme.filter(|t| t == "light" || t == "dark"),
                 font_size: if font_size.is_finite() {
                     font_size.clamp(8.0, 40.0)
                 } else {
                     15.0
                 },
+                palette: palette.filter(|p| is_name(p)),
+                accent: accent.filter(|a| is_name(a) || is_hex_color(a)),
             },
             other => other,
         })
     }
+}
+
+/// 配色、強調色的名稱：只有小寫英文字母（前端寫進 `data-palette`，不能夾帶其他字元）。
+fn is_name(s: &str) -> bool {
+    (1..=16).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_lowercase())
+}
+
+/// `#rrggbb`。
+fn is_hex_color(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s.bytes().skip(1).all(|b| b.is_ascii_hexdigit())
 }
 
 /// 和前端的 `sanitizeForTerminal` 相同：統一換行，去掉其他控制字元（含 ESC），並限制長度。
@@ -321,6 +344,8 @@ mod tests {
         let style = Request::Style {
             theme: Some("<script>".into()),
             font_size: f64::NAN,
+            palette: Some("forest\"]".into()),
+            accent: Some("red;}".into()),
         }
         .checked()
         .unwrap();
@@ -328,9 +353,18 @@ mod tests {
             style,
             Request::Style {
                 theme: None,
-                font_size: 15.0
+                font_size: 15.0,
+                palette: None,
+                accent: None,
             }
         );
+        let ok = Request::Style {
+            theme: Some("dark".into()),
+            font_size: 14.0,
+            palette: Some("matcha".into()),
+            accent: Some("#2E7d4f".into()),
+        };
+        assert_eq!(ok.clone().checked().unwrap(), ok);
     }
 
     #[test]
@@ -338,6 +372,18 @@ mod tests {
         let r: Request =
             serde_json::from_str(r#"{"kind":"sendToAi","text":"hi","preferred":"codex"}"#).unwrap();
         assert_eq!(r, send_to_ai("hi", Program::Codex));
+        // 舊版的主畫面不送配色。
+        let r: Request =
+            serde_json::from_str(r#"{"kind":"style","theme":null,"fontSize":15}"#).unwrap();
+        assert_eq!(
+            r,
+            Request::Style {
+                theme: None,
+                font_size: 15.0,
+                palette: None,
+                accent: None,
+            }
+        );
         // 主畫面不能送「寫入終端機」這種要求。
         assert!(
             serde_json::from_str::<Request>(r#"{"kind":"write","id":1,"data":"ls\r"}"#).is_err()

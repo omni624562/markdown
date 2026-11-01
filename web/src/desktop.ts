@@ -156,7 +156,7 @@ export type TermRequest =
   | { kind: "sendToAi"; text: string; preferred: TermProgram }
   | { kind: "setupToken" }
   | { kind: "available"; claude: boolean; codex: boolean }
-  | { kind: "style"; theme: string | null; fontSize: number }
+  | { kind: "style"; theme: string | null; fontSize: number; palette: string | null; accent: string | null }
   | { kind: "focus" };
 
 /** 終端機送給主畫面的通知（Rust 的 `view::Notice`）。 */

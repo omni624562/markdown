@@ -7,7 +7,9 @@
 // 主題的 color-scheme（data-theme）寫在 document.css，和主畫面一樣先載入。
 import "../../crates/md-core/src/document.css";
 import "./styles.css";
+import "./palettes.css";
 import { currentLang, loadLocale, t } from "./i18n.ts";
+import { DEFAULT_PALETTE, applyPalette, isPalette, parseAccent } from "./palette.ts";
 import type { MenuEntry } from "./ui/menu.ts";
 import type { AiCommand } from "./ui/command-consent.ts";
 import type { TerminalPanel, TermProgram } from "./ui/terminal-panel.ts";
@@ -18,7 +20,7 @@ type Request =
   | { kind: "sendToAi"; text: string; preferred: TermProgram }
   | { kind: "setupToken" }
   | { kind: "available"; claude: boolean; codex: boolean }
-  | { kind: "style"; theme: string | null; fontSize: number }
+  | { kind: "style"; theme: string | null; fontSize: number; palette?: string | null; accent?: string | null }
   | { kind: "focus" };
 
 type Notice = { kind: "show" } | { kind: "hide" } | { kind: "command"; id: string } | { kind: "focus" };
@@ -119,6 +121,7 @@ function request(panel: TerminalPanel, r: Request): void {
       const root = document.documentElement;
       if (r.theme) root.dataset.theme = r.theme;
       else delete root.dataset.theme;
+      applyPalette(root, isPalette(r.palette) ? r.palette : DEFAULT_PALETTE, parseAccent(r.accent));
       root.style.setProperty("--editor-font-size", `${r.fontSize}px`);
       panel.applyTheme();
       panel.applyFont();

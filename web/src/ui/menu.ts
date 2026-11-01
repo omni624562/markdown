@@ -38,6 +38,16 @@ function navigate(menu: HTMLElement, e: KeyboardEvent): boolean {
   return true;
 }
 
+/**
+ * 焦點跟著滑鼠（和 Windows 的選單一樣）：開啟時鍵盤焦點在第一項，滑鼠移到別項時焦點也移過去，
+ * 畫面上只會有一項反白，之後改用方向鍵也從滑鼠所在的那一項接著走。
+ */
+function focusOnHover(item: HTMLElement): void {
+  item.addEventListener("pointermove", () => {
+    if (document.activeElement !== item) item.focus({ preventScroll: true });
+  });
+}
+
 function newMenu(): HTMLDivElement {
   const menu = document.createElement("div");
   menu.className = "menu";
@@ -138,6 +148,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
           e.stopPropagation();
         });
         menu.append(sub);
+        focusOnHover(item);
         return [item];
       } else {
         if (!(entry.when?.() ?? true)) return [];
@@ -154,6 +165,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
       }
       // 滑鼠移到其他項目時收起已展開的子選單。
       item.addEventListener("pointerenter", closeSub);
+      focusOnHover(item);
       return [item];
     });
     // 隱藏的項目可能讓分隔線相鄰或出現在頭尾，一併拿掉。

@@ -8,6 +8,7 @@
 import type { Desktop, TermNotice, TermProgram } from "./desktop.ts";
 import { t } from "./i18n.ts";
 import * as storage from "./storage.ts";
+import { loadAccent } from "./palette.ts";
 
 const HEIGHT = { min: 120, default: 280 };
 
@@ -100,7 +101,8 @@ export class TerminalProxy {
   applyTheme(): void {
     const root = document.documentElement;
     const fontSize = Number.parseFloat(getComputedStyle(root).getPropertyValue("--editor-font-size")) || 15;
-    this.#forward({ kind: "style", theme: root.dataset.theme ?? null, fontSize });
+    // 配色與強調色也跟著主畫面（終端機的背景、文字、游標用同一組顏色）。
+    this.#forward({ kind: "style", theme: root.dataset.theme ?? null, fontSize, palette: root.dataset.palette ?? null, accent: loadAccent() || null });
   }
 
   applyFont(): void {

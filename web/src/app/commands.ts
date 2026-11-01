@@ -10,6 +10,7 @@ import { t } from "../i18n.ts";
 import { KINDS, type DocKind } from "../kinds.ts";
 import { saveDraft } from "../session.ts";
 import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
+import { PALETTES } from "../palette.ts";
 import { Palette } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
 import { REPO_URL } from "../ui/settings-dialog.ts";
@@ -838,6 +839,23 @@ export function initCommands(): void {
         group: t("檢視"),
         icon: { system: "monitor", light: "sun", dark: "moon" }[pref],
         run: () => app.setTheme(pref),
+      }),
+    ),
+    {
+      id: "choose-palette",
+      title: t("配色…"),
+      group: t("檢視"),
+      icon: "palette",
+      run: () => settingsDialog.open(t("外觀")),
+    },
+    ...PALETTES.map(
+      (p): Command => ({
+        id: `palette-${p.id}`,
+        title: t("配色：{name}", { name: p.label }),
+        group: t("檢視"),
+        icon: "palette",
+        when: () => app.palette !== p.id,
+        run: () => app.setPalette(p.id),
       }),
     ),
     ...(Object.keys(KINDS) as DocKind[]).map(
