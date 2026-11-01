@@ -3,14 +3,20 @@
  * 可以搜尋或輸入編號、用篩選列縮小範圍；點一下在主要區域開啟內容。
  */
 import { t } from "../i18n.ts";
+import { stateTone } from "../issue-doc.ts";
+import { kindKey } from "../work-item-colors.ts";
 import { icon } from "./icons.ts";
 
 export interface IssueSummary {
   id: number;
   title: string;
-  /** 標題上方的小字，例如「Bug 123・Active・10/20」。 */
+  /** 標題上方的小字，例如「Bug 123・10/20」。 */
   meta: string;
   webUrl: string;
+  /** 工作項目的類型：清單左邊的色條用類型的顏色（設定裡可以改）。 */
+  kind?: string;
+  /** 狀態：顯示在小字右邊，前面的圓點顏色依狀態（新的、進行中、已解決、完成、移除）。 */
+  state?: string;
 }
 
 /** 清單的一組（分組時有標題）。 */
@@ -310,12 +316,22 @@ export class IssuesPanel<T extends IssueSummary> {
     b.title = t("#{id}：{title}", { id: item.id, title: item.title });
     const top = document.createElement("span");
     top.className = "workitem-meta";
-    top.textContent = item.meta;
+    top.append(Object.assign(document.createElement("span"), { className: "workitem-meta-text", textContent: item.meta }));
+    if (item.state) {
+      const state = document.createElement("span");
+      state.className = "workitem-state";
+      const dot = document.createElement("span");
+      dot.className = `ado-state-dot ${stateTone(item.state)}`;
+      dot.setAttribute("aria-hidden", "true");
+      state.append(dot, item.state);
+      top.append(state);
+    }
     const title = document.createElement("span");
     title.className = "workitem-title";
     title.textContent = item.title;
     b.append(top, title);
     b.dataset.id = String(item.id);
+    if (item.kind) b.dataset.wiKind = kindKey(item.kind);
     if (item.id === this.#current) b.setAttribute("aria-current", "true");
     this.#rowItems.set(b, item);
     this.#applyMark(b, item);
@@ -347,7 +363,7 @@ export class IssuesPanel<T extends IssueSummary> {
     dot.title = mark.label;
     dot.setAttribute("role", "img");
     dot.setAttribute("aria-label", mark.label);
-    b.querySelector(".workitem-meta")?.prepend(dot);
+    b.querySelector(".workitem-meta-text")?.prepend(dot);
   }
 
   /** 讀過清單、而且沒有在搜尋（顯示的是篩選列的清單）。 */
