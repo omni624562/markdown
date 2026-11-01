@@ -795,11 +795,16 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .palette li .icon { color: var(--muted); }
 .palette li[aria-selected="true"] { background: var(--accent-soft); }
 .palette li[aria-selected="true"] .icon { color: var(--accent); }
-.palette-title { flex: 1; }
-.palette-group { color: var(--muted); font-size: 12px; }
+.palette-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* 說明（所在資料夾、修改說明…）太長時截成一行，名稱優先，不會被擠成一字一行。 */
+.palette-group { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+/* 說明放在名稱下面一行（修改記錄）。 */
+.palette-text { display: flex; flex: 1 1 auto; flex-direction: column; gap: 2px; min-width: 0; }
+.palette-text .palette-title { flex: none; }
+.palette-text .palette-group { max-width: none; }
 /* 指令面板：快速鍵固定寬度靠右，分類文字因此上下切齊 */
 .palette-columns .palette-keys { flex: none; width: 9.5rem; display: flex; justify-content: flex-end; }
-.palette-columns .palette-group { flex: none; text-align: right; }
+.palette-columns .palette-group { flex: none; max-width: none; text-align: right; }
 .palette-empty { justify-content: center; color: var(--muted); cursor: default !important; }
 .palette-hint { display: flex; gap: 4px; align-items: center; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 

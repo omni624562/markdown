@@ -20,6 +20,8 @@ export interface PickerOptions<T> {
   empty: string;
   /** 分類與快速鍵各佔固定寬度的一欄，上下對齊（指令面板）。 */
   columns?: boolean;
+  /** 說明放在名稱下面一行（說明很長時，例如修改記錄）。 */
+  stacked?: boolean;
   /** 依查詢字串回傳排序好的項目。 */
   query(text: string): T[] | Promise<T[]>;
   render(item: T): PickerItem;
@@ -44,7 +46,7 @@ export class Picker<T> {
   constructor(opts: PickerOptions<T>) {
     this.#opts = opts;
     this.#dialog = document.createElement("dialog");
-    this.#dialog.className = opts.columns ? "palette palette-columns" : "palette";
+    this.#dialog.className = opts.columns ? "palette palette-columns" : opts.stacked ? "palette palette-stacked" : "palette";
     this.#dialog.setAttribute("aria-label", opts.label);
     const id = `picker-${Math.random().toString(36).slice(2, 8)}`;
     const tr = { select: t("選擇"), open: t("開啟"), close: t("關閉") };
@@ -114,13 +116,14 @@ export class Picker<T> {
         const title = document.createElement("span");
         title.className = "palette-title";
         title.textContent = view.title;
-        li.append(title);
-        if (view.detail) {
-          const detail = document.createElement("span");
-          detail.className = "palette-group";
-          detail.textContent = view.detail;
-          li.append(detail);
-        }
+        // 說明太長時截掉（完整的在滑鼠提示裡），名稱不會被擠成一字一行。
+        const detail = view.detail ? Object.assign(document.createElement("span"), { className: "palette-group", textContent: view.detail, title: view.detail }) : null;
+        if (this.#opts.stacked) {
+          const text = document.createElement("span");
+          text.className = "palette-text";
+          text.append(title, ...(detail ? [detail] : []));
+          li.append(text);
+        } else li.append(title, ...(detail ? [detail] : []));
         const kbd = view.keys ? Object.assign(document.createElement("kbd"), { textContent: view.keys }) : null;
         if (this.#opts.columns) {
           // 沒有快速鍵的項目也留一格空白，左邊的分類文字才會上下切齊。
