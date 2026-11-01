@@ -89,3 +89,10 @@ test("工作項目類型的顏色：只留格式正確的", () => {
   sanitize({}).settings.workItemColors.Bug = "#000000";
   assert.deepEqual(DEFAULTS.workItemColors, {});
 });
+
+test("英文拼字檢查：預設開啟；個人字典只收小寫英文字", () => {
+  assert.equal(DEFAULTS.spellCheck, true);
+  const { settings, problems } = sanitize({ spellIgnore: ["kubernetes", "Kubernetes", "bad word", "o'neil", 3, "kubernetes"] });
+  assert.deepEqual(settings.spellIgnore, ["kubernetes", "o'neil"]);
+  assert.equal(problems, 1);
+});
