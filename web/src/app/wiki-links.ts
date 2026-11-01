@@ -43,7 +43,7 @@ export function wikiExists(target: string): boolean | null {
       .finally(() => {
         fileListLoading = null;
         if (!app.fileListCache) return;
-        refreshLivePreview(app.editor.view);
+        for (const ed of app.editors) refreshLivePreview(ed.view);
         app.preview.clear();
         app.renderNow();
       });
@@ -93,7 +93,7 @@ export async function openWiki(full: string): Promise<void> {
   await app.fileTree?.refresh([parent]);
   await openPath(created);
   if (!app.editor.text) app.editor.replaceAll(`# ${name}\n\n`);
-  refreshLivePreview(app.editor.view);
+  for (const ed of app.editors) refreshLivePreview(ed.view);
 }
 
 /** 捲到標題：`[[文件#標題]]` 的標題可能是文字（例如「一、背景」）或錨點 id。 */

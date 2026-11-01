@@ -950,6 +950,22 @@ export function initActivityBar(): void {
           selectItem(tab.id);
         },
       },
+      // 文件分頁：在右邊並排開啟；並排中的文件可以關閉並排。
+      {
+        label: t("在右邊並排開啟"),
+        icon: "columns-2",
+        when: () => {
+          const doc = app.menuTab();
+          return !app.menuItemTab() && doc !== app.paneDocs.side && !(app.paneDocs.side && doc === app.paneDocs.main);
+        },
+        run: () => app.openBeside(app.menuTab()),
+      },
+      {
+        label: t("關閉並排"),
+        icon: "x",
+        when: () => !app.menuItemTab() && !!app.paneDocs.side && [app.paneDocs.main, app.paneDocs.side].includes(app.menuTab()),
+        run: () => app.closeSide(),
+      },
       // 顯示中的工作項目、Wiki 頁面的動作（新增子頁面、放到左側圖示列、複製成 Markdown、刪除、保留離線）。
       "-",
       ...issueView.actions.map((entry): MenuEntry => {
