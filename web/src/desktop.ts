@@ -6,6 +6,7 @@ import type { DocInfo } from "./doc-index.ts";
 import type { FileRef } from "./links.ts";
 import { t } from "./i18n.ts";
 import type { WikiPageInfo } from "./wiki-coedit.ts";
+import type { Iteration } from "./work-item-fields.ts";
 
 interface TauriCore {
   /** `args` 是位元組時當成請求本文直接傳送（大檔案不用轉成 base64），其他資料放在標頭。 */
@@ -361,6 +362,23 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   relations: AdoWorkItemRelation[];
   /** 附件（舊的離線副本沒有）。 */
   attachments?: AdoWorkItemAttachment[];
+}
+
+/** 要更新的工作項目欄位（沒給的不改）。 */
+export interface AdoWorkItemChange {
+  state?: string;
+  assignToMe?: boolean;
+  /** 留言（HTML）。 */
+  comment?: string;
+  title?: string;
+  /** 優先順序（1～4）。 */
+  priority?: number;
+  /** 反覆項目（Sprint）的路徑。 */
+  iteration?: string;
+  /** 標籤；空的清單表示清除。 */
+  tags?: string[];
+  /** 開啟時的修訂版本（被別人改過就不更新）。 */
+  rev?: number | null;
 }
 
 export interface AdoWorkItemAttachment {
@@ -895,14 +913,14 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoQueryRun: (q: { project: string; id: string }) => core.invoke<AdoWorkItem[]>("ado_query_run", { project: q.project, id: q.id }),
     /** 這個類型的工作項目可以設定的狀態。 */
     adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
-    /** 改狀態、指派給我、留言（HTML）；`rev` 是開啟時的修訂版本。 */
     /** 建立工作項目（`description` 是 HTML）。 */
     adoWorkItemCreate: (item: { project: string; kind: string; title: string; description: string | null; assignToMe: boolean; parent: number | null }) =>
       core.invoke<AdoWorkItem>("ado_work_item_create", { item }),
-    adoWorkItemUpdate: (
-      id: number,
-      change: { state?: string; assignToMe?: boolean; comment?: string; rev?: number | null },
-    ) => core.invoke<void>("ado_work_item_update", { id, change: { ...change, rev: change.rev ?? null } }),
+    /** 改狀態、指派給我、留言（HTML）、標題、優先順序、Sprint、標籤；`rev` 是開啟時的修訂版本。 */
+    adoWorkItemUpdate: (id: number, change: AdoWorkItemChange) =>
+      core.invoke<void>("ado_work_item_update", { id, change: { ...change, rev: change.rev ?? null } }),
+    /** 專案的反覆項目（Sprint），第一個是專案本身。 */
+    adoIterations: (project: string) => core.invoke<Iteration[]>("ado_iterations", { project }),
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),
     adoWikiPages: (w: AdoWiki) =>
       core.invoke<AdoWikiPage[]>("ado_wiki_pages", { projectId: w.projectId, wikiId: w.id, version: w.code ? w.version : null }),

@@ -501,6 +501,7 @@ fn builds_work_item_change() {
         assign_to_me: true,
         comment: Some("<p>好了</p>".into()),
         rev: Some(7),
+        ..Default::default()
     };
     let ops = change_ops(&change, "CORP\\ming");
     assert_eq!(ops.len(), 4);
@@ -513,6 +514,94 @@ fn builds_work_item_change() {
         ..Default::default()
     };
     assert!(change_ops(&empty, "x").is_empty());
+}
+
+#[test]
+fn builds_work_item_field_changes() {
+    let change = WorkItemChange {
+        title: Some("  新標題 ".into()),
+        priority: Some(1),
+        iteration: Some("P\\Sprint 3".into()),
+        tags: Some(vec![
+            "UAT".into(),
+            " uat ".into(),
+            "a;b".into(),
+            "".into(),
+            "AI 聊天".into(),
+        ]),
+        rev: Some(3),
+        ..Default::default()
+    };
+    assert!(check_change(&change).is_ok());
+    let ops = change_ops(&change, "me");
+    assert_eq!(ops[0]["op"], "test");
+    assert_eq!(
+        ops[1],
+        json!({"op": "add", "path": "/fields/System.Title", "value": "新標題"})
+    );
+    assert_eq!(
+        ops[2],
+        json!({"op": "add", "path": "/fields/Microsoft.VSTS.Common.Priority", "value": 1})
+    );
+    assert_eq!(
+        ops[3],
+        json!({"op": "add", "path": "/fields/System.IterationPath", "value": "P\\Sprint 3"})
+    );
+    assert_eq!(
+        ops[4],
+        json!({"op": "add", "path": "/fields/System.Tags", "value": "UAT; a b; AI 聊天"})
+    );
+    // 空的標籤清單：清除所有標籤。
+    let clear = WorkItemChange {
+        tags: Some(vec![]),
+        ..Default::default()
+    };
+    assert_eq!(change_ops(&clear, "me")[0]["value"], "");
+    // 標題不可以是空的或太長；優先順序只能是 1～4。
+    let blank = WorkItemChange {
+        title: Some("  ".into()),
+        ..Default::default()
+    };
+    assert!(check_change(&blank).is_err());
+    let long = WorkItemChange {
+        title: Some("字".repeat(MAX_TITLE + 1)),
+        ..Default::default()
+    };
+    assert!(check_change(&long).is_err());
+    let ok = WorkItemChange {
+        title: Some("字".repeat(MAX_TITLE)),
+        ..Default::default()
+    };
+    assert!(check_change(&ok).is_ok());
+    for p in [0, 5] {
+        assert!(check_change(&WorkItemChange {
+            priority: Some(p),
+            ..Default::default()
+        })
+        .is_err());
+    }
+}
+
+#[test]
+fn flattens_iterations() {
+    let v = json!({
+        "name": "P",
+        "children": [
+            {"name": "Release 1", "children": [
+                {"name": "Sprint 1", "attributes": {"startDate": "2026-10-01T00:00:00Z", "finishDate": "2026-10-14T00:00:00Z"}},
+            ]},
+            {"name": "Backlog"},
+        ]
+    });
+    let list = iteration_list(&v);
+    let paths: Vec<&str> = list.iter().map(|i| i.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        ["P", "P\\Release 1", "P\\Release 1\\Sprint 1", "P\\Backlog"]
+    );
+    assert_eq!(list[2].start.as_deref(), Some("2026-10-01T00:00:00Z"));
+    assert_eq!(list[2].finish.as_deref(), Some("2026-10-14T00:00:00Z"));
+    assert_eq!(list[1].start, None);
 }
 
 #[test]
