@@ -164,7 +164,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   gitAutoSync: false,
   gitSyncMinutes: 10,
   activityOrder: [],
-  activityHidden: [],
+  // 圖示列預設只放常用的面板；待辦總覽、標籤收起來（圖示列按右鍵或設定裡可以打開）。
+  activityHidden: ["tasks", "tags"],
   // Git 歷史藏在選單裡不好找：預設放在圖示列（開啟的資料夾是 Git 儲存庫時才會出現）。
   activityCommands: ["git-history"],
 });
@@ -192,7 +193,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     templates: [],
     termIgnore: [],
     activityOrder: [],
-    activityHidden: [],
+    activityHidden: [...DEFAULTS.activityHidden],
     activityCommands: [...DEFAULTS.activityCommands],
     workItemColors: {},
   };

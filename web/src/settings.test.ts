@@ -73,6 +73,12 @@ test("左側圖示列：只接受合法的 id，去掉重複", () => {
   assert.deepEqual(sanitize({ activityCommands: "x" }).settings.activityCommands, DEFAULTS.activityCommands);
 });
 
+test("左側圖示列預設精簡：待辦總覽、標籤收起來；存過「全部顯示」的照舊", () => {
+  assert.deepEqual(DEFAULTS.activityHidden, ["tasks", "tags"]);
+  assert.deepEqual(sanitize({}).settings.activityHidden, ["tasks", "tags"]);
+  assert.deepEqual(sanitize({ activityHidden: [] }).settings.activityHidden, []);
+});
+
 test("工作項目類型的顏色：只留格式正確的", () => {
   assert.deepEqual(sanitize({}).settings.workItemColors, {});
   const { settings, problems } = sanitize({ workItemColors: { Bug: "#00AA00", Task: "yellow" } });
