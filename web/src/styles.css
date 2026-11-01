@@ -1591,9 +1591,14 @@ button.git-info:disabled { cursor: default; }
 .git-files [data-status="deleted"] b, .git-files [data-status="conflicted"] b { color: var(--danger); }
 
 /* ---- WebDAV ---- */
-.side-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-/* 側邊欄很窄時按鈕文字可以換行，不要被切掉。 */
-.side-buttons .btn { max-width: 100%; white-space: normal; text-align: start; height: auto; min-height: 30px; }
+/* 檔案面板沒開資料夾時的動作：一欄清單（和起始頁的「開始」一樣），第一個「開啟資料夾」是主要動作。 */
+.side-buttons { display: flex; flex-direction: column; gap: 2px; }
+/* #sidebar .btn 會把字置中，這裡的清單要靠左（權重要比它高）。 */
+#sidebar .side-buttons .btn { justify-content: flex-start; gap: 10px; width: 100%; height: auto; min-height: 32px; padding: 6px 10px; border: 0; background: none; color: var(--accent); white-space: normal; text-align: start; }
+#sidebar .side-buttons .btn:hover, #sidebar .side-buttons .btn:focus-visible { background: var(--active-line); }
+.side-buttons .btn .icon { flex: none; width: 16px; height: 16px; }
+#sidebar .side-buttons .btn:first-child { margin-bottom: 4px; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+#sidebar .side-buttons .btn:first-child:hover, #sidebar .side-buttons .btn:first-child:focus-visible { background: color-mix(in srgb, var(--accent) 88%, #000); }
 .recent-list li { display: flex; align-items: center; }
 .recent-list li > button:first-child { flex: 1; min-width: 0; }
 .recent-list .recent-forget { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
