@@ -227,7 +227,7 @@ export async function startAiTool(tool: "claude" | "codex"): Promise<void> {
   await app.terminal?.start(tool);
 }
 
-/** 說明：在新分頁開啟歡迎文件（第一次開啟時看到的那份），之後也找得回來。 */
+/** 說明：在新分頁開啟歡迎文件（起始頁的「3 分鐘認識 oMarker」、「說明」選單）。 */
 export function openWelcome(): void {
   const existing = app.docs.find((d) => !d.path && d.name === t("歡迎使用 oMarker.md"));
   if (existing) {

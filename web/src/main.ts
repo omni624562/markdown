@@ -875,10 +875,9 @@ let docsLoaded = false;
 const restored = loadSession(tabScope);
 let docs: Doc[] = docsFrom(restored);
 if (!docs.length) {
-  // 第一次使用：開啟範例文件，並以它為基準（不顯示未存檔）。
-  const first = makeDoc({ name: t("未命名.md"), kind: "markdown", baseline: hash(sample) });
-  saveDraft(first.id, sample);
-  docs = [first];
+  // 第一次使用：空白文件，畫面上是起始頁（新增、開啟、連線、「3 分鐘認識 oMarker」）。
+  // 歡迎文件很長，不再一開始就塞給使用者；想看時從起始頁或「說明」開啟。
+  docs = [makeDoc({ name: t("未命名.md"), kind: "markdown", baseline: hash("") })];
 }
 let active: Doc = docs.find((d) => d.id === restored?.activeId) ?? docs[0];
 
