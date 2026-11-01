@@ -153,6 +153,7 @@ import {
   Unlink,
   ImageOff,
   FileX,
+  Keyboard,
   type IconNode,
 } from "lucide";
 
@@ -295,6 +296,7 @@ const ICONS: Record<string, IconNode> = {
   history: History,
   image: Image,
   italic: Italic,
+  keyboard: Keyboard,
   link: Link,
   list: List,
   "list-checks": ListChecks,
