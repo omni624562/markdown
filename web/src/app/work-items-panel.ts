@@ -365,7 +365,7 @@ function workItemRow(w: AdoWorkItem): AdoWorkItem & IssueSummary {
 export // 在 init 時建立。
 let workItemsPanel: IssuesPanel<AdoWorkItem & IssueSummary> | null;
 
-/** 左側圖示列上的捷徑：常看的 Wiki 頁面、工作項目（從清單拖過去，或用圖釘、「更多動作」放上去）。 */
+/** 左側圖示列上的捷徑：常看的 Wiki 頁面、工作項目（從清單拖過去，或用圖釘、分頁的右鍵選單放上去）。 */
 export let barShortcuts: Shortcut[] = loadBarShortcuts();
 /** 正在從 Wiki、工作項目清單拖曳（圖示列上顯示放置區）。 */
 let shortcutDragging = false;
