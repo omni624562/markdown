@@ -270,7 +270,7 @@ export async function startAiTool(tool: "claude" | "codex"): Promise<void> {
   await app.terminal?.start(tool);
 }
 
-/** 說明：在新分頁開啟歡迎文件（第一次開啟時看到的那份），之後也找得回來。 */
+/** 說明：在新分頁開啟歡迎文件（起始頁的「3 分鐘認識 oMarker」、「說明」選單）。 */
 export function openWelcome(): void {
   const existing = app.docs.find((d) => !d.path && d.name === t("歡迎使用 oMarker.md"));
   if (existing) {
@@ -799,20 +799,16 @@ export function initActivityBar(): void {
     "paste-plain",
     "select-all",
     "-",
+    // 常用的粗體、斜體留在第一層，其他格式與縮排收進「格式」子選單，選單才不會太長。
     "bold",
     "italic",
-    "underline",
-    "strike",
-    "highlight",
-    "code",
-    "superscript",
-    "subscript",
-    "clear-format",
-    "-",
+    {
+      label: t("格式"),
+      icon: "remove-formatting",
+      items: ["underline", "strike", "highlight", "code", "superscript", "subscript", "-", "indent-more", "indent-less", "-", "clear-format"],
+    },
     "link",
     "insert-symbol",
-    "indent-more",
-    "indent-less",
     "-",
     "ai-actions",
     "send-to-terminal-ai",

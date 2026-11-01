@@ -629,6 +629,7 @@ export const main: Record<string, Translation> = {
   "回到編輯中的文件（Esc）；工作項目等的分頁留著，點分頁就切換回來": "Return to the document you're editing (Esc); the work item tab stays open, click it to switch back",
   "最近開啟的檔案": "Recent Files",
   "最近開啟的資料夾": "Recent Folders",
+  "文件工具": "Document Tools",
   "開始": "Start",
   "按「開始寫作」就能直接在畫面上打字，或從下面選一個開始": "Press \"Start Writing\" to type right on the page, or pick one below",
   "直接打字就開始寫新文件，或從下面選一個開始": "Just start typing to write a new document, or pick one below",
