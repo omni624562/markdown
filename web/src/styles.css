@@ -2718,7 +2718,28 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-title { margin: 0; overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 /* 工作項目的內容上方已經有大標題（分頁上也有名稱），標頭只留位置與動作。 */
-.issue-pane:has(.ado-hero) .issue-head .issue-title { display: none; }
+.issue-pane:has(.ado-hero):not(.issue-hero) .issue-head .issue-title { display: none; }
+/*
+ * 工作項目：類型標籤與編號放在標頭這一列（程式會往右推到和下面的標題對齊），標題接在下面。
+ * 往下捲時標頭畫出分隔線；看不到內容的標題時，標頭帶出標題。
+ */
+.issue-pane.issue-hero > .issue-head {
+  padding-block: 8px;
+  border-bottom-color: transparent;
+  background: var(--bg);
+  transition: border-color 0.15s;
+}
+.issue-pane.issue-hero > .issue-head .issue-actions { flex-wrap: nowrap; }
+/* 標頭中間只有類型標籤（捲動後加上標題），可以縮小，窄的時候也不換行。 */
+.issue-pane.issue-hero .issue-heading { flex: 1 1 0; flex-direction: row; gap: 10px; align-items: center; }
+.issue-pane.issue-hero .issue-meta { flex: none; margin: 0; }
+.issue-pane.issue-hero .issue-head .issue-title { min-width: 0; font-size: 14px; opacity: 0; visibility: hidden; transition: opacity 0.15s, visibility 0.15s; }
+.issue-pane.issue-title-away .issue-head .issue-title { opacity: 1; visibility: visible; }
+.issue-pane.issue-scrolled > .issue-head { border-bottom-color: var(--border); }
+.issue-pane.issue-hero .issue-body { padding-top: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  .issue-pane.issue-hero > .issue-head, .issue-pane.issue-hero .issue-head .issue-title { transition: none; }
+}
 .issue-actions .btn-primary { margin-right: 4px; }
 /* 內容的動作和檢視的動作（並排、找字、重新整理、關閉）中間的分隔線。 */
 .issue-actions-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
@@ -2745,9 +2766,10 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-pane[data-source="ado"] .issue-body > p { margin-block: 0.3em; }
 /* 工作項目的標頭：類型標籤與編號、標題、一排重點小標籤，下面一行是專案與區域、建立者、標籤。 */
 .issue-body .ado-hero { margin: 0 0 14px; }
-.issue-body .ado-hero-kind { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; color: var(--muted); font-size: 13px; }
+.issue-body .ado-hero-kind, .issue-head .ado-hero-kind { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.issue-head .ado-hero-kind { margin: 0; }
 /* 類型標籤的顏色由 `data-wi-kind` 決定（預設與自訂的顏色見 work-item-colors.ts，設定裡可以改）。 */
-.issue-body .ado-kind-badge { padding: 0 8px; border-radius: 5px; background: color-mix(in srgb, var(--kind) 14%, transparent); color: var(--kind); font-size: 12.5px; font-weight: 600; line-height: 20px; }
+.issue-body .ado-kind-badge, .issue-head .ado-kind-badge { padding: 0 8px; border-radius: 5px; background: color-mix(in srgb, var(--kind) 14%, transparent); color: var(--kind); font-size: 12.5px; font-weight: 600; line-height: 20px; }
 .issue-pane[data-source="ado"] .issue-body .ado-hero h1 { margin: 0 0 10px; padding: 0; border: 0; font-size: 1.35em; line-height: 1.4; }
 .issue-body .ado-facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .issue-body .ado-fact { display: inline-flex; gap: 6px; align-items: center; max-width: 100%; padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-raised, var(--surface)); font-size: 13px; line-height: 22px; white-space: nowrap; }
