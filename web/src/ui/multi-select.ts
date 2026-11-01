@@ -5,6 +5,7 @@
  * 不限時全部都是勾的；離開選單（點外面、按 Esc 或 Enter）時才套用，不會每勾一個就重新查一次。
  *
  * `single` 是單選（例如「人」）：同樣的按鈕與選單樣子，點一下就套用並關上。
+ * Wiki 的「顯示哪些最上層頁面」也用這個選單：自己的圖示按鈕（`button`）、勾了馬上套用（`live`）。
  */
 
 import { t } from "../i18n.ts";
@@ -20,6 +21,12 @@ export interface MultiSelectOptions {
   onChange(values: string[]): void;
   /** 單選：只能選一個，點了就套用。 */
   single?: boolean;
+  /** 用這個按鈕打開選單（按鈕上的文字與提示由呼叫的人自己管）；沒給時建立一個下拉選單樣子的按鈕。 */
+  button?: HTMLButtonElement;
+  /** 每勾一個就馬上套用（例如 Wiki 的樹狀目錄），不用等選單關上。 */
+  live?: boolean;
+  /** 選單最上面的一行說明（例如「顯示哪些最上層頁面」）。 */
+  caption?: string;
 }
 
 /** 選項多到這個數目時，上面多一個搜尋框。 */
@@ -42,9 +49,9 @@ export class MultiSelect {
 
   constructor(o: MultiSelectOptions) {
     this.#o = o;
-    this.el = document.createElement("button");
+    this.el = o.button ?? document.createElement("button");
     this.el.type = "button";
-    this.el.className = "workitems-select multi-select";
+    if (!o.button) this.el.className = "workitems-select multi-select";
     this.el.setAttribute("aria-haspopup", "true");
     this.el.setAttribute("aria-expanded", "false");
 
@@ -73,6 +80,12 @@ export class MultiSelect {
     foot.className = "multi-select-foot";
     this.#status = document.createElement("span");
     foot.append(this.#status);
+    if (o.caption) {
+      const caption = document.createElement("div");
+      caption.className = "multi-select-caption";
+      caption.textContent = o.caption;
+      this.#pop.append(caption);
+    }
     this.#pop.append(this.#search, this.#allRow, this.#list, foot);
     if (o.single) {
       this.#pop.classList.add("single");
@@ -127,6 +140,7 @@ export class MultiSelect {
   #labelOf = (v: string): string => this.#options.find(([o]) => o === v)?.[1] ?? v;
 
   #render(): void {
+    if (this.#o.button) return;
     const text = choiceSummary(this.#value, this.#labelOf, this.#o.all);
     this.el.textContent = text;
     this.el.title = this.#value.length ? `${this.#o.label}：${this.#value.map(this.#labelOf).join(", ")}` : this.#o.label; // i18n-ignore（名稱與冒號）
@@ -218,6 +232,7 @@ export class MultiSelect {
     this.#status.textContent =
       picked === 0 ? t("都沒勾：等於全部") : picked >= total ? t("全部") : t("已選 {n}／{total} 項", { n: picked, total });
     this.#status.classList.toggle("warn", picked === 0);
+    if (this.#o.live && this.#pop.matches(":popover-open")) this.#apply();
   }
 
   /** 勾選或取消全部（有打字找時只動找到的那些）。 */
