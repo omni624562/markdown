@@ -3276,3 +3276,7 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .settings-search,
 .gh-scope, .gh-search,
 .wi-create textarea { border-bottom-color: var(--input-border); }
+/* 連結檢查找到的連結：捲過去之後閃一下。 */
+.issue-flash { border-radius: 3px; animation: issue-flash 1.6s ease-out; }
+@keyframes issue-flash { 0%, 40% { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .issue-flash { animation: none; outline: 2px solid var(--accent); } }
