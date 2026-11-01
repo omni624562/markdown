@@ -673,6 +673,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<Entry[]>("list_dir", { path }),
         () => core.invoke<Entry[]>("dav_list", { path }),
       ),
+    /** 連結檢查：本機路徑存不存在（網路路徑、相對路徑不檢查，回傳 null）。 */
+    pathsExist: (paths: string[]) => core.invoke<(boolean | null)[]>("paths_exist", { paths }),
     /** 工作區內所有文件；`root` 是目前開啟的資料夾。 */
     listFiles: (root: string) =>
       route(

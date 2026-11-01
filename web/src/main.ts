@@ -3113,6 +3113,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   },
   { label: t("匯出"), icon: "download", items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich"] },
   "fix-terms",
+  "check-links",
   "s2t",
   "slideshow",
   "-",
@@ -3137,6 +3138,8 @@ setupMenu($<HTMLButtonElement>("#files-more"), commands, [
   "connect-webdav",
   "connect-ssh",
   "open-recent",
+  "-",
+  "check-links",
 ]);
 // 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。
 for (const [tab, id] of [

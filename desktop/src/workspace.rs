@@ -450,6 +450,33 @@ pub async fn list_files(workspace: State<'_, Workspace>) -> Result<Vec<FileItem>
     .await
 }
 
+/// 連結檢查一次最多查幾個路徑。
+const MAX_CHECK_PATHS: usize = 5_000;
+
+/// 連結指向的檔案存不存在。只查本機的絕對路徑；網路路徑（`\\server\…`，連線時可能送出 Windows 帳號）、
+/// 相對路徑與網址回傳 None（不檢查）。
+pub(crate) fn path_exists(path: &str) -> Option<bool> {
+    if path.starts_with("\\\\") || path.starts_with("//") {
+        return None;
+    }
+    let p = Path::new(path);
+    p.is_absolute().then(|| p.exists())
+}
+
+/// 連結檢查：每個路徑存不存在（順序和傳入的相同；不檢查的是 null）。
+#[tauri::command]
+pub async fn paths_exist(paths: Vec<String>) -> Result<Vec<Option<bool>>, String> {
+    // 網路磁碟斷線時不要永遠等下去。
+    crate::io::blocking_for(Duration::from_secs(30), move || {
+        Ok(paths
+            .iter()
+            .take(MAX_CHECK_PATHS)
+            .map(|p| path_exists(p))
+            .collect())
+    })
+    .await
+}
+
 /// 新增檔案或資料夾；檔案會建立成空白檔。回傳新路徑。
 #[tauri::command]
 pub async fn create_entry(
@@ -926,6 +953,20 @@ pub async fn replace_in_folder(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checks_only_local_absolute_paths() {
+        let dir = temp_ws("exists");
+        let png = path_string(&dir.join("圖片.png"));
+        assert_eq!(path_exists(&png), Some(true));
+        assert_eq!(path_exists(&path_string(&dir.join("沒有.png"))), Some(false));
+        // 網路路徑、相對路徑、網址都不檢查。
+        assert_eq!(path_exists("\\\\server\\share\\a.png"), None);
+        assert_eq!(path_exists("//server/share/a.png"), None);
+        assert_eq!(path_exists("images/a.png"), None);
+        assert_eq!(path_exists("https://example.com/a.png"), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     fn temp_ws(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("md-ws-{name}-{}", std::process::id()));
