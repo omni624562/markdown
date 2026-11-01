@@ -18,6 +18,7 @@ import { type FileHandle, type OpenedFile, desktopHandle, fromDesktop, replaceEx
 import { autoSymbols } from "./auto-symbols.ts";
 import { refreshLivePreview } from "./live-preview.ts";
 import { proofread } from "./proofread.ts";
+import { spellcheck } from "./spellcheck.ts";
 import { type DocKind, KINDS, isTextFileName } from "./kinds.ts";
 import { basename, dirname, localImagePath, resolvePath } from "./paths.ts";
 import { HtmlPreview, isHtmlName } from "./html-preview.ts";
@@ -33,7 +34,7 @@ import { Preview, type PreviewPlugin } from "./preview.ts";
 import sampleEn from "./sample.en.md?raw";
 import sampleZh from "./sample.md?raw";
 import { type BlockRef, collectBlocks, offsetForLineLazy } from "./scroll-sync.ts";
-import { TERM_IGNORE_LIMIT, SettingsStore } from "./settings.ts";
+import { SPELL_IGNORE_LIMIT, TERM_IGNORE_LIMIT, SettingsStore } from "./settings.ts";
 import { pasteAsMarkdown } from "./html-paste.ts";
 import { hiddenByCollapse, subtreeEnd } from "./sections.ts";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
@@ -1230,6 +1231,16 @@ const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
       ignore: (word) => {
         settings.update({ termIgnore: [...settings.value.termIgnore, word].slice(-TERM_IGNORE_LIMIT) });
         toast(t("不再提示「{word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。", { word }));
+      },
+    }),
+    spellcheck({
+      // 文件、Wiki 頁面才檢查（程式碼檔與 JSON 裡的英文多半是名稱）。
+      enabled: () => kind === "markdown" && settings.value.spellCheck,
+      ignored: () => new Set(settings.value.spellIgnore),
+      ignore: (word) => {
+        const lower = word.toLowerCase();
+        settings.update({ spellIgnore: [...settings.value.spellIgnore.filter((w) => w !== lower), lower].slice(-SPELL_IGNORE_LIMIT) });
+        toast(t("已把「{word}」加入字典。之後可以在指令面板執行「拼字檢查：清除個人字典」恢復。", { word }));
       },
     }),
     linkCompletion(

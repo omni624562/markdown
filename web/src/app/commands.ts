@@ -529,6 +529,18 @@ export function initCommands(): void {
         toast(t("已清除 {n} 個不再提示的詞。", { n }), { tone: "success" });
       },
     },
+    {
+      id: "clear-spell-ignore",
+      title: t("拼字檢查：清除個人字典"),
+      group: t("編輯"),
+      icon: "spell-check",
+      when: () => app.settings.value.spellIgnore.length > 0,
+      run: () => {
+        const n = app.settings.value.spellIgnore.length;
+        app.settings.update({ spellIgnore: [] });
+        toast(t("已清除個人字典裡的 {n} 個字。", { n }), { tone: "success" });
+      },
+    },
     { id: "palette", title: t("開啟指令面板"), group: t("說明"), icon: "command", keys: "Mod-Shift-p", run: () => palette.open() },
     {
       id: "rename-doc",
