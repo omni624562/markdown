@@ -687,9 +687,9 @@ export function initWorkItemsPanel(): void {
           const paths = (v: unknown) => (Array.isArray(v) ? v.filter((p): p is string => typeof p === "string") : []);
           try {
             const v = JSON.parse(storage.load(`ado-wiki-pages:${id}`) ?? "{}") as Record<string, unknown>;
-            return { recent: paths(v.recent), pinned: paths(v.pinned), shown: paths(v.shown), root: typeof v.root === "string" ? v.root : undefined };
+            return { pinned: paths(v.pinned), shown: paths(v.shown), root: typeof v.root === "string" ? v.root : undefined };
           } catch {
-            return { recent: [], pinned: [] };
+            return { pinned: [] };
           }
         },
         savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),

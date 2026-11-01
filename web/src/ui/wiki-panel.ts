@@ -3,7 +3,7 @@
  * 點一下頁面在主要區域以唯讀方式開啟。
  */
 import { t } from "../i18n.ts";
-import { flattenPages, pageName, pushRecent, snippetParts } from "../wiki-text.ts";
+import { flattenPages, pageName, snippetParts } from "../wiki-text.ts";
 import { icon } from "./icons.ts";
 import { setupMenu } from "./menu.ts";
 import { showLoadError } from "./issues-panel.ts";
@@ -27,7 +27,7 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   /** 上次選的 Wiki。 */
   load(): string | null;
   save(id: string): void;
-  /** 每個 Wiki 各自記住的最近看過、釘選的頁面。 */
+  /** 每個 Wiki 各自記住的釘選頁面、顯示哪些最上層頁面。 */
   prefs(wikiId: string): WikiPrefs;
   savePrefs(wikiId: string, prefs: WikiPrefs): void;
   /** 拖曳頁面時帶的 Markdown 連結（拖到文件裡插入）；沒有網址時回傳 null。 */
@@ -56,7 +56,6 @@ export interface WikiContentSearch {
 }
 
 export interface WikiPrefs {
-  recent: string[];
   pinned: string[];
   /** 樹狀目錄只顯示這些最上層頁面（沒有或空的就是全部顯示）。 */
   shown?: string[];
@@ -64,8 +63,7 @@ export interface WikiPrefs {
   root?: string;
 }
 
-/** 最近看過列出幾頁、最多釘選幾頁。 */
-const RECENT_LIMIT = 5;
+/** 最多釘選幾頁。 */
 const PINNED_LIMIT = 30;
 
 /** 搜尋結果最多列出幾頁。 */
@@ -82,9 +80,9 @@ export class WikiPanel<W extends WikiInfo> {
   #input: HTMLInputElement;
   #status: HTMLElement;
   #list: HTMLUListElement;
-  /** 樹狀目錄上方的「釘選」「最近看過」。 */
+  /** 樹狀目錄上方的「已釘選」（釘選放在左側圖示列時不顯示）。 */
   #quick: HTMLElement;
-  #prefs: WikiPrefs = { recent: [], pinned: [] };
+  #prefs: WikiPrefs = { pinned: [] };
   #wikis: W[] = [];
   #wiki: W | null = null;
   #pages: WikiTreePage[] = [];
@@ -358,7 +356,7 @@ export class WikiPanel<W extends WikiInfo> {
     this.#wiki = wiki;
     this.#pages = [];
     this.#newBtn.hidden = !this.#canCreate();
-    this.#prefs = wiki ? this.#h.prefs(wiki.id) : { recent: [], pinned: [] };
+    this.#prefs = wiki ? this.#h.prefs(wiki.id) : { pinned: [] };
     this.#list.replaceChildren();
     this.#quick.hidden = true;
     this.#renderContent("");
@@ -873,12 +871,13 @@ export class WikiPanel<W extends WikiInfo> {
     if (this.#wiki) this.#h.savePrefs(this.#wiki.id, this.#prefs);
   }
 
-  /** 樹狀目錄上方的「釘選」與「最近看過」（搜尋時不顯示；已刪除的頁面不列出）。 */
+  /**
+   * 樹狀目錄上方的「已釘選」（搜尋時不顯示；已刪除的頁面不列出）。釘選放在別的地方（圖示列）時不顯示。
+   * 不列「最近看過」：看過的頁面開在分頁裡，切到分頁時樹上也會標出它在哪裡。
+   */
   #renderQuick(show: boolean): void {
     const exists = new Set(flattenPages(this.#pages));
-    // 釘選放在別的地方（圖示列）時，面板上只列最近看過。
     const pinned = this.#h.pins ? [] : this.#prefs.pinned.filter((p) => exists.has(p));
-    const recent = this.#prefs.recent.filter((p) => exists.has(p) && !pinned.includes(p));
     const groups: HTMLElement[] = [];
     const group = (title: string, paths: string[]) => {
       if (!paths.length) return;
@@ -920,7 +919,6 @@ export class WikiPanel<W extends WikiInfo> {
       groups.push(box);
     };
     group(t("已釘選"), pinned);
-    group(t("最近看過"), recent.slice(0, RECENT_LIMIT));
     this.#quick.replaceChildren(...groups);
     this.#quick.hidden = !show || !groups.length;
   }
@@ -951,15 +949,10 @@ export class WikiPanel<W extends WikiInfo> {
     }
   }
 
-  /** 標示目前開著的頁面（null 表示都沒開）；展開它所在的資料夾，並記到「最近看過」。 */
+  /** 標示目前開著的頁面（null 表示都沒開）；展開它所在的資料夾。 */
   select(path: string | null): void {
     if (path === null) this.#pendingReveal = null;
     this.#current = path;
-    if (path && this.#wiki && this.#prefs.recent[0] !== path) {
-      this.#prefs.recent = pushRecent(this.#prefs.recent, path, RECENT_LIMIT + PINNED_LIMIT);
-      this.#savePrefs();
-      if (!this.#input.value.trim()) this.#renderQuick(true);
-    }
     if (path) {
       let changed = false;
       for (let i = path.indexOf("/", 1); i > 0; i = path.indexOf("/", i + 1)) {
