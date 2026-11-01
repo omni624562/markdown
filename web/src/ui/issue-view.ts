@@ -177,7 +177,6 @@ export class IssueView {
   #backBtn: HTMLButtonElement;
   #forwardBtn: HTMLButtonElement;
   /** 「保留離線」。 */
-  #insertBtn: HTMLButtonElement;
   #editBtn: HTMLButtonElement;
   #historyBtn: HTMLButtonElement;
   #actions: MenuEntry[] = [];
@@ -211,10 +210,7 @@ export class IssueView {
     nav.append(this.#backBtn, this.#forwardBtn);
     const actions = document.createElement("div");
     actions.className = "issue-actions";
-    // 主要動作：能編輯的（Wiki 頁面）是「編輯」，其他是「插入連結」；樣式在 #open 依內容切換。
-    this.#insertBtn = document.createElement("button");
-    this.#insertBtn.type = "button";
-    this.#insertBtn.addEventListener("click", () => this.#source?.insertLink());
+    // 主要動作：能編輯的（Wiki 頁面）是「編輯」。
     this.#editBtn = document.createElement("button");
     this.#editBtn.type = "button";
     this.#editBtn.className = "btn btn-small btn-primary";
@@ -224,9 +220,14 @@ export class IssueView {
     this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
     this.#historyBtn = iconButton(t("修改記錄：誰、什麼時候改了這一頁，改了什麼"), "history", () => this.#source?.history?.());
     this.#historyBtn.hidden = true;
-    // 新增子頁面、放到左側圖示列、複製成 Markdown、刪除、保留離線：放在分頁的右鍵選單（標頭不再放「⋯」，
-    // 免得和視窗右上角的「⋯」選單搞混）。
+    // 插入連結、新增子頁面、放到左側圖示列、複製成 Markdown、刪除、保留離線：放在分頁的右鍵選單
+    // （標頭只留常用的；「⋯」也不放，免得和視窗右上角的「⋯」選單搞混）。
     this.#actions = [
+      {
+        label: t("插入連結到目前的文件"),
+        icon: "link",
+        run: () => this.#source?.insertLink(),
+      },
       {
         label: t("新增子頁面"),
         icon: "file-plus",
@@ -268,7 +269,6 @@ export class IssueView {
     sep.setAttribute("aria-hidden", "true");
     actions.append(
       this.#editBtn,
-      this.#insertBtn,
       this.#historyBtn,
       iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
       sep,
@@ -473,12 +473,6 @@ export class IssueView {
     this.#toolbar.hidden = !source.toolbar;
     this.#editBtn.hidden = !source.edit;
     this.#historyBtn.hidden = !source.history;
-    // 有「編輯」時，「插入連結」退成圖示按鈕。
-    const label = t("插入連結");
-    this.#insertBtn.className = source.edit ? "btn icon-only" : "btn btn-small btn-primary";
-    this.#insertBtn.replaceChildren(icon("link"), ...(source.edit ? [] : [label]));
-    this.#insertBtn.title = t("在目前的文件插入連到這裡的連結");
-    this.#insertBtn.setAttribute("aria-label", label);
     this.#pane.hidden = false;
     this.#workspace.classList.add("issue-open");
     this.#closeFind();
