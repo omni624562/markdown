@@ -154,6 +154,7 @@ import {
   ImageOff,
   FileX,
   Keyboard,
+  ArrowLeftRight,
   type IconNode,
 } from "lucide";
 
@@ -276,6 +277,7 @@ const ICONS: Record<string, IconNode> = {
   cloud: Cloud,
   code: Code,
   "columns-2": Columns2,
+  "arrow-left-right": ArrowLeftRight,
   command: Command,
   copy: Copy,
   download: Download,

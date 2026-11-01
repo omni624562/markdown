@@ -17,7 +17,8 @@ import { icon } from "./ui/icons.ts";
 
 export interface LivePreviewOptions {
   /** 圖片的網址（相對路徑換成可載入的網址）；回傳 null 表示無法顯示。 */
-  imageUrl(src: string): string | null | Promise<string | null>;
+  /** 圖片的網址；`view` 是要顯示圖片的編輯器（並排編輯時，相對路徑依那一邊的文件）。 */
+  imageUrl(src: string, view?: EditorView): string | null | Promise<string | null>;
   /** 表格的 Markdown 轉成 HTML（由 Rust 核心產生，已移除危險內容）。 */
   renderTable(markdown: string): string;
   /** 直接編輯表格後重新對齊（依中文字寬）；回傳 undefined 時照原樣。 */
@@ -207,7 +208,7 @@ class ImageWidget extends WidgetType {
       wrap.replaceChildren(img, handle);
     };
     try {
-      const url = this.opts.imageUrl(this.src);
+      const url = this.opts.imageUrl(this.src, view);
       if (url instanceof Promise) url.then(show, () => show(null));
       else show(url);
     } catch {

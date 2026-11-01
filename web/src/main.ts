@@ -11,7 +11,7 @@ import { GitHub } from "./github-ui.ts";
 import { Ado } from "./ado-ui.ts";
 import { workItemLink } from "./ado-text.ts";
 import { formatKeys, fuzzyScore } from "./commands.ts";
-import { Editor, cursorInfo } from "./editor.ts";
+import { Editor, type EditorHandlers, type EditorOptions, cursorInfo } from "./editor.ts";
 import { type FileCommit, type FileItem, type Folder, desktop, displayPath, isRemote } from "./desktop.ts";
 import type { EditorState, Text } from "@codemirror/state";
 import { type FileHandle, type OpenedFile, desktopHandle, fromDesktop, replaceExtension, saveFile } from "./files.ts";
@@ -286,6 +286,18 @@ const app = {
   },
   get editor() {
     return editor;
+  },
+  get editors() {
+    return allEditors();
+  },
+  get openBeside() {
+    return openBeside;
+  },
+  get closeSide() {
+    return closeSide;
+  },
+  get paneDocs(): Readonly<typeof paneDocs> {
+    return paneDocs;
   },
   get editorHash() {
     return editorHash;
@@ -1139,189 +1151,217 @@ let updater: Updater | null = null;
 /** 按下 Ctrl+Shift+V 後的短時間內，貼上一律用純文字。 */
 let plainPasteUntil = 0;
 
-const editor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, {
-  onChange(doc) {
-    scheduleRender();
-    scheduleAutosave(doc);
-    scheduleDiskSave();
-    ai?.scheduleSync();
-    refreshIndexPanels(800, { backlinks: false });
-  },
-  onSelection(v) {
-    updateCursor(v);
-    ai?.scheduleSync();
-  },
-  onScroll(line) {
-    editorTopLine = line;
-    syncPreview();
-    // 大綱的目前位置不必每個捲動事件都算，一個畫面算一次就好。
-    if (!headingFrame) {
-      headingFrame = requestAnimationFrame(() => {
-        headingFrame = 0;
-        updateActiveHeading();
-      });
-    }
-  },
-  getError: () => preview.result?.error ?? null,
-}, {
-  lineNumbers: settings.value.lineNumbers,
-  autoPairBrackets: settings.value.autoPairBrackets,
-  formatTable: tableFormatter,
-  focusMode: settings.value.focusMode,
-  typewriterMode: settings.value.typewriterMode,
-  live: [workItemChips, livePreview({
-    imageUrl(src) {
-      if (/^https?:/i.test(src)) return blockRemote() ? null : src;
-      if (/^data:image\//i.test(src)) return src;
-      if (active.wiki) return wikiEditImage(active.wiki, src);
-      const docPath = fileHandle?.path;
-      if (!desktop || !docPath) return null;
-      const path = localImagePath(src, dirname(docPath));
-      if (!path) return null;
-      return isRemote(path) ? davImageCached(path) : desktop.fileUrl(path);
+type Pane = "main" | "side";
+/** 並排編輯時游標所在的那一邊；「目前的文件」（active、editor、kind 等）都是那一邊的。 */
+let focusedPane: Pane = "main";
+/** 兩邊各顯示哪一份文件（沒有並排時 side 是 null）。 */
+const paneDocs: { main: Doc; side: Doc | null } = { main: active, side: null };
+/** 那一邊的文件、檔案：游標所在的那一邊用目前的全域變數，另一邊用分頁物件裡存的。 */
+const paneDoc = (pane: Pane): Doc => (pane === focusedPane ? active : (paneDocs[pane] ?? active));
+const paneHandle = (pane: Pane) => (pane === focusedPane ? fileHandle : (paneDocs[pane]?.handle ?? null));
+/** 這個編輯畫面是哪一邊的（兩個編輯器共用擴充與事件處理，靠 view 分辨）。 */
+const paneOfView = (v: EditorView): Pane => (v === sideEditor?.view ? "side" : "main");
+
+/** 編輯器的事件：只處理游標所在那一邊的（另一邊的捲動、內容不影響目前的文件）。 */
+function editorHandlers(): EditorHandlers {
+  return {
+    onChange(doc, v) {
+      if (paneOfView(v) !== focusedPane) return;
+      scheduleRender();
+      scheduleAutosave(doc);
+      scheduleDiskSave();
+      ai?.scheduleSync();
+      refreshIndexPanels(800, { backlinks: false });
     },
-    renderTable: (markdown) => {
-      const html = renderMarkdown(markdown, { kind: "markdown" }).html;
-      return blockRemote() ? blockRemoteImagesInHtml(html) : html;
+    onSelection(v) {
+      if (paneOfView(v) !== focusedPane) return;
+      updateCursor(v);
+      ai?.scheduleSync();
     },
-    formatTable: (markdown) => tableFormatter(markdown),
-    renderMath: renderTex,
-    mathEnabled: () => settings.value.math,
-    renderMermaid,
-    mermaidEnabled: () => settings.value.mermaid,
-    mermaidTheme,
-    openDiagram: (svg, editSource) => openDiagram(svg, editSource),
-    copyDiagram: (svg) => void copyDiagram(svg),
-    openLink: (href) => void followLink(href).catch(reportError),
-    enabled: () => !review.active,
-    openWiki: (target) => void openWiki(target).catch(reportError),
-    wikiExists: (target) => wikiExists(target),
-    openTag: (tag) => openTag(tag),
-    openImage: (url, alt, editSource) => openLightbox(url, alt, editSource),
-  })],
-  markdownTools: [
-    selectionToolbar({
-      enabled: () => view !== "preview" && !settings.value.fixedToolbar && !review.active,
-      render: formatBubble,
-    }),
-    insertHandle({
-      enabled: () => liveApplied && !review.active && !narrowQuery.matches,
-      open: (anchor) => openInsertMenu(anchor.getBoundingClientRect()),
-    }),
-  ],
-  extra: [
-    review.extension,
-    EditorView.updateListener.of((u) => onSimplifiedPaste(u)),
-    autoSymbols(() => kind !== "json" && settings.value.autoSymbols),
-    // 連到 Azure DevOps 工作項目、Wiki 頁面的連結：滑鼠移上去顯示摘要。
-    hoverTooltip(
-      (view, pos) => {
-        const line = view.state.doc.lineAt(pos);
-        const hit = urlAt(line.text, pos - line.from);
-        const link = hit && remoteLinkOf(hit.url);
-        if (!hit || !link) return null;
-        return {
-          pos: line.from + hit.from,
-          end: line.from + hit.to,
-          above: true,
-          create: () => ({ dom: remoteCard(link, t("即時預覽中按住 Ctrl 點一下，或在預覽中點一下，就在 oMarker 開啟")) }),
-        };
+    onScroll(line, v) {
+      if (paneOfView(v) !== focusedPane) return;
+      editorTopLine = line;
+      syncPreview();
+      // 大綱的目前位置不必每個捲動事件都算，一個畫面算一次就好。
+      if (!headingFrame) {
+        headingFrame = requestAnimationFrame(() => {
+          headingFrame = 0;
+          updateActiveHeading();
+        });
+      }
+    },
+    getError: (v) => (paneOfView(v) === focusedPane ? (preview.result?.error ?? null) : null),
+  };
+}
+
+/** 編輯器的設定（左邊與並排的右邊共用；圖片網址依顯示圖片的那一邊的文件）。 */
+function editorOptions(): EditorOptions {
+  return {
+    lineNumbers: settings.value.lineNumbers,
+    autoPairBrackets: settings.value.autoPairBrackets,
+    formatTable: tableFormatter,
+    focusMode: settings.value.focusMode,
+    typewriterMode: settings.value.typewriterMode,
+    live: [workItemChips, livePreview({
+      imageUrl(src, view) {
+        const pane = view ? paneOfView(view) : focusedPane;
+        if (/^https?:/i.test(src)) return blockRemote() ? null : src;
+        if (/^data:image\//i.test(src)) return src;
+        const doc = paneDoc(pane);
+        if (doc.wiki) return wikiEditImage(doc.wiki, src);
+        const docPath = paneHandle(pane)?.path;
+        if (!desktop || !docPath) return null;
+        const path = localImagePath(src, dirname(docPath));
+        if (!path) return null;
+        return isRemote(path) ? davImageCached(path) : desktop.fileUrl(path);
       },
-      { hoverTime: 400 },
-    ),
-    proofread({
-      enabled: () => kind !== "json" && settings.value.termCheck,
-      ignored: () => new Set(settings.value.termIgnore),
-      ignore: (word) => {
-        settings.update({ termIgnore: [...settings.value.termIgnore, word].slice(-TERM_IGNORE_LIMIT) });
-        toast(t("不再提示「{word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。", { word }));
+      renderTable: (markdown) => {
+        const html = renderMarkdown(markdown, { kind: "markdown" }).html;
+        return blockRemote() ? blockRemoteImagesInHtml(html) : html;
       },
-    }),
-    spellcheck({
-      // 文件、Wiki 頁面才檢查（程式碼檔與 JSON 裡的英文多半是名稱）。
-      enabled: () => kind === "markdown" && settings.value.spellCheck,
-      ignored: () => new Set(settings.value.spellIgnore),
-      ignore: (word) => {
-        const lower = word.toLowerCase();
-        settings.update({ spellIgnore: [...settings.value.spellIgnore.filter((w) => w !== lower), lower].slice(-SPELL_IGNORE_LIMIT) });
-        toast(t("已把「{word}」加入字典。之後可以在指令面板執行「拼字檢查：清除個人字典」恢復。", { word }));
-      },
-    }),
-    linkCompletion(
-      {
-        enabled: () => kind === "markdown",
-        docPath: () => fileHandle?.path ?? null,
-        files: async () => {
-          if (!desktop || !workspaceRoot) return [];
-          fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
-          return fileListCache.map((f) => f.path);
+      formatTable: (markdown) => tableFormatter(markdown),
+      renderMath: renderTex,
+      mathEnabled: () => settings.value.math,
+      renderMermaid,
+      mermaidEnabled: () => settings.value.mermaid,
+      mermaidTheme,
+      openDiagram: (svg, editSource) => openDiagram(svg, editSource),
+      copyDiagram: (svg) => void copyDiagram(svg),
+      openLink: (href) => void followLink(href).catch(reportError),
+      enabled: () => !review.active,
+      openWiki: (target) => void openWiki(target).catch(reportError),
+      wikiExists: (target) => wikiExists(target),
+      openTag: (tag) => openTag(tag),
+      openImage: (url, alt, editSource) => openLightbox(url, alt, editSource),
+    })],
+    markdownTools: [
+      selectionToolbar({
+        enabled: () => view !== "preview" && !settings.value.fixedToolbar && !review.active,
+        render: formatBubble,
+      }),
+      insertHandle({
+        enabled: () => liveApplied && !review.active && !narrowQuery.matches,
+        open: (anchor) => openInsertMenu(anchor.getBoundingClientRect()),
+      }),
+    ],
+    extra: [
+      review.extension,
+      EditorView.updateListener.of((u) => onSimplifiedPaste(u)),
+      autoSymbols(() => kind !== "json" && settings.value.autoSymbols),
+      // 連到 Azure DevOps 工作項目、Wiki 頁面的連結：滑鼠移上去顯示摘要。
+      hoverTooltip(
+        (view, pos) => {
+          const line = view.state.doc.lineAt(pos);
+          const hit = urlAt(line.text, pos - line.from);
+          const link = hit && remoteLinkOf(hit.url);
+          if (!hit || !link) return null;
+          return {
+            pos: line.from + hit.from,
+            end: line.from + hit.to,
+            above: true,
+            create: () => ({ dom: remoteCard(link, t("即時預覽中按住 Ctrl 點一下，或在預覽中點一下，就在 oMarker 開啟")) }),
+          };
         },
-        headings: () => preview.result?.headings ?? [],
-        fileHeadings: headingsOfFile,
-        wikiPath: async (target) => {
-          if (!desktop || !workspaceRoot) return null;
-          fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
-          return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
+        { hoverTime: 400 },
+      ),
+      proofread({
+        enabled: () => kind !== "json" && settings.value.termCheck,
+        ignored: () => new Set(settings.value.termIgnore),
+        ignore: (word) => {
+          settings.update({ termIgnore: [...settings.value.termIgnore, word].slice(-TERM_IGNORE_LIMIT) });
+          toast(t("不再提示「{word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。", { word }));
         },
-        remotePages: () => wikiLinkPages(1000),
-      },
-      [
-        (ctx) => (kind === "json" ? null : dateCompletion(ctx)),
-        (ctx) => (kind === "markdown" ? workItemIdCompletion(ctx) : null),
-        (ctx) => (kind === "markdown" ? slashSource(ctx) : null),
-      ],
-    ),
-    EditorView.domEventHandlers({
-      keydown(e) {
-        // Ctrl+Shift+V：接下來的貼上一律貼純文字（交給編輯器原本的處理）。
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyV") {
-          plainPasteUntil = Date.now() + 1000;
-        }
-        return false;
-      },
-      paste(e, v) {
-        const data = e.clipboardData;
-        // 從 Word、Excel 複製的內容也帶有圖片版本；有文字時一律當成貼上文字。
-        const files = imageFiles(data?.files);
-        if (files.length && !data?.getData("text/plain")) {
+      }),
+      spellcheck({
+        // 文件、Wiki 頁面才檢查（程式碼檔與 JSON 裡的英文多半是名稱）。
+        enabled: () => kind === "markdown" && settings.value.spellCheck,
+        ignored: () => new Set(settings.value.spellIgnore),
+        ignore: (word) => {
+          const lower = word.toLowerCase();
+          settings.update({ spellIgnore: [...settings.value.spellIgnore.filter((w) => w !== lower), lower].slice(-SPELL_IGNORE_LIMIT) });
+          toast(t("已把「{word}」加入字典。之後可以在指令面板執行「拼字檢查：清除個人字典」恢復。", { word }));
+        },
+      }),
+      linkCompletion(
+        {
+          enabled: () => kind === "markdown",
+          docPath: () => fileHandle?.path ?? null,
+          files: async () => {
+            if (!desktop || !workspaceRoot) return [];
+            fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
+            return fileListCache.map((f) => f.path);
+          },
+          headings: () => preview.result?.headings ?? [],
+          fileHeadings: headingsOfFile,
+          wikiPath: async (target) => {
+            if (!desktop || !workspaceRoot) return null;
+            fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
+            return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
+          },
+          remotePages: () => wikiLinkPages(1000),
+        },
+        [
+          (ctx) => (kind === "json" ? null : dateCompletion(ctx)),
+          (ctx) => (kind === "markdown" ? workItemIdCompletion(ctx) : null),
+          (ctx) => (kind === "markdown" ? slashSource(ctx) : null),
+        ],
+      ),
+      EditorView.domEventHandlers({
+        keydown(e) {
+          // Ctrl+Shift+V：接下來的貼上一律貼純文字（交給編輯器原本的處理）。
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyV") {
+            plainPasteUntil = Date.now() + 1000;
+          }
+          return false;
+        },
+        paste(e, v) {
+          const data = e.clipboardData;
+          // 從 Word、Excel 複製的內容也帶有圖片版本；有文字時一律當成貼上文字。
+          const files = imageFiles(data?.files);
+          if (files.length && !data?.getData("text/plain")) {
+            e.preventDefault();
+            void insertImages(files).catch(reportError);
+            return true;
+          }
+          const plainOnly = Date.now() < plainPasteUntil;
+          plainPasteUntil = 0;
+          // 從 VS Code 等編輯器複製的程式碼帶有上色用的 HTML，照原樣貼上純文字。
+          if (plainOnly || !data || kind !== "markdown" || !settings.value.smartPaste) return false;
+          if (data.types.includes("vscode-editor-data")) return false;
+          const md = pasteAsMarkdown(data.getData("text/html"), data.getData("text/plain"));
+          if (md === null) return false;
           e.preventDefault();
-          void insertImages(files).catch(reportError);
+          v.dispatch(v.state.replaceSelection(md), { scrollIntoView: true, userEvent: "input.paste" });
           return true;
-        }
-        const plainOnly = Date.now() < plainPasteUntil;
-        plainPasteUntil = 0;
-        // 從 VS Code 等編輯器複製的程式碼帶有上色用的 HTML，照原樣貼上純文字。
-        if (plainOnly || !data || kind !== "markdown" || !settings.value.smartPaste) return false;
-        if (data.types.includes("vscode-editor-data")) return false;
-        const md = pasteAsMarkdown(data.getData("text/html"), data.getData("text/plain"));
-        if (md === null) return false;
-        e.preventDefault();
-        v.dispatch(v.state.replaceSelection(md), { scrollIntoView: true, userEvent: "input.paste" });
-        return true;
-      },
-      contextmenu(e, v) {
-        // 右鍵選單：剪下、複製、貼上、格式、插入符號、縮排，以及 AI。
-        // 點在選取範圍外時，先把游標移到點的位置（和一般編輯器一樣）。
-        const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
-        const { from, to } = v.state.selection.main;
-        if (pos !== null && (pos < from || pos > to)) v.dispatch({ selection: { anchor: pos } });
-        e.preventDefault();
-        // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
-        const at = new DOMRect(e.clientX, e.clientY, 0, 0);
-        setTimeout(() => contextMenu.open(at));
-        return true;
-      },
-      drop(e, v) {
-        if (!e.dataTransfer?.files.length) return false;
-        // 檔案交給視窗的 drop 處理（文字檔開新分頁、圖片插入），不讓編輯器把檔案內容當成文字插入。
-        // 圖片要插入在放開的位置，先把游標移過去。
-        const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
-        if (pos !== null && imageFiles(e.dataTransfer.files).length) v.dispatch({ selection: { anchor: pos } });
-        return true;
-      },
-    }),
-  ],
-});
+        },
+        contextmenu(e, v) {
+          // 右鍵選單：剪下、複製、貼上、格式、插入符號、縮排，以及 AI。
+          // 點在選取範圍外時，先把游標移到點的位置（和一般編輯器一樣）。
+          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+          const { from, to } = v.state.selection.main;
+          if (pos !== null && (pos < from || pos > to)) v.dispatch({ selection: { anchor: pos } });
+          e.preventDefault();
+          // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
+          const at = new DOMRect(e.clientX, e.clientY, 0, 0);
+          setTimeout(() => contextMenu.open(at));
+          return true;
+        },
+        drop(e, v) {
+          if (!e.dataTransfer?.files.length) return false;
+          // 檔案交給視窗的 drop 處理（文字檔開新分頁、圖片插入），不讓編輯器把檔案內容當成文字插入。
+          // 圖片要插入在放開的位置，先把游標移過去。
+          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+          if (pos !== null && imageFiles(e.dataTransfer.files).length) v.dispatch({ selection: { anchor: pos } });
+          return true;
+        },
+      }),
+    ],
+  };
+}
+
+const mainEditor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, editorHandlers(), editorOptions());
+/** 游標所在那一邊的編輯器（沒有並排時就是左邊這個）。 */
+let editor = mainEditor;
 review.attach(editor.view);
 
 function updateCursor(v: EditorView): void {
@@ -2672,6 +2712,11 @@ function renderTabs(): void {
     tabOrder().map((id) => infos.get(id)!),
     selectedItemId() ?? active.id,
   );
+  // 並排時另一邊的文件：分頁下面一條線。
+  const besideId = ((p) => (p ? paneDocs[p]?.id : undefined))(otherPane());
+  document.querySelectorAll<HTMLElement>("#tab-bar .tab").forEach((tab) => tab.classList.toggle("tab-beside", tab.dataset.id === besideId));
+  refreshOtherPane();
+  if (paneDocs.side) renderPaneHeads();
   // 只有一份空白文件時藏起分頁列的內容；有工作項目等分頁時照常顯示（才點得回文件）。
   $("#tab-bar").classList.toggle("has-items", itemTabs.length > 0);
   const path = fileHandle?.path ?? null;
@@ -2682,10 +2727,216 @@ function renderTabs(): void {
 }
 
 /** 切換到另一個分頁。 */
+// ---- 並排編輯 -----------------------------------------------------------
+// 右邊再開一個編輯器顯示另一份文件。游標在哪一邊，那一邊的文件就是「目前的文件」：
+// 存檔、格式、找字、大綱、狀態列都跟著它；另一邊的內容存在它的分頁物件裡（和沒顯示的分頁一樣）。
+
+let sideEditor: Editor | null = null;
+const mainPaneHead = $("#main-pane-head");
+const sidePaneHead = $("#side-pane-head");
+
+/** 兩邊的編輯器（設定改變時都要套用）。 */
+function allEditors(): Editor[] {
+  return sideEditor ? [mainEditor, sideEditor] : [mainEditor];
+}
+
+function paneEditor(pane: Pane): Editor | null {
+  return pane === "main" ? mainEditor : sideEditor;
+}
+
+/** 並排時游標不在的那一邊；沒有並排時是 null。 */
+function otherPane(): Pane | null {
+  return paneDocs.side ? (focusedPane === "main" ? "side" : "main") : null;
+}
+
+function ensureSideEditor(): Editor {
+  if (sideEditor) return sideEditor;
+  // 和左邊共用擴充：文件的狀態（含復原紀錄）才能在兩邊之間搬。
+  sideEditor = new Editor($("#editor-side"), "", "markdown", editorHandlers(), { ...editorOptions(), livePreview: liveApplied }, mainEditor);
+  sideEditor.configure({ livePreview: liveApplied });
+  sideEditor.view.dom.addEventListener("focusin", () => focusPane("side"));
+  return sideEditor;
+}
+
+/**
+ * 換到某一邊：先把目前這一邊的內容存回它的分頁（和切換分頁一樣：草稿、自動存檔、審閱），
+ * 再把那一邊的文件當成目前的文件。`focusView`：把游標放進那一邊的編輯器。
+ */
+function focusPane(pane: Pane, focusView = false): void {
+  const target = paneEditor(pane);
+  const doc = paneDocs[pane];
+  if (!target || !doc) return;
+  if (pane !== focusedPane) {
+    flushDraft();
+    if (diskSaveTimer) void autoSaveNow();
+    if (review.active) review.finish();
+    if (docs.includes(active)) stash();
+    focusedPane = pane;
+    editor = target;
+    review.attach(editor.view);
+    active = doc;
+    ({ kind, name: fileName, handle: fileHandle, baseline, fileBacked } = doc);
+    kindSelect.value = kind;
+    // 在另一邊時內容被換掉了（例如外部修改後重新讀取）：顯示新的內容。
+    if (doc.state && doc.state.doc !== editor.state.doc) editor.restore(doc.state, kind, doc.scrollTop);
+    const v = editor.view;
+    editorTopLine = v.state.doc.lineAt(v.lineBlockAtHeight(Math.max(0, v.scrollDOM.scrollTop - v.documentPadding.top)).from).number;
+    preview.clear();
+    buildFormatBar();
+    persistSession();
+    renderNow();
+    renderTabs();
+    renderOffline();
+    renderWikiBar();
+    renderWikiMine();
+    updateCursor(v);
+    ai?.scheduleSync();
+    refreshIndexPanels(100);
+  }
+  renderPaneHeads();
+  if (focusView) editor.view.focus();
+}
+
+/** 在右邊並排開啟（已經在右邊就換過去；目前的文件要移到右邊時，左邊換成旁邊的分頁）。 */
+function openBeside(doc: Doc): void {
+  if (narrowQuery.matches) {
+    toast(t("視窗太窄，放不下並排的兩份文件。"));
+    return;
+  }
+  if (paneDocs.side === doc) {
+    focusPane("side", true);
+    return;
+  }
+  if (doc === paneDocs.main) {
+    if (paneDocs.side) {
+      toast(t("「{name}」已經在左邊了。", { name: doc === active ? fileName : doc.name }));
+      return;
+    }
+    const i = docs.indexOf(doc);
+    const neighbour = docs[i - 1] ?? docs[i + 1];
+    if (!neighbour) {
+      toast(t("要並排編輯，請先再開一份文件。"));
+      return;
+    }
+    activate(neighbour);
+  }
+  // 預覽要讓出位置：分割、只看預覽時改成即時預覽。工作項目等並排在右邊時收起來。
+  if (view === "split" || view === "preview") setView("live");
+  hideItem();
+  if (focusedPane === "side") focusPane("main");
+  const ed = ensureSideEditor();
+  paneDocs.side = doc;
+  if (doc.state) ed.restore(doc.state, doc.kind, doc.scrollTop);
+  else ed.load(loadDraft(doc.id) ?? "", doc.kind);
+  ed.setFileName(doc.name);
+  doc.state = ed.state;
+  // 草稿被清掉的分頁：從檔案讀回內容（讀到後在 refreshOtherPane 換上）。
+  const path = docPath(doc);
+  if (doc.unloaded && path && desktop && !loadDraft(doc.id)) {
+    void reloadDoc(doc, path)
+      .then(() => renderTabs())
+      .catch(() => {
+        if (!isRemote(path)) doc.missing = true;
+        renderTabs();
+      });
+  }
+  applyLayout();
+  focusPane("side", true);
+  renderTabs();
+}
+
+/** 關閉並排：右邊的文件留在分頁裡，游標回到左邊。 */
+function closeSide(): void {
+  if (!paneDocs.side) return;
+  if (focusedPane === "side") focusPane("main");
+  paneDocs.side = null;
+  applyLayout();
+  renderTabs();
+  renderPaneHeads();
+}
+
+/**
+ * 另一邊（游標不在的那一邊）的文件被別的地方換掉內容時（例如外部修改後重新讀取），重新顯示；
+ * 那份文件已經關掉（例如切換專案）時關閉並排。
+ */
+function refreshOtherPane(): void {
+  const pane = otherPane();
+  if (!pane) return;
+  const doc = paneDocs[pane]!;
+  if (!docs.includes(doc) || !docs.includes(active)) {
+    closeSide();
+    return;
+  }
+  const ed = paneEditor(pane)!;
+  if (doc.state?.doc === ed.state.doc) return;
+  if (doc.state) ed.restore(doc.state, doc.kind, ed.view.scrollDOM.scrollTop);
+  else ed.load(loadDraft(doc.id) ?? "", doc.kind);
+  doc.state = ed.state;
+}
+
+/** 兩邊上方的文件名稱：游標所在的那一邊標出來；右邊有「關閉並排」。 */
+function renderPaneHeads(): void {
+  const on = !!paneDocs.side;
+  mainPaneHead.hidden = !on;
+  if (!on) return;
+  const head = (el: HTMLElement, pane: Pane) => {
+    const doc = paneDocs[pane]!;
+    const focused = pane === focusedPane;
+    const name = focused ? fileName : doc.name;
+    const label = Object.assign(document.createElement("span"), { className: "pane-head-name", textContent: name });
+    label.title = (focused ? fileHandle?.path : doc.path) ?? name;
+    const parts: Node[] = [icon(doc.wiki ? "book-open-text" : "file-text"), label];
+    if (doc.dirty) {
+      const dot = document.createElement("span");
+      dot.className = "pane-head-dirty";
+      dot.title = t("尚未存檔");
+      parts.push(dot);
+    }
+    parts.push(Object.assign(document.createElement("span"), { className: "pane-head-spacer" }));
+    if (pane === "side") {
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "btn icon-only";
+      close.title = t("關閉並排（文件留在分頁裡）");
+      close.setAttribute("aria-label", close.title);
+      close.append(icon("x"));
+      close.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeSide();
+      });
+      parts.push(close);
+    }
+    el.replaceChildren(...parts);
+    el.classList.toggle("focused", focused);
+  };
+  head(mainPaneHead, "main");
+  head(sidePaneHead, "side");
+}
+
+for (const [el, pane] of [
+  [mainPaneHead, "main"],
+  [sidePaneHead, "side"],
+] as const) {
+  el.addEventListener("mousedown", (e) => {
+    if ((e.target as Element).closest("button")) return;
+    e.preventDefault();
+    focusPane(pane, true);
+  });
+}
+mainEditor.view.dom.addEventListener("focusin", () => focusPane("main"));
+
 function activate(doc: Doc): void {
   // 點分頁（包括目前的分頁）就回到文件，收起工作項目等（分頁留著；並排顯示時留在右邊）與 Git 歷史。
   if (!issueSide) hideItem();
   historyView?.close();
+  // 並排的其中一份文件已經關掉（例如切換專案）：先關閉並排。
+  if (paneDocs.side && (!docs.includes(paneDocs.side) || !docs.includes(paneDocs.main))) closeSide();
+  // 另一邊顯示的文件：換到那一邊（同一份文件不會在兩邊各開一個）。
+  const other = otherPane();
+  if (other && paneDocs[other] === doc) {
+    focusPane(other, true);
+    return;
+  }
   if (doc === active) return;
   flushDraft();
   // 切換前先把這個分頁還沒自動存的內容存起來（autoSaveNow 一開始就記下了分頁與內容）。
@@ -2693,6 +2944,7 @@ function activate(doc: Doc): void {
   if (review.active) review.finish();
   if (docs.includes(active)) stash();
   active = doc;
+  paneDocs[focusedPane] = doc;
   ({ kind, name: fileName, handle: fileHandle, baseline, fileBacked } = doc);
   kindSelect.value = kind;
   if (doc.state) editor.restore(doc.state, kind, doc.scrollTop);
@@ -2739,6 +2991,13 @@ function addTab(doc: Doc, after?: string | null): void {
 async function closeTab(id: string): Promise<void> {
   const doc = docs.find((d) => d.id === id);
   if (!doc) return;
+  // 關掉並排中的文件：先關閉並排（另一份文件留在左邊）。
+  if (paneDocs.side === doc) closeSide();
+  else if (paneDocs.side && paneDocs.main === doc) {
+    const keep = paneDocs.side;
+    closeSide();
+    activate(keep);
+  }
   if (doc === active) stash();
   if (doc.dirty) {
     const choice = await choose(t("要儲存變更嗎？"), t("「{name}」有尚未存檔的變更。", { name: doc.name }), [
@@ -3214,18 +3473,22 @@ function applyLayout(): void {
   const effective: ViewMode = narrow && view === "split" ? "editor" : view;
   // 工作項目等內容和編輯區並排：版面當成分割，右半邊放內容（預覽藏起來）。
   const side = issueSide && !narrow && workspace.classList.contains("issue-open");
+  // 兩份文件並排：右半邊放另一個編輯器。視窗太窄、工作項目要並排時關閉並排。
+  if (paneDocs.side && (narrow || side)) closeSide();
+  const docSide = !!paneDocs.side;
+  workspace.classList.toggle("doc-side", docSide);
   if (workspace.classList.contains("issue-side") !== side) {
     workspace.classList.toggle("issue-side", side);
     // 分頁列上標成目前分頁的換了（並排時是文件，蓋住編輯區時是工作項目等）。
     renderTabs();
   }
   // 即時預覽的版面和只顯示編輯區相同，差別在編輯區裡直接顯示排版。
-  const layout = side ? "split" : effective === "live" ? "editor" : effective;
+  const layout = side || docSide ? "split" : effective === "live" ? "editor" : effective;
   workspace.dataset.view = layout;
   workspace.classList.toggle("live", effective === "live");
   if (liveApplied !== (effective === "live")) {
     liveApplied = effective === "live";
-    editor.configure({ livePreview: liveApplied });
+    for (const ed of allEditors()) ed.configure({ livePreview: liveApplied });
   }
   workspace.classList.toggle("outline-hidden", !outlineShown);
   workspace.classList.toggle("narrow", narrow);
@@ -3265,6 +3528,8 @@ function applyLayout(): void {
 }
 
 function setView(mode: ViewMode): void {
+  // 分割、只看預覽要用到右半邊：先關閉並排。
+  if (paneDocs.side && (mode === "split" || mode === "preview")) closeSide();
   if (!issueSide) hideItem();
   historyView?.close();
   view = mode;
@@ -3293,7 +3558,7 @@ function setTheme(pref: ThemePref): void {
   if (settings.value.mermaid) {
     preview.invalidate();
     scheduleRender();
-    refreshLivePreview(editor.view);
+    for (const ed of allEditors()) refreshLivePreview(ed.view);
     rerenderIssue();
   }
   terminal?.applyTheme();
@@ -3305,7 +3570,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (themePref === "system" && settings.value.mermaid) {
     preview.invalidate();
     scheduleRender();
-    refreshLivePreview(editor.view);
+    for (const ed of allEditors()) refreshLivePreview(ed.view);
     rerenderIssue();
   }
 });

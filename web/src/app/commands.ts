@@ -2,7 +2,7 @@
  * 指令：指令面板（Ctrl+Shift+P）裡的所有指令與快捷鍵。
  */
 import { render as renderMarkdown, formatJson, formatAllTables, spacingPositions } from "../../pkg/md_wasm.js";
-import { Commands, type Command } from "../commands.ts";
+import { Commands, type Command, fuzzyScore } from "../commands.ts";
 import { desktop, displayPath, isRemote } from "../desktop.ts";
 import { openFile, stem, replaceExtension, download } from "../files.ts";
 import { insertBlock, toggleWrap, insertLink, clearInlineFormat, toggleLineStyle, TABLE_TEMPLATE } from "../format.ts";
@@ -11,6 +11,7 @@ import { KINDS, type DocKind } from "../kinds.ts";
 import { saveDraft } from "../session.ts";
 import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { Palette } from "../ui/palette.ts";
+import { Picker } from "../ui/picker.ts";
 import { REPO_URL } from "../ui/settings-dialog.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
@@ -26,6 +27,7 @@ import { issueView, issueSide } from "./wiki-edit.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
+import type { Doc } from "../main.ts";
 import { app } from "./context.ts";
 
 
@@ -58,6 +60,26 @@ function savedTabs(): string[] {
   return tabOrder().filter(
     (id) => !app.tabPinned(id) && (itemTabs.some((tab) => tab.id === id) || app.docs.some((d) => d.id === id && !d.dirty)),
   );
+}
+
+/** 並排編輯：選一份開著的文件放在右邊（兩邊已經顯示的不列）。 */
+let besidePicker: Picker<Doc> | null = null;
+function pickBeside(): void {
+  besidePicker ??= new Picker<Doc>({
+    label: t("在右邊並排開啟"),
+    placeholder: t("選一份開著的文件放在右邊"),
+    empty: t("沒有其他開著的文件；先開一份文件再並排。"),
+    query: (q) =>
+      app.docs
+        .filter((d) => d !== app.paneDocs.main && d !== app.paneDocs.side)
+        .map((d) => ({ d, score: fuzzyScore(q, d.name) }))
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map((x) => x.d),
+    render: (d) => ({ title: d.name, detail: d.path ? displayPath(d.path) : undefined, icon: d.wiki ? "book-open-text" : "file-text" }),
+    pick: (d) => app.openBeside(d),
+  });
+  besidePicker.open();
 }
 
 export function initCommands(): void {
@@ -401,6 +423,37 @@ export function initCommands(): void {
         app.showPanel("search");
         searchPanel?.showReplace();
       },
+    },
+    {
+      id: "open-beside",
+      title: t("並排編輯：在右邊開啟另一份文件…"),
+      group: t("檢視"),
+      icon: "columns-2",
+      run: () => pickBeside(),
+    },
+    {
+      id: "open-current-beside",
+      title: t("並排編輯：把目前的文件移到右邊"),
+      group: t("檢視"),
+      icon: "columns-2",
+      when: () => !app.paneDocs.side && app.docs.length > 1,
+      run: () => app.openBeside(app.active),
+    },
+    {
+      id: "focus-other-pane",
+      title: t("並排編輯：換到另一邊"),
+      group: t("檢視"),
+      icon: "arrow-left-right",
+      when: () => !!app.paneDocs.side,
+      run: () => app.activate(app.active === app.paneDocs.main ? app.paneDocs.side! : app.paneDocs.main),
+    },
+    {
+      id: "close-beside",
+      title: t("並排編輯：關閉右邊的文件"),
+      group: t("檢視"),
+      icon: "x",
+      when: () => !!app.paneDocs.side,
+      run: () => app.closeSide(),
     },
     { id: "show-files", title: t("顯示檔案"), group: t("檢視"), icon: "folder", keys: "Mod-Shift-e", run: () => app.showPanel("files") },
     { id: "show-outline", title: t("顯示大綱"), group: t("檢視"), icon: "list-tree", run: () => app.showPanel("outline") },

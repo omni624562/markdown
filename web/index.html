@@ -154,6 +154,7 @@
       </aside>
 
       <section class="pane editor-pane" aria-label="編輯區">
+        <div class="pane-head" id="main-pane-head" hidden></div>
         <div class="format-bar" id="format-bar" role="toolbar" aria-label="格式工具列" aria-controls="editor"></div>
         <div class="review-bar" id="review-bar" role="status" hidden></div>
         <div class="ai-bar" id="ai-bar" role="status" aria-live="polite" hidden></div>
@@ -169,6 +170,12 @@
         <div id="parse-error" class="parse-error" role="alert" hidden></div>
         <article class="markdown-body" id="preview"></article>
         <div id="empty-state" class="empty-state" hidden></div>
+      </section>
+
+      <!-- 並排編輯：右邊的另一份文件（放在預覽的位置）。 -->
+      <section class="pane side-editor-pane" id="side-pane" aria-label="右邊的文件">
+        <div class="pane-head" id="side-pane-head"></div>
+        <div class="editor-host" id="editor-side"></div>
       </section>
 
       <!-- 右側欄：設定「大綱放在右邊」時的大綱、移到右側的 Wiki 面板會放在這裡。 -->

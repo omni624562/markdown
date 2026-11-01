@@ -90,36 +90,40 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
   }
   if (!changed) return;
   const fontKeys: (keyof Settings)[] = ["docFont", "docFontCustom", "codeFont", "docLineHeight"];
-  if (changed.some((k) => fontKeys.includes(k))) app.editor.view.requestMeasure();
+  // 並排編輯時兩邊的編輯器都要套用。
+  const editors = app.editors;
+  if (changed.some((k) => fontKeys.includes(k))) for (const ed of editors) ed.view.requestMeasure();
   const editorKeys: (keyof Settings)[] = ["lineNumbers", "autoPairBrackets", "focusMode", "typewriterMode"];
   if (changed.some((k) => editorKeys.includes(k))) {
-    app.editor.configure({
-      lineNumbers: s.lineNumbers,
-      autoPairBrackets: s.autoPairBrackets,
-      focusMode: s.focusMode,
-      typewriterMode: s.typewriterMode,
-    });
+    for (const ed of editors) {
+      ed.configure({
+        lineNumbers: s.lineNumbers,
+        autoPairBrackets: s.autoPairBrackets,
+        focusMode: s.focusMode,
+        typewriterMode: s.typewriterMode,
+      });
+    }
   }
   if (changed.includes("editorFontSize")) {
-    app.editor.view.requestMeasure();
+    for (const ed of editors) ed.view.requestMeasure();
     app.terminal?.applyFont();
   }
   if (changed.includes("fixedToolbar")) {
     buildFormatBar();
-    app.editor.view.requestMeasure();
+    for (const ed of editors) ed.view.requestMeasure();
   }
   if (changed.includes("math") || changed.includes("mermaid") || changed.includes("blockRemoteImages")) {
     app.preview.clear();
     app.renderNow();
-    refreshLivePreview(app.editor.view);
+    for (const ed of editors) refreshLivePreview(ed.view);
     app.rerenderIssue();
   }
-  if (changed.includes("termCheck") || changed.includes("termIgnore")) recheckTerms(app.editor.view);
+  if (changed.includes("termCheck") || changed.includes("termIgnore")) for (const ed of editors) recheckTerms(ed.view);
   if (changed.includes("keybindings")) {
     app.commands.setBindings(s.keybindings);
     app.refreshKeyHints();
   }
-  if (changed.includes("spellCheck") || changed.includes("spellIgnore")) recheckSpelling(app.editor.view);
+  if (changed.includes("spellCheck") || changed.includes("spellIgnore")) for (const ed of editors) recheckSpelling(ed.view);
   if (changed.includes("outlineRight")) {
     // 打開「大綱放在右邊」時，一定讓它顯示出來。
     if (app.settings.value.outlineRight) app.rightOutlineShown = true;

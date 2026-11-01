@@ -100,11 +100,11 @@ export interface EditorOptions {
 
 export interface EditorHandlers {
   /** 內容改變時（傳 CodeMirror 的文件物件，需要字串時再轉，免得每次按鍵都把整份文件轉成字串）。 */
-  onChange(doc: Text): void;
+  onChange(doc: Text, view: EditorView): void;
   onSelection(view: EditorView): void;
-  onScroll(topLine: number): void;
+  onScroll(topLine: number, view: EditorView): void;
   /** JSON 解析錯誤，用於編輯器內的紅色底線提示。 */
-  getError(): SourceError | null;
+  getError(view: EditorView): SourceError | null;
 }
 
 function placeholderText(kind: DocKind): string {
@@ -163,10 +163,23 @@ export class Editor {
   /** 依檔名載入好的語法（`null` 表示這個檔名沒有對應的語法）。 */
   #syntax: LanguageSupport | null = null;
 
-  constructor(parent: HTMLElement, doc: string, kind: DocKind, handlers: EditorHandlers, options: EditorOptions) {
+  /**
+   * `share`：和另一個編輯器共用擴充（並排編輯的兩個編輯器）。同一份文件的狀態（內容、游標、復原紀錄）
+   * 才能在兩個編輯器之間搬來搬去；事件處理也共用，靠傳進去的 view 分辨是哪一個。
+   */
+  constructor(parent: HTMLElement, doc: string, kind: DocKind, handlers: EditorHandlers, options: EditorOptions, share?: Editor) {
     this.#handlers = handlers;
     this.#kind = kind;
-    this.#options = options;
+    this.#options = { ...options };
+    if (share) {
+      this.#language = share.#language;
+      this.#gutter = share.#gutter;
+      this.#writing = share.#writing;
+      this.#extensions = share.#extensions;
+      this.view = new EditorView({ parent, state: this.#createState(doc) });
+      this.#watchScroll(handlers);
+      return;
+    }
     this.#extensions = [
       this.#gutter.of(this.#gutterFor(options)),
       this.#writing.of(this.#writingFor(options)),
@@ -188,18 +201,21 @@ export class Editor {
       this.#language.of(this.#languageFor(kind)),
       ...(options.extra ?? []),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged) handlers.onChange(u.state.doc);
+        if (u.docChanged) handlers.onChange(u.state.doc, u.view);
         if (u.docChanged || u.selectionSet) handlers.onSelection(u.view);
       }),
     ];
     this.view = new EditorView({ parent, state: this.#createState(doc) });
+    this.#watchScroll(handlers);
+  }
 
+  #watchScroll(handlers: EditorHandlers): void {
     const scroller = this.view.scrollDOM;
     scroller.addEventListener(
       "scroll",
       () => {
         const block = this.view.lineBlockAtHeight(scroller.scrollTop - this.view.documentPadding.top);
-        handlers.onScroll(this.view.state.doc.lineAt(block.from).number);
+        handlers.onScroll(this.view.state.doc.lineAt(block.from).number, this.view);
       },
       { passive: true },
     );
@@ -270,7 +286,7 @@ export class Editor {
   }
 
   #diagnostics(): Diagnostic[] {
-    const err = this.#handlers.getError();
+    const err = this.#handlers.getError(this.view);
     if (!err) return [];
     const doc = this.view.state.doc;
     const line = doc.line(Math.min(Math.max(err.line, 1), doc.lines));
