@@ -43,6 +43,7 @@ import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
+import { type StartAction, buildStartPage, fillStartRecent } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
@@ -79,7 +80,7 @@ import { gitPanel, noteWorkItems, pollWorkItems, renderAdoBadge, workItemSeen, i
 import { groupItems, showWorkItem } from "./app/work-item-actions.ts";
 import { createPullRequest, reportError, resolveMergeConflict, showExternalChanges, switchBranch, initGitActions } from "./app/git-actions.ts";
 import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady, initAiTerminal } from "./app/ai-terminal.ts";
-import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, refreshActivityCommands, refreshToc, separator, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
+import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, openWelcome, refreshActivityCommands, refreshToc, separator, showShortcuts, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
 import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focusedItem, hideItem, itemTabInfo, itemTabs, keepItem, reopenItem, selectItem, selectedItemId, setItemPinned, tabOrder } from "./app/item-tabs.ts";
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
@@ -179,6 +180,10 @@ const app = {
   },
   get addTab() {
     return addTab;
+  },
+  /** 這份文件不顯示起始頁（按「新增文件」開的：已經要開始寫了，只留編輯區的灰色提示）。 */
+  skipStartPage(id: string) {
+    startDismissed.add(id);
   },
   get ado() {
     return ado;
@@ -1392,16 +1397,30 @@ function renderError({ error }: RenderResult): void {
   parseErrorEl.replaceChildren(msg, jump);
 }
 
-/** 空白文件提示目前畫的內容（一樣就不重畫，最近開啟的檔案也不重讀）。 */
+/** 起始頁目前畫的內容（一樣就不重畫，最近開啟的檔案也不重讀）。 */
 let emptyStateKey = "";
+/** 按了「新增文件」的空白文件：不再顯示起始頁（直接開始寫）。 */
+const startDismissed = new Set<string>();
+/** Azure DevOps、GitHub 的帳號讀到了沒（讀到之前不列「連線」，免得已連線的人看到一閃而過的連結）。 */
+let accountsReady = false;
+
+/** 還沒連線的 Azure DevOps、GitHub（起始頁的「連線」）。功能關掉時不列。 */
+function startConnect(): StartAction[] {
+  if (!desktop || !accountsReady) return [];
+  const list: StartAction[] = [];
+  if (ado && !ado.account)
+    list.push({ icon: "briefcase-business", label: t("連線 Azure DevOps／TFS…"), run: () => settingsDialog.open(t("Azure DevOps／TFS")) });
+  if (github && !github.account) list.push({ icon: "github", label: t("登入 GitHub…"), run: () => settingsDialog.open("GitHub") });
+  return list;
+}
 
 /**
- * 空白文件的提示：開啟檔案、從範本新增、載入範例、最近開啟的檔案。
+ * 空白文件的起始頁：開始（新增、開啟檔案、開啟資料夾、從範本新增）、連線、最近開啟的資料夾與檔案、小提示。
  * 有預覽時放在預覽區；即時預覽、原始碼只有編輯區，改放在編輯區中間（不擋打字，打字就消失）。
  */
 function renderEmptyState(text: string): void {
   // 不用 trim()：大文件每次都會複製一份字串。
-  const empty = !/\S/.test(text);
+  const empty = !/\S/.test(text) && !startDismissed.has(active.id);
   emptyStateEl.hidden = !empty;
   if (!empty) {
     emptyStateKey = "";
@@ -1411,77 +1430,68 @@ function renderEmptyState(text: string): void {
   const host = inEditor ? $(".editor-pane") : previewScroller;
   if (emptyStateEl.parentElement !== host) host.append(emptyStateEl);
   emptyStateEl.classList.toggle("in-editor", inEditor);
-  const key = `${kind}|${view}|${inEditor}|${currentLang()}`;
+  const connect = startConnect();
+  const key = `${kind}|${view}|${inEditor}|${currentLang()}|${connect.map((c) => c.icon).join()}`;
   if (key === emptyStateKey) return;
   emptyStateKey = key;
-  // 只有預覽時旁邊沒有編輯區，提示改成切換到可以打字的檢視。
+  // 只有預覽時旁邊沒有編輯區，第一個動作改成切換到可以打字的檢視。
   const previewOnly = view === "preview";
-  const hints: Record<DocKind, string> = {
-    markdown: previewOnly
-      ? t("按「開始寫作」切換到即時預覽，直接在畫面上打字。")
-      : view === "live"
-        ? t("直接在這裡開始寫，排版會即時顯示。")
-        : inEditor
-          ? t("在這裡輸入 Markdown，切到預覽可以看排版結果。")
-          : t("在左邊開始寫，這裡會即時顯示排版結果。"),
-    text: previewOnly ? t("按「開始寫作」切換到可以輸入的檢視。") : inEditor ? t("在這裡輸入文字。") : t("在左邊輸入文字，這裡會顯示閱讀版面。"),
-    json: previewOnly
-      ? t("按「開始寫作」切換到可以輸入的檢視。")
-      : inEditor
-        ? t("在這裡貼上 JSON，切到預覽可以看樹狀檢視。")
-        : t("貼上 JSON，這裡會顯示可摺疊的樹狀檢視，並即時檢查語法。"),
+  const hint = previewOnly
+    ? t("按「開始寫作」就能直接在畫面上打字，或從下面選一個開始")
+    : inEditor
+      ? t("直接打字就開始寫新文件，或從下面選一個開始")
+      : t("在左邊打字就開始寫，這裡會即時顯示排版；或從下面選一個開始");
+  const run = (id: string) => () => void commands.run(id).catch(reportError);
+  const keysOf = (id: string) => {
+    const keys = commands.get(id)?.keys;
+    return keys ? formatKeys(keys) : undefined;
   };
-  const card = document.createElement("div");
-  card.className = "empty-card";
-  card.innerHTML = `<h2></h2><p></p><div class="empty-actions"></div><p class="empty-tip"></p>`;
-  card.querySelector("h2")!.textContent = t("空白文件");
-  card.querySelector(".empty-tip")!.textContent = t("也可以直接把 Markdown、文字檔或程式碼檔拖曳進來");
-  card.querySelector("p")!.textContent = hints[kind];
-  const actions = card.querySelector(".empty-actions")!;
-  const mk = (label: string, run: () => void) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "btn";
-    b.textContent = label;
-    b.addEventListener("click", run);
-    actions.append(b);
-  };
-  if (previewOnly) mk(t("開始寫作"), () => setView(kind === "markdown" ? "live" : "editor"));
-  mk(t("開啟檔案"), () => void commands.run("open"));
-  if (kind === "markdown") mk(t("從範本新增"), () => void commands.run("new-from-template"));
-  if (kind === "markdown") mk(t("載入範例文件"), () => editor.replaceAll(sample));
-  actions.querySelector("button")?.classList.add("btn-primary");
-  emptyStateEl.replaceChildren(card);
-  if (desktop) void renderRecentFiles(card, key);
+  const actions: StartAction[] = [
+    previewOnly
+      ? { icon: "pencil", label: t("開始寫作"), primary: true, run: () => setView(kind === "markdown" ? "live" : "editor") }
+      : {
+          icon: "pencil",
+          label: t("新增文件"),
+          keys: keysOf("new"),
+          primary: true,
+          // 這份就是新的空白文件：收起起始頁，直接開始寫。
+          run: () => {
+            startDismissed.add(active.id);
+            renderEmptyState(editor.text);
+            editor.view.focus();
+          },
+        },
+    { icon: "file-text", label: t("開啟檔案…"), keys: keysOf("open"), run: run("open") },
+  ];
+  if (desktop) actions.push({ icon: "folder-open", label: t("開啟資料夾…"), run: run("open-folder") });
+  if (kind === "markdown") actions.push({ icon: "layout-template", label: t("從範本新增…"), run: run("new-from-template") });
+  const page = buildStartPage({
+    hint,
+    actions,
+    connect,
+    tips: [
+      { keys: keysOf("quick-open"), label: t("找檔案"), run: run("quick-open") },
+      { keys: keysOf("palette"), label: t("所有指令"), run: run("palette") },
+      { keys: "F1", label: t("快速鍵一覽"), run: () => showShortcuts() },
+      { label: t("把檔案拖進視窗就能開啟") },
+    ],
+    tour: () => openWelcome(),
+  });
+  emptyStateEl.replaceChildren(page);
+  if (desktop) void renderRecentFiles(page, key);
 }
 
-/** 空白文件提示下方的「最近開啟的檔案」（最多 5 個，點了直接開啟）。 */
-async function renderRecentFiles(card: HTMLElement, key: string): Promise<void> {
-  const { files } = await desktop!.recent().catch(() => ({ files: [] as string[] }));
-  if (key !== emptyStateKey || !files.length) return;
-  const box = document.createElement("div");
-  box.className = "empty-recent";
-  const h = document.createElement("h3");
-  h.textContent = t("最近開啟的檔案");
-  const list = document.createElement("ul");
-  for (const path of files.slice(0, 5)) {
-    const li = document.createElement("li");
-    const b = document.createElement("button");
-    b.type = "button";
-    b.title = displayPath(path);
-    const name = document.createElement("span");
-    name.className = "empty-recent-name";
-    name.textContent = basename(path) || path;
-    const dir = document.createElement("span");
-    dir.className = "empty-recent-dir";
-    dir.textContent = displayPath(dirname(path));
-    b.append(icon("file-text"), name, dir);
-    b.addEventListener("click", () => void openPath(path).catch(reportError));
-    li.append(b);
-    list.append(li);
-  }
-  box.append(h, list);
-  card.querySelector(".empty-tip")!.before(box);
+/** 起始頁右欄：最近開啟的資料夾（最多 4 個）與檔案（最多 5 個），點了直接開啟。 */
+async function renderRecentFiles(page: HTMLElement, key: string): Promise<void> {
+  const { folders, files } = await desktop!.recent().catch(() => ({ folders: [] as string[], files: [] as string[] }));
+  if (key !== emptyStateKey) return;
+  fillStartRecent(page, {
+    folders: folders.slice(0, 4),
+    files: files.slice(0, 5),
+    display: displayPath,
+    openFolder: (path) => void openRecentFolder(path),
+    openFile: (path) => void openPath(path).catch(reportError),
+  });
 }
 
 let outlineKey = "";
@@ -2145,6 +2155,7 @@ const github = desktop && features.git
         void gitPanel?.refresh();
         void renderIssuesTab();
         settingsDialog.refresh();
+        renderEmptyState(editor.text);
       },
     })
   : null;
@@ -2163,10 +2174,16 @@ const ado = desktop && features.ado
         if (sidePanel === "workitems" || sidePanel === "wiki") showPanel(sidePanel, false);
         settingsDialog.refresh();
         void gitPanel?.refresh();
+        renderEmptyState(editor.text);
       },
       openSettings: () => settingsDialog.open(t("Azure DevOps／TFS")),
     })
   : null;
+// 帳號讀到後，起始頁才列出還沒連線的 Azure DevOps、GitHub。
+void Promise.all([ado?.ready(), github?.ready()]).then(() => {
+  accountsReady = true;
+  renderEmptyState(editor.text);
+});
 
 let wikiListCache: Promise<AdoWiki[]> | null = null;
 initAdoLinks();
