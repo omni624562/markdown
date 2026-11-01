@@ -1,157 +1,79 @@
 /**
- * 工作項目：改狀態、指派給我、留言（在內容上方的操作列）。
+ * 工作項目：在主要區域開啟，內容上方的欄位直接改（狀態、指派、優先順序、Sprint、標題、標籤），留言框在留言段落。
  */
-import { render as renderMarkdown } from "../../pkg/md_wasm.js";
-import { type AdoWorkItem, type AdoWorkItemDetail, desktop } from "../desktop.ts";
+import { type AdoWorkItem, type AdoWorkItemChange, type AdoWorkItemDetail, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { timeAgo } from "../history-label.ts";
 import { issueFileName, stateTone, workItemMarkdown, workItemIdOf } from "../issue-doc.ts";
 import type { IssueFact } from "../ui/issue-view.ts";
-import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { decorateAttachments } from "../ui/work-item-attachments.ts";
 import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
 import { decorateMarks } from "../ui/work-item-marks.ts";
 import * as storage from "../storage.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
+import type { Iteration } from "../work-item-fields.ts";
 import { openAttachment, saveAttachment } from "./ado-files.ts";
 import { insertIssueLink } from "./ado-links.ts";
 import { offlineRefs } from "./offline-copies.ts";
 import { workItemSeen } from "./work-item-updates.ts";
 import { workItemsPanel, barShortcuts, toggleWorkItemShortcut } from "./work-items-panel.ts";
+import { enhanceWorkItem, lazy, type Loaded } from "./work-item-edit.ts";
 import { app } from "./context.ts";
 
 
 /** 每種工作項目可以設定的狀態（同一個專案、類型只讀一次）。 */
-const workItemStates = new Map<string, Promise<string[]>>();
+const workItemStates = new Map<string, Loaded<string[]>>();
+/** 每個專案的 Sprint（只讀一次）。 */
+const projectIterations = new Map<string, Loaded<Iteration[]>>();
 
-/** 工作項目內容上方的操作列；`update` 在讀到最新內容時呼叫（狀態、指派、修訂版本）。 */
-function workItemActions(item: AdoWorkItem): { el: HTMLElement; update(d: AdoWorkItemDetail): void } {
+/** 工作項目的修改：送出變更、讀到最新內容時記下來（狀態、指派、修訂版本），內容畫好之後加上修改的方式。 */
+function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): void; enhance(body: HTMLElement): void } {
   let detail: AdoWorkItemDetail | null = null;
-  const bar = document.createElement("div");
-  bar.className = "issue-toolbar";
-  const stateLabel = document.createElement("label");
-  stateLabel.className = "issue-toolbar-field";
-  stateLabel.append(t("狀態"));
-  const state = document.createElement("select");
-  state.className = "issue-toolbar-select";
-  state.append(new Option(item.state, item.state, true, true));
-  stateLabel.append(state);
-  const assign = document.createElement("button");
-  assign.type = "button";
-  assign.className = "btn btn-small";
-  assign.append(icon("user-check"), t("改成指派給我"));
-  const commentBtn = document.createElement("button");
-  commentBtn.type = "button";
-  commentBtn.className = "btn btn-small";
-  commentBtn.append(icon("message-square-plus"), t("新增留言"));
-  const form = document.createElement("div");
-  form.className = "issue-comment-form";
-  form.hidden = true;
-  const textarea = document.createElement("textarea");
-  textarea.rows = 3;
-  textarea.placeholder = t("輸入留言（可以用 Markdown）");
-  textarea.setAttribute("aria-label", t("留言"));
-  const send = document.createElement("button");
-  send.type = "button";
-  send.className = "btn btn-small btn-primary";
-  send.textContent = t("送出留言");
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.className = "btn btn-small";
-  cancel.textContent = t("取消");
-  const formActions = document.createElement("div");
-  formActions.className = "issue-comment-actions";
-  formActions.append(send, cancel);
-  form.append(textarea, formActions);
-  bar.append(stateLabel, assign, commentBtn, form);
-
-  const me = () => app.ado?.account?.name ?? "";
-  const render = () => {
-    const current = detail?.state ?? item.state;
-    if (![...state.options].some((o) => o.value === current)) state.append(new Option(current, current));
-    state.value = current;
-    const mine = (detail?.assignedTo ?? item.assignedTo) === me();
-    assign.hidden = mine;
-  };
-  // 第一次點選狀態時才讀取可以設定的狀態。
-  const loadStates = () => {
-    const key = `${item.project}|${item.kind}`;
-    let p = workItemStates.get(key);
-    if (!p) {
-      p = desktop!.adoWorkItemStates(item.project, item.kind);
-      workItemStates.set(key, p);
-      p.catch(() => workItemStates.delete(key));
-    }
-    void p
-      .then((list) => {
-        const current = state.value;
-        state.replaceChildren(...list.map((s) => new Option(s, s, false, s === current)));
-        render();
-      })
-      .catch(app.reportError);
-  };
-  state.addEventListener("focus", loadStates, { once: true });
-  state.addEventListener("pointerdown", loadStates, { once: true });
+  let busy = false;
+  const statesKey = `${item.project}|${item.kind}`;
+  let states = workItemStates.get(statesKey);
+  if (!states) workItemStates.set(statesKey, (states = lazy(() => desktop!.adoWorkItemStates(item.project, item.kind))));
+  let iterations = projectIterations.get(item.project);
+  if (!iterations) projectIterations.set(item.project, (iterations = lazy(() => desktop!.adoIterations(item.project))));
 
   /** 送出變更；成功後重新讀取內容與清單。 */
-  const apply = async (change: { state?: string; assignToMe?: boolean; comment?: string }, done: string) => {
-    for (const el of [state, assign, commentBtn, send]) el.disabled = true;
+  const apply = async (change: AdoWorkItemChange, done: string): Promise<boolean> => {
+    if (busy || !detail) return false;
+    busy = true;
+    document.querySelector(".issue-body .ado-hero")?.classList.add("busy");
     try {
-      await desktop!.adoWorkItemUpdate(item.id, { ...change, rev: detail?.rev });
+      await desktop!.adoWorkItemUpdate(item.id, { ...change, rev: detail.rev });
       toast(done, { tone: "success" });
-      await app.issueView.refresh();
+      // 改了標題：重新開啟，分頁名稱也跟著換。
+      if (change.title) showWorkItem({ ...item, title: change.title });
+      else await app.issueView.refresh();
       void workItemsPanel?.refresh();
       return true;
     } catch (e) {
       app.reportError(e);
-      render();
       return false;
     } finally {
-      for (const el of [state, assign, commentBtn, send]) el.disabled = false;
+      busy = false;
+      document.querySelector(".issue-body .ado-hero")?.classList.remove("busy");
     }
   };
-  state.addEventListener("change", () => {
-    const next = state.value;
-    if (next === (detail?.state ?? item.state)) return;
-    void apply({ state: next }, t("已把狀態改成「{state}」", { state: next }));
-  });
-  assign.addEventListener("click", () => void apply({ assignToMe: true }, t("已指派給你")));
-  commentBtn.addEventListener("click", () => {
-    form.hidden = !form.hidden;
-    if (!form.hidden) textarea.focus();
-  });
-  cancel.addEventListener("click", () => {
-    form.hidden = true;
-    textarea.value = "";
-  });
-  const submit = async () => {
-    const text = textarea.value.trim();
-    if (!text) return textarea.focus();
-    const html = renderMarkdown(text, { kind: "markdown" }).html;
-    if (await apply({ comment: html }, t("已新增留言"))) {
-      textarea.value = "";
-      form.hidden = true;
-    }
-  };
-  send.addEventListener("click", () => void submit());
-  textarea.addEventListener("keydown", (e) => {
-    // Ctrl+Enter 送出；Esc 只收起表單，不要關掉整個檢視。
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      void submit();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      cancel.click();
-    }
-  });
-  render();
   return {
-    el: bar,
     update(d) {
       detail = d;
-      render();
+    },
+    enhance(body) {
+      enhanceWorkItem(
+        body,
+        {
+          detail: () => detail,
+          apply,
+          states: () => states.load(),
+          iterations: () => iterations.load(),
+          me: () => app.ado?.account?.name ?? "",
+        },
+        { states, iterations },
+      );
     },
   };
 }
@@ -200,7 +122,7 @@ export function showWorkItem(item: AdoWorkItem): void {
   // 開啟之前記下「上次看過」的時間（開啟後會更新），之後的留言標「新」。
   const seenAt = workItemSeen?.[item.id] ?? null;
   offlineRefs.set(`ado:${item.id}`, { type: "ado", item });
-  const actions = workItemActions(item);
+  const editing = workItemEditing(item);
   void app.showIssue({
     key: `ado:${item.id}`,
     origin: { kind: "ado", icon: "square-kanban", text: t("Azure DevOps 工作項目") },
@@ -212,7 +134,7 @@ export function showWorkItem(item: AdoWorkItem): void {
       const d = await desktop!.adoWorkItem(item.id);
       related = new Map(d.relations.map((r) => [r.id, r]));
       detail = d;
-      actions.update(d);
+      editing.update(d);
       return workItemMarkdown(d);
     },
     facts: () => (detail ? workItemFacts(detail) : []),
@@ -235,10 +157,12 @@ export function showWorkItem(item: AdoWorkItem): void {
         },
         newestFirst: storage.load("workitem-comment-order") !== "oldest",
         onOrder: (newest) => storage.save("workitem-comment-order", newest ? "newest" : "oldest"),
+        // 留言框在留言段落裡：沒有留言時也要有這個段落。
+        commentsAlways: true,
       });
+      editing.enhance(body);
     },
     insertLink: () => insertIssueLink(item),
-    toolbar: actions.el,
     shortcut: {
       has: () => barShortcuts.some((s) => isWorkItemShortcut(s) && s.workItem === item.id),
       toggle: () => toggleWorkItemShortcut(item),

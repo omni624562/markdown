@@ -739,6 +739,75 @@ pub(super) fn area_paths(root: &Value) -> Vec<String> {
     out
 }
 
+/// 反覆項目（Sprint）：路徑與起訖日期（沒有設定日期時是空的）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Iteration {
+    pub(super) path: String,
+    pub(super) start: Option<String>,
+    pub(super) finish: Option<String>,
+}
+
+/// 把反覆項目樹攤平成路徑（`產品\Sprint 3`），第一個是專案本身（不屬於任何 Sprint）。
+pub(super) fn iteration_list(root: &Value) -> Vec<Iteration> {
+    fn date(node: &Value, key: &str) -> Option<String> {
+        node.get("attributes")
+            .and_then(|a| str_of(a, key))
+            .map(str::to_string)
+    }
+    fn walk(node: &Value, path: &str, out: &mut Vec<Iteration>) {
+        for child in node
+            .get("children")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
+            if out.len() >= MAX_AREAS {
+                return;
+            }
+            let Some(name) = str_of(child, "name") else {
+                continue;
+            };
+            let p = format!("{path}\\{name}");
+            out.push(Iteration {
+                path: p.clone(),
+                start: date(child, "startDate"),
+                finish: date(child, "finishDate"),
+            });
+            walk(child, &p, out);
+        }
+    }
+    let mut out = vec![];
+    if let Some(name) = str_of(root, "name") {
+        out.push(Iteration {
+            path: name.to_string(),
+            start: None,
+            finish: None,
+        });
+        walk(root, name, &mut out);
+    }
+    out
+}
+
+/// 專案的反覆項目（Sprint）：編輯工作項目時選擇。
+#[tauri::command]
+pub async fn ado_iterations(app: AppHandle, project: String) -> Result<Vec<Iteration>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let path = format!(
+            "/{}/_apis/wit/classificationnodes/iterations?$depth=10",
+            encode_segment(&project)
+        );
+        Ok(iteration_list(&get(
+            &a.url,
+            &pat,
+            &path,
+            &tr!("讀取 Sprint 清單"),
+        )?))
+    })
+    .await
+}
+
 /// 團隊成員的名字：新版在 `identity` 裡，舊版直接是成員；群組不列出。
 pub(super) fn member_names(res: &Value) -> Vec<String> {
     values(res)
@@ -962,6 +1031,46 @@ pub struct WorkItemChange {
     pub comment: Option<String>,
     /// 開啟時的修訂版本：伺服器上的版本不同（被別人改過）時不更新。
     pub rev: Option<u64>,
+    /// 標題（不可以是空的）。
+    pub title: Option<String>,
+    /// 優先順序（1 最高，到 4）。
+    pub priority: Option<u8>,
+    /// 反覆項目（Sprint）的路徑，例如 `產品\Sprint 3`。
+    pub iteration: Option<String>,
+    /// 標籤；空的清單表示清除所有標籤。
+    pub tags: Option<Vec<String>>,
+}
+
+/// 標題最多幾個字（Azure DevOps 的限制）。
+pub(super) const MAX_TITLE: usize = 255;
+
+/// 檢查要更新的欄位：標題不可以是空的或太長、優先順序只能是 1～4。
+pub(super) fn check_change(change: &WorkItemChange) -> Result<(), String> {
+    if let Some(title) = &change.title {
+        if title.trim().is_empty() {
+            return Err(tr!("請輸入標題"));
+        }
+        if title.trim().chars().count() > MAX_TITLE {
+            return Err(tr!("標題最多 {n} 個字", n = MAX_TITLE));
+        }
+    }
+    if change.priority.is_some_and(|p| !(1..=4).contains(&p)) {
+        return Err(tr!("優先順序要是 1 到 4"));
+    }
+    Ok(())
+}
+
+/// 標籤欄位的值：去掉空白、分號（標籤之間用分號隔開）與重複的（不分大小寫）。
+pub(super) fn tags_value(tags: &[String]) -> String {
+    let mut out: Vec<String> = vec![];
+    for tag in tags {
+        let tag = tag.replace(';', " ");
+        let tag = tag.trim();
+        if !tag.is_empty() && !out.iter().any(|t| t.to_lowercase() == tag.to_lowercase()) {
+            out.push(tag.to_string());
+        }
+    }
+    out.join("; ")
 }
 
 /// 更新工作項目要送出的 JSON Patch。`me` 是登入的帳號（指派給我用）。
@@ -969,6 +1078,31 @@ pub(super) fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
     let mut ops = vec![];
     if let Some(rev) = change.rev {
         ops.push(serde_json::json!({ "op": "test", "path": "/rev", "value": rev }));
+    }
+    if let Some(title) = change
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.Title", "value": title }),
+        );
+    }
+    if let Some(priority) = change.priority {
+        ops.push(serde_json::json!({ "op": "add", "path": "/fields/Microsoft.VSTS.Common.Priority", "value": priority }));
+    }
+    if let Some(iteration) = change
+        .iteration
+        .as_deref()
+        .map(str::trim)
+        .filter(|i| !i.is_empty())
+    {
+        ops.push(serde_json::json!({ "op": "add", "path": "/fields/System.IterationPath", "value": iteration }));
+    }
+    if let Some(tags) = &change.tags {
+        // 空字串就是清除所有標籤。
+        ops.push(serde_json::json!({ "op": "add", "path": "/fields/System.Tags", "value": tags_value(tags) }));
     }
     if let Some(state) = change.state.as_deref().filter(|s| !s.is_empty()) {
         ops.push(
@@ -989,7 +1123,7 @@ pub(super) fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
     ops
 }
 
-/// 改狀態、指派給我、留言（可以一起）。
+/// 改狀態、指派給我、留言、標題、優先順序、Sprint、標籤（可以一起）。
 #[tauri::command]
 pub async fn ado_work_item_update(
     app: AppHandle,
@@ -997,6 +1131,7 @@ pub async fn ado_work_item_update(
     change: WorkItemChange,
 ) -> Result<(), String> {
     let (a, pat) = require(&app)?;
+    check_change(&change)?;
     crate::io::blocking_for(TIMEOUT, move || {
         let me = a.account.clone().unwrap_or_else(|| a.name.clone());
         let ops = change_ops(&change, &me);
