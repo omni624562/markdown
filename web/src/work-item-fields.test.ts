@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { iterationGroups, iterationLabel, parseTags, sameTags } from "./work-item-fields.ts";
+import { iterationGroups, iterationLabel, longFields, lossyHtml, parseTags, sameTags } from "./work-item-fields.ts";
 
 test("標籤：逗號、分號、頓號都可以隔開，去掉空白與重複", () => {
   assert.deepEqual(parseTags("UAT, AI 聊天；前端、 uat ,,"), ["UAT", "AI 聊天", "前端"]);
@@ -41,4 +41,22 @@ test("Sprint 分組：進行中與之後、沒有日期、已結束", () => {
     ],
   );
   assert.deepEqual(iterationGroups([{ path: "P", start: null, finish: null }], now).map((g) => g.kind), ["undated"]);
+});
+
+test("可以編輯的長文字段落：依類型決定欄位", () => {
+  const none = { desc: false, details: false };
+  assert.deepEqual(longFields("User Story", none).always.map((f) => f.field), ["description", "acceptanceCriteria"]);
+  assert.deepEqual(longFields("Task", none).always.map((f) => f.field), ["description"]);
+  assert.deepEqual(longFields("Bug", none).always.map((f) => f.field), ["reproSteps"]);
+  // Bug 已經有說明時也可以改；其他類型已經有驗收條件（有這個欄位）時也可以改。
+  assert.deepEqual(longFields("Bug", { desc: true, details: false }).editable.map((f) => f.field), ["description", "reproSteps"]);
+  assert.deepEqual(longFields("需求變更", { desc: false, details: true }).editable.map((f) => f.field), ["description", "acceptanceCriteria"]);
+});
+
+test("Markdown 表達不了的格式", () => {
+  assert.equal(lossyHtml("<p>一般<b>粗體</b><a href='x'>連結</a><img src='a.png'></p>"), false);
+  assert.equal(lossyHtml('<span style="color: red">紅字</span>'), true);
+  assert.equal(lossyHtml("<font face='標楷體'>字</font>"), true);
+  assert.equal(lossyHtml('<table><tr><td colspan="2">x</td></tr></table>'), true);
+  assert.equal(lossyHtml('<div style="margin-left: 10px">縮排</div>'), false);
 });
