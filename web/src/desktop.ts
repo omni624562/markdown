@@ -377,6 +377,12 @@ export interface AdoWorkItemChange {
   iteration?: string;
   /** 標籤；空的清單表示清除。 */
   tags?: string[];
+  /** 說明（HTML）；空字串表示清除。 */
+  description?: string;
+  /** 驗收條件（HTML）；空字串表示清除。 */
+  acceptanceCriteria?: string;
+  /** 重現步驟（HTML，Bug）；空字串表示清除。 */
+  reproSteps?: string;
   /** 開啟時的修訂版本（被別人改過就不更新）。 */
   rev?: number | null;
 }

@@ -56,6 +56,10 @@ export interface Settings {
   termCheck: boolean;
   /** 選擇「不再提示」的詞。 */
   termIgnore: string[];
+  /** 英文拼字檢查（拼錯的字畫紅色波浪底線）。 */
+  spellCheck: boolean;
+  /** 個人字典：「加入字典」的英文字（小寫）。 */
+  spellIgnore: string[];
   /** 貼上或拖進很大的圖片時，自動縮小並壓縮。 */
   imageCompress: boolean;
   /** 專注模式：淡化目前段落以外的文字。 */
@@ -142,6 +146,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   workItemColors: {},
   termCheck: true,
   termIgnore: [],
+  spellCheck: true,
+  spellIgnore: [],
   imageCompress: true,
   focusMode: false,
   typewriterMode: false,
@@ -200,6 +206,9 @@ function keybindings(v: unknown): { map: Record<string, string>; dropped: boolea
 /** 「不再提示」的詞最多記幾個。 */
 export const TERM_IGNORE_LIMIT = 500;
 
+/** 個人字典最多記幾個字。 */
+export const SPELL_IGNORE_LIMIT = 2000;
+
 export const FONT_SIZE_RANGE = { min: 12, max: 24 } as const;
 
 /** 驗證讀進來的設定：型別不對或超出範圍的欄位一律用預設值。 */
@@ -210,6 +219,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })),
     templates: [],
     termIgnore: [],
+    spellIgnore: [],
     activityOrder: [],
     activityHidden: [...DEFAULTS.activityHidden],
     activityCommands: [...DEFAULTS.activityCommands],
@@ -237,6 +247,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("autoSave");
   bool("adoNotify");
   bool("termCheck");
+  bool("spellCheck");
   bool("imageCompress");
   bool("focusMode");
   bool("typewriterMode");
@@ -318,6 +329,14 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
         TERM_IGNORE_LIMIT,
       );
       if (out.termIgnore.length !== list.length) problems++;
+    } else problems++;
+  }
+  if ("spellIgnore" in input) {
+    const list = input.spellIgnore;
+    if (Array.isArray(list)) {
+      const words = list.filter((w): w is string => typeof w === "string" && /^[a-z][a-z']{0,39}$/.test(w));
+      out.spellIgnore = [...new Set(words)].slice(-SPELL_IGNORE_LIMIT);
+      if (out.spellIgnore.length !== list.length) problems++;
     } else problems++;
   }
   if ("editorFontSize" in input) {

@@ -317,6 +317,44 @@ fn convert(text: &str, points: &[usize], from_utf16: bool) -> Vec<usize> {
     out
 }
 
+/// 英文拼字檢查（Hunspell 格式的字典，用純 Rust 的 spellbook）。字典由前端在需要時才下載。
+#[wasm_bindgen]
+pub struct Speller {
+    dict: spellbook::Dictionary,
+}
+
+/// 拼字建議最多幾個。
+const MAX_SUGGESTIONS: usize = 5;
+
+#[wasm_bindgen]
+impl Speller {
+    /// 讀入字典（`.aff` 與 `.dic` 的內容）。
+    #[wasm_bindgen(constructor)]
+    pub fn new(aff: &str, dic: &str) -> Result<Speller, JsError> {
+        let dict =
+            spellbook::Dictionary::new(aff, dic).map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Speller { dict })
+    }
+
+    /// 一次檢查很多字（減少 JavaScript 與 wasm 之間的往返）：回傳拼錯的字在清單裡的位置。
+    pub fn misspelled(&self, words: Vec<String>) -> Vec<u32> {
+        words
+            .iter()
+            .enumerate()
+            .filter(|(_, w)| !self.dict.check(w))
+            .map(|(i, _)| i as u32)
+            .collect()
+    }
+
+    /// 拼字建議（最可能的在前面）。
+    pub fn suggest(&self, word: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        self.dict.suggest(word, &mut out);
+        out.truncate(MAX_SUGGESTIONS);
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::convert;

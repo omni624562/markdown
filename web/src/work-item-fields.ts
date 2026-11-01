@@ -77,3 +77,34 @@ export function iterationGroups(list: readonly Iteration[], now: number): Iterat
   ];
   return groups.filter((g) => g.items.length);
 }
+
+/** 有驗收條件欄位的類型（流程範本內建的；Bug 用重現步驟）。 */
+const ACCEPTANCE_KINDS = ["user story", "product backlog item", "requirement", "feature", "epic"];
+
+/** 工作項目可以編輯的長文字段落：`desc` 說明、`details` 驗收條件或重現步驟；`field` 是送出時的欄位。 */
+export interface LongField {
+  section: "desc" | "details";
+  field: "description" | "acceptanceCriteria" | "reproSteps";
+}
+
+/**
+ * 這個類型可以編輯（沒有內容時也顯示）的長文字段落。
+ * Bug 的表單沒有說明欄位（用重現步驟），已經有說明時才能改；驗收條件只有內建有這個欄位的類型，
+ * 其他類型已經有內容（表示有這個欄位）時才能改。
+ */
+export function longFields(kind: string, has: { desc: boolean; details: boolean }): { always: LongField[]; editable: LongField[] } {
+  const k = kind.trim().toLowerCase();
+  const bug = k === "bug";
+  const desc: LongField = { section: "desc", field: "description" };
+  const details: LongField = { section: "details", field: bug ? "reproSteps" : "acceptanceCriteria" };
+  const always = [...(bug ? [] : [desc]), ...(bug || ACCEPTANCE_KINDS.includes(k) ? [details] : [])];
+  const editable = [...always];
+  if (bug && has.desc) editable.unshift(desc);
+  if (!always.includes(details) && has.details) editable.push(details);
+  return { always, editable };
+}
+
+/** HTML 裡有 Markdown 表達不了的格式（文字顏色、字型、合併儲存格）：轉成 Markdown 編輯再存回時會不見。 */
+export function lossyHtml(html: string): boolean {
+  return /<font\b/i.test(html) || /\b(colspan|rowspan)\s*=/i.test(html) || /style\s*=\s*["'][^"']*\b(color|font|background)/i.test(html);
+}

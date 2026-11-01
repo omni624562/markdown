@@ -1,10 +1,15 @@
 /**
  * 「檢查連結」：找出連到不存在的文件、圖片或檔案的連結，列成清單，點一下跳到那一行。
- * 開啟資料夾時檢查資料夾裡的所有文件；沒有開資料夾時檢查已開啟的文件。
+ * 開啟資料夾時檢查資料夾裡的所有文件；沒有開資料夾時檢查已開啟的文件；
+ * 正在看或編輯 Azure DevOps Wiki 頁面時，檢查這一頁連到的其他 Wiki 頁面。
  */
+import { parseDoc } from "../../pkg/md_wasm.js";
 import { desktop, isRemote } from "../desktop.ts";
+import type { DocInfo } from "../doc-index.ts";
 import { t } from "../i18n.ts";
-import { type LinkKind, type LinkProblem, planLinkCheck } from "../link-check.ts";
+import { type LinkKind, type LinkProblem, planLinkCheck, wikiLinkProblems, wikiPageLinkCount } from "../link-check.ts";
+import { flattenPages, pageName } from "../wiki-text.ts";
+import { wikiPanel } from "./work-items-panel.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import type { IndexedDoc } from "../workspace-index.ts";
@@ -56,8 +61,76 @@ async function findBroken(docs: IndexedDoc[]): Promise<{ found: Found[]; checked
   return { found, checked };
 }
 
+/** 正在看（或在分頁裡編輯）的 Wiki 頁面：路徑、內容與跳到某個連結的方法；不是 Wiki 頁面時是 null。 */
+function shownWikiPage(): { path: string; text: string; jump(p: LinkProblem): void } | null {
+  const view = app.issueView;
+  if (view.isOpen) {
+    if (!view.shownKey?.startsWith("wiki:") || !app.wikiPage) return null;
+    return {
+      path: app.wikiPage.path,
+      text: view.markdown,
+      jump: (p) => {
+        // 內文裡的連結還是原本的寫法（編碼過）：解碼後比對。
+        const same = (a: HTMLAnchorElement) => {
+          try {
+            return decodeURIComponent((a.getAttribute("href") ?? "").split(/[?#]/)[0]) === p.target;
+          } catch {
+            return false;
+          }
+        };
+        const a = [...view.body.querySelectorAll<HTMLAnchorElement>("a[href]")].find(same);
+        if (a) view.reveal(a);
+      },
+    };
+  }
+  const wiki = app.active.wiki;
+  if (!wiki) return null;
+  return { path: wiki.path, text: app.editor.text, jump: (p) => app.editor.reveal(p.line) };
+}
+
+/** 檢查 Wiki 頁面裡連到其他頁面的連結（附件、圖片不檢查）。 */
+function checkWikiLinks(page: { path: string; text: string; jump(p: LinkProblem): void }): void {
+  const pages = flattenPages(wikiPanel?.pages ?? []);
+  if (!pages.length) {
+    toast(t("還沒讀到 Wiki 的頁面清單，打開左側的 Wiki 面板後再試一次。"), { tone: "error" });
+    return;
+  }
+  const info = parseDoc(page.text, new Date().getFullYear()) as DocInfo;
+  const problems = wikiLinkProblems(info.links, page.path, pages);
+  const checked = wikiPageLinkCount(info.links);
+  if (!problems.length) {
+    toast(
+      checked
+        ? t("沒有斷掉的頁面連結（檢查了 {n} 個連結）", { n: checked })
+        : t("這一頁沒有連到其他 Wiki 頁面"),
+      { tone: "success" },
+    );
+    return;
+  }
+  const name = pageName(page.path);
+  const label = t("斷掉的連結（{n}）", { n: problems.length });
+  new Picker<LinkProblem>({
+    label,
+    placeholder: t("{label}：輸入文字篩選，Enter 跳到那一行", { label }),
+    empty: t("沒有符合的連結"),
+    query: (q) => {
+      const needle = q.trim().toLowerCase();
+      return needle ? problems.filter((p) => p.target.toLowerCase().includes(needle)) : problems;
+    },
+    render: (p) => ({
+      title: t("找不到 Wiki 頁面：{target}", { target: p.target }),
+      detail: t("{file}：第 {line} 行", { file: name, line: p.line }),
+      icon: ICONS.page,
+    }),
+    pick: (p) => page.jump(p),
+  }).open();
+}
+
 export async function checkLinks(): Promise<void> {
   if (!desktop) return;
+  // 正在看 Wiki 頁面：檢查這一頁連到的其他頁面。
+  const wiki = shownWikiPage();
+  if (wiki) return checkWikiLinks(wiki);
   const folder = indexScope() === "folder";
   const { found, checked } = await findBroken(await indexedDocs());
   if (!found.length) {

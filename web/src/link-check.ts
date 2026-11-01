@@ -5,6 +5,7 @@
 import type { LinkRef } from "./doc-index.ts";
 import { type FileRef, resolveWiki } from "./links.ts";
 import { dirname, localImagePath } from "./paths.ts";
+import { resolvePageLink } from "./wiki-text.ts";
 
 /** `page`：文件（`[[文件]]` 或 .md）；`image`：圖片；`file`：其他檔案。 */
 export type LinkKind = "page" | "image" | "file";
@@ -55,4 +56,27 @@ export function planLinkCheck(links: readonly LinkRef[], docPath: string, files:
     plan.paths.push({ path, problem });
   }
   return plan;
+}
+
+/** 不是 Wiki 頁面的連結：附件（`/.attachments/…`）、有副檔名的檔案（.png、.pdf…，.md 除外）。 */
+const NOT_PAGE = /(^|\/)\.attachments\/|\.(?!md$)[a-z0-9]{1,5}$/i;
+
+/**
+ * Wiki 頁面裡連到其他頁面的連結，找不到那一頁的列出來。`current` 是這一頁的路徑，`pages` 是 Wiki 的所有頁面。
+ * 附件、圖片與其他檔案不檢查（要另外向伺服器查）。
+ */
+export function wikiLinkProblems(links: readonly LinkRef[], current: string, pages: readonly string[]): LinkProblem[] {
+  const out: LinkProblem[] = [];
+  for (const link of links) {
+    if (link.kind !== "markdown" || NOT_PAGE.test(link.target)) continue;
+    // 文件索引的連結已經解碼過：照 Wiki 的寫法編回去（`%` 本身要先編）。
+    const href = link.target.replace(/%/g, "%25");
+    if (resolvePageLink(href, current, pages) === null) out.push({ line: link.line, target: link.target, kind: "page" });
+  }
+  return out;
+}
+
+/** 有幾個連到其他 Wiki 頁面的連結（會檢查的）。 */
+export function wikiPageLinkCount(links: readonly LinkRef[]): number {
+  return links.filter((l) => l.kind === "markdown" && !NOT_PAGE.test(l.target)).length;
 }

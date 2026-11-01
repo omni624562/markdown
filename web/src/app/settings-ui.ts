@@ -6,6 +6,7 @@ import { fontStack } from "../fonts.ts";
 import { t, currentLang } from "../i18n.ts";
 import { refreshLivePreview } from "../live-preview.ts";
 import { recheckTerms, scanDocument } from "../proofread.ts";
+import { recheckSpelling } from "../spellcheck.ts";
 import { type Convert, loadConverter, conversionChanges, looksSimplified } from "../s2t.ts";
 import { type Settings, FONT_SIZE_RANGE } from "../settings.ts";
 import * as storage from "../storage.ts";
@@ -118,6 +119,7 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
     app.commands.setBindings(s.keybindings);
     app.refreshKeyHints();
   }
+  if (changed.includes("spellCheck") || changed.includes("spellIgnore")) recheckSpelling(app.editor.view);
   if (changed.includes("outlineRight")) {
     // 打開「大綱放在右邊」時，一定讓它顯示出來。
     if (app.settings.value.outlineRight) app.rightOutlineShown = true;
