@@ -32,22 +32,43 @@ export function withFileName(url: string, name: string): string {
   }
 }
 
-/** `href` 是連線中那台伺服器（`base` 是集合的網址）上的工作項目附件嗎；是的話回傳網址與檔名。 */
+/**
+ * 兩個主機名稱是不是同一台伺服器：不分大小寫；一邊只寫電腦名稱（`pialm01`）、
+ * 另一邊寫完整名稱（`pialm01.corp.local`）也算。兩邊都是完整名稱時要完全一樣。
+ */
+function sameHost(a: string, b: string): boolean {
+  const x = a.toLowerCase();
+  const y = b.toLowerCase();
+  if (x === y) return true;
+  if (x.includes(".") === y.includes(".")) return false;
+  const [short, full] = x.includes(".") ? [y, x] : [x, y];
+  return full.startsWith(`${short}.`);
+}
+
+/**
+ * `href` 是連線中那台伺服器（`base` 是集合的網址）上的工作項目附件嗎；是的話回傳網址與檔名。
+ * 留言裡貼的網址常和連線設定的寫法不同（http／https、有沒有埠號、只寫電腦名稱），
+ * 主機名稱對得上、路徑在同一個集合底下就算；回傳的網址改用連線設定的伺服器，權杖只會送到那裡。
+ */
 export function attachmentLink(href: string, base: string): { url: string; name: string } | null {
   const root = base.trim().replace(/\/+$/, "");
-  const url = href.trim();
-  if (!root || url.slice(0, root.length + 1).toLowerCase() !== `${root.toLowerCase()}/`) return null;
-  let parsed: URL;
+  let link: URL;
+  let server: URL;
   try {
-    parsed = new URL(url);
+    link = new URL(href.trim());
+    server = new URL(root);
   } catch {
     return null;
   }
-  const rest = url.slice(root.length).split(/[?#]/)[0];
-  const m = /^(?:\/[^/]+)?\/_apis\/wit\/attachments\/([^/]+)$/i.exec(rest);
+  if (!/^https?:$/.test(link.protocol) || !sameHost(link.hostname, server.hostname)) return null;
+  const collection = server.pathname.replace(/\/+$/, "");
+  if (link.pathname.slice(0, collection.length + 1).toLowerCase() !== `${collection.toLowerCase()}/`) return null;
+  const rest = link.pathname.slice(collection.length);
+  // 集合底下可以有專案（名稱或 id）；連線設定的是伺服器（沒有集合）時再多一層集合。
+  const m = /^(?:\/[^/]+){0,2}\/_apis\/wit\/attachments\/([^/]+)$/i.exec(rest);
   if (!m) return null;
-  const name = parsed.searchParams.get("fileName")?.trim() || decodeURIComponent(m[1]);
-  return { url, name };
+  const name = link.searchParams.get("fileName")?.trim() || decodeURIComponent(m[1]);
+  return { url: `${root}${rest}${link.search}`, name };
 }
 
 /** 「512 B」「12 KB」「3.4 MB」。 */
