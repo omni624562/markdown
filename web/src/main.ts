@@ -2309,7 +2309,6 @@ function renderStatusView(): void {
   statusView.replaceChildren(label, back, facts);
 }
 new MutationObserver(renderStatusView).observe(workspace, { attributes: true, attributeFilter: ["class"] });
-issueView.setSide(issueSide);
 // 並排顯示時，檢視打開或關閉要重新排版（編輯區讓出右半邊）。
 let issueWasOpen = false;
 new MutationObserver(() => {

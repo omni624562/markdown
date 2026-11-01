@@ -2579,7 +2579,6 @@ input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45e
 .workspace.issue-open.issue-side > .editor-pane { display: flex; }
 .workspace.issue-open.issue-side > .splitter { display: block; }
 .workspace.issue-side > .issue-pane:not(.history-pane) { grid-column: preview-start / preview-end; }
-.workspace.narrow .issue-side-toggle { display: none; }
 .issue-head {
   display: flex;
   flex: none;
