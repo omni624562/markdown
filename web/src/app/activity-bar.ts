@@ -36,7 +36,7 @@ import { reportError } from "./git-actions.ts";
 import { HISTORY_COMMANDS, historyView, markHistoryButtons } from "./git-history.ts";
 import { keepItem, selectItem } from "./item-tabs.ts";
 import { selectedText } from "./new-work-item.ts";
-import { issueSide, toggleIssueSide } from "./wiki-edit.ts";
+import { issueSide, issueView, toggleIssueSide } from "./wiki-edit.ts";
 import { barShortcuts, openBarShortcut, removeBarShortcut, shortcutBar, shortcutName, setBarShortcuts } from "./work-items-panel.ts";
 import type { SidePanel } from "../main.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
@@ -923,6 +923,11 @@ export function initActivityBar(): void {
     }
     void app.commands.run(id).catch(reportError);
   });
+  /** 按右鍵的是顯示中的工作項目、Wiki 頁面分頁（它的動作才列出來）。 */
+  const shownMenuItem = () => {
+    const tab = app.menuItemTab();
+    return !!tab && issueView.shownKey === tab.key;
+  };
   tabMenu = floatingMenu(
     "tab-menu-anchor",
     [
@@ -951,6 +956,12 @@ export function initActivityBar(): void {
           selectItem(tab.id);
         },
       },
+      // 顯示中的工作項目、Wiki 頁面的動作（新增子頁面、放到左側圖示列、複製成 Markdown、刪除、保留離線）。
+      "-",
+      ...issueView.actions.map((entry): MenuEntry => {
+        if (typeof entry === "string" || !("run" in entry)) return entry;
+        return { ...entry, when: () => shownMenuItem() && (entry.when?.() ?? true) };
+      }),
       "-",
       "tab-copy-path",
       "tab-reveal",
