@@ -354,11 +354,11 @@ function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<A
   );
 }
 
-/** 清單上的一列：上面一行是類型、編號、狀態、指派對象與更新日期。 */
+/** 清單上的一列：上面一行是類型、編號、指派對象與更新日期，狀態在右邊（`kind`、`state` 由清單上色）。 */
 function workItemRow(w: AdoWorkItem): AdoWorkItem & IssueSummary {
   return {
     ...w,
-    meta: [`${w.kind} ${w.id}`, w.state, app.showAssignee() ? w.assignedTo : "", shortDate(w.changed)].filter(Boolean).join("・"),
+    meta: [`${w.kind} ${w.id}`, app.showAssignee() ? w.assignedTo : "", shortDate(w.changed)].filter(Boolean).join("・"),
   };
 }
 
@@ -727,9 +727,10 @@ export function initWorkItemsPanel(): void {
           (await desktop!.githubIssues(search)).map((i) => ({
             ...i,
             id: i.number,
+            // 已關閉的才標狀態（清單預設只列開啟中的）。
+            state: i.state === "closed" ? t("已關閉") : "",
             meta: [
               `#${i.number}`,
-              i.state === "closed" ? t("已關閉") : "",
               i.labels.join(t("、")),
               i.comments ? t("{n} 則留言", { n: i.comments }) : "",
               shortDate(i.updated),
