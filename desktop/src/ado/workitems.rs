@@ -1039,6 +1039,12 @@ pub struct WorkItemChange {
     pub iteration: Option<String>,
     /// 標籤；空的清單表示清除所有標籤。
     pub tags: Option<Vec<String>>,
+    /// 說明（HTML）；空字串表示清除。
+    pub description: Option<String>,
+    /// 驗收條件（HTML，User Story、Feature 等）；空字串表示清除。
+    pub acceptance_criteria: Option<String>,
+    /// 重現步驟（HTML，Bug）；空字串表示清除。
+    pub repro_steps: Option<String>,
 }
 
 /// 標題最多幾個字（Azure DevOps 的限制）。
@@ -1104,6 +1110,19 @@ pub(super) fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
         // 空字串就是清除所有標籤。
         ops.push(serde_json::json!({ "op": "add", "path": "/fields/System.Tags", "value": tags_value(tags) }));
     }
+    // 長文字欄位（HTML）：空字串就是清除。
+    for (field, value) in [
+        ("System.Description", &change.description),
+        (
+            "Microsoft.VSTS.Common.AcceptanceCriteria",
+            &change.acceptance_criteria,
+        ),
+        ("Microsoft.VSTS.TCM.ReproSteps", &change.repro_steps),
+    ] {
+        if let Some(html) = value {
+            ops.push(serde_json::json!({ "op": "add", "path": format!("/fields/{field}"), "value": html.trim() }));
+        }
+    }
     if let Some(state) = change.state.as_deref().filter(|s| !s.is_empty()) {
         ops.push(
             serde_json::json!({ "op": "add", "path": "/fields/System.State", "value": state }),
@@ -1123,7 +1142,7 @@ pub(super) fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
     ops
 }
 
-/// 改狀態、指派給我、留言、標題、優先順序、Sprint、標籤（可以一起）。
+/// 改狀態、指派給我、留言、標題、優先順序、Sprint、標籤、說明、驗收條件、重現步驟（可以一起）。
 #[tauri::command]
 pub async fn ado_work_item_update(
     app: AppHandle,

@@ -13,7 +13,8 @@ import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { Palette } from "../ui/palette.ts";
 import { REPO_URL } from "../ui/settings-dialog.ts";
 import { toast } from "../ui/toast.ts";
-import { templatePicker, saveAsTemplate, deleteTemplatePicker, showShortcuts, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { showShortcuts } from "./shortcuts-dialog.ts";
 import { checkLinks } from "./link-check-ui.ts";
 import { searchPanel } from "./git-history.ts";
 import { closeItem, itemTabs, setItemPinned, tabOrder } from "./item-tabs.ts";
@@ -60,6 +61,8 @@ function savedTabs(): string[] {
 }
 
 export function initCommands(): void {
+  // 自訂的快速鍵在登記指令時就套用（之後登記的指令也會套用）。
+  commands.setBindings(app.settings.value.keybindings);
   commands.register(
     {
       id: "new",
@@ -301,6 +304,13 @@ export function initCommands(): void {
       run: () => showShortcuts(),
     },
     {
+      id: "customize-shortcuts",
+      title: t("自訂快速鍵…"),
+      group: t("說明"),
+      icon: "keyboard",
+      run: () => showShortcuts(),
+    },
+    {
       id: "show-welcome",
       title: t("說明：開啟歡迎文件"),
       group: t("說明"),
@@ -505,8 +515,8 @@ export function initCommands(): void {
       title: t("檢查連結"),
       group: t("編輯"),
       icon: "unlink",
-      // 要在本機查檔案存不存在：桌面版，而且不是遠端資料夾。
-      when: () => !!desktop && !isRemote(app.workspaceRoot?.path),
+      // 要在本機查檔案存不存在：桌面版，而且不是遠端資料夾；看 Wiki 頁面時檢查頁面連結。
+      when: () => !!desktop && (!isRemote(app.workspaceRoot?.path) || !!app.active.wiki || !!app.issueView.shownKey?.startsWith("wiki:")),
       run: () => checkLinks(),
     },
     {
@@ -527,6 +537,18 @@ export function initCommands(): void {
         const n = app.settings.value.termIgnore.length;
         app.settings.update({ termIgnore: [] });
         toast(t("已清除 {n} 個不再提示的詞。", { n }), { tone: "success" });
+      },
+    },
+    {
+      id: "clear-spell-ignore",
+      title: t("拼字檢查：清除個人字典"),
+      group: t("編輯"),
+      icon: "spell-check",
+      when: () => app.settings.value.spellIgnore.length > 0,
+      run: () => {
+        const n = app.settings.value.spellIgnore.length;
+        app.settings.update({ spellIgnore: [] });
+        toast(t("已清除個人字典裡的 {n} 個字。", { n }), { tone: "success" });
       },
     },
     { id: "palette", title: t("開啟指令面板"), group: t("說明"), icon: "command", keys: "Mod-Shift-p", run: () => palette.open() },

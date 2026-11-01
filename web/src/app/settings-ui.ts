@@ -6,6 +6,7 @@ import { fontStack } from "../fonts.ts";
 import { t, currentLang } from "../i18n.ts";
 import { refreshLivePreview } from "../live-preview.ts";
 import { recheckTerms, scanDocument } from "../proofread.ts";
+import { recheckSpelling } from "../spellcheck.ts";
 import { type Convert, loadConverter, conversionChanges, looksSimplified } from "../s2t.ts";
 import { type Settings, FONT_SIZE_RANGE } from "../settings.ts";
 import * as storage from "../storage.ts";
@@ -15,7 +16,8 @@ import { clampSidebarWidth, setupSidebarResize } from "../ui/sidebar-resize.ts";
 import { setupSplitter } from "../ui/splitter.ts";
 import { toast } from "../ui/toast.ts";
 import { versionLabel, versionDetail, versionTooltip } from "../updater.ts";
-import { applyActivityLayout, openUrl, showShortcuts, openWelcome, openChangelog, panelOrder, PANEL_LABELS, PANEL_ICONS, addActivityCommand } from "./activity-bar.ts";
+import { applyActivityLayout, openUrl, openWelcome, openChangelog, panelOrder, PANEL_LABELS, PANEL_ICONS, addActivityCommand } from "./activity-bar.ts";
+import { showShortcuts } from "./shortcuts-dialog.ts";
 import { reportError } from "./git-actions.ts";
 import { buildFormatBar } from "./new-work-item.ts";
 import { showAdo, gitPanel } from "./work-item-updates.ts";
@@ -113,6 +115,11 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
     app.rerenderIssue();
   }
   if (changed.includes("termCheck") || changed.includes("termIgnore")) recheckTerms(app.editor.view);
+  if (changed.includes("keybindings")) {
+    app.commands.setBindings(s.keybindings);
+    app.refreshKeyHints();
+  }
+  if (changed.includes("spellCheck") || changed.includes("spellIgnore")) recheckSpelling(app.editor.view);
   if (changed.includes("outlineRight")) {
     // 打開「大綱放在右邊」時，一定讓它顯示出來。
     if (app.settings.value.outlineRight) app.rightOutlineShown = true;
@@ -270,6 +277,7 @@ export function initSettingsUi(): void {
   document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((btn) => {
     const mode = btn.dataset.view as ViewMode;
     const cmd = app.commands.get(`view-${mode}`)!;
+    btn.dataset.keysFor = cmd.id;
     btn.title = app.withKeys(cmd.title, cmd.keys);
     // 視窗窄時只剩圖示（文字藏起來）：螢幕閱讀器仍然要念得出名稱。
     btn.setAttribute("aria-label", btn.querySelector(".label")?.textContent || cmd.title);

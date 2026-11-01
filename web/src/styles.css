@@ -2056,6 +2056,7 @@ button.git-info:disabled { cursor: default; }
 .workitems-filters .multi-select.chosen { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
 .multi-select-pop { position: fixed; inset: auto; display: none; min-width: 220px; max-width: min(380px, calc(100vw - 16px)); margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px); background: var(--surface-raised); color: var(--fg); box-shadow: var(--shadow); }
 .multi-select-pop:popover-open { display: flex; flex-direction: column; }
+.multi-select-caption { flex: none; padding: 8px 12px 2px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .multi-select-search { flex: none; margin: 6px 6px 2px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font: 12.5px var(--font-ui); }
 .multi-select-list { flex: 1 1 auto; min-height: 0; padding: 2px 4px 4px; overflow-y: auto; }
 .multi-select-item { display: flex; gap: 8px; align-items: center; min-height: 28px; padding: 0 8px; border-radius: 5px; font-size: 13px; cursor: pointer; }
@@ -2115,16 +2116,6 @@ button.git-info:disabled { cursor: default; }
 .wiki-hidden-show { padding: 0 2px; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 .wiki-hidden-show:hover { text-decoration: underline; }
 .wiki-hidden-show:disabled { color: var(--subtle); text-decoration: none; cursor: default; }
-.wiki-filter-pop { position: fixed; inset: auto; box-sizing: border-box; margin: 0; padding: 10px 10px 8px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); box-shadow: 0 8px 24px rgb(0 0 0 / 16%); font: 13px/1.4 var(--font-ui); }
-.wiki-filter-head { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
-.wiki-filter-actions { display: inline-flex; gap: 10px; }
-.wiki-filter-head strong { font-size: 12.5px; }
-.wiki-filter-list { display: flex; flex-direction: column; }
-.wiki-filter-item { display: flex; gap: 8px; align-items: center; min-height: 28px; padding: 0 4px; border-radius: 5px; cursor: pointer; }
-.wiki-filter-item:hover { background: var(--active-line); }
-.wiki-filter-item input { flex: none; width: 15px; height: 15px; margin: 0; }
-.wiki-filter-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wiki-filter-hint { margin: 8px 4px 0; color: var(--muted); font-size: 11.5px; }
 /* 「只看這裡」：樹狀目錄上方的資料夾名稱與「返回整個 Wiki」。 */
 .wiki-root { display: flex; gap: 6px; align-items: center; margin: 0 0 4px; padding: 4px 4px 6px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
 .wiki-root[hidden] { display: none; }
@@ -2723,7 +2714,28 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-title { margin: 0; overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 /* 工作項目的內容上方已經有大標題（分頁上也有名稱），標頭只留位置與動作。 */
-.issue-pane:has(.ado-hero) .issue-head .issue-title { display: none; }
+.issue-pane:has(.ado-hero):not(.issue-hero) .issue-head .issue-title { display: none; }
+/*
+ * 工作項目：類型標籤與編號放在標頭這一列（程式會往右推到和下面的標題對齊），標題接在下面。
+ * 往下捲時標頭畫出分隔線；看不到內容的標題時，標頭帶出標題。
+ */
+.issue-pane.issue-hero > .issue-head {
+  padding-block: 8px;
+  border-bottom-color: transparent;
+  background: var(--bg);
+  transition: border-color 0.15s;
+}
+.issue-pane.issue-hero > .issue-head .issue-actions { flex-wrap: nowrap; }
+/* 標頭中間只有類型標籤（捲動後加上標題），可以縮小，窄的時候也不換行。 */
+.issue-pane.issue-hero .issue-heading { flex: 1 1 0; flex-direction: row; gap: 10px; align-items: center; }
+.issue-pane.issue-hero .issue-meta { flex: none; margin: 0; }
+.issue-pane.issue-hero .issue-head .issue-title { min-width: 0; font-size: 14px; opacity: 0; visibility: hidden; transition: opacity 0.15s, visibility 0.15s; }
+.issue-pane.issue-title-away .issue-head .issue-title { opacity: 1; visibility: visible; }
+.issue-pane.issue-scrolled > .issue-head { border-bottom-color: var(--border); }
+.issue-pane.issue-hero .issue-body { padding-top: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  .issue-pane.issue-hero > .issue-head, .issue-pane.issue-hero .issue-head .issue-title { transition: none; }
+}
 .issue-actions .btn-primary { margin-right: 4px; }
 /* 內容的動作和檢視的動作（並排、找字、重新整理、關閉）中間的分隔線。 */
 .issue-actions-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
@@ -2750,9 +2762,10 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-pane[data-source="ado"] .issue-body > p { margin-block: 0.3em; }
 /* 工作項目的標頭：類型標籤與編號、標題、一排重點小標籤，下面一行是專案與區域、建立者、標籤。 */
 .issue-body .ado-hero { margin: 0 0 14px; }
-.issue-body .ado-hero-kind { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; color: var(--muted); font-size: 13px; }
+.issue-body .ado-hero-kind, .issue-head .ado-hero-kind { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.issue-head .ado-hero-kind { margin: 0; }
 /* 類型標籤的顏色由 `data-wi-kind` 決定（預設與自訂的顏色見 work-item-colors.ts，設定裡可以改）。 */
-.issue-body .ado-kind-badge { padding: 0 8px; border-radius: 5px; background: color-mix(in srgb, var(--kind) 14%, transparent); color: var(--kind); font-size: 12.5px; font-weight: 600; line-height: 20px; }
+.issue-body .ado-kind-badge, .issue-head .ado-kind-badge { padding: 0 8px; border-radius: 5px; background: color-mix(in srgb, var(--kind) 14%, transparent); color: var(--kind); font-size: 12.5px; font-weight: 600; line-height: 20px; }
 .issue-pane[data-source="ado"] .issue-body .ado-hero h1 { margin: 0 0 10px; padding: 0; border: 0; font-size: 1.35em; line-height: 1.4; }
 .issue-body .ado-facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .issue-body .ado-fact { display: inline-flex; gap: 6px; align-items: center; max-width: 100%; padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-raised, var(--surface)); font-size: 13px; line-height: 22px; white-space: nowrap; }
@@ -2789,6 +2802,18 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-body .ado-tag-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .issue-body .ado-tag-add .icon { width: 12px; height: 12px; }
 .issue-body .ado-tag-input { width: 140px; height: 22px; padding: 0 8px; border: 1px solid var(--accent); border-radius: 999px; outline: none; background: var(--bg); color: var(--fg); font: 12px var(--font-ui); }
+/* 說明、驗收條件、重現步驟：段落標題列的「編輯」，在卡片裡用 Markdown 改。 */
+.issue-body .ado-sec-edit { display: inline-flex; flex: none; gap: 4px; align-items: center; margin-left: auto; padding: 2px 8px; border: 0; border-radius: 6px; background: none; color: var(--accent); font: 12.5px var(--font-ui); cursor: pointer; }
+.issue-body .ado-sec-edit[hidden] { display: none; }
+.issue-body .ado-sec-edit:hover { background: var(--accent-soft); }
+.issue-body .ado-sec-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.issue-body .ado-sec-edit .icon { width: 13px; height: 13px; }
+.issue-body .ado-sec-empty { margin: 0; color: var(--subtle); font-size: 13px; }
+.issue-body .ado-edit { display: flex; flex-direction: column; gap: 6px; }
+.issue-body .ado-edit-note { display: flex; gap: 6px; align-items: center; margin: 0; padding: 6px 10px; border-radius: 6px; background: light-dark(#fff7e6, #3a2f1a); color: light-dark(#8a5a00, #f0c674); font-size: 12.5px; }
+.issue-body .ado-edit-note .icon { flex: none; width: 14px; height: 14px; }
+.issue-body .ado-edit-text { box-sizing: border-box; width: 100%; padding: 8px 12px; border: 1px solid var(--accent); border-radius: 8px; outline: 2px solid var(--accent-soft); background: var(--bg); color: var(--fg); font: 13px/1.6 var(--font-mono); resize: vertical; }
+.issue-body .ado-edit .ado-compose-actions { display: flex; }
 /* 留言框：在留言段落的最上面，平常一行，點一下展開。 */
 .issue-body .ado-compose { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; }
 .issue-body .ado-compose-main { flex: 1; min-width: 0; }
@@ -2922,6 +2947,31 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .shortcuts-body td { padding: 4px 0; border-bottom: 1px solid var(--border); }
 .shortcuts-body td:last-child { text-align: right; white-space: nowrap; }
 .shortcuts-body kbd { font: 12px var(--font-mono); padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.shortcuts-search {
+  width: 100%; margin: 4px 0 6px; padding: 6px 10px; font: inherit; font-size: 13.5px;
+  color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+}
+.shortcuts-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.shortcuts-hint { margin: 0 0 4px; font-size: 12.5px; color: var(--muted); }
+.shortcuts-empty { color: var(--muted); font-size: 13px; }
+.shortcut-keys-wrap { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+.shortcut-key {
+  min-width: 64px; padding: 2px 6px; font: inherit; font-size: 12.5px; text-align: right;
+  color: var(--fg); background: none; border: 1px solid transparent; border-radius: 5px; cursor: pointer;
+}
+.shortcut-key:hover, .shortcut-key:focus-visible { border-color: var(--border); background: var(--surface); }
+.shortcut-key.empty { color: var(--muted); opacity: 0; }
+.shortcuts-body tr:hover .shortcut-key.empty, .shortcut-key.empty:focus-visible { opacity: 1; }
+.shortcut-key.recording { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); opacity: 1; }
+.shortcuts-body tr.custom .shortcut-key kbd { border-color: var(--accent); color: var(--accent); }
+.shortcut-reset { width: 22px; height: 22px; padding: 0; }
+.shortcut-reset svg { width: 13px; height: 13px; }
+.shortcuts-body tr.shortcut-note td { padding: 2px 0 8px; font-size: 12.5px; color: var(--muted); text-align: left; white-space: normal; }
+.shortcuts-body .shortcut-problem { color: var(--danger); }
+.shortcuts-body .shortcut-conflict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--fg); }
+.shortcuts-body .shortcut-conflict span { flex: 1 1 200px; }
+.shortcuts-actions { justify-content: space-between; }
+.shortcuts-actions .btn:only-child, .shortcuts-actions [hidden] + .btn { margin-left: auto; }
 
 /* 設定的「關於」頁 */
 .settings-about { display: flex; gap: 16px; align-items: center; margin: 4px 0 20px; }
@@ -3269,3 +3319,7 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .settings-search,
 .gh-scope, .gh-search,
 .wi-create textarea { border-bottom-color: var(--input-border); }
+/* 連結檢查找到的連結：捲過去之後閃一下。 */
+.issue-flash { border-radius: 3px; animation: issue-flash 1.6s ease-out; }
+@keyframes issue-flash { 0%, 40% { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .issue-flash { animation: none; outline: 2px solid var(--accent); } }

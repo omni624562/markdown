@@ -134,3 +134,5 @@ cargo run -p md-cli -- fmt --spacing -w 筆記.md    # 另外在中文與英文�
 ## 授權
 
 MIT
+
+英文拼字檢查的字典（`web/public/dict/en-US.*`）來自 SCOWL 的 Hunspell 字典（[wooorm/dictionaries](https://github.com/wooorm/dictionaries) 的 `dictionary-en`），授權見 `web/public/dict/en-US.LICENSE.txt`；拼字引擎是 [spellbook](https://github.com/helix-editor/spellbook)（MPL-2.0）。
