@@ -70,6 +70,7 @@ export function initCommands(): void {
       run() {
         const doc = app.makeDoc({ name: t("未命名{ext}", { ext: KINDS[app.kind].ext }), kind: app.kind });
         saveDraft(doc.id, "");
+        app.skipStartPage(doc.id);
         app.addTab(doc);
         app.editor.view.focus();
       },
