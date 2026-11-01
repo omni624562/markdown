@@ -12,7 +12,7 @@ import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
 import { decorateMarks } from "../ui/work-item-marks.ts";
 import * as storage from "../storage.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
-import type { Iteration } from "../work-item-fields.ts";
+import { type Iteration, longFields } from "../work-item-fields.ts";
 import { openAttachment, saveAttachment } from "./ado-files.ts";
 import { insertIssueLink } from "./ado-links.ts";
 import { offlineRefs } from "./offline-copies.ts";
@@ -71,6 +71,8 @@ function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): voi
           states: () => states.load(),
           iterations: () => iterations.load(),
           me: () => app.ado?.account?.name ?? "",
+          id: item.id,
+          kind: item.kind,
         },
         { states, iterations },
       );
@@ -157,8 +159,14 @@ export function showWorkItem(item: AdoWorkItem): void {
         },
         newestFirst: storage.load("workitem-comment-order") !== "oldest",
         onOrder: (newest) => storage.save("workitem-comment-order", newest ? "newest" : "oldest"),
-        // 留言框在留言段落裡：沒有留言時也要有這個段落。
-        commentsAlways: true,
+        // 沒有內容也要有的段落：可以新增說明、驗收條件或重現步驟；留言框在留言段落裡。
+        ensureSections: [
+          ...longFields(item.kind, { desc: false, details: false }).always.map((f) => ({
+            kind: f.section,
+            title: f.section === "desc" ? t("工作項目說明") : f.field === "reproSteps" ? t("重現步驟") : t("驗收條件"),
+          })),
+          { kind: "comments" as const, title: t("留言（{n}）", { n: 0 }) },
+        ],
       });
       editing.enhance(body);
     },

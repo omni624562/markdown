@@ -9,7 +9,8 @@ import { t } from "../i18n.ts";
 import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { icon } from "../ui/icons.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
-import { type Iteration, iterationGroups, parseTags } from "../work-item-fields.ts";
+import { htmlToMarkdown } from "../html-paste.ts";
+import { type Iteration, type LongField, iterationGroups, longFields, lossyHtml, parseTags } from "../work-item-fields.ts";
 
 export interface WorkItemEditHooks {
   /** 讀到的最新內容（還沒讀到是 null，這時不能改）。 */
@@ -22,6 +23,9 @@ export interface WorkItemEditHooks {
   iterations(): Promise<Iteration[]>;
   /** 登入的帳號名稱（指派給我、留言框的頭像用）。 */
   me(): string;
+  /** 工作項目的編號與類型（還沒讀到內容也知道）。 */
+  id: number;
+  kind: string;
 }
 
 /** 已經讀到的清單（選單打開時直接用；還沒讀到時先顯示「讀取中…」）。 */
@@ -211,7 +215,136 @@ export function enhanceWorkItem(body: HTMLElement, h: WorkItemEditHooks, cache: 
 
   editableTitle(hero, h);
   editableTags(hero, h);
+  editableLongFields(body, h);
   composeComment(body, h);
+}
+
+/** 長文字段落沒有存的修改（切換分頁、重新讀取時內容會重畫，回來時接著改）：`編號:欄位` → Markdown。 */
+const drafts = new Map<string, string>();
+
+/** 說明、驗收條件、重現步驟：段落標題列有「編輯」，在卡片裡用 Markdown 改，存回時轉成 HTML。 */
+function editableLongFields(body: HTMLElement, h: WorkItemEditHooks): void {
+  const has = (kind: string) => !!body.querySelector(`.ado-sec[data-kind="${kind}"] > .ado-sec-body > *`);
+  for (const f of longFields(h.kind, { desc: has("desc"), details: has("details") }).editable) {
+    const sec = body.querySelector<HTMLDetailsElement>(`.ado-sec[data-kind="${f.section}"]`);
+    if (sec) editableSection(sec, f, h);
+  }
+}
+
+function editableSection(sec: HTMLDetailsElement, f: LongField, h: WorkItemEditHooks): void {
+  const head = sec.querySelector<HTMLElement>(":scope > .ado-sec-head");
+  const box = sec.querySelector<HTMLElement>(":scope > .ado-sec-body");
+  if (!head || !box) return;
+  const name = head.querySelector("h2")?.textContent?.trim() ?? "";
+  const key = `${h.id}:${f.field}`;
+  if (!box.childElementCount) {
+    const empty = document.createElement("p");
+    empty.className = "ado-sec-empty";
+    empty.textContent = t("還沒有內容，按「編輯」新增。");
+    box.append(empty);
+  }
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "ado-sec-edit";
+  edit.title = t("編輯「{name}」", { name });
+  edit.append(icon("pencil"), t("編輯"));
+  head.append(edit);
+  /** 欄位目前的內容（HTML）。 */
+  const original = () => {
+    const d = h.detail();
+    return (f.section === "desc" ? d?.description : d?.details) ?? "";
+  };
+  const start = (draft?: string, tries = 0) => {
+    if (box.querySelector(".ado-edit")) return;
+    // 還沒讀到內容（剛打開時先顯示上次的內容）：等一下再試。
+    if (!h.detail()) {
+      if (draft !== undefined && tries < 20) setTimeout(() => start(draft, tries + 1), 300);
+      return;
+    }
+    sec.open = true;
+    const html = original();
+    const markdown = html ? htmlToMarkdown(html, { keepImages: true }) : "";
+    const old = [...box.childNodes];
+    const editor = document.createElement("div");
+    editor.className = "ado-edit";
+    if (lossyHtml(html)) {
+      const note = document.createElement("p");
+      note.className = "ado-edit-note";
+      note.append(icon("circle-alert"), t("這段有文字顏色、字型或合併儲存格，存回後會變成一般格式。"));
+      editor.append(note);
+    }
+    if (draft !== undefined) {
+      const note = document.createElement("p");
+      note.className = "ado-edit-note";
+      note.append(icon("history"), t("接著改上次還沒儲存的內容。"));
+      editor.append(note);
+    }
+    const textarea = document.createElement("textarea");
+    textarea.className = "ado-edit-text";
+    textarea.value = draft ?? markdown;
+    textarea.setAttribute("aria-label", name);
+    textarea.rows = Math.min(24, Math.max(6, textarea.value.split("\n").length + 2));
+    const actions = document.createElement("div");
+    actions.className = "ado-compose-actions";
+    const hint = document.createElement("span");
+    hint.className = "ado-compose-hint";
+    hint.textContent = t("可以用 Markdown；Ctrl+Enter 儲存，Esc 取消");
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn btn-small";
+    cancel.textContent = t("取消");
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "btn btn-small btn-primary";
+    save.textContent = t("儲存");
+    actions.append(hint, cancel, save);
+    editor.append(textarea, actions);
+    box.replaceChildren(editor);
+    edit.hidden = true;
+    textarea.focus();
+    textarea.addEventListener("input", () => drafts.set(key, textarea.value));
+    const close = () => {
+      drafts.delete(key);
+      box.replaceChildren(...old);
+      edit.hidden = false;
+    };
+    const submit = async () => {
+      const text = textarea.value.trim();
+      // 沒有改：直接收起來（不要把原本的 HTML 換成轉換過的版本）。
+      if (text === markdown.trim()) return close();
+      save.disabled = true;
+      const value = text ? renderMarkdown(text, { kind: "markdown" }).html : "";
+      // 存成功後內容會重畫：先拿掉暫存，免得重畫時又打開編輯；沒存成功（編輯框還在）再放回去。
+      drafts.delete(key);
+      if (!(await h.apply({ [f.field]: value }, t("已更新「{name}」", { name })))) {
+        drafts.set(key, textarea.value);
+        save.disabled = false;
+      }
+    };
+    cancel.addEventListener("click", close);
+    save.addEventListener("click", () => void submit());
+    textarea.addEventListener("keydown", (e) => {
+      if (e.isComposing) return;
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void submit();
+      } else if (e.key === "Escape") {
+        // 只取消修改，不要關掉整個檢視。
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      }
+    });
+  };
+  edit.addEventListener("click", (e) => {
+    // 按鈕在 <summary> 裡：不要順便收合段落。
+    e.preventDefault();
+    e.stopPropagation();
+    start();
+  });
+  // 重畫之前正在改：接著改。
+  const draft = drafts.get(key);
+  if (draft !== undefined) queueMicrotask(() => start(draft));
 }
 
 /** 標題：滑鼠移上去出現鉛筆，點鉛筆（或雙擊標題）改成輸入框；Enter 或離開輸入框就存，Esc 取消。 */
