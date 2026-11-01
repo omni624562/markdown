@@ -427,7 +427,6 @@ export let issueSide = storage.load("issue-side") === "1";
 export function toggleIssueSide(): void {
   issueSide = !issueSide;
   storage.save("issue-side", issueSide ? "1" : "");
-  issueView.setSide(issueSide);
   app.applyLayout();
   toast(issueSide ? t("已改成並排顯示：文件在左邊，工作項目等內容在右邊") : t("已改成佔滿整個區域：點分頁切換文件與工作項目"));
 }
@@ -512,7 +511,6 @@ export function initWikiEdit(): void {
       else wikiPanel?.select(null);
       markBarShortcuts();
     },
-    toggleSide: toggleIssueSide,
     dismiss: hideItem,
     closed() {
       app.issueKey = null;

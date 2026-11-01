@@ -82,8 +82,6 @@ export interface IssueViewHooks {
   closed(): void;
   /** 按 Esc：回到文件（分頁留著）；沒給時關閉。 */
   dismiss?(): void;
-  /** 切換「和編輯區並排顯示」。 */
-  toggleSide?(): void;
   /** 狀態列上的摘要換了（關閉時是空的）。 */
   facts?(list: IssueFact[]): void;
   /** 本機的離線副本：讀到內容就存一份，連不上時拿來顯示。 */
@@ -182,7 +180,6 @@ export class IssueView {
   #insertBtn: HTMLButtonElement;
   #editBtn: HTMLButtonElement;
   #historyBtn: HTMLButtonElement;
-  #sideBtn: HTMLButtonElement | null = null;
   #matches: FindMatch[] = [];
   #current = 0;
 
@@ -265,12 +262,6 @@ export class IssueView {
         },
       },
     ]);
-    const toggleSide = hooks.toggleSide;
-    if (toggleSide) {
-      this.#sideBtn = iconButton(t("在文件右邊並排顯示"), "columns-2", () => toggleSide());
-      this.#sideBtn.classList.add("issue-side-toggle");
-      this.#sideBtn.setAttribute("aria-pressed", "false");
-    }
     const sep = document.createElement("span");
     sep.className = "issue-actions-sep";
     sep.setAttribute("aria-hidden", "true");
@@ -281,7 +272,6 @@ export class IssueView {
       iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
       more,
       sep,
-      ...(this.#sideBtn ? [this.#sideBtn] : []),
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
     );
@@ -357,15 +347,6 @@ export class IssueView {
   /** 焦點在這個檢視裡（並排顯示時，用來分辨 Ctrl+F 要在哪邊找）。 */
   get hasFocus(): boolean {
     return this.#pane.contains(document.activeElement);
-  }
-
-  /** 更新「並排顯示」按鈕：並排時按一下改成佔滿整個區域，否則改成並排在文件右邊。 */
-  setSide(on: boolean): void {
-    if (!this.#sideBtn) return;
-    const label = on ? t("佔滿整個區域（不和文件並排）") : t("在文件右邊並排顯示");
-    this.#sideBtn.title = label;
-    this.#sideBtn.setAttribute("aria-label", label);
-    this.#sideBtn.replaceChildren(icon(on ? "maximize-2" : "columns-2"));
   }
 
   /** 目前分頁的狀態（切換到別的分頁前存下）；沒有開著時回傳 null。 */

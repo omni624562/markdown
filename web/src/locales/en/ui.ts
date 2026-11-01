@@ -472,7 +472,6 @@ export const ui: Record<string, Translation> = {
   "依類型分組": "Group by type",
   "（未設定）": "(Not set)",
   "在文件右邊並排顯示": "Show to the right of the document",
-  "佔滿整個區域（不和文件並排）": "Fill the whole area (not beside the document)",
   "已改成並排顯示：文件在左邊，工作項目等內容在右邊": "Now side by side: the document on the left, work items and pages on the right",
   "已改成佔滿整個區域：點分頁切換文件與工作項目": "Now filling the whole area: click a tab to switch between documents and work items",
   "{title}（預覽：點別的項目會換掉這個分頁，雙擊留下來）": "{title} (preview: opening another item replaces this tab; double-click to keep it)",
