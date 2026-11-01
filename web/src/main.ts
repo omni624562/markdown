@@ -3078,11 +3078,13 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
   if (btn.classList.contains("icon-only")) btn.setAttribute("aria-label", cmd.title);
   btn.addEventListener("click", () => commands.run(cmd.id).catch(reportError));
 });
+// 主選單：第一層放最常用的（新增、開啟、存檔）與分好類的子選單，少用的工具收進「文件工具」。
 setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "new",
   "new-from-template",
   "open",
-  "import-docx",
+  "save",
+  "save-as",
   "-",
   {
     label: t("專案"),
@@ -3101,20 +3103,18 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
       "open-recent",
     ],
   },
-  "-",
-  "save",
-  "save-as",
-  "history",
-  "-",
   {
     label: t("Git"),
     icon: "git-branch",
     items: ["show-git", "git-history", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "-", "git-file-history", "git-open-web", "git-copy-link"],
   },
-  { label: t("匯出"), icon: "download", items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich"] },
-  "fix-terms",
-  "s2t",
-  "slideshow",
+  "-",
+  {
+    label: t("匯入與匯出"),
+    icon: "download",
+    items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich", "-", "import-docx"],
+  },
+  { label: t("文件工具"), icon: "wand-sparkles", items: ["history", "-", "fix-terms", "s2t", "-", "slideshow"] },
   "-",
   { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
   { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark"] },
