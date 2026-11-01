@@ -9,16 +9,19 @@
   /* Git「已修改」：淺色底也要有 4.5:1 以上的對比。 */
   --git-modified: light-dark(#8a6a00, #d29922);
   --muted: light-dark(#666a71, #9da5b4);
-  --subtle: light-dark(#989ca3, #6f7683);
+  /* 次要中的次要文字（程式碼語言、提示）：仍要約 4.5:1，小字也看得清楚。 */
+  --subtle: light-dark(#71757d, #8a91a0);
   --border: light-dark(#e3e4e7, #3a404b);
   --border-soft: light-dark(#eeeff1, #31353d);
   --border-strong: light-dark(#c6c8cd, #4b5263);
+  /* 輸入框、下拉選單的下緣（和 Windows 11 的文字框一樣）：至少 3:1，白底上也看得出範圍。 */
+  --input-border: light-dark(#8d9199, #727a88);
   --accent: light-dark(#2f6fd6, #61afef);
   --accent-soft: light-dark(rgba(47, 111, 214, 0.1), rgba(97, 175, 239, 0.15));
   --accent-fg: light-dark(#ffffff, #1d2026);
-  --danger: light-dark(#cf2f3a, #e06c75);
+  --danger: light-dark(#cf2f3a, #ec7c85);
   --danger-soft: light-dark(#fdecee, rgba(224, 108, 117, 0.14));
-  --success: light-dark(#2f8a46, #98c379);
+  --success: light-dark(#277a3c, #98c379);
   --active-line: light-dark(rgba(0, 0, 0, 0.028), rgba(255, 255, 255, 0.035));
   --selection: light-dark(rgba(47, 111, 214, 0.18), rgba(97, 175, 239, 0.25));
   --shadow: light-dark(0 6px 24px rgba(30, 32, 36, 0.12), 0 8px 24px rgba(0, 0, 0, 0.45));
@@ -26,11 +29,12 @@
   --syn-heading: light-dark(#2c2e33, #e5c07b);
   --syn-link: light-dark(#2f6fd6, #61afef);
   --syn-code: light-dark(#b0451e, #d19a66);
-  --syn-meta: light-dark(#989ca3, #7f848e);
+  /* Markdown 標記符號（#、**）與註解：比本文淡，但至少 3:1。 */
+  --syn-meta: light-dark(#868a91, #8b919c);
   --syn-keyword: light-dark(#a626a4, #c678dd);
-  --syn-string: light-dark(#50a14f, #98c379);
+  --syn-string: light-dark(#2f7d32, #98c379);
   --syn-number: light-dark(#986801, #d19a66);
-  --syn-comment: light-dark(#a0a1a7, #7f848e);
+  --syn-comment: light-dark(#868a91, #8b919c);
   --syn-function: light-dark(#4078f2, #61afef);
 
   --font-ui: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
@@ -3191,3 +3195,21 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .wi-create .pdf-field input { height: 36px; }
 .wi-create-error { margin: 0 0 10px; color: var(--danger); font-size: 13px; }
 .wi-create-error[hidden] { display: none; }
+
+/* 輸入框、下拉選單：四周淡灰、下緣加深（和 Windows 11 的文字框一樣），白底上也看得出範圍（WCAG 1.4.11）。
+   放在最後面才蓋得過上面各自的 border 設定；:hover、:focus 的規則權重較高，不受影響。 */
+.search-box,
+.settings-row select, .settings-row input[type="number"], .settings-row .font-input,
+.choice-input,
+.workitems-search,
+.workitems-filters .workitems-select, .workitems-filters .workitems-person,
+.multi-select-search,
+.tasks-filters select,
+.pdf-field input, .pdf-field select,
+.po-search,
+.issue-toolbar-select,
+.issue-comment-form textarea,
+.issue-find input,
+.settings-search,
+.gh-scope, .gh-search,
+.wi-create textarea { border-bottom-color: var(--input-border); }

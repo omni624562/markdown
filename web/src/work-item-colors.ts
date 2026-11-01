@@ -9,7 +9,8 @@ const DEFAULTS: readonly (readonly [kinds: readonly string[], light: string, dar
   [["Feature"], "#773b93", "#b77ad6"],
   [["User Story", "Product Backlog Item", "Requirement"], "#0078b4", "#4fb7ea"],
   [["Bug"], "#cc293d", "#f0707f"],
-  [["Task"], "#a37c00", "#f2cb1d"],
+  // 淺色主題的黃色要夠深，白底上才有 4.5:1 以上的對比。
+  [["Task"], "#8a6a00", "#f2cb1d"],
   [["Issue", "Impediment"], "#b4009e", "#e77fd8"],
   [["Test Case"], "#00737a", "#4fc3c9"],
 ];
