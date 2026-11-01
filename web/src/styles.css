@@ -577,30 +577,57 @@ kbd {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 24px;
+  padding: 7vh 24px 24px;
+  overflow: auto;
   color: var(--muted);
-  text-align: center;
+  container-type: inline-size;
 }
-/* 即時預覽、原始碼：放在編輯區中間，點空白處仍然是在編輯區打字。 */
+/* 即時預覽、原始碼：放在編輯區上面，點空白處仍然是在編輯區打字。 */
 .editor-pane { position: relative; }
-.empty-state.in-editor { top: 64px; pointer-events: none; }
-.empty-state.in-editor .empty-card { pointer-events: auto; }
-.empty-card { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
-.empty-state h2 { margin: 0 0 8px; color: var(--fg); font-size: 18px; }
-.empty-state p { max-width: 46ch; margin: 0 0 16px; line-height: 1.7; }
-.empty-actions { display: flex; gap: 8px; }
-.empty-actions .btn { border-color: var(--border-strong); }
-.empty-tip { margin-top: 16px !important; font-size: 12px; }
-.empty-actions { flex-wrap: wrap; justify-content: center; }
-.empty-recent { width: min(420px, 100%); margin-top: 24px; text-align: left; }
-.empty-recent h3 { margin: 0 0 6px; padding: 0 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
-.empty-recent ul { margin: 0; padding: 0; list-style: none; }
-.empty-recent button { display: flex; gap: 8px; align-items: center; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px var(--font-ui); text-align: left; cursor: pointer; }
-.empty-recent button:hover, .empty-recent button:focus-visible { background: var(--active-line); }
-.empty-recent .icon { flex: none; width: 15px; height: 15px; color: var(--muted); }
-.empty-recent-name { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.empty-recent-dir { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.empty-state.in-editor { pointer-events: none; }
+.empty-state.in-editor .start-page { pointer-events: auto; }
+/* 起始頁顯示時，編輯區的灰色提示（「開始寫 Markdown…」）收起來，只留一個起點。 */
+.editor-pane:has(> .empty-state.in-editor:not([hidden])) .cm-placeholder { display: none; }
+
+/* ---- 起始頁：左欄「開始」「連線」，右欄最近開啟，下方小提示（ui/start-page.ts） ---- */
+.start-page { width: min(800px, 100%); color: var(--fg); font-family: var(--font-ui); text-align: left; }
+.start-page kbd { padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; background: var(--surface); color: var(--muted); font: 11.5px var(--font-ui); white-space: nowrap; }
+.start-page h3 { margin: 18px 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.start-head { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
+.start-head img { flex: none; width: 44px; height: 44px; }
+.start-head h2 { margin: 0; font-size: 24px; font-weight: 650; }
+.start-head p { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.start-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 40px; }
+.start-page.has-recent .start-cols { grid-template-columns: 260px minmax(0, 1fr); }
+.start-cols section > h3:first-child { margin-top: 0; }
+.start-cols section[hidden] { display: none; }
+.start-main { max-width: 320px; }
+.start-action { display: flex; gap: 10px; align-items: center; width: 100%; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--accent); font: 14px var(--font-ui); text-align: left; cursor: pointer; }
+.start-action > span { flex: 1; }
+.start-action .icon { flex: none; width: 16px; height: 16px; }
+.start-action:hover, .start-action:focus-visible { background: var(--active-line); }
+.start-action.primary { margin-bottom: 4px; background: var(--accent); color: var(--accent-fg, #fff); font-weight: 600; }
+.start-action.primary:hover, .start-action.primary:focus-visible { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.start-action.primary kbd { border-color: color-mix(in srgb, currentColor 45%, transparent); background: transparent; color: inherit; }
+.start-recent-item { display: flex; gap: 8px; align-items: baseline; width: 100%; padding: 6px 8px; border: 0; border-radius: 7px; background: none; color: var(--fg); font: 13.5px var(--font-ui); text-align: left; cursor: pointer; }
+.start-recent-item .icon { flex: none; align-self: center; width: 16px; height: 16px; color: var(--muted); }
+.start-recent-item:hover, .start-recent-item:focus-visible { background: var(--active-line); }
+.start-recent-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.start-recent-where { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.start-tips { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+.start-tip { display: inline-flex; gap: 6px; align-items: center; padding: 2px 4px; border: 0; border-radius: 5px; background: none; color: inherit; font: inherit; }
+button.start-tip { cursor: pointer; }
+button.start-tip:hover, button.start-tip:focus-visible { background: var(--active-line); color: var(--fg); }
+.start-tour { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; padding: 2px 4px; border: 0; border-radius: 5px; background: none; color: var(--accent); font: 600 12.5px var(--font-ui); cursor: pointer; }
+.start-tour:hover, .start-tour:focus-visible { background: var(--active-line); }
+.start-tour .icon { width: 15px; height: 15px; }
+/* 窄的時候改成一欄：最近開啟排在「開始」下面。 */
+@container (max-width: 640px) {
+  .start-page.has-recent .start-cols { grid-template-columns: minmax(0, 1fr); }
+  .start-main { max-width: none; }
+  .start-cols .start-recent > h3:first-child { margin-top: 22px; }
+  .start-tour { margin-left: 0; }
+}
 
 /* ---- 狀態列 ---- */
 .statusbar {
