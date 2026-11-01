@@ -85,6 +85,49 @@ export function applyActivityLayout(): void {
   renderActivityCommands();
 }
 
+/**
+ * 第一次開啟：在圖示列每個圖示旁邊短暫顯示名稱（圖示沒有文字，第一次用的人不知道是什麼），
+ * 最下面提示按右鍵可以選要顯示的圖示。幾秒後、點任何地方或按任何鍵就收起來。
+ */
+export function showActivityLabels(duration = 9000): void {
+  const bar = app.$(".activity-bar");
+  const shown = (el: HTMLElement) => el.getClientRects().length > 0;
+  if (!shown(bar) || document.querySelector(".activity-labels")) return;
+  const buttons = [...bar.querySelectorAll<HTMLElement>("#activity-project, .activity-tabs [role=tab], .activity-cmds button")].filter(shown);
+  if (!buttons.length) return;
+  const box = document.createElement("div");
+  box.className = "activity-labels";
+  // 只是看的提示：名稱已經在每個按鈕的 aria-label 裡。
+  box.setAttribute("aria-hidden", "true");
+  const left = bar.getBoundingClientRect().right + 8;
+  const label = (text: string, top: number, className = "activity-label") => {
+    const el = document.createElement("span");
+    el.className = className;
+    el.textContent = text;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    box.append(el);
+  };
+  for (const b of buttons) {
+    const r = b.getBoundingClientRect();
+    const panel = b.dataset.panel as SidePanel | undefined;
+    label(panel ? PANEL_LABELS[panel]() : (b.getAttribute("aria-label") ?? ""), r.top + r.height / 2);
+  }
+  const last = buttons[buttons.length - 1].getBoundingClientRect();
+  label(t("按右鍵可以調整要顯示的圖示"), last.bottom + 22, "activity-label activity-label-hint");
+  document.body.append(box);
+  const stop = new AbortController();
+  const close = () => {
+    stop.abort();
+    clearTimeout(timer);
+    box.classList.add("closing");
+    window.setTimeout(() => box.remove(), 300);
+  };
+  const timer = window.setTimeout(close, duration);
+  for (const type of ["pointerdown", "keydown", "wheel"] as const) window.addEventListener(type, close, { capture: true, signal: stop.signal });
+  window.addEventListener("resize", close, { signal: stop.signal });
+}
+
 /** 釘上去的指令按鈕。 */
 function renderActivityCommands(): void {
   const box = app.$(".activity-cmds");
@@ -227,7 +270,7 @@ export async function startAiTool(tool: "claude" | "codex"): Promise<void> {
   await app.terminal?.start(tool);
 }
 
-/** 說明：在新分頁開啟歡迎文件（第一次開啟時看到的那份），之後也找得回來。 */
+/** 說明：在新分頁開啟歡迎文件（起始頁的「3 分鐘認識 oMarker」、「說明」選單）。 */
 export function openWelcome(): void {
   const existing = app.docs.find((d) => !d.path && d.name === t("歡迎使用 oMarker.md"));
   if (existing) {
@@ -756,20 +799,16 @@ export function initActivityBar(): void {
     "paste-plain",
     "select-all",
     "-",
+    // 常用的粗體、斜體留在第一層，其他格式與縮排收進「格式」子選單，選單才不會太長。
     "bold",
     "italic",
-    "underline",
-    "strike",
-    "highlight",
-    "code",
-    "superscript",
-    "subscript",
-    "clear-format",
-    "-",
+    {
+      label: t("格式"),
+      icon: "remove-formatting",
+      items: ["underline", "strike", "highlight", "code", "superscript", "subscript", "-", "indent-more", "indent-less", "-", "clear-format"],
+    },
     "link",
     "insert-symbol",
-    "indent-more",
-    "indent-less",
     "-",
     "ai-actions",
     "send-to-terminal-ai",
