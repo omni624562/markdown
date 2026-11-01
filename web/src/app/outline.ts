@@ -126,7 +126,7 @@ export function renderSaveState(): void {
       (app.active.wiki ? t("尚未存回 Wiki") : app.fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (app.draftSaved ? t(" · 草稿已自動保存") : "");
   // 已儲存時不佔位置；只有需要注意時才顯示。
   app.status.save.hidden = !dirty;
-  app.status.save.title = dirty ? t("按一下存檔（Ctrl+S）") : "";
+  app.status.save.title = dirty ? app.withKeys(t("按一下存檔"), app.commands.get("save")?.keys) : "";
   (app.status.save as HTMLButtonElement).disabled = !dirty;
 }
 

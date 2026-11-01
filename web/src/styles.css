@@ -2917,6 +2917,31 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .shortcuts-body td { padding: 4px 0; border-bottom: 1px solid var(--border); }
 .shortcuts-body td:last-child { text-align: right; white-space: nowrap; }
 .shortcuts-body kbd { font: 12px var(--font-mono); padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.shortcuts-search {
+  width: 100%; margin: 4px 0 6px; padding: 6px 10px; font: inherit; font-size: 13.5px;
+  color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+}
+.shortcuts-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.shortcuts-hint { margin: 0 0 4px; font-size: 12.5px; color: var(--muted); }
+.shortcuts-empty { color: var(--muted); font-size: 13px; }
+.shortcut-keys-wrap { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+.shortcut-key {
+  min-width: 64px; padding: 2px 6px; font: inherit; font-size: 12.5px; text-align: right;
+  color: var(--fg); background: none; border: 1px solid transparent; border-radius: 5px; cursor: pointer;
+}
+.shortcut-key:hover, .shortcut-key:focus-visible { border-color: var(--border); background: var(--surface); }
+.shortcut-key.empty { color: var(--muted); opacity: 0; }
+.shortcuts-body tr:hover .shortcut-key.empty, .shortcut-key.empty:focus-visible { opacity: 1; }
+.shortcut-key.recording { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); opacity: 1; }
+.shortcuts-body tr.custom .shortcut-key kbd { border-color: var(--accent); color: var(--accent); }
+.shortcut-reset { width: 22px; height: 22px; padding: 0; }
+.shortcut-reset svg { width: 13px; height: 13px; }
+.shortcuts-body tr.shortcut-note td { padding: 2px 0 8px; font-size: 12.5px; color: var(--muted); text-align: left; white-space: normal; }
+.shortcuts-body .shortcut-problem { color: var(--danger); }
+.shortcuts-body .shortcut-conflict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--fg); }
+.shortcuts-body .shortcut-conflict span { flex: 1 1 200px; }
+.shortcuts-actions { justify-content: space-between; }
+.shortcuts-actions .btn:only-child, .shortcuts-actions [hidden] + .btn { margin-left: auto; }
 
 /* 設定的「關於」頁 */
 .settings-about { display: flex; gap: 16px; align-items: center; margin: 4px 0 20px; }

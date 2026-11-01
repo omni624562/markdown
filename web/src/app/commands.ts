@@ -13,7 +13,8 @@ import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { Palette } from "../ui/palette.ts";
 import { REPO_URL } from "../ui/settings-dialog.ts";
 import { toast } from "../ui/toast.ts";
-import { templatePicker, saveAsTemplate, deleteTemplatePicker, showShortcuts, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { showShortcuts } from "./shortcuts-dialog.ts";
 import { checkLinks } from "./link-check-ui.ts";
 import { searchPanel } from "./git-history.ts";
 import { closeItem, itemTabs, setItemPinned, tabOrder } from "./item-tabs.ts";
@@ -60,6 +61,8 @@ function savedTabs(): string[] {
 }
 
 export function initCommands(): void {
+  // 自訂的快速鍵在登記指令時就套用（之後登記的指令也會套用）。
+  commands.setBindings(app.settings.value.keybindings);
   commands.register(
     {
       id: "new",
@@ -298,6 +301,13 @@ export function initCommands(): void {
       group: t("說明"),
       icon: "command",
       keys: "F1",
+      run: () => showShortcuts(),
+    },
+    {
+      id: "customize-shortcuts",
+      title: t("自訂快速鍵…"),
+      group: t("說明"),
+      icon: "keyboard",
       run: () => showShortcuts(),
     },
     {

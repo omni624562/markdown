@@ -89,3 +89,13 @@ test("工作項目類型的顏色：只留格式正確的", () => {
   sanitize({}).settings.workItemColors.Bug = "#000000";
   assert.deepEqual(DEFAULTS.workItemColors, {});
 });
+
+test("自訂快速鍵：只留合法的 id 與寫法，空字串是拿掉快速鍵", () => {
+  const { settings, problems } = sanitize({
+    keybindings: { bold: "Mod-Shift-b", save: "", "<x>": "Mod-k", italic: "Hyper-i", link: 3 },
+  });
+  assert.deepEqual(settings.keybindings, { bold: "Mod-Shift-b", save: "" });
+  assert.equal(problems, 1);
+  assert.deepEqual(sanitize({}).settings.keybindings, {});
+  assert.deepEqual(sanitize({ keybindings: ["Mod-k"] }).settings.keybindings, {});
+});

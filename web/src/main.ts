@@ -80,7 +80,8 @@ import { gitPanel, noteWorkItems, pollWorkItems, renderAdoBadge, workItemSeen, i
 import { groupItems, showWorkItem } from "./app/work-item-actions.ts";
 import { createPullRequest, reportError, resolveMergeConflict, showExternalChanges, switchBranch, initGitActions } from "./app/git-actions.ts";
 import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady, initAiTerminal } from "./app/ai-terminal.ts";
-import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, openWelcome, refreshActivityCommands, refreshToc, separator, showActivityLabels, showShortcuts, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
+import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, openWelcome, refreshActivityCommands, refreshToc, separator, showActivityLabels, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
+import { showShortcuts } from "./app/shortcuts-dialog.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
 import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focusedItem, hideItem, itemTabInfo, itemTabs, keepItem, reopenItem, selectItem, selectedItemId, setItemPinned, tabOrder } from "./app/item-tabs.ts";
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
@@ -752,6 +753,9 @@ const app = {
   },
   get withKeys() {
     return withKeys;
+  },
+  get refreshKeyHints() {
+    return refreshKeyHints;
   },
   get workItemChipsPlugin() {
     return workItemChipsPlugin;
@@ -1473,7 +1477,7 @@ function renderEmptyState(text: string): void {
     tips: [
       { keys: keysOf("quick-open"), label: t("找檔案"), run: run("quick-open") },
       { keys: keysOf("palette"), label: t("所有指令"), run: run("palette") },
-      { keys: "F1", label: t("快速鍵一覽"), run: () => showShortcuts() },
+      { keys: keysOf("show-shortcuts"), label: t("快速鍵一覽"), run: () => showShortcuts() },
       { label: t("把檔案拖進視窗就能開啟") },
     ],
     tour: () => openWelcome(),
@@ -2110,7 +2114,8 @@ async function renderProjectName(): Promise<void> {
   const project = workspaceRoot ? projectUi?.current : undefined;
   const label = project?.label ?? workspaceRoot?.name ?? t("檔案");
   const color = project?.color ?? null;
-  const hint = t("切換專案（{keys}）", { keys: formatKeys("Mod-Alt-p") });
+  const keys = commands.get("switch-project")?.keys;
+  const hint = keys ? t("切換專案（{keys}）", { keys: formatKeys(keys) }) : t("切換專案");
   $("#folder-name").textContent = label;
   const switcher = $(".project-switch");
   switcher.title = workspaceRoot ? `${displayPath(workspaceRoot.path)}\n${hint}` : hint;
@@ -3073,8 +3078,37 @@ function withKeys(title: string, keys?: string): string {
   return keys ? t("{title}（{keys}）", { title, keys: formatKeys(keys) }) : title;
 }
 
+/**
+ * 按鈕提示裡的快速鍵：有 `data-keys-for`（指令 id）的元素，提示是「指令名稱（快速鍵）」；
+ * 再加上 `data-keys-label="aria"` 的用 aria-label 當名稱。自訂快速鍵之後全部重新套用，
+ * 滑鼠移上去時也會再更新一次（不在畫面上的按鈕，例如浮出的格式按鈕）。
+ */
+function keyHint(el: HTMLElement): void {
+  const cmd = commands.get(el.dataset.keysFor!);
+  if (!cmd) return;
+  const label = el.dataset.keysLabel === "aria" ? (el.getAttribute("aria-label") ?? cmd.title) : cmd.title;
+  el.title = withKeys(label, cmd.keys);
+  if (cmd.keys) el.dataset.keys = formatKeys(cmd.keys);
+  else delete el.dataset.keys;
+}
+
+function refreshKeyHints(): void {
+  document.querySelectorAll<HTMLElement>("[data-keys-for]").forEach(keyHint);
+  void renderProjectName();
+}
+
+document.addEventListener(
+  "pointerover",
+  (e) => {
+    const el = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-keys-for]") : null;
+    if (el) keyHint(el);
+  },
+  { capture: true, passive: true },
+);
+
 document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => {
   const cmd = commands.get(btn.dataset.command!)!;
+  btn.dataset.keysFor = cmd.id;
   btn.title = withKeys(cmd.title, cmd.keys);
   if (btn.classList.contains("icon-only")) btn.setAttribute("aria-label", cmd.title);
   btn.addEventListener("click", () => commands.run(cmd.id).catch(reportError));
@@ -3147,10 +3181,10 @@ for (const [tab, id] of [
   ["#side-tab-search", "search-in-folder"],
   ["#side-tab-git", "show-git"],
 ] as const) {
-  const keys = commands.get(id)?.keys;
   const el = $(tab);
-  if (keys) el.dataset.keys = formatKeys(keys);
-  if (keys) el.title = t("{label}（{keys}）", { label: el.getAttribute("aria-label") ?? "", keys: formatKeys(keys) });
+  el.dataset.keysFor = id;
+  el.dataset.keysLabel = "aria";
+  keyHint(el);
 }
 
 initActivityBar();

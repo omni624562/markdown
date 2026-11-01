@@ -139,6 +139,7 @@ function renderActivityCommands(): void {
       b.type = "button";
       b.className = "activity-btn activity-cmd";
       b.dataset.command = id;
+      b.dataset.keysFor = id;
       b.title = app.withKeys(cmd.title, cmd.keys);
       b.setAttribute("aria-label", cmd.title);
       b.draggable = true;
@@ -305,53 +306,6 @@ export function openUrl(url: string): void {
   else window.open(url, "_blank", "noopener");
 }
 
-/** 說明：所有快速鍵（依功能分組，只列目前能用的）。 */
-export function showShortcuts(): void {
-  const dialog = document.createElement("dialog");
-  dialog.className = "choice shortcuts-dialog";
-  dialog.setAttribute("aria-label", t("快速鍵一覽"));
-  const h = document.createElement("h2");
-  h.textContent = t("快速鍵一覽");
-  const hint = document.createElement("p");
-  hint.textContent = t("編輯區裡按 Tab 是縮排；要用鍵盤離開編輯區，先按 Esc 再按 Tab。所有功能都可以用 {keys} 搜尋。", { keys: formatKeys("Mod-Shift-p") });
-  const body = document.createElement("div");
-  body.className = "shortcuts-body";
-  const groups = new Map<string, [string, string][]>();
-  for (const c of sortByGroup(app.commands.available())) {
-    const keys = c.keys ?? c.shownKeys;
-    if (!keys) continue;
-    const list = groups.get(c.group ?? "") ?? [];
-    list.push([c.title, formatKeys(keys)]);
-    groups.set(c.group ?? "", list);
-  }
-  for (const [group, items] of groups) {
-    const g = document.createElement("h3");
-    g.textContent = group;
-    const table = document.createElement("table");
-    for (const [title, keys] of items) {
-      const row = table.insertRow();
-      row.insertCell().textContent = title;
-      const k = document.createElement("kbd");
-      k.textContent = keys;
-      row.insertCell().append(k);
-    }
-    body.append(g, table);
-  }
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "btn btn-primary";
-  close.textContent = t("關閉");
-  close.autofocus = true;
-  close.addEventListener("click", () => dialog.close());
-  const actions = document.createElement("div");
-  actions.className = "choice-actions";
-  actions.append(close);
-  dialog.append(h, hint, body, actions);
-  dialog.addEventListener("close", () => dialog.remove());
-  document.body.append(dialog);
-  dialog.showModal();
-}
-
 /** 格式工具列的下拉按鈕（標題、插入），建立一次之後重複使用。 */
 function formatMenuButton(id: string, label: string, iconName: string, entries: string[]): HTMLButtonElement {
   const b = document.createElement("button");
@@ -373,6 +327,7 @@ export function commandButton(id: string, withLabel = false): HTMLButtonElement 
   const b = document.createElement("button");
   b.type = "button";
   b.className = withLabel ? "btn" : "btn icon-only";
+  b.dataset.keysFor = id;
   b.title = app.withKeys(cmd.title, cmd.keys);
   b.setAttribute("aria-label", cmd.title);
   b.append(icon(cmd.icon!));
