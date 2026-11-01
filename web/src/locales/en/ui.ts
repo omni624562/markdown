@@ -549,7 +549,6 @@ export const ui: Record<string, Translation> = {
   "前往下一頁": "Forward",
   "{label}：{title}（{keys}）": "{label}: {title} ({keys})",
   "釘選這一頁": "Pin This Page",
-  "最近看過": "Recently Viewed",
   "已釘選": "Pinned",
   "顯示的是之前讀到的內容，這次更新失敗：{message}": "Showing what was loaded earlier; this update failed: {message}",
   "保留離線": "Keep offline",

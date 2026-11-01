@@ -129,11 +129,6 @@ export function wikiPageUrl(wikiUrl: string, path: string): string {
   return `${wikiUrl.replace(/[?#].*$/, "").replace(/\/+$/, "")}?pagePath=${encodeURIComponent(path)}`;
 }
 
-/** 把 `path` 移到清單最前面（不重複），最多留 `limit` 個。 */
-export function pushRecent(list: readonly string[], path: string, limit: number): string[] {
-  return [path, ...list.filter((p) => p !== path)].slice(0, limit);
-}
-
 /**
  * 搜尋結果的 Git 檔案路徑（例如 `/產品/安裝-說明.md`）是 Wiki 的哪一頁：拿掉 `mappedPath` 與 `.md`，
  * 每一段的 `-` 換回空白、`%2D` 換回 `-`。頁面清單裡有這一頁（不分大小寫）時回傳清單裡的寫法。

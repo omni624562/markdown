@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { childPagePath, flattenPages, imageRepoPath, pageFromGitPath, pageName, pushRecent, resolvePageLink, snippetParts, wikiMarkdown, wikiPageLink, wikiPageUrl, wikiTitleProblem } from "./wiki-text.ts";
+import { childPagePath, flattenPages, imageRepoPath, pageFromGitPath, pageName, resolvePageLink, snippetParts, wikiMarkdown, wikiPageLink, wikiPageUrl, wikiTitleProblem } from "./wiki-text.ts";
 
 const pages = ["/首頁", "/產品", "/產品/安裝 說明", "/產品/a-b", "/FAQ"];
 
@@ -65,12 +65,6 @@ test("插入的頁面連結", () => {
 test("還沒讀過的頁面網址", () => {
   assert.equal(wikiPageUrl("https://tfs/DC/P/_wiki/wikis/P.wiki", "/產品/安裝 說明"), "https://tfs/DC/P/_wiki/wikis/P.wiki?pagePath=%2F%E7%94%A2%E5%93%81%2F%E5%AE%89%E8%A3%9D%20%E8%AA%AA%E6%98%8E");
   assert.equal(wikiPageUrl("https://tfs/x/", "/a"), "https://tfs/x?pagePath=%2Fa");
-});
-
-test("最近看過的頁面：移到最前面、不重複、有上限", () => {
-  assert.deepEqual(pushRecent(["/a", "/b", "/c"], "/b", 5), ["/b", "/a", "/c"]);
-  assert.deepEqual(pushRecent(["/a", "/b"], "/c", 2), ["/c", "/a"]);
-  assert.deepEqual(pushRecent([], "/a", 5), ["/a"]);
 });
 
 test("pageFromGitPath 把搜尋結果的檔案路徑換成頁面", () => {
