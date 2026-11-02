@@ -11,6 +11,7 @@ import { icon } from "../ui/icons.ts";
 import type { IssueSource } from "../ui/issue-view.ts";
 import { toast } from "../ui/toast.ts";
 import { stateTone } from "../workitem-chips.ts";
+import { kindKey } from "../work-item-colors.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { app } from "./context.ts";
 import { reportError } from "./git-actions.ts";
@@ -20,6 +21,8 @@ import { showWorkItem } from "./work-item-actions.ts";
 
 /** 「工作」類型（卡片）：各種流程範本的名稱。 */
 const TASK_KINDS = new Set(["Task", "工作"]); // i18n-ignore：伺服器上的類型名稱
+/** 已移除的狀態：查詢本來就不含這些項目，不顯示這一欄。 */
+const REMOVED = new Set(["removed", "cut", "已移除", "已刪除"]); // i18n-ignore：伺服器上的狀態名稱
 
 interface Selection {
   project: string;
@@ -101,7 +104,8 @@ function boardSource(s: Selection): IssueSource {
       const missing = [...new Set(list.map((w) => w.parent).filter((p): p is number => p !== null && !raw.has(p)))];
       const outside = missing.length ? (await desktop!.adoWorkItemsByIds(missing).catch(() => [])).map(toBoardItem) : [];
       const cards = list.filter((w) => TASK_KINDS.has(w.kind) || (w.parent !== null && (raw.has(w.parent) || missing.includes(w.parent))));
-      board = buildBoard(list, outside, await columnsFor(s.project, cards), TASK_KINDS);
+      const columns = (await columnsFor(s.project, cards)).filter((state) => !REMOVED.has(state.toLowerCase()));
+      board = buildBoard(list, outside, columns, TASK_KINDS);
       return boardMarkdown(board, title);
     },
     insertLink: () => insertAtCursor(`[${title}](${boardUrl(s)})`),
@@ -155,23 +159,25 @@ function stateDot(state: string): HTMLElement {
   return dot;
 }
 
+/** 卡片：和工作項目清單同一種排法（上面一行是類型、編號與狀態，下面是標題），色條用類型的顏色。 */
 function card(w: BoardItem, raw: Map<number, AdoBoardItem>, draggable: boolean): HTMLElement {
   const c = document.createElement("div");
   c.className = "tb-card";
   c.dataset.id = String(w.id);
+  c.dataset.wiKind = kindKey(w.kind);
   c.tabIndex = 0;
   c.draggable = draggable;
   c.title = t("{kind} {id}：{title}", { kind: w.kind, id: w.id, title: w.title });
-  const head = document.createElement("div");
-  head.className = "tb-card-head";
-  head.append(Object.assign(document.createElement("span"), { className: "tb-id", textContent: String(w.id) }));
-  head.append(Object.assign(document.createElement("span"), { className: "tb-title", textContent: w.title }));
   const meta = document.createElement("div");
-  meta.className = "tb-card-meta";
-  meta.append(avatar(w.assignedTo), Object.assign(document.createElement("span"), { textContent: w.assignedTo ?? t("沒有指派") }));
+  meta.className = "workitem-meta";
+  meta.append(Object.assign(document.createElement("span"), { className: "workitem-meta-text", textContent: `${w.kind} ${w.id}` }));
+  const title = Object.assign(document.createElement("div"), { className: "tb-title", textContent: w.title });
+  const who = document.createElement("div");
+  who.className = "tb-who";
+  who.append(avatar(w.assignedTo), Object.assign(document.createElement("span"), { textContent: w.assignedTo ?? t("沒有指派") }));
   const hours = hoursText(w, { remaining: (n) => t("剩 {n} 小時", { n }), completed: (n) => t("完成 {n} 小時", { n }) });
-  c.append(head, meta);
-  if (hours) c.append(Object.assign(document.createElement("div"), { className: "tb-hours", textContent: hours }));
+  if (hours) who.append(Object.assign(document.createElement("span"), { className: "tb-hours", textContent: hours }));
+  c.append(meta, title, who);
   const open = () => {
     const item = raw.get(w.id);
     if (item) showWorkItem(item);
@@ -195,9 +201,10 @@ function renderBoard(body: HTMLElement, board: Board, s: Selection, raw: Map<num
   head.className = "tb-row tb-head";
   head.append(Object.assign(document.createElement("div"), { className: "tb-parent", textContent: t("上層項目") }));
   for (const state of board.columns) {
+    const n = board.rows.reduce((sum, r) => sum + (r.cells.get(state)?.length ?? 0), 0);
     const h = document.createElement("div");
     h.className = "tb-col-head";
-    h.append(stateDot(state), state);
+    h.append(stateDot(state), state, Object.assign(document.createElement("span"), { className: "tb-count", textContent: String(n) }));
     head.append(h);
   }
   root.append(head);
@@ -221,10 +228,10 @@ function renderBoard(body: HTMLElement, board: Board, s: Selection, raw: Map<num
       link.classList.add("tb-parent-card");
       // 上層項目不在這個 Sprint 裡時，點了用編號開。
       if (!raw.has(p.id)) link.addEventListener("click", () => void app.openWorkItemById(p.id));
-      const state = document.createElement("div");
-      state.className = "tb-parent-state";
+      const state = document.createElement("span");
+      state.className = "workitem-state";
       state.append(stateDot(p.state), p.state);
-      link.append(state);
+      link.querySelector(".workitem-meta")?.append(state);
       parent.append(toggle, link);
     } else {
       parent.append(toggle, Object.assign(document.createElement("div"), { className: "tb-orphans", textContent: t("沒有上層") }));
@@ -287,15 +294,10 @@ function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem
 function select(id: string, label: string): HTMLSelectElement {
   const sel = document.createElement("select");
   sel.id = id;
+  sel.className = "workitems-select";
+  sel.title = label;
   sel.setAttribute("aria-label", label);
   return sel;
-}
-
-function field(label: string, control: HTMLElement): HTMLElement {
-  const wrap = document.createElement("label");
-  wrap.className = "tb-field";
-  wrap.append(Object.assign(document.createElement("span"), { textContent: label }), control);
-  return wrap;
 }
 
 let loaded = false;
@@ -323,10 +325,13 @@ async function fillPanel(): Promise<void> {
   who.value = person ?? "";
   const open = document.createElement("button");
   open.type = "button";
-  open.className = "btn btn-primary";
+  open.className = "btn btn-small tb-open";
   open.append(icon("layout-grid"), t("開啟工作板"));
-  const hint = Object.assign(document.createElement("p"), { className: "side-hint", textContent: t("拖曳卡片到別的欄就是改狀態；點卡片開啟工作項目，按 < 回到工作板。") });
-  host.replaceChildren(field(t("專案"), project), field(t("團隊"), team), field(t("Sprint"), sprint), field(t("人員"), who), open, hint);
+  const filters = document.createElement("div");
+  filters.className = "workitems-filters tb-filters";
+  filters.append(project, team, sprint, who);
+  const hint = Object.assign(document.createElement("p"), { className: "workitems-status", textContent: t("拖曳卡片到別的欄就是改狀態；點卡片開啟工作項目，按 < 回到工作板。") });
+  host.replaceChildren(filters, open, hint);
 
   const projects = (await desktop!.adoWorkItemFilters()).projects;
   for (const p of projects) project.append(new Option(p, p));

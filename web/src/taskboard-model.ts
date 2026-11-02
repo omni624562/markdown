@@ -91,9 +91,10 @@ export function filterBoard(board: Board, person: string | null): Board {
 
 /** 卡片上的工時：「剩 3 小時」之類的摘要；沒填工時的是空字串。 */
 export function hoursText(w: BoardItem, label: { remaining: (n: string) => string; completed: (n: string) => string }): string {
-  const fmt = (n: number) => String(Math.round(n * 10) / 10);
+  const round = (n: number) => Math.round(n * 10) / 10;
   const parts: string[] = [];
-  if (typeof w.remaining === "number") parts.push(label.remaining(fmt(w.remaining)));
-  if (typeof w.completed === "number" && w.completed > 0) parts.push(label.completed(fmt(w.completed)));
+  // 沒填（或是 0）的不顯示，不然每張卡片都是「完成 0 小時」。
+  if (typeof w.remaining === "number" && round(w.remaining) > 0) parts.push(label.remaining(String(round(w.remaining))));
+  if (typeof w.completed === "number" && round(w.completed) > 0) parts.push(label.completed(String(round(w.completed))));
   return parts.join(" · ");
 }

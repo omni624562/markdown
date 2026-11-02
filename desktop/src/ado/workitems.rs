@@ -1073,10 +1073,7 @@ pub async fn ado_work_item_states(
             Some("4.1-preview.1"),
             &what,
         ) {
-            let states: Vec<String> = values(&v)
-                .iter()
-                .filter_map(|s| str_of(s, "name").map(str::to_string))
-                .collect();
+            let states = states_by_category(&v);
             if !states.is_empty() {
                 return Ok(states);
             }
@@ -1087,22 +1084,88 @@ pub async fn ado_work_item_states(
     .await
 }
 
-/// 類型定義裡的狀態轉換（`{"Active": [{"to": "Resolved"}], ...}`）出現過的所有狀態。
+/// 狀態在流程裡的階段（工作板的欄位、狀態選單依這個排）：提議、進行中、已解決、已完成、已移除。
+fn stage_of_category(category: &str) -> u8 {
+    match category {
+        "Proposed" => 0,
+        "InProgress" => 1,
+        "Resolved" => 2,
+        "Completed" => 3,
+        "Removed" => 4,
+        _ => 1,
+    }
+}
+
+/// 從名稱猜階段（舊版伺服器沒有分類）；認不得的當成進行中。
+fn stage_of_name(name: &str) -> u8 {
+    // 常見流程範本的狀態名稱（英文與中文），不是介面文字。
+    match name.to_lowercase().as_str() {
+        "new" | "to do" | "proposed" | "design" | "approved" | "新增" | "待辦" => 0, // i18n-ignore
+        "resolved" | "已解決" => 2,                                                  // i18n-ignore
+        "closed" | "done" | "completed" | "已關閉" | "已完成" | "完成" => 3,         // i18n-ignore
+        "removed" | "cut" | "已移除" | "已刪除" => 4,                                // i18n-ignore
+        _ => 1,
+    }
+}
+
+/// 新版 API 的狀態清單：依分類（提議 → 進行中 → 已解決 → 已完成 → 已移除）排，同一類照伺服器的順序。
+pub(super) fn states_by_category(v: &Value) -> Vec<String> {
+    let mut list: Vec<(u8, String)> = values(v)
+        .iter()
+        .filter_map(|s| {
+            let name = str_of(s, "name")?.to_string();
+            let stage =
+                str_of(s, "category").map_or_else(|| stage_of_name(&name), stage_of_category);
+            Some((stage, name))
+        })
+        .collect();
+    list.sort_by_key(|(stage, _)| *stage);
+    list.into_iter().map(|(_, n)| n).collect()
+}
+
+/// 類型定義裡的狀態轉換（`{"": [{"to": "New"}], "New": [{"to": "Active"}], ...}`）出現過的所有狀態，
+/// 依流程排：從起始狀態（`""` 轉過去的）沿著轉換走，再依名稱猜的階段排（JSON 物件的順序不可靠）。
 pub(super) fn states_from_transitions(v: &Value) -> Vec<String> {
-    let mut out: Vec<String> = vec![];
-    let mut add = |s: &str| {
-        if !s.is_empty() && !out.iter().any(|x| x == s) {
-            out.push(s.to_string());
-        }
+    let Some(map) = v.get("transitions").and_then(Value::as_object) else {
+        return vec![];
     };
-    if let Some(map) = v.get("transitions").and_then(Value::as_object) {
-        for (from, list) in map {
-            add(from);
-            for t in list.as_array().map_or(&[][..], Vec::as_slice) {
-                add(str_of(t, "to").unwrap_or_default());
-            }
+    let next = |from: &str| -> Vec<String> {
+        map.get(from)
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .filter_map(|t| str_of(t, "to"))
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    let mut out: Vec<String> = vec![];
+    let mut queue: std::collections::VecDeque<String> = next("").into();
+    while let Some(s) = queue.pop_front() {
+        if out.contains(&s) {
+            continue;
+        }
+        queue.extend(next(&s));
+        out.push(s);
+    }
+    // 起始狀態走不到的（不完整的定義）也列出來。
+    let mut rest: Vec<String> = map.keys().filter(|k| !k.is_empty()).cloned().collect();
+    for list in map.values() {
+        for t in list.as_array().map_or(&[][..], Vec::as_slice) {
+            rest.extend(
+                str_of(t, "to")
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+            );
         }
     }
+    rest.sort();
+    for s in rest {
+        if !out.contains(&s) {
+            out.push(s);
+        }
+    }
+    out.sort_by_key(|s| stage_of_name(s));
     out
 }
 

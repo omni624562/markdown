@@ -78,4 +78,5 @@ test("工時摘要", () => {
   const label = { remaining: (n: string) => `剩 ${n}`, completed: (n: string) => `完成 ${n}` };
   assert.equal(hoursText(w(1, "Task", "New", null, { remaining: 3.25, completed: 1 }), label), "剩 3.3 · 完成 1");
   assert.equal(hoursText(w(1, "Task", "New", null), label), "");
+  assert.equal(hoursText(w(1, "Task", "New", null, { remaining: 0, completed: 0.01 }), label), "", "0 小時不顯示");
 });
