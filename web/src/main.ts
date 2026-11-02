@@ -96,6 +96,7 @@ import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoIma
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, renderStats, updateActiveHeading, initOutline } from "./app/outline.ts";
 import { provideApp } from "./app/context.ts";
+import { initTaskboard } from "./app/taskboard.ts";
 
 export type ViewMode = "editor" | "live" | "split" | "preview";
 type ThemePref = "system" | "light" | "dark";
@@ -2123,8 +2124,8 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-export type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "wiki" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "wiki", "git"];
+export type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "board" | "wiki" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "board", "wiki", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
 /** 前幾版的「Azure DevOps」面板（裡面切換工作項目與 Wiki）；現在拆成「工作項目」「Wiki」兩個面板。 */
 const LEGACY_ADO_PANEL = "ado";
@@ -2451,6 +2452,7 @@ const showAssignee = () => !(workItemFilter.role === "assigned" && workItemFilte
 let loadWorkItemFilterOptions = (): void => {};
 
 initWorkItemsPanel();
+initTaskboard();
 initAdoStatus();
 
 /** 最近一次「指派給你、還沒結束」的清單（背景檢查或面板的預設清單）。 */

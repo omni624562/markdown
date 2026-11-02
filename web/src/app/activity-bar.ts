@@ -52,6 +52,7 @@ export const PANEL_LABELS: Record<SidePanel, () => string> = {
   tags: () => t("標籤"),
   issues: () => t("Issues（GitHub）"),
   workitems: () => t("工作項目（Azure DevOps）"),
+  board: () => t("工作板（Azure DevOps）"),
   wiki: () => t("Wiki（Azure DevOps）"),
   git: () => t("原始碼控制（Git）"),
 };
@@ -63,6 +64,7 @@ export const PANEL_ICONS: Record<SidePanel, string> = {
   tags: "tags",
   issues: "circle-dot",
   workitems: "square-kanban",
+  board: "layout-grid",
   wiki: "book-open-text",
   git: "git-branch",
 };

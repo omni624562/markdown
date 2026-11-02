@@ -95,4 +95,6 @@ pub static EN: &[(&str, &str)] = &[
     ("修改留言", "Edit the comment"),
     ("刪除留言", "Delete the comment"),
     ("這個伺服器不支援修改或刪除留言（需要 Azure DevOps Server 2020 以上）", "This server doesn't support editing or deleting comments (Azure DevOps Server 2020 or later is required)."),
+    ("讀取團隊設定", "Load team settings"),
+    ("查詢工作板", "Query the taskboard"),
 ];

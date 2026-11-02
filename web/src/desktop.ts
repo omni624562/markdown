@@ -403,6 +403,35 @@ export interface AdoWorkItemRelation extends AdoWorkItem {
   linkName: string;
 }
 
+/** Azure DevOps 的團隊。 */
+export interface AdoTeam {
+  id: string;
+  name: string;
+  /** 專案的預設團隊。 */
+  default: boolean;
+}
+
+/** 團隊選用的 Sprint。 */
+export interface AdoTeamIteration {
+  id: string;
+  name: string;
+  /** 反覆項目路徑（例如 `產品\Sprint 102`）。 */
+  path: string;
+  start: string | null;
+  finish: string | null;
+  /** 目前的 Sprint。 */
+  current: boolean;
+}
+
+/** 工作板上的工作項目：多了上層項目的編號、修訂版本與工時。 */
+export interface AdoBoardItem extends AdoWorkItem {
+  rev: number | null;
+  parent: number | null;
+  remaining: number | null;
+  completed: number | null;
+  original: number | null;
+}
+
 /** 工作項目清單的篩選條件。 */
 /** TFS 上存的查詢。 */
 export interface AdoSavedQuery {
@@ -933,6 +962,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 刪除一則留言；只能刪自己的。 */
     adoCommentDelete: (project: string, id: number, commentId: number) =>
       core.invoke<void>("ado_comment_delete", { project, id, commentId }),
+    /** 專案的團隊（預設團隊排第一個）。 */
+    adoTeams: (project: string) => core.invoke<AdoTeam[]>("ado_teams", { project }),
+    /** 團隊選用的 Sprint（依開始日期排）。 */
+    adoTeamIterations: (project: string, team: string) => core.invoke<AdoTeamIteration[]>("ado_team_iterations", { project, team }),
+    /** 團隊在某個 Sprint 裡的工作項目（工作板）。 */
+    adoBoard: (project: string, team: string, iteration: string) => core.invoke<AdoBoardItem[]>("ado_board", { project, team, iteration }),
     /** 專案的反覆項目（Sprint），第一個是專案本身。 */
     adoIterations: (project: string) => core.invoke<Iteration[]>("ado_iterations", { project }),
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),
