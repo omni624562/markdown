@@ -999,6 +999,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoTeamIterations: (project: string, team: string) => core.invoke<AdoTeamIteration[]>("ado_team_iterations", { project, team }),
     /** 團隊在某個 Sprint 裡的工作項目（工作板）。 */
     adoBoard: (project: string, team: string, iteration: string) => core.invoke<AdoBoardItem[]>("ado_board", { project, team, iteration }),
+    /** 團隊的 Backlog：還沒排進 Sprint 的需求類工作項目，依 Backlog 的順序。 */
+    adoBacklog: (project: string, team: string) => core.invoke<AdoBoardItem[]>("ado_backlog", { project, team }),
     /** 專案的反覆項目（Sprint），第一個是專案本身。 */
     adoIterations: (project: string) => core.invoke<Iteration[]>("ado_iterations", { project }),
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),

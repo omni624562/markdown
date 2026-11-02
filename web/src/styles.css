@@ -3572,3 +3572,13 @@ body.ado-offline .taskboard .tb-edit, body.ado-offline .taskboard .tb-add { disp
 .tb-cap-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
 .tb-cap.over .tb-cap-bar > span { background: var(--danger); }
 .tb-cap.over .tb-cap-text { color: var(--danger); font-weight: 600; }
+
+/* 工作板側邊欄的兩個按鈕（開啟工作板、Backlog）與 Backlog 清單（見 app/taskboard-backlog.ts）。 */
+#board-host .tb-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.tb-backlog { display: flex; flex-direction: column; gap: 6px; max-width: 880px; margin: 0; padding: 0; list-style: none; counter-reset: backlog; }
+.tb-backlog-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px 8px 12px; border: 1px solid var(--border); border-left: 3px solid var(--kind, var(--border)); border-radius: 8px; background: var(--bg); counter-increment: backlog; }
+.tb-backlog-item::before { content: counter(backlog); flex: none; min-width: 2ch; color: var(--muted); font-size: 12px; text-align: right; }
+.tb-backlog-main { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.tb-backlog-main:hover .tb-title { color: var(--accent); }
+.tb-backlog .tb-move { flex: none; }
+body.ado-offline .tb-backlog .tb-move { display: none; }

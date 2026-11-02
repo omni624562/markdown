@@ -59,6 +59,7 @@ pub static EN: &[(&str, &str)] = &[
     ("以「{name}」登入", "Signed in as \"{name}\""),
     ("工時要是 0 或正數", "Hours must be 0 or a positive number"),
     ("讀取容量", "Reading capacity"),
+    ("查詢 Backlog", "Querying the backlog"),
     ("Azure DevOps Server 2022 或雲端版", "Azure DevOps Server 2022 or Azure DevOps Services"),
     ("TFS 2017 或更舊", "TFS 2017 or older"),
     ("伺服器版本", "Server version"),
