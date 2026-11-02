@@ -4,8 +4,9 @@
 //! 以列印樣式存成 PDF：Windows 用 WebView2 的 PrintToPdf，Linux 用 WebKitGTK 的列印到檔案。
 //! 頁首、頁碼、封面都由前端的 CSS（`@page`）處理。其他平台回傳錯誤，前端改用列印對話框。
 
+use parking_lot::Mutex;
 use std::path::PathBuf;
-use std::sync::{mpsc, Mutex};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -42,13 +43,13 @@ pub async fn pick_pdf_path(
         .save_file()
         .await
         .map(|h| h.path().to_path_buf());
-    *target.0.lock().unwrap() = picked.clone();
+    *target.0.lock() = picked.clone();
     Ok(picked.map(|p| p.to_string_lossy().into_owned()))
 }
 
 /// 取出剛才在對話框選的位置；`path` 必須和它相同。
 fn take_target(target: &PdfTarget, path: &str) -> Result<PathBuf, String> {
-    let mut slot = target.0.lock().unwrap();
+    let mut slot = target.0.lock();
     match slot.as_ref() {
         Some(p) if p.as_os_str() == std::ffi::OsStr::new(path) => Ok(slot.take().unwrap()),
         _ => Err(tr!("請重新選擇 PDF 的存檔位置")),
@@ -193,7 +194,7 @@ mod tests {
     fn only_the_picked_path_can_be_written_once() {
         let target = PdfTarget::default();
         assert!(take_target(&target, "/tmp/a.pdf").is_err(), "沒選過位置");
-        *target.0.lock().unwrap() = Some(PathBuf::from("/tmp/匯出.pdf"));
+        *target.0.lock() = Some(PathBuf::from("/tmp/匯出.pdf"));
         assert!(take_target(&target, "/home/me/.bashrc").is_err());
         assert_eq!(
             take_target(&target, "/tmp/匯出.pdf").unwrap(),

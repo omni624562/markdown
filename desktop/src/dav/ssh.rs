@@ -12,9 +12,10 @@
 //! - 跳板主機（ProxyJump）：先連到跳板主機，再從那裡開一條通道連到目標主機（兩台的主機金鑰都會檢查）。
 //!   跳板主機用金鑰或 ssh-agent 登入；需要密碼時用和目標主機相同的密碼。
 
+use parking_lot::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use russh::client;
@@ -142,7 +143,7 @@ impl client::Handler for Checker {
         let state = match key {
             PublicKeyOrCertificate::PublicKey { key, .. } => {
                 let Ok(recorded) = recorded_keys(&self.host, self.port) else {
-                    *self.seen.lock().unwrap() = Some(HostKey::Unreadable);
+                    *self.seen.lock() = Some(HostKey::Unreadable);
                     return Ok(false);
                 };
                 let state = judge(&recorded, key, self.trust.as_deref());
@@ -155,7 +156,7 @@ impl client::Handler for Checker {
             PublicKeyOrCertificate::Certificate(_) => HostKey::Certificate,
         };
         let ok = matches!(state, HostKey::Trusted);
-        *self.seen.lock().unwrap() = Some(state);
+        *self.seen.lock() = Some(state);
         Ok(ok)
     }
 }
@@ -232,7 +233,7 @@ async fn handshake(
     match fut.await {
         Ok(handle) => Ok(handle),
         Err(e) => {
-            let seen = seen.lock().unwrap().clone();
+            let seen = seen.lock().clone();
             Err(match seen {
                 // 第四行是主機名稱：經由跳板主機時，前端才知道是在確認哪一台。
                 Some(HostKey::Unknown(algo, fp)) => {
@@ -642,11 +643,7 @@ impl SshFs {
     }
 
     fn current(&self) -> Option<Arc<Live>> {
-        self.live
-            .lock()
-            .unwrap()
-            .clone()
-            .filter(|l| !l.handle.is_closed())
+        self.live.lock().clone().filter(|l| !l.handle.is_closed())
     }
 
     async fn live(&self) -> Result<Arc<Live>, DavError> {
@@ -661,7 +658,7 @@ impl SshFs {
         let live = connect(&self.target, &self.user, self.secret.as_deref(), None)
             .await
             .map(Arc::new)?;
-        *self.live.lock().unwrap() = Some(live.clone());
+        *self.live.lock() = Some(live.clone());
         Ok(live)
     }
 
@@ -682,7 +679,7 @@ impl SshFs {
                 return Err(err);
             }
             {
-                let mut slot = self.live.lock().unwrap();
+                let mut slot = self.live.lock();
                 if slot.as_ref().is_some_and(|l| Arc::ptr_eq(l, &live)) {
                     *slot = None;
                 }
@@ -1550,7 +1547,7 @@ mod tests {
             DavError::NotFound
         );
         // 連線斷掉：下一個操作自動重新連線。
-        let old = fs.live.lock().unwrap().clone().unwrap();
+        let old = fs.live.lock().clone().unwrap();
         tauri::async_runtime::block_on(old.handle.disconnect(
             russh::Disconnect::ByApplication,
             "",

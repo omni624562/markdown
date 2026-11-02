@@ -1,11 +1,11 @@
 //! 單一檔案的讀寫：編碼判斷、保留換行格式、安全存檔與衝突偵測。
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Window};
@@ -33,16 +33,16 @@ pub struct KnownFiles(pub Mutex<HashMap<PathBuf, FileState>>);
 
 impl KnownFiles {
     pub fn contains(&self, path: &Path) -> bool {
-        self.0.lock().unwrap().contains_key(path)
+        self.0.lock().contains_key(path)
     }
 
     pub fn stored_hash(&self, path: &Path) -> Option<u64> {
-        self.0.lock().unwrap().get(path).and_then(|s| s.hash)
+        self.0.lock().get(path).and_then(|s| s.hash)
     }
 
     /// 檔案被改名或搬移時，沿用原本的狀態。
     pub fn rename(&self, from: &Path, to: &Path) {
-        let mut map = self.0.lock().unwrap();
+        let mut map = self.0.lock();
         let moved: Vec<(PathBuf, FileState)> = map
             .iter()
             .filter(|(p, _)| p.starts_with(from))
@@ -214,7 +214,7 @@ pub fn read_file(app: &AppHandle, path: PathBuf, known: &KnownFiles) -> Result<O
         ));
     }
     let (text, format, encoding) = decode(&bytes);
-    known.0.lock().unwrap().insert(
+    known.0.lock().insert(
         path.clone(),
         FileState {
             format,
@@ -527,17 +527,13 @@ pub async fn import_docx(
     })
     .await?;
     let md = unique_md_path(&path);
-    known
-        .0
-        .lock()
-        .unwrap()
-        .insert(md.clone(), FileState::default());
+    known.0.lock().insert(md.clone(), FileState::default());
     trust.add_file(&app, &md);
     Ok(Some(DocxImport {
         name: display_name(&path),
         md_path: path_string(&md),
     }))
-    .inspect(|_| *DOCX_DATA.lock().unwrap() = Some(bytes))
+    .inspect(|_| *DOCX_DATA.lock() = Some(bytes))
 }
 
 /// 取走 `import_docx` 剛讀到的 Word 檔內容（原始位元組）。
@@ -545,7 +541,6 @@ pub async fn import_docx(
 pub fn import_docx_data() -> Result<tauri::ipc::Response, String> {
     let bytes = DOCX_DATA
         .lock()
-        .unwrap()
         .take()
         .ok_or_else(|| tr!("沒有要匯入的 Word 檔"))?;
     Ok(tauri::ipc::Response::new(bytes))
@@ -652,7 +647,6 @@ pub async fn save_file(
     let format = known
         .0
         .lock()
-        .unwrap()
         .get(&path)
         .map(|s| s.format)
         .unwrap_or_default();
@@ -662,7 +656,7 @@ pub async fn save_file(
         let disk = fs::read(&p).ok();
         let hash = write_file(&p, &text, format)?;
         crate::history::on_save(&app2, &p, disk.as_deref(), &text);
-        app2.state::<KnownFiles>().0.lock().unwrap().insert(
+        app2.state::<KnownFiles>().0.lock().insert(
             p.clone(),
             FileState {
                 format,
@@ -682,7 +676,7 @@ pub async fn save_file(
 fn save_lock(path: &Path) -> std::sync::Arc<Mutex<()>> {
     static LOCKS: std::sync::LazyLock<Mutex<HashMap<PathBuf, std::sync::Arc<Mutex<()>>>>> =
         std::sync::LazyLock::new(Default::default);
-    let mut locks = LOCKS.lock().unwrap();
+    let mut locks = LOCKS.lock();
     // 沒有人在用的鎖順便清掉。
     locks.retain(|_, l| std::sync::Arc::strong_count(l) > 1);
     locks.entry(path.to_path_buf()).or_default().clone()
@@ -691,15 +685,9 @@ fn save_lock(path: &Path) -> std::sync::Arc<Mutex<()>> {
 /// 覆寫已開啟過的檔案。磁碟上的內容在開啟後被改過時回傳 `Conflict`（除非 `force`）。
 fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<SaveOutcome, String> {
     let lock = save_lock(path);
-    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = lock.lock();
     let known = app.state::<KnownFiles>();
-    let state = known
-        .0
-        .lock()
-        .unwrap()
-        .get(path)
-        .copied()
-        .unwrap_or_default();
+    let state = known.0.lock().get(path).copied().unwrap_or_default();
     let disk = fs::read(path).ok();
     if !force && changed_on_disk(state.hash, disk.as_deref()) {
         let (disk_text, _, _) = decode(disk.as_deref().unwrap_or_default());
@@ -711,7 +699,7 @@ fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<Sa
     }
     let hash = write_file(path, text, state.format)?;
     crate::history::on_save(app, path, disk.as_deref(), text);
-    known.0.lock().unwrap().insert(
+    known.0.lock().insert(
         path.to_path_buf(),
         FileState {
             hash: Some(hash),
@@ -851,7 +839,7 @@ mod tests {
     #[test]
     fn rename_moves_known_state_including_children() {
         let known = KnownFiles::default();
-        known.0.lock().unwrap().insert(
+        known.0.lock().insert(
             PathBuf::from("/w/舊資料夾/a.md"),
             FileState {
                 hash: Some(1),

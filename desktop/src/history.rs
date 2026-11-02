@@ -17,11 +17,12 @@
 //! 連續的 `save` 版本之間至少隔 2 分鐘，太密的中間版本會被下一次存檔取代
 //! （一定保留最新的一版）。`disk` 版本（存檔前被其他程式改過的內容）永遠不會被合併掉。
 
+use parking_lot::Mutex;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::{LazyLock, Mutex};
+use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -377,7 +378,7 @@ pub fn on_save(app: &AppHandle, path: &Path, disk_before: Option<&[u8]>, text: &
         text: text.to_string(),
         now: now_ms(),
     };
-    let _ = QUEUE.lock().unwrap().send(job);
+    let _ = QUEUE.lock().send(job);
 }
 
 pub fn on_rename(app: &AppHandle, from: &Path, to: &Path) {

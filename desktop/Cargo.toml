@@ -1,6 +1,6 @@
 [package]
 name = "md-desktop"
-version = "1.90.1"
+version = "1.91.2"
 edition = "2021"
 license = "MIT"
 description = "oMarker（Markdown 編輯器）桌面版（Tauri）"
@@ -40,6 +40,8 @@ rmcp = { version = "3.5.1", default-features = false, features = ["server", "mac
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 tokio = { version = "1", features = ["net", "sync", "time", "process", "io-util", "rt"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# 不會「中毒」的鎖：某個指令在持有鎖時 panic，其他指令照樣能用（std 的 Mutex 會讓之後每次 lock 都失敗）。
+parking_lot = "0.12"
 schemars = "1.2.3"
 getrandom = "0.4.3"
 # WebDAV 遠端工作區

@@ -354,8 +354,8 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   details: string | null;
   /** 系統資訊（Bug，HTML）。 */
   systemInfo?: string | null;
-  /** 留言（舊到新，內容是 HTML）。 */
-  comments: { author: string; created: string | null; text: string }[];
+  /** 留言（舊到新，內容是 HTML）。`id` 是伺服器可以編輯、刪除留言時才有（TFS 2019 沒有）。 */
+  comments: { id: number | null; author: string; created: string | null; text: string }[];
   /** 修訂版本（更新時用來確認這段時間沒有被別人改過）。 */
   rev: number | null;
   /** 相關的工作項目；讀不到時是空的。 */
@@ -927,6 +927,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 改狀態、指派給我、留言（HTML）、標題、優先順序、Sprint、標籤；`rev` 是開啟時的修訂版本。 */
     adoWorkItemUpdate: (id: number, change: AdoWorkItemChange) =>
       core.invoke<void>("ado_work_item_update", { id, change: { ...change, rev: change.rev ?? null } }),
+    /** 改一則留言（`html` 是新的內容）；只能改自己的。 */
+    adoCommentUpdate: (project: string, id: number, commentId: number, html: string) =>
+      core.invoke<void>("ado_comment_update", { project, id, commentId, html }),
+    /** 刪除一則留言；只能刪自己的。 */
+    adoCommentDelete: (project: string, id: number, commentId: number) =>
+      core.invoke<void>("ado_comment_delete", { project, id, commentId }),
     /** 專案的反覆項目（Sprint），第一個是專案本身。 */
     adoIterations: (project: string) => core.invoke<Iteration[]>("ado_iterations", { project }),
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),

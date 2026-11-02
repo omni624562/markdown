@@ -1,0 +1,6 @@
+# std 的 Mutex／RwLock 會「中毒」：某個指令在持有鎖時 panic，之後每次 lock 都失敗，
+# 相關功能要重開程式才會恢復。一律改用 parking_lot（不會中毒）。
+disallowed-types = [
+    { path = "std::sync::Mutex", reason = "用 parking_lot::Mutex（不會中毒）" },
+    { path = "std::sync::RwLock", reason = "用 parking_lot::RwLock（不會中毒）" },
+]

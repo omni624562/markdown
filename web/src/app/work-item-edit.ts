@@ -8,6 +8,7 @@ import type { AdoWorkItemChange, AdoWorkItemDetail } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { icon } from "../ui/icons.ts";
+import { choose } from "../ui/choice.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { htmlToMarkdown } from "../html-paste.ts";
 import { type Iteration, type LongField, iterationGroups, longFields, lossyHtml, parseTags } from "../work-item-fields.ts";
@@ -17,6 +18,8 @@ export interface WorkItemEditHooks {
   detail(): AdoWorkItemDetail | null;
   /** 送出變更；成功時回傳 true（之後會重新讀取、重畫）。 */
   apply(change: AdoWorkItemChange, done: string): Promise<boolean>;
+  /** 改一則留言（`html` 為 null 時刪除）；成功時回傳 true（之後會重新讀取、重畫）。 */
+  editComment(commentId: number, html: string | null, done: string): Promise<boolean>;
   /** 這個類型可以設定的狀態。 */
   states(): Promise<string[]>;
   /** 專案的 Sprint。 */
@@ -101,6 +104,8 @@ const loading = (): MenuEntry => ({ label: t("讀取中…"), icon: "loader", ru
 
 /** 在工作項目的內容（已經整理成標題、小標籤、卡片）上加上修改的方式。重畫之後要再呼叫一次。 */
 export function enhanceWorkItem(body: HTMLElement, h: WorkItemEditHooks, cache: { states: Loaded<string[]>; iterations: Loaded<Iteration[]> }): void {
+  // 留言卡片每次重畫都是新的（上方的欄位區塊沒變時會沿用舊的），所以每次都補上編輯、刪除。
+  manageComments(body, h);
   const hero = body.querySelector<HTMLElement>(":scope > .ado-hero");
   if (!hero || hero.dataset.editable) return;
   hero.dataset.editable = "1";
@@ -528,6 +533,112 @@ function composeComment(body: HTMLElement, h: WorkItemEditHooks): void {
       e.stopPropagation();
       textarea.blur();
       if (!textarea.value.trim()) open(false);
+    }
+  });
+}
+
+/** 同一個人（顯示名稱可能大小寫、空白不同）。 */
+const samePerson = (a: string, b: string) => !!a.trim() && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/**
+ * 自己的留言：卡片標題列加上「編輯」「刪除」。伺服器不支援編輯留言（TFS 2019，留言沒有編號）時不顯示；
+ * 別人的留言也不顯示（伺服器本來就不允許）。
+ */
+function manageComments(body: HTMLElement, h: WorkItemEditHooks): void {
+  const d = h.detail();
+  if (!d) return;
+  const me = h.me();
+  for (const wrap of body.querySelectorAll<HTMLElement>(".ado-comment[data-index]")) {
+    const c = d.comments[Number(wrap.dataset.index)];
+    if (!c || c.id === null || !samePerson(c.author, me)) continue;
+    const id = c.id;
+    const card = wrap.querySelector<HTMLDetailsElement>(".ado-card");
+    const head = card?.querySelector<HTMLElement>(".ado-card-head");
+    const cardBody = card?.querySelector<HTMLElement>(".ado-card-body");
+    if (!card || !head || !cardBody || head.querySelector(".ado-comment-tools")) continue;
+    const tools = document.createElement("span");
+    tools.className = "ado-comment-tools";
+    const button = (label: string, iconName: string, run: () => void) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn btn-small icon-only";
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      b.append(icon(iconName));
+      // 按鈕在 <summary> 裡：不要順便收合或展開卡片。
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        run();
+      });
+      return b;
+    };
+    tools.append(
+      button(t("編輯留言"), "pencil", () => {
+        card.open = true;
+        editComment(cardBody, c.text, async (html) => h.editComment(id, html, t("已修改留言")));
+      }),
+      button(t("刪除留言"), "trash", () => {
+        void (async () => {
+          const answer = await choose(t("刪除留言"), t("要刪除這則留言嗎？刪除後無法復原。"), [
+            { id: "delete", label: t("刪除"), danger: true },
+            { id: "cancel", label: t("取消"), primary: true },
+          ]);
+          if (answer === "delete") await h.editComment(id, null, t("已刪除留言"));
+        })();
+      }),
+    );
+    head.append(tools);
+  }
+}
+
+/** 在留言卡片裡用 Markdown 改留言；存檔成功後整個工作項目會重新讀取、重畫。 */
+function editComment(cardBody: HTMLElement, html: string, save: (html: string) => Promise<boolean>): void {
+  if (cardBody.querySelector(".ado-comment-edit")) return;
+  const original = [...cardBody.childNodes];
+  const form = document.createElement("div");
+  form.className = "ado-compose open ado-comment-edit";
+  const textarea = document.createElement("textarea");
+  textarea.value = htmlToMarkdown(html, { keepImages: true }).trim();
+  textarea.rows = Math.min(12, Math.max(3, textarea.value.split("\n").length + 1));
+  textarea.setAttribute("aria-label", t("編輯留言"));
+  const actions = document.createElement("div");
+  actions.className = "ado-compose-actions";
+  const hint = document.createElement("span");
+  hint.className = "ado-compose-hint";
+  hint.textContent = t("Ctrl+Enter 儲存");
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn btn-small";
+  cancel.textContent = t("取消");
+  const ok = document.createElement("button");
+  ok.type = "button";
+  ok.className = "btn btn-small btn-primary";
+  ok.textContent = t("儲存");
+  actions.append(hint, cancel, ok);
+  const main = document.createElement("div");
+  main.className = "ado-compose-main";
+  main.append(textarea, actions);
+  form.append(main);
+  cardBody.replaceChildren(form);
+  textarea.focus();
+  const close = () => cardBody.replaceChildren(...original);
+  const submit = async () => {
+    const text = textarea.value.trim();
+    if (!text) return textarea.focus();
+    ok.disabled = true;
+    if (!(await save(renderMarkdown(text, { kind: "markdown" }).html))) ok.disabled = false;
+  };
+  cancel.addEventListener("click", close);
+  ok.addEventListener("click", () => void submit());
+  textarea.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void submit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
     }
   });
 }

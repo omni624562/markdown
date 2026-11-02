@@ -7,10 +7,11 @@
 //!
 //! 工具的說明與回傳結果是給 AI 看的，維持中文（標 `i18n-ignore`）；回給介面的錯誤才用 `tr!`。
 
+use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Request, State as AxumState};
@@ -98,7 +99,7 @@ pub struct Mcp {
 impl Mcp {
     /// 伺服器在執行時，回傳連線資訊（給終端機啟動 Claude Code、Codex 時帶入）。
     pub fn connection(&self) -> Option<Connection> {
-        self.running.lock().unwrap().as_ref().map(|r| Connection {
+        self.running.lock().as_ref().map(|r| Connection {
             url: r.conn.url.clone(),
             token: r.conn.token.clone(),
             config_path: r.conn.config_path.clone(),
@@ -222,14 +223,14 @@ impl EditorTools {
         description = "取得使用者目前在 oMarker（Markdown 編輯器）中正在看的文件：檔名、路徑與編輯器中的完整內容（包含尚未存檔的變更）。" // i18n-ignore
     )]
     fn get_active_document(&self) -> Result<String, String> {
-        let snap = self.snapshot.read().unwrap();
+        let snap = self.snapshot.read();
         let doc = snap.active.as_ref().ok_or("編輯器目前沒有開啟文件")?; // i18n-ignore
         Ok(format!("{}\n\n---\n{}", describe(doc), doc.text))
     }
 
     #[tool(description = "取得使用者目前在編輯器中選取的文字與所在行號。")] // i18n-ignore
     fn get_selection(&self) -> Result<String, String> {
-        let snap = self.snapshot.read().unwrap();
+        let snap = self.snapshot.read();
         let doc = snap.active.as_ref().ok_or("編輯器目前沒有開啟文件")?; // i18n-ignore
         match &doc.selection {
             Some(sel) if !sel.text.is_empty() => Ok(format!(
@@ -242,7 +243,7 @@ impl EditorTools {
 
     #[tool(description = "列出編輯器中所有已開啟的分頁（檔名、路徑、是否有未存檔的變更）。")] // i18n-ignore
     fn list_open_documents(&self) -> String {
-        let snap = self.snapshot.read().unwrap();
+        let snap = self.snapshot.read();
         let active = snap.active.as_ref().and_then(|d| d.path.clone());
         let lines: Vec<String> = snap
             .open
@@ -273,7 +274,7 @@ impl EditorTools {
     )]
     fn read_document(&self, Parameters(args): Parameters<ReadArgs>) -> Result<String, String> {
         {
-            let snap = self.snapshot.read().unwrap();
+            let snap = self.snapshot.read();
             if let Some(doc) = snap
                 .active
                 .as_ref()
@@ -454,7 +455,6 @@ impl EditorTools {
         let open = self
             .snapshot
             .read()
-            .unwrap()
             .open
             .iter()
             .any(|d| d.path.as_deref() == Some(path));
@@ -485,17 +485,17 @@ impl EditorTools {
         payload: CommandEvent,
     ) -> Result<Decision, String> {
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(id, tx);
-        self.commands.lock().unwrap().insert(id);
+        self.pending.lock().insert(id, tx);
+        self.commands.lock().insert(id);
         super::view::send(&self.app, event, payload);
         super::view::ask_main_to_show(&self.app);
         let result = tokio::time::timeout(DECISION_WAIT, rx).await;
-        self.commands.lock().unwrap().remove(&id);
+        self.commands.lock().remove(&id);
         match result {
             Ok(Ok(d)) => Ok(d),
             Ok(Err(_)) => Err("編輯器已取消這個要求".into()), // i18n-ignore
             Err(_) => {
-                self.pending.lock().unwrap().remove(&id);
+                self.pending.lock().remove(&id);
                 super::view::send(&self.app, "ai-command-expired", id);
                 Err(
                     "使用者沒有在時間內同意，指令沒有執行。需要的話可以請使用者準備好後再試一次。" // i18n-ignore
@@ -509,7 +509,7 @@ impl EditorTools {
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         event.id = id;
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(id, tx);
+        self.pending.lock().insert(id, tx);
         self.app
             .emit("ai-proposal", event)
             .map_err(|e| e.to_string())?;
@@ -518,7 +518,7 @@ impl EditorTools {
             Ok(Ok(d)) => Err(d.message),
             Ok(Err(_)) => Err("編輯器已關閉這個提議".into()), // i18n-ignore
             Err(_) => {
-                self.pending.lock().unwrap().remove(&id);
+                self.pending.lock().remove(&id);
                 // i18n-ignore
                 Ok("修改已顯示在使用者的編輯器中，使用者還沒做出決定。不需要重複提出，使用者會自行接受或拒絕；之後可以用 get_active_document 確認結果。".into())
             }
@@ -648,7 +648,7 @@ pub async fn mcp_copy_registration(
 ) -> Result<(), String> {
     crate::settings::require_ai(&app)?;
     let text = {
-        let running = mcp.running.lock().unwrap();
+        let running = mcp.running.lock();
         let conn = &running
             .as_ref()
             .ok_or_else(|| tr!("請先開啟「讓 AI 讀取目前的文件」"))?
@@ -664,7 +664,7 @@ pub async fn mcp_copy_registration(
 #[tauri::command]
 pub async fn mcp_start(app: AppHandle, mcp: State<'_, Mcp>) -> Result<McpInfo, String> {
     crate::settings::require_ai(&app)?;
-    if let Some(r) = mcp.running.lock().unwrap().as_ref() {
+    if let Some(r) = mcp.running.lock().as_ref() {
         return Ok(info(&r.conn));
     }
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
@@ -729,25 +729,25 @@ pub async fn mcp_start(app: AppHandle, mcp: State<'_, Mcp>) -> Result<McpInfo, S
         config_path,
     };
     let result = info(&conn);
-    *mcp.running.lock().unwrap() = Some(Running { conn, shutdown });
+    *mcp.running.lock() = Some(Running { conn, shutdown });
     Ok(result)
 }
 
 #[tauri::command]
 pub fn mcp_stop(mcp: State<'_, Mcp>) {
-    if let Some(r) = mcp.running.lock().unwrap().take() {
+    if let Some(r) = mcp.running.lock().take() {
         let _ = r.shutdown.send(());
         let _ = std::fs::remove_file(&r.conn.config_path);
     }
     // 還在等決定的提議一律取消。
-    mcp.pending.lock().unwrap().clear();
+    mcp.pending.lock().clear();
 }
 
 /// 前端同步目前的文件、選取範圍與分頁清單。
 /// 用非同步指令：內容可能很大，不要在主執行緒上解析。
 #[tauri::command]
 pub async fn mcp_sync(mut snapshot: Snapshot, mcp: State<'_, Mcp>) -> Result<(), String> {
-    let mut current = mcp.snapshot.write().unwrap();
+    let mut current = mcp.snapshot.write();
     if let (Some(new), Some(old)) = (snapshot.active.as_mut(), current.active.as_ref()) {
         if new.same_text && new.path == old.path && new.name == old.name {
             new.text = old.text.clone();
@@ -766,10 +766,10 @@ pub fn mcp_respond(
     mcp: State<'_, Mcp>,
 ) -> Result<bool, String> {
     // 執行指令的要求只能在終端機的 webview 同意。
-    if mcp.commands.lock().unwrap().contains(&id) {
+    if mcp.commands.lock().contains(&id) {
         super::view::require_terminal(&webview)?;
     }
-    Ok(match mcp.pending.lock().unwrap().remove(&id) {
+    Ok(match mcp.pending.lock().remove(&id) {
         Some(tx) => tx.send(decision).is_ok(),
         None => false,
     })

@@ -1,69 +1,11 @@
 /**
  * 網頁版的冒煙測試：用 Playwright 開啟建置好的 dist/，確認主要流程沒有壞掉。
  * 先執行 `npm run build`，再 `npm run test:e2e`（第一次要 `npx playwright install chromium`）。
- *
- * 不啟動伺服器：攔截瀏覽器的請求，直接回應 dist/ 裡的檔案；其他網址一律擋掉（也確認不會連到外部）。
+ * 共用的工具（開啟頁面、攔截請求）在 helpers.mjs。
  */
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { extname, join } from "node:path";
-import { after, before, test } from "node:test";
-import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
-
-const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
-const ORIGIN = "http://omarker.test";
-const TYPES = {
-  ".html": "text/html",
-  ".js": "text/javascript",
-  ".css": "text/css",
-  ".wasm": "application/wasm",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".woff2": "font/woff2",
-  ".woff": "font/woff",
-  ".ttf": "font/ttf",
-};
-
-let browser;
-before(async () => {
-  assert.ok(existsSync(join(DIST, "index.html")), "請先執行 npm run build");
-  browser = await chromium.launch();
-});
-after(() => browser?.close());
-
-/** 開一個新頁面；回傳頁面、頁面上的錯誤，以及被擋下的外部請求。 */
-async function open() {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "zh-TW" });
-  const page = await context.newPage();
-  const errors = [];
-  const external = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => {
-    if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text());
-  });
-  await context.route("**/*", (route) => {
-    const url = new URL(route.request().url());
-    if (url.origin !== ORIGIN) {
-      external.push(url.href);
-      return route.abort();
-    }
-    const file = join(DIST, decodeURIComponent(url.pathname));
-    if (!existsSync(file) || url.pathname.endsWith("/")) return route.fulfill({ status: 404, body: "" });
-    return route.fulfill({ status: 200, contentType: TYPES[extname(file)] ?? "application/octet-stream", body: readFileSync(file) });
-  });
-  await page.goto(`${ORIGIN}/index.html`);
-  await page.waitForSelector(".cm-editor .cm-content");
-  return { page, context, errors, external };
-}
-
-/** 把編輯器的內容換成 `text`。 */
-async function setText(page, text) {
-  await page.click(".cm-content");
-  await page.keyboard.press("Control+A");
-  await page.keyboard.press("Delete");
-  await page.keyboard.insertText(text);
-}
+import { test } from "node:test";
+import { open, setText } from "./helpers.mjs";
 
 const view = (page, name) => page.click(`button[data-view="${name}"]`);
 
