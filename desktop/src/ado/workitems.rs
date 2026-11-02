@@ -1192,6 +1192,12 @@ pub struct WorkItemChange {
     pub acceptance_criteria: Option<String>,
     /// 重現步驟（HTML，Bug）；空字串表示清除。
     pub repro_steps: Option<String>,
+    /// 指派給誰（帳號，例如 `網域\帳號` 或信箱）；空字串表示取消指派。
+    pub assigned_to: Option<String>,
+    /// 剩餘工時（小時）。
+    pub remaining: Option<f64>,
+    /// 已完成工時（小時）。
+    pub completed: Option<f64>,
 }
 
 /// 標題最多幾個字（Azure DevOps 的限制）。
@@ -1209,6 +1215,13 @@ pub(super) fn check_change(change: &WorkItemChange) -> Result<(), String> {
     }
     if change.priority.is_some_and(|p| !(1..=4).contains(&p)) {
         return Err(tr!("優先順序要是 1 到 4"));
+    }
+    if [change.remaining, change.completed]
+        .into_iter()
+        .flatten()
+        .any(|h| !h.is_finite() || h < 0.0)
+    {
+        return Err(tr!("工時要是 0 或正數"));
     }
     Ok(())
 }
@@ -1279,6 +1292,21 @@ pub(super) fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
         ops.push(
             serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": me }),
         );
+    } else if let Some(who) = change.assigned_to.as_deref().map(str::trim) {
+        // 空的就是取消指派。
+        ops.push(
+            serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": who }),
+        );
+    }
+    for (field, hours) in [
+        ("Microsoft.VSTS.Scheduling.RemainingWork", change.remaining),
+        ("Microsoft.VSTS.Scheduling.CompletedWork", change.completed),
+    ] {
+        if let Some(h) = hours {
+            ops.push(
+                serde_json::json!({ "op": "add", "path": format!("/fields/{field}"), "value": h }),
+            );
+        }
     }
     if let Some(comment) = change.comment.as_deref().filter(|c| !c.trim().is_empty()) {
         // System.History 就是工作項目的討論（所有版本的伺服器都支援）。
@@ -1354,6 +1382,10 @@ pub struct NewWorkItem {
     pub assign_to_me: bool,
     /// 上層工作項目的編號。
     pub parent: Option<u64>,
+    /// 放進哪個反覆項目（Sprint）的路徑；沒給時由伺服器決定（通常是專案的根）。
+    pub iteration: Option<String>,
+    /// 剩餘工時（小時）。
+    pub remaining: Option<f64>,
 }
 
 /// 建立工作項目要送出的 JSON Patch。`me` 是登入的帳號，`base` 是集合的網址（上層連結用）。
@@ -1375,6 +1407,17 @@ pub(super) fn create_ops(item: &NewWorkItem, me: &str, base: &str) -> Vec<Value>
         ops.push(
             serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": me }),
         );
+    }
+    if let Some(iteration) = item
+        .iteration
+        .as_deref()
+        .map(str::trim)
+        .filter(|i| !i.is_empty())
+    {
+        ops.push(serde_json::json!({ "op": "add", "path": "/fields/System.IterationPath", "value": iteration }));
+    }
+    if let Some(h) = item.remaining.filter(|h| h.is_finite() && *h >= 0.0) {
+        ops.push(serde_json::json!({ "op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork", "value": h }));
     }
     if let Some(parent) = item.parent {
         ops.push(serde_json::json!({

@@ -84,6 +84,59 @@ pub(super) fn teams_of(res: &Value, default: Option<&str>) -> Vec<Team> {
     list
 }
 
+/// 團隊成員（指派工作時選人用）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamMember {
+    pub(super) name: String,
+    /// 帳號（`網域\帳號` 或信箱）：指派時送這個。
+    pub(super) unique: String,
+}
+
+/// 團隊的成員（依名稱排）。
+#[tauri::command]
+pub async fn ado_team_members(
+    app: AppHandle,
+    project: String,
+    team: String,
+) -> Result<Vec<TeamMember>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let path = format!(
+            "/_apis/projects/{}/teams/{}/members?$top=500",
+            encode_segment(&project),
+            encode_segment(&team)
+        );
+        Ok(team_members_of(&get(
+            &a.url,
+            &pat,
+            &path,
+            &tr!("讀取團隊成員"),
+        )?))
+    })
+    .await
+}
+
+/// 5.0 以後每個成員包在 `identity` 裡，4.1 直接是身分；停用的帳號不列出。
+pub(super) fn team_members_of(res: &Value) -> Vec<TeamMember> {
+    let mut list: Vec<TeamMember> = values(res)
+        .iter()
+        .filter_map(|m| {
+            let who = m.get("identity").unwrap_or(m);
+            if who.get("inactive").and_then(Value::as_bool) == Some(true) {
+                return None;
+            }
+            Some(TeamMember {
+                name: str_of(who, "displayName")?.to_string(),
+                unique: str_of(who, "uniqueName")?.to_string(),
+            })
+        })
+        .collect();
+    list.sort_by(|a, b| a.name.cmp(&b.name));
+    list.dedup_by(|a, b| a.unique.eq_ignore_ascii_case(&b.unique));
+    list
+}
+
 /// 團隊選用的 Sprint（依開始日期排）。
 #[tauri::command]
 pub async fn ado_team_iterations(

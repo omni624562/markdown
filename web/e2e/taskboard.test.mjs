@@ -160,3 +160,49 @@ test("工作板：專案選單只列常用的，最下面可以顯示全部", as
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("工作板：改卡片的指派與工時、在上層項目底下新增 Task（放進這個 Sprint）", async () => {
+  const { page, context, errors } = await open({
+    desktop: {
+      ...desktop,
+      ado_team_members: [[
+        { name: "王小明", unique: "CORP\\ming" },
+        { name: "梁朝為", unique: "CORP\\liang" },
+      ]],
+      ado_work_item_create: { ...ITEMS[1], id: 9001, title: "新的工作" },
+    },
+  });
+  await openBoard(page);
+  // 改指派與工時。
+  const target = page.locator('.tb-card[data-id="1936947"]');
+  await target.hover();
+  await target.locator(".tb-edit").click();
+  const dialog = page.locator("dialog.tb-edit-dialog[open]");
+  await dialog.locator("select").selectOption("CORP\\ming");
+  await dialog.locator("input[type=number]").first().fill("2.5");
+  await dialog.locator("button[type=submit]").click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_update"));
+  const update = (await calls(page)).find((c) => c.cmd === "ado_work_item_update").args;
+  assert.equal(update.id, 1936947);
+  assert.equal(update.change.assignedTo, "CORP\\ming");
+  assert.equal(update.change.remaining, 2.5);
+  assert.equal(update.change.completed, undefined, "沒改的不送");
+  assert.equal(update.change.rev, 3);
+  // 新增 Task。
+  const row = page.locator(".tb-row", { hasText: "SP102 值機" });
+  await row.hover();
+  await row.locator(".tb-add").click();
+  const add = page.locator("dialog.tb-edit-dialog[open]");
+  await add.locator("input[type=text]").fill("新的工作");
+  await add.locator("input[type=number]").fill("4");
+  await add.locator("button[type=submit]").click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_create"));
+  const item = (await calls(page)).find((c) => c.cmd === "ado_work_item_create").args.item;
+  assert.equal(item.kind, "Task");
+  assert.equal(item.parent, 1931940);
+  assert.equal(item.iteration, "產品\\Sprint 102");
+  assert.equal(item.remaining, 4);
+  assert.equal(item.assignToMe, true, "預設指派給自己");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

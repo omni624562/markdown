@@ -266,6 +266,7 @@ fn builds_create_ops() {
         description: Some("<p>步驟</p>".into()),
         assign_to_me: true,
         parent: Some(42),
+        ..Default::default()
     };
     let ops = create_ops(&item, "me@corp", "https://tfs/DC/");
     assert_eq!(ops[0]["value"], "登入失敗");
@@ -878,6 +879,84 @@ fn reads_board_items_with_parent_and_hours() {
     assert_eq!(
         (b.remaining, b.completed, b.original),
         (Some(6.5), Some(1.0), None)
+    );
+}
+
+#[test]
+fn change_assigns_someone_and_sets_hours() {
+    let change = WorkItemChange {
+        assigned_to: Some("CORP\\hua".into()),
+        remaining: Some(3.5),
+        completed: Some(0.0),
+        ..Default::default()
+    };
+    let ops = change_ops(&change, "CORP\\ming");
+    let fields: Vec<(String, Value)> = ops
+        .iter()
+        .map(|op| {
+            (
+                op["path"].as_str().unwrap().to_string(),
+                op["value"].clone(),
+            )
+        })
+        .collect();
+    assert!(fields.contains(&("/fields/System.AssignedTo".into(), json!("CORP\\hua"))));
+    assert!(fields.contains(&(
+        "/fields/Microsoft.VSTS.Scheduling.RemainingWork".into(),
+        json!(3.5)
+    )));
+    assert!(fields.contains(&(
+        "/fields/Microsoft.VSTS.Scheduling.CompletedWork".into(),
+        json!(0.0)
+    )));
+    // 空字串是取消指派。
+    let none = WorkItemChange {
+        assigned_to: Some(String::new()),
+        ..Default::default()
+    };
+    assert_eq!(change_ops(&none, "me")[0]["value"], "");
+    // 工時不能是負的。
+    let bad = WorkItemChange {
+        remaining: Some(-1.0),
+        ..Default::default()
+    };
+    assert!(check_change(&bad).is_err());
+}
+
+#[test]
+fn reads_team_members_from_old_and_new_servers() {
+    // 5.0 以後包在 identity 裡；4.1 直接是身分。停用的帳號不列出，重複的只留一個。
+    let v = json!({ "value": [
+        { "identity": { "displayName": "王小明", "uniqueName": "CORP\\ming" } },
+        { "displayName": "李大同", "uniqueName": "CORP\\tong" },
+        { "identity": { "displayName": "已離職", "uniqueName": "CORP\\gone", "inactive": true } },
+        { "identity": { "displayName": "王小明", "uniqueName": "corp\\MING" } }
+    ]});
+    let list = team_members_of(&v);
+    let names: Vec<&str> = list.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names.len(), 2);
+    assert!(names.contains(&"王小明") && names.contains(&"李大同"));
+}
+
+#[test]
+fn new_task_goes_into_the_sprint_with_hours() {
+    let task = NewWorkItem {
+        kind: "Task".into(),
+        title: "寫測試".into(),
+        iteration: Some("產品\\Sprint 102".into()),
+        remaining: Some(4.0),
+        parent: Some(7),
+        ..Default::default()
+    };
+    let ops = create_ops(&task, "me", "https://tfs/DC");
+    let paths: Vec<&str> = ops.iter().map(|o| o["path"].as_str().unwrap()).collect();
+    assert!(paths.contains(&"/fields/System.IterationPath"));
+    assert!(paths.contains(&"/fields/Microsoft.VSTS.Scheduling.RemainingWork"));
+    assert_eq!(
+        ops.iter()
+            .find(|o| o["path"] == "/fields/System.IterationPath")
+            .unwrap()["value"],
+        "產品\\Sprint 102"
     );
 }
 
