@@ -70,3 +70,16 @@ test("關掉最後一份有內容的文件：換到工作項目，不留下空�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("文件都關掉後再按新增文件：只會有一個「未命名」", async () => {
+  const { page, context, errors } = await open({ desktop });
+  await openItem(page);
+  await page.keyboard.press("Control+N");
+  await page.waitForSelector(".cm-content");
+  assert.deepEqual((await tabs(page)).sort(), ["42 修正登入", "未命名.md"]);
+  await page.locator(".cm-content").click();
+  await page.keyboard.type("內容");
+  assert.equal((await tabs(page)).filter((n) => n.startsWith("未命名")).length, 1);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
