@@ -232,6 +232,26 @@ const EDIT_GROUPS: Group[] = [
       { key: "imageCompress", label: t("壓縮貼上的大圖片"), hint: t("超過 2000 像素的圖片自動縮小，大照片改存成 JPEG") },
     ],
   },
+  // 每日筆記存在開啟的資料夾裡：只有桌面版。
+  ...(desktop
+    ? [
+        {
+          title: t("每日筆記"),
+          fields: [
+            {
+              key: "dailyFolder" as const,
+              label: t("放在哪個資料夾"),
+              hint: t("開啟的資料夾裡的子資料夾，例如「每日筆記」或「筆記/每日」；留空就放在最上層。檔名是日期，例如 2026-11-02.md"),
+            },
+            {
+              key: "dailyTemplate" as const,
+              label: t("範本"),
+              hint: t("建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增"),
+            },
+          ],
+        },
+      ]
+    : []),
 ];
 
 /**
@@ -1075,6 +1095,14 @@ export class SettingsDialog {
       return input;
     }
     if (key === "docFontCustom" || key === "codeFont") return this.#fontInput(key);
+    if (key === "dailyFolder") return this.#textInput(key, t("每日筆記"));
+    if (key === "dailyTemplate") {
+      // 選項（內建與自訂的範本）在 #sync 時依目前的範本重建。
+      const sel = document.createElement("select");
+      sel.dataset.key = key;
+      sel.addEventListener("change", () => this.#store.update({ dailyTemplate: sel.value }));
+      return sel;
+    }
     if (key === "editorFontSize") {
       const input = document.createElement("input");
       input.type = "number";
@@ -1363,6 +1391,23 @@ export class SettingsDialog {
     return input;
   }
 
+  /** 一般的文字欄位：離開欄位或按 Enter 時存（設定會整理寫法，例如資料夾的分隔符號）。 */
+  #textInput(key: "dailyFolder", placeholder: string): HTMLInputElement {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "font-input text-setting";
+    input.dataset.key = key;
+    input.placeholder = placeholder;
+    input.spellcheck = false;
+    input.autocomplete = "off";
+    input.addEventListener("change", () => {
+      this.#store.update({ [key]: input.value });
+      // 不合法的寫法（例如 ../）不會存：顯示回目前的設定。
+      input.value = this.#store.value[key];
+    });
+    return input;
+  }
+
   /** 第一次點字型欄位時才讀取安裝的字型（桌面版要掃描字型資料夾）。 */
   #loadFonts(): void {
     if (this.#dialog.querySelector("#font-choices")) return;
@@ -1382,16 +1427,27 @@ export class SettingsDialog {
   /** 讓畫面上的控制項反映目前的設定值。 */
   #sync(): void {
     const v = this.#store.value;
+    const daily = this.#dialog.querySelector<HTMLSelectElement>('select[data-key="dailyTemplate"]');
+    if (daily) {
+      daily.replaceChildren(
+        new Option(t("內建（今天要做、會議與討論、筆記）"), ""),
+        ...v.templates.map((tpl) => new Option(tpl.name, tpl.name)),
+      );
+    }
     for (const el of this.#dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-key]")) {
       const value = v[el.dataset.key as keyof Settings];
       if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = value as boolean;
-      else if (el.classList.contains("font-input")) {
+      else if (el.classList.contains("text-setting")) {
+        if (el !== document.activeElement) el.value = String(value);
+      } else if (el.classList.contains("font-input")) {
         // 正在輸入時不要蓋掉。
         if (el !== document.activeElement) el.value = String(value);
         el.style.fontFamily = fontPreview(el.value);
       } else el.value = String(value);
       if (AI_DEPENDENT.includes(el.dataset.key as keyof Settings)) el.disabled = !v.aiEnabled;
     }
+    // 選的範本被刪掉了：用的是內建的範本。
+    if (daily && daily.selectedIndex < 0) daily.value = "";
     const customFont = this.#dialog.querySelector('[data-key="docFontCustom"]')?.closest<HTMLElement>(".settings-row");
     if (customFont) customFont.hidden = v.docFont !== "custom";
     for (const el of this.#dialog.querySelectorAll<HTMLButtonElement>("[data-ai-dependent]")) el.disabled = !v.aiEnabled;

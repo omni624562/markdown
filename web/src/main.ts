@@ -3426,6 +3426,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
 setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "new",
   "new-from-template",
+  "daily-note",
   "open",
   "save",
   "save-as",

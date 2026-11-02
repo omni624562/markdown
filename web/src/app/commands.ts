@@ -17,6 +17,7 @@ import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
+import { openDailyNote, openNeighborNote } from "./daily-notes.ts";
 import { showDocStats, statsShown } from "./doc-stats.ts";
 import { checkLinks } from "./link-check-ui.ts";
 import { searchPanel } from "./git-history.ts";
@@ -138,6 +139,31 @@ export function initCommands(): void {
       icon: "x",
       when: () => app.settings.value.templates.length > 0,
       run: () => deleteTemplatePicker.open(),
+    },
+    {
+      id: "daily-note",
+      title: t("今天的筆記"),
+      group: t("檔案"),
+      icon: "calendar",
+      keys: "Mod-Alt-d",
+      when: () => !!desktop,
+      run: () => openDailyNote(),
+    },
+    {
+      id: "daily-note-prev",
+      title: t("前一天的筆記"),
+      group: t("檔案"),
+      icon: "chevron-left",
+      when: () => !!desktop && !!app.workspaceRoot,
+      run: () => openNeighborNote(-1),
+    },
+    {
+      id: "daily-note-next",
+      title: t("後一天的筆記"),
+      group: t("檔案"),
+      icon: "chevron-right",
+      when: () => !!desktop && !!app.workspaceRoot,
+      run: () => openNeighborNote(1),
     },
     {
       id: "tab-next",
