@@ -18,6 +18,8 @@ export interface QuickAction {
 }
 
 export type AiTool = "claude" | "codex";
+/** 自動更新跟哪個版本：穩定版（維護者選定的版本）或搶先版（每次修改後的最新建置）。 */
+export type UpdateChannel = "stable" | "early";
 
 /** 介面大小可以選的百分比。 */
 export const UI_SCALES = ["90", "100", "110", "125", "150"] as const;
@@ -104,6 +106,8 @@ export interface Settings {
   templates: Template[];
   /** 桌面版：每天檢查一次有沒有新版（下載前會先詢問）。 */
   autoUpdate: boolean;
+  /** 更新管道（桌面版）。預設穩定版；還沒有穩定版時先跟搶先版。 */
+  updateChannel: UpdateChannel;
   /** 開啟的資料夾是 Git 儲存庫時，定時提交、拉取、推送。預設關閉。 */
   gitAutoSync: boolean;
   gitSyncMinutes: 5 | 10 | 30 | 60;
@@ -170,6 +174,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
   templates: [],
   autoUpdate: true,
+  updateChannel: "stable",
   gitAutoSync: false,
   gitSyncMinutes: 10,
   activityOrder: [],
@@ -265,6 +270,10 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   if ("gitSyncMinutes" in input) {
     const m = input.gitSyncMinutes;
     if (m === 5 || m === 10 || m === 30 || m === 60) out.gitSyncMinutes = m;
+    else problems++;
+  }
+  if ("updateChannel" in input) {
+    if (input.updateChannel === "stable" || input.updateChannel === "early") out.updateChannel = input.updateChannel;
     else problems++;
   }
   if ("aiTool" in input) {

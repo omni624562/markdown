@@ -34,6 +34,10 @@ export interface AiHooks {
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
+  updateChannel: [
+    ["stable", t("穩定版（建議）")],
+    ["early", t("搶先版")],
+  ],
   previewWidth: [
     ["narrow", t("窄")],
     ["medium", t("中")],
@@ -697,6 +701,9 @@ export class SettingsDialog {
         ...this.#group(t("更新"), [
           versionRow,
           this.#row("autoUpdate", t("自動檢查更新"), t("每天檢查一次，下載前會先詢問"), () => this.#control("autoUpdate")),
+          this.#row("updateChannel", t("更新管道"), t("穩定版是確認過的版本；搶先版是每次修改後的最新版，比較快拿到新功能，也比較可能有問題"), () =>
+            this.#control("updateChannel"),
+          ),
         ]),
       );
     }

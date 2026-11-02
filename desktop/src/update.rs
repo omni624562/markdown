@@ -19,8 +19,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
+/// 搶先版：main 每次合併後的最新建置。
 const MANIFEST_URL: &str =
     "https://github.com/omni624562/markdown/releases/download/latest/version.json";
+/// 穩定版：維護者在 GitHub Actions 選定的版本（`.github/workflows/stable.yml`）。
+const STABLE_MANIFEST_URL: &str =
+    "https://github.com/omni624562/markdown/releases/download/stable/version.json";
 /// 只接受從這個網址開頭下載執行檔。
 const DOWNLOAD_PREFIX: &str = "https://github.com/omni624562/markdown/releases/download/";
 const MAX_SIZE: u64 = 200 * 1024 * 1024;
@@ -231,19 +235,50 @@ fn open(url: &str, timeout: Option<Duration>) -> Result<Box<dyn Read>, String> {
         .map_err(|e| e.to_string())
 }
 
-/// 記錄看過最新的更新資訊的流水號（app 資料夾的 `update-seen`）。
-fn seen_path(app: &AppHandle) -> Option<PathBuf> {
+/// 更新管道：設定的「更新管道」（`updateChannel`）。預設是穩定版。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Channel {
+    Stable,
+    Early,
+}
+
+impl Channel {
+    fn of(settings: Option<&serde_json::Value>) -> Channel {
+        match settings.and_then(|v| v["updateChannel"].as_str()) {
+            Some("early") => Channel::Early,
+            _ => Channel::Stable,
+        }
+    }
+
+    fn url(self) -> &'static str {
+        match self {
+            Channel::Stable => STABLE_MANIFEST_URL,
+            Channel::Early => MANIFEST_URL,
+        }
+    }
+
+    /// 每個管道各自記住看過最新的流水號（穩定版的流水號本來就比搶先版舊）。
+    fn seen_file(self) -> &'static str {
+        match self {
+            Channel::Stable => "update-seen-stable",
+            Channel::Early => "update-seen",
+        }
+    }
+}
+
+/// 記錄看過最新的更新資訊的流水號（app 資料夾的 `update-seen`，穩定版是 `update-seen-stable`）。
+fn seen_path(app: &AppHandle, channel: Channel) -> Option<PathBuf> {
     use tauri::Manager;
     app.path()
         .app_local_data_dir()
         .ok()
-        .map(|d| d.join("update-seen"))
+        .map(|d| d.join(channel.seen_file()))
 }
 
 /// 更新資訊不能比之前看過的舊：有人拿以前簽過的 version.json 回應時，程式會以為沒有新版，
 /// 一直停在有問題的舊版。看過更新的就記下來。
-fn check_not_older(app: &AppHandle, manifest: &Manifest) -> Result<(), String> {
-    let Some(path) = seen_path(app) else {
+fn check_not_older(app: &AppHandle, channel: Channel, manifest: &Manifest) -> Result<(), String> {
+    let Some(path) = seen_path(app, channel) else {
         return Ok(());
     };
     let seen = std::fs::read_to_string(&path)
@@ -265,8 +300,32 @@ fn check_not_older(app: &AppHandle, manifest: &Manifest) -> Result<(), String> {
 }
 
 fn fetch_manifest(app: &AppHandle) -> Result<Manifest, String> {
+    let channel = Channel::of(crate::settings::read_value(app).as_ref());
+    let reader = match open(channel.url(), Some(Duration::from_secs(30))) {
+        // 還沒有設定過穩定版（Release 不存在）：先跟搶先版，不會因此一直收不到更新。
+        Err(e) if channel == Channel::Stable && is_not_found(&e) => {
+            return fetch_from(app, Channel::Early);
+        }
+        r => r,
+    };
+    read_manifest(app, channel, reader)
+}
+
+fn fetch_from(app: &AppHandle, channel: Channel) -> Result<Manifest, String> {
+    read_manifest(
+        app,
+        channel,
+        open(channel.url(), Some(Duration::from_secs(30))),
+    )
+}
+
+fn read_manifest(
+    app: &AppHandle,
+    channel: Channel,
+    reader: Result<Box<dyn Read>, String>,
+) -> Result<Manifest, String> {
     let mut text = String::new();
-    open(MANIFEST_URL, Some(Duration::from_secs(30)))
+    reader
         .map_err(|e| tr!("無法連線到 GitHub：{e}", e = e))?
         .take(64 * 1024)
         .read_to_string(&mut text)
@@ -274,8 +333,13 @@ fn fetch_manifest(app: &AppHandle) -> Result<Manifest, String> {
     let manifest: Manifest =
         serde_json::from_str(&text).map_err(|e| tr!("更新資訊格式不正確：{e}", e = e))?;
     manifest.validate()?;
-    check_not_older(app, &manifest)?;
+    check_not_older(app, channel, &manifest)?;
     Ok(manifest)
+}
+
+/// 伺服器回應 404（ureq 與 WinHTTP 的錯誤訊息都會帶狀態碼）。
+fn is_not_found(e: &str) -> bool {
+    e.contains("404")
 }
 
 /// 檢查有沒有新版。
@@ -529,6 +593,22 @@ mod tests {
         replace_exe(&exe, &new).unwrap();
         assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn update_channel_defaults_to_stable() {
+        assert_eq!(Channel::of(None), Channel::Stable);
+        assert_eq!(Channel::of(Some(&serde_json::json!({}))), Channel::Stable);
+        assert_eq!(
+            Channel::of(Some(&serde_json::json!({ "updateChannel": "early" }))),
+            Channel::Early
+        );
+        assert_eq!(
+            Channel::of(Some(&serde_json::json!({ "updateChannel": "stable" }))),
+            Channel::Stable
+        );
+        assert!(Channel::Stable.url().starts_with(DOWNLOAD_PREFIX));
+        assert_ne!(Channel::Stable.seen_file(), Channel::Early.seen_file());
     }
 
     #[test]
