@@ -465,9 +465,10 @@ async function fillPanel(): Promise<void> {
   filters.append(projectRow(project), team, sprint, who);
   const hint = Object.assign(document.createElement("p"), { className: "workitems-status", textContent: t("拖曳卡片到別的欄就是改狀態；點卡片開啟工作項目，按 < 回到工作板。") });
   // Backlog：還沒排進 Sprint 的需求，可以一個一個移到選的 Sprint。
+  // class 不要用 tb-backlog：那是 Backlog 清單本身（直向排列、沒有內距）的樣式，按鈕套到會變成圖示在上、文字在下。
   const backlog = document.createElement("button");
   backlog.type = "button";
-  backlog.className = "btn btn-small tb-open tb-backlog";
+  backlog.className = "btn btn-small tb-open tb-backlog-open";
   backlog.append(icon("list-ordered"), t("Backlog"));
   backlog.addEventListener("click", () => {
     if (selection) openBacklog(selection);
