@@ -28,7 +28,7 @@ export async function resolveMergeConflict(path: string, theirs: string): Promis
   } else {
     await app.openPath(path);
   }
-  if (app.fileHandle?.path !== path) return;
+  if (app.cur.fileHandle?.path !== path) return;
   if (app.review.active) app.review.finish();
   const started = app.review.start(theirs, {
     title: t("合併衝突：「{name}」", { name: basename(path) }),
@@ -178,7 +178,7 @@ async function shareGist(): Promise<void> {
   const visibility = await choose(
     t("分享成 Gist"),
     sel.empty
-      ? t("會把整份「{name}」上傳到你的 GitHub Gist，產生一個可以分享的網址。", { name: app.fileName })
+      ? t("會把整份「{name}」上傳到你的 GitHub Gist，產生一個可以分享的網址。", { name: app.cur.fileName })
       : t("會把選取的內容上傳到你的 GitHub Gist，產生一個可以分享的網址。"),
     [
       { id: "cancel", label: t("取消") },
@@ -189,7 +189,7 @@ async function shareGist(): Promise<void> {
   if (visibility !== "public" && visibility !== "secret") return;
   const wait = toast(t("正在上傳…"), { duration: 60000 });
   try {
-    const url = await desktop.githubGist(app.fileName, content, stem(app.fileName), visibility === "public");
+    const url = await desktop.githubGist(app.cur.fileName, content, stem(app.cur.fileName), visibility === "public");
     wait.dismiss();
     await navigator.clipboard.writeText(url).catch(() => {});
     toast(t("已分享成 Gist，網址已複製"), {
@@ -208,7 +208,7 @@ export function showExternalChanges(original: string, current: string): boolean 
   return app.review.start(current, {
     original,
     source: "external",
-    title: t("「{name}」被外部程式修改了", { name: app.fileName }),
+    title: t("「{name}」被外部程式修改了", { name: app.cur.fileName }),
     hint: t("逐段檢查改了哪裡；選「還原」後記得存檔"),
     acceptLabel: t("保留"),
     rejectLabel: t("還原"),
@@ -304,7 +304,7 @@ export function initGitActions(): void {
           t("Azure DevOps／TFS：用選取的文字建立工作項目…"),
           "plus",
           () => createWorkItemFromSelection(),
-          () => !!app.ado?.account && app.kind === "markdown" && !app.editor.view.state.selection.main.empty,
+          () => !!app.ado?.account && app.cur.kind === "markdown" && !app.editor.view.state.selection.main.empty,
         ],
       ] as const
     ).map(
@@ -353,15 +353,15 @@ export function initGitActions(): void {
       title: t("Git：這個檔案的提交歷史…"),
       group: t("Git"),
       icon: "git-commit-horizontal",
-      when: () => !!desktop && !!app.fileHandle?.path && !!gitPanel?.status?.repo,
-      run: () => openGitHistory(app.fileHandle?.path ?? null),
+      when: () => !!desktop && !!app.cur.fileHandle?.path && !!gitPanel?.status?.repo,
+      run: () => openGitHistory(app.cur.fileHandle?.path ?? null),
     },
     {
       id: "git-open-web",
       title: t("Git：在網頁上開啟這個檔案（GitHub／Azure DevOps）"),
       group: t("Git"),
       icon: "external-link",
-      when: () => !!desktop && !!app.fileHandle?.path && !!gitPanel?.status?.remote,
+      when: () => !!desktop && !!app.cur.fileHandle?.path && !!gitPanel?.status?.remote,
       run: () => void app.openOnWeb().catch(reportError),
     },
     {
@@ -369,7 +369,7 @@ export function initGitActions(): void {
       title: t("Git：複製這個檔案的網頁連結"),
       group: t("Git"),
       icon: "link",
-      when: () => !!desktop && !!app.fileHandle?.path && !!gitPanel?.status?.remote,
+      when: () => !!desktop && !!app.cur.fileHandle?.path && !!gitPanel?.status?.remote,
       run: () => void app.copyWebLink().catch(reportError),
     },
     {
@@ -390,7 +390,7 @@ export function initGitActions(): void {
       title: t("版本記錄…"),
       group: t("檔案"),
       icon: "history",
-      when: () => !!desktop && !!app.fileHandle?.path,
+      when: () => !!desktop && !!app.cur.fileHandle?.path,
       run: () => app.historyPicker.open(),
     },
     {
@@ -425,7 +425,7 @@ export function initGitActions(): void {
       title: t("插入工作項目連結…"),
       group: t("插入"),
       icon: "square-kanban",
-      when: () => !!desktop && !!app.ado?.account && app.kind === "markdown" && app.view !== "preview",
+      when: () => !!desktop && !!app.ado?.account && app.cur.kind === "markdown" && app.view !== "preview",
       run: () => app.workItemLinkPicker.open(),
     },
     {
@@ -433,7 +433,7 @@ export function initGitActions(): void {
       title: t("插入 Wiki 頁面連結…"),
       group: t("插入"),
       icon: "book-open-text",
-      when: () => !!desktop && !!app.ado?.account && app.kind === "markdown" && app.view !== "preview",
+      when: () => !!desktop && !!app.ado?.account && app.cur.kind === "markdown" && app.view !== "preview",
       run: () => app.wikiLinkPicker.open(),
     },
     {

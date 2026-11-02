@@ -39,7 +39,7 @@ async function probeOffline(): Promise<void> {
   offline.back = true;
   clearInterval(offline.timer);
   renderOffline();
-  if (app.fileHandle?.path !== offline.path) {
+  if (app.cur.fileHandle?.path !== offline.path) {
     toast(
       isRemote(offline.path)
         ? t("遠端伺服器已恢復連線，記得回到那份文件存檔。")
@@ -55,7 +55,7 @@ export function clearOffline(): void {
 }
 
 export function renderOffline(): void {
-  const show = !!offline && app.fileHandle?.path === offline.path;
+  const show = !!offline && app.cur.fileHandle?.path === offline.path;
   offlineBar.hidden = !show;
   if (!show || !offline) return;
   offlineBar.classList.toggle("back", offline.back);
@@ -83,18 +83,18 @@ export function renderOffline(): void {
 }
 
 /** 提示文字用：遠端檔案存在「伺服器」，本機檔案存在「磁碟」。 */
-export function storeName(path = app.fileHandle?.path): string {
+export function storeName(path = app.cur.fileHandle?.path): string {
   return isRemote(path) ? t("伺服器") : t("磁碟");
 }
 
 /** 提示文字用：誰會在背後改檔案。 */
-export function otherWriter(path = app.fileHandle?.path): string {
+export function otherWriter(path = app.cur.fileHandle?.path): string {
   return isRemote(path) ? t("其他電腦或程式") : t("其他程式");
 }
 
 /** 檔案在開啟後被別的程式改過：讓使用者比較差異、覆蓋或另存。 */
 export async function resolveConflict(name: string, diskText: string): Promise<void> {
-  const remote = isRemote(app.fileHandle?.path);
+  const remote = isRemote(app.cur.fileHandle?.path);
   const wiki = !!app.active.wiki;
   const choice = await choose(
     wiki ? t("Wiki 頁面已被別人修改") : t("檔案已被{who}修改", { who: otherWriter() }),
@@ -118,7 +118,7 @@ export async function resolveConflict(name: string, diskText: string): Promise<v
     const started = app.review.start(diskText, {
       title: wiki ? t("與 Wiki 上的版本比較") : t("與{store}上的版本比較", { store: storeName() }),
       hint: t("逐段選擇要採用哪個版本，全部處理完會自動存檔。"),
-      acceptLabel: wiki || isRemote(app.fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
+      acceptLabel: wiki || isRemote(app.cur.fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
       rejectLabel: t("保留我的版本"),
       onFinish: () => void app.save(false, true).catch(app.reportError),
     });

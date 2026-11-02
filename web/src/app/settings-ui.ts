@@ -162,7 +162,7 @@ export async function convertToTraditional(ranges?: readonly { from: number; to:
 
 /** 貼上的內容看起來是簡體時，提示可以轉成繁體。 */
 export function onSimplifiedPaste(u: ViewUpdate): void {
-  if (app.kind === "json" || !u.transactions.some((tr) => tr.isUserEvent("input.paste"))) return;
+  if (app.cur.kind === "json" || !u.transactions.some((tr) => tr.isUserEvent("input.paste"))) return;
   const ranges: { from: number; to: number }[] = [];
   let inserted = "";
   u.changes.iterChanges((_fa, _ta, from, to, text) => {

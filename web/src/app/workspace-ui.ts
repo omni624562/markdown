@@ -47,7 +47,7 @@ const docIndex = new WorkspaceIndex(
 /** 已開啟的 Markdown 分頁（以編輯器中的內容為準）。 */
 function openDocsForIndex(): OpenDoc[] {
   return app.docs
-    .filter((d) => (d === app.active ? app.kind : d.kind) === "markdown")
+    .filter((d) => (d === app.active ? app.cur.kind : d.kind) === "markdown")
     .map((d) => {
       // 內容的版本：CodeMirror 的文件物件（內容不變時是同一個），還沒載入的分頁看草稿寫過幾次。
       // 版本沒變就不必取出整份文字、也不必讀草稿（每次編輯後都會重新整理面板）。
@@ -55,7 +55,7 @@ function openDocsForIndex(): OpenDoc[] {
       return {
         id: d.id,
         path: app.docPath(d),
-        name: d === app.active ? app.fileName : d.name,
+        name: d === app.active ? app.cur.fileName : d.name,
         version: doc ?? `draft:${draftVersion(d.id)}`,
         text: () => (doc ? doc.toString() : (loadDraft(d.id) ?? "")),
       };
@@ -97,9 +97,9 @@ let backlinksSeq = 0;
 /** 大綱面板下方的反向連結：哪些文件連到目前的文件。 */
 async function renderBacklinks(): Promise<void> {
   const el = app.$("#backlinks");
-  const path = app.fileHandle?.path;
+  const path = app.cur.fileHandle?.path;
   const seq = ++backlinksSeq;
-  if (!path || app.kind !== "markdown" || indexScope() !== "folder") {
+  if (!path || app.cur.kind !== "markdown" || indexScope() !== "folder") {
     el.hidden = true;
     return;
   }
@@ -478,7 +478,7 @@ export async function setWorkspace(folder: Folder | null): Promise<void> {
   else storage.remove("workspace");
   await app.renderProjectName();
   await app.fileTree?.setRoot(folder?.path ?? null, folder?.name, folder ? loadProjectView(folder.path).expanded : []);
-  app.treeActive = app.fileHandle?.path ?? null;
+  app.treeActive = app.cur.fileHandle?.path ?? null;
   await app.fileTree?.setActive(app.treeActive);
   await renderFilesEmpty();
   void gitPanel?.refresh();
@@ -639,7 +639,7 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
         if (doc.path === to) doc.name = basename(to);
         doc.handle = desktopHandle(moved, basename(moved));
       }
-      ({ name: app.fileName, handle: app.fileHandle } = app.active);
+      ({ name: app.cur.fileName, handle: app.cur.fileHandle } = app.active);
       app.fileListCache = null;
       app.persistSession();
       app.renderSaveState();

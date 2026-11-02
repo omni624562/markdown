@@ -37,7 +37,7 @@ function savedPdfOptions(): Omit<PdfOptions, "header"> {
 
 /** 文件標題：第一個一級標題，沒有的話用檔名。 */
 function documentTitle(): string {
-  return app.preview.result?.headings.find((h) => h.level === 1)?.text.trim() || stem(app.fileName);
+  return app.preview.result?.headings.find((h) => h.level === 1)?.text.trim() || stem(app.cur.fileName);
 }
 
 /**
@@ -56,7 +56,7 @@ export async function exportPdf(printer = false): Promise<void> {
   const { header: _header, ...remember } = opts;
   storage.save("pdf-options", JSON.stringify(remember));
   if (direct) {
-    const path = await desktop!.pickPdfPath(`${stem(app.fileName)}.pdf`);
+    const path = await desktop!.pickPdfPath(`${stem(app.cur.fileName)}.pdf`);
     if (!path) return;
     const cleanup = await preparePrint(opts, title);
     try {
@@ -83,7 +83,7 @@ export async function exportPdf(printer = false): Promise<void> {
  * Shadow DOM 隔開介面的樣式，畫面上看不到，只在列印時顯示。回傳清除列印區的函式。
  */
 async function preparePrint(opts: PdfOptions, title: string): Promise<() => void> {
-  const html = await app.preview.exportDocument(app.editor.text, app.kind, title);
+  const html = await app.preview.exportDocument(app.editor.text, app.cur.kind, title);
   const doc = new DOMParser().parseFromString(html, "text/html");
   await resolvePrintImages(doc);
   if (app.blockRemote()) blockRemoteImages(doc);
@@ -124,7 +124,7 @@ async function preparePrint(opts: PdfOptions, title: string): Promise<() => void
 
 /** 文件中以相對路徑引用的圖片，換成列印區能載入的網址。 */
 async function resolvePrintImages(doc: Document): Promise<void> {
-  const docPath = app.fileHandle?.path;
+  const docPath = app.cur.fileHandle?.path;
   if (!desktop || !docPath) return;
   const dir = dirname(docPath);
   await Promise.all(

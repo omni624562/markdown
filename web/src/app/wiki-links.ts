@@ -49,7 +49,7 @@ export function wikiExists(target: string): boolean | null {
       });
     return null;
   }
-  return resolveWiki(target, markdownFiles(app.fileListCache), app.fileHandle?.path ? dirname(app.fileHandle.path) : null) !== null;
+  return resolveWiki(target, markdownFiles(app.fileListCache), app.cur.fileHandle?.path ? dirname(app.cur.fileHandle.path) : null) !== null;
 }
 
 /** 開啟 `[[文件#標題]]`；資料夾中還沒有這份文件時詢問要不要建立。 */
@@ -67,7 +67,7 @@ export async function openWiki(full: string): Promise<void> {
   }
   const root = app.workspaceRoot.path;
   app.fileListCache ??= await desktop.listFiles(root).catch(() => []);
-  const here = app.fileHandle?.path ? dirname(app.fileHandle.path) : null;
+  const here = app.cur.fileHandle?.path ? dirname(app.cur.fileHandle.path) : null;
   const path = resolveWiki(target, markdownFiles(app.fileListCache), here);
   if (path) {
     await openPath(path);
