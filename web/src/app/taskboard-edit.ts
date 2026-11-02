@@ -146,19 +146,19 @@ export async function addTask(parent: BoardItem | null, s: BoardScope, done: (id
       error.textContent = !name ? t("請輸入標題。") : t("工時要是 0 或正數。");
       return false;
     }
-    const meUnique = list.find((m) => m.name === me)?.unique ?? null;
+    // 直接用選單裡的帳號（團隊成員清單的完整帳號）建立，指派給自己也一樣：
+    // 有些伺服器的登入資訊只有員工編號、沒有網域，用「指派給我」送出會被拒絕。
     const w = await desktop!.adoWorkItemCreate({
       project: s.project,
       kind: "Task",
       title: name,
       description: null,
-      assignToMe: !!me && (who.value === meUnique || who.value === me),
+      assignToMe: false,
+      assignedTo: who.value || null,
       parent: parent?.id ?? null,
       iteration: s.iterationPath,
       remaining: left,
     });
-    // 指派給別人：建立後再改（建立的 API 只有「指派給我」）。
-    if (who.value && who.value !== meUnique && who.value !== me) await desktop!.adoWorkItemUpdate(w.id, { assignedTo: who.value });
     toast(t("已建立 Task {id}「{title}」", { id: w.id, title: w.title }), { tone: "success" });
     done(w.id);
     return true;

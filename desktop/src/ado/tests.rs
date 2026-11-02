@@ -288,6 +288,47 @@ fn builds_create_ops() {
 }
 
 #[test]
+fn create_ops_prefer_the_chosen_assignee() {
+    // 從團隊成員清單選的帳號優先，不看「指派給我」。
+    let item = NewWorkItem {
+        kind: "Task".into(),
+        title: "x".into(),
+        assign_to_me: true,
+        assigned_to: Some(" CORP\\00595436 ".into()),
+        ..Default::default()
+    };
+    let ops = create_ops(&item, "00595436", "https://tfs/DC");
+    assert_eq!(ops[1]["path"], "/fields/System.AssignedTo");
+    assert_eq!(ops[1]["value"], "CORP\\00595436");
+    // 空白的等於沒選：照「指派給我」。
+    let blank = NewWorkItem {
+        assigned_to: Some("  ".into()),
+        ..item
+    };
+    assert_eq!(
+        create_ops(&blank, "王小明", "https://tfs/DC")[1]["value"],
+        "王小明"
+    );
+}
+
+#[test]
+fn assign_me_uses_name_when_account_has_no_domain() {
+    let mut a = Account {
+        url: "https://tfs.corp.com/tfs/DC".into(),
+        name: " 詹智丞 ".into(),
+        account: Some("CORP\\00595436".into()),
+    };
+    assert_eq!(assign_me(&a), "CORP\\00595436");
+    a.account = Some("ming@corp.com".into());
+    assert_eq!(assign_me(&a), "ming@corp.com");
+    // 只有帳號本身（員工編號）：伺服器認不得，改用顯示名稱。
+    a.account = Some("00595436".into());
+    assert_eq!(assign_me(&a), "詹智丞");
+    a.account = None;
+    assert_eq!(assign_me(&a), "詹智丞");
+}
+
+#[test]
 fn encodes_project_names_in_urls() {
     assert_eq!(encode_segment("My Project"), "My%20Project");
     assert_eq!(encode_segment("專案.wiki"), "%E5%B0%88%E6%A1%88.wiki");

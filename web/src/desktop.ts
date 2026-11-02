@@ -973,6 +973,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       title: string;
       description: string | null;
       assignToMe: boolean;
+      /** 指派給誰（團隊成員的帳號）；有給時不看 `assignToMe`。 */
+      assignedTo?: string | null;
       parent: number | null;
       /** 放進哪個 Sprint（反覆項目的路徑）。 */
       iteration?: string | null;
