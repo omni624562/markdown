@@ -1283,6 +1283,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .tab-new { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 4px; color: var(--chrome-icon); }
 .tab-new:hover { color: var(--fg); }
 .tab-bar.blank:not(.has-items) > * { visibility: hidden; }
+/* 有工作項目等分頁時，只藏起那份空白文件的分頁（見 outline.ts 的 markBlankTab）。 */
+.tab-bar.blank.has-items .tab.tab-blank { display: none; }
 /* 工作項目、Wiki 頁面等的分頁：排在文件後面（中間一條分隔線），圖示標出來源；預覽分頁的名稱斜體。 */
 .tab.tab-item::before { display: none; }
 .tab:not(.tab-item) + .tab-item { border-left: 1px solid var(--border); }
