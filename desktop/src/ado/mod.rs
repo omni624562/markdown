@@ -3,9 +3,9 @@
 //! 權杖存在 Windows 認證管理員；伺服器網址與顯示名稱存在設定資料夾（不含權杖）。
 //! 推送、拉取時，權杖被拒絕而這台伺服器要求 Windows 整合式驗證，Git 會改用目前登入 Windows 的帳號（見 git.rs）。
 
+use parking_lot::Mutex;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::time::Duration;
 
 use base64::Engine;
@@ -65,7 +65,7 @@ fn account(app: &AppHandle) -> Option<Account> {
 }
 
 fn token() -> Option<String> {
-    let mut cached = TOKEN.lock().ok()?;
+    let mut cached = TOKEN.lock();
     if cached.is_none() {
         *cached = crate::secrets::get(SERVICE, "pat");
     }
@@ -405,18 +405,14 @@ pub async fn ado_connect(app: AppHandle, url: String, pat: String) -> Result<Acc
     crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存：{e}", e = e))?;
     ACCOUNT.set(Some(account.clone()));
     crate::secrets::set(SERVICE, "pat", &pat);
-    if let Ok(mut t) = TOKEN.lock() {
-        *t = Some(pat);
-    }
+    *TOKEN.lock() = Some(pat);
     Ok(account)
 }
 
 #[tauri::command]
 pub fn ado_disconnect(app: AppHandle) {
     crate::secrets::forget(SERVICE, "pat");
-    if let Ok(mut t) = TOKEN.lock() {
-        *t = None;
-    }
+    *TOKEN.lock() = None;
     if let Some(p) = account_file(&app) {
         let _ = fs::remove_file(p);
     }

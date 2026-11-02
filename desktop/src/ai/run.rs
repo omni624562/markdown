@@ -3,9 +3,9 @@
 //! 不給 AI 任何工具（不能讀寫檔案、不能執行命令），只處理傳進去的文字；
 //! 文字從標準輸入傳入，不放在命令列上。結果由前端以差異檢視讓使用者決定是否套用。
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::process::Stdio;
-use std::sync::Mutex;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -185,7 +185,7 @@ pub async fn ai_run(
     let stdout = child.stdout.take().ok_or_else(|| tr!("無法讀取輸出"))?;
     let mut stderr = child.stderr.take().ok_or_else(|| tr!("無法讀取輸出"))?;
     let (cancel, mut cancelled) = oneshot::channel();
-    runs.0.lock().unwrap().insert(id, cancel);
+    runs.0.lock().insert(id, cancel);
 
     tauri::async_runtime::spawn(async move {
         let emit = |e: RunEvent| {
@@ -283,14 +283,14 @@ pub async fn ai_run(
                 },
             });
         }
-        app.state::<Runs>().0.lock().unwrap().remove(&id);
+        app.state::<Runs>().0.lock().remove(&id);
     });
     Ok(())
 }
 
 #[tauri::command]
 pub fn ai_cancel(id: u64, runs: State<'_, Runs>) {
-    if let Some(tx) = runs.0.lock().unwrap().remove(&id) {
+    if let Some(tx) = runs.0.lock().remove(&id) {
         let _ = tx.send(());
     }
 }

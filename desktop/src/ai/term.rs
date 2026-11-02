@@ -10,11 +10,11 @@
 //!
 //! 每個終端機的輸出會保留最後一段（去掉控制碼），讓 AI 可以讀取執行結果。
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
@@ -76,14 +76,14 @@ pub struct Terminals {
 impl Terminals {
     /// 關閉 app 時結束所有子程序。
     pub fn kill_all(&self) {
-        for (_, mut s) in self.sessions.lock().unwrap().drain() {
+        for (_, mut s) in self.sessions.lock().drain() {
             let _ = s.killer.kill();
         }
     }
 
     /// 一個終端機的輸出紀錄。
     pub fn log(&self, id: u32) -> Option<Log> {
-        self.logs.lock().unwrap().get(&id).cloned()
+        self.logs.lock().get(&id).cloned()
     }
 
     /// 所有終端機（編號、名稱、是否已結束），依編號排序。
@@ -91,7 +91,6 @@ impl Terminals {
         let mut all: Vec<(u32, Log)> = self
             .logs
             .lock()
-            .unwrap()
             .iter()
             .map(|(id, l)| {
                 (
@@ -157,7 +156,7 @@ impl Terminals {
         });
 
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
-        self.sessions.lock().unwrap().insert(
+        self.sessions.lock().insert(
             id,
             Session {
                 master: pair.master,
@@ -165,7 +164,7 @@ impl Terminals {
                 killer,
             },
         );
-        self.logs.lock().unwrap().insert(
+        self.logs.lock().insert(
             id,
             Log {
                 label,
@@ -196,13 +195,7 @@ impl Terminals {
         let out_app = app.clone();
         std::thread::spawn(move || {
             while let Some(data) = next_batch(&rx) {
-                if let Some(log) = out_app
-                    .state::<Terminals>()
-                    .logs
-                    .lock()
-                    .unwrap()
-                    .get_mut(&id)
-                {
+                if let Some(log) = out_app.state::<Terminals>().logs.lock().get_mut(&id) {
                     log.push(&data);
                 }
                 view::send(&out_app, "term-output", Output { id, data });
@@ -215,8 +208,8 @@ impl Terminals {
         std::thread::spawn(move || {
             let code = child.wait().ok().map(|s| s.exit_code());
             let terms = exit_app.state::<Terminals>();
-            terms.sessions.lock().unwrap().remove(&id);
-            if let Some(log) = terms.logs.lock().unwrap().get_mut(&id) {
+            terms.sessions.lock().remove(&id);
+            if let Some(log) = terms.logs.lock().get_mut(&id) {
                 log.exit = Some(code);
             }
             view::send(&exit_app, "term-exit", Exit { id, code });
@@ -554,7 +547,7 @@ pub fn term_write(
     terms: State<'_, Terminals>,
 ) -> Result<(), String> {
     view::require_terminal(&webview)?;
-    let sessions = terms.sessions.lock().unwrap();
+    let sessions = terms.sessions.lock();
     let s = sessions.get(&id).ok_or_else(|| tr!("終端機已經結束"))?;
     s.input
         .send(data.into_bytes())
@@ -570,7 +563,7 @@ pub fn term_resize(
     terms: State<'_, Terminals>,
 ) -> Result<(), String> {
     view::require_terminal(&webview)?;
-    let sessions = terms.sessions.lock().unwrap();
+    let sessions = terms.sessions.lock();
     let s = sessions.get(&id).ok_or_else(|| tr!("終端機已經結束"))?;
     s.master
         .resize(PtySize {
@@ -585,10 +578,10 @@ pub fn term_resize(
 #[tauri::command]
 pub fn term_close(webview: Webview, id: u32, terms: State<'_, Terminals>) -> Result<(), String> {
     view::require_terminal(&webview)?;
-    if let Some(mut s) = terms.sessions.lock().unwrap().remove(&id) {
+    if let Some(mut s) = terms.sessions.lock().remove(&id) {
         let _ = s.killer.kill();
     }
-    terms.logs.lock().unwrap().remove(&id);
+    terms.logs.lock().remove(&id);
     Ok(())
 }
 

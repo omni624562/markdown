@@ -11,9 +11,9 @@
 //!   UNC、`\\?\`、裝置路徑只有在允許的資料夾本身就在同一個位置時才會通過；
 //! - 再解析符號連結，確認實際位置仍在允許的資料夾內。
 
+use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{AppHandle, Manager, UriSchemeResponder};
@@ -32,7 +32,7 @@ pub struct ImageRoots(Mutex<Vec<PathBuf>>);
 
 impl ImageRoots {
     pub fn allow(&self, dir: &Path) {
-        let mut roots = self.0.lock().unwrap();
+        let mut roots = self.0.lock();
         if roots.iter().any(|r| r == dir) {
             return;
         }
@@ -43,7 +43,7 @@ impl ImageRoots {
     }
 
     fn snapshot(&self) -> Vec<PathBuf> {
-        self.0.lock().unwrap().clone()
+        self.0.lock().clone()
     }
 }
 
