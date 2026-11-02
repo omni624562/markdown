@@ -959,3 +959,50 @@ fn new_task_goes_into_the_sprint_with_hours() {
         "產品\\Sprint 102"
     );
 }
+fn diagnostics_remove_people_titles_and_server_name() {
+    let mut v = serde_json::json!({
+        "authenticatedUser": { "providerDisplayName": "王小明" },
+        "value": [{
+            "id": 42,
+            "url": "https://tfs.corp.local/tfs/Coll/_apis/wit/workItems/42",
+            "fields": {
+                "System.Title": "修正登入",
+                "System.State": "Active",
+                "System.AssignedTo": { "displayName": "王小明", "uniqueName": "corp\\ming" },
+                "System.Description": "<p>聯絡 ming.wang@corp.com</p>",
+                "System.Tags": "寄給 ming.wang@corp.com"
+            }
+        }]
+    });
+    diagnose::anonymize(&mut v, "https://tfs.corp.local/tfs/Coll");
+    let text = v.to_string();
+    for secret in [
+        "王小明",
+        "修正登入",
+        "ming.wang",
+        "corp.com",
+        "tfs.corp.local",
+        "corp\\\\ming",
+    ] {
+        assert!(!text.contains(secret), "還留著「{secret}」：{text}");
+    }
+    let fields = &v["value"][0]["fields"];
+    assert_eq!(fields["System.State"], "Active", "狀態等結構照留");
+    assert_eq!(v["value"][0]["id"], 42);
+    assert!(v["value"][0]["url"]
+        .as_str()
+        .unwrap()
+        .starts_with("https://tfs.example/tfs/Coll/"));
+    assert!(
+        fields["System.Title"].as_str().unwrap().contains('4'),
+        "標題只留長度"
+    );
+}
+
+#[test]
+fn api_version_maps_to_server_release() {
+    assert!(diagnose::server_of("5.0").contains("2019"));
+    assert!(diagnose::server_of("6.0").contains("2020"));
+    assert!(diagnose::server_of("4.1").contains("2018"));
+    assert!(diagnose::server_of("2.0").contains("2017"));
+}

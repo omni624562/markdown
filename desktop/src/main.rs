@@ -365,6 +365,7 @@ fn main() {
             ado::ado_ping,
             ado::ado_check,
             ado::ado_team_members,
+            ado::ado_diagnostics_save,
             ado::ado_repo_text,
             ado::ado_attachment_text,
             ado::ado_attachment_open,

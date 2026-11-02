@@ -4,6 +4,7 @@
 import { adoOnline } from "../ado-online.ts";
 import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
+import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
 
 
@@ -67,7 +68,26 @@ function renderAdoStatus(): void {
   adoStatus.setAttribute("aria-label", adoStatus.title);
 }
 
+/** 儲存診斷資料：選檔案後讀幾個常用的請求，把回應（拿掉人名、信箱、標題與內容）存起來。 */
+export async function saveAdoDiagnostics(): Promise<void> {
+  if (!desktop) return;
+  try {
+    const path = await desktop.adoDiagnosticsSave();
+    if (path) toast(t("已儲存診斷資料：{path}（寄出前可以先打開看看）", { path }), { tone: "success", duration: 10_000 });
+  } catch (e) {
+    toast(t("無法儲存診斷資料：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });
+  }
+}
+
 export function initAdoStatus(): void {
+  app.commands.register({
+    id: "ado-diagnostics",
+    title: t("Azure DevOps：儲存診斷資料…"),
+    group: t("說明"),
+    icon: "bug",
+    when: () => !!app.ado?.account,
+    run: () => void saveAdoDiagnostics(),
+  });
   adoStatus = app.$("#status-ado");
   adoStatus.addEventListener("click", () => {
     if (adoPing?.status === "auth") app.settingsDialog.open(t("Azure DevOps／TFS"));

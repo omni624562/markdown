@@ -17,6 +17,7 @@ import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
+import { showDocStats, statsShown } from "./doc-stats.ts";
 import { checkLinks } from "./link-check-ui.ts";
 import { searchPanel } from "./git-history.ts";
 import { closeItem, itemTabs, setItemPinned, tabOrder } from "./item-tabs.ts";
@@ -567,6 +568,23 @@ export function initCommands(): void {
       icon: "spell-check",
       when: () => app.cur.kind !== "json" && app.view !== "preview",
       run: () => fixTerms(),
+    },
+    {
+      id: "doc-stats",
+      title: t("文件統計"),
+      group: t("編輯"),
+      icon: "chart-column",
+      // 編輯中的文件（看工作項目、Wiki 頁面時狀態列沒有字數）。
+      when: () => statsShown(),
+      run: () => showDocStats(),
+    },
+    {
+      id: "word-goal",
+      title: t("字數目標…"),
+      group: t("編輯"),
+      icon: "chart-column",
+      when: () => statsShown() && app.cur.kind !== "json",
+      run: () => showDocStats(true),
     },
     {
       id: "check-links",
