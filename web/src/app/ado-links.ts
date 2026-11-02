@@ -33,6 +33,17 @@ export function peekWorkItem(id: number): Promise<AdoWorkItemDetail> {
 
 export const wikiPagesCache = new Map<string, Promise<AdoWikiPage[]>>();
 
+/** Wiki 的頁面樹（記住讀過的）；`fresh` 時重新讀一次（例如剛新增了頁面，記住的樹裡還沒有）。 */
+export function wikiPageTree(wiki: AdoWiki, fresh = false): Promise<AdoWikiPage[]> {
+  let pages = fresh ? undefined : wikiPagesCache.get(wiki.id);
+  if (!pages) {
+    pages = desktop!.adoWikiPages(wiki);
+    wikiPagesCache.set(wiki.id, pages);
+    pages.catch(() => wikiPagesCache.delete(wiki.id));
+  }
+  return pages;
+}
+
 /** Wiki 網址指到哪個 Wiki 的哪一頁（依 `?pagePath=`、頁面編號或名稱）；找不到回傳 null。 */
 async function resolveWikiLink(link: Extract<RemoteLink, { kind: "wiki" }>): Promise<{ wiki: AdoWiki; path: string } | null> {
   if (!app.wikiListCache) {
@@ -43,13 +54,7 @@ async function resolveWikiLink(link: Extract<RemoteLink, { kind: "wiki" }>): Pro
   const wiki = (await app.wikiListCache).find((w) => w.name.toLowerCase() === name || w.id.toLowerCase() === name);
   if (!wiki) return null;
   if (link.path) return { wiki, path: link.path };
-  let pages = wikiPagesCache.get(wiki.id);
-  if (!pages) {
-    pages = desktop!.adoWikiPages(wiki);
-    wikiPagesCache.set(wiki.id, pages);
-    pages.catch(() => wikiPagesCache.delete(wiki.id));
-  }
-  const path = findWikiPage(await pages, link.pageId, link.slug);
+  const path = findWikiPage(await wikiPageTree(wiki), link.pageId, link.slug);
   return path ? { wiki, path } : null;
 }
 

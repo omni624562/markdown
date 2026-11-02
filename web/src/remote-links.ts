@@ -14,6 +14,8 @@ export type RemoteLink =
       slug: string | null;
     };
 
+import { underServer } from "./server-url.ts";
+
 function decode(s: string): string {
   try {
     return decodeURIComponent(s);
@@ -24,19 +26,17 @@ function decode(s: string): string {
 
 /**
  * `href` 是不是連線中那台伺服器（`base` 是集合的網址，例如 `https://tfs/DefaultCollection`）
- * 上的工作項目或 Wiki 頁面；不是就回傳 null。
+ * 上的工作項目或 Wiki 頁面；不是就回傳 null。網址的寫法可以和連線設定不同（http／https、埠號、只寫電腦名稱）。
  */
 export function parseRemoteLink(href: string, base: string): RemoteLink | null {
-  const root = base.trim().replace(/\/+$/, "");
-  const url = href.trim();
-  if (!root || url.slice(0, root.length + 1).toLowerCase() !== `${root.toLowerCase()}/`) return null;
-  const rest = url.slice(root.length);
-  const item = /\/_workitems\/edit\/(\d+)\/?(?:[?#]|$)/i.exec(rest);
+  const at = underServer(href, base);
+  if (!at) return null;
+  const { rest } = at;
+  const item = /\/_workitems\/edit\/(\d+)\/?$/i.exec(rest);
   if (item) return { kind: "workitem", id: Number(item[1]) };
-  const wiki = /\/_wiki\/wikis\/([^/?#]+)(?:\/(\d+)(?:\/([^?#]*))?)?\/?(?:\?([^#]*))?(?:#|$)/i.exec(rest);
+  const wiki = /\/_wiki\/wikis\/([^/]+)(?:\/(\d+)(?:\/(.*))?)?\/?$/i.exec(rest);
   if (!wiki) return null;
-  const query = new URLSearchParams(wiki[4] ?? "");
-  const pagePath = query.get("pagePath");
+  const pagePath = at.params.get("pagePath");
   return {
     kind: "wiki",
     wiki: decode(wiki[1]),

@@ -42,7 +42,9 @@ const EXTERNAL = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
 
 /**
  * Wiki 內文的連結指到哪一頁：連結裡的 `-` 代表空白、`%2D` 才是真的 `-`，可以省略或加上 `.md`；
- * 相對路徑以目前頁面所在的資料夾為準。找不到這一頁（或不是頁面連結）時回傳 null。
+ * 相對路徑以目前頁面所在的資料夾為準，找不到時再當成目前頁面底下的子頁面
+ * （有些工具產生的頁面把子頁面寫成 `子頁面` 而不是 `目前頁面/子頁面`）。
+ * 找不到這一頁（或不是頁面連結）時回傳 null。
  */
 export function resolvePageLink(href: string, current: string, pages: Iterable<string>): string | null {
   const raw = href.trim().split(/[?#]/)[0];
@@ -57,9 +59,11 @@ export function resolvePageLink(href: string, current: string, pages: Iterable<s
     } catch {
       return null;
     }
-    const target = normalize(path.startsWith("/") ? path : `${parentOf(current)}/${path}`);
-    const found = byLower.get(target.toLowerCase());
-    if (found) return found;
+    const bases = path.startsWith("/") ? [""] : [parentOf(current), current];
+    for (const base of bases) {
+      const found = byLower.get(normalize(base ? `${base}/${path}` : path).toLowerCase());
+      if (found) return found;
+    }
   }
   return null;
 }
