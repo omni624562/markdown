@@ -540,6 +540,7 @@ export const ui: Record<string, Translation> = {
   "Azure DevOps 工作板": "Azure DevOps Taskboard",
   "工作板": "Taskboard",
   "工作板 {sprint}.md": "Taskboard {sprint}.md",
+  "工作項目：全部標示為看過": "Work Items: Mark All as Seen",
   "送出留言": "Post Comment",
   "編輯留言": "Edit Comment",
   "刪除留言": "Delete Comment",

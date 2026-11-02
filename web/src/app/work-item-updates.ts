@@ -9,7 +9,7 @@ import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { setErrorAction } from "../ui/toast.ts";
-import { type SeenMap, trimSeen, remember, markSeen, markOf } from "../workitem-seen.ts";
+import { type SeenMap, trimSeen, remember, markSeen, markOf, markAllSeen } from "../workitem-seen.ts";
 import { openGitHistory, historyView } from "./git-history.ts";
 import { createWorkItemDialog } from "./new-work-item.ts";
 import { refreshKeptPages } from "./offline-copies.ts";
@@ -30,16 +30,18 @@ export let workItemSeen: SeenMap | null = (() => {
 const knownWorkItems = new Map<number, AdoWorkItem>();
 
 function saveSeen(next: SeenMap): void {
-  workItemSeen = trimSeen(next);
+  // 指派給你的項目一定留著（不然會被搜尋結果擠掉，又變成「新的」）。
+  workItemSeen = trimSeen(next, undefined, new Set(app.pollItems.map((w) => w.id)));
   storage.save("workitem-seen", JSON.stringify(workItemSeen));
 }
 
 /** 記下讀到的工作項目；`mine` 是指派給你、還沒結束的清單。 */
 export function noteWorkItems(items: AdoWorkItem[], mine: boolean): void {
   for (const w of items) setBounded(knownWorkItems, w.id, w, app.CACHE_MAX);
+  // 先換成新的清單：存檔時要留住指派給你的項目。
+  if (mine) app.pollItems = items;
   const { seen, changed } = remember(workItemSeen, items, mine);
   if (changed) saveSeen(seen);
-  if (mine) app.pollItems = items;
   renderAdoBadge();
 }
 
@@ -50,6 +52,13 @@ export function workItemOpened(id: number): void {
   const { seen, changed } = markSeen(workItemSeen, item);
   if (!changed) return;
   saveSeen(seen);
+  workItemsPanel?.refreshMarks();
+  renderAdoBadge();
+}
+
+/** 指派給你的工作項目全部標示為看過（圖示上的數字歸零）。 */
+export function markAllWorkItemsSeen(): void {
+  saveSeen(markAllSeen(workItemSeen, app.pollItems));
   workItemsPanel?.refreshMarks();
   renderAdoBadge();
 }
@@ -135,6 +144,14 @@ export // 在 init 時建立。
 let gitPanel: GitPanel | null;
 
 export function initWorkItemUpdates(): void {
+  app.commands.register({
+    id: "workitems-mark-all-seen",
+    title: t("工作項目：全部標示為看過"),
+    group: t("檢視"),
+    icon: "check",
+    when: () => app.pollItems.some((w) => markOf(workItemSeen, w)),
+    run: () => markAllWorkItemsSeen(),
+  });
   if (desktop) {
     void desktop.onNotificationOpen((id) => {
       if (id) void app.openWorkItemById(id);
