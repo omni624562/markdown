@@ -26,6 +26,7 @@ import { kindColorCss } from "../work-item-colors.ts";
 import type { ViewUpdate } from "@codemirror/view";
 import type { ViewMode } from "../main.ts";
 import { app } from "./context.ts";
+import { saveAdoDiagnostics } from "./ado-status.ts";
 
 
 const PREVIEW_WIDTH: Record<Settings["previewWidth"], string> = { narrow: "680px", medium: "820px", wide: "1080px" };
@@ -267,6 +268,7 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
           workItems: () => showAdo("workitems"),
           kinds: () => desktop!.adoWorkItemFilters().then((f) => f.kinds),
           check: () => desktop!.adoCheck(),
+          diagnostics: () => void saveAdoDiagnostics(),
         }
       : null,
     {

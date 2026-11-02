@@ -929,6 +929,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 逐項檢查權杖能做什麼（登入、專案、工作項目讀寫、Wiki、程式碼）。 */
     adoCheck: () =>
       core.invoke<{ id: string; label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>("ado_check"),
+    /** 儲存診斷資料（先選檔案；常用請求的回應拿掉人名、信箱、標題與內容）；取消時是 null。 */
+    adoDiagnosticsSave: () => core.invoke<string | null>("ado_diagnostics_save"),
     adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),

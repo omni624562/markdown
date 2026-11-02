@@ -364,6 +364,7 @@ fn main() {
             ado::ado_query_run,
             ado::ado_ping,
             ado::ado_check,
+            ado::ado_diagnostics_save,
             ado::ado_repo_text,
             ado::ado_attachment_text,
             ado::ado_attachment_open,
