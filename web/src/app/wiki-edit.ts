@@ -109,7 +109,7 @@ export function renderWikiBar(): void {
     return b;
   };
   const doc = app.active;
-  const dirty = app.hash(app.editor.text) !== app.baseline;
+  const dirty = app.hash(app.editor.text) !== app.cur.baseline;
   if (dirty) {
     actions.append(
       button(t("比較差異"), () => compareWikiLatest(doc), true),
@@ -167,7 +167,7 @@ export async function loadWikiLatest(doc: Doc, latest?: { content: string; etag:
   if (!latest.etag) throw new Error(t("伺服器沒有提供這一頁的版本，無法確認存回時有沒有蓋掉別人的修改，所以不能在這裡編輯。"));
   const mine = app.editor.text;
   const base = storage.load(`wiki-base:${doc.id}`);
-  const kept = app.hash(mine) !== app.baseline && mine !== latest.content;
+  const kept = app.hash(mine) !== app.cur.baseline && mine !== latest.content;
   if (kept) {
     storage.save(`wiki-mine:${doc.id}`, JSON.stringify({ text: mine, base, at: Date.now() }));
     wikiMineCollapsed.delete(doc.id);

@@ -218,8 +218,8 @@ const app = {
   get autoSaveNow() {
     return autoSaveNow;
   },
-  get baseline() {
-    return baseline;
+  get cur() {
+    return cur;
   },
   get blockRemote() {
     return blockRemote;
@@ -281,9 +281,6 @@ const app = {
   get docsLoaded() {
     return docsLoaded;
   },
-  get draftSaved() {
-    return draftSaved;
-  },
   get editWikiPage() {
     return editWikiPage;
   },
@@ -308,15 +305,6 @@ const app = {
   get editorTopLine() {
     return editorTopLine;
   },
-  get fileBacked() {
-    return fileBacked;
-  },
-  get fileHandle() {
-    return fileHandle;
-  },
-  set fileHandle(v: typeof fileHandle) {
-    fileHandle = v;
-  },
   get fileInput() {
     return fileInput;
   },
@@ -325,12 +313,6 @@ const app = {
   },
   set fileListCache(v: typeof fileListCache) {
     fileListCache = v;
-  },
-  get fileName() {
-    return fileName;
-  },
-  set fileName(v: typeof fileName) {
-    fileName = v;
   },
   get fileTree() {
     return fileTree;
@@ -391,9 +373,6 @@ const app = {
   },
   get issueView() {
     return issueView;
-  },
-  get kind() {
-    return kind;
   },
   get kindSelect() {
     return kindSelect;
@@ -915,20 +894,35 @@ if (firstLaunch) {
 }
 let active: Doc = docs.find((d) => d.id === restored?.activeId) ?? docs[0];
 
-let kind: DocKind = active.kind;
+/**
+ * 目前分頁的狀態。和 `active` 這份文件的欄位對應：切換分頁時從文件讀出（`activate`），
+ * 存檔、改名、切走時寫回（`stash`）。
+ */
+interface ActiveDoc {
+  kind: DocKind;
+  fileName: string;
+  fileHandle: FileHandle | null;
+  /** 最後一次存檔／開檔／新增時內容的雜湊；目前內容與它不同就代表有未存檔的變更。 */
+  baseline: string | null;
+  /** 目前內容是否對應到一個實際存過或開啟過的檔案。 */
+  fileBacked: boolean;
+  /** 草稿已經存進瀏覽器（自動儲存草稿用）。 */
+  draftSaved: boolean;
+}
+const cur: ActiveDoc = {
+  kind: active.kind,
+  fileName: active.name,
+  fileHandle: active.handle,
+  baseline: active.baseline,
+  fileBacked: active.fileBacked,
+  draftSaved: false,
+};
 /**
  * 開著 Wiki、工作項目時，大綱改列它的標題（`body` 是內容的元素，用來捲動）；
  * 編輯中文件的標題記在 `docHeadings`，關掉後換回來。
  */
 let outlineView: { key: string; headings: Heading[]; body: HTMLElement | null } | null = null;
 let docHeadings: Heading[] = [];
-let fileName = active.name;
-let fileHandle: FileHandle | null = active.handle;
-/** 最後一次存檔／開檔／新增時內容的雜湊；目前內容與它不同就代表有未存檔的變更。 */
-let baseline = active.baseline;
-/** 目前內容是否對應到一個實際存過或開啟過的檔案。 */
-let fileBacked = active.fileBacked;
-let draftSaved = false;
 let view: ViewMode = "split";
 // 簡約版面（MarkText 式）成為預設：舊版的使用者也換一次，之後就照自己的選擇。
 if (storage.load("layout") !== "minimal") {
@@ -1128,7 +1122,7 @@ const preview = new Preview(previewEl, [
   docLinksPlugin({ wikiExists: (target) => wikiExists(target) }),
   ...(desktop
     ? [
-        localImagesPlugin(() => (fileHandle?.path ? dirname(fileHandle.path) : null), desktop.fileUrl, (p) => davImageCached(p)),
+        localImagesPlugin(() => (cur.fileHandle?.path ? dirname(cur.fileHandle.path) : null), desktop.fileUrl, (p) => davImageCached(p)),
         wikiEditImagesPlugin(),
       ]
     : []),
@@ -1145,7 +1139,7 @@ const preview = new Preview(previewEl, [
 const htmlPreview = new HtmlPreview($("#preview-scroller"), (href) => void followLink(href).catch(reportError));
 
 function showHtmlPreview(text: string): void {
-  const dir = fileHandle?.path ? dirname(fileHandle.path) : null;
+  const dir = cur.fileHandle?.path ? dirname(cur.fileHandle.path) : null;
   htmlPreview.show(text, active.id, {
     blockRemote: blockRemote(),
     image: (src) => {
@@ -1176,7 +1170,7 @@ let focusedPane: Pane = "main";
 const paneDocs: { main: Doc; side: Doc | null } = { main: active, side: null };
 /** 那一邊的文件、檔案：游標所在的那一邊用目前的全域變數，另一邊用分頁物件裡存的。 */
 const paneDoc = (pane: Pane): Doc => (pane === focusedPane ? active : (paneDocs[pane] ?? active));
-const paneHandle = (pane: Pane) => (pane === focusedPane ? fileHandle : (paneDocs[pane]?.handle ?? null));
+const paneHandle = (pane: Pane) => (pane === focusedPane ? cur.fileHandle : (paneDocs[pane]?.handle ?? null));
 /** 這個編輯畫面是哪一邊的（兩個編輯器共用擴充與事件處理，靠 view 分辨）。 */
 const paneOfView = (v: EditorView): Pane => (v === sideEditor?.view ? "side" : "main");
 
@@ -1265,7 +1259,7 @@ function editorOptions(): EditorOptions {
     extra: [
       review.extension,
       EditorView.updateListener.of((u) => onSimplifiedPaste(u)),
-      autoSymbols(() => kind !== "json" && settings.value.autoSymbols),
+      autoSymbols(() => cur.kind !== "json" && settings.value.autoSymbols),
       // 連到 Azure DevOps 工作項目、Wiki 頁面的連結：滑鼠移上去顯示摘要。
       hoverTooltip(
         (view, pos) => {
@@ -1283,7 +1277,7 @@ function editorOptions(): EditorOptions {
         { hoverTime: 400 },
       ),
       proofread({
-        enabled: () => kind !== "json" && settings.value.termCheck,
+        enabled: () => cur.kind !== "json" && settings.value.termCheck,
         ignored: () => new Set(settings.value.termIgnore),
         ignore: (word) => {
           settings.update({ termIgnore: [...settings.value.termIgnore, word].slice(-TERM_IGNORE_LIMIT) });
@@ -1292,7 +1286,7 @@ function editorOptions(): EditorOptions {
       }),
       spellcheck({
         // 文件、Wiki 頁面才檢查（程式碼檔與 JSON 裡的英文多半是名稱）。
-        enabled: () => kind === "markdown" && settings.value.spellCheck,
+        enabled: () => cur.kind === "markdown" && settings.value.spellCheck,
         ignored: () => new Set(settings.value.spellIgnore),
         ignore: (word) => {
           const lower = word.toLowerCase();
@@ -1302,8 +1296,8 @@ function editorOptions(): EditorOptions {
       }),
       linkCompletion(
         {
-          enabled: () => kind === "markdown",
-          docPath: () => fileHandle?.path ?? null,
+          enabled: () => cur.kind === "markdown",
+          docPath: () => cur.fileHandle?.path ?? null,
           files: async () => {
             if (!desktop || !workspaceRoot) return [];
             fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
@@ -1314,14 +1308,14 @@ function editorOptions(): EditorOptions {
           wikiPath: async (target) => {
             if (!desktop || !workspaceRoot) return null;
             fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
-            return resolveWiki(target, markdownFiles(fileListCache), fileHandle?.path ? dirname(fileHandle.path) : null);
+            return resolveWiki(target, markdownFiles(fileListCache), cur.fileHandle?.path ? dirname(cur.fileHandle.path) : null);
           },
           remotePages: () => wikiLinkPages(1000),
         },
         [
-          (ctx) => (kind === "json" ? null : dateCompletion(ctx)),
-          (ctx) => (kind === "markdown" ? workItemIdCompletion(ctx) : null),
-          (ctx) => (kind === "markdown" ? slashSource(ctx) : null),
+          (ctx) => (cur.kind === "json" ? null : dateCompletion(ctx)),
+          (ctx) => (cur.kind === "markdown" ? workItemIdCompletion(ctx) : null),
+          (ctx) => (cur.kind === "markdown" ? slashSource(ctx) : null),
         ],
       ),
       EditorView.domEventHandlers({
@@ -1344,7 +1338,7 @@ function editorOptions(): EditorOptions {
           const plainOnly = Date.now() < plainPasteUntil;
           plainPasteUntil = 0;
           // 從 VS Code 等編輯器複製的程式碼帶有上色用的 HTML，照原樣貼上純文字。
-          if (plainOnly || !data || kind !== "markdown" || !settings.value.smartPaste) return false;
+          if (plainOnly || !data || cur.kind !== "markdown" || !settings.value.smartPaste) return false;
           if (data.types.includes("vscode-editor-data")) return false;
           const md = pasteAsMarkdown(data.getData("text/html"), data.getData("text/plain"));
           if (md === null) return false;
@@ -1377,7 +1371,7 @@ function editorOptions(): EditorOptions {
   };
 }
 
-const mainEditor = new Editor($("#editor"), loadDraft(active.id) ?? "", kind, editorHandlers(), editorOptions());
+const mainEditor = new Editor($("#editor"), loadDraft(active.id) ?? "", cur.kind, editorHandlers(), editorOptions());
 /** 游標所在那一邊的編輯器（沒有並排時就是左邊這個）。 */
 let editor = mainEditor;
 review.attach(editor.view);
@@ -1424,8 +1418,8 @@ function renderNow(full = false): void {
   const started = performance.now();
   const text = editor.text;
   // 網頁檔：預覽照網頁本身的樣子顯示（iframe），一般的預覽只算統計。
-  const html = isHtmlName(fileName) && !full;
-  const result = preview.update(text, kind, html || (!full && !previewVisible()));
+  const html = isHtmlName(cur.fileName) && !full;
+  const result = preview.update(text, cur.kind, html || (!full && !previewVisible()));
   if (html && previewVisible()) showHtmlPreview(text);
   else htmlPreview.hide();
   $("#preview-scroller").classList.toggle("html-mode", htmlPreview.shown);
@@ -1459,7 +1453,7 @@ function renderError({ error }: RenderResult): void {
   const msg = document.createElement("p");
   msg.append(icon("circle-alert"));
   const strong = document.createElement("strong");
-  strong.textContent = t("{kind} 格式錯誤（第 {line} 行，第 {column} 欄）", { kind: KINDS[kind].label, line: error.line, column: error.column });
+  strong.textContent = t("{kind} 格式錯誤（第 {line} 行，第 {column} 欄）", { kind: KINDS[cur.kind].label, line: error.line, column: error.column });
   const detail = document.createElement("span");
   detail.textContent = error.message;
   msg.append(strong, detail);
@@ -1505,7 +1499,7 @@ function renderEmptyState(text: string): void {
   if (emptyStateEl.parentElement !== host) host.append(emptyStateEl);
   emptyStateEl.classList.toggle("in-editor", inEditor);
   const connect = startConnect();
-  const key = `${kind}|${view}|${inEditor}|${currentLang()}|${connect.map((c) => c.icon).join()}`;
+  const key = `${cur.kind}|${view}|${inEditor}|${currentLang()}|${connect.map((c) => c.icon).join()}`;
   if (key === emptyStateKey) return;
   emptyStateKey = key;
   // 只有預覽時旁邊沒有編輯區，第一個動作改成切換到可以打字的檢視。
@@ -1522,7 +1516,7 @@ function renderEmptyState(text: string): void {
   };
   const actions: StartAction[] = [
     previewOnly
-      ? { icon: "pencil", label: t("開始寫作"), primary: true, run: () => setView(kind === "markdown" ? "live" : "editor") }
+      ? { icon: "pencil", label: t("開始寫作"), primary: true, run: () => setView(cur.kind === "markdown" ? "live" : "editor") }
       : {
           icon: "pencil",
           label: t("新增文件"),
@@ -1538,7 +1532,7 @@ function renderEmptyState(text: string): void {
     { icon: "file-text", label: t("開啟檔案…"), keys: keysOf("open"), run: run("open") },
   ];
   if (desktop) actions.push({ icon: "folder-open", label: t("開啟資料夾…"), run: run("open-folder") });
-  if (kind === "markdown") actions.push({ icon: "layout-template", label: t("從範本新增…"), run: run("new-from-template") });
+  if (cur.kind === "markdown") actions.push({ icon: "layout-template", label: t("從範本新增…"), run: run("new-from-template") });
   const page = buildStartPage({
     hint,
     actions,
@@ -1644,12 +1638,12 @@ function renderOutline(headings: Heading[]): void {
   outlineEmpty.hidden = headings.length > 0;
   outlineEmpty.textContent = outlineView
     ? t("這一頁沒有標題。")
-    : kind === "markdown"
+    : cur.kind === "markdown"
       ? t("文件中還沒有標題。用 # 開頭的行會出現在這裡。")
       : t("只有 Markdown 文件的標題會顯示在大綱中。");
   outlineHeadings = headings;
   // Wiki、工作項目是唯讀的，不能拖曳搬移章節。
-  const movable = !outlineView && kind === "markdown";
+  const movable = !outlineView && cur.kind === "markdown";
   const scope = outlineView ? `view:${outlineView.key}` : active.id;
   // 標題沒有變（大多數按鍵都是這樣）就不重建，大文件可能有上千個標題。
   const key = `${scope}\n${movable}\n${headings.map((h) => `${h.level} ${h.line} ${h.id} ${h.text}`).join("\n")}`;
@@ -1768,7 +1762,7 @@ async function followLink(href: string): Promise<void> {
   const hashAt = href.indexOf("#");
   const rel = decodeHref(hashAt >= 0 ? href.slice(0, hashAt) : href);
   const anchor = hashAt >= 0 ? decodeHref(href.slice(hashAt + 1)) : "";
-  const base = fileHandle?.path;
+  const base = cur.fileHandle?.path;
   if (!desktop || !base) {
     toast(desktop ? t("存檔之後才能開啟相對路徑的連結。") : t("網頁版無法開啟相對路徑的檔案，請改用桌面版。"));
     return;
@@ -1890,7 +1884,7 @@ function draftDelay(length: number): number {
 
 function scheduleAutosave(doc: Text): void {
   clearTimeout(saveTimer);
-  draftSaved = false;
+  cur.draftSaved = false;
   // 記下是哪個分頁的內容：計時器觸發前可能已經切換到別的分頁。
   pendingDraft = { id: active.id, doc };
   saveTimer = window.setTimeout(flushDraft, draftDelay(doc.length));
@@ -1906,7 +1900,7 @@ let diskSaveBlocked: string | null = null;
 
 function scheduleDiskSave(): void {
   clearTimeout(diskSaveTimer);
-  if (!settings.value.autoSave || !desktop || !fileHandle?.path) return;
+  if (!settings.value.autoSave || !desktop || !cur.fileHandle?.path) return;
   diskSaveTimer = window.setTimeout(() => void autoSaveNow(), DISK_SAVE_DELAY);
 }
 
@@ -1918,12 +1912,12 @@ async function autoSaveNow(): Promise<void> {
   clearTimeout(diskSaveTimer);
   diskSaveTimer = 0;
   const doc = active;
-  const handle = fileHandle;
+  const handle = cur.fileHandle;
   const path = handle?.path;
   if (path && !editor.view.composing) refreshToc();
   const text = editor.text;
   if (!path || !settings.value.autoSave || saving || diskSaveBlocked === path) return;
-  if (hash(text) === baseline || doc.missing || doc.unloaded || doc.lossy || review.active || offline?.path === path) return;
+  if (hash(text) === cur.baseline || doc.missing || doc.unloaded || doc.lossy || review.active || offline?.path === path) return;
   // 注音、倉頡選字中先不存，等組字結束。
   if (editor.view.composing) {
     scheduleDiskSave();
@@ -1931,7 +1925,7 @@ async function autoSaveNow(): Promise<void> {
   }
   saving = true;
   try {
-    const out = await saveFile(text, fileName, kind, handle, { saveAs: false, force: false });
+    const out = await saveFile(text, cur.fileName, cur.kind, handle, { saveAs: false, force: false });
     if (!out) return;
     if (out.status === "conflict") {
       diskSaveBlocked = path;
@@ -1945,7 +1939,7 @@ async function autoSaveNow(): Promise<void> {
     if (out.handle?.path) void gitPanel?.fileSaved(out.handle.path);
     else gitPanel?.refreshSoon(300);
     if (doc === active) {
-      fileHandle = out.handle;
+      cur.fileHandle = out.handle;
       setBaseline(text, true);
       renderSaveState();
       renderTabs(); // setBaseline 已經更新了 active.dirty，renderSaveState 不會重畫分頁
@@ -1978,10 +1972,10 @@ function flushDraft(): void {
   pendingDraft = null;
   if (!docs.some((d) => d.id === id)) return; // 分頁已經關閉
   const text = doc.toString();
-  draftSaved = saveDraft(id, text);
+  cur.draftSaved = saveDraft(id, text);
   // 儲存空間滿了：先清掉其他「已存檔、沒改過」分頁的草稿（之後從檔案讀回），再試一次。
-  if (!draftSaved && freeDraftSpace(id)) draftSaved = saveDraft(id, text);
-  if (!draftSaved && !draftWarned) {
+  if (!cur.draftSaved && freeDraftSpace(id)) cur.draftSaved = saveDraft(id, text);
+  if (!cur.draftSaved && !draftWarned) {
     draftWarned = true;
     toast(t("瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。"), { tone: "error" });
   }
@@ -2012,28 +2006,28 @@ function freeDraftSpace(keepId: string): boolean {
 // ---- 文件操作 -----------------------------------------------------------
 
 function setFileName(name: string): void {
-  fileName = name;
+  cur.fileName = name;
   persistSession();
   renderSaveState();
   renderTabs();
 }
 
 function setKind(next: DocKind, { rename = true } = {}): void {
-  if (next === kind) return;
-  kind = next;
+  if (next === cur.kind) return;
+  cur.kind = next;
   kindSelect.value = next;
   persistSession();
   editor.setKind(next);
   // 還沒對應到實際檔案時，順便改副檔名，存檔時才會是正確的類型。
-  if (rename && !fileHandle) setFileName(replaceExtension(fileName, KINDS[next].ext));
+  if (rename && !cur.fileHandle) setFileName(replaceExtension(cur.fileName, KINDS[next].ext));
   preview.clear();
   buildFormatBar();
   renderNow();
 }
 
 function setBaseline(text: string, backed: boolean): void {
-  baseline = hash(text);
-  fileBacked = backed;
+  cur.baseline = hash(text);
+  cur.fileBacked = backed;
   persistSession();
 }
 
@@ -2049,7 +2043,7 @@ const tabBar = new TabBar($("#tab-bar"), {
   canRename: (id) => {
     const doc = docs.find((d) => d.id === id);
     if (!doc) return false;
-    if ((doc === active ? fileHandle : doc.handle) === null) return true;
+    if ((doc === active ? cur.fileHandle : doc.handle) === null) return true;
     toast(t("已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。"));
     return false;
   },
@@ -2091,7 +2085,7 @@ function selectTab(id: string): void {
   const doc = docs.find((d) => d.id === id);
   if (doc) activate(doc);
 }
-const tabPath = (doc: Doc): string | null => (doc === active ? fileHandle?.path : doc.path) ?? null;
+const tabPath = (doc: Doc): string | null => (doc === active ? cur.fileHandle?.path : doc.path) ?? null;
 
 /** 固定或取消固定分頁：固定的分頁排在最左邊（依固定的先後）。 */
 function setPinned(doc: Doc, pinned: boolean): void {
@@ -2124,7 +2118,7 @@ function renameDoc(id: string, name: string): void {
   }
   setFileName(name);
   const k = kindFromFileName(name);
-  if (isTextFileName(name) && k !== kind) setKind(k, { rename: false });
+  if (isTextFileName(name) && k !== cur.kind) setKind(k, { rename: false });
 }
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
@@ -2690,15 +2684,15 @@ const quickOpen = new Picker<QuickItem>({
 /** 把全域變數（目前分頁）寫回分頁物件。 */
 function stash(): void {
   Object.assign(active, {
-    kind,
-    name: fileName,
-    handle: fileHandle,
-    path: fileHandle?.path ?? null,
-    baseline,
-    fileBacked,
+    kind: cur.kind,
+    name: cur.fileName,
+    handle: cur.fileHandle,
+    path: cur.fileHandle?.path ?? null,
+    baseline: cur.baseline,
+    fileBacked: cur.fileBacked,
     state: editor.state,
     scrollTop: editor.view.scrollDOM.scrollTop,
-    dirty: baseline !== editorHash(),
+    dirty: cur.baseline !== editorHash(),
   });
 }
 
@@ -2719,10 +2713,10 @@ function renderTabs(): void {
       d.id,
       {
         id: d.id,
-        name: d === active ? fileName : d.name,
+        name: d === active ? cur.fileName : d.name,
         title: d.wiki
           ? t("Azure DevOps Wiki：{wiki}{path}（按 Ctrl+S 存回伺服器）", { wiki: d.wiki.wikiName, path: d.wiki.path })
-          : (((p) => (p ? displayPath(p) : null))(d === active ? fileHandle?.path : d.path) ?? (d === active ? fileName : d.name)),
+          : (((p) => (p ? displayPath(p) : null))(d === active ? cur.fileHandle?.path : d.path) ?? (d === active ? cur.fileName : d.name)),
         source: d.wiki ? ("wiki" as const) : undefined,
         dirty: d.dirty,
         missing: d.missing,
@@ -2743,7 +2737,7 @@ function renderTabs(): void {
   if (paneDocs.side) renderPaneHeads();
   // 只有一份空白文件時藏起分頁列的內容；有工作項目等分頁時照常顯示（才點得回文件）。
   $("#tab-bar").classList.toggle("has-items", itemTabs.length > 0);
-  const path = fileHandle?.path ?? null;
+  const path = cur.fileHandle?.path ?? null;
   if (path !== treeActive) {
     treeActive = path;
     void fileTree?.setActive(path);
@@ -2799,10 +2793,10 @@ function focusPane(pane: Pane, focusView = false): void {
     editor = target;
     review.attach(editor.view);
     active = doc;
-    ({ kind, name: fileName, handle: fileHandle, baseline, fileBacked } = doc);
-    kindSelect.value = kind;
+    ({ kind: cur.kind, name: cur.fileName, handle: cur.fileHandle, baseline: cur.baseline, fileBacked: cur.fileBacked } = doc);
+    kindSelect.value = cur.kind;
     // 在另一邊時內容被換掉了（例如外部修改後重新讀取）：顯示新的內容。
-    if (doc.state && doc.state.doc !== editor.state.doc) editor.restore(doc.state, kind, doc.scrollTop);
+    if (doc.state && doc.state.doc !== editor.state.doc) editor.restore(doc.state, cur.kind, doc.scrollTop);
     const v = editor.view;
     editorTopLine = v.state.doc.lineAt(v.lineBlockAtHeight(Math.max(0, v.scrollDOM.scrollTop - v.documentPadding.top)).from).number;
     preview.clear();
@@ -2833,7 +2827,7 @@ function openBeside(doc: Doc): void {
   }
   if (doc === paneDocs.main) {
     if (paneDocs.side) {
-      toast(t("「{name}」已經在左邊了。", { name: doc === active ? fileName : doc.name }));
+      toast(t("「{name}」已經在左邊了。", { name: doc === active ? cur.fileName : doc.name }));
       return;
     }
     const i = docs.indexOf(doc);
@@ -2906,9 +2900,9 @@ function renderPaneHeads(): void {
   const head = (el: HTMLElement, pane: Pane) => {
     const doc = paneDocs[pane]!;
     const focused = pane === focusedPane;
-    const name = focused ? fileName : doc.name;
+    const name = focused ? cur.fileName : doc.name;
     const label = Object.assign(document.createElement("span"), { className: "pane-head-name", textContent: name });
-    label.title = (focused ? fileHandle?.path : doc.path) ?? name;
+    label.title = (focused ? cur.fileHandle?.path : doc.path) ?? name;
     const parts: Node[] = [icon(doc.wiki ? "book-open-text" : "file-text"), label];
     if (doc.dirty) {
       const dot = document.createElement("span");
@@ -2969,10 +2963,10 @@ function activate(doc: Doc): void {
   if (docs.includes(active)) stash();
   active = doc;
   paneDocs[focusedPane] = doc;
-  ({ kind, name: fileName, handle: fileHandle, baseline, fileBacked } = doc);
-  kindSelect.value = kind;
-  if (doc.state) editor.restore(doc.state, kind, doc.scrollTop);
-  else editor.load(loadDraft(doc.id) ?? "", kind);
+  ({ kind: cur.kind, name: cur.fileName, handle: cur.fileHandle, baseline: cur.baseline, fileBacked: cur.fileBacked } = doc);
+  kindSelect.value = cur.kind;
+  if (doc.state) editor.restore(doc.state, cur.kind, doc.scrollTop);
+  else editor.load(loadDraft(doc.id) ?? "", cur.kind);
   // 草稿被清掉的分頁：從檔案讀回內容。
   const path = docPath(doc);
   if (doc.unloaded && !doc.state && path && desktop) {
@@ -3032,7 +3026,7 @@ async function closeTab(id: string): Promise<void> {
     if (choice === "save") {
       activate(doc);
       await save(false);
-      if (active.dirty || baseline !== hash(editor.text)) return; // 取消存檔或存檔失敗
+      if (active.dirty || cur.baseline !== hash(editor.text)) return; // 取消存檔或存檔失敗
     } else if (choice !== "discard") {
       return;
     }
@@ -3054,7 +3048,7 @@ async function closeTab(id: string): Promise<void> {
   wikiNewer.delete(doc.id);
   wikiCheckedAt.delete(doc.id);
   if (!docs.length) {
-    const blank = makeDoc({ name: t("未命名{ext}", { ext: KINDS[kind].ext }), kind });
+    const blank = makeDoc({ name: t("未命名{ext}", { ext: KINDS[cur.kind].ext }), kind: cur.kind });
     docs.push(blank);
   }
   if (doc === active) {
@@ -3087,9 +3081,9 @@ const CLOSED_TABS_TEXT_LIMIT = 8_000_000;
 
 function rememberClosed(doc: Doc): void {
   const text = (doc === active ? editor.text : loadDraft(doc.id)) ?? "";
-  const path = doc === active ? (fileHandle?.path ?? null) : doc.path;
+  const path = doc === active ? (cur.fileHandle?.path ?? null) : doc.path;
   if (!path && !text.trim()) return; // 空白的新文件不用記
-  closedTabs.push({ name: doc === active ? fileName : doc.name, kind: doc.kind, path, text, dirty: doc.dirty });
+  closedTabs.push({ name: doc === active ? cur.fileName : doc.name, kind: doc.kind, path, text, dirty: doc.dirty });
   // 最多記 20 個；內容合計太大時（例如關掉好幾份大文件）先丟掉最舊的，避免一直佔著記憶體。
   const size = (c: (typeof closedTabs)[number]) => ("text" in c ? c.text.length : 0);
   let total = closedTabs.reduce((n, c) => n + size(c), 0);
@@ -3130,7 +3124,7 @@ function cycleTab(step: number): void {
 
 /** 找出已經開啟同一個檔案的分頁。 */
 function tabForPath(path: string): Doc | undefined {
-  return docs.find((d) => (d === active ? fileHandle?.path : d.path) === path);
+  return docs.find((d) => (d === active ? cur.fileHandle?.path : d.path) === path);
 }
 
 function openDocument(
@@ -3147,14 +3141,14 @@ function openDocument(
   }
   // 目前分頁是空白、未存成檔案的新文件時直接沿用，否則開新分頁。
   // 沒動過的範例文件也直接換掉，免得每次開檔都多一個「未命名」分頁。
-  const untouched = !fileBacked && (editor.text === "" || (editor.text === sample && !active.dirty));
+  const untouched = !cur.fileBacked && (editor.text === "" || (editor.text === sample && !active.dirty));
   if (!untouched) addTab(makeDoc({ name, kind: docKind ?? kindFromFileName(name) }));
   if (review.active) review.finish();
-  fileHandle = handle;
-  kind = docKind ?? kindFromFileName(name);
-  kindSelect.value = kind;
-  fileName = name;
-  editor.load(text, kind);
+  cur.fileHandle = handle;
+  cur.kind = docKind ?? kindFromFileName(name);
+  kindSelect.value = cur.kind;
+  cur.fileName = name;
+  editor.load(text, cur.kind);
   editorTopLine = 1;
   previewScroller.scrollTop = 0;
   saveDraft(active.id, text);
@@ -3184,7 +3178,7 @@ async function save(saveAs: boolean, force = false): Promise<void> {
     toast(t("「{name}」的內容還沒從檔案讀進來，先不存檔，免得把檔案蓋成空白。", { name: active.name }), { tone: "error" });
     return;
   }
-  if (active.lossy && !saveAs && fileHandle?.path) {
+  if (active.lossy && !saveAs && cur.fileHandle?.path) {
     const choice = await choose(
       t("要覆蓋原檔嗎？"),
       t("「{name}」的編碼無法辨識，畫面上的內容可能有亂碼。存檔會改成 UTF-8 覆蓋原檔，原本的內容就無法還原。建議另存成新檔，保留原檔。", { name: active.name }),
@@ -3222,13 +3216,13 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   if (active.wiki && !saveAs && desktop) return saveWikiPage(text, force);
   let out: Awaited<ReturnType<typeof saveFile>>;
   try {
-    out = await saveFile(text, fileName, kind, fileHandle, { saveAs, force });
+    out = await saveFile(text, cur.fileName, cur.kind, cur.fileHandle, { saveAs, force });
   } catch (e) {
-    if (isOffline(e) && fileHandle?.path) {
-      showOffline(fileHandle.path);
+    if (isOffline(e) && cur.fileHandle?.path) {
+      showOffline(cur.fileHandle.path);
       return;
     }
-    const path = fileHandle?.path;
+    const path = cur.fileHandle?.path;
     const message = e instanceof Error ? e.message : String(e);
     if (isRemote(path) && NOT_CONNECTED.some((m) => message.startsWith(m))) {
       if (await suggestReconnect(path, (name) => t("還沒有連線到「{name}」，重新連線後再存檔。", { name }))) return;
@@ -3237,7 +3231,7 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   }
   if (!out) return;
   if (out.status === "conflict") return { name: out.name, diskText: out.diskText };
-  fileHandle = out.handle;
+  cur.fileHandle = out.handle;
   // 另存成本機檔案之後，這個分頁就是那個檔案，不再對應 Wiki 頁面。
   if (out.handle) active.wiki = undefined;
   active.missing = false;
@@ -3246,7 +3240,7 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   // 換了位置：相對路徑的圖片、[[連結]] 要重新對應。
   preview.invalidate();
   scheduleRender();
-  if (offline && offline.path === fileHandle?.path) clearOffline();
+  if (offline && offline.path === cur.fileHandle?.path) clearOffline();
   gitPanel?.refreshSoon(300);
   setBaseline(text, true);
   setFileName(out.name);
@@ -3291,7 +3285,7 @@ const historyPicker = new Picker<FileVersion & { path: string }>({
   placeholder: t("選擇一個版本，和目前的內容比較"),
   empty: t("這個檔案還沒有版本記錄。存檔時會自動保存。"),
   async query(q) {
-    const path = fileHandle?.path;
+    const path = cur.fileHandle?.path;
     if (!desktop || !path) return [];
     const versions = await desktop.historyList(path);
     return versions
@@ -3310,7 +3304,7 @@ const historyPicker = new Picker<FileVersion & { path: string }>({
 });
 
 async function compareWithVersion(v: FileVersion & { path: string }): Promise<void> {
-  if (!desktop || fileHandle?.path !== v.path) return;
+  if (!desktop || cur.fileHandle?.path !== v.path) return;
   const text = await desktop.historyRead(v.path, v.id);
   if (review.active) review.finish();
   const started = review.start(text, {
@@ -3325,7 +3319,7 @@ async function compareWithVersion(v: FileVersion & { path: string }): Promise<vo
 // ---- Git：檔案的提交歷史、網頁連結 --------------------------------------------
 
 async function compareWithCommit(c: FileCommit & { path: string }): Promise<void> {
-  if (!desktop || fileHandle?.path !== c.path) return;
+  if (!desktop || cur.fileHandle?.path !== c.path) return;
   const text = await desktop.gitFileAt(c.path, c.id);
   if (review.active) review.finish();
   const started = review.start(text, {
@@ -3339,7 +3333,7 @@ async function compareWithCommit(c: FileCommit & { path: string }): Promise<void
 
 /** 目前檔案在 GitHub／Azure DevOps 網頁上的網址；有選取文字時標示那幾行。 */
 async function webLink(): Promise<string | null> {
-  const path = fileHandle?.path;
+  const path = cur.fileHandle?.path;
   if (!desktop || !path) return null;
   const { state } = editor.view;
   const sel = state.selection.main;
@@ -3350,7 +3344,7 @@ async function webLink(): Promise<string | null> {
 }
 
 async function openOnWeb(): Promise<void> {
-  if (fileHandle && !active.dirty && gitPanel?.status?.branch?.ahead) {
+  if (cur.fileHandle && !active.dirty && gitPanel?.status?.branch?.ahead) {
     toast(t("這個檔案還有提交沒有推送，網頁上看到的可能是舊的內容。"));
   }
   const url = await webLink();
@@ -3625,7 +3619,7 @@ initFileDrop();
 
 const savedView = storage.load("view");
 view = savedView === "editor" || savedView === "live" || savedView === "preview" ? savedView : "split";
-kindSelect.value = kind;
+kindSelect.value = cur.kind;
 setTheme(themePref);
 applySettings(settings.value);
 if (settingsRecovered) toast(t("設定檔有無法讀取的內容，相關選項已恢復成預設值。"), { tone: "error", duration: 8000 });
@@ -3735,7 +3729,7 @@ async function reloadDocs(list: Doc[]): Promise<void> {
 }
 
 function docPath(doc: Doc): string | null {
-  return doc === active ? (fileHandle?.path ?? doc.path) : doc.path;
+  return doc === active ? (cur.fileHandle?.path ?? doc.path) : doc.path;
 }
 
 /**
@@ -3753,7 +3747,7 @@ async function reloadDoc(doc: Doc, path: string): Promise<void> {
     doc.dirty = false;
     if (file.text === draft) saveDraft(doc.id, file.text);
   }
-  if (doc === active) fileHandle = file.handle;
+  if (doc === active) cur.fileHandle = file.handle;
   doc.handle = file.handle;
   doc.missing = false;
   if (clean && file.text !== draft) {
@@ -3761,8 +3755,8 @@ async function reloadDoc(doc: Doc, path: string): Promise<void> {
     doc.baseline = hash(file.text);
     doc.state = null;
     if (doc === active) {
-      editor.load(file.text, kind);
-      baseline = doc.baseline;
+      editor.load(file.text, cur.kind);
+      cur.baseline = doc.baseline;
       renderNow();
     }
   } else if (!clean && hash(file.text) !== doc.baseline) {
@@ -3828,7 +3822,7 @@ async function onExternalChange(path: string): Promise<void> {
   doc.missing = false;
   if (doc === active) {
     if (pendingDraft?.id === doc.id) pendingDraft = null;
-    baseline = doc.baseline;
+    cur.baseline = doc.baseline;
     if (markChanges) {
       const original = continuing ? review.current!.original : editor.text;
       if (!showExternalChanges(original, file.text)) {
@@ -3857,7 +3851,7 @@ async function onExternalChange(path: string): Promise<void> {
 async function compareDoc(doc: Doc): Promise<void> {
   changeNoticeAt.delete(doc.id);
   activate(doc);
-  const path = fileHandle?.path;
+  const path = cur.fileHandle?.path;
   if (!path || !desktop) return;
   compareWithDisk((await desktop.reopenFile(path)).text);
 }
@@ -3872,7 +3866,7 @@ function compareWithDisk(diskText: string): void {
   const started = review.start(diskText, {
     title: t("與{store}上的版本比較", { store: storeName() }),
     hint: t("逐段選擇要採用哪個版本，處理完記得存檔。"),
-    acceptLabel: isRemote(fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
+    acceptLabel: isRemote(cur.fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
     rejectLabel: t("保留我的版本"),
   });
   if (!started) toast(t("目前內容和{store}上的版本相同。", { store: storeName() }));

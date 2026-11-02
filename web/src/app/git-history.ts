@@ -89,7 +89,7 @@ export function initGitHistory(): void {
           if (!app.workspaceRoot) throw new Error(t("還沒有開啟資料夾"));
           app.stash();
           // 有未存檔變更的分頁不碰，避免蓋掉使用者還沒存的內容。
-          const skip = app.docs.filter((d) => (d === app.active ? app.baseline !== app.hash(app.editor.text) : d.dirty)).flatMap((d) => app.docPath(d) ?? []);
+          const skip = app.docs.filter((d) => (d === app.active ? app.cur.baseline !== app.hash(app.editor.text) : d.dirty)).flatMap((d) => app.docPath(d) ?? []);
           const r = await desktop!.replaceInFolder(query, replacement, caseSensitive, regex, skip, app.workspaceRoot.path);
           app.fileListCache = null;
           app.gitPanel?.refreshSoon(300);

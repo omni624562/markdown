@@ -224,16 +224,16 @@ export const imageInput = Object.assign(document.createElement("input"), { type:
  */
 export function buildFormatBar(): void {
   const groups: (string | HTMLElement)[][] =
-    app.kind === "markdown"
+    app.cur.kind === "markdown"
       ? [[app.headingMenu], ["bold", "italic", "strike", "code", "link"], ["bullet", "ordered", "task", "quote"], [app.insertMenu]]
-      : app.kind === "json"
+      : app.cur.kind === "json"
         ? [["format-json"]]
         : [];
   // Markdown 的固定工具列預設不顯示（選取時才浮出）；JSON 的「格式化」只有一個按鈕，一直顯示。
-  app.formatBar.hidden = groups.length === 0 || (app.kind === "markdown" && !app.settings.value.fixedToolbar);
+  app.formatBar.hidden = groups.length === 0 || (app.cur.kind === "markdown" && !app.settings.value.fixedToolbar);
   app.formatBar.replaceChildren(
     ...groups.flatMap((items, gi) => {
-      const buttons = items.map((item) => (typeof item === "string" ? app.commandButton(item, app.kind === "json") : item));
+      const buttons = items.map((item) => (typeof item === "string" ? app.commandButton(item, app.cur.kind === "json") : item));
       return gi === 0 ? buttons : [app.separator("format-sep"), ...buttons];
     }),
   );

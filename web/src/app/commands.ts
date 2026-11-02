@@ -33,7 +33,7 @@ import { app } from "./context.ts";
 
 
 export const commands = new Commands();
-const isMarkdown = () => app.kind === "markdown" && app.view !== "preview";
+const isMarkdown = () => app.cur.kind === "markdown" && app.view !== "preview";
 
 /** 插入一段範例區塊，並選取第 `line` 行（從 0 算起）的範例文字，直接打字就能取代。 */
 function insertPlaceholder(text: string, line: number): void {
@@ -95,7 +95,7 @@ export function initCommands(): void {
       // 桌面版用一般的 Ctrl+N；網頁版的 Ctrl+N 會被瀏覽器拿去開新視窗。
       keys: desktop ? "Mod-n" : "Mod-Alt-n",
       run() {
-        const doc = app.makeDoc({ name: t("未命名{ext}", { ext: KINDS[app.kind].ext }), kind: app.kind });
+        const doc = app.makeDoc({ name: t("未命名{ext}", { ext: KINDS[app.cur.kind].ext }), kind: app.cur.kind });
         saveDraft(doc.id, "");
         app.skipStartPage(doc.id);
         app.addTab(doc);
@@ -123,7 +123,7 @@ export function initCommands(): void {
       title: t("把目前文件存成範本…"),
       group: t("檔案"),
       icon: "layout-template",
-      when: () => app.kind === "markdown",
+      when: () => app.cur.kind === "markdown",
       run: () => saveAsTemplate(),
     },
     {
@@ -478,8 +478,8 @@ export function initCommands(): void {
       group: t("匯入與匯出"),
       icon: "download",
       async run() {
-        const html = await app.preview.exportDocument(app.editor.text, app.kind, stem(app.fileName));
-        const name = replaceExtension(app.fileName, ".html");
+        const html = await app.preview.exportDocument(app.editor.text, app.cur.kind, stem(app.cur.fileName));
+        const name = replaceExtension(app.cur.fileName, ".html");
         if ((await download(name, html, "text/html")) && desktop) toast(t("已匯出「{name}」", { name }), { tone: "success" });
       },
     },
@@ -505,7 +505,7 @@ export function initCommands(): void {
       icon: "copy",
       async run() {
         // 複製出去的 HTML 不需要捲動同步用的 data-sourcepos，直接重新渲染一份。
-        const result = renderMarkdown(app.editor.text, { kind: app.kind });
+        const result = renderMarkdown(app.editor.text, { kind: app.cur.kind });
         if (result.error) {
           toast(t("文件有格式錯誤，修正後才能複製。"), { tone: "error" });
           return;
@@ -519,7 +519,7 @@ export function initCommands(): void {
       title: t("匯出成 Word（.docx）…"),
       group: t("匯入與匯出"),
       icon: "file-type",
-      when: () => app.kind === "markdown",
+      when: () => app.cur.kind === "markdown",
       run: () => exportDocx(),
     },
     {
@@ -528,7 +528,7 @@ export function initCommands(): void {
       group: t("檢視"),
       icon: "presentation",
       keys: "F5",
-      when: () => app.kind === "markdown",
+      when: () => app.cur.kind === "markdown",
       run: () => startSlideshow(false),
     },
     {
@@ -537,7 +537,7 @@ export function initCommands(): void {
       group: t("檢視"),
       icon: "presentation",
       keys: "Shift-F5",
-      when: () => app.kind === "markdown",
+      when: () => app.cur.kind === "markdown",
       run: () => startSlideshow(true),
     },
     {
@@ -553,7 +553,7 @@ export function initCommands(): void {
       group: t("匯入與匯出"),
       icon: "clipboard-copy",
       keys: "Mod-Alt-c",
-      when: () => app.kind === "markdown",
+      when: () => app.cur.kind === "markdown",
       run: () => copyRich(),
     },
     {
@@ -561,7 +561,7 @@ export function initCommands(): void {
       title: t("修正兩國用語、錯字與標點（整份文件）"),
       group: t("編輯"),
       icon: "spell-check",
-      when: () => app.kind !== "json" && app.view !== "preview",
+      when: () => app.cur.kind !== "json" && app.view !== "preview",
       run: () => fixTerms(),
     },
     {
@@ -578,7 +578,7 @@ export function initCommands(): void {
       title: t("簡體轉繁體（台灣用語）"),
       group: t("編輯"),
       icon: "languages",
-      when: () => app.kind !== "json" && app.view !== "preview",
+      when: () => app.cur.kind !== "json" && app.view !== "preview",
       run: () => convertToTraditional(),
     },
     {
@@ -637,7 +637,7 @@ export function initCommands(): void {
       group: t("編輯"),
       icon: "wand-sparkles",
       keys: "Shift-Alt-f",
-      when: () => app.kind === "json",
+      when: () => app.cur.kind === "json",
       run() {
         try {
           const formatted = formatJson(app.editor.text);
@@ -707,7 +707,7 @@ export function initCommands(): void {
       group: t("編輯"),
       icon: "wand-sparkles",
       keys: "Shift-Alt-f",
-      when: () => app.kind === "markdown",
+      when: () => app.cur.kind === "markdown",
       run() {
         const formatted = formatAllTables(app.editor.text);
         if (formatted === app.editor.text) {
@@ -723,16 +723,16 @@ export function initCommands(): void {
       title: t("整理文件：在中文與英文、數字之間加空格"),
       group: t("編輯"),
       icon: "wand-sparkles",
-      when: () => app.kind !== "json" && app.view !== "preview",
+      when: () => app.cur.kind !== "json" && app.view !== "preview",
       run() {
         const text = app.editor.text;
-        const positions = spacingPositions(text, app.kind);
+        const positions = spacingPositions(text, app.cur.kind);
         if (!positions.length) {
           toast(t("沒有需要加空格的地方。"));
           return;
         }
         // 原本對齊的表格補完空格後重新對齊；整個過程是一次可復原的編輯。
-        const realign = app.kind === "markdown" && formatAllTables(text) === text;
+        const realign = app.cur.kind === "markdown" && formatAllTables(text) === text;
         let spaced = "";
         let last = 0;
         for (const p of positions) {
@@ -864,7 +864,7 @@ export function initCommands(): void {
         title: t("文件類型改為 {kind}", { kind: KINDS[k].label }),
         group: t("檢視"),
         icon: "file-type",
-        when: () => app.kind !== k,
+        when: () => app.cur.kind !== k,
         run: () => app.setKind(k),
       }),
     ),
