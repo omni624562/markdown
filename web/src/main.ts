@@ -12,7 +12,6 @@ import { GitHub } from "./github-ui.ts";
 import { Ado } from "./ado-ui.ts";
 import { workItemLink } from "./ado-text.ts";
 import { type PaletteId, applyPalette, isDark, loadAccent, loadPalette, savePalette } from "./palette.ts";
-import { initTopbarTitle } from "./app/topbar-title.ts";
 import { formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, type EditorHandlers, type EditorOptions, cursorInfo } from "./editor.ts";
 import { type FileCommit, type FileItem, type Folder, desktop, displayPath, isRemote } from "./desktop.ts";
@@ -2077,9 +2076,6 @@ const tabBar = new TabBar($("#tab-bar"), {
   },
   keep: (id) => keepItem(id),
 });
-// 頂端列中間的「● 專案 · 文件名稱」，跟著目前的分頁更新。
-initTopbarTitle($("#tab-bar"));
-
 // ---- 分頁選單：關閉其他、關閉右側、固定分頁…… ---------------------------------
 
 /** 按右鍵的分頁；從指令面板執行時是目前的分頁。 */
