@@ -10,6 +10,7 @@ import { toast } from "../ui/toast.ts";
 import { draftFromSelection } from "../workitem-create.ts";
 import { imageFiles, insertImages } from "./image-paste.ts";
 import { app } from "./context.ts";
+import { forgetListCopies } from "./offline-copies.ts";
 
 
 /**
@@ -122,6 +123,7 @@ export function createWorkItemDialog(draft: { title?: string; description?: stri
         storage.save("wi-create-kind", kindSel.value);
         storage.save("wi-create-assign", assignBox.checked ? "1" : "0");
         dialog.close();
+        forgetListCopies("wi-");
         void app.workItemsPanel?.refresh();
         created?.(w);
         toast(t("已建立 {kind} {id}「{title}」", { kind: w.kind, id: w.id, title: w.title }), {

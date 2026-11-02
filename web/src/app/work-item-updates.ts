@@ -12,7 +12,7 @@ import { setErrorAction } from "../ui/toast.ts";
 import { type SeenMap, trimSeen, remember, markSeen, markOf, markAllSeen } from "../workitem-seen.ts";
 import { openGitHistory, historyView } from "./git-history.ts";
 import { createWorkItemDialog } from "./new-work-item.ts";
-import { refreshKeptPages } from "./offline-copies.ts";
+import { forgetListCopies, refreshKeptPages, withOfflineCopy } from "./offline-copies.ts";
 import { workItemsPanel, wikiPanel, issuesPanel } from "./work-items-panel.ts";
 import { app } from "./context.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
@@ -83,7 +83,11 @@ export async function pollWorkItems(): Promise<void> {
   try {
     const signature = () => app.pollItems.map((w) => `${w.id}@${w.changed}`).join();
     const before = signature();
-    noteWorkItems(await desktop.adoWorkItems("", app.DEFAULT_WORK_ITEM_FILTER), true);
+    // 和「指派給你」的清單同一份副本。剛啟動時先用副本（圖示上的數字馬上出來），背景讀完再檢查一次。
+    const key = `wi-list::${JSON.stringify(app.DEFAULT_WORK_ITEM_FILTER)}`;
+    const fetch = () => desktop!.adoWorkItems("", app.DEFAULT_WORK_ITEM_FILTER);
+    const first = !app.pollItems.length;
+    noteWorkItems(await withOfflineCopy(key, fetch, first ? () => window.setTimeout(() => void pollWorkItems(), 0) : undefined, true), true);
     notifyNewWorkItems();
     // 面板上是同一份清單時，有新的或更新的項目就一起更新清單。
     if (before && signature() !== before && app.isDefaultFilter() && workItemsPanel?.showingList) void workItemsPanel.refresh();
@@ -162,8 +166,15 @@ export function initWorkItemUpdates(): void {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) void pollWorkItems();
   });
-  app.$("#workitems-refresh").addEventListener("click", () => void workItemsPanel?.refresh());
-  app.$("#wiki-refresh").addEventListener("click", () => void wikiPanel?.refresh());
+  // 按「重新整理」一定向伺服器讀（不用剛讀到的結果）。
+  app.$("#workitems-refresh").addEventListener("click", () => {
+    forgetListCopies("wi-");
+    void workItemsPanel?.refresh();
+  });
+  app.$("#wiki-refresh").addEventListener("click", () => {
+    forgetListCopies("wiki");
+    void wikiPanel?.refresh();
+  });
   app.$("#wiki-dock").addEventListener("click", () => setWikiRight(!wikiRightWanted));
   adoNew.type = "button";
   adoNew.className = "btn icon-only";

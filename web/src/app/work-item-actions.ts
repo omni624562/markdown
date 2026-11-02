@@ -15,7 +15,7 @@ import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { type Iteration, longFields } from "../work-item-fields.ts";
 import { openAttachment, saveAttachment } from "./ado-files.ts";
 import { insertIssueLink } from "./ado-links.ts";
-import { offlineRefs } from "./offline-copies.ts";
+import { forgetListCopies, offlineRefs } from "./offline-copies.ts";
 import { workItemSeen } from "./work-item-updates.ts";
 import { workItemsPanel, barShortcuts, toggleWorkItemShortcut } from "./work-items-panel.ts";
 import { enhanceWorkItem, lazy, type Loaded } from "./work-item-edit.ts";
@@ -48,6 +48,7 @@ function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): voi
       // 改了標題：重新開啟，分頁名稱也跟著換。
       if (change.title) showWorkItem({ ...item, title: change.title });
       else await app.issueView.refresh();
+      forgetListCopies("wi-");
       void workItemsPanel?.refresh();
       return true;
     } catch (e) {

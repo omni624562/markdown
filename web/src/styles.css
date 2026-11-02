@@ -2954,6 +2954,10 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-status.issue-error { color: var(--danger); }
 .issue-stale { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; padding: 6px 16px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); font-size: 12.5px; }
 .issue-stale[hidden] { display: none; }
+/* 先顯示離線副本、背景更新中：不是錯誤，用一般的底色。 */
+.issue-stale.updating { background: var(--bg); color: var(--muted); }
+/* 側邊欄清單顯示的是副本時，狀態列後面的註記。 */
+.copy-note { color: var(--muted); }
 ::highlight(issue-find) { background-color: rgba(255, 200, 0, 0.35); }
 ::highlight(issue-find-current) { background-color: rgba(255, 150, 0, 0.75); }
 
