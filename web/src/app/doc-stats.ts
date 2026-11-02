@@ -29,6 +29,11 @@ let last: { stats: Stats; headings: number; key: string; today: number } | null 
 let pop: HTMLDivElement | null = null;
 let goalInput: HTMLInputElement;
 let goalNote: HTMLElement;
+/**
+ * 剛輸入了看不懂的目標：提示留著，直到改了輸入框、設好目標或關掉面板。
+ * 打字後字數晚一點才重新計算、面板重畫時，才不會把提示蓋回原本的說明。
+ */
+let goalError = false;
 let goalBar: HTMLElement;
 let goalClear: HTMLButtonElement;
 let grid: HTMLElement;
@@ -207,6 +212,12 @@ function renderPop(): void {
     goalNote.textContent = t("設定這份文件要寫多少字，狀態列會顯示進度");
   }
   goalNote.classList.remove("error");
+  if (goalError) showGoalError();
+}
+
+function showGoalError(): void {
+  goalNote.textContent = t("請輸入 1 到 10,000,000 之間的字數，例如 2000、3k 或 1.5萬");
+  goalNote.classList.add("error");
 }
 
 function buildPop(): HTMLDivElement {
@@ -256,14 +267,20 @@ function buildPop(): HTMLDivElement {
 
   const apply = () => {
     const v = parseGoal(goalInput.value);
-    if (v === undefined) {
-      goalNote.textContent = t("請輸入 1 到 10,000,000 之間的字數，例如 2000、3k 或 1.5萬");
-      goalNote.classList.add("error");
+    goalError = v === undefined;
+    if (goalError) {
+      showGoalError();
       return;
     }
-    setGoal(v);
+    setGoal(v ?? null);
   };
   goalInput.addEventListener("change", apply);
+  // 改了輸入框：先收起錯誤提示，按 Enter 或離開欄位時再檢查。
+  goalInput.addEventListener("input", () => {
+    if (!goalError) return;
+    goalError = false;
+    renderPop();
+  });
   goalInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.isComposing) {
       e.preventDefault();
@@ -274,6 +291,7 @@ function buildPop(): HTMLDivElement {
   document.body.append(el);
   el.addEventListener("toggle", (e) => {
     const open = (e as ToggleEvent).newState === "open";
+    if (!open) goalError = false;
     app.status.stats.setAttribute("aria-expanded", String(open));
     if (!open && document.activeElement === document.body) app.editor.view.focus();
   });
