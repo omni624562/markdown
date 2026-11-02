@@ -1,0 +1,54 @@
+name: 設為穩定版
+
+# 把一個已經發佈的版本設為「穩定版」：程式的自動更新預設跟穩定版（設定 → 關於 → 更新管道）。
+# 在 GitHub 的 Actions → 設為穩定版 → Run workflow 執行；版本號不填就用目前的最新版。
+# 穩定版的 Release（標籤 stable）裡是那一版的 omarker.exe 與它自己的 version.json（已簽章，
+# 網址指向 v<版本號> 的 omarker.exe），所以不需要重新建置或簽章。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 要設為穩定版的版本號（例如 1.91.0）；不填就用目前的最新版
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-stable
+  cancel-in-progress: false
+
+jobs:
+  stable:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 設為穩定版
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT: ${{ inputs.version }}
+        run: |
+          version="${INPUT#v}"
+          if [ -z "$version" ]; then
+            gh release download latest --repo "$GITHUB_REPOSITORY" -p version.json -O latest.json
+            version="$(jq -r .version latest.json)"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::版本號格式不正確：$version"
+            exit 1
+          fi
+          gh release download "v${version}" --repo "$GITHUB_REPOSITORY" -p omarker.exe -p version.json
+          if [ ! -f version.json ]; then
+            echo "::error::v${version} 沒有附上更新資訊（version.json），可能是這個功能加入之前發佈的版本"
+            exit 1
+          fi
+          # 確認更新資訊和執行檔對得上（網址指向這一版、檢查碼相同）。
+          test "$(jq -r .url version.json)" = "https://github.com/$GITHUB_REPOSITORY/releases/download/v${version}/omarker.exe"
+          test "$(jq -r .sha256 version.json)" = "$(sha256sum omarker.exe | cut -d' ' -f1)"
+          today="$(TZ=Asia/Taipei date +%Y-%m-%d)"
+          gh release delete stable --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create stable omarker.exe version.json --repo "$GITHUB_REPOSITORY" \
+            --target "$(gh release view "v${version}" --repo "$GITHUB_REPOSITORY" --json targetCommitish -q .targetCommitish)" \
+            --title "穩定版 v${version}（${today} 設定）" --latest=false \
+            --notes "目前的穩定版是 v${version}。程式的自動更新預設跟穩定版；想更早拿到新功能可以在設定 → 關於 → 更新管道改成「搶先版」。
+
+          固定下載連結：https://github.com/${GITHUB_REPOSITORY}/releases/download/stable/omarker.exe"

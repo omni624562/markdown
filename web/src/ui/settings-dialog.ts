@@ -13,6 +13,7 @@ import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
 import { COMMON_KINDS, isCustomKind, kindColor, kindKey } from "../work-item-colors.ts";
 import { ACCENTS, DEFAULT_PALETTE, PALETTES, type PaletteId, accentColors, parseAccent } from "../palette.ts";
+import { REPO_URL } from "../repo.ts";
 
 type ThemePref = "system" | "light" | "dark";
 
@@ -34,6 +35,10 @@ export interface AiHooks {
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
+  updateChannel: [
+    ["stable", t("穩定版（建議）")],
+    ["early", t("搶先版")],
+  ],
   previewWidth: [
     ["narrow", t("窄")],
     ["medium", t("中")],
@@ -127,7 +132,6 @@ export interface ActivityHooks {
 }
 
 /** 原始碼與問題回報。 */
-export const REPO_URL = "https://github.com/omni624562/markdown";
 
 /** AI 區中，總開關關閉時一起停用的選項。 */
 const AI_DEPENDENT: (keyof Settings)[] = ["aiTool", "mcpServer", "aiTerminal", "markExternalChanges"];
@@ -697,6 +701,9 @@ export class SettingsDialog {
         ...this.#group(t("更新"), [
           versionRow,
           this.#row("autoUpdate", t("自動檢查更新"), t("每天檢查一次，下載前會先詢問"), () => this.#control("autoUpdate")),
+          this.#row("updateChannel", t("更新管道"), t("穩定版是確認過的版本；搶先版是每次修改後的最新版，比較快拿到新功能，也比較可能有問題"), () =>
+            this.#control("updateChannel"),
+          ),
         ]),
       );
     }
