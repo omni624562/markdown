@@ -133,7 +133,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /** 上一頁、下一頁的快速鍵說明（滑鼠移到按鈕上看到的）。 */
-const navKeys = (arrow: string, key: string) => `${formatKeys(arrow)}${t("、")}${key}`;
+const navKeys = (arrow: string, key: string) => [formatKeys(arrow), key].join(t("、"));
 
 /** 支援 CSS Custom Highlight API 時用它標示（不改動內容的 DOM）。 */
 const highlights = typeof CSS !== "undefined" && "highlights" in CSS ? CSS.highlights : null;
