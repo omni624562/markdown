@@ -1,7 +1,6 @@
 /**
- * 大綱：拖曳重排章節（E10）、目前的標題、字數與存檔狀態。
+ * 大綱：拖曳重排章節（E10）、目前的標題與存檔狀態（字數在 doc-stats.ts）。
  */
-import type { RenderResult } from "../../pkg/md_wasm.js";
 import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { subtreeEnd, moveSection, sectionRange, swapSection } from "../sections.ts";
@@ -80,21 +79,6 @@ export function updateActiveHeading(): void {
       a.removeAttribute("aria-current");
     }
   }
-}
-
-export function renderStats({ stats }: RenderResult): void {
-  if (app.cur.kind === "json") {
-    app.status.stats.textContent = t("{lines} 行 · {chars} 字元", {
-      lines: app.editor.view.state.doc.lines.toLocaleString(),
-      chars: app.editor.text.length.toLocaleString(),
-    });
-    app.status.stats.title = "";
-    return;
-  }
-  app.status.stats.textContent = t("{n} 字", { n: stats.words.toLocaleString() });
-  app.status.stats.title =
-    t("{words} 字 · {chars} 字元", { words: stats.words.toLocaleString(), chars: stats.chars.toLocaleString() }) +
-    (stats.readingMinutes ? t(" · 約 {n} 分鐘讀完", { n: stats.readingMinutes }) : "");
 }
 
 /** 雜湊（`hash()`）開頭記著內容的長度：長度不同就一定改過，不必算整份文件的雜湊。 */

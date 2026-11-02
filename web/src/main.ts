@@ -93,7 +93,8 @@ import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
 import { NOT_CONNECTED, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
-import { renderSaveState, renderStats, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
+import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
+import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
 import { initErrorHandling } from "./app/error-handling.ts";
@@ -1845,6 +1846,7 @@ previewEl.addEventListener("click", (e) => {
 
 let outlineHeadings: Heading[] = [];
 initOutline();
+initDocStats();
 
 // ---- 捲動同步：編輯器帶動預覽 ---------------------------------------------
 
@@ -3456,7 +3458,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     icon: "download",
     items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich", "-", "import-docx"],
   },
-  { label: t("文件工具"), icon: "wand-sparkles", items: ["history", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
+  { label: t("文件工具"), icon: "wand-sparkles", items: ["doc-stats", "history", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
   "-",
   { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
   { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark", "-", "choose-palette"] },
