@@ -104,3 +104,32 @@ test("JSON 文件：狀態列是行數與字元，統計面板沒有字數目標
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("字數目標：輸入看不懂的值的提示，不會被晚一點才更新的字數蓋掉", async () => {
+  const { page, context, errors } = await open();
+  await setText(page, "一二三四五六七八九十");
+  await runCommand(page, "字數目標");
+  await page.waitForSelector(".stats-pop:popover-open");
+  await page.keyboard.type("很多");
+  await page.keyboard.press("Enter");
+  assert.match(await page.textContent(".stats-goal-note"), /請輸入/);
+  // 打完字後字數晚一點才重新計算（CI 這種慢的機器常見）：改編輯區的內容但焦點留在字數目標，讓統計重畫。
+  // EditorView 從 .cm-content 取得（CodeMirror 內部的屬性，改版時名稱可能不同）。
+  const changed = await page.evaluate(() => {
+    const content = document.querySelector(".cm-content");
+    const tile = content?.cmView ?? content?.cmTile;
+    const view = tile?.view ?? tile?.root?.view;
+    if (!view) return false;
+    view.dispatch({ changes: { from: view.state.doc.length, insert: "十一" } });
+    return true;
+  });
+  assert.ok(changed, "找不到 CodeMirror 的 EditorView");
+  await page.waitForFunction(() => document.querySelector("#status-stats").textContent.startsWith("12"));
+  assert.equal(await page.evaluate(() => document.activeElement.id), "stats-goal-input");
+  assert.match(await page.textContent(".stats-goal-note"), /請輸入/, "字數重畫後提示還在");
+  // 改了輸入框：提示收起來，回到原本的說明。
+  await page.keyboard.press("Backspace");
+  assert.match(await page.textContent(".stats-goal-note"), /設定這份文件要寫多少字/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
