@@ -15,6 +15,7 @@ import { stateTone } from "../workitem-chips.ts";
 import { kindKey } from "../work-item-colors.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { app } from "./context.ts";
+import { type BoardScope, addTask, editCard } from "./taskboard-edit.ts";
 import { favoriteProjects } from "./favorite-lists.ts";
 import { FavoriteSelect } from "../ui/favorite-select.ts";
 import { type Freshness, forgetListCopies, freshnessOf, withOfflineCopy } from "./offline-copies.ts";
@@ -193,7 +194,18 @@ function stateDot(state: string): HTMLElement {
 }
 
 /** 卡片：和工作項目清單同一種排法（上面一行是類型、編號與狀態，下面是標題），色條用類型的顏色。 */
-function card(w: BoardItem, raw: Map<number, AdoBoardItem>, draggable: boolean): HTMLElement {
+/** 工作板上改過（編輯、新增）之後：記成看過、重新讀取工作板。 */
+function reloadAfterEdit(id: number): void {
+  justEdited.add(id);
+  forgetListCopies("board");
+  void app.issueView.refresh(true);
+}
+
+function scopeOf(s: Selection): BoardScope {
+  return { project: s.project, team: s.team, iterationPath: s.iteration.path };
+}
+
+function card(w: BoardItem, raw: Map<number, AdoBoardItem>, draggable: boolean, s?: Selection): HTMLElement {
   const c = document.createElement("div");
   c.className = "tb-card";
   c.dataset.id = String(w.id);
@@ -210,6 +222,22 @@ function card(w: BoardItem, raw: Map<number, AdoBoardItem>, draggable: boolean):
   who.append(avatar(w.assignedTo), Object.assign(document.createElement("span"), { textContent: w.assignedTo ?? t("沒有指派") }));
   const hours = hoursText(w, { remaining: (n) => t("剩 {n} 小時", { n }), completed: (n) => t("完成 {n} 小時", { n }) });
   if (hours) who.append(Object.assign(document.createElement("span"), { className: "tb-hours", textContent: hours }));
+  if (s) {
+    // 改指派或工時（卡片本身點了是開啟工作項目）。
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "btn icon-only tb-edit";
+    const label = t("改指派或工時");
+    edit.title = label;
+    edit.setAttribute("aria-label", label);
+    edit.append(icon("pencil"));
+    edit.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void editCard(w, scopeOf(s), reloadAfterEdit).catch(reportError);
+    });
+    edit.addEventListener("keydown", (e) => e.stopPropagation());
+    who.append(edit);
+  }
   c.append(meta, title, who);
   const open = () => {
     const item = raw.get(w.id);
@@ -269,6 +297,13 @@ function renderBoard(body: HTMLElement, board: Board, s: Selection, raw: Map<num
     } else {
       parent.append(toggle, Object.assign(document.createElement("div"), { className: "tb-orphans", textContent: t("沒有上層") }));
     }
+    // 在這個上層項目底下新增 Task（放進這個 Sprint）。
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "btn btn-small tb-add";
+    add.append(icon("plus"), t("新增 Task"));
+    add.addEventListener("click", () => void addTask(row.parent, scopeOf(s), reloadAfterEdit).catch(reportError));
+    parent.append(add);
     r.append(parent);
     const count = [...row.cells.values()].reduce((n, l) => n + l.length, 0);
     parent.dataset.count = String(count);
@@ -276,7 +311,7 @@ function renderBoard(body: HTMLElement, board: Board, s: Selection, raw: Map<num
       const cell = document.createElement("div");
       cell.className = "tb-cell";
       cell.dataset.state = state;
-      for (const w of row.cells.get(state) ?? []) cell.append(card(w, raw, true));
+      for (const w of row.cells.get(state) ?? []) cell.append(card(w, raw, true, s));
       dropZone(cell, s, raw);
       r.append(cell);
     }

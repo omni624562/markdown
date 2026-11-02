@@ -3486,3 +3486,14 @@ body.ado-offline .tb-card { cursor: default; }
 .workitems-unseen > span { flex: 1 1 auto; }
 .workitems-unseen-action { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 .workitems-unseen-action:hover { text-decoration: underline; }
+
+/* 工作板的編輯：卡片右下的「改指派或工時」、上層項目下的「新增 Task」（滑鼠移上去才顯示；見 app/taskboard-edit.ts）。 */
+.taskboard .tb-parent { flex-wrap: wrap; }
+.taskboard .tb-add { flex-basis: 100%; justify-content: flex-start; margin: 4px 0 0 24px; opacity: 0; }
+.taskboard .tb-row:hover .tb-add, .taskboard .tb-add:focus-visible { opacity: 1; }
+.taskboard .tb-edit { width: 22px; height: 22px; min-width: 22px; margin-left: auto; padding: 0; opacity: 0; }
+.taskboard .tb-edit .icon { width: 13px; height: 13px; }
+.taskboard .tb-card:hover .tb-edit, .taskboard .tb-edit:focus-visible { opacity: 1; }
+/* 離線時不能改：不顯示編輯按鈕。 */
+body.ado-offline .taskboard .tb-edit, body.ado-offline .taskboard .tb-add { display: none; }
+.tb-edit-dialog { width: min(440px, calc(100vw - 32px)); }
