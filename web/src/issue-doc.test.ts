@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
-import { githubIssueMarkdown, inlineText, issueFileName, stateTone, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
+import { byRecent, githubIssueMarkdown, inlineText, issueFileName, stateTone, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { findMatches } from "./ui/issue-view.ts";
 
 const item: AdoWorkItemDetail = {
@@ -55,6 +55,27 @@ test("相關工作項目：依種類分組，其他用伺服器上的名稱", ()
   );
   assert.match(md, /### Tested By\n\n- \[Task 9：測試\]/);
   assert.ok(md.indexOf("## 相關工作項目") < md.indexOf("## 留言"));
+});
+
+test("相關工作項目：每一組裡最近更新的在前面（和工作項目清單一樣），沒有更新時間的放最後", () => {
+  const at = (r: AdoWorkItemRelation, changed: string | null) => ({ ...r, changed });
+  const md = workItemMarkdown({
+    ...item,
+    relations: [
+      at(rel(5, "child", "Child", "最早"), "2026-09-22T00:00:00Z"),
+      at(rel(6, "child", "Child", "不知道"), null),
+      at(rel(7, "child", "Child", "最新"), "2026-11-02T03:00:00Z"),
+      at(rel(8, "child", "Child", "中間"), "2026-09-30T00:00:00Z"),
+      at(rel(1, "parent", "Parent", "上層"), "2026-08-01T00:00:00Z"),
+    ],
+  });
+  const children = md.slice(md.indexOf("### 子項目"));
+  const order = ["最新", "中間", "最早", "不知道"].map((title) => children.indexOf(title));
+  assert.ok(order.every((i, n) => i > 0 && (n === 0 || i > order[n - 1])), children);
+  assert.deepEqual(
+    byRecent([{ changed: null }, { changed: "2026-01-02T00:00:00Z" }, { changed: "bad" }]).map((x) => x.changed),
+    ["2026-01-02T00:00:00Z", null, "bad"],
+  );
 });
 
 test("工作項目網址裡的編號", () => {
