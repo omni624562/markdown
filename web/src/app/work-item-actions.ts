@@ -58,6 +58,23 @@ function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): voi
       document.querySelector(".issue-body .ado-hero")?.classList.remove("busy");
     }
   };
+  /** 改或刪除一則留言（`html` 為 null 時刪除）；成功後重新讀取內容。 */
+  const editComment = async (commentId: number, html: string | null, done: string): Promise<boolean> => {
+    if (busy || !detail) return false;
+    busy = true;
+    try {
+      if (html === null) await desktop!.adoCommentDelete(item.project, item.id, commentId);
+      else await desktop!.adoCommentUpdate(item.project, item.id, commentId, html);
+      toast(done, { tone: "success" });
+      await app.issueView.refresh();
+      return true;
+    } catch (e) {
+      app.reportError(e);
+      return false;
+    } finally {
+      busy = false;
+    }
+  };
   return {
     update(d) {
       detail = d;
@@ -68,6 +85,7 @@ function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): voi
         {
           detail: () => detail,
           apply,
+          editComment,
           states: () => states.load(),
           iterations: () => iterations.load(),
           me: () => app.ado?.account?.name ?? "",
