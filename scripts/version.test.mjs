@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compare, next, notesOf, summary } from "./version.mjs";
+import { combine, compare, next, notesOf, parseFragment, summary } from "./version.mjs";
 
 test("下一個版本號", () => {
   assert.equal(next("1.4.2", "patch"), "1.4.3");
@@ -26,4 +26,31 @@ test("取出某一版的說明與摘要", () => {
   assert.equal(summary("- " + "很長".repeat(100), 10).length, 10);
   // 巢狀清單：冒號後面直接接子項目，句號結尾不重複加分號。
   assert.equal(summary("- 圖示列：\n  - 拖曳頁面。\n  - 右鍵移除。\n- 其他"), "圖示列：拖曳頁面；右鍵移除；其他");
+});
+
+test("讀改動片段", () => {
+  assert.deepEqual(parseFragment("bump: minor\n\n- 工作板\n"), { bump: "minor", section: "新功能", body: "- 工作板" });
+  assert.deepEqual(parseFragment("bump: patch\nsection: 調整\n\n- 配色\n  - 子項目\n"), {
+    bump: "patch",
+    section: "調整",
+    body: "- 配色\n  - 子項目",
+  });
+  assert.equal(parseFragment("bump: patch\r\n\r\n- Windows 換行\r\n").body, "- Windows 換行");
+  assert.throws(() => parseFragment("- 沒有 bump\n"), /bump/);
+  assert.throws(() => parseFragment("bump: huge\n\n- x\n"), /patch、minor 或 major/);
+  assert.throws(() => parseFragment("bump: patch\nsection: 其他\n\n- x\n"), /section/);
+  assert.throws(() => parseFragment("bump: patch\n\n說明沒有項目符號\n"), /- /);
+  assert.throws(() => parseFragment("bump: patch\n\n- \n"), /空白/);
+});
+
+test("合併片段：升版取最大的，項目依分類排", () => {
+  const out = combine([
+    parseFragment("bump: patch\n\n- 修好 A"),
+    parseFragment("bump: minor\n\n- 新功能 B"),
+    parseFragment("bump: patch\nsection: 調整\n\n- 調整 C"),
+    parseFragment("bump: patch\n\n- 修好 D"),
+  ]);
+  assert.equal(out.bump, "minor");
+  assert.equal(out.notes, "### 新功能\n\n- 新功能 B\n\n### 調整\n\n- 調整 C\n\n### 修正\n\n- 修好 A\n- 修好 D");
+  assert.equal(combine([parseFragment("bump: major\n\n- 拿掉 X"), parseFragment("bump: minor\n\n- Y")]).bump, "major");
 });
