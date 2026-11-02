@@ -5,15 +5,17 @@
  *   web/package.json，以及對應的 Cargo.lock、package-lock.json。
  *
  *   node scripts/version.mjs                    顯示目前的版本
+ *   node scripts/version.mjs check [基準分支]    檢查版本號一致；有改到程式時，PR 要新增一個
+ *                                               changes/*.md 片段，而且不能自己改版本號（CI 用）
+ *   node scripts/version.mjs release            依 changes/ 的片段升版、寫進 CHANGELOG.md、刪掉片段
+ *                                               （合併到 main 後由 CI 執行）；沒有片段時不做事
  *   node scripts/version.mjs bump <major|minor|patch|x.y.z>
- *                                               改版本號，並在 CHANGELOG.md 加上新版的段落
- *   node scripts/version.mjs check [基準分支]    檢查版本號一致；有改到程式時，版本要比基準新，
- *                                               CHANGELOG.md 要有這一版的說明（CI 用）
+ *                                               直接改版本號（一般不需要，release 會改）
  *   node scripts/version.mjs notes [版本]        印出 CHANGELOG.md 中這一版的說明（發佈用）
  *   node scripts/version.mjs summary [版本]      這一版說明的一行摘要（更新提示用）
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -112,16 +114,95 @@ export function notesOf(changelog, version) {
     .trim();
 }
 
-function bump(part) {
+// ---- 改動片段（changes/*.md） ---------------------------------------------------
+
+/** 片段放的資料夾（README.md 是說明，不算片段）。 */
+export const CHANGES_DIR = "changes";
+const PARTS = ["patch", "minor", "major"];
+/** 沒寫 `section:` 時，依升版的種類放在哪個分類。 */
+const DEFAULT_SECTION = { major: "不相容的改變", minor: "新功能", patch: "修正" };
+/** CHANGELOG 裡分類的順序。 */
+const SECTIONS = ["不相容的改變", "新功能", "調整", "修正"];
+
+/**
+ * 讀一個片段：第一行 `bump: minor`（或 patch、major），可以再加一行 `section: 調整`，
+ * 空一行之後是 CHANGELOG 的項目（`- ` 開頭）。格式不對時丟出錯誤（說明哪個檔案、哪裡不對）。
+ */
+export function parseFragment(text, name = "片段") {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const head = {};
+  let i = 0;
+  for (; i < lines.length && lines[i].trim(); i++) {
+    const m = /^(bump|section)\s*:\s*(.+?)\s*$/.exec(lines[i]);
+    if (!m) throw new Error(`${name}：開頭要是「bump: minor」這樣的設定，看不懂「${lines[i]}」`);
+    head[m[1]] = m[2];
+  }
+  if (!PARTS.includes(head.bump)) throw new Error(`${name}：bump 要是 patch、minor 或 major`);
+  const section = head.section ?? DEFAULT_SECTION[head.bump];
+  if (!SECTIONS.includes(section)) throw new Error(`${name}：section 要是 ${SECTIONS.join("、")} 其中之一`);
+  const body = lines.slice(i).join("\n").trim();
+  if (!/^[-*] \S/m.test(body) || /^[-*]\s*$/m.test(body)) throw new Error(`${name}：要有至少一個「- 」開頭的說明，而且不能留空白的項目`);
+  return { bump: head.bump, section, body };
+}
+
+/** 把片段合成一版的說明：升版取最大的一種，項目依分類排好。 */
+export function combine(fragments) {
+  const bump = fragments.reduce((max, f) => (PARTS.indexOf(f.bump) > PARTS.indexOf(max) ? f.bump : max), "patch");
+  const notes = SECTIONS.filter((s) => fragments.some((f) => f.section === s))
+    .map((s) => `### ${s}\n\n${fragments.filter((f) => f.section === s).map((f) => f.body).join("\n")}`)
+    .join("\n\n");
+  return { bump, notes };
+}
+
+/** 待發佈的片段：[檔名, 內容]，依檔名排序。 */
+function pendingFragments() {
+  let names;
+  try {
+    names = readdirSync(join(ROOT, CHANGES_DIR));
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => n.endsWith(".md") && n.toLowerCase() !== "readme.md")
+    .sort()
+    .map((n) => [n, read(join(CHANGES_DIR, n))]);
+}
+
+/** 依片段升版、寫好 CHANGELOG.md、刪掉片段；沒有片段時什麼都不做。印出新的版本號。 */
+function release() {
+  const pending = pendingFragments();
+  if (!pending.length) {
+    console.log(`沒有待發佈的改動，版本號維持 ${current()}。`);
+    return;
+  }
+  const { bump: part, notes } = combine(pending.map(([n, text]) => parseFragment(text, `${CHANGES_DIR}/${n}`)));
   const from = current();
   const to = next(from, part);
-  if (compare(to, from) <= 0) throw new Error(`新的版本號 ${to} 要比目前的 ${from} 大`);
+  setVersion(to);
+  const date = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
+  let changelog = read("CHANGELOG.md");
+  const at = changelog.search(/^## /m);
+  const entry = `## ${to} — ${date}\n\n${notes}\n\n`;
+  changelog = at < 0 ? `${changelog.trimEnd()}\n\n${entry}` : changelog.slice(0, at) + entry + changelog.slice(at);
+  write("CHANGELOG.md", changelog);
+  for (const [n] of pending) rmSync(join(ROOT, CHANGES_DIR, n));
+  console.log(`${from} → ${to}（${pending.length} 個改動）`);
+}
+
+function setVersion(to) {
   for (const [file, re] of SOURCES) {
     const text = read(file);
     const m = re.exec(text);
     const at = m.index + m[0].lastIndexOf(m[1]);
     write(file, text.slice(0, at) + to + text.slice(at + m[1].length));
   }
+}
+
+function bump(part) {
+  const from = current();
+  const to = next(from, part);
+  if (compare(to, from) <= 0) throw new Error(`新的版本號 ${to} 要比目前的 ${from} 大`);
+  setVersion(to);
   let changelog = read("CHANGELOG.md");
   const hasNotes = notesOf(changelog, to) !== null;
   if (!hasNotes) {
@@ -136,30 +217,36 @@ function bump(part) {
 
 function check(base) {
   const version = current();
-  const changed = execFileSync("git", ["diff", "--name-only", `${base}...HEAD`], { cwd: ROOT, encoding: "utf8" })
+  const changed = execFileSync("git", ["diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
     .filter(Boolean);
   const app = changed.filter((f) => APP_PATHS.test(f));
-  if (!app.length) {
-    console.log(`版本號 ${version}；這次沒有改到程式，不需要改版本號。`);
-    return;
+  const fragments = changed.filter((f) => f.startsWith(`${CHANGES_DIR}/`) && f.endsWith(".md") && !/readme\.md$/i.test(f));
+  const problems = [];
+  // 每個片段都要看得懂（合併後 release 才不會失敗）。
+  for (const f of fragments) {
+    try {
+      parseFragment(read(f), f);
+    } catch (e) {
+      problems.push(e.message);
+    }
   }
   const baseToml = execFileSync("git", ["show", `${base}:desktop/Cargo.toml`], { cwd: ROOT, encoding: "utf8" });
   const baseVersion = SOURCES[0][1].exec(baseToml)[1];
-  const problems = [];
-  if (compare(version, baseVersion) <= 0) {
+  if (version !== baseVersion) {
+    problems.push(`不要自己改版本號（${baseVersion} → ${version}）：合併到 main 後 CI 會依 ${CHANGES_DIR}/ 的片段自動升版。`);
+  }
+  if (app.length && !fragments.length) {
     problems.push(
-      `改到了程式（${app.slice(0, 5).join("、")}${app.length > 5 ? "…" : ""}），版本號要比 ${base} 的 ${baseVersion} 新。` +
-        "依 VERSIONING.md 執行 node scripts/version.mjs bump <major|minor|patch>。",
+      `改到了程式（${app.slice(0, 5).join("、")}${app.length > 5 ? "…" : ""}），要新增一個 ${CHANGES_DIR}/*.md 片段` +
+        `（第一行 bump: minor 或 patch，空一行後寫給使用者看的說明，見 ${CHANGES_DIR}/README.md）。`,
     );
   }
-  const notes = notesOf(read("CHANGELOG.md"), version);
-  if (!notes || /^-\s*$/m.test(notes)) problems.push(`CHANGELOG.md 要有「## ${version}」的說明，而且不能留空白的項目。`);
   if (problems.length) {
     for (const p of problems) console.error(`✗ ${p}`);
     process.exit(1);
   }
-  console.log(`✓ 版本號 ${baseVersion} → ${version}，CHANGELOG.md 已寫好。`);
+  console.log(app.length || fragments.length ? `✓ ${fragments.length} 個改動片段，合併後自動升版。` : `版本號 ${version}；這次沒有改到程式。`);
 }
 
 const [cmd, arg] = process.argv.slice(2);
@@ -168,6 +255,7 @@ if (isMain) try {
   if (!cmd) console.log(current());
   else if (cmd === "bump") bump(arg ?? "patch");
   else if (cmd === "check") check(arg ?? "origin/main");
+  else if (cmd === "release") release();
   else if (cmd === "notes") {
     const v = arg ?? current();
     const notes = notesOf(read("CHANGELOG.md"), v);
