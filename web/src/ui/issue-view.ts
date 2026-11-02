@@ -8,6 +8,7 @@ import { formatKeys } from "../commands.ts";
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 import type { MenuEntry } from "./menu.ts";
+import { logError } from "../error-log.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
@@ -70,6 +71,8 @@ export interface IssueFact {
 }
 
 export interface IssueViewHooks {
+  /** 畫面調整（`decorate`）出錯：內容照常顯示，錯誤已經記進錯誤紀錄；這裡負責提示。 */
+  decorateFailed?(message: string): void;
   /** 把 Markdown 顯示在 `into`（預覽同一套流程：移除原始 HTML、程式碼上色、圖片處理）。 */
   render(markdown: string, into: HTMLElement): void;
   open(url: string): void;
@@ -609,7 +612,13 @@ export class IssueView {
   }
 
   #decorate(): void {
-    this.#source?.decorate?.(this.#body);
+    // 畫面調整（工作板、留言工具等）出錯時內容照常顯示，不要被當成「讀取失敗」整個藏起來。
+    try {
+      this.#source?.decorate?.(this.#body);
+    } catch (e) {
+      console.error(e);
+      this.#h.decorateFailed?.(logError(this.#source?.key ?? "issue-view", e).message);
+    }
     // 工作項目：內容最上面的類型標籤與編號搬到標頭這一列（和上一頁、下一頁、右邊的按鈕同一列），
     // 標題接在下面，不再多佔一列；往下捲到看不到標題時，標頭帶出標題。
     const kind = this.#body.querySelector<HTMLElement>(".ado-hero > .ado-hero-kind");

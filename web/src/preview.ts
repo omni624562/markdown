@@ -1,5 +1,12 @@
 import { type DocKind, type RenderResult, render, renderDocument } from "../pkg/md_wasm.js";
 import { diffRange, lineDelta, partKey, partSourcepos, shiftSourcepos, splitTopLevel, stripSourcepos } from "./preview-diff.ts";
+import { logError } from "./error-log.ts";
+
+/** 預覽的外掛出錯：內容照常顯示，錯誤記進錯誤紀錄（「說明：複製錯誤紀錄」看得到）。 */
+function previewError(plugin: string, e: unknown): void {
+  console.error(`[${plugin}]`, e);
+  logError(`preview:${plugin}`, e);
+}
 
 /** 可以查詢元素的範圍：整個 DOM 節點，或這次新加入的段落（`Scope`）。 */
 export interface Queryable {
@@ -104,9 +111,9 @@ export class Preview {
     for (const plugin of this.#plugins) {
       try {
         const ret = plugin.apply(this.#root, scope);
-        if (ret instanceof Promise) ret.catch((e) => console.error(`[${plugin.name}]`, e));
+        if (ret instanceof Promise) ret.catch((e) => previewError(plugin.name, e));
       } catch (e) {
-        console.error(`[${plugin.name}]`, e);
+        previewError(plugin.name, e);
       }
     }
     // 外掛應該一對一替換節點；數量對不上就不再比對，下次整個重建。
@@ -124,7 +131,7 @@ export class Preview {
       try {
         plugin.prepare?.(tpl.content);
       } catch (e) {
-        console.error(`[${plugin.name}]`, e);
+        previewError(plugin.name, e);
       }
     }
     return [...tpl.content.childNodes];
@@ -247,7 +254,7 @@ export class Preview {
       try {
         await plugin.exportTransform?.(body);
       } catch (e) {
-        console.error(`[${plugin.name}] 匯出失敗`, e); // i18n-ignore（開發者訊息）
+        previewError(plugin.name, e);
       }
     }
     return `<!doctype html>\n${doc.documentElement.outerHTML}\n`;

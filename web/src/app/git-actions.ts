@@ -17,6 +17,7 @@ import { gitPanel, showAdo } from "./work-item-updates.ts";
 import { issuesRepo } from "./work-items-panel.ts";
 import { selectAll, indentMore, indentLess } from "@codemirror/commands";
 import { app } from "./context.ts";
+import { logError } from "../error-log.ts";
 
 
 /** 開啟衝突的檔案（磁碟上是都採用本機的內容），逐段和「都採用遠端」比較。 */
@@ -217,6 +218,7 @@ export function showExternalChanges(original: string, current: string): boolean 
 
 export function reportError(e: unknown): void {
   console.error(e);
+  logError(t("操作"), e);
   const message = e instanceof Error ? e.message : String(e);
   // 訊息本身已經說了哪個動作失敗（「無法儲存…」「拉取失敗：…」）：不再加上「操作失敗」。
   const described = /^(無法|不能|找不到|Couldn't|Can't|Cannot|Unable)/i.test(message) || /^[^：:]{1,24}(失敗|failed)[：:]/i.test(message);

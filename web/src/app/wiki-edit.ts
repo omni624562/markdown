@@ -453,6 +453,8 @@ export function initWikiEdit(): void {
     if (app.active.wiki) void checkWikiNewer(app.active);
   });
   issueView = new IssueView(app.$(".workspace"), {
+    decorateFailed: (error) =>
+      toast(t("畫面有一部分沒辦法顯示（{error}），內容照常顯示。可以用「說明：複製錯誤紀錄」回報。", { error }), { tone: "error" }),
     render(markdown, into) {
       issuePreview ??= new Preview(into, [
         highlightPlugin(),
