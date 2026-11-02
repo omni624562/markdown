@@ -217,7 +217,7 @@ function bump(part) {
 
 function check(base) {
   const version = current();
-  const changed = execFileSync("git", ["diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`], { cwd: ROOT, encoding: "utf8" })
+  const changed = execFileSync("git", ["-c", "core.quotePath=false", "diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
     .filter(Boolean);
   const app = changed.filter((f) => APP_PATHS.test(f));
