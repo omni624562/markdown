@@ -384,8 +384,20 @@ export interface AdoWorkItemChange {
   acceptanceCriteria?: string;
   /** 重現步驟（HTML，Bug）；空字串表示清除。 */
   reproSteps?: string;
+  /** 指派給誰（帳號）；空字串表示取消指派。 */
+  assignedTo?: string;
+  /** 剩餘工時、已完成工時（小時）。 */
+  remaining?: number;
+  completed?: number;
   /** 開啟時的修訂版本（被別人改過就不更新）。 */
   rev?: number | null;
+}
+
+/** 團隊成員（指派時選人用）。 */
+export interface AdoTeamMember {
+  name: string;
+  /** 帳號：指派時送這個。 */
+  unique: string;
 }
 
 export interface AdoWorkItemAttachment {
@@ -929,6 +941,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 逐項檢查權杖能做什麼（登入、專案、工作項目讀寫、Wiki、程式碼）。 */
     adoCheck: () =>
       core.invoke<{ id: string; label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>("ado_check"),
+    /** 儲存診斷資料（先選檔案；常用請求的回應拿掉人名、信箱、標題與內容）；取消時是 null。 */
+    adoDiagnosticsSave: () => core.invoke<string | null>("ado_diagnostics_save"),
     adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
@@ -952,7 +966,17 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 這個類型的工作項目可以設定的狀態。 */
     adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
     /** 建立工作項目（`description` 是 HTML）。 */
-    adoWorkItemCreate: (item: { project: string; kind: string; title: string; description: string | null; assignToMe: boolean; parent: number | null }) =>
+    adoWorkItemCreate: (item: {
+      project: string;
+      kind: string;
+      title: string;
+      description: string | null;
+      assignToMe: boolean;
+      parent: number | null;
+      /** 放進哪個 Sprint（反覆項目的路徑）。 */
+      iteration?: string | null;
+      remaining?: number | null;
+    }) =>
       core.invoke<AdoWorkItem>("ado_work_item_create", { item }),
     /** 改狀態、指派給我、留言（HTML）、標題、優先順序、Sprint、標籤；`rev` 是開啟時的修訂版本。 */
     adoWorkItemUpdate: (id: number, change: AdoWorkItemChange) =>
@@ -965,6 +989,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<void>("ado_comment_delete", { project, id, commentId }),
     /** 專案的團隊（預設團隊排第一個）。 */
     adoTeams: (project: string) => core.invoke<AdoTeam[]>("ado_teams", { project }),
+    /** 團隊的成員（依名稱排）。 */
+    adoTeamMembers: (project: string, team: string) => core.invoke<AdoTeamMember[]>("ado_team_members", { project, team }),
     /** 團隊選用的 Sprint（依開始日期排）。 */
     adoTeamIterations: (project: string, team: string) => core.invoke<AdoTeamIteration[]>("ado_team_iterations", { project, team }),
     /** 團隊在某個 Sprint 裡的工作項目（工作板）。 */

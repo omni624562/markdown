@@ -64,7 +64,8 @@ pub async fn ado_check(app: AppHandle) -> Result<Vec<AccessCheck>, String> {
     let (a, pat) = require(&app)?;
     crate::io::blocking_for(TIMEOUT, move || {
         let base = a.url.as_str();
-        let mut out = vec![];
+        // 第一項：伺服器版本與回應速度（推算是哪一版的 TFS／Azure DevOps Server）。
+        let mut out = vec![diagnose::server_check(base, &pat)];
         out.push(check(
             "login",
             tr!("登入"),
