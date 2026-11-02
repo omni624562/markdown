@@ -959,6 +959,8 @@ fn new_task_goes_into_the_sprint_with_hours() {
         "產品\\Sprint 102"
     );
 }
+
+#[test]
 fn diagnostics_remove_people_titles_and_server_name() {
     let mut v = serde_json::json!({
         "authenticatedUser": { "providerDisplayName": "王小明" },
