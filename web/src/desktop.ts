@@ -4,6 +4,7 @@
  */
 import type { DocInfo } from "./doc-index.ts";
 import type { FileRef } from "./links.ts";
+import { adoOnline } from "./ado-online.ts";
 import { t } from "./i18n.ts";
 import type { WikiPageInfo } from "./wiki-coedit.ts";
 import type { Iteration } from "./work-item-fields.ts";
@@ -1083,5 +1084,17 @@ function bridge(core: TauriCore, event: TauriEvent) {
 
 export type Desktop = ReturnType<typeof bridge>;
 
+/** 判斷為離線時，Azure DevOps 指令直接失敗（不等連線逾時），見 ado-online.ts。 */
+function offlineAware(core: TauriCore): TauriCore {
+  return {
+    ...core,
+    convertFileSrc: (path, protocol) => core.convertFileSrc(path, protocol),
+    invoke: async <T>(...args: Parameters<TauriCore["invoke"]>): Promise<T> => {
+      await adoOnline.check(args[0], t("目前連不到 Azure DevOps 伺服器（離線中），連上之後再試一次"));
+      return core.invoke<T>(...args);
+    },
+  };
+}
+
 export const desktop: Desktop | null =
-  typeof window !== "undefined" && window.__TAURI__ ? bridge(window.__TAURI__.core, window.__TAURI__.event) : null;
+  typeof window !== "undefined" && window.__TAURI__ ? bridge(offlineAware(window.__TAURI__.core), window.__TAURI__.event) : null;

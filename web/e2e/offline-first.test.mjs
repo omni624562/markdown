@@ -62,3 +62,29 @@ test("工作項目清單：連不上時留著副本，說明是幾點的資料�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("連線檢查判斷離線：不等伺服器、直接用副本，面板上方有離線提示；重試連上後重新讀取", async () => {
+  const { page, context, errors } = await open({
+    desktop: {
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      ado_ping: [{ status: "offline", name: null, message: "連不到" }, { status: "ok", name: "王小明", message: "" }],
+      offline_get: { $by: "key", values: { [KEY]: copy([item(1, "副本裡的項目")]) } },
+      ado_work_items: [[item(2, "連上後的項目")]],
+    },
+  });
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_ping"));
+  await showWorkItems(page);
+  const host = page.locator("#workitems-host");
+  await host.getByText("副本裡的項目").waitFor({ timeout: 3000 });
+  const banner = page.locator("#panel-workitems .offline-banner");
+  await banner.waitFor();
+  assert.match(await banner.textContent(), /離線中/);
+  await host.locator(".workitems-status", { hasText: "連不上伺服器，顯示" }).waitFor({ timeout: 3000 });
+  const asked = async () => (await page.evaluate(() => window.__fake.calls)).filter((c) => c.cmd === "ado_work_items").length;
+  assert.equal(await asked(), 0, "離線時不去連伺服器");
+  await banner.locator("button", { hasText: "重試" }).click();
+  await banner.waitFor({ state: "hidden" });
+  await host.getByText("連上後的項目").waitFor();
+  assert.deepEqual(errors, []);
+  await context.close();
+});
