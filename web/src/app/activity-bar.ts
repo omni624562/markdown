@@ -27,7 +27,7 @@ import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { sortByGroup } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
 import { Slideshow, splitSlides, slideAtLine } from "../ui/slideshow.ts";
-import { SymbolPicker } from "../ui/symbol-picker.ts";
+import type { SymbolPicker } from "../ui/symbol-picker.ts";
 import { toast } from "../ui/toast.ts";
 import { setupWindowControls } from "../ui/window-controls.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
@@ -441,8 +441,20 @@ let tabMenu: { open(at: DOMRect): void; };
 
 export let contextMenu: ReturnType<typeof floatingMenu>;
 
-export // 在 init 時建立。
-let symbolPicker: SymbolPicker;
+let picker: Promise<SymbolPicker> | null = null;
+/** 插入符號（第一次打開時才載入符號表，約 15 KB）。 */
+export const symbolPicker = {
+  open(): void {
+    picker ??= import("../ui/symbol-picker.ts").then(
+      ({ SymbolPicker }) =>
+        new SymbolPicker((text) => {
+          app.editor.view.dispatch(app.editor.view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.symbol" });
+          app.editor.view.focus();
+        }),
+    );
+    void picker.then((p) => p.open()).catch(reportError);
+  },
+};
 
 let slideshow: Slideshow | null = null;
 
@@ -979,10 +991,6 @@ export function initActivityBar(): void {
     // 選單關閉後，指令面板裡的分頁指令回到「目前的分頁」。等點下的指令先讀到按右鍵的分頁。
     () => setTimeout(() => (app.menuTabId = null)),
   );
-  symbolPicker = new SymbolPicker((text) => {
-    app.editor.view.dispatch(app.editor.view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.symbol" });
-    app.editor.view.focus();
-  });
   templatePicker = new Picker<TemplateItem>({
     label: t("從範本新增文件"),
     placeholder: t("選擇範本"),

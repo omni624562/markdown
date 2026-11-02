@@ -13,6 +13,7 @@ import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
 import { COMMON_KINDS, isCustomKind, kindColor, kindKey } from "../work-item-colors.ts";
 import { ACCENTS, DEFAULT_PALETTE, PALETTES, type PaletteId, accentColors, parseAccent } from "../palette.ts";
+import { REPO_URL } from "../repo.ts";
 
 type ThemePref = "system" | "light" | "dark";
 
@@ -127,7 +128,6 @@ export interface ActivityHooks {
 }
 
 /** 原始碼與問題回報。 */
-export const REPO_URL = "https://github.com/omni624562/markdown";
 
 /** AI 區中，總開關關閉時一起停用的選項。 */
 const AI_DEPENDENT: (keyof Settings)[] = ["aiTool", "mcpServer", "aiTerminal", "markExternalChanges"];

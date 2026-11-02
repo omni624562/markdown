@@ -11,7 +11,7 @@ import { type Convert, loadConverter, conversionChanges, looksSimplified } from 
 import { type Settings, FONT_SIZE_RANGE } from "../settings.ts";
 import * as storage from "../storage.ts";
 import { sureFixes } from "../terms.ts";
-import { SettingsDialog } from "../ui/settings-dialog.ts";
+import type { SettingsDialog } from "../ui/settings-dialog.ts";
 import { clampSidebarWidth, setupSidebarResize } from "../ui/sidebar-resize.ts";
 import { setupSplitter } from "../ui/splitter.ts";
 import { toast } from "../ui/toast.ts";
@@ -208,12 +208,23 @@ export function fixTerms(): void {
     );
   }
 }
-export // 在 init 時建立。
-let settingsDialog: SettingsDialog;
+let dialog: Promise<SettingsDialog> | null = null;
 
-export function initSettingsUi(): void {
-  app.settings.subscribe(applySettings);
-  settingsDialog = new SettingsDialog(
+/** 設定對話框：第一次打開時才載入（約 40 KB），之前的 `refresh` 不需要做事（打開時會重畫）。 */
+export const settingsDialog = {
+  /** 開啟設定；`page` 是分類名稱（例如「AI 協作」）。 */
+  open(page?: string): void {
+    dialog ??= import("../ui/settings-dialog.ts").then(({ SettingsDialog }) => createSettingsDialog(SettingsDialog));
+    void dialog.then((d) => d.open(page)).catch(reportError);
+  },
+  /** 外部狀態改變（例如登入 GitHub）後更新畫面。 */
+  refresh(): void {
+    void dialog?.then((d) => d.refresh());
+  },
+};
+
+function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dialog.ts").SettingsDialog): SettingsDialog {
+  return new SettingsDialog(
     app.settings,
     {
       theme: () => app.themePref,
@@ -275,6 +286,10 @@ export function initSettingsUi(): void {
       add: () => void addActivityCommand().catch(reportError),
     },
   );
+}
+
+export function initSettingsUi(): void {
+  app.settings.subscribe(applySettings);
   void app.ado?.ready().then(() => {
     renderAdoTab();
     settingsDialog.refresh();
