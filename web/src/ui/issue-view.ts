@@ -126,6 +126,15 @@ function iconButton(label: string, iconName: string, run: () => void, keys?: str
   return b;
 }
 
+/** 焦點在可以打字的地方（輸入框、文字區、可編輯的內容）。 */
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || target.matches("input, textarea, select");
+}
+
+/** 上一頁、下一頁的快速鍵說明（滑鼠移到按鈕上看到的）。 */
+const navKeys = (arrow: string, key: string) => `${formatKeys(arrow)}${t("、")}${key}`;
+
 /** 支援 CSS Custom Highlight API 時用它標示（不改動內容的 DOM）。 */
 const highlights = typeof CSS !== "undefined" && "highlights" in CSS ? CSS.highlights : null;
 
@@ -434,10 +443,10 @@ export class IssueView {
     const title = (list: HistoryEntry[]) => list[list.length - 1]?.source.title;
     const label = (name: string, list: HistoryEntry[], keys: string) =>
       list.length
-        ? t("{label}：{title}（{keys}）", { label: name, title: title(list)!, keys: formatKeys(keys) })
-        : t("{label}（{keys}）", { label: name, keys: formatKeys(keys) });
-    this.#backBtn.title = label(t("返回上一頁"), this.#back, "Alt-←");
-    this.#forwardBtn.title = label(t("前往下一頁"), this.#forward, "Alt-→");
+        ? t("{label}：{title}（{keys}）", { label: name, title: title(list)!, keys })
+        : t("{label}（{keys}）", { label: name, keys });
+    this.#backBtn.title = label(t("返回上一頁"), this.#back, navKeys("Alt-←", "<"));
+    this.#forwardBtn.title = label(t("前往下一頁"), this.#forward, navKeys("Alt-→", ">"));
   }
 
   /** 有沒有「保留離線」；不能保留的回傳 null（分頁的右鍵選單裡不列出）。 */
@@ -660,6 +669,11 @@ export class IssueView {
     } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
       if (e.key === "ArrowLeft") this.back();
+      else this.forward();
+    } else if ((e.key === "<" || e.key === ">") && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping(e.target)) {
+      // 內容是唯讀的：在留言框、搜尋框等輸入的地方以外，< > 直接換上一頁、下一頁。
+      e.preventDefault();
+      if (e.key === "<") this.back();
       else this.forward();
     } else if (e.key === "Enter" && e.target === this.#findInput) {
       e.preventDefault();
