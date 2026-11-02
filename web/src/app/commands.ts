@@ -13,7 +13,7 @@ import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { PALETTES } from "../palette.ts";
 import { Palette } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
-import { REPO_URL } from "../ui/settings-dialog.ts";
+import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
