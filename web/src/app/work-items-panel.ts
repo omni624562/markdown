@@ -327,6 +327,69 @@ let workItemListed = new Set<number>();
 const workItemParentItems = new Map<number, AdoWorkItem & IssueSummary>();
 let workItemParentsLoading = false;
 
+/** 清單最多幾個工作項目（後端只取最近更新的這麼多個，見 ado_work_items）。 */
+const WORK_ITEM_LIMIT = 100;
+/**
+ * 「依上層項目分組」補齊的子項目（上層 → 子項目）：清單只有最近更新的 100 個，比較早更新的子項目
+ * 不在清單上，組裡就會比上層項目實際的子項目少；另外依目前的搜尋與篩選讀上層底下的子項目補進組裡。
+ */
+const workItemChildren = new Map<number, (AdoWorkItem & IssueSummary)[]>();
+/** 讀子項目用的搜尋與篩選；存的查詢、「只看這些」時是 null（不補）。 */
+let workItemChildScope: { search: string; filter: AdoWorkItemFilter } | null = null;
+/** 每次重新讀清單就換一代，舊的子項目結果不用。 */
+let workItemChildGen = 0;
+let workItemChildrenLoading: number | null = null;
+
+/** 清單重新讀取時：子項目跟著重讀（`scope` 是 null 時不補）。 */
+function resetWorkItemChildren(scope: { search: string; filter: AdoWorkItemFilter } | null): void {
+  workItemChildScope = scope;
+  workItemChildGen++;
+  workItemChildren.clear();
+}
+
+/** 組裡要補上的子項目（不在清單上的）；還沒讀過的上層在背景讀，讀到後重畫。 */
+function moreChildren(items: (AdoWorkItem & IssueSummary)[]): (AdoWorkItem & IssueSummary)[] {
+  const scope = workItemChildScope;
+  if (!scope || !desktop) return [];
+  const parents = [...new Set(items.map((w) => workItemParentOf.get(w.id)).filter((p): p is number => p != null))];
+  const missing = parents.filter((p) => !workItemChildren.has(p));
+  if (missing.length && workItemChildrenLoading !== workItemChildGen) {
+    const gen = (workItemChildrenLoading = workItemChildGen);
+    void desktop
+      .adoWorkItemChildren(missing, scope.search, scope.filter)
+      .then(({ links, items: found }) => {
+        if (gen !== workItemChildGen) return;
+        const byId = new Map(found.map((w) => [w.id, w]));
+        for (const p of missing) workItemChildren.set(p, []);
+        for (const [child, parent] of links) {
+          const w = byId.get(child);
+          if (!w) continue;
+          workItemParentOf.set(child, parent);
+          workItemChildren.get(parent)?.push(workItemRow(w));
+        }
+      })
+      // 讀不到（例如舊版伺服器不支援連結查詢）：組裡就只有清單上的，不另外提示。
+      .catch(() => {
+        if (gen === workItemChildGen) for (const p of missing) workItemChildren.set(p, []);
+      })
+      .finally(() => {
+        if (workItemChildrenLoading === gen) workItemChildrenLoading = null;
+        workItemsPanel?.rearrange();
+      });
+  }
+  const seen = new Set(items.map((w) => w.id));
+  const out: (AdoWorkItem & IssueSummary)[] = [];
+  for (const p of parents) {
+    for (const w of workItemChildren.get(p) ?? []) {
+      if (seen.has(w.id)) continue;
+      seen.add(w.id);
+      out.push(w);
+    }
+  }
+  // 清單是最近更新的在前面：補上的也照更新時間排。
+  return out.sort((a, b) => (b.changed ?? "").localeCompare(a.changed ?? ""));
+}
+
 function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
   const missing = items.map((w) => w.id).filter((id) => !workItemParentOf.has(id));
   if (missing.length) {
@@ -352,7 +415,8 @@ function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<A
     }
     return [{ title: null, items }];
   }
-  return groupByParent(items, workItemParentOf, workItemParentItems, t("沒有上層項目"), (item, id) =>
+  const extra = moreChildren(items);
+  return groupByParent(extra.length ? [...items, ...extra] : items, workItemParentOf, workItemParentItems, t("沒有上層項目"), (item, id) =>
     item ? t("{kind} {id}：{title}", { kind: item.kind, id: item.id, title: item.title }) : `#${id}`,
   );
 }
@@ -658,6 +722,7 @@ export function initWorkItemsPanel(): void {
         list: async (search, update) => {
           app.loadWorkItemFilterOptions();
           // 「只看這些」：圖示上的數字算的那些（指派給你、新的或有更新的），不用再讀一次。
+          resetWorkItemChildren(onlyUnseen && !search ? null : workItemQuery ? null : { search, filter: { ...app.workItemFilter } });
           if (onlyUnseen && !search) {
             const items = unseenItems();
             workItemListed = new Set(items.map((w) => w.id));
@@ -691,7 +756,9 @@ export function initWorkItemsPanel(): void {
               ? t("找到 {n} 個工作項目", { n })
               : app.isDefaultFilter()
                 ? t("指派給你、還沒結束的工作項目（{n}）", { n })
-                : t("符合篩選條件的工作項目（{n}）", { n })
+                : n >= WORK_ITEM_LIMIT
+                  ? t("符合篩選條件的工作項目（只列最近更新的 {n} 個）", { n })
+                  : t("符合篩選條件的工作項目（{n}）", { n })
             : search
               ? t("找不到符合的工作項目")
               : app.isDefaultFilter()
