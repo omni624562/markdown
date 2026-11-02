@@ -3563,3 +3563,12 @@ body.ado-offline .tb-card { cursor: default; }
 /* 離線時不能改：不顯示編輯按鈕。 */
 body.ado-offline .taskboard .tb-edit, body.ado-offline .taskboard .tb-add { display: none; }
 .tb-edit-dialog { width: min(440px, calc(100vw - 32px)); }
+
+/* 工作板上方的容量：每個人剩下的時間與排了多少工作（見 app/taskboard.ts 的 capacityStrip）。 */
+.tb-capacity { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.tb-cap { display: inline-flex; gap: 6px; align-items: center; min-width: 0; color: var(--muted); }
+.tb-cap-name { color: var(--fg); white-space: nowrap; }
+.tb-cap-bar { position: relative; width: 64px; height: 6px; overflow: hidden; border-radius: 3px; background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.tb-cap-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
+.tb-cap.over .tb-cap-bar > span { background: var(--danger); }
+.tb-cap.over .tb-cap-text { color: var(--danger); font-weight: 600; }

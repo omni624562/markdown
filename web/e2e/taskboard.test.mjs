@@ -206,3 +206,25 @@ test("工作板：改卡片的指派與工時、在上層項目底下新增 Task
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("工作板：上方顯示每個人的容量，排太多的標紅", async () => {
+  const { page, context, errors } = await open({
+    desktop: {
+      ...desktop,
+      // Sprint 結束日放在很遠的以後：不管哪天跑測試，梁朝為都還有時間。
+      ado_team_iterations: [[{ id: "i2", name: "Sprint 102", path: "產品\\Sprint 102", start: "2026-10-26T00:00:00Z", finish: "2099-12-31T00:00:00Z", current: true }]],
+      ado_board: [ITEMS.map((w) => (w.id === 1691088 ? { ...w, remaining: 3 } : w))],
+      ado_capacity: { members: [{ name: "梁朝為", perDay: 6, daysOff: [] }], teamDaysOff: [] },
+    },
+  });
+  await openBoard(page);
+  const strip = page.locator(".tb-capacity");
+  await strip.waitFor();
+  // 梁朝為有容量；許晉嘉、王小明有工作但不在團隊容量裡（時間不知道），標成排太多。
+  const people = await strip.locator(".tb-cap-name").allTextContents();
+  assert.ok(people.includes("梁朝為"));
+  assert.equal(await strip.locator(".tb-cap", { hasText: "梁朝為" }).getAttribute("class"), "tb-cap");
+  assert.match(await strip.locator(".tb-cap", { hasText: "許晉嘉" }).getAttribute("class"), /over/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

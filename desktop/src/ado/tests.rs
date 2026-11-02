@@ -1008,3 +1008,24 @@ fn api_version_maps_to_server_release() {
     assert!(diagnose::server_of("4.1").contains("2018"));
     assert!(diagnose::server_of("2.0").contains("2017"));
 }
+
+#[test]
+fn reads_capacity_from_old_and_new_servers() {
+    let old = json!({ "value": [{
+        "teamMember": { "displayName": "王小明" },
+        "activities": [{ "capacityPerDay": 4.0, "name": "Development" }, { "capacityPerDay": 2.0, "name": "Testing" }],
+        "daysOff": [{ "start": "2026-11-03T00:00:00Z", "end": "2026-11-04T00:00:00Z" }]
+    }]});
+    let team =
+        json!({ "daysOff": [{ "start": "2026-11-05T00:00:00Z", "end": "2026-11-05T00:00:00Z" }] });
+    let c = capacity_of(&old, Some(&team));
+    assert_eq!(c.members.len(), 1);
+    assert_eq!(c.members[0].per_day, 6.0);
+    assert_eq!(c.members[0].days_off.len(), 1);
+    assert_eq!(c.team_days_off.len(), 1);
+    let new = json!({ "teamMembers": [{ "teamMember": { "displayName": "李大同" }, "activities": [], "daysOff": [] }] });
+    let c = capacity_of(&new, None);
+    assert_eq!(c.members[0].name, "李大同");
+    assert_eq!(c.members[0].per_day, 0.0);
+    assert!(c.team_days_off.is_empty());
+}
