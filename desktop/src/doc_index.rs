@@ -205,7 +205,7 @@ pub async fn update_doc(
         crate::history::on_save(&app, &path, Some(&before), &text);
         // 這個檔案也在分頁中開著（例如沒有未存檔的變更）時，更新記錄的雜湊，下次存檔才不會誤報衝突。
         let known = app.state::<KnownFiles>();
-        let mut known = known.0.lock().unwrap();
+        let mut known = known.0.lock();
         if let Some(state) = known.get_mut(&path) {
             state.hash = Some(hash_bytes(&encode(&text, state.format)));
         }

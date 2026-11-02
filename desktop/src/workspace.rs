@@ -2,11 +2,11 @@
 //!
 //! 所有路徑都必須位於目前開啟的工作區內；前端傳來的路徑一律先檢查。
 
+use parking_lot::Mutex;
 use std::cmp::Ordering;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
-use std::sync::Mutex;
 use std::time::Duration;
 
 use grep_regex::RegexMatcherBuilder;
@@ -46,12 +46,12 @@ pub struct Workspace(Mutex<Option<PathBuf>>);
 
 impl Workspace {
     pub fn root(&self) -> Option<PathBuf> {
-        self.0.lock().unwrap().clone()
+        self.0.lock().clone()
     }
 
     /// 改開遠端（WebDAV）工作區時關閉本機工作區。
     pub fn clear(&self) {
-        *self.0.lock().unwrap() = None;
+        *self.0.lock() = None;
     }
 
     pub fn contains(&self, path: &Path) -> bool {
@@ -275,7 +275,7 @@ impl FolderInfo {
 }
 
 fn activate(app: &AppHandle, root: PathBuf, workspace: &Workspace, trust: &Trust) -> FolderInfo {
-    *workspace.0.lock().unwrap() = Some(root.clone());
+    *workspace.0.lock() = Some(root.clone());
     app.state::<crate::dav::Dav>().disconnect();
     trust.add_folder(app, &root);
     // 網路磁碟的監看要先掃描整個資料夾，可能很久，放在背景進行。
@@ -776,7 +776,7 @@ pub fn search_dir(
                 return WalkState::Continue;
             }
             let n = total.fetch_add(matches.len(), AtomicOrdering::Relaxed) + matches.len();
-            files.lock().unwrap().push(FileMatches {
+            files.lock().push(FileMatches {
                 rel: rel_path(root, entry.path()),
                 path: path_string(entry.path()),
                 matches,
@@ -791,7 +791,7 @@ pub fn search_dir(
     if cancelled() {
         return Ok(empty());
     }
-    let mut files = files.into_inner().unwrap();
+    let mut files = files.into_inner();
     files.sort_by(|a, b| a.rel.cmp(&b.rel));
     Ok(SearchResult {
         files,
