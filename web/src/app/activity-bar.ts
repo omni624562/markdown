@@ -34,7 +34,7 @@ import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { aiFound } from "./ai-terminal.ts";
 import { reportError } from "./git-actions.ts";
 import { HISTORY_COMMANDS, historyView, markHistoryButtons } from "./git-history.ts";
-import { keepItem, selectItem } from "./item-tabs.ts";
+import { selectItem } from "./item-tabs.ts";
 import { selectedText } from "./new-work-item.ts";
 import { issueSide, issueView, toggleIssueSide } from "./wiki-edit.ts";
 import { barShortcuts, openBarShortcut, removeBarShortcut, shortcutBar, shortcutName, setBarShortcuts } from "./work-items-panel.ts";
@@ -951,8 +951,7 @@ export function initActivityBar(): void {
         checked: () => app.tabPinned(app.menuItemTab()?.id ?? app.menuTab().id),
         run: () => void app.commands.run("tab-pin"),
       },
-      // 工作項目等的分頁：預覽分頁留下來、和文件並排。
-      { label: t("保留分頁"), icon: "pin", when: () => !!app.menuItemTab()?.preview, run: () => keepItem(app.menuItemTab()!.id) },
+      // 工作項目等的分頁：和文件並排。
       {
         label: t("在文件右邊並排顯示"),
         icon: "columns-2",

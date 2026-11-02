@@ -1275,7 +1275,6 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .tab[data-origin="repo"] .tab-icon { color: light-dark(#c2410c, #fb923c); }
 /* 工作項目的分頁：圖示用類型的顏色（Bug 紅、Task 黃、User Story 藍…，設定裡可以改）。 */
 .tab[data-wi-kind] .tab-icon { color: var(--kind); opacity: 1; }
-.tab.preview .tab-name { font-style: italic; }
 /* 並排顯示在文件右邊的那一個：底下一條線（目前的分頁是左邊的文件）。 */
 .tab.side-shown { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
 @media (pointer: coarse) {

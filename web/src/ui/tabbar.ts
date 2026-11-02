@@ -19,8 +19,6 @@ export interface TabInfo {
     icon: string;
     /** 來源（`ado`、`wiki`…），決定圖示的顏色。 */
     origin: string;
-    /** 預覽分頁（名稱斜體）：點別的項目時會換掉。 */
-    preview: boolean;
     /** 並排顯示在文件右邊。 */
     side: boolean;
     /** 工作項目的類型（`kindKey`）：圖示用這個類型的顏色。 */
@@ -38,8 +36,6 @@ export interface TabBarHandlers {
   /** 在分頁上按右鍵（或 Shift+F10、選單鍵）。 */
   menu(id: string, at: DOMRect): void;
   unpin(id: string): void;
-  /** 雙擊預覽分頁：留下來。 */
-  keep(id: string): void;
 }
 
 /**
@@ -149,7 +145,6 @@ export class TabBar {
         tab.classList.toggle("pinned", !!info.pinned);
         tab.classList.toggle("tab-wiki", info.source === "wiki");
         tab.classList.toggle("tab-item", !!info.item);
-        tab.classList.toggle("preview", !!info.item?.preview);
         tab.classList.toggle("side-shown", !!info.item?.side);
         if (info.item) tab.dataset.origin = info.item.origin;
         if (info.item?.kind) tab.dataset.wiKind = info.item.kind;
@@ -191,8 +186,7 @@ export class TabBar {
         tab.addEventListener("click", () => this.#handlers.select(info.id));
         tab.addEventListener("dblclick", (e) => {
           if ((e.target as HTMLElement).closest(".tab-close")) return;
-          if (info.item) this.#handlers.keep(info.id);
-          else this.startRename(info.id);
+          if (!info.item) this.startRename(info.id);
         });
         tab.addEventListener("auxclick", (e) => {
           if (e.button === 1) {

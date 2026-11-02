@@ -1,40 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type ItemPlacing, arrangeTabs, followInTab, itemGroup, itemTabText, neighborAfterClose, parseSavedItemTabs, placeItem, placeNewItem } from "./item-tabs.ts";
-
-test("開啟時：已經開著就切過去，否則換掉預覽分頁，要留著的或沒有預覽分頁時新開", () => {
-  const w = "workitem" as const;
-  const tabs = [
-    { key: "ado:1", preview: false, group: w },
-    { key: "ado:2", preview: true, group: w },
-  ];
-  assert.deepEqual(placeItem(tabs, "ado:2", false, w), { kind: "same", index: 1 });
-  assert.deepEqual(placeItem(tabs, "ado:1", true, w), { kind: "same", index: 0 });
-  assert.deepEqual(placeItem(tabs, "ado:3", false, w), { kind: "preview", index: 1 });
-  assert.deepEqual(placeItem(tabs, "ado:3", true, w), { kind: "new" });
-  assert.deepEqual(placeItem([{ key: "ado:1", preview: false, group: w }], "ado:3", false, w), { kind: "new" });
-  assert.deepEqual(placeItem([], "ado:3", false, w), { kind: "new" });
-});
-
-test("工作項目與 Wiki 頁面各自有預覽分頁，互不覆蓋", () => {
-  const tabs = [
-    { key: "ado:2", preview: true, group: "workitem" as const },
-    { key: "wiki:w:/a", preview: true, group: "wiki" as const },
-  ];
-  assert.deepEqual(placeItem(tabs, "wiki:w:/b", false, "wiki"), { kind: "preview", index: 1 });
-  assert.deepEqual(placeItem(tabs, "ado:3", false, "workitem"), { kind: "preview", index: 0 });
-  // 只有工作項目的預覽分頁時，開 Wiki 頁面是新的分頁。
-  assert.deepEqual(placeItem([tabs[0]], "wiki:w:/b", false, "wiki"), { kind: "new" });
-  assert.equal(itemGroup("ado"), "workitem");
-  assert.equal(itemGroup("github"), "workitem");
-  assert.equal(itemGroup("wiki"), "wiki");
-  assert.equal(itemGroup("repo"), null);
-  // 工作項目裡的附件留在同一個分頁；Wiki 連結開在 Wiki 的分頁。
-  assert.ok(followInTab("workitem", "repo"));
-  assert.ok(followInTab("workitem", "ado"));
-  assert.ok(!followInTab("workitem", "wiki"));
-  assert.ok(!followInTab("wiki", "ado"));
-});
+import { type ItemPlacing, arrangeTabs, itemTabText, neighborAfterClose, parseSavedItemTabs, placeNewItem } from "./item-tabs.ts";
 
 test("關掉分頁後切到右邊那一個，最右邊時切到左邊", () => {
   assert.equal(neighborAfterClose(["a", "b", "c"], "b"), "c");
@@ -53,17 +19,17 @@ test("讀回存下的分頁", () => {
     "x",
   ]);
   assert.deepEqual(parseSavedItemTabs(raw), [
-    { key: "ado:1", name: "修正登入", title: "Bug 1：修正登入", origin: "ado", preview: true, ref: { workItem: 1, kind: "Bug", title: "修正登入" }, after: null, pinned: false },
-    // 預覽分頁只留一個；沒有滑鼠提示時用名稱。
-    { key: "wiki:w:/安裝", name: "安裝", title: "安裝", origin: "wiki", preview: false, ref: { wiki: "w", wikiName: "P.wiki", path: "/安裝" }, after: null, pinned: false },
+    // 舊版存的 preview（預覽分頁）不再使用，讀回時拿掉。
+    { key: "ado:1", name: "修正登入", title: "Bug 1：修正登入", origin: "ado", ref: { workItem: 1, kind: "Bug", title: "修正登入" }, after: null, pinned: false },
+    // 沒有滑鼠提示時用名稱。
+    { key: "wiki:w:/安裝", name: "安裝", title: "安裝", origin: "wiki", ref: { wiki: "w", wikiName: "P.wiki", path: "/安裝" }, after: null, pinned: false },
   ]);
-  // 位置與固定；固定的不是預覽分頁。
+  // 位置與固定。
   const placed = parseSavedItemTabs(
     JSON.stringify([{ key: "ado:5", name: "x", origin: "ado", preview: true, pinned: true, after: "d1", ref: { workItem: 5, kind: "Task", title: "x" } }]),
   );
   assert.equal(placed[0].after, "d1");
   assert.equal(placed[0].pinned, true);
-  assert.equal(placed[0].preview, false);
   assert.deepEqual(parseSavedItemTabs(null), []);
   assert.deepEqual(parseSavedItemTabs("{"), []);
   assert.deepEqual(parseSavedItemTabs("{}"), []);

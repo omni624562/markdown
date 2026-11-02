@@ -1,22 +1,18 @@
 /**
  * 工作項目、Wiki 頁面、GitHub issue 等唯讀內容的分頁：和文件的分頁排在同一列，新的放在目前分頁的右邊，
  * 也可以固定；右鍵選單、Ctrl+Tab、Ctrl+Shift+T、Ctrl+P 和文件一樣。
- * 點清單上的項目開在「預覽分頁」（名稱斜體），再點別的會換掉它；雙擊分頁（或右鍵「保留分頁」）才留下來。
- * 工作項目與 Wiki 頁面各自有預覽分頁，互不覆蓋；內容裡連到另一種的連結也開在那一種的分頁。
+ * 從側邊欄清單、Ctrl+P、圖示列捷徑開的，每一項各自一個分頁（已經開著就切過去）；
+ * 分頁內容裡的連結（不管連到 Wiki 頁面還是工作項目）都在同一個分頁往下走，可以按「上一頁」回來。
  * 一次顯示一個（蓋住編輯區，或並排在文件右邊）；切換分頁時換上那個分頁的內容、上一頁與捲動位置。
  */
 import { t } from "../i18n.ts";
 import {
   SAVED_ITEM_TABS_LIMIT,
-  type ItemGroup,
   type SavedItemTab,
   arrangeTabs,
-  followInTab,
-  itemGroup,
   itemTabText,
   neighborAfterClose,
   parseSavedItemTabs,
-  placeItem,
   placeNewItem,
 } from "../item-tabs.ts";
 import * as storage from "../storage.ts";
@@ -39,10 +35,6 @@ export interface ItemTab {
   /** 來源（`ado`、`wiki`、`github`、`repo`）。 */
   origin: string;
   icon: string;
-  /** 預覽分頁：點別的同一種項目時換掉它。 */
-  preview: boolean;
-  /** 種類（工作項目或 Wiki 頁面）：各自有預覽分頁；內容裡連到另一種的連結開在那一種的分頁。 */
-  group: ItemGroup;
   /** 上次顯示時的狀態；從上次還原、還沒開過的是 null。 */
   state: IssueViewState | null;
   /** 下次開啟時怎麼重新開啟（工作項目、Wiki 頁面才有）。 */
@@ -76,8 +68,6 @@ export const itemTabs: ItemTab[] = parseSavedItemTabs(storage.load("item-tabs"))
   title: s.title,
   origin: s.origin,
   icon: ORIGIN_ICONS[s.origin],
-  preview: s.preview,
-  group: itemGroup(s.origin) ?? "workitem",
   state: null,
   ref: s.ref,
   after: s.after,
@@ -91,7 +81,7 @@ function persist(): void {
   const saved: SavedItemTab[] = itemTabs
     .filter((tab): tab is ItemTab & { ref: Shortcut; origin: "ado" | "wiki" } => !!tab.ref && (tab.origin === "ado" || tab.origin === "wiki"))
     .slice(0, SAVED_ITEM_TABS_LIMIT)
-    .map(({ key, name, title, origin, preview, ref, after, pinned }) => ({ key, name, title, origin, preview, ref, after, pinned }));
+    .map(({ key, name, title, origin, ref, after, pinned }) => ({ key, name, title, origin, ref, after, pinned }));
   storage.save("item-tabs", JSON.stringify(saved));
 }
 
@@ -116,10 +106,10 @@ export function itemTabInfo(tab: ItemTab): TabInfo {
   return {
     id: tab.id,
     name: text.name,
-    title: tab.preview ? t("{title}（預覽：點別的項目會換掉這個分頁，雙擊留下來）", { title: text.title }) : text.title,
+    title: text.title,
     dirty: false,
     pinned: tab.pinned,
-    item: { icon: tab.icon, origin: tab.origin, preview: tab.preview, side: sideShown() && tab === shownItem, kind: text.kind },
+    item: { icon: tab.icon, origin: tab.origin, side: sideShown() && tab === shownItem, kind: text.kind },
   };
 }
 
@@ -149,41 +139,25 @@ async function showTab(tab: ItemTab, state = tab.state): Promise<void> {
 }
 
 /**
- * 開啟工作項目、Wiki 頁面等。內容裡的連結（焦點在檢視裡）在同一個分頁往下走，可以按「上一頁」回來；
- * 其他（側邊欄清單、捷徑）已經開著就切過去，否則開在預覽分頁；`keep` 是新開一個留下來的分頁。
+ * 開啟工作項目、Wiki 頁面等。
+ * - 內容裡的連結（焦點在檢視裡）：不管連到哪一種內容，都在同一個分頁往下走，可以按「上一頁」回來。
+ * - 其他（側邊欄清單、Ctrl+P、圖示列捷徑）：已經開著就切過去，否則新開一個分頁。
  */
-export function openItem(source: IssueSource, keep = false): Promise<void> {
+export function openItem(source: IssueSource): Promise<void> {
   historyView?.close();
-  // 指定了位置（例如 Wiki 頁面結束編輯，換回閱讀）：新開一個留下來的分頁放在那裡。
+  // 指定了位置（例如 Wiki 頁面結束編輯，換回閱讀）：新開的分頁放在那裡。
   const near = besideNext;
   besideNext = undefined;
-  if (near !== undefined) keep = true;
-  // 內容裡的連結：同一種內容（或附件之類）在同一個分頁往下走；另一種（例如工作項目裡的 Wiki 連結）開在它自己那種的分頁。
-  if (!keep && shownItem && issueView.isOpen && issueView.hasFocus && followInTab(shownItem.group, source.origin.kind)) {
-    return issueView.show(source);
-  }
-  const group = itemGroup(source.origin.kind) ?? shownItem?.group ?? "workitem";
-  const place = placeItem(itemTabs, source.key, keep, group);
-  if (place.kind === "same") {
-    const tab = itemTabs[place.index];
-    if (keep && tab.preview) {
-      tab.preview = false;
-      changed();
-    }
+  if (issueView.takeInsideClick() && near === undefined && shownItem) return issueView.show(source);
+  const tab = itemTabs.find((x) => x.key === source.key);
+  if (tab) {
     // 已經顯示著：用新的資料重新開啟（例如標題改了），位置不變。
     if (tab === shownItem && issueView.isOpen) return issueView.show(source);
     const old = tab.state;
     return showTab(tab, old ? { ...old, source } : { source, back: [], forward: [], scroll: 0 });
   }
-  if (place.kind === "preview") {
-    const tab = itemTabs[place.index];
-    const old = tab === shownItem && issueView.isOpen ? issueView.snapshot() : tab.state;
-    // 換掉預覽分頁時，原本的內容記到這個分頁的「上一頁」。
-    const back = old ? [...old.back, { source: old.source, scroll: old.scroll }].slice(-50) : [];
-    return showTab(tab, { source, back, forward: [], scroll: 0 });
-  }
-  const tab = addItemTab({ key: source.key, name: source.title, origin: source.origin.kind, icon: source.origin.icon, ref: null, group }, !keep, near);
-  return showTab(tab, { source, back: [], forward: [], scroll: 0 });
+  const added = addItemTab({ key: source.key, name: source.title, origin: source.origin.kind, icon: source.origin.icon, ref: null }, near);
+  return showTab(added, { source, back: [], forward: [], scroll: 0 });
 }
 
 /** 下一個開啟的項目放在這個分頁的右邊（id；null 是一般分頁的最前面）；undefined 是照平常的規則。 */
@@ -217,14 +191,13 @@ export function anchorItems(tabs: ItemTab[], docId: string): void {
 
 /** 新增一個項目分頁，放在目前分頁（顯示中的項目，或目前的文件）的右邊。 */
 function addItemTab(
-  from: { key: string; name: string; origin: string; icon: string; ref: Shortcut | null; group: ItemGroup },
-  preview: boolean,
+  from: { key: string; name: string; origin: string; icon: string; ref: Shortcut | null },
   near?: string | null,
 ): ItemTab {
   const id = newId();
   // 放在 `near` 的右邊（null：一般分頁的最前面）；沒給時放在目前分頁的右邊。
   const at = placeNewItem(app.docs, itemTabs, near === undefined ? (shownItem?.id ?? app.active.id) : (near ?? ""));
-  const tab: ItemTab = { id, ...from, title: from.name, preview, state: null, after: at.after, pinned: false };
+  const tab: ItemTab = { id, ...from, title: from.name, state: null, after: at.after, pinned: false };
   itemTabs.splice(at.index, 0, tab);
   return tab;
 }
@@ -266,14 +239,6 @@ export function hideItem(): void {
   shownItem = null;
   issueView.close();
   app.renderTabs();
-}
-
-/** 預覽分頁留下來（不會被換掉）。 */
-export function keepItem(id: string): void {
-  const tab = findItemTab(id);
-  if (!tab?.preview) return;
-  tab.preview = false;
-  changed();
 }
 
 /** 關掉的項目分頁，記下來給「重新開啟關閉的分頁」用。 */
@@ -325,19 +290,17 @@ export function closeItemsWhere(test: (key: string) => boolean): void {
 
 /** 重新開啟關掉的項目分頁（Ctrl+Shift+T）：看過的內容直接顯示，從上次還原、還沒開過的重新讀取。 */
 export function reopenItem(closed: ClosedItem): void {
-  const group = itemGroup(closed.origin) ?? "workitem";
-  const tab = addItemTab({ key: closed.key, name: closed.name, origin: closed.origin, icon: closed.icon, ref: closed.ref, group }, false);
+  const tab = addItemTab({ key: closed.key, name: closed.name, origin: closed.origin, icon: closed.icon, ref: closed.ref });
   tab.state = closed.state;
   changed();
   void showTab(tab);
 }
 
-/** 固定或取消固定項目分頁（固定的不是預覽分頁）。 */
+/** 固定或取消固定項目分頁。 */
 export function setItemPinned(id: string, pinned: boolean): void {
   const tab = findItemTab(id);
   if (!tab) return;
   tab.pinned = pinned;
-  if (pinned) tab.preview = false;
   changed();
 }
 
