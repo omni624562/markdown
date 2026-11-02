@@ -612,6 +612,12 @@ export const ui: Record<string, Translation> = {
   "連不上伺服器，顯示 {time} 存下的資料": "Couldn't reach the server; showing data saved at {time}",
   "顯示的是 {time} 存下的內容，正在更新…": "Showing content saved at {time}, updating…",
   "上次": "last time",
+  "選單列出哪些 Wiki（常用的）": "Wikis to list in the menu (favorites)",
+  "選單列出哪些專案（常用的）": "Projects to list in the menu (favorites)",
+  "顯示全部（{n}）": "Show all ({n})",
+  "只顯示常用": "Favorites only",
+  "常用的{label}：{n} 個（按一下修改）": "Favorite {label}: {n} (click to change)",
+  "設定常用的{label}（選單只列常用的）": "Choose favorite {label} (the menu lists only those)",
   "目前連不到 Azure DevOps 伺服器（離線中），連上之後再試一次": "Can't reach the Azure DevOps server right now (offline). Try again once you're connected.",
   "離線中：連不到 Azure DevOps，顯示的是之前存下的資料；改狀態、留言、編輯 Wiki 等要等連上之後。":
     "Offline: can't reach Azure DevOps, so this is data saved earlier. Changing states, commenting and editing the Wiki have to wait until you're connected.",

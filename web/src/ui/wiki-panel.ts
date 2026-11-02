@@ -6,6 +6,7 @@ import { t } from "../i18n.ts";
 import { flattenPages, pageName, snippetParts } from "../wiki-text.ts";
 import { icon } from "./icons.ts";
 import { setupMenu } from "./menu.ts";
+import { FavoriteSelect } from "./favorite-select.ts";
 import { MultiSelect } from "./multi-select.ts";
 import { noteCopy, showLoadError } from "./issues-panel.ts";
 
@@ -28,6 +29,8 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   forget?(): void;
   /** 在主要區域開啟頁面。 */
   open(wiki: W, path: string): void;
+  /** 常用的 Wiki（id）：選單只列這些。 */
+  favorites?: { load(): string[]; save(ids: string[]): void };
   /** 上次選的 Wiki。 */
   load(): string | null;
   save(id: string): void;
@@ -78,7 +81,7 @@ const CONTENT_DELAY = 500;
 
 export class WikiPanel<W extends WikiInfo> {
   #h: WikiPanelHooks<W>;
-  #select: HTMLSelectElement;
+  #select: FavoriteSelect;
   /** 「新增頁面」（最上層）。 */
   #newBtn: HTMLButtonElement;
   #input: HTMLInputElement;
@@ -123,13 +126,17 @@ export class WikiPanel<W extends WikiInfo> {
     el.classList.add("workitems", "wiki-panel");
     const bar = document.createElement("div");
     bar.className = "workitems-filters wiki-filters";
-    this.#select = document.createElement("select");
-    this.#select.className = "workitems-select";
-    this.#select.setAttribute("aria-label", "Wiki");
-    this.#select.addEventListener("change", () => {
-      const wiki = this.#wikis.find((w) => w.id === this.#select.value) ?? null;
-      if (wiki) this.#h.save(wiki.id);
-      void this.#loadPages(wiki);
+    // 只列常用的 Wiki（旁邊的星號勾選），最下面可以「顯示全部」。
+    this.#select = new FavoriteSelect({
+      label: "Wiki",
+      caption: t("選單列出哪些 Wiki（常用的）"),
+      load: () => hooks.favorites?.load() ?? [],
+      save: (ids) => hooks.favorites?.save(ids),
+      onChange: (id) => {
+        const wiki = this.#wikis.find((w) => w.id === id) ?? null;
+        if (wiki) this.#h.save(wiki.id);
+        void this.#loadPages(wiki);
+      },
     });
     this.#newBtn = document.createElement("button");
     this.#newBtn.type = "button";
@@ -142,7 +149,7 @@ export class WikiPanel<W extends WikiInfo> {
     this.#newBtn.addEventListener("click", () => {
       if (this.#wiki) this.#h.create?.(this.#wiki, null);
     });
-    bar.append(this.#select, this.#newBtn);
+    bar.append(this.#select.select, this.#select.star, this.#newBtn);
     this.#input = document.createElement("input");
     this.#input.type = "search";
     this.#input.className = "workitems-search";
@@ -293,7 +300,7 @@ export class WikiPanel<W extends WikiInfo> {
     this.#wikis = [];
     this.#wiki = null;
     this.#pages = [];
-    this.#select.replaceChildren();
+    this.#select.setItems([], "");
     this.#list.replaceChildren();
     this.#quick.replaceChildren();
     this.#quick.hidden = true;
@@ -314,22 +321,18 @@ export class WikiPanel<W extends WikiInfo> {
       });
       if (seq !== this.#seq) return;
       this.#wikis = wikis;
-      this.#select.replaceChildren(
-        ...wikis.map((w) => {
-          const o = document.createElement("option");
-          o.value = w.id;
-          // 專案 Wiki 的名稱本來就是「專案.wiki」，不用再加專案名稱。
-          o.textContent = w.name.toLowerCase().startsWith(w.project.toLowerCase())
-            ? w.name
-            : t("{project}／{name}", { project: w.project, name: w.name });
-          return o;
-        }),
-      );
-      this.#select.hidden = wikis.length < 2;
       // 等著要標出的頁面在另一個 Wiki：直接讀那一個。
       const keep = this.#pendingReveal?.wiki ?? this.#wiki?.id ?? this.#h.load();
       const wiki = wikis.find((w) => w.id === keep) ?? wikis[0] ?? null;
-      if (wiki) this.#select.value = wiki.id;
+      this.#select.setItems(
+        wikis.map((w) => [
+          w.id,
+          // 專案 Wiki 的名稱本來就是「專案.wiki」，不用再加專案名稱。
+          w.name.toLowerCase().startsWith(w.project.toLowerCase()) ? w.name : t("{project}／{name}", { project: w.project, name: w.name }),
+        ]),
+        wiki?.id ?? "",
+      );
+      this.#select.hidden = wikis.length < 2;
       await this.#loadPages(wiki, quiet && wiki?.id === this.#wiki?.id);
     } catch (e) {
       if (seq !== this.#seq) return;

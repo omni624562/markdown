@@ -131,3 +131,32 @@ test("工作板：連不上伺服器時用上次存下的副本，標出是幾�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("工作板：專案選單只列常用的，最下面可以顯示全部", async () => {
+  const { page, context, errors } = await open({
+    desktop: { ...desktop, ado_work_item_filters: { projects: ["ALM", "產品", "CUB"], kinds: [] } },
+  });
+  await page.keyboard.press("Control+Shift+P");
+  await page.locator("dialog[open] input").first().fill("顯示工作板");
+  await page.keyboard.press("Enter");
+  await page.locator("#board-project option").first().waitFor({ state: "attached" });
+  const options = () => page.$$eval("#board-project option", (l) => l.map((o) => o.textContent));
+  assert.deepEqual(await options(), ["ALM", "產品", "CUB"], "沒設常用時全部列出");
+  // 星號：只選「產品」當常用的。
+  await page.locator("#board-host .favorite-toggle").click();
+  const row = page.locator(".multi-select-pop:popover-open .multi-select-item", { hasText: "產品" });
+  await row.hover();
+  await row.locator(".multi-select-only").click();
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelectorAll("#board-project option").length === 4);
+  const shown = await options();
+  assert.equal(shown[0], "ALM", "目前選的不是常用的也留著");
+  assert.equal(shown[1], "產品");
+  assert.match(shown[3], /顯示全部（3）/);
+  await page.selectOption("#board-project", { label: shown[3] });
+  await page.waitForFunction(() => [...document.querySelectorAll("#board-project option")].some((o) => o.textContent === "只顯示常用"));
+  assert.equal(await page.inputValue("#board-project"), "ALM", "切換顯示全部時選的不變");
+  assert.equal(await page.locator("#board-host .favorite-toggle.active").count(), 1);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

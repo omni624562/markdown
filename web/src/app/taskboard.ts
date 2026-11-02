@@ -15,6 +15,8 @@ import { stateTone } from "../workitem-chips.ts";
 import { kindKey } from "../work-item-colors.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { app } from "./context.ts";
+import { favoriteProjects } from "./favorite-lists.ts";
+import { FavoriteSelect } from "../ui/favorite-select.ts";
 import { type Freshness, forgetListCopies, freshnessOf, withOfflineCopy } from "./offline-copies.ts";
 import { copyTime } from "../ui/issues-panel.ts";
 import { reportError } from "./git-actions.ts";
@@ -324,6 +326,14 @@ function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem
 
 // ---- 側邊欄 -------------------------------------------------------------------
 
+/** 專案選單與旁邊的星號（常用的專案）排在同一列。 */
+function projectRow(project: FavoriteSelect): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "tb-project-row";
+  row.append(project.select, project.star);
+  return row;
+}
+
 function select(id: string, label: string): HTMLSelectElement {
   const sel = document.createElement("select");
   sel.id = id;
@@ -347,7 +357,16 @@ export function boardPanelShown(): void {
 
 async function fillPanel(): Promise<void> {
   const host = app.$("#board-host");
-  const project = select("board-project", t("專案"));
+  // 專案只列常用的（旁邊的星號勾選），最下面可以「顯示全部」。
+  const project = new FavoriteSelect({
+    label: t("專案"),
+    caption: t("選單列出哪些專案（常用的）"),
+    load: favoriteProjects.load,
+    save: favoriteProjects.save,
+    onChange: () => void loadTeams().catch(reportError),
+  });
+  project.select.id = "board-project";
+  project.select.title = t("專案");
   const team = select("board-team", t("團隊"));
   const sprint = select("board-sprint", t("Sprint"));
   const who = select("board-person", t("人員"));
@@ -362,7 +381,7 @@ async function fillPanel(): Promise<void> {
   open.append(icon("layout-grid"), t("開啟工作板"));
   const filters = document.createElement("div");
   filters.className = "workitems-filters tb-filters";
-  filters.append(project, team, sprint, who);
+  filters.append(projectRow(project), team, sprint, who);
   const hint = Object.assign(document.createElement("p"), { className: "workitems-status", textContent: t("拖曳卡片到別的欄就是改狀態；點卡片開啟工作項目，按 < 回到工作板。") });
   host.replaceChildren(filters, open, hint);
 
@@ -373,9 +392,11 @@ async function fillPanel(): Promise<void> {
     boardPanelShown();
   };
   const projects = (await withOfflineCopy("wi-filters", () => desktop!.adoWorkItemFilters(), refill)).projects;
-  for (const p of projects) project.append(new Option(p, p));
   const savedProject = storage.load("board-project");
-  project.value = savedProject && projects.includes(savedProject) ? savedProject : (projects[0] ?? "");
+  project.setItems(
+    projects.map((p) => [p, p]),
+    savedProject && projects.includes(savedProject) ? savedProject : (projects[0] ?? ""),
+  );
 
   let teams: AdoTeam[] = [];
   let sprints: AdoTeamIteration[] = [];
@@ -405,7 +426,6 @@ async function fillPanel(): Promise<void> {
     if (tm) storage.save("board-team", tm.id);
     if (it) storage.save("board-sprint", it.id);
   };
-  project.addEventListener("change", () => void loadTeams().catch(reportError));
   team.addEventListener("change", () => void loadSprints().then(openBoard, reportError));
   sprint.addEventListener("change", () => {
     remember();
