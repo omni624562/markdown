@@ -9,11 +9,11 @@
 //! - 預設只允許 HTTPS；區域網路內的 HTTP 要使用者另外確認。
 //! - 密碼存在 Windows 認證管理員（其他平台只記在這次開啟期間的記憶體裡），不會傳給前端。
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
 use std::time::Duration;
 
 use base64::Engine;
@@ -327,9 +327,9 @@ pub struct Dav {
 /// （原本要等到刪除、重新連線才會清掉，開過的檔案越多，每 30 秒要檢查的越多）。
 #[tauri::command]
 pub fn dav_close(path: String, dav: State<'_, Dav>) {
-    dav.etags.lock().unwrap().remove(&path);
-    dav.read.lock().unwrap().remove(&path);
-    dav.notified.lock().unwrap().remove(&path);
+    dav.etags.lock().remove(&path);
+    dav.read.lock().remove(&path);
+    dav.notified.lock().remove(&path);
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -410,7 +410,6 @@ impl Dav {
         let session = self
             .session
             .lock()
-            .unwrap()
             .clone()
             .ok_or_else(|| tr!("還沒有連線到遠端資料夾"))?;
         if session.conn.prefix() != prefix {
@@ -421,16 +420,16 @@ impl Dav {
 
     /// 目前連著 SSH 時，給內嵌終端機用的 (帳號, 主機設定)。
     pub fn ssh_target(&self) -> Option<(String, crate::ssh::SshTarget)> {
-        let session = self.session.lock().unwrap().clone()?;
+        let session = self.session.lock().clone()?;
         let target = session.conn.ssh.clone()?;
         Some((session.conn.username.clone(), target))
     }
 
     /// 改開本機資料夾時中斷遠端連線。
     pub fn disconnect(&self) {
-        *self.session.lock().unwrap() = None;
-        self.etags.lock().unwrap().clear();
-        self.read.lock().unwrap().clear();
+        *self.session.lock() = None;
+        self.etags.lock().clear();
+        self.read.lock().clear();
     }
 }
 
@@ -473,10 +472,7 @@ pub(crate) fn keep_password(dav: &Dav, id: &str, password: String, remember: boo
         if !remember {
             forget_password(id);
         }
-        dav.passwords
-            .lock()
-            .unwrap()
-            .insert(id.to_string(), password);
+        dav.passwords.lock().insert(id.to_string(), password);
     }
 }
 
@@ -550,7 +546,7 @@ pub async fn dav_reconnect(
         .find(|c| c.id == id)
         .ok_or_else(|| tr!("找不到這個遠端連線，請重新設定"))?;
     let password = password
-        .or_else(|| dav.passwords.lock().unwrap().get(&id).cloned())
+        .or_else(|| dav.passwords.lock().get(&id).cloned())
         .or_else(|| saved_password(&id));
     if conn.ssh.is_some() {
         crate::ssh::reconnect(&app, &dav, conn.clone(), password.clone(), trust).await?;
@@ -563,7 +559,7 @@ pub async fn dav_reconnect(
         if typed && remember == Some(true) {
             remember_password(&id, &password);
         }
-        dav.passwords.lock().unwrap().insert(id, password);
+        dav.passwords.lock().insert(id, password);
     }
     Ok(folder_info(&conn))
 }
@@ -594,10 +590,10 @@ async fn open_session(
 
 /// 換成剛連上的遠端資料夾。
 pub(crate) fn install(app: &AppHandle, dav: &Dav, conn: Conn, client: Box<dyn RemoteFs>) {
-    *dav.session.lock().unwrap() = Some(std::sync::Arc::new(Session { conn, client }));
-    dav.etags.lock().unwrap().clear();
-    dav.read.lock().unwrap().clear();
-    dav.notified.lock().unwrap().clear();
+    *dav.session.lock() = Some(std::sync::Arc::new(Session { conn, client }));
+    dav.etags.lock().clear();
+    dav.read.lock().clear();
+    dav.notified.lock().clear();
     // 遠端工作區開著時，本機的工作區關閉。
     app.state::<crate::workspace::Workspace>().clear();
     app.state::<crate::watch::Watcher>().stop_workspace();
@@ -613,7 +609,7 @@ pub fn dav_disconnect(dav: State<'_, Dav>) {
 #[tauri::command]
 pub fn dav_forget(app: AppHandle, id: String, dav: State<'_, Dav>) -> Result<(), String> {
     forget_password(&id);
-    dav.passwords.lock().unwrap().remove(&id);
+    dav.passwords.lock().remove(&id);
     let conns: Vec<Conn> = load_conns(&app)
         .into_iter()
         .filter(|c| c.id != id)
@@ -704,7 +700,6 @@ pub async fn dav_list_files(dav: State<'_, Dav>) -> Result<Vec<FileItem>, String
     let session = dav
         .session
         .lock()
-        .unwrap()
         .clone()
         .ok_or_else(|| tr!("還沒有連線到遠端資料夾"))?;
     crate::io::timed_for(Duration::from_secs(60), async move {
@@ -741,10 +736,9 @@ pub async fn dav_read(path: String, dav: State<'_, Dav>) -> Result<OpenedFile, S
     // 不然會被當成新檔案（`If-None-Match: *`），每次存檔都回報衝突。
     dav.etags
         .lock()
-        .unwrap()
         .insert(path.clone(), etag.unwrap_or_else(|| ANY_VERSION.into()));
-    dav.read.lock().unwrap().insert(path.clone(), text.clone());
-    dav.notified.lock().unwrap().remove(&path);
+    dav.read.lock().insert(path.clone(), text.clone());
+    dav.notified.lock().remove(&path);
     Ok(OpenedFile::new(
         path.clone(),
         name_of(&path),
@@ -763,11 +757,11 @@ pub async fn dav_write(
     dav: State<'_, Dav>,
 ) -> Result<SaveOutcome, String> {
     let (session, rel) = dav.resolve(&path)?;
-    let known = dav.etags.lock().unwrap().get(&path).cloned();
+    let known = dav.etags.lock().get(&path).cloned();
     let force = force.unwrap_or(false);
     let p = path.clone();
     let t = text.clone();
-    let last_read = dav.read.lock().unwrap().get(&path).cloned();
+    let last_read = dav.read.lock().get(&path).cloned();
     let result = crate::io::timed(async move {
         let (if_match, before) = if force {
             // 使用者確認要覆蓋：先取回遠端目前的內容（放進版本記錄），
@@ -818,10 +812,9 @@ pub async fn dav_write(
         Ok((etag, before)) => {
             dav.etags
                 .lock()
-                .unwrap()
                 .insert(path.clone(), etag.unwrap_or_else(|| ANY_VERSION.into()));
-            dav.notified.lock().unwrap().remove(&path);
-            dav.read.lock().unwrap().remove(&path);
+            dav.notified.lock().remove(&path);
+            dav.read.lock().remove(&path);
             // 遠端檔案也在本機留版本記錄（斷線時還能找回）。
             crate::history::on_save(
                 &app,
@@ -992,7 +985,7 @@ pub async fn dav_rename(
     .await?;
     let new_path = join(&id, &target);
     // 已開啟檔案的 ETag 跟著搬過去。
-    let mut etags = dav.etags.lock().unwrap();
+    let mut etags = dav.etags.lock();
     let moved: Vec<(String, String)> = etags
         .iter()
         .filter(|(k, _)| *k == &path || k.starts_with(&format!("{path}/")))
@@ -1025,7 +1018,7 @@ pub async fn dav_delete(path: String, dav: State<'_, Dav>) -> Result<(), String>
             .map_err(|e| e.message(&tr!("無法刪除")))
     })
     .await?;
-    dav.etags.lock().unwrap().remove(&path);
+    dav.etags.lock().remove(&path);
     Ok(())
 }
 
@@ -1216,13 +1209,12 @@ fn start_polling(app: &AppHandle) {
         loop {
             tokio::time::sleep(POLL_INTERVAL).await;
             let dav = app.state::<Dav>();
-            let Some(session) = dav.session.lock().unwrap().clone() else {
+            let Some(session) = dav.session.lock().clone() else {
                 continue;
             };
             let open: Vec<(String, String, String)> = dav
                 .etags
                 .lock()
-                .unwrap()
                 .iter()
                 .filter_map(|(path, etag)| {
                     let (prefix, rel) = split(path)?;
@@ -1239,10 +1231,10 @@ fn start_polling(app: &AppHandle) {
                 match state {
                     Ok(remote) => {
                         let Some(remote) = remote else { continue };
-                        let already = dav.notified.lock().unwrap().get(&path) == Some(&remote);
+                        let already = dav.notified.lock().get(&path) == Some(&remote);
                         if remote != etag && etag != ANY_VERSION && !already {
                             if let Ok((bytes, _)) = session.client.get(&rel).await {
-                                dav.notified.lock().unwrap().insert(path.clone(), remote);
+                                dav.notified.lock().insert(path.clone(), remote);
                                 let _ = app.emit(
                                     "file-changed",
                                     Changed {
@@ -1254,7 +1246,7 @@ fn start_polling(app: &AppHandle) {
                         }
                     }
                     Err(DavError::NotFound) => {
-                        dav.etags.lock().unwrap().remove(&path);
+                        dav.etags.lock().remove(&path);
                         #[derive(Serialize, Clone)]
                         struct Removed {
                             path: String,

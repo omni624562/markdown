@@ -5,7 +5,7 @@
 //! `term_forward` 送幾種固定的要求（顯示、開新分頁、把文字貼到 AI 的輸入列等），
 //! 不能直接寫入終端機，所以不能執行任何指令。
 
-use std::sync::Mutex;
+use parking_lot::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::webview::NewWindowResponse;
@@ -63,7 +63,7 @@ fn require_main(webview: &Webview) -> Result<(), String> {
 /// 送事件給終端機頁面；還沒載入完成時先排隊，載入後由 `term_ready` 一次取走。
 pub fn send<S: Serialize + Clone>(app: &AppHandle, event: &'static str, payload: S) {
     let view = app.state::<TermView>();
-    let mut state = view.0.lock().unwrap();
+    let mut state = view.0.lock();
     if state.ready {
         drop(state);
         let _ = app.emit_to(LABEL, event, payload);
@@ -81,7 +81,7 @@ pub fn ask_main_to_show(app: &AppHandle) {
 
 /// 介面縮放：終端機和主畫面一起縮放。
 pub fn set_zoom(app: &AppHandle, scale: f64) {
-    app.state::<TermView>().0.lock().unwrap().zoom = scale;
+    app.state::<TermView>().0.lock().zoom = scale;
     if let Some(v) = app.get_webview(LABEL) {
         let _ = v.set_zoom(scale);
     }
@@ -245,7 +245,7 @@ pub async fn term_layout(
                 .window()
                 .add_child(builder, position, size)
                 .map_err(|e| tr!("無法建立終端機：{e}", e = e))?;
-            let zoom = app.state::<TermView>().0.lock().unwrap().zoom;
+            let zoom = app.state::<TermView>().0.lock().zoom;
             if zoom != 1.0 {
                 let _ = v.set_zoom(zoom);
             }
@@ -288,7 +288,7 @@ pub fn term_ready(
     view: tauri::State<'_, TermView>,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
     require_terminal(&webview)?;
-    let mut state = view.0.lock().unwrap();
+    let mut state = view.0.lock();
     state.ready = true;
     Ok(std::mem::take(&mut state.queue)
         .into_iter()

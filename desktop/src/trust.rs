@@ -4,9 +4,9 @@
 //! 都只允許清單裡的路徑（或位於清單中資料夾內的檔案），
 //! 所以前端無法藉由傳入任意路徑讀取使用者沒有選過的檔案。
 
+use parking_lot::Mutex;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -145,7 +145,7 @@ impl Trust {
 
     fn save(&self, app: &AppHandle) {
         let Some(path) = recent_path(app) else { return };
-        let json = serde_json::to_string_pretty(&*self.0.lock().unwrap()).unwrap_or_default();
+        let json = serde_json::to_string_pretty(&*self.0.lock()).unwrap_or_default();
         if let Some(dir) = path.parent() {
             let _ = fs::create_dir_all(dir);
         }
@@ -153,7 +153,7 @@ impl Trust {
     }
 
     pub fn add_folder(&self, app: &AppHandle, path: &Path) {
-        self.0.lock().unwrap().open_folder(path, now_millis());
+        self.0.lock().open_folder(path, now_millis());
         self.save(app);
     }
 
@@ -165,7 +165,7 @@ impl Trust {
         change: impl FnOnce(&mut ProjectMeta),
     ) -> Result<ProjectMeta, String> {
         let meta = {
-            let mut r = self.0.lock().unwrap();
+            let mut r = self.0.lock();
             if !r.folders.iter().any(|p| p == path) {
                 return Err(tr!("這個資料夾不在專案清單中"));
             }
@@ -181,7 +181,7 @@ impl Trust {
     /// 從專案清單移除（只移除資料夾本身，不動最近開啟的檔案）。
     pub fn forget_folder(&self, app: &AppHandle, path: &Path) {
         {
-            let mut r = self.0.lock().unwrap();
+            let mut r = self.0.lock();
             r.folders.retain(|p| p != path);
             r.projects.retain(|m| m.path != path);
         }
@@ -197,7 +197,7 @@ impl Trust {
 
     /// 專案的設定（不在清單中時回傳 None）。
     pub fn project(&self, path: &Path) -> Option<ProjectMeta> {
-        let r = self.0.lock().unwrap();
+        let r = self.0.lock();
         r.folders.iter().any(|p| p == path).then(|| {
             r.projects
                 .iter()
@@ -208,14 +208,14 @@ impl Trust {
     }
 
     pub fn add_file(&self, app: &AppHandle, path: &Path) {
-        push_front(&mut self.0.lock().unwrap().files, path, MAX_FILES);
+        push_front(&mut self.0.lock().files, path, MAX_FILES);
         self.save(app);
     }
 
     /// 檔案或資料夾改名後，更新清單中的路徑。
     pub fn rename(&self, app: &AppHandle, from: &Path, to: &Path) {
         {
-            let mut guard = self.0.lock().unwrap();
+            let mut guard = self.0.lock();
             let r = &mut *guard;
             let projects = r.projects.iter_mut().map(|m| &mut m.path);
             for p in r
@@ -247,7 +247,7 @@ impl Trust {
 
     pub fn remove(&self, app: &AppHandle, path: &Path) {
         {
-            let mut r = self.0.lock().unwrap();
+            let mut r = self.0.lock();
             r.files.retain(|p| !p.starts_with(path));
             r.folders.retain(|p| p != path);
             r.projects.retain(|m| m.path != path);
@@ -256,11 +256,11 @@ impl Trust {
     }
 
     pub fn snapshot(&self) -> Recent {
-        self.0.lock().unwrap().clone()
+        self.0.lock().clone()
     }
 
     pub fn allows_folder(&self, path: &Path) -> bool {
-        self.0.lock().unwrap().folders.iter().any(|p| p == path)
+        self.0.lock().folders.iter().any(|p| p == path)
     }
 
     /// 檔案在最近開啟的清單中（使用者自己在對話框選過、或從目前的資料夾開過的檔案）。

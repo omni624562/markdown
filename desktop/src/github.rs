@@ -2,10 +2,10 @@
 //! 列出儲存庫、下載（clone）、把資料夾上傳成新的儲存庫。
 //! 權杖存在 Windows 認證管理員；帳號名稱存在設定資料夾（不含權杖）。
 
+use parking_lot::Mutex;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -43,7 +43,7 @@ fn account_file(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn token(app: &AppHandle) -> Option<String> {
-    let mut cached = TOKEN.lock().ok()?;
+    let mut cached = TOKEN.lock();
     if cached.is_none() {
         *cached = crate::secrets::get(SERVICE, "token");
     }
@@ -243,9 +243,7 @@ pub async fn github_login_wait(
     crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存：{e}", e = e))?;
     ACCOUNT.set(Some(account.clone()));
     crate::secrets::set(SERVICE, "token", &token);
-    if let Ok(mut t) = TOKEN.lock() {
-        *t = Some(token);
-    }
+    *TOKEN.lock() = Some(token);
     Ok(account)
 }
 
@@ -257,9 +255,7 @@ pub fn github_login_cancel() {
 #[tauri::command]
 pub fn github_logout(app: AppHandle) {
     crate::secrets::forget(SERVICE, "token");
-    if let Ok(mut t) = TOKEN.lock() {
-        *t = None;
-    }
+    *TOKEN.lock() = None;
     if let Some(p) = account_file(&app) {
         let _ = fs::remove_file(p);
     }

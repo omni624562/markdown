@@ -63,7 +63,7 @@ struct Fake {
 
 impl RemoteFs for Fake {
     fn stat<'a>(&'a self, rel: &'a str) -> FsFuture<'a, Item> {
-        self.stats.lock().unwrap().push(rel.to_string());
+        self.stats.lock().push(rel.to_string());
         let out = match rel {
             "b/改名中.md" => Ok(item(rel, false, Some("\"s\""))),
             "c.md" => Ok(item(rel, false, Some("\"c\""))),
@@ -72,7 +72,7 @@ impl RemoteFs for Fake {
         Box::pin(std::future::ready(out))
     }
     fn list<'a>(&'a self, dir: &'a str) -> FsFuture<'a, Vec<Item>> {
-        self.lists.lock().unwrap().push(dir.to_string());
+        self.lists.lock().push(dir.to_string());
         let out = if self.offline {
             Err(DavError::Network("斷線".into()))
         } else {
@@ -143,8 +143,8 @@ fn polls_folders_with_several_open_files_at_once() {
         .map(|s| s.to_string())
         .collect();
     let out = block_on(remote_etags(&fs, &rels));
-    assert_eq!(*fs.lists.lock().unwrap(), ["b"]);
-    let mut asked = fs.stats.lock().unwrap().clone();
+    assert_eq!(*fs.lists.lock(), ["b"]);
+    let mut asked = fs.stats.lock().clone();
     asked.sort();
     assert_eq!(asked, ["b/不見了.md", "b/改名中.md", "c.md"]);
     assert_eq!(out["b/1.md"], Ok(Some("\"1\"".into())));

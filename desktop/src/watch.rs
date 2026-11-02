@@ -9,10 +9,10 @@
 //! 所以這些不算：自己存檔用的暫存檔、`.git`、`node_modules` 等檔案樹本來就不顯示的資料夾，
 //! 以及已開啟的檔案被存檔取代（暫存檔改名成原檔）。
 
+use parking_lot::Mutex;
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::Duration;
 
 use notify_debouncer_full::notify::{
@@ -203,7 +203,7 @@ impl Watcher {
             vec![]
         };
         // 先停止舊的監看。
-        *self.workspace.lock().unwrap() = None;
+        *self.workspace.lock() = None;
         // 開始監看（輪詢時每個資料夾都要先列一次內容，網路磁碟可能要一陣子）也不佔著鎖，
         // 其他要用到監看的指令（例如工作區外的檔案）不會被卡住。
         let watcher = create(app, poll, dirs.len()).and_then(|mut w| {
@@ -219,13 +219,13 @@ impl Watcher {
             }
             Ok(w)
         });
-        let mut slot = self.workspace.lock().unwrap();
+        let mut slot = self.workspace.lock();
         // 這段期間又開了別的資料夾（各自在背景執行）：不要用舊資料夾蓋掉新的監看。
         if app.state::<crate::workspace::Workspace>().root().as_deref() != Some(root) {
             return;
         }
-        *self.poll_root.lock().unwrap() = poll.then(|| root.to_path_buf());
-        *self.poll_count.lock().unwrap() = dirs.len();
+        *self.poll_root.lock() = poll.then(|| root.to_path_buf());
+        *self.poll_count.lock() = dirs.len();
         match watcher {
             Ok(w) => *slot = Some(w),
             // i18n-ignore：記錄檔
@@ -235,14 +235,14 @@ impl Watcher {
 
     /// 停止監看工作區（改開遠端的 WebDAV 工作區時）。
     pub fn stop_workspace(&self) {
-        *self.workspace.lock().unwrap() = None;
-        *self.poll_root.lock().unwrap() = None;
-        *self.poll_count.lock().unwrap() = 0;
+        *self.workspace.lock() = None;
+        *self.poll_root.lock() = None;
+        *self.poll_count.lock() = 0;
     }
 
     /// 輪詢監看的工作區新增了資料夾（任何一層）：開始監看它。
     fn watch_new_dirs(&self, paths: &BTreeSet<PathBuf>) {
-        let Some(root) = self.poll_root.lock().unwrap().clone() else {
+        let Some(root) = self.poll_root.lock().clone() else {
             return;
         };
         let new_dirs: Vec<&PathBuf> = paths
@@ -255,8 +255,8 @@ impl Watcher {
             return;
         }
         // 上鎖順序和 `watch_workspace`、`stop_workspace` 一樣：先 workspace 再 poll_count，才不會互等卡住。
-        let mut slot = self.workspace.lock().unwrap();
-        let mut count = self.poll_count.lock().unwrap();
+        let mut slot = self.workspace.lock();
+        let mut count = self.poll_count.lock();
         if let Some(Active::Poll(w)) = slot.as_mut() {
             for dir in new_dirs {
                 if *count >= MAX_POLL_DIRS {
@@ -275,14 +275,14 @@ impl Watcher {
         let Some(dir) = path.parent().filter(|_| !in_workspace) else {
             return;
         };
-        if !self.outside_dirs.lock().unwrap().insert(dir.to_path_buf()) {
+        if !self.outside_dirs.lock().insert(dir.to_path_buf()) {
             return;
         }
         let poll = crate::io::is_network_path(dir);
         let mut slot = if poll {
-            self.outside_poll.lock().unwrap()
+            self.outside_poll.lock()
         } else {
-            self.outside.lock().unwrap()
+            self.outside.lock()
         };
         if slot.is_none() {
             match create(app, poll, 0) {
