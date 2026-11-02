@@ -3,7 +3,7 @@
  *
  * 不啟動伺服器：攔截瀏覽器的請求，直接回應 dist/ 裡的檔案；其他網址一律擋掉（也確認不會連到外部）。
  * `open({ desktop })` 會在頁面載入前放一個假的 Tauri 介面（`window.__TAURI__`），用來測試桌面版才有的畫面：
- * 原生指令的回應由 `desktop.respond` 決定，呼叫過的指令與參數記在 `window.__fake.calls`，
+ * 原生指令的回應由 `desktop` 決定（也可以用 `{ $by: 參數名稱, values }` 依參數回應），呼叫過的指令與參數記在 `window.__fake.calls`，
  * 測試可以用 `window.__fake.emit(事件, 內容)` 模擬原生端送來的事件。
  */
 import assert from "node:assert/strict";
@@ -61,7 +61,11 @@ function fakeTauri(respond) {
       async invoke(cmd, args) {
         calls.push({ cmd, args: args ?? null });
         const queue = queues.get(cmd);
-        if (queue) return queue.length > 1 ? queue.shift() : queue[0];
+        if (!queue) return cmd in DEFAULTS ? DEFAULTS[cmd] : null;
+        const next = queue.length > 1 ? queue.shift() : queue[0];
+        // `{ $by: "id", values: { 42: … } }`：依參數決定回應（例如依工作項目編號）。
+        if (next && typeof next === "object" && "$by" in next) return next.values[String(args?.[next.$by])] ?? null;
+        return next;
         return cmd in DEFAULTS ? DEFAULTS[cmd] : null;
       },
       convertFileSrc: (p) => p,
