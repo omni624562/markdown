@@ -21,6 +21,8 @@ import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
 import { forgetListCopies, keepFreshness, withOfflineCopy } from "./offline-copies.ts";
+import { favoriteProjects, favoriteWikis } from "./favorite-lists.ts";
+import { favoritesFirst } from "../favorites.ts";
 import { app } from "./context.ts";
 
 
@@ -293,7 +295,8 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
       .adoWorkItemFilters()
       .then(({ projects, kinds }) => {
         kind.setOptions(pairs(kinds));
-        project.setOptions(pairs(projects));
+        // 常用的專案（工作板、Wiki 旁的星號勾選）排在前面。
+        project.setOptions(favoritesFirst(pairs(projects), favoriteProjects.load()));
       })
       .catch(() => (loaded = false));
   };
@@ -685,6 +688,7 @@ export function initWorkItemsPanel(): void {
         wikis: (update) => withOfflineCopy("wikis", () => desktop!.adoWikis(), update),
         pages: (wiki, update) => withOfflineCopy(`wiki-pages:${wiki.id}`, () => desktop!.adoWikiPages(wiki), update),
         forget: () => forgetListCopies("wiki"),
+        favorites: favoriteWikis,
         open: (wiki, path) => app.showWikiPage(wiki, path),
         load: () => storage.load("ado-wiki"),
         save: (id) => storage.save("ado-wiki", id),

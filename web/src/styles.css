@@ -2108,7 +2108,13 @@ button.git-info:disabled { cursor: default; }
 /* 單選（人）：選項前面是圓形的選取記號，點了就關上。 */
 .multi-select-pop.single .multi-select-list { padding-top: 4px; }
 /* Wiki（Azure DevOps） */
-.wiki-filters { grid-template-columns: 1fr; }
+.wiki-filters { grid-template-columns: 1fr auto; }
+.wiki-filters .wiki-new { grid-column: 1 / -1; }
+/* 常用的項目（Wiki、工作板的專案）：選單旁邊的星號，有設常用時星號填滿。 */
+.favorite-toggle { margin: 0; height: auto; min-height: 28px; }
+.favorite-toggle.active .icon { fill: currentColor; }
+.tb-project-row { display: flex; grid-column: 1 / -1; gap: 6px; align-items: stretch; min-width: 0; }
+.tb-project-row > select { flex: 1; min-width: 0; }
 /* 遠端的清單（工作項目、Wiki、Issues）常要重新讀取：重新整理按鈕一直顯示。 */
 #panel-workitems .side-actions, #panel-wiki .side-actions, #panel-issues .side-actions { opacity: 1; }
 /* 讀取失敗時錯誤訊息旁的「重試」。 */
