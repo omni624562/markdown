@@ -228,3 +228,28 @@ test("工作板：上方顯示每個人的容量，排太多的標紅", async ()
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Backlog：依順序列出還沒排進 Sprint 的需求，可以移到選的 Sprint", async () => {
+  const backlog = [
+    w(501, "User Story", "排第一的需求", "New", null, null, { rev: 7 }),
+    w(502, "Bug", "排第二的錯誤", "Active", null, "王小明"),
+  ];
+  const { page, context, errors } = await open({ desktop: { ...desktop, ado_backlog: [backlog] } });
+  await page.keyboard.press("Control+Shift+P");
+  await page.locator("dialog[open] input").first().fill("顯示工作板");
+  await page.keyboard.press("Enter");
+  const button = page.locator("#board-host .tb-backlog");
+  await page.waitForFunction(() => !document.querySelector("#board-host .tb-backlog")?.disabled);
+  await button.click();
+  const items = page.locator(".tb-backlog-item");
+  await items.first().waitFor();
+  assert.deepEqual(await items.locator(".tb-title").allTextContents(), ["排第一的需求", "排第二的錯誤"]);
+  await items.first().locator(".tb-move", { hasText: "移到 Sprint 102" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_update"));
+  const update = (await calls(page)).find((c) => c.cmd === "ado_work_item_update").args;
+  assert.equal(update.id, 501);
+  assert.equal(update.change.iteration, "產品\\Sprint 102");
+  assert.equal(update.change.rev, 7);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

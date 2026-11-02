@@ -313,29 +313,7 @@ pub async fn ado_board(
             &serde_json::json!({ "query": query }),
             &tr!("查詢工作板"),
         )?;
-        let ids: Vec<u64> = res
-            .get("workItems")
-            .and_then(Value::as_array)
-            .map_or(&[][..], Vec::as_slice)
-            .iter()
-            .filter_map(|w| w.get("id").and_then(Value::as_u64))
-            .take(BOARD_MAX)
-            .collect();
-        let mut items = Vec::new();
-        for chunk in ids.chunks(200) {
-            let list: Vec<String> = chunk.iter().map(u64::to_string).collect();
-            let res = get(
-                &a.url,
-                &pat,
-                &format!(
-                    "/_apis/wit/workitems?ids={}&$expand=relations&errorPolicy=omit",
-                    list.join(",")
-                ),
-                &tr!("讀取工作項目"),
-            )?;
-            items.extend(values(&res).iter().filter_map(|v| board_item_of(&a.url, v)));
-        }
-        Ok(items)
+        items_of_query(&a.url, &pat, &res)
     })
     .await
 }
@@ -347,38 +325,161 @@ pub(super) fn board_wiql(project: &str, iteration: &str, scope: Option<&Value>) 
         format!("[System.IterationPath] = {}", wiql_string(iteration)),
         "[System.State] <> 'Removed'".to_string(),
     ];
-    if let Some(scope) = scope {
-        let field = scope
-            .pointer("/field/referenceName")
-            .and_then(Value::as_str)
-            .filter(|f| {
-                f.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
-            })
-            .unwrap_or("System.AreaPath");
-        let parts: Vec<String> = scope
-            .get("values")
-            .and_then(Value::as_array)
-            .map_or(&[][..], Vec::as_slice)
-            .iter()
-            .filter_map(|v| {
-                let value = str_of(v, "value")?;
-                let under = v.get("includeChildren").and_then(Value::as_bool) == Some(true);
-                Some(format!(
-                    "[{field}] {} {}",
-                    if under { "UNDER" } else { "=" },
-                    wiql_string(value)
-                ))
-            })
-            .collect();
-        if !parts.is_empty() {
-            cond.push(format!("({})", parts.join(" OR ")));
-        }
-    }
+    cond.extend(scope.and_then(scope_condition));
     format!(
         "SELECT [System.Id] FROM WorkItems WHERE {} ORDER BY [System.Id]",
         cond.join(" AND ")
     )
+}
+
+/// 團隊負責的範圍（`teamfieldvalues`）變成 WIQL 條件；沒有設定時是 `None`（不限）。
+fn scope_condition(scope: &Value) -> Option<String> {
+    let field = scope
+        .pointer("/field/referenceName")
+        .and_then(Value::as_str)
+        .filter(|f| {
+            f.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+        })
+        .unwrap_or("System.AreaPath");
+    let parts: Vec<String> = scope
+        .get("values")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|v| {
+            let value = str_of(v, "value")?;
+            let under = v.get("includeChildren").and_then(Value::as_bool) == Some(true);
+            Some(format!(
+                "[{field}] {} {}",
+                if under { "UNDER" } else { "=" },
+                wiql_string(value)
+            ))
+        })
+        .collect();
+    (!parts.is_empty()).then(|| format!("({})", parts.join(" OR ")))
+}
+
+/// Backlog 的查詢：團隊範圍裡、還在 Backlog（反覆項目是團隊的 Backlog 反覆項目）、需求類（User Story、PBI、Bug…）、
+/// 還沒結束的工作項目；依 Backlog 的順序排（`order` 是排序欄位，`None` 時依編號）。
+pub(super) fn backlog_wiql(
+    project: &str,
+    iteration: &str,
+    scope: Option<&Value>,
+    order: Option<&str>,
+) -> String {
+    let mut cond = vec![
+        format!("[System.TeamProject] = {}", wiql_string(project)),
+        format!("[System.IterationPath] = {}", wiql_string(iteration)),
+        "[System.WorkItemType] IN GROUP 'Microsoft.RequirementCategory'".to_string(),
+        "[System.State] NOT IN ('Closed', 'Done', 'Removed', 'Completed', 'Cut')".to_string(),
+    ];
+    cond.extend(scope.and_then(scope_condition));
+    format!(
+        "SELECT [System.Id] FROM WorkItems WHERE {} ORDER BY [{}]",
+        cond.join(" AND "),
+        order.unwrap_or("System.Id")
+    )
+}
+
+/// 團隊設定裡 Backlog 反覆項目的路徑：`\專案\Iteration\X` 這種分類節點的寫法換成 WIQL 用的 `專案\X`；
+/// 沒有路徑時用名稱（根節點的名稱就是專案名稱）。
+pub(super) fn backlog_iteration_of(settings: &Value, project: &str) -> String {
+    let node = settings.get("backlogIteration");
+    let path = node
+        .and_then(|n| str_of(n, "path"))
+        .unwrap_or("")
+        .trim_matches('\\');
+    if path.is_empty() {
+        return node
+            .and_then(|n| str_of(n, "name"))
+            .filter(|n| !n.is_empty())
+            .unwrap_or(project)
+            .to_string();
+    }
+    let mut parts: Vec<&str> = path.split('\\').collect();
+    if parts.len() > 1 && parts[1].eq_ignore_ascii_case("Iteration") {
+        parts.remove(1);
+    }
+    parts.join("\\")
+}
+
+/// 依查詢結果的順序讀工作項目（含上層項目與工時），最多 `BOARD_MAX` 個。
+fn items_of_query(base: &str, pat: &str, res: &Value) -> Result<Vec<BoardItem>, String> {
+    let ids: Vec<u64> = res
+        .get("workItems")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|w| w.get("id").and_then(Value::as_u64))
+        .take(BOARD_MAX)
+        .collect();
+    let mut items = Vec::new();
+    for chunk in ids.chunks(200) {
+        let list: Vec<String> = chunk.iter().map(u64::to_string).collect();
+        let res = get(
+            base,
+            pat,
+            &format!(
+                "/_apis/wit/workitems?ids={}&$expand=relations&errorPolicy=omit",
+                list.join(",")
+            ),
+            &tr!("讀取工作項目"),
+        )?;
+        items.extend(values(&res).iter().filter_map(|v| board_item_of(base, v)));
+    }
+    Ok(items)
+}
+
+/// 團隊的 Backlog：還沒排進 Sprint 的需求類工作項目，依 Backlog 的順序。
+#[tauri::command]
+pub async fn ado_backlog(
+    app: AppHandle,
+    project: String,
+    team: String,
+) -> Result<Vec<BoardItem>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let p = encode_segment(&project);
+        let t = encode_segment(&team);
+        let what = tr!("讀取團隊設定");
+        let scope = get(
+            &a.url,
+            &pat,
+            &format!("/{p}/{t}/_apis/work/teamsettings/teamfieldvalues"),
+            &what,
+        )
+        .ok();
+        let settings = get(
+            &a.url,
+            &pat,
+            &format!("/{p}/{t}/_apis/work/teamsettings"),
+            &what,
+        )
+        .unwrap_or(Value::Null);
+        let iteration = backlog_iteration_of(&settings, &project);
+        // 排序欄位依流程範本不同（Agile、CMMI 是 StackRank，Scrum 是 BacklogPriority）：一個一個試。
+        let mut last = None;
+        for order in [
+            Some("Microsoft.VSTS.Common.StackRank"),
+            Some("Microsoft.VSTS.Common.BacklogPriority"),
+            None,
+        ] {
+            let query = backlog_wiql(&project, &iteration, scope.as_ref(), order);
+            match post(
+                &a.url,
+                &pat,
+                "/_apis/wit/wiql",
+                &serde_json::json!({ "query": query }),
+                &tr!("查詢 Backlog"),
+            ) {
+                Ok(res) => return items_of_query(&a.url, &pat, &res),
+                Err(e) => last = Some(e),
+            }
+        }
+        Err(last.unwrap_or_default())
+    })
+    .await
 }
 
 pub(super) fn board_item_of(base: &str, v: &Value) -> Option<BoardItem> {

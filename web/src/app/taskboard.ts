@@ -16,6 +16,7 @@ import { kindKey } from "../work-item-colors.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { app } from "./context.ts";
 import { type BoardScope, addTask, editCard } from "./taskboard-edit.ts";
+import { openBacklog } from "./taskboard-backlog.ts";
 import { favoriteProjects } from "./favorite-lists.ts";
 import { FavoriteSelect } from "../ui/favorite-select.ts";
 import { type Freshness, forgetListCopies, freshnessOf, withOfflineCopy } from "./offline-copies.ts";
@@ -31,7 +32,7 @@ const TASK_KINDS = new Set(["Task", "工作"]); // i18n-ignore：伺服器上的
 /** 已移除的狀態：查詢本來就不含這些項目，不顯示這一欄。 */
 const REMOVED = new Set(["removed", "cut", "已移除", "已刪除"]); // i18n-ignore：伺服器上的狀態名稱
 
-interface Selection {
+export interface Selection {
   project: string;
   team: AdoTeam;
   iteration: AdoTeamIteration;
@@ -186,7 +187,7 @@ function boardMarkdown(board: Board, title: string): string {
   return `# ${title}\n\n${[head, sep, ...rows].join("\n")}\n`;
 }
 
-function avatar(name: string | null): HTMLElement {
+export function avatar(name: string | null): HTMLElement {
   const a = document.createElement("span");
   a.className = "ado-avatar tb-avatar";
   a.textContent = name ? shortcutInitial(name) : "?";
@@ -195,7 +196,7 @@ function avatar(name: string | null): HTMLElement {
   return a;
 }
 
-function stateDot(state: string): HTMLElement {
+export function stateDot(state: string): HTMLElement {
   const dot = document.createElement("span");
   dot.className = `ado-state-dot ${stateTone(state)}`;
   dot.setAttribute("aria-hidden", "true");
@@ -463,7 +464,18 @@ async function fillPanel(): Promise<void> {
   filters.className = "workitems-filters tb-filters";
   filters.append(projectRow(project), team, sprint, who);
   const hint = Object.assign(document.createElement("p"), { className: "workitems-status", textContent: t("拖曳卡片到別的欄就是改狀態；點卡片開啟工作項目，按 < 回到工作板。") });
-  host.replaceChildren(filters, open, hint);
+  // Backlog：還沒排進 Sprint 的需求，可以一個一個移到選的 Sprint。
+  const backlog = document.createElement("button");
+  backlog.type = "button";
+  backlog.className = "btn btn-small tb-open tb-backlog";
+  backlog.append(icon("list-ordered"), t("Backlog"));
+  backlog.addEventListener("click", () => {
+    if (selection) openBacklog(selection);
+  });
+  const buttons = document.createElement("div");
+  buttons.className = "tb-buttons";
+  buttons.append(open, backlog);
+  host.replaceChildren(filters, buttons, hint);
 
   // 有副本就先列出來（不用等伺服器）；背景讀到不一樣的清單再重建選單。
   const refill = (changed: boolean) => {
@@ -501,7 +513,7 @@ async function fillPanel(): Promise<void> {
     const tm = teams.find((x) => x.id === team.value);
     const it = sprints.find((i) => i.id === sprint.value);
     selection = tm && it ? { project: project.value, team: tm, iteration: it } : null;
-    open.disabled = !selection;
+    open.disabled = backlog.disabled = !selection;
     storage.save("board-project", project.value);
     if (tm) storage.save("board-team", tm.id);
     if (it) storage.save("board-sprint", it.id);

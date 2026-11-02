@@ -1029,3 +1029,30 @@ fn reads_capacity_from_old_and_new_servers() {
     assert_eq!(c.members[0].per_day, 0.0);
     assert!(c.team_days_off.is_empty());
 }
+
+#[test]
+fn backlog_query_and_iteration() {
+    let scope = json!({ "field": { "referenceName": "System.AreaPath" }, "values": [{ "value": "產品\\前端", "includeChildren": true }] });
+    let q = backlog_wiql(
+        "產品",
+        "產品",
+        Some(&scope),
+        Some("Microsoft.VSTS.Common.StackRank"),
+    );
+    assert!(q.contains("[System.IterationPath] = '產品'"));
+    assert!(q.contains("IN GROUP 'Microsoft.RequirementCategory'"));
+    assert!(q.contains("[System.AreaPath] UNDER '產品\\前端'"));
+    assert!(q.ends_with("ORDER BY [Microsoft.VSTS.Common.StackRank]"));
+    assert!(backlog_wiql("P", "P", None, None).ends_with("ORDER BY [System.Id]"));
+    // 分類節點的路徑換成 WIQL 用的；沒有路徑時用名稱，再沒有就用專案名稱。
+    let s = json!({ "backlogIteration": { "name": "產品", "path": "\\產品\\Iteration\\發行 1" } });
+    assert_eq!(backlog_iteration_of(&s, "產品"), "產品\\發行 1");
+    assert_eq!(
+        backlog_iteration_of(
+            &json!({ "backlogIteration": { "name": "產品", "path": "" } }),
+            "x"
+        ),
+        "產品"
+    );
+    assert_eq!(backlog_iteration_of(&Value::Null, "產品"), "產品");
+}
