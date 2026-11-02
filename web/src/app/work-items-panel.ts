@@ -559,7 +559,7 @@ export async function renderIssuesTab(): Promise<void> {
 
 /** 連線到 Azure DevOps 後才顯示「工作項目」「Wiki」圖示。 */
 export function renderAdoTab(): void {
-  for (const panel of ["workitems", "wiki"] as const) {
+  for (const panel of ["workitems", "board", "wiki"] as const) {
     const tab = app.$(`#side-tab-${panel}`);
     tab.hidden = !app.ado?.account;
     if (tab.hidden) app.panelUnavailable(panel);

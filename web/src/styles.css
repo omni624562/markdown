@@ -3447,3 +3447,36 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-flash { border-radius: 3px; animation: issue-flash 1.6s ease-out; }
 @keyframes issue-flash { 0%, 40% { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .issue-flash { animation: none; outline: 2px solid var(--accent); } }
+
+/* ---- Sprint 工作板（app/taskboard.ts） ---- */
+#board-host { display: flex; flex-direction: column; gap: 10px; padding: 8px 12px; }
+#board-host .tb-field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); }
+#board-host .tb-field select { width: 100%; }
+#board-host .side-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.issue-body:has(> .taskboard) { max-width: none; }
+.taskboard { --tb-parent: 240px; display: grid; gap: 0; min-width: calc(var(--tb-parent) + var(--tb-columns) * 190px); font-size: 13px; }
+.taskboard .tb-row { display: grid; grid-template-columns: var(--tb-parent) repeat(var(--tb-columns), minmax(190px, 1fr)); border-bottom: 1px solid var(--border); }
+.taskboard .tb-head { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--muted); font-weight: 600; }
+.taskboard .tb-head > div { padding: 8px 10px; }
+.taskboard .tb-col-head { display: flex; align-items: center; }
+.taskboard .tb-parent { display: flex; align-items: flex-start; gap: 4px; padding: 8px 6px; border-right: 1px solid var(--border); }
+.taskboard .tb-toggle { flex: none; margin-top: 4px; transition: transform 0.12s; }
+.taskboard .tb-row.collapsed .tb-toggle { transform: rotate(-90deg); }
+.taskboard .tb-row.collapsed .tb-cell { min-height: 0; }
+.taskboard .tb-row.collapsed .tb-cell > .tb-card { display: none; }
+.taskboard .tb-row.collapsed .tb-parent::after { content: attr(data-count); margin-left: auto; padding: 0 7px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11px; line-height: 18px; }
+.taskboard .tb-orphans { padding: 6px 4px; color: var(--muted); }
+.taskboard .tb-cell { display: flex; flex-direction: column; gap: 8px; min-height: 64px; padding: 8px; border-right: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.taskboard .tb-cell.drop { background: var(--accent-soft); }
+.taskboard .tb-card { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-left: 3px solid #f2cb1d; border-radius: 6px; background: var(--bg); box-shadow: 0 1px 2px rgb(0 0 0 / 6%); cursor: pointer; }
+.taskboard .tb-card:hover { border-color: var(--accent); border-left-color: #f2cb1d; }
+.taskboard .tb-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.taskboard .tb-card.dragging { opacity: 0.5; }
+.taskboard .tb-parent-card { flex: 1; min-width: 0; border-left-color: #009ccc; cursor: pointer; }
+.taskboard .tb-card-head { display: flex; gap: 6px; line-height: 1.45; }
+.taskboard .tb-id { flex: none; font-weight: 600; }
+.taskboard .tb-title { min-width: 0; overflow-wrap: anywhere; }
+.taskboard .tb-card-meta, .taskboard .tb-parent-state { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.taskboard .tb-avatar { width: 20px; height: 20px; font-size: 11px; }
+.taskboard .tb-hours { color: var(--muted); font-size: 12px; }
+.taskboard .tb-empty { grid-column: 1 / -1; padding: 24px; color: var(--muted); }

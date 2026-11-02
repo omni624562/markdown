@@ -784,3 +784,72 @@ fn attachment_names_are_safe_and_runnable_files_are_flagged() {
     assert!(!is_runnable("說明.md"));
     assert!(!is_runnable("noext"));
 }
+
+#[test]
+fn lists_teams_with_the_default_first() {
+    let v = json!({"value": [
+        {"id": "B", "name": "前端"},
+        {"id": "a1", "name": "ITA"},
+        {"id": "C", "name": "後端"}
+    ]});
+    let teams = teams_of(&v, Some("A1"));
+    let names: Vec<&str> = teams.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["ITA", "前端", "後端"]);
+    assert!(teams[0].default);
+}
+
+#[test]
+fn orders_team_iterations_by_start_date() {
+    let v = json!({"value": [
+        {"id": "2", "name": "Sprint 102", "path": "P\\Sprint 102", "attributes": {"startDate": "2026-10-26T00:00:00Z", "finishDate": "2026-11-06T00:00:00Z", "timeFrame": "current"}},
+        {"id": "x", "name": "未排定", "path": "P\\未排定", "attributes": {}},
+        {"id": "1", "name": "Sprint 101", "path": "P\\Sprint 101", "attributes": {"startDate": "2026-10-12T00:00:00Z", "timeFrame": "past"}}
+    ]});
+    let list = team_iterations_of(&v);
+    let names: Vec<&str> = list.iter().map(|i| i.name.as_str()).collect();
+    assert_eq!(names, ["Sprint 101", "Sprint 102", "未排定"]);
+    assert!(list[1].current && !list[0].current);
+}
+
+#[test]
+fn board_query_uses_the_team_area() {
+    let scope = json!({"field": {"referenceName": "System.AreaPath"}, "values": [
+        {"value": "P\\ITA", "includeChildren": true},
+        {"value": "P\\共用", "includeChildren": false}
+    ]});
+    let q = board_wiql("P", "P\\Sprint 102", Some(&scope));
+    assert!(
+        q.contains("[System.IterationPath] = 'P\\Sprint 102'"),
+        "{q}"
+    );
+    assert!(
+        q.contains("([System.AreaPath] UNDER 'P\\ITA' OR [System.AreaPath] = 'P\\共用')"),
+        "{q}"
+    );
+    assert!(q.contains("<> 'Removed'"));
+    // 欄位名稱怪怪的（可能被竄改）：改用區域路徑。
+    let odd = json!({"field": {"referenceName": "X] OR 1=1 --"}, "values": [{"value": "v"}]});
+    assert!(board_wiql("P", "I", Some(&odd)).contains("[System.AreaPath] = 'v'"));
+    // 名稱裡的單引號要跳脫。
+    assert!(board_wiql("P", "it's", None).contains("'it''s'"));
+}
+
+#[test]
+fn reads_board_items_with_parent_and_hours() {
+    let v = json!({"id": 1936947, "rev": 4, "fields": {
+        "System.Title": "提供SRE監控", "System.State": "New", "System.WorkItemType": "Task",
+        "System.TeamProject": "P", "System.AssignedTo": {"displayName": "梁朝為"},
+        "Microsoft.VSTS.Scheduling.RemainingWork": 6.5, "Microsoft.VSTS.Scheduling.CompletedWork": 1
+    }, "relations": [
+        {"rel": "System.LinkTypes.Related", "url": "https://ado.test/c/_apis/wit/workItems/5"},
+        {"rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://ado.test/c/_apis/wit/workItems/1931940"}
+    ]});
+    let b = board_item_of("https://ado.test/c", &v).unwrap();
+    assert_eq!(b.item.id, 1936947);
+    assert_eq!(b.parent, Some(1931940));
+    assert_eq!(b.rev, Some(4));
+    assert_eq!(
+        (b.remaining, b.completed, b.original),
+        (Some(6.5), Some(1.0), None)
+    );
+}

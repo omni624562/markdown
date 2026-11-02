@@ -29,6 +29,7 @@ import { gitPanel } from "./work-item-updates.ts";
 import { wikiPanel, workItemsPanel, issuesPanel, renderIssuesTab } from "./work-items-panel.ts";
 import type { Doc, SidePanel } from "../main.ts";
 import { app } from "./context.ts";
+import { boardPanelShown } from "./taskboard.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -286,7 +287,7 @@ export function panelAvailable(panel: SidePanel): void {
 export function showPanel(panel: SidePanel, reveal = true): void {
   const requested = panel;
   if (panel === "git" && app.$("#side-tab-git").hidden) panel = "files";
-  if ((panel === "workitems" || panel === "wiki") && app.$(`#side-tab-${panel}`).hidden) panel = "files";
+  if ((panel === "workitems" || panel === "board" || panel === "wiki") && app.$(`#side-tab-${panel}`).hidden) panel = "files";
   if (panel === "issues" && app.$("#side-tab-issues").hidden) panel = "files";
   // 不能用而改開檔案時不記住（下次啟動仍然開原本要的面板）。
   pendingPanel = panel === requested ? null : requested;
@@ -315,6 +316,7 @@ export function showPanel(panel: SidePanel, reveal = true): void {
   if (reveal && !app.outlineShown) app.setOutline(true);
   if (panel === "outline") app.updateActiveHeading();
   if (panel === "workitems") workItemsPanel?.shown();
+  if (panel === "board") boardPanelShown();
   if (panel === "wiki") wikiPanel?.shown();
   if (panel === "issues") issuesPanel?.shown();
   if (panel === "search" && app.searchStale) {

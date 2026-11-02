@@ -52,6 +52,9 @@
           <button type="button" role="tab" id="side-tab-workitems" data-panel="workitems" aria-controls="panel-workitems" aria-label="工作項目（Azure DevOps）" hidden>
             <i data-icon="square-kanban"></i><span class="activity-badge" id="ado-badge" hidden></span>
           </button>
+          <button type="button" role="tab" id="side-tab-board" data-panel="board" aria-controls="panel-board" aria-label="工作板（Azure DevOps）" hidden>
+            <i data-icon="layout-grid"></i>
+          </button>
           <button type="button" role="tab" id="side-tab-wiki" data-panel="wiki" aria-controls="panel-wiki" aria-label="Wiki（Azure DevOps）" hidden>
             <i data-icon="book-open-text"></i>
           </button>
@@ -134,6 +137,16 @@
             </div>
           </div>
           <div class="side-body" id="workitems-host"></div>
+        </section>
+
+        <section class="side-panel" id="panel-board" role="tabpanel" aria-labelledby="side-tab-board" hidden>
+          <div class="side-head">
+            <h2>工作板</h2>
+            <div class="side-actions">
+              <button type="button" class="btn icon-only" id="board-refresh" title="重新整理" aria-label="重新整理"><i data-icon="refresh-cw"></i></button>
+            </div>
+          </div>
+          <div class="side-body" id="board-host"></div>
         </section>
 
         <section class="side-panel" id="panel-wiki" role="tabpanel" aria-labelledby="side-tab-wiki" hidden>
