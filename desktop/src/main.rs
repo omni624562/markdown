@@ -370,6 +370,8 @@ fn main() {
             ado::ado_attachment_save,
             ado::ado_work_item_states,
             ado::ado_work_item_update,
+            ado::ado_comment_update,
+            ado::ado_comment_delete,
             ado::ado_iterations,
             notify::notify_work_items,
             ado::ado_work_item_create,

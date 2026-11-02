@@ -142,6 +142,8 @@ pub(super) fn relation_links(v: &Value) -> Vec<(&'static str, String, u64)> {
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkItemComment {
+    /// 留言的編號（伺服器支援編輯、刪除留言時才有；TFS 2019 沒有）。
+    pub(super) id: Option<u64>,
     pub(super) author: String,
     pub(super) created: Option<String>,
     /// HTML。
@@ -926,30 +928,43 @@ pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, St
                     .collect();
             }
         }
-        // 留言是另外的 API（2019 起的預覽版）；讀不到不影響其他內容。
+        // 留言是另外的 API；讀不到不影響其他內容。先用可以編輯、刪除的版本（Azure DevOps Server 2020 起），
+        // 舊版伺服器（TFS 2019）退回只能讀的版本。
         let path = format!(
             "/{}/_apis/wit/workItems/{id}/comments",
             encode_segment(&d.item.project)
         );
-        if let Ok(c) = get_version(&a.url, &pat, &path, Some("5.0-preview.2"), &tr!("讀取留言"))
+        if let Ok(c) = get_version(&a.url, &pat, &path, Some(COMMENTS_API), &tr!("讀取留言")) {
+            d.comments = comments_of(&c, true);
+        } else if let Ok(c) =
+            get_version(&a.url, &pat, &path, Some("5.0-preview.2"), &tr!("讀取留言"))
         {
-            d.comments = comments_of(&c);
+            d.comments = comments_of(&c, false);
         }
         Ok(d)
     })
     .await
 }
 
-pub(super) fn comments_of(v: &Value) -> Vec<WorkItemComment> {
+/// 可以編輯、刪除留言的 API 版本（Azure DevOps Server 2020 起）。
+const COMMENTS_API: &str = "5.1-preview.3";
+
+/// `editable`：用的是可以編輯、刪除的 API（留言帶編號）。
+pub(super) fn comments_of(v: &Value, editable: bool) -> Vec<WorkItemComment> {
     let mut list: Vec<WorkItemComment> = v
         .get("comments")
         .and_then(Value::as_array)
         .map_or(&[][..], Vec::as_slice)
         .iter()
+        // 刪除的留言（5.1 起可能還會列出來，標成 isDeleted）不顯示。
+        .filter(|c| c.get("isDeleted").and_then(Value::as_bool) != Some(true))
         .filter_map(|c| {
             let text = str_of(c, "text")?.trim().to_string();
             // 5.1 起是 createdBy／createdDate；TFS 2019（5.0-preview.2）是 revisedBy／revisedDate。
             (!text.is_empty()).then(|| WorkItemComment {
+                id: editable
+                    .then(|| c.get("id").and_then(Value::as_u64))
+                    .flatten(),
                 author: person(c.get("createdBy"))
                     .or_else(|| person(c.get("revisedBy")))
                     .unwrap_or_default(),
@@ -962,6 +977,75 @@ pub(super) fn comments_of(v: &Value) -> Vec<WorkItemComment> {
         .collect();
     list.sort_by(|a, b| a.created.cmp(&b.created));
     list
+}
+
+/// 改一則留言（只能改自己的；伺服器會檢查）。`html` 是新的內容。
+#[tauri::command]
+pub async fn ado_comment_update(
+    app: AppHandle,
+    project: String,
+    id: u64,
+    comment_id: u64,
+    html: String,
+) -> Result<(), String> {
+    if html.trim().is_empty() {
+        return Err(tr!("留言不能是空的"));
+    }
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = crate::update::agent()
+            .patch(&comment_url(&a.url, &project, id, comment_id))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(&serde_json::json!({ "text": html }).to_string());
+        read(res, &tr!("修改留言"))
+            .map(|_| ())
+            .map_err(comment_error)
+    })
+    .await
+}
+
+/// 刪除一則留言（只能刪自己的；伺服器會檢查）。
+#[tauri::command]
+pub async fn ado_comment_delete(
+    app: AppHandle,
+    project: String,
+    id: u64,
+    comment_id: u64,
+) -> Result<(), String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = crate::update::agent()
+            .delete(&comment_url(&a.url, &project, id, comment_id))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .call();
+        match res {
+            // 成功時沒有內容（204）。
+            Ok(_) => Ok(()),
+            res => read(res, &tr!("刪除留言"))
+                .map(|_| ())
+                .map_err(comment_error),
+        }
+    })
+    .await
+}
+
+fn comment_url(base: &str, project: &str, id: u64, comment_id: u64) -> String {
+    format!(
+        "{base}/{}/_apis/wit/workItems/{id}/comments/{comment_id}?api-version={COMMENTS_API}",
+        encode_segment(project)
+    )
+}
+
+/// 舊版伺服器沒有這個 API（404）時，說明原因。
+fn comment_error(e: String) -> String {
+    if super::is_not_found(&e) {
+        tr!("這個伺服器不支援修改或刪除留言（需要 Azure DevOps Server 2020 以上）")
+    } else {
+        e
+    }
 }
 
 // ---- 工作項目：改狀態、指派給我、留言 ---------------------------------------------

@@ -2909,6 +2909,10 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-body .ado-comment-name { font-weight: 600; }
 .issue-body .ado-comment-time { color: var(--muted); font-size: 12.5px; font-weight: 400; }
 .issue-body .ado-new { flex: none; padding: 0 7px; border-radius: 9px; background: light-dark(#d97706, #b45309); color: #fff; font-size: 11px; font-weight: 600; line-height: 18px; }
+/* 自己的留言：標題列右邊的「編輯」「刪除」，滑鼠移到卡片上（或用鍵盤移到按鈕上）才顯示。 */
+.issue-body .ado-comment-tools { display: inline-flex; flex: none; gap: 2px; margin-left: auto; opacity: 0; transition: opacity 0.12s; }
+.issue-body .ado-card:hover .ado-comment-tools, .issue-body .ado-comment-tools:focus-within { opacity: 1; }
+.issue-body .ado-comment-edit { margin: 4px 0; }
 .issue-body .ado-card-body { padding: 6px 12px 8px; font-size: 14.5px; }
 .issue-body .ado-card-body > :first-child { margin-top: 0; }
 .issue-body .ado-card-body > :last-child { margin-bottom: 0; }

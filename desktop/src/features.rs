@@ -36,7 +36,11 @@ impl Feature {
 
     /// 這個原生指令屬於哪一項功能（不屬於任何一項時是 `None`，一律可以用）。
     pub fn of(command: &str) -> Option<Feature> {
-        if command.starts_with("git_") || command.starts_with("github_") {
+        // create_workflow 在儲存庫裡建立 GitHub Actions 的設定檔，屬於 Git 與 GitHub。
+        if command.starts_with("git_")
+            || command.starts_with("github_")
+            || command == "create_workflow"
+        {
             Some(Feature::Git)
         } else if command.starts_with("ado_") || command == "notify_work_items" {
             Some(Feature::Ado)
@@ -98,10 +102,112 @@ pub fn check<R: Runtime>(app: &AppHandle<R>, command: &str) -> Result<(), String
 mod tests {
     use super::*;
 
+    /// 不屬於任何整合功能、一律可以用的原生指令（AI 協作另有自己的開關，見 `settings::require_ai`）。
+    /// 新增原生指令時，要歸到某一項功能（`Feature::of`），或明確加進這裡。
+    const ALWAYS: &[&str] = &[
+        "startup_target",
+        "probe_path",
+        "open_external",
+        "set_title",
+        "set_ui_zoom",
+        "custom_title_bar",
+        "window_control",
+        "open_file",
+        "reopen_file",
+        "save_file",
+        "export_binary",
+        "import_docx",
+        "import_docx_data",
+        "export_docx",
+        "list_fonts",
+        "offline_put",
+        "offline_get",
+        "offline_release",
+        "pick_pdf_path",
+        "print_to_pdf",
+        "load_settings",
+        "save_settings",
+        "open_folder",
+        "reopen_folder",
+        "close_folder",
+        "current_folder",
+        "recent",
+        "set_language",
+        "projects_list",
+        "project_update",
+        "project_forget",
+        "project_relocate",
+        "project_reveal",
+        "list_dir",
+        "list_files",
+        "paths_exist",
+        "create_entry",
+        "rename_entry",
+        "trash_entry",
+        "reveal_entry",
+        "search",
+        "replace_in_folder",
+        "scan_docs",
+        "read_docs",
+        "link_updates",
+        "update_doc",
+        "peek_text",
+        "save_image",
+        "history_list",
+        "history_read",
+        "ai_tools",
+        "term_open",
+        "term_layout",
+        "term_forward",
+        "term_ready",
+        "term_notify",
+        "term_write",
+        "term_resize",
+        "term_close",
+        "mcp_start",
+        "mcp_copy_registration",
+        "mcp_stop",
+        "mcp_sync",
+        "mcp_respond",
+        "ai_run",
+        "ai_cancel",
+        "app_version",
+        "update_check",
+        "update_install",
+        "update_restart",
+    ];
+
+    /// main.rs 註冊的每個原生指令都要分好類，新的指令不會因為名稱沒對上而關不掉。
+    #[test]
+    fn every_registered_command_is_classified() {
+        let main = include_str!("main.rs");
+        let start = main
+            .find("generate_handler![")
+            .expect("main.rs 裡找不到指令清單"); // i18n-ignore
+        let list = &main[start..start + main[start..].find(']').unwrap()];
+        let names: Vec<&str> = list
+            .split(|c: char| c == ',' || c == '[' || c.is_whitespace())
+            .filter(|s| !s.is_empty() && !s.starts_with("generate_handler"))
+            .map(|s| s.rsplit("::").next().unwrap())
+            .collect();
+        assert!(names.len() > 100, "只找到 {} 個指令", names.len()); // i18n-ignore
+        for name in names {
+            assert!(
+                Feature::of(name).is_some() || ALWAYS.contains(&name),
+                "{name} 沒有歸到任何整合功能，也不在 ALWAYS 清單裡" // i18n-ignore
+            );
+        }
+        for name in ALWAYS {
+            assert_eq!(Feature::of(name), None, "{name} 同時在 ALWAYS 和某項功能裡");
+            // i18n-ignore
+        }
+    }
+
     #[test]
     fn commands_belong_to_their_feature() {
         assert_eq!(Feature::of("git_status"), Some(Feature::Git));
         assert_eq!(Feature::of("github_clone"), Some(Feature::Git));
+        assert_eq!(Feature::of("create_workflow"), Some(Feature::Git));
         assert_eq!(Feature::of("ado_wiki_save"), Some(Feature::Ado));
         assert_eq!(Feature::of("notify_work_items"), Some(Feature::Ado));
         assert_eq!(Feature::of("dav_read"), Some(Feature::Remote));

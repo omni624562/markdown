@@ -91,4 +91,8 @@ pub static EN: &[(&str, &str)] = &[
     ("建立 Pull Request 失敗：回應的格式不正確", "Couldn't create the pull request: The response was in an unexpected format."),
     ("查詢工作項目", "Searching Work Items"),
     ("讀取工作項目失敗：回應的格式不正確", "Couldn't load the work item: The response was in an unexpected format."),
+    ("留言不能是空的", "The comment can't be empty."),
+    ("修改留言", "Edit the comment"),
+    ("刪除留言", "Delete the comment"),
+    ("這個伺服器不支援修改或刪除留言（需要 Azure DevOps Server 2020 以上）", "This server doesn't support editing or deleting comments (Azure DevOps Server 2020 or later is required)."),
 ];

@@ -683,9 +683,21 @@ fn reads_comments_oldest_first() {
         {"text": "  ", "createdBy": {"displayName": "空"}, "createdDate": "2026-10-03T00:00:00Z"},
         {"text": "<p>第一則</p>", "createdBy": {"displayName": "A"}, "createdDate": "2026-10-01T00:00:00Z"}
     ]});
-    let c = comments_of(&v);
+    let c = comments_of(&v, false);
     assert_eq!(c.len(), 2);
     assert_eq!((c[0].author.as_str(), c[1].author.as_str()), ("A", "B"));
+    assert_eq!(c[0].id, None);
+}
+
+#[test]
+fn editable_comments_keep_their_id_and_skip_deleted_ones() {
+    let v = json!({"comments": [
+        {"id": 7, "text": "<p>留著</p>", "createdBy": {"displayName": "A"}, "createdDate": "2026-10-01T00:00:00Z"},
+        {"id": 8, "isDeleted": true, "text": "<p>刪掉了</p>", "createdBy": {"displayName": "A"}, "createdDate": "2026-10-02T00:00:00Z"}
+    ]});
+    let c = comments_of(&v, true);
+    assert_eq!(c.len(), 1);
+    assert_eq!(c[0].id, Some(7));
 }
 
 #[test]
@@ -695,7 +707,7 @@ fn reads_tfs_2019_comments() {
         {"revision": 5, "text": "<div>已正常顯示</div>", "revisedBy": {"displayName": "晉萱", "uniqueName": "DOMAIN\\u1"}, "revisedDate": "2026-10-29T03:00:00Z"},
         {"revision": 3, "text": "<div>請協助確認</div>", "revisedBy": {"displayName": "林冠霖"}, "revisedDate": "2026-10-28T03:00:00Z"}
     ]});
-    let c = comments_of(&v);
+    let c = comments_of(&v, false);
     assert_eq!(
         c.iter()
             .map(|c| (c.author.as_str(), c.created.as_deref()))

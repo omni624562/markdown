@@ -346,7 +346,9 @@ function comments(sec: HTMLDetailsElement, head: HTMLElement, box: HTMLElement, 
   }
   if (!cards.length) return;
   // Markdown 裡是舊到新：最新的幾則（和新留言）展開，其他收成一行。
+  // `data-index` 是第幾則留言（舊到新，和工作項目資料裡的留言順序相同），編輯、刪除時用來對回原本的留言。
   cards.forEach((c, i) => {
+    c.dataset.index = String(i);
     const card = c.querySelector<HTMLDetailsElement>(".ado-card")!;
     card.open = i >= cards.length - OPEN_COMMENTS || card.dataset.new === "1";
   });
