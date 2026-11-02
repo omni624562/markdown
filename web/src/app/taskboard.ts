@@ -3,6 +3,7 @@
  * 主要區域開一個「工作板」分頁。每一列是一個上層項目，每一欄是一個狀態；拖曳卡片換欄就是改狀態，
  * 點卡片在同一個分頁開啟工作項目（按 < 或 Alt+← 回到工作板）。
  */
+import { adoOnline } from "../ado-online.ts";
 import { type AdoBoardItem, type AdoTeam, type AdoTeamIteration, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
@@ -282,6 +283,12 @@ function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem
   cell.addEventListener("dragstart", (e) => {
     const c = (e.target as HTMLElement).closest<HTMLElement>(".tb-card");
     if (!c) return;
+    // 離線時改不了狀態：一開始拖就說明，不要等放下才失敗。
+    if (adoOnline.offline) {
+      e.preventDefault();
+      toast(t("目前離線，連上 Azure DevOps 之後才能拖曳改狀態"), { tone: "error" });
+      return;
+    }
     e.dataTransfer?.setData("text/x-omarker-card", c.dataset.id ?? "");
     c.classList.add("dragging");
   });

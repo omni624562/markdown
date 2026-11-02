@@ -16,6 +16,7 @@ import { forgetListCopies, refreshKeptPages, withOfflineCopy } from "./offline-c
 import { workItemsPanel, wikiPanel, issuesPanel } from "./work-items-panel.ts";
 import { app } from "./context.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
+import { initOfflineBanner } from "./offline-banner.ts";
 
 
 export let workItemSeen: SeenMap | null = (() => {
@@ -148,6 +149,7 @@ export // 在 init 時建立。
 let gitPanel: GitPanel | null;
 
 export function initWorkItemUpdates(): void {
+  initOfflineBanner();
   app.commands.register({
     id: "workitems-mark-all-seen",
     title: t("工作項目：全部標示為看過"),

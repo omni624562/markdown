@@ -612,6 +612,10 @@ export const ui: Record<string, Translation> = {
   "連不上伺服器，顯示 {time} 存下的資料": "Couldn't reach the server; showing data saved at {time}",
   "顯示的是 {time} 存下的內容，正在更新…": "Showing content saved at {time}, updating…",
   "上次": "last time",
+  "目前連不到 Azure DevOps 伺服器（離線中），連上之後再試一次": "Can't reach the Azure DevOps server right now (offline). Try again once you're connected.",
+  "離線中：連不到 Azure DevOps，顯示的是之前存下的資料；改狀態、留言、編輯 Wiki 等要等連上之後。":
+    "Offline: can't reach Azure DevOps, so this is data saved earlier. Changing states, commenting and editing the Wiki have to wait until you're connected.",
+  "目前離線，連上 Azure DevOps 之後才能拖曳改狀態": "You're offline; connect to Azure DevOps to drag cards to another state",
   "（{time} 的資料，更新中…）": "(data from {time}, updating…)",
   "連不上伺服器，顯示 {time} 存下的資料。": "Couldn't reach the server; showing data saved at {time}.",
   "已保留離線：沒有網路時也能開啟（指令面板的「保留離線的頁面」）": "Kept offline: you can open it without a connection (\"Pages kept offline\" in the command palette)",
