@@ -69,7 +69,16 @@ jobs:
       - name: 安裝 Rust
         shell: bash
         run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown && rustup default stable
-      - uses: actions/cache@v4
+      # 快取的鍵只看相依套件：每次發版 Cargo.lock 裡自己的版本號（md-*）都會變，算進去的話每次都對不上，
+      # 又要花好幾分鐘重新存一份。
+      - name: 相依套件的雜湊
+        id: deps
+        shell: bash
+        run: |
+          hash=$(for f in Cargo.lock desktop/Cargo.lock; do sed '/^name = "md-/{n;d}' "$f"; done | sha256sum | cut -c1-16)
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: cache
         with:
           path: |
             ~/.cargo/registry
@@ -77,7 +86,7 @@ jobs:
             ~/.cargo/bin/wasm-pack.exe
             target
             desktop/target
-          key: desktop-${{ runner.os }}-${{ env.WASM_PACK }}-${{ hashFiles('Cargo.lock', 'desktop/Cargo.lock') }}
+          key: desktop-${{ runner.os }}-${{ env.WASM_PACK }}-${{ steps.deps.outputs.hash }}
           restore-keys: desktop-${{ runner.os }}-${{ env.WASM_PACK }}-
       - name: 安裝 wasm-pack
         shell: bash
@@ -123,6 +132,18 @@ jobs:
           name: omarker-windows-x64
           path: desktop/target/release/omarker.exe
           if-no-files-found: error
+
+      # 只在 main 上、相依套件變了（快取沒對上）時才存：PR 的快取別的分支用不到，存一次要好幾分鐘。
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/wasm-pack.exe
+            target
+            desktop/target
+          key: desktop-${{ runner.os }}-${{ env.WASM_PACK }}-${{ steps.deps.outputs.hash }}
 
   # 公開的「最新版」：標籤 latest 永遠指向 main 最新一次成功建置的版本。
   # 固定下載連結：https://github.com/<owner>/<repo>/releases/download/latest/omarker.exe
