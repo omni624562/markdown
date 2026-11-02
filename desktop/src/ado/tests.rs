@@ -630,9 +630,36 @@ fn flattens_iterations() {
 fn reads_states_from_transitions() {
     let v = json!({"transitions": {"": [{"to": "New"}], "New": [{"to": "Active"}], "Active": [{"to": "Resolved"}, {"to": "New"}]}});
     let states = states_from_transitions(&v);
-    assert_eq!(states.len(), 3);
-    assert!(states.contains(&"Resolved".to_string()));
-    assert!(!states.contains(&String::new()));
+    assert_eq!(states, ["New", "Active", "Resolved"]);
+}
+
+#[test]
+fn orders_states_by_workflow_not_alphabetically() {
+    // TFS 2019 的 Task（Agile）：JSON 物件讀進來是依字母排的，要照流程排回來。
+    let v = json!({"transitions": {
+        "": [{"to": "New"}],
+        "Active": [{"to": "Closed"}, {"to": "New"}, {"to": "Removed"}, {"to": "Resolved"}],
+        "Closed": [{"to": "Active"}],
+        "New": [{"to": "Active"}, {"to": "Closed"}, {"to": "Removed"}],
+        "Removed": [{"to": "New"}],
+        "Resolved": [{"to": "Active"}, {"to": "Closed"}]
+    }});
+    assert_eq!(
+        states_from_transitions(&v),
+        ["New", "Active", "Resolved", "Closed", "Removed"]
+    );
+    // 新版 API 有分類：依分類排。
+    let v = json!({"value": [
+        {"name": "Closed", "category": "Completed"},
+        {"name": "Removed", "category": "Removed"},
+        {"name": "Active", "category": "InProgress"},
+        {"name": "New", "category": "Proposed"},
+        {"name": "Resolved", "category": "Resolved"}
+    ]});
+    assert_eq!(
+        states_by_category(&v),
+        ["New", "Active", "Resolved", "Closed", "Removed"]
+    );
 }
 
 #[test]

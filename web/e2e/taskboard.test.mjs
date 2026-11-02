@@ -34,7 +34,8 @@ const desktop = {
   ado_board: [ITEMS],
   // 上層不在這個 Sprint：另外讀標題。
   ado_work_items_by_ids: [[w(1673120, "User Story", "SP83 新人臉辨識", "New", null, "許晉嘉")]],
-  ado_work_item_states: [["New", "Active", "Resolved", "Closed"]],
+  // 「已移除」不顯示成一欄。
+  ado_work_item_states: [["New", "Active", "Resolved", "Closed", "Removed"]],
 };
 
 async function openBoard(page) {
@@ -52,8 +53,10 @@ test("工作板：上層項目一列、狀態一欄，選了目前的 Sprint", a
   const { page, context, errors } = await open({ desktop });
   await openBoard(page);
   assert.equal(await page.inputValue("#board-sprint"), "i2", "預設選目前的 Sprint");
-  const heads = await page.$$eval(".tb-head .tb-col-head", (els) => els.map((e) => e.textContent));
+  const heads = await page.$$eval(".tb-head .tb-col-head", (els) => els.map((e) => e.firstChild?.nextSibling?.textContent));
   assert.deepEqual(heads, ["New", "Active", "Resolved", "Closed"]);
+  // 欄位標題後面是卡片數量。
+  assert.equal(await page.textContent(".tb-head .tb-col-head:nth-child(2) .tb-count"), "2");
   const rows = await page.$$eval(".taskboard .tb-row:not(.tb-head) .tb-parent", (els) => els.map((e) => e.textContent ?? ""));
   assert.equal(rows.length, 3);
   assert.match(rows[0], /SP102 值機/);

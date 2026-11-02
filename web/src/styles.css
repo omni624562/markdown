@@ -3448,35 +3448,36 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 @keyframes issue-flash { 0%, 40% { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .issue-flash { animation: none; outline: 2px solid var(--accent); } }
 
-/* ---- Sprint 工作板（app/taskboard.ts） ---- */
-#board-host { display: flex; flex-direction: column; gap: 10px; padding: 8px 12px; }
-#board-host .tb-field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); }
-#board-host .tb-field select { width: 100%; }
-#board-host .side-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+/* ---- Sprint 工作板（app/taskboard.ts）：卡片和工作項目清單同一種排法，區塊和工作項目內容的卡片一致 ---- */
+#board-host { display: flex; flex-direction: column; gap: 8px; padding: 4px 12px 12px; }
+#board-host .tb-filters { margin: 0; }
+#board-host .tb-filters select { grid-column: 1 / -1; }
+#board-host .tb-open { align-self: flex-start; }
+#board-host .workitems-status { margin: 0; }
 .issue-body:has(> .taskboard) { max-width: none; }
-.taskboard { --tb-parent: 240px; display: grid; gap: 0; min-width: calc(var(--tb-parent) + var(--tb-columns) * 190px); font-size: 13px; }
-.taskboard .tb-row { display: grid; grid-template-columns: var(--tb-parent) repeat(var(--tb-columns), minmax(190px, 1fr)); border-bottom: 1px solid var(--border); }
-.taskboard .tb-head { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--muted); font-weight: 600; }
-.taskboard .tb-head > div { padding: 8px 10px; }
-.taskboard .tb-col-head { display: flex; align-items: center; }
-.taskboard .tb-parent { display: flex; align-items: flex-start; gap: 4px; padding: 8px 6px; border-right: 1px solid var(--border); }
-.taskboard .tb-toggle { flex: none; margin-top: 4px; transition: transform 0.12s; }
+.taskboard { --tb-parent: 240px; display: flex; flex-direction: column; gap: 10px; min-width: calc(var(--tb-parent) + var(--tb-columns) * 200px); font: 13px/1.4 var(--font-ui); }
+.taskboard .tb-row { display: grid; grid-template-columns: var(--tb-parent) repeat(var(--tb-columns), minmax(200px, 1fr)); border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.taskboard .tb-head { position: sticky; top: 0; z-index: 1; background: var(--surface-raised, var(--active-line)); color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.taskboard .tb-head > div { display: flex; align-items: center; gap: 0; padding: 7px 12px; }
+.taskboard .tb-count { margin-left: 6px; padding: 0 6px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 7%, transparent); font-size: 11px; font-weight: 500; line-height: 17px; }
+.taskboard .tb-parent { display: flex; align-items: flex-start; gap: 2px; padding: 8px 8px 8px 4px; border-right: 1px solid var(--border); border-radius: 8px 0 0 8px; background: color-mix(in srgb, var(--fg) 2%, transparent); }
+.taskboard .tb-toggle { flex: none; width: 24px; height: 24px; margin-top: 4px; color: var(--muted); transition: transform 0.12s; }
 .taskboard .tb-row.collapsed .tb-toggle { transform: rotate(-90deg); }
-.taskboard .tb-row.collapsed .tb-cell { min-height: 0; }
 .taskboard .tb-row.collapsed .tb-cell > .tb-card { display: none; }
-.taskboard .tb-row.collapsed .tb-parent::after { content: attr(data-count); margin-left: auto; padding: 0 7px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11px; line-height: 18px; }
-.taskboard .tb-orphans { padding: 6px 4px; color: var(--muted); }
-.taskboard .tb-cell { display: flex; flex-direction: column; gap: 8px; min-height: 64px; padding: 8px; border-right: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
-.taskboard .tb-cell.drop { background: var(--accent-soft); }
-.taskboard .tb-card { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-left: 3px solid #f2cb1d; border-radius: 6px; background: var(--bg); box-shadow: 0 1px 2px rgb(0 0 0 / 6%); cursor: pointer; }
-.taskboard .tb-card:hover { border-color: var(--accent); border-left-color: #f2cb1d; }
+.taskboard .tb-row.collapsed .tb-cell { min-height: 0; padding-block: 4px; }
+.taskboard .tb-row.collapsed .tb-parent::after { content: attr(data-count); align-self: center; margin-left: auto; padding: 0 6px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--muted); font-size: 11px; line-height: 17px; }
+.taskboard .tb-orphans { padding: 6px 4px; color: var(--muted); font-size: 12.5px; }
+.taskboard .tb-cell { display: flex; flex-direction: column; gap: 6px; min-height: 56px; padding: 8px; }
+.taskboard .tb-cell + .tb-cell { border-left: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.taskboard .tb-cell.drop { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.taskboard .tb-card { --kind: var(--muted); display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 6px 10px; border: 1px solid var(--border); border-left: 3px solid var(--kind); border-radius: 6px; background: var(--bg); cursor: pointer; }
+.taskboard .tb-card:hover { background: var(--active-line); }
 .taskboard .tb-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .taskboard .tb-card.dragging { opacity: 0.5; }
-.taskboard .tb-parent-card { flex: 1; min-width: 0; border-left-color: #009ccc; cursor: pointer; }
-.taskboard .tb-card-head { display: flex; gap: 6px; line-height: 1.45; }
-.taskboard .tb-id { flex: none; font-weight: 600; }
-.taskboard .tb-title { min-width: 0; overflow-wrap: anywhere; }
-.taskboard .tb-card-meta, .taskboard .tb-parent-state { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
-.taskboard .tb-avatar { width: 20px; height: 20px; font-size: 11px; }
-.taskboard .tb-hours { color: var(--muted); font-size: 12px; }
-.taskboard .tb-empty { grid-column: 1 / -1; padding: 24px; color: var(--muted); }
+.taskboard .tb-parent-card { flex: 1; min-width: 0; }
+.taskboard .tb-parent-card .tb-title { font-weight: 600; }
+.taskboard .tb-title { overflow-wrap: anywhere; }
+.taskboard .tb-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.taskboard .tb-avatar { width: 18px; height: 18px; font-size: 10px; }
+.taskboard .tb-hours { margin-left: auto; }
+.taskboard .tb-empty { padding: 24px; color: var(--muted); }
