@@ -1029,17 +1029,26 @@ async function flushChips(): Promise<void> {
 
 function fillChip(el: HTMLElement, id: number): void {
   const item = chipCache.get(id)?.item;
-  el.hidden = !item;
-  if (!item) return;
+  // 內容裡本來就寫了狀態（例如相關工作項目）：還沒讀到時先顯示那個狀態。
+  const fallback = el.dataset.fallback;
+  el.hidden = !item && !fallback;
+  if (!item) {
+    if (fallback) {
+      el.textContent = fallback;
+      el.dataset.tone = stateTone(fallback);
+    }
+    return;
+  }
   el.textContent = item.state;
   el.dataset.tone = stateTone(item.state);
   el.title = t("{label}：{title}・{state}", { label: `${item.kind} ${item.id}`, title: item.title, state: item.state });
 }
 
-function chipElement(id: number): HTMLElement {
+function chipElement(id: number, fallback?: string): HTMLElement {
   const el = document.createElement("span");
   el.className = "wi-chip";
   el.dataset.wi = String(id);
+  if (fallback) el.dataset.fallback = fallback;
   fillChip(el, id);
   wantChip(id);
   return el;
@@ -1101,12 +1110,20 @@ const workItemChipsPlugin: PreviewPlugin = {
     for (const a of scope.querySelectorAll<HTMLAnchorElement>("a[href]")) {
       if (a.nextElementSibling?.classList.contains("wi-chip")) continue;
       const target = parseRemoteLink(a.getAttribute("href") ?? "", base);
-      if (target?.kind === "workitem") a.after(chipElement(target.id));
+      if (target?.kind !== "workitem") continue;
+      // 連結後面已經寫了「・狀態」（工作項目的相關工作項目）：換成標籤，不要顯示兩次。
+      const next = a.nextSibling;
+      const written = next?.nodeType === Node.TEXT_NODE ? /^・([^・\n]+)$/.exec(next.textContent?.trim() ?? "") : null;
+      if (written) next!.remove();
+      a.after(chipElement(target.id, written?.[1].trim()));
     }
   },
-  // 匯出的文件不帶狀態標籤（狀態會變，別人看的時候已經不準了）。
+  // 匯出的文件不帶狀態標籤（狀態會變，別人看的時候已經不準了）；原本內容裡寫的狀態放回去。
   exportTransform(root) {
-    for (const chip of root.querySelectorAll(".wi-chip")) chip.remove();
+    for (const chip of root.querySelectorAll<HTMLElement>(".wi-chip")) {
+      if (chip.dataset.fallback) chip.replaceWith(`・${chip.dataset.fallback}`);
+      else chip.remove();
+    }
   },
 };
 
