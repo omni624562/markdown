@@ -599,7 +599,10 @@ export class IssueView {
       this.#cache.set(source.key, md);
       if (this.#cache.size > CACHE_LIMIT) this.#cache.delete(this.#cache.keys().next().value!);
       if (copy) this.#stale.hidden = true;
-      if (md !== this.#markdown || loading) this.#display(md, cached !== undefined || !!copy);
+      // 先顯示的是快取或副本時，內容一樣也要重畫：畫面調整（工作板、留言工具等）要靠這次讀到的資料，
+      // 例如再開一次工作板，先顯示的快取還沒有卡片的資料，只是一張表格。
+      const early = cached !== undefined || !!copy;
+      if (md !== this.#markdown || loading || (early && source.decorate)) this.#display(md, early);
       // 內容沒變也要更新摘要（例如「更新於幾分鐘前」）。
       else this.#h.facts?.(source.facts?.() ?? []);
       this.#h.offline?.save(source, md);

@@ -256,3 +256,16 @@ test("Backlog：依順序列出還沒排進 Sprint 的需求，可以移到選�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("工作板：再開一次（先顯示上次的內容）時，讀到一樣的資料也畫成卡片，不會停在表格", async () => {
+  const { page, context, errors } = await open({ desktop });
+  await openBoard(page);
+  // 再按一次「開啟工作板」：先顯示上次讀到的內容，伺服器回來的資料和上次一樣。
+  await page.locator("#board-host button", { hasText: "開啟工作板" }).click();
+  // 讀取完成（重新讀的資料一樣）。
+  await page.waitForTimeout(1000);
+  assert.ok(await page.locator(".taskboard .tb-card").first().isVisible(), "畫成卡片");
+  assert.equal(await page.locator(".issue-body > table").count(), 0, "不是 Markdown 表格");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
