@@ -1180,8 +1180,6 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 }
 .topbar-title.hidden .topbar-title-inner, .topbar-title.empty .topbar-title-inner { visibility: hidden; }
 .topbar-title-inner { display: inline-flex; gap: 7px; align-items: center; min-width: 0; max-width: 100%; white-space: nowrap; }
-.topbar-project { flex: 0 1 auto; min-width: 3em; overflow: hidden; color: var(--fg); font-weight: 600; text-overflow: ellipsis; }
-.topbar-sep { flex: none; color: var(--subtle); }
 .topbar-doc { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topbar-title-inner > [hidden] { display: none; }
 /* 手機或很窄的視窗：頂端列留給分頁。 */
