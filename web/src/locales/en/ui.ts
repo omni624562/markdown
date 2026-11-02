@@ -514,6 +514,7 @@ export const ui: Record<string, Translation> = {
   "附件": "Attachment",
   "改成指派給我": "Assign to Me",
   "留言": "Comment",
+  "工作項目：全部標示為看過": "Work Items: Mark All as Seen",
   "送出留言": "Post Comment",
   "編輯留言": "Edit Comment",
   "刪除留言": "Delete Comment",
