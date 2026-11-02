@@ -97,7 +97,7 @@ export function openRepoFileLink(href: string): boolean {
 }
 
 /** 在主要區域閱讀儲存庫裡的文字檔或附件：Markdown 照常排版，其他文字檔當成程式碼上色。 */
-function showRepoFile(link: RepoFileLink): void {
+export function showRepoFile(link: RepoFileLink): void {
   const base = app.ado!.account!.url;
   const git = link.kind === "git" ? link : null;
   const webUrl = link.kind === "git" ? repoFileUrl(base, link) : link.url;

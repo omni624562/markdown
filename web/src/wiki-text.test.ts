@@ -16,6 +16,15 @@ test("頁面連結：相對路徑以目前頁面的資料夾為準，可以加 .
   assert.equal(resolvePageLink("./產品", "/首頁", pages), "/產品");
 });
 
+test("頁面連結：同一層找不到時，當成目前頁面底下的子頁面", () => {
+  const tree = ["/ITA專區", "/ITA專區/COMET", "/ITA專區/COMET/START-HERE-illustrated", "/ITA專區/COMET/Skill自然語言使用範例"];
+  assert.equal(resolvePageLink("START-HERE-illustrated", "/ITA專區/COMET", tree), "/ITA專區/COMET/START-HERE-illustrated");
+  assert.equal(resolvePageLink("./Skill%E8%87%AA%E7%84%B6%E8%AA%9E%E8%A8%80%E4%BD%BF%E7%94%A8%E7%AF%84%E4%BE%8B.md", "/ITA專區/COMET", tree), "/ITA專區/COMET/Skill自然語言使用範例");
+  // 同一層有同名的頁面時，照一般的規則（同一層）。
+  assert.equal(resolvePageLink("產品", "/產品/a-b", ["/產品", "/產品/產品", "/產品/a-b"]), "/產品/產品");
+  assert.equal(resolvePageLink("COMET", "/ITA專區/COMET", tree), "/ITA專區/COMET");
+});
+
 test("頁面連結：網址、找不到的頁面回傳 null", () => {
   assert.equal(resolvePageLink("https://example.com/產品", "/首頁", pages), null);
   assert.equal(resolvePageLink("mailto:a@b.c", "/首頁", pages), null);

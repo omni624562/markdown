@@ -335,7 +335,14 @@ export class IssueView {
       e.preventDefault();
       const raw = a.getAttribute("href") ?? a.getAttributeNS("http://www.w3.org/1999/xlink", "href");
       if (!raw) return;
+      // 同一頁裡的標題（目錄、`#原則`）：捲過去。
+      if (raw.startsWith("#")) {
+        this.#scrollToAnchor(raw.slice(1));
+        return;
+      }
       if (this.#source?.link?.(raw)) return;
+      // 內容沒處理的相對路徑不交給瀏覽器：會被當成 oMarker 自己的網址，開出一個不存在的頁面。
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.startsWith("//")) return;
       let href: string;
       try {
         href = new URL(raw, document.baseURI).href;
@@ -356,6 +363,23 @@ export class IssueView {
     });
     workspace.querySelector(".outline-right")?.before(pane) ?? workspace.append(pane);
     this.#pane = pane;
+  }
+
+  /** 捲到內容裡 id 是 `fragment` 的元素（大小寫不同、或寫成標題文字也找得到）。 */
+  #scrollToAnchor(fragment: string): void {
+    let id = fragment;
+    try {
+      id = decodeURIComponent(fragment);
+    } catch {
+      // 照原樣找。
+    }
+    const slug = (s: string) => s.trim().toLowerCase().replace(/\s+/g, "-");
+    const withId = [...this.#body.querySelectorAll<HTMLElement>("[id]")];
+    const target =
+      withId.find((el) => el.id === id) ??
+      withId.find((el) => el.id.toLowerCase() === id.toLowerCase()) ??
+      [...this.#body.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")].find((h) => slug(h.textContent ?? "") === slug(id));
+    target?.scrollIntoView({ block: "start" });
   }
 
   get isOpen(): boolean {

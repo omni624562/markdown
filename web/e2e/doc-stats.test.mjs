@@ -42,12 +42,13 @@ test("狀態列的字數可以打開文件統計：中英文字數、閱讀與�
 
 test("選取文字時，統計面板另外列出選取範圍的字數", async () => {
   const { page, context, errors } = await open();
-  await setText(page, "第一段文字。\n\n第二段 hello world。\n");
+  // 最後一行不換行：游標在文件結尾就是在這一行，選取時不必上下移動
+  // （即時預覽裡游標移動時行高會變，上下移動可能落在別行）。
+  await setText(page, "第一段文字。\n\n第二段 hello world。");
   await page.click(".cm-content");
   await page.keyboard.press("Control+End");
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("Home");
-  await page.keyboard.press("Shift+End");
+  await page.keyboard.press("Shift+Home");
+  await page.waitForFunction(() => document.querySelector("#status-cursor")?.textContent.includes("已選取"));
   await page.click("#status-stats");
   await page.waitForSelector(".stats-pop:popover-open");
   assert.match((await rows(page))["選取範圍"], /^5 字/);

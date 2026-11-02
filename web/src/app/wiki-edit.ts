@@ -19,9 +19,11 @@ import { IssueView } from "../ui/issue-view.ts";
 import { toast } from "../ui/toast.ts";
 import { type WikiPageInfo, myChanges } from "../wiki-coedit.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
-import { pageName, wikiMarkdown, wikiPageLink, resolvePageLink, flattenPages } from "../wiki-text.ts";
+import { pageName, wikiMarkdown, wikiPageLink } from "../wiki-text.ts";
 import { openDiagram, copyDiagram } from "./activity-bar.ts";
 import { finishWikiEdit } from "./ado-files.ts";
+import { openRemoteLink } from "./ado-links.ts";
+import { followWikiLink } from "./wiki-page-links.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { hideItem, itemOpened } from "./item-tabs.ts";
@@ -404,13 +406,8 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
       insertAtCursor(wikiPageLink(title, webUrl));
       toast(t("已插入「{name}」的連結", { name: title }));
     },
-    link: (href) => {
-      const target = resolvePageLink(href, path, flattenPages(wikiPanel?.pages ?? []));
-      if (!target) return false;
-      wikiPanel?.select(target);
-      showWikiPage(wiki, target);
-      return true;
-    },
+    // 內文裡的相對連結（子頁面、其他頁面、儲存庫裡的檔案）都在 oMarker 裡開。
+    link: (href) => followWikiLink(wiki, path, href),
   });
 }
 
@@ -486,7 +483,11 @@ export function initWikiEdit(): void {
         into.parentElement?.addEventListener("scroll", () => app.outlineView && app.updateActiveHeading(), { passive: true });
       }
     },
-    open: (url) => void desktop?.openExternal(url).catch(reportError),
+    // 連到 Azure DevOps 工作項目、Wiki 頁面的網址在 oMarker 裡開（網址寫法和連線設定不同也認得），其他用瀏覽器。
+    open: (url) =>
+      void openRemoteLink(url)
+        .then((opened) => (opened ? undefined : desktop?.openExternal(url)))
+        .catch(reportError),
     follow: (href) => app.openRepoFileLink(href),
     copyAsDocument(name, markdown) {
       const doc = app.makeDoc({ name, kind: "markdown", baseline: app.hash("") });

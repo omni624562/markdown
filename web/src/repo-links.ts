@@ -3,6 +3,8 @@
  * 辨認出可以直接在 oMarker 閱讀的文字檔（Markdown、純文字、程式碼），不碰畫面，方便測試。
  */
 
+import { underServer } from "./server-url.ts";
+
 export type RepoFileLink =
   | {
       kind: "git";
@@ -39,33 +41,29 @@ function decode(s: string): string {
 
 const VERSION_TYPES = { GB: "branch", GT: "tag", GC: "commit" } as const;
 
-/** `href` 是不是連線中那台伺服器（`base` 是集合的網址）上、可以閱讀的儲存庫檔案或附件。 */
+/**
+ * `href` 是不是連線中那台伺服器（`base` 是集合的網址）上、可以閱讀的儲存庫檔案或附件。
+ * 網址的寫法可以和連線設定不同（http／https、埠號、只寫電腦名稱）；附件的網址改用連線設定的伺服器。
+ */
 export function parseRepoFileLink(href: string, base: string): RepoFileLink | null {
-  const root = base.trim().replace(/\/+$/, "");
-  const url = href.trim();
-  if (!root || url.slice(0, root.length + 1).toLowerCase() !== `${root.toLowerCase()}/`) return null;
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  const rest = url.slice(root.length).split(/[?#]/)[0];
+  const at = underServer(href, base);
+  if (!at) return null;
+  const { rest, params: query } = at;
   const attachment = /^(?:\/[^/]+)?\/_apis\/wit\/attachments\/[^/]+$/i.exec(rest);
   if (attachment) {
-    const name = parsed.searchParams.get("fileName") ?? "";
-    return name && isReadableFileName(name) ? { kind: "attachment", url, name } : null;
+    const name = query.get("fileName") ?? "";
+    return name && isReadableFileName(name) ? { kind: "attachment", url: `${at.root}${rest}${at.search}`, name } : null;
   }
   // `/專案/_git/儲存庫?path=/docs/a.md&version=GBmain`；舊版也可能省略專案（和儲存庫同名）。
   const git = /^(?:\/([^/]+))?\/_git\/([^/]+)\/?$/i.exec(rest);
   if (!git) return null;
-  const rawPath = parsed.searchParams.get("path");
+  const rawPath = query.get("path");
   if (!rawPath) return null;
   const path = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
   const name = path.slice(path.lastIndexOf("/") + 1);
   if (!isReadableFileName(name)) return null;
   const repo = decode(git[2]);
-  const version = parsed.searchParams.get("version");
+  const version = query.get("version");
   const type = version ? VERSION_TYPES[version.slice(0, 2).toUpperCase() as keyof typeof VERSION_TYPES] : undefined;
   return {
     kind: "git",

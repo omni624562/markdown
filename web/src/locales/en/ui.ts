@@ -765,4 +765,6 @@ export const ui: Record<string, Translation> = {
   "例如 2000": "e.g. 2000",
   "字": "words",
   "請輸入 1 到 10,000,000 之間的字數，例如 2000、3k 或 1.5萬": "Enter a number of words from 1 to 10,000,000, e.g. 2000 or 3k",
+  // Wiki 頁面裡的相對連結
+  "找不到連結的頁面：{name}": "Couldn't find the linked page: {name}",
 };
