@@ -50,7 +50,10 @@ function commentHeading(author: string, created: string | null): string {
   return `### ${[name, dateTime(created)].filter(Boolean).join("・")}`;
 }
 
-/** 相關工作項目的分組：上層、子項目、前置、後續、相關，其他依伺服器上的連結名稱。 */
+/**
+ * 相關工作項目的分組：上層、子項目、前置、後續、相關，其他依伺服器上的連結名稱。
+ * 每一組裡最近更新的在前面（和工作項目清單的順序一樣；伺服器給的是連結建立的順序）。
+ */
 function relationsMarkdown(list: AdoWorkItemRelation[]): string {
   const labels: Record<string, string> = {
     parent: t("上層"),
@@ -68,13 +71,19 @@ function relationsMarkdown(list: AdoWorkItemRelation[]): string {
   return [...groups]
     .filter(([, items]) => items.length)
     .map(([label, items]) => {
-      const lines = items.map((r) => {
+      const lines = byRecent(items).map((r) => {
         const text = t("{label}：{title}", { label: inlineText(`${r.kind} ${r.id}`), title: inlineText(r.title) });
         return `- [${text}](<${r.webUrl}>)・${inlineText(r.state)}`;
       });
       return `### ${label}\n\n${lines.join("\n")}`;
     })
     .join("\n\n");
+}
+
+/** 最近更新的在前面；沒有更新時間的放最後，其餘保持原本的順序。 */
+export function byRecent<T extends { changed: string | null }>(items: T[]): T[] {
+  const time = (x: T) => (x.changed ? Date.parse(x.changed) || 0 : 0);
+  return [...items].sort((a, b) => time(b) - time(a));
 }
 
 /** 附件清單：檔名（連到附件）、大小、上傳時間、說明。 */
