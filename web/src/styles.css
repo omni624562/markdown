@@ -3479,3 +3479,10 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .offline-banner > span { flex: 1 1 160px; }
 /* 離線時工作板的卡片不能拖曳（改狀態要連線）。 */
 body.ado-offline .tb-card { cursor: default; }
+
+/* 工作項目清單上方：指派給你的有幾個新的或有更新・只看這些・全部標示為看過（見 app/work-items-panel.ts）。 */
+.workitems-unseen { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; margin: 0 0 8px; padding: 6px 10px; border-radius: var(--radius); background: var(--accent-soft); font-size: 12.5px; }
+.workitems-unseen[hidden] { display: none; }
+.workitems-unseen > span { flex: 1 1 auto; }
+.workitems-unseen-action { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+.workitems-unseen-action:hover { text-decoration: underline; }

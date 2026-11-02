@@ -23,6 +23,7 @@ import { reportError } from "./git-actions.ts";
 import { showIssue } from "./ado-files.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { showWorkItem } from "./work-item-actions.ts";
+import { workItemLoaded } from "./work-item-updates.ts";
 
 /** 「工作」類型（卡片）：各種流程範本的名稱。 */
 const TASK_KINDS = new Set(["Task", "工作"]); // i18n-ignore：伺服器上的類型名稱
@@ -34,6 +35,9 @@ interface Selection {
   team: AdoTeam;
   iteration: AdoTeamIteration;
 }
+
+/** 剛在工作板上拖曳改過狀態的卡片（重新讀到時記成看過）。 */
+const justEdited = new Set<number>();
 
 /** 側邊欄目前的選擇；人員篩選：`null` 全部、`@me` 只看我、其他是名字。 */
 let selection: Selection | null = null;
@@ -114,6 +118,7 @@ function boardSource(s: Selection): IssueSource {
       };
       const items = await withOfflineCopy(`board:${key}`, () => desktop!.adoBoard(s.project, s.team.name, s.iteration.path), update);
       fresh = freshnessOf(items);
+      for (const w of items) if (!fresh && justEdited.delete(w.id)) workItemLoaded(w);
       raw = new Map(items.map((w) => [w.id, w]));
       const list = items.map(toBoardItem);
       // 上層項目不在這個 Sprint 裡：另外讀標題。
@@ -313,6 +318,8 @@ function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem
     void (async () => {
       try {
         await desktop!.adoWorkItemUpdate(id, { state, rev: item.rev });
+        // 自己改的：重新讀到工作板時記成看過（不要又被標成「有更新」）。
+        justEdited.add(id);
         toast(t("已把 {id} 改成「{state}」", { id, state }), { tone: "success" });
       } catch (err) {
         reportError(err);

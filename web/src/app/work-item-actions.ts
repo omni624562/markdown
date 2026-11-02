@@ -20,6 +20,7 @@ import { workItemSeen } from "./work-item-updates.ts";
 import { workItemsPanel, barShortcuts, toggleWorkItemShortcut } from "./work-items-panel.ts";
 import { enhanceWorkItem, lazy, type Loaded } from "./work-item-edit.ts";
 import { app } from "./context.ts";
+import { workItemLoaded } from "./work-item-updates.ts";
 
 
 /** 每種工作項目可以設定的狀態（同一個專案、類型只讀一次）。 */
@@ -153,6 +154,7 @@ export function showWorkItem(item: AdoWorkItem): void {
     fileName: issueFileName(`${item.kind} ${item.id}`, item.title),
     load: async () => {
       const d = await desktop!.adoWorkItem(item.id);
+      workItemLoaded(d);
       related = new Map(d.relations.map((r) => [r.id, r]));
       detail = d;
       editing.update(d);
