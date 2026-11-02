@@ -578,6 +578,49 @@ export function renderAdoTab(): void {
   }
 }
 
+/** 「只看這些」：清單只列圖示上的數字算的那些。 */
+let onlyUnseen = false;
+const unseenLine = document.createElement("div");
+
+/** 指派給你、還沒結束的工作項目裡，新的或看過之後有更新的（圖示上的數字）。 */
+export function unseenItems(): AdoWorkItem[] {
+  return app.pollItems.filter((w) => markOf(app.workItemSeen, w));
+}
+
+function showOnlyUnseen(on: boolean): void {
+  onlyUnseen = on;
+  renderUnseenLine();
+  void workItemsPanel?.refresh();
+}
+
+/** 清單上方的「指派給你的有 N 個新的或有更新・只看這些・全部標示為看過」。 */
+export function renderUnseenLine(): void {
+  if (!workItemsPanel) return;
+  const n = unseenItems().length;
+  unseenLine.hidden = !onlyUnseen && !n;
+  if (unseenLine.hidden) return;
+  const link = (text: string, run: () => void) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "workitems-unseen-action";
+    b.textContent = text;
+    b.addEventListener("click", run);
+    return b;
+  };
+  const text = document.createElement("span");
+  if (onlyUnseen) {
+    text.textContent = t("只列出新的或有更新的（{n}）", { n });
+    unseenLine.replaceChildren(text, link(t("顯示完整清單"), () => showOnlyUnseen(false)));
+    return;
+  }
+  text.textContent = t("指派給你的工作項目有 {n} 個新的或有更新", { n });
+  unseenLine.replaceChildren(
+    text,
+    link(t("只看這些"), () => showOnlyUnseen(true)),
+    link(t("全部標示為看過"), () => app.commands.run("workitems-mark-all-seen")),
+  );
+}
+
 export function initWorkItemsPanel(): void {
   workItemsPanel = desktop
     ? new IssuesPanel<AdoWorkItem & IssueSummary>(app.$("#workitems-host"), {
@@ -614,6 +657,12 @@ export function initWorkItemsPanel(): void {
         })(),
         list: async (search, update) => {
           app.loadWorkItemFilterOptions();
+          // 「只看這些」：圖示上的數字算的那些（指派給你、新的或有更新的），不用再讀一次。
+          if (onlyUnseen && !search) {
+            const items = unseenItems();
+            workItemListed = new Set(items.map((w) => w.id));
+            return items.map(workItemRow);
+          }
           const q = workItemQuery;
           // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
           const raw = q
@@ -627,7 +676,11 @@ export function initWorkItemsPanel(): void {
         forget: () => forgetListCopies("wi-"),
         view: (item) => app.showWorkItem(item),
         status: (n, search) =>
-          workItemQuery
+          onlyUnseen && !search
+            ? n
+              ? t("指派給你、新的或有更新的工作項目（{n}）", { n })
+              : t("指派給你的工作項目都看過了")
+            : workItemQuery
             ? n
               ? t("查詢「{name}」的結果（{n}）", { name: workItemQuery.name, n })
               : search
@@ -646,6 +699,11 @@ export function initWorkItemsPanel(): void {
                 : t("沒有符合篩選條件的工作項目"),
       })
     : null;
+  if (workItemsPanel) {
+    unseenLine.className = "workitems-unseen";
+    unseenLine.hidden = true;
+    app.$("#workitem-filters").after(unseenLine);
+  }
   shortcutBar.className = "activity-wiki";
   shortcutBar.setAttribute("role", "toolbar");
   shortcutBar.setAttribute("aria-label", t("捷徑"));
