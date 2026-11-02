@@ -13,7 +13,7 @@ import { type SeenMap, trimSeen, remember, markSeen, markOf, markAllSeen } from 
 import { openGitHistory, historyView } from "./git-history.ts";
 import { createWorkItemDialog } from "./new-work-item.ts";
 import { forgetListCopies, refreshKeptPages, withOfflineCopy } from "./offline-copies.ts";
-import { workItemsPanel, wikiPanel, issuesPanel } from "./work-items-panel.ts";
+import { workItemsPanel, wikiPanel, issuesPanel, renderUnseenLine } from "./work-items-panel.ts";
 import { app } from "./context.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
 import { initOfflineBanner } from "./offline-banner.ts";
@@ -57,6 +57,21 @@ export function workItemOpened(id: number): void {
   renderAdoBadge();
 }
 
+/**
+ * 開著的工作項目讀到內容（開啟、重新整理、自己改過之後）：用伺服器上最新的更新時間記成看過，
+ * 自己在 oMarker 裡改狀態、留言，不會又被標成「有更新」。
+ */
+export function workItemLoaded(item: AdoWorkItem): void {
+  setBounded(knownWorkItems, item.id, item, app.CACHE_MAX);
+  const { seen, changed } = markSeen(workItemSeen, item);
+  if (changed) saveSeen(seen);
+  // 圖示上的數字用的清單也換成最新的更新時間。
+  app.pollItems = app.pollItems.map((w) => (w.id === item.id ? { ...w, changed: item.changed } : w));
+  if (!changed) return;
+  workItemsPanel?.refreshMarks();
+  renderAdoBadge();
+}
+
 /** 指派給你的工作項目全部標示為看過（圖示上的數字歸零）。 */
 export function markAllWorkItemsSeen(): void {
   saveSeen(markAllSeen(workItemSeen, app.pollItems));
@@ -73,6 +88,9 @@ export function renderAdoBadge(): void {
   const tab = app.$("#side-tab-workitems");
   const label = t("工作項目（Azure DevOps）");
   tab.setAttribute("aria-label", n ? t("{label}：{n} 個工作項目有更新", { label, n }) : label);
+  // 數字算的是哪些：只有指派給你、還沒結束的（看別人的、已結束的不算），滑鼠移上去就看得到。
+  badge.title = t("指派給你、還沒結束的工作項目裡，有 {n} 個是新的或看過之後有更新（別人的、已結束的不算）", { n });
+  renderUnseenLine();
 }
 
 let polling = false;
