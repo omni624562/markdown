@@ -96,6 +96,7 @@ import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./a
 import { renderSaveState, renderStats, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
+import { initErrorHandling } from "./app/error-handling.ts";
 
 export type ViewMode = "editor" | "live" | "split" | "preview";
 type ThemePref = "system" | "light" | "dark";
@@ -3376,6 +3377,7 @@ async function copyWebLink(): Promise<void> {
 }
 
 initGitActions();
+initErrorHandling();
 
 // ---- 工具列 -------------------------------------------------------------
 
