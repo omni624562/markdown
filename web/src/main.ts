@@ -12,7 +12,7 @@ import { GitHub } from "./github-ui.ts";
 import { Ado } from "./ado-ui.ts";
 import { workItemLink } from "./ado-text.ts";
 import { type PaletteId, applyPalette, isDark, loadAccent, loadPalette, savePalette } from "./palette.ts";
-import { initTopbarTitle, setTopbarProject } from "./app/topbar-title.ts";
+import { initTopbarTitle } from "./app/topbar-title.ts";
 import { formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, type EditorHandlers, type EditorOptions, cursorInfo } from "./editor.ts";
 import { type FileCommit, type FileItem, type Folder, desktop, displayPath, isRemote } from "./desktop.ts";
@@ -2201,8 +2201,7 @@ async function renderProjectName(): Promise<void> {
   avatar.classList.toggle("empty", !workspaceRoot);
   if (color) avatar.dataset.color = color;
   else delete avatar.dataset.color;
-  // 頂端列中間的專案名稱；「專案色」配色的上方列用專案的顏色。
-  setTopbarProject(workspaceRoot ? { label, color } : null);
+  // 「專案色」配色的上方列用專案的顏色。
   if (workspaceRoot && color) document.documentElement.dataset.projectColor = color;
   else delete document.documentElement.dataset.projectColor;
 }
