@@ -126,11 +126,20 @@ jobs:
             --argjson size "$(stat -c%s omarker.exe)" \
             '{build: $build, version: $version, commit: $commit, date: $date, notes: $notes, changes: $changes, url: $url, sha256: $sha256, size: $size}' \
             > version.json
+      # 版本號 Release（v<版本號>）也附一份更新資訊，網址指向它自己的 omarker.exe（不會被之後的建置覆蓋），
+      # 之後可以用「設為穩定版」（stable.yml）把這一版直接放到穩定版。
+      - name: 產生這個版本號自己的更新資訊
+        run: |
+          version="$(node scripts/version.mjs)"
+          mkdir -p tagged
+          jq --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/v${version}/omarker.exe" '.url = $url' \
+            version.json > tagged/version.json
       - name: 簽章（程式只接受用正式私鑰簽過的更新）
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           node scripts/sign-update.mjs version.json
+          node scripts/sign-update.mjs tagged/version.json
           cat version.json
       - name: 更新「最新版」Release，並保留這個版本號的 Release
         env:
@@ -145,7 +154,7 @@ jobs:
           之後有新版時，程式會自動提示更新。"
           # 這個版本號第一次發佈：另外建立 v<版本號> 的 Release 保留下來（之後同版本號的建置不再覆蓋）。
           if ! gh release view "v${version}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "v${version}" omarker.exe --repo "$GITHUB_REPOSITORY" \
+            gh release create "v${version}" omarker.exe tagged/version.json --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" --title "v${version}（${today}）" --latest=false \
               --notes "${changes}
 
