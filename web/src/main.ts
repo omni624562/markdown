@@ -94,7 +94,7 @@ import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
 import { NOT_CONNECTED, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
-import { renderSaveState, renderStats, updateActiveHeading, initOutline } from "./app/outline.ts";
+import { renderSaveState, renderStats, updateActiveHeading, initOutline, markBlankTab } from "./app/outline.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
 
@@ -2739,6 +2739,7 @@ function renderTabs(): void {
   if (paneDocs.side) renderPaneHeads();
   // 只有一份空白文件時藏起分頁列的內容；有工作項目等分頁時照常顯示（才點得回文件）。
   $("#tab-bar").classList.toggle("has-items", itemTabs.length > 0);
+  markBlankTab();
   const path = cur.fileHandle?.path ?? null;
   if (path !== treeActive) {
     treeActive = path;
@@ -3057,6 +3058,8 @@ async function closeTab(id: string): Promise<void> {
     const next = docs[Math.min(i, docs.length - 1)];
     active = doc; // 讓 activate 知道要換掉的是這個分頁
     activate(next);
+    // 只剩一份空白文件、還開著工作項目等分頁：換到那些分頁（空白文件的分頁不顯示，見 markBlankTab）。
+    if (itemTabs.length && $("#tab-bar").classList.contains("blank")) selectItem(itemTabs[itemTabs.length - 1].id);
   } else {
     persistSession();
     renderTabs();

@@ -104,6 +104,16 @@ function sameLength(h: string | null, length: number): boolean {
   return i < 0 || h.slice(0, i) === String(length);
 }
 
+/**
+ * 只剩一份空白文件、旁邊還有工作項目等分頁時，空白文件的分頁不顯示：
+ * 關掉最後一份文件後會補上一份空白的（編輯區一定要有文件），不能讓它看起來像「關不掉」。開始打字就出現。
+ */
+export function markBlankTab(): void {
+  const bar = app.$("#tab-bar");
+  const blank = bar.classList.contains("blank");
+  for (const tab of bar.querySelectorAll<HTMLElement>(".tab")) tab.classList.toggle("tab-blank", blank && tab.dataset.id === app.active.id);
+}
+
 export function renderSaveState(): void {
   const dirty = !sameLength(app.cur.baseline, app.editor.view.state.doc.length) || app.cur.baseline !== app.editorHash();
   if (app.active.dirty !== dirty) {
@@ -113,6 +123,7 @@ export function renderSaveState(): void {
   // 只有一份還沒存過的空白文件時，不需要「未命名.md」分頁與標題；開始打字才出現。
   const blank = app.docs.length === 1 && !app.cur.fileBacked && !app.cur.fileHandle && app.editor.view.state.doc.length === 0;
   app.$("#tab-bar").classList.toggle("blank", blank);
+  markBlankTab();
   app.editor.setFileName(app.cur.fileName);
   const title = blank ? "oMarker" : `${dirty ? "● " : ""}${app.cur.fileName} - oMarker`;
   if (document.title !== title) {
