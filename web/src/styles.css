@@ -337,13 +337,20 @@ kbd {
 .activity-cmd[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 /* 側邊欄收起時，圖示都用一般的顏色（沒有哪個面板是打開的）。 */
 .workspace.outline-hidden .activity-tabs button[aria-selected="true"]:not(:hover) { color: var(--chrome-icon); }
-/* 目前的面板：左邊一條強調色。側邊欄收起時不顯示。 */
+/*
+ * 目前的面板：圖示用強調色、底下一塊淡淡的強調色，左邊一條較粗的強調色（一眼看得出開著哪個面板）。
+ * 側邊欄收起時不顯示。
+ */
+.workspace:not(.outline-hidden) .activity-tabs button[aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 .workspace:not(.outline-hidden) .activity-tabs button[aria-selected="true"]::before {
   content: "";
   position: absolute;
-  inset: 8px auto 8px -4px;
-  width: 2px;
-  border-radius: 1px;
+  inset: 5px auto 5px -4px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
   background: var(--accent);
 }
 .activity-tabs button:focus-visible, .activity-btn:focus-visible { outline-offset: -2px; }
