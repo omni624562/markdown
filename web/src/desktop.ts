@@ -5,6 +5,7 @@
 import type { DocInfo } from "./doc-index.ts";
 import type { FileRef } from "./links.ts";
 import { adoOnline } from "./ado-online.ts";
+import type { CapacityData } from "./taskboard-model.ts";
 import { t } from "./i18n.ts";
 import type { WikiPageInfo } from "./wiki-coedit.ts";
 import type { Iteration } from "./work-item-fields.ts";
@@ -991,6 +992,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoTeams: (project: string) => core.invoke<AdoTeam[]>("ado_teams", { project }),
     /** 團隊的成員（依名稱排）。 */
     adoTeamMembers: (project: string, team: string) => core.invoke<AdoTeamMember[]>("ado_team_members", { project, team }),
+    /** 團隊在某個 Sprint 的容量（成員每天的工時、休假）。`iteration` 是 Sprint 的 id。 */
+    adoCapacity: (project: string, team: string, iteration: string) =>
+      core.invoke<CapacityData>("ado_capacity", { project, team, iteration }),
     /** 團隊選用的 Sprint（依開始日期排）。 */
     adoTeamIterations: (project: string, team: string) => core.invoke<AdoTeamIteration[]>("ado_team_iterations", { project, team }),
     /** 團隊在某個 Sprint 裡的工作項目（工作板）。 */

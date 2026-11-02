@@ -98,3 +98,65 @@ export function hoursText(w: BoardItem, label: { remaining: (n: string) => strin
   if (typeof w.completed === "number" && round(w.completed) > 0) parts.push(label.completed(String(round(w.completed))));
   return parts.join(" · ");
 }
+
+/** 一段休假（含頭尾）；日期只看前 10 個字（`YYYY-MM-DD`）。 */
+export interface DaysOff {
+  start: string;
+  end: string;
+}
+
+export interface CapacityData {
+  members: { name: string; perDay: number; daysOff: DaysOff[] }[];
+  teamDaysOff: DaysOff[];
+}
+
+export interface CapacityRow {
+  /** 成員名稱；`null` 是沒有指派的工作。 */
+  name: string | null;
+  /** 這個 Sprint 剩下的工作天可以做幾小時。 */
+  available: number;
+  /** 指派給他、還沒做完的工時（剩餘工時加總）。 */
+  assigned: number;
+  /** 工作排得比時間多。 */
+  over: boolean;
+}
+
+const day = (s: string) => s.slice(0, 10);
+
+/** `from` 到 `to`（含頭尾）有幾個工作天：週一到週五，扣掉休假。 */
+export function workingDays(from: string, to: string, off: readonly DaysOff[]): number {
+  const end = day(to);
+  let n = 0;
+  for (let d = new Date(`${day(from)}T00:00:00Z`); d.toISOString().slice(0, 10) <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const wd = d.getUTCDay();
+    const iso = d.toISOString().slice(0, 10);
+    if (wd === 0 || wd === 6) continue;
+    if (off.some((o) => day(o.start) <= iso && iso <= day(o.end))) continue;
+    n++;
+  }
+  return n;
+}
+
+/**
+ * 每個人這個 Sprint 還有多少時間、排了多少工作：時間從今天（或 Sprint 開始，取晚的）算到 Sprint 結束，
+ * 扣掉週末、團隊與個人的休假；工作是指派給他的卡片的剩餘工時。
+ * 沒有容量也沒有工作的人不列；沒有指派的工作放最後。
+ */
+export function capacityRows(cap: CapacityData, cards: readonly BoardItem[], start: string, finish: string, today: string): CapacityRow[] {
+  const from = day(today) > day(start) ? today : start;
+  const assigned = new Map<string | null, number>();
+  for (const c of cards) assigned.set(c.assignedTo, (assigned.get(c.assignedTo) ?? 0) + (c.remaining ?? 0));
+  const round = (n: number) => Math.round(n * 10) / 10;
+  const rows: CapacityRow[] = cap.members.map((m) => {
+    const available = round(m.perDay * workingDays(from, finish, [...cap.teamDaysOff, ...m.daysOff]));
+    const mine = round(assigned.get(m.name) ?? 0);
+    assigned.delete(m.name);
+    return { name: m.name, available, assigned: mine, over: mine > available };
+  });
+  // 有工作、但團隊容量裡沒有這個人（例如別的團隊的人）：時間不知道。
+  for (const [name, hours] of assigned) if (name !== null && hours > 0) rows.push({ name, available: 0, assigned: round(hours), over: true });
+  const out = rows.filter((r) => r.available > 0 || r.assigned > 0);
+  const none = assigned.get(null) ?? 0;
+  if (none > 0) out.push({ name: null, available: 0, assigned: round(none), over: false });
+  return out;
+}

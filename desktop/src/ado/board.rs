@@ -84,6 +84,102 @@ pub(super) fn teams_of(res: &Value, default: Option<&str>) -> Vec<Team> {
     list
 }
 
+/// 一段休假（含頭尾，日期字串 `YYYY-MM-DD…`）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DaysOff {
+    pub(super) start: String,
+    pub(super) end: String,
+}
+
+/// 一位成員在這個 Sprint 的容量：每天可以做幾小時（各活動加總）與休假。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberCapacity {
+    pub(super) name: String,
+    pub(super) per_day: f64,
+    pub(super) days_off: Vec<DaysOff>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Capacity {
+    pub(super) members: Vec<MemberCapacity>,
+    /// 整個團隊的休假（例如國定假日）。
+    pub(super) team_days_off: Vec<DaysOff>,
+}
+
+/// 團隊在某個 Sprint 的容量（成員每天的工時、個人與團隊的休假）；團隊沒有設定時是空的。
+#[tauri::command]
+pub async fn ado_capacity(
+    app: AppHandle,
+    project: String,
+    team: String,
+    iteration: String,
+) -> Result<Capacity, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let base = format!(
+            "/{}/{}/_apis/work/teamsettings/iterations/{}",
+            encode_segment(&project),
+            encode_segment(&team),
+            encode_segment(&iteration)
+        );
+        let what = tr!("讀取容量");
+        let members = get(&a.url, &pat, &format!("{base}/capacities"), &what)?;
+        // 團隊休假讀不到（舊版伺服器、沒有權限）就當沒有。
+        let team_off = get(&a.url, &pat, &format!("{base}/teamdaysoff"), &what).ok();
+        Ok(capacity_of(&members, team_off.as_ref()))
+    })
+    .await
+}
+
+fn days_off_of(v: Option<&Value>) -> Vec<DaysOff> {
+    v.and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|d| {
+            Some(DaysOff {
+                start: str_of(d, "start")?.to_string(),
+                end: str_of(d, "end")?.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// 舊版回傳 `value`，新版（7.x）回傳 `teamMembers`。
+pub(super) fn capacity_of(members: &Value, team_off: Option<&Value>) -> Capacity {
+    let list = members
+        .get("teamMembers")
+        .and_then(Value::as_array)
+        .map_or_else(|| values(members), Vec::as_slice);
+    let members = list
+        .iter()
+        .filter_map(|m| {
+            let name = m
+                .pointer("/teamMember/displayName")
+                .and_then(Value::as_str)?
+                .to_string();
+            let per_day = m
+                .get("activities")
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice)
+                .iter()
+                .filter_map(|a| a.get("capacityPerDay").and_then(Value::as_f64))
+                .sum();
+            Some(MemberCapacity {
+                name,
+                per_day,
+                days_off: days_off_of(m.get("daysOff")),
+            })
+        })
+        .collect();
+    Capacity {
+        members,
+        team_days_off: days_off_of(team_off.and_then(|v| v.get("daysOff"))),
+    }
+}
+
 /// 團隊成員（指派工作時選人用）。
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]

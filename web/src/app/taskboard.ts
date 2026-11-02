@@ -7,7 +7,7 @@ import { adoOnline } from "../ado-online.ts";
 import { type AdoBoardItem, type AdoTeam, type AdoTeamIteration, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
-import { type Board, type BoardItem, buildBoard, filterBoard, hoursText } from "../taskboard-model.ts";
+import { type Board, type BoardItem, type CapacityData, type CapacityRow, buildBoard, capacityRows, filterBoard, hoursText } from "../taskboard-model.ts";
 import { icon } from "../ui/icons.ts";
 import type { IssueSource } from "../ui/issue-view.ts";
 import { toast } from "../ui/toast.ts";
@@ -103,6 +103,7 @@ function boardSource(s: Selection): IssueSource {
   const key = `board:${s.project}/${s.team.id}/${s.iteration.id}`;
   /** 顯示的是副本時：存下的時間與狀態。 */
   let fresh: Freshness | null = null;
+  let capacity: CapacityData | null = null;
   return {
     key,
     // 工作板要靠 load 讀到的資料才畫得出來；它自己的清單副本已經讓 load 很快。
@@ -129,12 +130,20 @@ function boardSource(s: Selection): IssueSource {
         : [];
       const cards = list.filter((w) => TASK_KINDS.has(w.kind) || (w.parent !== null && (raw.has(w.parent) || missing.includes(w.parent))));
       const columns = (await columnsFor(s.project, cards)).filter((state) => !REMOVED.has(state.toLowerCase()));
+      // 容量：團隊沒設定或讀不到就不顯示。
+      capacity = await withOfflineCopy(`capacity:${key}`, () => desktop!.adoCapacity(s.project, s.team.name, s.iteration.id), update).catch(() => null);
       board = buildBoard(list, outside, columns, TASK_KINDS);
       return boardMarkdown(board, title);
     },
     insertLink: () => insertAtCursor(`[${title}](${boardUrl(s)})`),
     decorate(body) {
-      if (board) renderBoard(body, filterBoard(board, personName()), s, raw);
+      if (!board) return;
+      renderBoard(body, filterBoard(board, personName()), s, raw);
+      if (capacity && s.iteration.start && s.iteration.finish) {
+        const cards = board.rows.flatMap((r) => [...r.cells.values()].flat());
+        const rows = capacityRows(capacity, cards, s.iteration.start, s.iteration.finish, new Date().toISOString());
+        if (rows.length) body.querySelector(".taskboard")?.before(capacityStrip(rows));
+      }
     },
     facts: () => {
       if (!board) return [];
@@ -254,6 +263,35 @@ function card(w: BoardItem, raw: Map<number, AdoBoardItem>, draggable: boolean, 
 }
 
 /** 把工作板畫進 `body`（取代 Markdown 表格）。 */
+/** 工作板上方的容量：每個人剩下的時間與排了多少工作（排太多的標紅）。 */
+function capacityStrip(rows: CapacityRow[]): HTMLElement {
+  const strip = document.createElement("div");
+  strip.className = "tb-capacity";
+  strip.setAttribute("aria-label", t("容量"));
+  for (const r of rows) {
+    const el = document.createElement("div");
+    el.className = "tb-cap";
+    el.classList.toggle("over", r.over);
+    const name = r.name ?? t("沒有指派");
+    const text = r.name
+      ? t("{assigned}／{available} 小時", { assigned: r.assigned, available: r.available })
+      : t("{assigned} 小時", { assigned: r.assigned });
+    el.title = r.name
+      ? r.over
+        ? t("{name}：排了 {assigned} 小時的工作，這個 Sprint 剩下的時間只有 {available} 小時", { name, assigned: r.assigned, available: r.available })
+        : t("{name}：排了 {assigned} 小時的工作，這個 Sprint 剩下 {available} 小時", { name, assigned: r.assigned, available: r.available })
+      : t("還沒指派的工作，共 {assigned} 小時", { assigned: r.assigned });
+    const bar = document.createElement("span");
+    bar.className = "tb-cap-bar";
+    const fill = document.createElement("span");
+    fill.style.width = `${r.available ? Math.min(100, (r.assigned / r.available) * 100) : 100}%`;
+    bar.append(fill);
+    el.append(avatar(r.name), Object.assign(document.createElement("span"), { className: "tb-cap-name", textContent: name }), bar, Object.assign(document.createElement("span"), { className: "tb-cap-text", textContent: text }));
+    strip.append(el);
+  }
+  return strip;
+}
+
 function renderBoard(body: HTMLElement, board: Board, s: Selection, raw: Map<number, AdoBoardItem>): void {
   const root = document.createElement("div");
   root.className = "taskboard";
