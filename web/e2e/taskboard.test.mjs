@@ -241,8 +241,12 @@ test("Backlog：依順序列出還沒排進 Sprint 的需求，可以移到選�
   await page.keyboard.press("Control+Shift+P");
   await page.locator("dialog[open] input").first().fill("顯示工作板");
   await page.keyboard.press("Enter");
-  const button = page.locator("#board-host .tb-backlog");
-  await page.waitForFunction(() => !document.querySelector("#board-host .tb-backlog")?.disabled);
+  const button = page.locator("#board-host .tb-backlog-open");
+  await page.waitForFunction(() => !document.querySelector("#board-host .tb-backlog-open")?.disabled);
+  // 和「開啟工作板」同一種按鈕：圖示和文字在同一行、一樣高（之前套到 Backlog 清單的樣式，圖示跑到文字上面）。
+  const look = (el) => ({ direction: getComputedStyle(el).flexDirection, height: Math.round(el.getBoundingClientRect().height) });
+  const openLook = await page.locator("#board-host button", { hasText: "開啟工作板" }).evaluate(look);
+  assert.deepEqual(await button.evaluate(look), openLook);
   await button.click();
   const items = page.locator(".tb-backlog-item");
   await items.first().waitFor();
