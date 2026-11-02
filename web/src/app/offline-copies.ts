@@ -10,8 +10,9 @@ import type { IssueOffline } from "../ui/issue-view.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { wikiMarkdown } from "../wiki-text.ts";
+import { CopyCache } from "../copy-cache.ts";
+export { type Freshness, freshnessOf, keepFreshness } from "../copy-cache.ts";
 import { app } from "./context.ts";
-
 
 /** 「保留離線」的頁面（不會自動刪掉，連線時在背景更新）。 */
 export let keptPages = parseKept(storage.load("offline-kept"));
@@ -44,28 +45,32 @@ export async function offlineImage(key: string, fetch: () => Promise<string>): P
   }
 }
 
-/** 讀清單（Wiki、頁面樹、工作項目）並存一份副本；連不上時改用副本，並提示一次。 */
+/** 清單的副本（Wiki、頁面樹、工作項目、工作板）：存在本機的離線資料夾。 */
+const copies = new CopyCache({
+  get: async (key) => (desktop ? desktop.offlineGet(`list:${key}`) : null),
+  put: async (key, raw) => void (await desktop?.offlinePut(`list:${key}`, raw, false)),
+});
+
 let offlineNoticeAt = 0;
-export async function withOfflineCopy<T>(key: string, fetch: () => Promise<T>): Promise<T> {
-  try {
-    const value = await fetch();
-    void desktop?.offlinePut(`list:${key}`, JSON.stringify(value), false).catch(() => {});
-    return value;
-  } catch (e) {
-    const raw = await desktop?.offlineGet(`list:${key}`).catch(() => null);
-    let copy: T;
-    try {
-      if (!raw) throw e;
-      copy = JSON.parse(raw) as T;
-    } catch {
-      throw e;
-    }
-    if (Date.now() - offlineNoticeAt > 60_000) {
-      offlineNoticeAt = Date.now();
-      toast(t("連不上伺服器，先顯示上次存下的離線副本"));
-    }
-    return copy;
-  }
+function offlineNotice(): void {
+  if (Date.now() - offlineNoticeAt < 60_000) return;
+  offlineNoticeAt = Date.now();
+  toast(t("連不上伺服器，先顯示上次存下的離線副本"));
+}
+
+/**
+ * 讀清單並存一份副本；連不上時改用副本，並提示一次。
+ * 給了 `onUpdate` 時，有副本就先回傳副本（不用等伺服器），背景讀完再呼叫它（通常是重新整理畫面，
+ * 這時再呼叫一次會直接拿到剛讀到的結果）。是不是副本、什麼時候存的，用 `freshnessOf` 看。
+ * `quiet`：改用副本時不提示（背景檢查用）。
+ */
+export function withOfflineCopy<T>(key: string, fetch: () => Promise<T>, onUpdate?: (changed: boolean) => void, quiet = false): Promise<T> {
+  return copies.get(key, fetch, { onUpdate, onOffline: quiet ? undefined : offlineNotice });
+}
+
+/** 忘掉剛讀到的清單：下次一定向伺服器讀（按「重新整理」、網路恢復時）。 */
+export function forgetListCopies(prefix = ""): void {
+  copies.forget(prefix);
 }
 
 function pageCopy(markdown: string, savedAt = Date.now()): string {

@@ -37,6 +37,8 @@ export interface IssueSource {
   fileName: string;
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
+  /** `false`：不要先顯示離線副本（例如畫面要靠 `load` 讀到的資料才畫得出來的工作板）。 */
+  copyFirst?: boolean;
   /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
   crumbs?: { label: string; open?(): void }[];
   insertLink(): void;
@@ -523,8 +525,17 @@ export class IssueView {
     this.#failed = false;
     this.#stale.hidden = true;
     let loading: HTMLElement | null = null;
+    // 這次執行還沒讀過：有離線副本就先顯示副本（不用等伺服器），讀到再換上新的。
+    const copy = cached === undefined && quiet && source.copyFirst !== false ? await this.#h.offline?.load(source).catch(() => null) : null;
+    if (seq !== this.#seq) return;
     if (cached !== undefined) {
       this.#display(cached);
+    } else if (copy) {
+      this.#display(copy.markdown);
+      this.#stale.classList.remove("issue-error");
+      this.#stale.classList.add("updating");
+      this.#stale.textContent = t("顯示的是 {time} 存下的內容，正在更新…", { time: new Date(copy.savedAt).toLocaleString() });
+      this.#stale.hidden = false;
     } else {
       this.#markdown = "";
       loading = document.createElement("p");
@@ -538,7 +549,8 @@ export class IssueView {
       this.#cache.delete(source.key);
       this.#cache.set(source.key, md);
       if (this.#cache.size > CACHE_LIMIT) this.#cache.delete(this.#cache.keys().next().value!);
-      if (md !== this.#markdown || loading) this.#display(md, cached !== undefined);
+      if (copy) this.#stale.hidden = true;
+      if (md !== this.#markdown || loading) this.#display(md, cached !== undefined || !!copy);
       // 內容沒變也要更新摘要（例如「更新於幾分鐘前」）。
       else this.#h.facts?.(source.facts?.() ?? []);
       this.#h.offline?.save(source, md);
@@ -546,19 +558,20 @@ export class IssueView {
       if (seq !== this.#seq) return;
       const message = e instanceof Error ? e.message : String(e);
       // 這次還沒顯示任何內容：有離線副本就先顯示副本。
-      const copy = loading ? await this.#h.offline?.load(source).catch(() => null) : null;
+      const fallback = copy ?? (loading ? await this.#h.offline?.load(source).catch(() => null) : null);
       if (seq !== this.#seq) return;
-      if (copy) {
-        this.#display(copy.markdown);
+      if (fallback && loading) {
+        this.#display(fallback.markdown);
         loading = null;
       }
       const target = loading ?? this.#stale;
       target.textContent = loading
         ? message
-        : copy
-          ? t("顯示的是 {time} 存下的離線副本，這次讀取失敗：{message}", { time: new Date(copy.savedAt).toLocaleString(), message })
+        : fallback
+          ? t("顯示的是 {time} 存下的離線副本，這次讀取失敗：{message}", { time: new Date(fallback.savedAt).toLocaleString(), message })
           : t("顯示的是之前讀到的內容，這次更新失敗：{message}", { message });
       target.classList.add("issue-error");
+      target.classList.remove("updating");
       target.hidden = false;
       const retry = document.createElement("button");
       retry.type = "button";

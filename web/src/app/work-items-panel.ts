@@ -20,7 +20,7 @@ import { groupByParent } from "../workitem-groups.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
-import { withOfflineCopy } from "./offline-copies.ts";
+import { forgetListCopies, keepFreshness, withOfflineCopy } from "./offline-copies.ts";
 import { app } from "./context.ts";
 
 
@@ -609,16 +609,19 @@ export function initWorkItemsPanel(): void {
           const { bar, button } = workItemFilterBar();
           return { filters: bar, filterButton: button };
         })(),
-        list: async (search) => {
+        list: async (search, update) => {
           app.loadWorkItemFilterOptions();
           const q = workItemQuery;
-          const found = q
-            ? filterQueryResult(await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q)), search)
-            : await withOfflineCopy(`wi-list:${search}:${JSON.stringify(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter));
+          // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
+          const raw = q
+            ? await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q), update)
+            : await withOfflineCopy(`wi-list:${search}:${JSON.stringify(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
+          const found = q ? keepFreshness(raw, filterQueryResult(raw, search)) : raw;
           app.noteWorkItems(found, !q && !search && app.isDefaultFilter());
           workItemListed = new Set(found.map((w) => w.id));
-          return found.map(workItemRow);
+          return keepFreshness(found, found.map(workItemRow));
         },
+        forget: () => forgetListCopies("wi-"),
         view: (item) => app.showWorkItem(item),
         status: (n, search) =>
           workItemQuery
@@ -678,8 +681,10 @@ export function initWorkItemsPanel(): void {
   renderBarShortcuts();
   wikiPanel = desktop
     ? new WikiPanel<AdoWiki>(app.$("#wiki-host"), {
-        wikis: () => withOfflineCopy("wikis", () => desktop!.adoWikis()),
-        pages: (wiki) => withOfflineCopy(`wiki-pages:${wiki.id}`, () => desktop!.adoWikiPages(wiki)),
+        // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
+        wikis: (update) => withOfflineCopy("wikis", () => desktop!.adoWikis(), update),
+        pages: (wiki, update) => withOfflineCopy(`wiki-pages:${wiki.id}`, () => desktop!.adoWikiPages(wiki), update),
+        forget: () => forgetListCopies("wiki"),
         open: (wiki, path) => app.showWikiPage(wiki, path),
         load: () => storage.load("ado-wiki"),
         save: (id) => storage.save("ado-wiki", id),

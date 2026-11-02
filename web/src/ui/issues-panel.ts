@@ -2,6 +2,7 @@
  * 側邊欄的議題清單：Azure DevOps 的工作項目、GitHub 的 Issues 共用。
  * 可以搜尋或輸入編號、用篩選列縮小範圍；點一下在主要區域開啟內容。
  */
+import { type Freshness, freshnessOf } from "../copy-cache.ts";
 import { t } from "../i18n.ts";
 import { stateTone } from "../issue-doc.ts";
 import { kindKey } from "../work-item-colors.ts";
@@ -35,7 +36,10 @@ export interface Arrangement<T> {
 }
 
 export interface IssuesHandlers<T extends IssueSummary> {
-  list(search: string): Promise<T[]>;
+  /** 讀清單；有副本時可以先回傳副本，背景讀完再呼叫 `update`（重新整理清單）。 */
+  list(search: string, update: () => void): Promise<T[]>;
+  /** 按「重試」時先忘掉剛讀到的結果（一定向伺服器讀）。 */
+  forget?(): void;
   /** 在主要區域開啟內容。 */
   view(item: T): void;
   /** 狀態列文字：`count` 是結果數量，`search` 是搜尋文字（空白表示預設清單）。 */
@@ -69,6 +73,43 @@ export function showLoadError(status: HTMLElement, e: unknown, retry: () => void
   hint.className = "load-hint";
   hint.textContent = t("網路恢復或切回這個視窗時會自動再試一次。");
   status.replaceChildren(message, b, hint);
+}
+
+/** 副本存下的時間：今天的只寫時間，其他加上日期；不知道時間的寫「上次」。 */
+export function copyTime(savedAt: number): string {
+  if (!savedAt) return t("上次");
+  const d = new Date(savedAt);
+  const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return d.toDateString() === new Date().toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+
+/**
+ * 顯示的是副本時，在狀態列後面加註：背景更新中，或這次讀不到（附「重試」）。
+ * 回傳是否加了註記。
+ */
+export function noteCopy(status: HTMLElement, value: unknown, retry: () => void): boolean {
+  const f: Freshness | null = freshnessOf(value);
+  if (!f) {
+    status.classList.remove("from-copy");
+    return false;
+  }
+  status.classList.add("from-copy");
+  const note = document.createElement("span");
+  note.className = "copy-note";
+  if (f.state === "updating") {
+    note.textContent = t("（{time} 的資料，更新中…）", { time: copyTime(f.savedAt) });
+    status.append(" ", note);
+    return true;
+  }
+  note.textContent = t("連不上伺服器，顯示 {time} 存下的資料。", { time: copyTime(f.savedAt) });
+  if (f.error) note.title = f.error;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn btn-small load-retry";
+  b.append(icon("refresh-cw"), t("重試"));
+  b.addEventListener("click", retry);
+  status.append(" ", note, b);
+  return true;
 }
 
 /** 「10/20」這樣的短日期。 */
@@ -188,16 +229,24 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#status.textContent = "";
   }
 
-  async refresh(): Promise<void> {
+  /** 重新讀取；`quiet`：清單留著、不顯示「讀取中…」（背景讀完副本的更新時）。 */
+  async refresh(quiet = false): Promise<void> {
     this.#loaded = true;
     const seq = ++this.#seq;
     const search = this.#input.value.trim();
-    this.#status.textContent = t("讀取中…");
+    if (!quiet) this.#status.textContent = t("讀取中…");
     try {
-      const items = await this.#h.list(search);
+      const items = await this.#h.list(search, () => {
+        // 背景讀完：搜尋文字沒變才重畫（變了的話新的讀取已經在跑）。
+        if (seq === this.#seq) void this.refresh(true);
+      });
       if (seq !== this.#seq) return;
       this.#failed = false;
       this.#status.textContent = this.#h.status(items.length, search);
+      noteCopy(this.#status, items, () => {
+        this.#h.forget?.();
+        void this.refresh();
+      });
       this.#items = items;
       this.#render();
     } catch (e) {

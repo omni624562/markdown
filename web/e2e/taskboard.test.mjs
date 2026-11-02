@@ -98,3 +98,36 @@ test("工作板：點卡片開啟工作項目，按 Alt+← 回到工作板", as
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("工作板：連不上伺服器時用上次存下的副本，標出是幾點的資料", async () => {
+  const fail = { $error: "連不上伺服器" };
+  const copy = (value) => JSON.stringify({ $copy: 1, savedAt: Date.now() - 600_000, value });
+  const board = "board:產品/t1/i2";
+  const { page, context, errors } = await open({
+    desktop: {
+      ado_account: desktop.ado_account,
+      ado_work_item_filters: fail,
+      ado_teams: fail,
+      ado_team_iterations: fail,
+      ado_board: fail,
+      ado_work_items_by_ids: fail,
+      ado_work_item_states: fail,
+      offline_get: {
+        $by: "key",
+        values: {
+          "list:wi-filters": copy(desktop.ado_work_item_filters),
+          "list:teams:產品": copy(desktop.ado_teams[0]),
+          "list:sprints:產品/t1": copy(desktop.ado_team_iterations[0]),
+          [`list:board:${board}`]: copy(ITEMS),
+          [`list:board-parents:${board}`]: copy(desktop.ado_work_items_by_ids[0]),
+          "list:states:產品|Task": copy(desktop.ado_work_item_states[0]),
+        },
+      },
+    },
+  });
+  await openBoard(page);
+  assert.equal(await page.locator(".taskboard .tb-cell .tb-card").count(), 4);
+  await page.getByText(/連不上伺服器，顯示 .* 存下的資料/).first().waitFor();
+  assert.deepEqual(errors, []);
+  await context.close();
+});

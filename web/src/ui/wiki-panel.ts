@@ -7,7 +7,7 @@ import { flattenPages, pageName, snippetParts } from "../wiki-text.ts";
 import { icon } from "./icons.ts";
 import { setupMenu } from "./menu.ts";
 import { MultiSelect } from "./multi-select.ts";
-import { showLoadError } from "./issues-panel.ts";
+import { noteCopy, showLoadError } from "./issues-panel.ts";
 
 export interface WikiInfo {
   id: string;
@@ -21,8 +21,11 @@ export interface WikiTreePage {
 }
 
 export interface WikiPanelHooks<W extends WikiInfo> {
-  wikis(): Promise<W[]>;
-  pages(wiki: W): Promise<WikiTreePage[]>;
+  /** 讀 Wiki 清單、頁面樹；有副本時可以先回傳副本，背景讀完再呼叫 `update`（重新整理）。 */
+  wikis(update: () => void): Promise<W[]>;
+  pages(wiki: W, update: () => void): Promise<WikiTreePage[]>;
+  /** 按「重試」時先忘掉剛讀到的結果（一定向伺服器讀）。 */
+  forget?(): void;
   /** 在主要區域開啟頁面。 */
   open(wiki: W, path: string): void;
   /** 上次選的 Wiki。 */
@@ -301,12 +304,14 @@ export class WikiPanel<W extends WikiInfo> {
   }
 
   /** 重新讀取 Wiki 清單與目前 Wiki 的頁面。 */
-  async refresh(): Promise<void> {
+  async refresh(quiet = false): Promise<void> {
     this.#loaded = true;
     const seq = ++this.#seq;
-    this.#status.textContent = t("讀取中…");
+    if (!quiet) this.#status.textContent = t("讀取中…");
     try {
-      const wikis = await this.#h.wikis();
+      const wikis = await this.#h.wikis(() => {
+        if (seq === this.#seq) void this.refresh(true);
+      });
       if (seq !== this.#seq) return;
       this.#wikis = wikis;
       this.#select.replaceChildren(
@@ -325,7 +330,7 @@ export class WikiPanel<W extends WikiInfo> {
       const keep = this.#pendingReveal?.wiki ?? this.#wiki?.id ?? this.#h.load();
       const wiki = wikis.find((w) => w.id === keep) ?? wikis[0] ?? null;
       if (wiki) this.#select.value = wiki.id;
-      await this.#loadPages(wiki);
+      await this.#loadPages(wiki, quiet && wiki?.id === this.#wiki?.id);
     } catch (e) {
       if (seq !== this.#seq) return;
       // 下次打開面板時再試一次。
@@ -336,23 +341,28 @@ export class WikiPanel<W extends WikiInfo> {
     }
   }
 
-  async #loadPages(wiki: W | null): Promise<void> {
+  /** 讀頁面樹；`quiet`：同一個 Wiki 的背景更新，畫面留著不清掉。 */
+  async #loadPages(wiki: W | null, quiet = false): Promise<void> {
     const seq = ++this.#seq;
     if (wiki?.id !== this.#wiki?.id) this.#expanded.clear();
     this.#wiki = wiki;
-    this.#pages = [];
     this.#newBtn.hidden = !this.#canCreate();
     this.#prefs = wiki ? this.#h.prefs(wiki.id) : { pinned: [] };
-    this.#list.replaceChildren();
-    this.#quick.hidden = true;
-    this.#renderContent("");
+    if (!quiet) {
+      this.#pages = [];
+      this.#list.replaceChildren();
+      this.#quick.hidden = true;
+      this.#renderContent("");
+    }
     if (!wiki) {
       this.#status.textContent = t("這個集合裡沒有 Wiki");
       return;
     }
-    this.#status.textContent = t("讀取中…");
+    if (!quiet) this.#status.textContent = t("讀取中…");
     try {
-      const pages = await this.#h.pages(wiki);
+      const pages = await this.#h.pages(wiki, () => {
+        if (seq === this.#seq) void this.#loadPages(wiki, true);
+      });
       if (seq !== this.#seq) return;
       this.#pages = pages;
       this.#retry = null;
@@ -418,6 +428,10 @@ export class WikiPanel<W extends WikiInfo> {
     }
     this.#renderContent("");
     this.#status.textContent = "";
+    noteCopy(this.#status, this.#pages, () => {
+      this.#h.forget?.();
+      void this.refresh();
+    });
     const root = this.#root();
     this.#renderRoot(root);
     const top = root ? root.children : this.#topPages();

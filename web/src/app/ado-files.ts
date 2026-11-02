@@ -19,7 +19,7 @@ import { wikiPageLink, pageName, wikiTitleProblem, flattenPages, childPagePath }
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { anchorItems, closeItemsWhere, itemSlot, openItem, openNextBeside, tabOrder } from "./item-tabs.ts";
-import { withOfflineCopy } from "./offline-copies.ts";
+import { forgetListCopies, withOfflineCopy } from "./offline-copies.ts";
 import { adoMe, wikiCheckedAt, wikiNewer, renderWikiBar } from "./wiki-edit.ts";
 import { wikiPanel, barShortcuts, setBarShortcuts, openBarShortcut } from "./work-items-panel.ts";
 import { app } from "./context.ts";
@@ -253,6 +253,7 @@ export async function createWikiPage(wiki: AdoWiki, parent: string | null): Prom
   const path = childPagePath(parent, title);
   await desktop!.adoWikiCreate(wiki, path, `# ${title}\n\n`);
   toast(t("已建立 Wiki 頁面「{name}」", { name: title }), { tone: "success" });
+  forgetListCopies("wiki");
   void wikiPanel?.refresh().then(() => wikiPanel?.select(path));
   await editWikiPage(wiki, path);
 }
@@ -289,6 +290,7 @@ export async function deleteWikiPage(wiki: AdoWiki, path: string): Promise<void>
   });
   const left = barShortcuts.filter((s) => isWorkItemShortcut(s) || !(s.wiki === wiki.id && inside(s.path)));
   if (left.length !== barShortcuts.length) setBarShortcuts(left);
+  forgetListCopies("wiki");
   void wikiPanel?.refresh();
 }
 

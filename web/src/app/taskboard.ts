@@ -14,6 +14,8 @@ import { stateTone } from "../workitem-chips.ts";
 import { kindKey } from "../work-item-colors.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { app } from "./context.ts";
+import { type Freshness, forgetListCopies, freshnessOf, withOfflineCopy } from "./offline-copies.ts";
+import { copyTime } from "../ui/issues-panel.ts";
 import { reportError } from "./git-actions.ts";
 import { showIssue } from "./ado-files.ts";
 import { insertAtCursor } from "./image-paste.ts";
@@ -40,7 +42,8 @@ function statesOf(project: string, kind: string): Promise<string[]> {
   const key = `${project}|${kind}`;
   let p = statesCache.get(key);
   if (!p) {
-    p = desktop!.adoWorkItemStates(project, kind).catch(() => []);
+    // 狀態很少改：有副本就用副本，背景更新副本給下次用。
+    p = withOfflineCopy(`states:${key}`, () => desktop!.adoWorkItemStates(project, kind), () => {}, true).catch(() => []);
     statesCache.set(key, p);
   }
   return p;
@@ -89,20 +92,32 @@ function boardSource(s: Selection): IssueSource {
   let board: Board | null = null;
   let raw: Map<number, AdoBoardItem> = new Map();
   const title = t("{sprint}（{team}）", { sprint: s.iteration.name, team: s.team.name });
+  const key = `board:${s.project}/${s.team.id}/${s.iteration.id}`;
+  /** 顯示的是副本時：存下的時間與狀態。 */
+  let fresh: Freshness | null = null;
   return {
-    key: `board:${s.project}/${s.team.id}/${s.iteration.id}`,
+    key,
+    // 工作板要靠 load 讀到的資料才畫得出來；它自己的清單副本已經讓 load 很快。
+    copyFirst: false,
     origin: { kind: "ado", icon: "layout-grid", text: t("Azure DevOps 工作板") },
     label: t("工作板"),
     title,
     webUrl: boardUrl(s),
     fileName: t("工作板 {sprint}.md", { sprint: s.iteration.name }),
     async load() {
-      const items = await desktop!.adoBoard(s.project, s.team.name, s.iteration.path);
+      // 有副本就先顯示（不用等伺服器），背景讀完再重畫一次。
+      const update = () => {
+        if (app.issueView.shownKey === key) void app.issueView.refresh(true);
+      };
+      const items = await withOfflineCopy(`board:${key}`, () => desktop!.adoBoard(s.project, s.team.name, s.iteration.path), update);
+      fresh = freshnessOf(items);
       raw = new Map(items.map((w) => [w.id, w]));
       const list = items.map(toBoardItem);
       // 上層項目不在這個 Sprint 裡：另外讀標題。
       const missing = [...new Set(list.map((w) => w.parent).filter((p): p is number => p !== null && !raw.has(p)))];
-      const outside = missing.length ? (await desktop!.adoWorkItemsByIds(missing).catch(() => [])).map(toBoardItem) : [];
+      const outside = missing.length
+        ? (await withOfflineCopy(`board-parents:${key}`, () => desktop!.adoWorkItemsByIds(missing), update).catch(() => [])).map(toBoardItem)
+        : [];
       const cards = list.filter((w) => TASK_KINDS.has(w.kind) || (w.parent !== null && (raw.has(w.parent) || missing.includes(w.parent))));
       const columns = (await columnsFor(s.project, cards)).filter((state) => !REMOVED.has(state.toLowerCase()));
       board = buildBoard(list, outside, columns, TASK_KINDS);
@@ -120,6 +135,16 @@ function boardSource(s: Selection): IssueSource {
         { text: t("{n} 個工作", { n: cards.length }) },
         ...(left ? [{ text: t("剩 {n} 小時", { n: Math.round(left * 10) / 10 }) }] : []),
         ...(s.iteration.finish ? [{ text: t("到 {date}", { date: s.iteration.finish.slice(0, 10) }) }] : []),
+        ...(fresh
+          ? [
+              {
+                text:
+                  fresh.state === "updating"
+                    ? t("{time} 的資料，更新中…", { time: copyTime(fresh.savedAt) })
+                    : t("連不上伺服器，顯示 {time} 存下的資料", { time: copyTime(fresh.savedAt) }),
+              },
+            ]
+          : []),
       ];
     },
   };
@@ -283,6 +308,7 @@ function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem
       } catch (err) {
         reportError(err);
       }
+      forgetListCopies("board");
       void app.issueView.refresh(true);
     })();
   });
@@ -333,7 +359,13 @@ async function fillPanel(): Promise<void> {
   const hint = Object.assign(document.createElement("p"), { className: "workitems-status", textContent: t("拖曳卡片到別的欄就是改狀態；點卡片開啟工作項目，按 < 回到工作板。") });
   host.replaceChildren(filters, open, hint);
 
-  const projects = (await desktop!.adoWorkItemFilters()).projects;
+  // 有副本就先列出來（不用等伺服器）；背景讀到不一樣的清單再重建選單。
+  const refill = (changed: boolean) => {
+    if (!changed) return;
+    loaded = false;
+    boardPanelShown();
+  };
+  const projects = (await withOfflineCopy("wi-filters", () => desktop!.adoWorkItemFilters(), refill)).projects;
   for (const p of projects) project.append(new Option(p, p));
   const savedProject = storage.load("board-project");
   project.value = savedProject && projects.includes(savedProject) ? savedProject : (projects[0] ?? "");
@@ -341,7 +373,8 @@ async function fillPanel(): Promise<void> {
   let teams: AdoTeam[] = [];
   let sprints: AdoTeamIteration[] = [];
   const loadSprints = async () => {
-    sprints = team.value ? await desktop!.adoTeamIterations(project.value, teams.find((x) => x.id === team.value)?.name ?? team.value) : [];
+    const name = teams.find((x) => x.id === team.value)?.name ?? team.value;
+    sprints = team.value ? await withOfflineCopy(`sprints:${project.value}/${team.value}`, () => desktop!.adoTeamIterations(project.value, name), refill) : [];
     sprint.replaceChildren(
       ...sprints.map((i) => new Option(i.current ? t("{name}（目前）", { name: i.name }) : i.name, i.id)),
     );
@@ -350,7 +383,7 @@ async function fillPanel(): Promise<void> {
     remember();
   };
   const loadTeams = async () => {
-    teams = project.value ? await desktop!.adoTeams(project.value) : [];
+    teams = project.value ? await withOfflineCopy(`teams:${project.value}`, () => desktop!.adoTeams(project.value), refill) : [];
     team.replaceChildren(...teams.map((x) => new Option(x.default ? t("{name}（預設）", { name: x.name }) : x.name, x.id)));
     const saved = storage.load("board-team");
     team.value = teams.find((x) => x.id === saved)?.id ?? teams[0]?.id ?? "";
@@ -386,6 +419,10 @@ export function initTaskboard(): void {
   app.$("#board-refresh").addEventListener("click", () => {
     loaded = false;
     statesCache.clear();
+    forgetListCopies("board");
+    forgetListCopies("teams:");
+    forgetListCopies("sprints:");
+    forgetListCopies("wi-filters");
     boardPanelShown();
     if (app.issueView.shownKey?.startsWith("board:")) void app.issueView.refresh();
   });
