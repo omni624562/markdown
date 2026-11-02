@@ -83,7 +83,7 @@ export function updateActiveHeading(): void {
 }
 
 export function renderStats({ stats }: RenderResult): void {
-  if (app.kind === "json") {
+  if (app.cur.kind === "json") {
     app.status.stats.textContent = t("{lines} 行 · {chars} 字元", {
       lines: app.editor.view.state.doc.lines.toLocaleString(),
       chars: app.editor.text.length.toLocaleString(),
@@ -105,25 +105,25 @@ function sameLength(h: string | null, length: number): boolean {
 }
 
 export function renderSaveState(): void {
-  const dirty = !sameLength(app.baseline, app.editor.view.state.doc.length) || app.baseline !== app.editorHash();
+  const dirty = !sameLength(app.cur.baseline, app.editor.view.state.doc.length) || app.cur.baseline !== app.editorHash();
   if (app.active.dirty !== dirty) {
     app.active.dirty = dirty;
     app.renderTabs();
   }
   // 只有一份還沒存過的空白文件時，不需要「未命名.md」分頁與標題；開始打字才出現。
-  const blank = app.docs.length === 1 && !app.fileBacked && !app.fileHandle && app.editor.view.state.doc.length === 0;
+  const blank = app.docs.length === 1 && !app.cur.fileBacked && !app.cur.fileHandle && app.editor.view.state.doc.length === 0;
   app.$("#tab-bar").classList.toggle("blank", blank);
-  app.editor.setFileName(app.fileName);
-  const title = blank ? "oMarker" : `${dirty ? "● " : ""}${app.fileName} - oMarker`;
+  app.editor.setFileName(app.cur.fileName);
+  const title = blank ? "oMarker" : `${dirty ? "● " : ""}${app.cur.fileName} - oMarker`;
   if (document.title !== title) {
     document.title = title;
     desktop?.setTitle(title).catch(console.error);
   }
   app.status.save.dataset.state = dirty ? "dirty" : "saved";
-  if (!dirty) app.status.save.textContent = app.fileBacked ? t("已儲存") : "";
+  if (!dirty) app.status.save.textContent = app.cur.fileBacked ? t("已儲存") : "";
   else
     app.status.save.textContent =
-      (app.active.wiki ? t("尚未存回 Wiki") : app.fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (app.draftSaved ? t(" · 草稿已自動保存") : "");
+      (app.active.wiki ? t("尚未存回 Wiki") : app.cur.fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (app.cur.draftSaved ? t(" · 草稿已自動保存") : "");
   // 已儲存時不佔位置；只有需要注意時才顯示。
   app.status.save.hidden = !dirty;
   app.status.save.title = dirty ? app.withKeys(t("按一下存檔"), app.commands.get("save")?.keys) : "";
@@ -158,7 +158,7 @@ export function initOutline(): void {
   });
   app.outlineList.addEventListener("dragstart", (e) => {
     const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
-    if (!link || app.kind !== "markdown" || app.outlineView) return;
+    if (!link || app.cur.kind !== "markdown" || app.outlineView) return;
     draggingSection = Number(link.dataset.index);
     link.parentElement!.classList.add("dragging");
     e.dataTransfer!.effectAllowed = "move";
@@ -215,7 +215,7 @@ export function initOutline(): void {
     }
     if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
     const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
-    if (!link || app.kind !== "markdown" || app.outlineView) return;
+    if (!link || app.cur.kind !== "markdown" || app.outlineView) return;
     e.preventDefault();
     const moved = swapSection(app.editor.text, app.outlineHeadings, Number(link.dataset.index), e.key === "ArrowUp" ? -1 : 1);
     if (moved) applySectionMove(moved.text, moved.index, true);

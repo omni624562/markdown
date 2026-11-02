@@ -60,7 +60,7 @@ export function insertAtCursor(text: string): void {
  * 網頁版無法寫入檔案，詢問後改用內嵌的 data: 網址。
  */
 export async function insertImages(original: File[]): Promise<void> {
-  if (app.kind !== "markdown") {
+  if (app.cur.kind !== "markdown") {
     toast(t("只有 Markdown 文件可以插入圖片。"));
     return;
   }
@@ -98,7 +98,7 @@ export async function insertImages(original: File[]): Promise<void> {
     await insertWikiImages(files);
     return;
   }
-  const docPath = app.fileHandle?.path;
+  const docPath = app.cur.fileHandle?.path;
   if (!docPath) {
     toast(t("請先存檔：圖片會存到文件所在資料夾的 assets 資料夾裡。"), {
       duration: 8000,
@@ -106,7 +106,7 @@ export async function insertImages(original: File[]): Promise<void> {
         label: t("儲存"),
         run: () =>
           void app.save(false)
-            .then(() => (app.fileHandle?.path ? insertImages(files) : undefined))
+            .then(() => (app.cur.fileHandle?.path ? insertImages(files) : undefined))
             .catch(app.reportError),
       },
     });
