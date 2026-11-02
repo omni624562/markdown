@@ -17,6 +17,7 @@ use crate::git::{AdoCred, Identity};
 
 mod access;
 mod board;
+mod diagnose;
 mod files;
 mod repos;
 mod search;
@@ -27,6 +28,7 @@ mod workitems;
 
 pub use access::*;
 pub use board::*;
+pub use diagnose::*;
 pub use files::*;
 pub use repos::*;
 pub use search::*;

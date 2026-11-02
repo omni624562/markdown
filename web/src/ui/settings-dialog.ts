@@ -96,6 +96,8 @@ export interface AdoSettingsHooks {
   kinds(): Promise<string[]>;
   /** 逐項檢查權杖能做什麼。 */
   check(): Promise<{ label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>;
+  /** 儲存診斷資料（伺服器的實際回應，拿掉個人資料）。 */
+  diagnostics(): void;
 }
 
 /** 桌面版提供：目前版本與手動檢查更新。 */
@@ -1218,6 +1220,12 @@ export class SettingsDialog {
         .finally(() => (checkBtn.disabled = false));
     });
     const checkRow = this.#row("ado-check", t("權限檢查"), t("確認這個權杖能讀寫哪些東西（不會修改任何資料）"), () => checkBtn);
+    const diagnoseRow = this.#row(
+      "ado-diagnostics",
+      t("診斷資料"),
+      t("把伺服器對常用請求的實際回應存成檔案（人名、信箱、標題與內容會拿掉），回報問題時附上"),
+      () => action("ado-diagnostics", t("儲存…"), () => ado.diagnostics()),
+    );
     const colors = this.#kindColors(ado);
     const refresh = () => {
       const a = ado.account();
@@ -1226,7 +1234,7 @@ export class SettingsDialog {
       urlRow.hidden = patRow.hidden = !asking;
       // 上面兩列藏起來時，帳號是第一列，不需要分隔線。
       statusRow.style.borderTop = asking ? "" : "0";
-      openRow.hidden = itemsRow.hidden = notifyRow.hidden = checkRow.hidden = colors.row.hidden = colors.grid.hidden = !a;
+      openRow.hidden = itemsRow.hidden = notifyRow.hidden = checkRow.hidden = diagnoseRow.hidden = colors.row.hidden = colors.grid.hidden = !a;
       colors.account(a?.url ?? null);
       if (!a) results.hidden = true;
       label.textContent = a ? t("帳號") : t("連線");
@@ -1240,7 +1248,7 @@ export class SettingsDialog {
     };
     refresh();
     section.append(
-      ...this.#group(t("連線"), [urlRow, patRow, statusRow, checkRow, results]),
+      ...this.#group(t("連線"), [urlRow, patRow, statusRow, checkRow, results, diagnoseRow]),
       ...this.#group(t("儲存庫與工作項目"), [openRow, itemsRow, notifyRow, colors.row, colors.grid]),
     );
     return { section, refresh };
