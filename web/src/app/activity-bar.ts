@@ -27,7 +27,7 @@ import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { sortByGroup } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
 import { Slideshow, splitSlides, slideAtLine } from "../ui/slideshow.ts";
-import { SymbolPicker } from "../ui/symbol-picker.ts";
+import type { SymbolPicker } from "../ui/symbol-picker.ts";
 import { toast } from "../ui/toast.ts";
 import { setupWindowControls } from "../ui/window-controls.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
@@ -441,8 +441,20 @@ let tabMenu: { open(at: DOMRect): void; };
 
 export let contextMenu: ReturnType<typeof floatingMenu>;
 
-export // 在 init 時建立。
-let symbolPicker: SymbolPicker;
+let picker: Promise<SymbolPicker> | null = null;
+/** 插入符號（第一次打開時才載入符號表，約 15 KB）。 */
+export const symbolPicker = {
+  open(): void {
+    picker ??= import("../ui/symbol-picker.ts").then(
+      ({ SymbolPicker }) =>
+        new SymbolPicker((text) => {
+          app.editor.view.dispatch(app.editor.view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.symbol" });
+          app.editor.view.focus();
+        }),
+    );
+    void picker.then((p) => p.open()).catch(reportError);
+  },
+};
 
 let slideshow: Slideshow | null = null;
 
@@ -554,7 +566,7 @@ export async function importDocxData(name: string, data: ArrayBuffer, mdPath: st
  */
 export async function exportDocx(): Promise<void> {
   refreshToc();
-  const docDir = app.fileHandle?.path ? dirname(app.fileHandle.path) : null;
+  const docDir = app.cur.fileHandle?.path ? dirname(app.cur.fileHandle.path) : null;
   const { loadImage } = await import("../docx-image.ts");
   const image = async (src: string) => {
     let url: string | null = null;
@@ -565,7 +577,7 @@ export async function exportDocx(): Promise<void> {
     }
     return url ? loadImage(url) : null;
   };
-  const title = stem(app.fileName);
+  const title = stem(app.cur.fileName);
   let bytes: Uint8Array;
   if (desktop) {
     const images = await Promise.all(
@@ -580,7 +592,7 @@ export async function exportDocx(): Promise<void> {
     const blob = await htmlToDocx(renderMarkdown(app.editor.text, { kind: "markdown" }).html, { title, image });
     bytes = new Uint8Array(await blob.arrayBuffer());
   }
-  const name = replaceExtension(app.fileName, ".docx");
+  const name = replaceExtension(app.cur.fileName, ".docx");
   const saved = await downloadBytes(
     name,
     bytes,
@@ -592,7 +604,7 @@ export async function exportDocx(): Promise<void> {
 
 /** 文件有目錄區塊（<!-- toc -->）時，依目前的標題更新（存檔前呼叫）。 */
 export function refreshToc(): void {
-  if (app.kind !== "markdown") return;
+  if (app.cur.kind !== "markdown") return;
   const text = app.editor.text;
   if (!text.includes(TOC_START)) return;
   const next = updateToc(text, renderMarkdown(text, { kind: "markdown", skipHtml: true }).headings);
@@ -627,7 +639,7 @@ export async function saveAsTemplate(): Promise<void> {
     t("存成範本"),
     // 範本變數的名稱是固定的中文，不翻譯。
     t("範本名稱（可以在內容中使用 {date}、{week} 等變數）：", { date: "{{日期}}", week: "{{週次}}" }), // i18n-ignore
-    stem(app.fileName),
+    stem(app.cur.fileName),
   );
   if (!name) return;
   const body = app.editor.text;
@@ -651,7 +663,7 @@ export async function saveAsTemplate(): Promise<void> {
 export async function copyRich(): Promise<void> {
   const selected = selectedText();
   const markdown = selected || app.editor.text;
-  const docDir = app.fileHandle?.path && !isRemote(app.fileHandle.path) ? dirname(app.fileHandle.path) : null;
+  const docDir = app.cur.fileHandle?.path && !isRemote(app.cur.fileHandle.path) ? dirname(app.cur.fileHandle.path) : null;
   const html = richHtml(renderMarkdown(markdown, { kind: "markdown" }).html, (src) => {
     if (/^(https?:|data:)/i.test(src) || !docDir) return null;
     const path = localImagePath(src, docDir);
@@ -979,10 +991,6 @@ export function initActivityBar(): void {
     // 選單關閉後，指令面板裡的分頁指令回到「目前的分頁」。等點下的指令先讀到按右鍵的分頁。
     () => setTimeout(() => (app.menuTabId = null)),
   );
-  symbolPicker = new SymbolPicker((text) => {
-    app.editor.view.dispatch(app.editor.view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.symbol" });
-    app.editor.view.focus();
-  });
   templatePicker = new Picker<TemplateItem>({
     label: t("從範本新增文件"),
     placeholder: t("選擇範本"),

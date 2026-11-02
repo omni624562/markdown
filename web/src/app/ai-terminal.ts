@@ -48,7 +48,7 @@ export async function sendSelectionToAi(): Promise<void> {
   if (!app.terminal) return;
   const state = app.editor.view.state;
   const { from, to } = state.selection.main;
-  let path = app.fileHandle?.path ?? null;
+  let path = app.cur.fileHandle?.path ?? null;
   // 遠端資料夾的檔案本機的 AI 讀不到，改成直接貼上文字。
   if (path && isRemote(path)) path = null;
   if (path && app.active.dirty) {
@@ -109,8 +109,8 @@ function editorSnapshot(full: boolean): EditorSnapshot {
   syncedDoc = doc;
   return {
     active: {
-      path: app.fileHandle?.path ?? null,
-      name: app.fileName,
+      path: app.cur.fileHandle?.path ?? null,
+      name: app.cur.fileName,
       text: same ? "" : doc.toString(),
       sameText: same,
       dirty: app.active.dirty,
@@ -145,7 +145,7 @@ export function initAiTerminal(): void {
         review: app.review,
         snapshot: editorSnapshot,
         async showDocument(path) {
-          if (path && path !== app.fileHandle?.path) await app.openPath(path);
+          if (path && path !== app.cur.fileHandle?.path) await app.openPath(path);
         },
       },
       app.$("#ai-bar"),

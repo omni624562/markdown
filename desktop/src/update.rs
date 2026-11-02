@@ -595,6 +595,43 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// Windows：換掉正在執行的程式（真正更新時的情況）。拿系統的 ping.exe 當成「執行中的 oMarker」。
+    #[cfg(windows)]
+    #[test]
+    fn replaces_a_running_program_on_windows() {
+        let dir = std::env::temp_dir().join(format!("md-replace-running-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("omarker.exe");
+        let system = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        std::fs::copy(
+            std::path::Path::new(&system).join(r"System32\PING.EXE"),
+            &exe,
+        )
+        .unwrap();
+        let mut running = std::process::Command::new(&exe)
+            .args(["-n", "6", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        // 執行中的檔案不能覆寫，也不能刪除（確認測試的前提成立）。
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(std::fs::remove_file(&exe).is_err());
+        let new = dir.join(".md-editor.update.3.tmp");
+        std::fs::write(&new, "new").unwrap();
+        replace_exe(&exe, &new).unwrap();
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
+        // 舊版還在執行，刪不掉，留到下次啟動清掉。
+        let left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|n| is_leftover(n, "omarker"))
+            .collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+        running.kill().unwrap();
+        running.wait().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn update_channel_defaults_to_stable() {
         assert_eq!(Channel::of(None), Channel::Stable);
