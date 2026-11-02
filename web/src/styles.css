@@ -707,19 +707,10 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 @media (pointer: coarse) {
   .view-switch button { min-height: 30px; padding: 0 10px; }
 }
-.status-select {
-  height: 26px;
-  margin: 0 -6px;
-  padding: 0 20px 0 6px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238c959f' stroke-width='1.5'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 6px center;
-  appearance: none;
-  color: inherit;
-  font: 12px var(--font-ui);
-  cursor: pointer;
-}
-.status-select:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+/* 文件類型（Markdown／純文字／JSON）：按一下開 oMarker 自己的選單（ui/kind-picker.ts）。 */
+.status-kind { margin: 0 -6px; }
+.status-kind .icon { width: 12px; height: 12px; opacity: 0.7; }
+.status-kind[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .save-state[data-state="saved"] { color: var(--success); }
 .save-state:disabled { cursor: default; background: transparent; }
 .save-state[data-state="dirty"] { color: var(--fg); }

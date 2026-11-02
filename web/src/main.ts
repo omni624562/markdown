@@ -48,6 +48,7 @@ import { FileTree } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage, fillStartRecent } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
+import { KindPicker } from "./ui/kind-picker.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
@@ -113,7 +114,7 @@ const outlineEmpty = $("#outline-empty");
 const parseErrorEl = $("#parse-error");
 const emptyStateEl = $("#empty-state");
 const formatBar = $("#format-bar");
-const kindSelect = $<HTMLSelectElement>("#doc-kind");
+const kindSelect = new KindPicker($<HTMLButtonElement>("#doc-kind"));
 const fileInput = $<HTMLInputElement>("#file-input");
 const status = {
   cursor: $("#status-cursor"),

@@ -92,7 +92,8 @@ test("字數目標：狀態列顯示進度，達成時提示，重新整理後�
 
 test("JSON 文件：狀態列是行數與字元，統計面板沒有字數目標", async () => {
   const { page, context, errors } = await open();
-  await page.selectOption("#doc-kind", "json");
+  await page.click("#doc-kind");
+  await page.locator("#doc-kind-popover button", { hasText: "JSON" }).click();
   await setText(page, '{\n  "a": 1\n}\n');
   await page.waitForFunction(() => document.querySelector("#status-stats").textContent.includes("行"));
   await page.click("#status-stats");
