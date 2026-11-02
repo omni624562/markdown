@@ -202,7 +202,10 @@ test("工作板：改卡片的指派與工時、在上層項目底下新增 Task
   assert.equal(item.parent, 1931940);
   assert.equal(item.iteration, "產品\\Sprint 102");
   assert.equal(item.remaining, 4);
-  assert.equal(item.assignToMe, true, "預設指派給自己");
+  // 預設指派給自己：用團隊成員清單裡的完整帳號，不靠「指派給我」（有些伺服器的登入帳號沒有網域，會被拒絕）。
+  assert.equal(item.assignedTo, "CORP\\ming", "預設指派給自己");
+  assert.equal(item.assignToMe, false);
+  assert.equal((await calls(page)).filter((c) => c.cmd === "ado_work_item_update").length, 1, "建立時就指派好，不用再改一次");
   assert.deepEqual(errors, []);
   await context.close();
 });

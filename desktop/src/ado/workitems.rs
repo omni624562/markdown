@@ -1327,7 +1327,7 @@ pub async fn ado_work_item_update(
     let (a, pat) = require(&app)?;
     check_change(&change)?;
     crate::io::blocking_for(TIMEOUT, move || {
-        let me = a.account.clone().unwrap_or_else(|| a.name.clone());
+        let me = assign_me(&a);
         let ops = change_ops(&change, &me);
         if ops.iter().all(|op| op["op"] == "test") {
             return Ok(());
@@ -1380,12 +1380,23 @@ pub struct NewWorkItem {
     /// 內容（HTML）；Bug 放在「重現步驟」，其他類型放在「描述」。
     pub description: Option<String>,
     pub assign_to_me: bool,
+    /// 指派給誰（團隊成員清單裡的帳號）；有給時不看 `assign_to_me`。
+    pub assigned_to: Option<String>,
     /// 上層工作項目的編號。
     pub parent: Option<u64>,
     /// 放進哪個反覆項目（Sprint）的路徑；沒給時由伺服器決定（通常是專案的根）。
     pub iteration: Option<String>,
     /// 剩餘工時（小時）。
     pub remaining: Option<f64>,
+}
+
+/// 「指派給我」送出的身分。帳號是「網域\帳號」或信箱時用帳號；有些伺服器的登入資訊只有帳號本身
+/// （例如員工編號 00595436），直接送出會被拒絕（unknown identity），這時改用顯示名稱，伺服器會用名稱找到人。
+pub(super) fn assign_me(a: &Account) -> String {
+    match a.account.as_deref().map(str::trim) {
+        Some(acc) if acc.contains('\\') || acc.contains('@') => acc.to_string(),
+        _ => a.name.trim().to_string(),
+    }
 }
 
 /// 建立工作項目要送出的 JSON Patch。`me` 是登入的帳號，`base` 是集合的網址（上層連結用）。
@@ -1403,9 +1414,15 @@ pub(super) fn create_ops(item: &NewWorkItem, me: &str, base: &str) -> Vec<Value>
             serde_json::json!({ "op": "add", "path": format!("/fields/{field}"), "value": html }),
         );
     }
-    if item.assign_to_me {
+    let who = item
+        .assigned_to
+        .as_deref()
+        .map(str::trim)
+        .filter(|w| !w.is_empty())
+        .or(item.assign_to_me.then_some(me));
+    if let Some(who) = who {
         ops.push(
-            serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": me }),
+            serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": who }),
         );
     }
     if let Some(iteration) = item
@@ -1440,7 +1457,7 @@ pub async fn ado_work_item_create(app: AppHandle, item: NewWorkItem) -> Result<W
         return Err(tr!("請輸入標題"));
     }
     crate::io::blocking_for(TIMEOUT, move || {
-        let me = a.account.clone().unwrap_or_else(|| a.name.clone());
+        let me = assign_me(&a);
         let ops = create_ops(&item, &me, &a.url);
         let res = crate::update::agent()
             .post(&format!(
