@@ -83,6 +83,8 @@ export class CopyCache {
   /** 忘掉剛讀到的結果：下次一定向伺服器讀（按「重新整理」、網路恢復時）。 */
   forget(prefix = ""): void {
     for (const key of [...this.#memo.keys()]) if (key.startsWith(prefix)) this.#memo.delete(key);
+    // 還在讀的也不等了（例如離線時卡住的請求）：下次重新讀，那個請求讀完也不採用。
+    for (const key of [...this.#inflight.keys()]) if (key.startsWith(prefix)) this.#inflight.delete(key);
   }
 
   async get<T>(key: string, fetch: () => Promise<T>, opts: CopyOptions = {}): Promise<T> {
@@ -121,14 +123,18 @@ export class CopyCache {
   #live<T>(key: string, fetch: () => Promise<T>): Promise<T> {
     const running = this.#inflight.get(key);
     if (running) return running as Promise<T>;
-    const p = fetch()
+    const p: Promise<T> = fetch()
       .then((value) => {
+        // 被 forget 放棄的請求：結果照樣回給呼叫的人，但不記下、不存副本（可能比新的請求舊）。
+        if (this.#inflight.get(key) !== p) return value;
         const at = this.#now();
         this.#memo.set(key, { at, value });
         void this.#store.put(key, encodeCopy(value, at)).catch(() => {});
         return value;
       })
-      .finally(() => this.#inflight.delete(key));
+      .finally(() => {
+        if (this.#inflight.get(key) === p) this.#inflight.delete(key);
+      });
     this.#inflight.set(key, p);
     return p;
   }

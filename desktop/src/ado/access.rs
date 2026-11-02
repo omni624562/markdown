@@ -181,7 +181,11 @@ pub(super) fn ping_of(code: u16, body: &str) -> AdoPing {
     }
 }
 
-/// 檢查連線狀態（不會修改任何資料，最多等 20 秒）。
+/// 連線檢查：建立連線最多等幾秒、整個請求最多等幾秒。
+const PING_CONNECT: Duration = Duration::from_secs(3);
+const PING_TOTAL: Duration = Duration::from_secs(8);
+
+/// 檢查連線狀態（不會修改任何資料；連不上時幾秒內就有結果）。
 #[tauri::command]
 pub async fn ado_ping(app: AppHandle) -> Result<AdoPing, String> {
     let Some((a, pat)) = connection(&app) else {
@@ -201,6 +205,9 @@ pub async fn ado_ping(app: AppHandle) -> Result<AdoPing, String> {
                 .get(&url)
                 .config()
                 .http_status_as_error(false)
+                // 連線檢查要快：連不上（沒網路、VPN 沒開）幾秒內就知道，其他指令才能馬上改用離線副本。
+                .timeout_connect(Some(PING_CONNECT))
+                .timeout_global(Some(PING_TOTAL))
                 .build()
                 .header("Authorization", &basic(&pat))
                 .header("Accept", "application/json")

@@ -1,6 +1,7 @@
 /**
  * 狀態列：Azure DevOps 的連線狀態（連得到、連不到、權杖過期），定時檢查。
  */
+import { adoOnline } from "../ado-online.ts";
 import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { app } from "./context.ts";
@@ -15,6 +16,7 @@ let lastPing = 0;
 export async function pingAdo(): Promise<void> {
   if (!desktop || !app.ado?.account) {
     adoPing = null;
+    adoOnline.set(false);
     renderAdoStatus();
     return;
   }
@@ -29,8 +31,15 @@ export async function pingAdo(): Promise<void> {
   } finally {
     pinging = false;
     adoStatus.classList.remove("checking");
+    // 連不到伺服器：其他 Azure DevOps 指令直接改用離線副本，不再一個一個等逾時。
+    adoOnline.set(adoPingOffline());
     renderAdoStatus();
   }
+}
+
+/** 最後一次連線檢查是連不到伺服器。 */
+export function adoPingOffline(): boolean {
+  return adoPing?.status === "offline";
 }
 
 function renderAdoStatus(): void {

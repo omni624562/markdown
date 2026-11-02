@@ -3485,3 +3485,11 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .taskboard .tb-avatar { width: 18px; height: 18px; font-size: 10px; }
 .taskboard .tb-hours { margin-left: auto; }
 .taskboard .tb-empty { padding: 24px; color: var(--muted); }
+
+/* 離線提示（工作項目、工作板、Wiki 面板上方；見 app/offline-banner.ts）。 */
+.offline-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 12px 8px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border)); border-radius: var(--radius); background: color-mix(in srgb, var(--danger) 7%, var(--bg)); color: var(--fg); font-size: 12.5px; line-height: 1.5; }
+.offline-banner[hidden] { display: none; }
+.offline-banner > svg { flex: none; width: 16px; height: 16px; color: var(--danger); }
+.offline-banner > span { flex: 1 1 160px; }
+/* 離線時工作板的卡片不能拖曳（改狀態要連線）。 */
+body.ado-offline .tb-card { cursor: default; }

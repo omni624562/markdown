@@ -91,3 +91,17 @@ test("同一個 key 同時讀兩次只連一次", async () => {
   await Promise.all([cache.get("k", fetch), cache.get("k", fetch)]);
   assert.equal(calls, 1);
 });
+
+test("忘掉時不再等還在讀的請求，舊請求讀完也不會蓋掉新的", async () => {
+  const store = memoryStore();
+  const cache = new CopyCache(store, () => 1000);
+  let releaseOld!: (v: string[]) => void;
+  const old = cache.get("k", () => new Promise<string[]>((r) => (releaseOld = r)));
+  cache.forget();
+  assert.deepEqual(await cache.get("k", async () => ["新"]), ["新"]);
+  releaseOld(["舊"]);
+  assert.deepEqual(await old, ["舊"]);
+  await tick();
+  assert.deepEqual(await cache.get("k", () => Promise.reject(new Error("不該再連線"))), ["新"]);
+  assert.deepEqual(decodeCopy(store.data.get("k")!)?.value, ["新"]);
+});
