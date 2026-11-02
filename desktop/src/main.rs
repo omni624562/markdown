@@ -360,6 +360,7 @@ fn main() {
             ado::ado_wiki_search,
             ado::ado_work_items_by_ids,
             ado::ado_work_item_parents,
+            ado::ado_work_item_children,
             ado::ado_queries,
             ado::ado_query_run,
             ado::ado_ping,
