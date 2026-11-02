@@ -765,4 +765,21 @@ export const ui: Record<string, Translation> = {
   "請輸入 1 到 10,000,000 之間的字數，例如 2000、3k 或 1.5萬": "Enter a number of words from 1 to 10,000,000, e.g. 2000 or 3k",
   // Wiki 頁面裡的相對連結
   "找不到連結的頁面：{name}": "Couldn't find the linked page: {name}",
+  // 每日筆記
+  "今天的筆記": "Today's Note",
+  "前一天的筆記": "Previous Daily Note",
+  "後一天的筆記": "Next Daily Note",
+  "先開啟一個資料夾：每日筆記會存在資料夾裡。": "Open a folder first: daily notes are saved inside it.",
+  "「{name}」是檔案，不是資料夾。請到設定 → 編輯 → 每日筆記換一個資料夾。":
+    "“{name}” is a file, not a folder. Choose another folder in Settings → Edit → Daily Notes.",
+  "沒有更早的每日筆記。": "No earlier daily notes.",
+  "沒有更晚的每日筆記。": "No later daily notes.",
+  "每日筆記": "Daily Notes",
+  "放在哪個資料夾": "Folder",
+  "開啟的資料夾裡的子資料夾，例如「每日筆記」或「筆記/每日」；留空就放在最上層。檔名是日期，例如 2026-11-02.md":
+    "A subfolder of the open folder, such as “Daily Notes” or “Notes/Daily”; leave empty for the top level. Files are named by date, e.g. 2026-11-02.md",
+  "範本": "Template",
+  "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增":
+    "Used when creating today's note; add your own with “⋯” → “Save Current Document as Template…”",
+  "內建（今天要做、會議與討論、筆記）": "Built-in (To Do, Meetings, Notes)",
 };

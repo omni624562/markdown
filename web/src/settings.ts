@@ -8,6 +8,7 @@ import { desktop } from "./desktop.ts";
 import { cleanFontName } from "./fonts.ts";
 import { t } from "./i18n.ts";
 import * as storage from "./storage.ts";
+import { cleanFolder } from "./daily-notes.ts";
 import { TEMPLATE_LIMITS, type Template } from "./templates.ts";
 import { sanitizeKindColors } from "./work-item-colors.ts";
 
@@ -104,6 +105,10 @@ export interface Settings {
   quickActions: QuickAction[];
   /** 自訂的文件範本（內建範本不在這裡）。 */
   templates: Template[];
+  /** 每日筆記放在開啟的資料夾裡的哪個子資料夾（`筆記/每日`）；空字串是最上層。 */
+  dailyFolder: string;
+  /** 每日筆記用哪個自訂範本（名稱）；空字串是內建的範本。 */
+  dailyTemplate: string;
   /** 桌面版：每天檢查一次有沒有新版（下載前會先詢問）。 */
   autoUpdate: boolean;
   /** 更新管道（桌面版）。預設穩定版；還沒有穩定版時先跟搶先版。 */
@@ -173,6 +178,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   markExternalChanges: true,
   quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
   templates: [],
+  dailyFolder: t("每日筆記"),
+  dailyTemplate: "",
   autoUpdate: true,
   updateChannel: "stable",
   gitAutoSync: false,
@@ -307,6 +314,16 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
         .slice(0, TEMPLATE_LIMITS.count);
       if (out.templates.length !== list.length) problems++;
     } else problems++;
+  }
+  if ("dailyFolder" in input) {
+    const v = typeof input.dailyFolder === "string" ? cleanFolder(input.dailyFolder) : null;
+    if (v !== null && v.length <= 200) out.dailyFolder = v;
+    else problems++;
+  }
+  if ("dailyTemplate" in input) {
+    const v = input.dailyTemplate;
+    if (typeof v === "string" && v.length <= TEMPLATE_LIMITS.name) out.dailyTemplate = v.trim();
+    else problems++;
   }
   for (const key of ["activityOrder", "activityHidden", "activityCommands"] as const) {
     if (!(key in input)) continue;
