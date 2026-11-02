@@ -353,6 +353,15 @@ export class IssueView {
       if (/^https?:/i.test(href)) this.#h.open(href);
     });
     pane.append(head, this.#find, this.#scroll);
+    // 點在檢視裡（內文的連結、上層頁面、相關項目）：接下來開啟的內容留在這個分頁。
+    // 在別的地方按鍵或點一下（例如 Ctrl+P、側邊欄）就取消，那些開在自己的分頁。
+    // 捕獲階段：在內文的連結處理（往下開啟內容）之前就記下。
+    pane.addEventListener("click", () => (this.#clickedInside = Date.now()), true);
+    const outside = (e: Event) => {
+      if (!pane.contains(e.target as Node)) this.#clickedInside = 0;
+    };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", outside, true);
     pane.addEventListener("keydown", (e) => this.#keydown(e));
     // 滑鼠的「上一頁」「下一頁」側鍵。
     pane.addEventListener("mouseup", (e) => {
@@ -418,6 +427,19 @@ export class IssueView {
   /** 焦點在這個檢視裡（並排顯示時，用來分辨 Ctrl+F 要在哪邊找）。 */
   get hasFocus(): boolean {
     return this.#pane.contains(document.activeElement);
+  }
+
+  /** 最近一次點在檢視裡的時間（0：之後在別的地方按過鍵或點過）。 */
+  #clickedInside = 0;
+
+  /**
+   * 現在要開啟的內容是不是從這個檢視裡點出來的（連結、上層頁面等）；問過一次就清掉。
+   * 讀取很慢時（例如等伺服器回應）30 秒內都算。
+   */
+  takeInsideClick(): boolean {
+    const inside = this.isOpen && Date.now() - this.#clickedInside < 30_000;
+    this.#clickedInside = 0;
+    return inside;
   }
 
   /** 目前分頁的狀態（切換到別的分頁前存下）；沒有開著時回傳 null。 */
