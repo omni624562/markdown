@@ -577,6 +577,7 @@ export const main: Record<string, Translation> = {
   "所有專案": "All Projects",
   "搜尋標題或內容，或輸入編號": "Search titles and content, or enter an ID",
   "符合篩選條件的工作項目（{n}）": "Work items matching the filters ({n})",
+  "符合篩選條件的工作項目（只列最近更新的 {n} 個）": "Work items matching the filters (showing the {n} most recently updated)",
   "沒有符合篩選條件的工作項目": "No work items match the filters.",
   "人": "Person",
   "我建立的": "Created by Me",

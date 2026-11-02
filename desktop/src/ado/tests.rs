@@ -486,6 +486,46 @@ fn builds_wiql_for_each_search() {
 }
 
 #[test]
+fn builds_children_query_with_the_same_filter() {
+    let f = WorkItemFilter {
+        person: "".into(),
+        state: "all".into(),
+        projects: vec!["Mgt".into()],
+        areas: vec!["Mgt\\Comet".into()],
+        ..Default::default()
+    };
+    let q = children_wiql(&[1657675, 42], "", &f, &[]);
+    assert!(q.starts_with(
+        "SELECT [System.Id] FROM WorkItemLinks WHERE [Source].[System.Id] IN (1657675, 42)"
+    ));
+    assert!(q.contains("[System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward'"));
+    // 篩選條件套在子項目（Target）上。
+    assert!(q.contains("[Target].[System.TeamProject] IN ('Mgt')"));
+    assert!(q.contains("([Target].[System.AreaPath] UNDER 'Mgt\\Comet')"));
+    assert!(!q.contains("[Target].[System.State]"), "全部狀態不加條件");
+    assert!(q.ends_with("MODE (MustContain)"));
+    let mine = children_wiql(&[1], "登入", &WorkItemFilter::default(), CONTENT_FIELDS[1]);
+    assert!(mine.contains("[Target].[System.AssignedTo] = @Me"));
+    assert!(mine.contains("[Target].[System.State] NOT IN ("));
+    assert!(mine.contains("([Target].[System.Title] CONTAINS '登入' OR [Target].[System.Description] CONTAINS WORDS '登入')"));
+}
+
+#[test]
+fn reads_child_links_from_link_query() {
+    let res = json!({"workItemRelations": [
+        {"rel": null, "source": null, "target": {"id": 1657675}},
+        {"rel": "System.LinkTypes.Hierarchy-Forward", "source": {"id": 1657675}, "target": {"id": 1897033}},
+        {"rel": "System.LinkTypes.Hierarchy-Forward", "source": {"id": 1657675}, "target": {"id": 1896200}},
+        {"rel": "System.LinkTypes.Related", "source": {"id": 1657675}, "target": {"id": 5}}
+    ]});
+    assert_eq!(
+        child_links(&res),
+        vec![(1897033, 1657675), (1896200, 1657675)]
+    );
+    assert!(child_links(&json!({})).is_empty());
+}
+
+#[test]
 fn flattens_areas_and_members() {
     let tree = json!({"name": "產品", "children": [
         {"name": "前端", "children": [{"name": "登入"}]},

@@ -233,12 +233,19 @@ pub(super) const CONTENT_FIELDS: [&[&str]; 3] = [
     &[],
 ];
 
-/// 依搜尋文字與篩選條件產生 WIQL；輸入的是編號（`123`、`#123`）時回傳 None，直接讀取那一個。
-pub(super) fn wiql_for(search: &str, f: &WorkItemFilter, content: &[&str]) -> Option<String> {
+/// 搜尋文字是工作項目編號（`123`、`#123`）時回傳編號。
+fn id_search(search: &str) -> Option<u64> {
     let q = search.trim().trim_start_matches('#');
-    if q.chars().all(|c| c.is_ascii_digit()) && !q.is_empty() {
+    if q.is_empty() || !q.chars().all(|c| c.is_ascii_digit()) {
         return None;
     }
+    q.parse().ok()
+}
+
+/// 搜尋文字與篩選條件（WIQL 的 WHERE 條件，用 AND 連起來）。`p` 是欄位前綴：一般查詢是空字串，
+/// 連結查詢裡篩選子項目時是 `[Target].`。
+fn conditions(search: &str, f: &WorkItemFilter, content: &[&str], p: &str) -> Vec<String> {
+    let q = search.trim().trim_start_matches('#');
     let mut cond: Vec<String> = vec![];
     let role = if f.role == "created" {
         "System.CreatedBy"
@@ -247,38 +254,47 @@ pub(super) fn wiql_for(search: &str, f: &WorkItemFilter, content: &[&str]) -> Op
     };
     match f.person.trim() {
         "" => {}
-        "@me" => cond.push(format!("[{role}] = @Me")),
-        name => cond.push(format!("[{role}] CONTAINS {}", wiql_string(name))),
+        "@me" => cond.push(format!("{p}[{role}] = @Me")),
+        name => cond.push(format!("{p}[{role}] CONTAINS {}", wiql_string(name))),
     }
     let closed: Vec<String> = CLOSED_STATES.iter().map(|s| wiql_string(s)).collect();
     match f.state.as_str() {
-        "open" => cond.push(format!("[System.State] NOT IN ({})", closed.join(", "))),
-        "closed" => cond.push(format!("[System.State] IN ({})", closed.join(", "))),
+        "open" => cond.push(format!("{p}[System.State] NOT IN ({})", closed.join(", "))),
+        "closed" => cond.push(format!("{p}[System.State] IN ({})", closed.join(", "))),
         _ => {}
     }
     if let Some(kinds) = any_of(&f.kinds) {
-        cond.push(format!("[System.WorkItemType] IN ({kinds})"));
+        cond.push(format!("{p}[System.WorkItemType] IN ({kinds})"));
     }
     if let Some(projects) = any_of(&f.projects) {
-        cond.push(format!("[System.TeamProject] IN ({projects})"));
+        cond.push(format!("{p}[System.TeamProject] IN ({projects})"));
     }
     let areas: Vec<String> = f
         .areas
         .iter()
         .map(|a| a.trim())
         .filter(|a| !a.is_empty())
-        .map(|a| format!("[System.AreaPath] UNDER {}", wiql_string(a)))
+        .map(|a| format!("{p}[System.AreaPath] UNDER {}", wiql_string(a)))
         .collect();
     if !areas.is_empty() {
         cond.push(format!("({})", areas.join(" OR ")));
     }
     if !q.is_empty() {
-        let mut any = vec![format!("[System.Title] CONTAINS {}", wiql_string(q))];
+        let mut any = vec![format!("{p}[System.Title] CONTAINS {}", wiql_string(q))];
         for field in content {
-            any.push(format!("[{field}] CONTAINS WORDS {}", wiql_string(q)));
+            any.push(format!("{p}[{field}] CONTAINS WORDS {}", wiql_string(q)));
         }
         cond.push(format!("({})", any.join(" OR ")));
     }
+    cond
+}
+
+/// 依搜尋文字與篩選條件產生 WIQL；輸入的是編號（`123`、`#123`）時回傳 None，直接讀取那一個。
+pub(super) fn wiql_for(search: &str, f: &WorkItemFilter, content: &[&str]) -> Option<String> {
+    if id_search(search).is_some() {
+        return None;
+    }
+    let mut cond = conditions(search, f, content, "");
     if cond.is_empty() {
         cond.push("[System.Id] > 0".into());
     }
@@ -286,6 +302,49 @@ pub(super) fn wiql_for(search: &str, f: &WorkItemFilter, content: &[&str]) -> Op
         "SELECT [System.Id] FROM WorkItems WHERE {} ORDER BY [System.ChangedDate] DESC",
         cond.join(" AND ")
     ))
+}
+
+/// 上層項目底下、符合搜尋文字與篩選條件的子項目（連結查詢）。
+pub(super) fn children_wiql(
+    parents: &[u64],
+    search: &str,
+    f: &WorkItemFilter,
+    content: &[&str],
+) -> String {
+    let ids = parents
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut cond = vec![
+        format!("[Source].[System.Id] IN ({ids})"),
+        format!("[System.Links.LinkType] = {}", wiql_string(CHILD_LINK)),
+    ];
+    cond.extend(conditions(search, f, content, "[Target]."));
+    format!(
+        "SELECT [System.Id] FROM WorkItemLinks WHERE {} MODE (MustContain)",
+        cond.join(" AND ")
+    )
+}
+
+/// 上層 → 子項目的連結類型。
+const CHILD_LINK: &str = "System.LinkTypes.Hierarchy-Forward";
+
+/// 連結查詢的結果：(子項目, 上層)。第一層（只有 target、沒有 source）的列是上層項目本身，略過。
+pub(super) fn child_links(res: &Value) -> Vec<(u64, u64)> {
+    res.get("workItemRelations")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter(|r| r.get("rel").and_then(Value::as_str) == Some(CHILD_LINK))
+                .filter_map(|r| {
+                    let parent = r.get("source")?.get("id")?.as_u64()?;
+                    let child = r.get("target")?.get("id")?.as_u64()?;
+                    Some((child, parent))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub(super) fn work_item_url(base: &str, project: &str, id: u64) -> String {
@@ -647,6 +706,76 @@ pub async fn ado_work_item_parents(
             fetch_work_items(&a.url, &pat, &parent_ids)?
         };
         Ok(WorkItemParents { links, parents })
+    })
+    .await
+}
+
+/// 上層項目底下的子項目：`links` 是 (子項目, 上層)，`items` 是子項目本身。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemChildren {
+    pub(super) links: Vec<(u64, u64)>,
+    pub(super) items: Vec<WorkItem>,
+}
+
+/// 子項目最多讀幾個（每個上層的子項目通常不多，這是避免一次讀太多的保險）。
+const CHILDREN_LIMIT: usize = 400;
+
+/// 「依上層項目分組」：上層項目底下、符合篩選條件的子項目。清單只取最近更新的 100 個，
+/// 比較早更新的子項目不在清單上，組裡的數量就會比上層項目實際的子項目少；用這個補齊。
+#[tauri::command]
+pub async fn ado_work_item_children(
+    app: AppHandle,
+    parents: Vec<u64>,
+    search: String,
+    filter: Option<WorkItemFilter>,
+) -> Result<WorkItemChildren, String> {
+    let (a, pat) = require(&app)?;
+    let filter = filter.unwrap_or_default();
+    let mut parents = parents;
+    parents.sort_unstable();
+    parents.dedup();
+    parents.truncate(200);
+    let empty = WorkItemChildren {
+        links: vec![],
+        items: vec![],
+    };
+    if parents.is_empty() || id_search(&search).is_some() {
+        return Ok(empty);
+    }
+    crate::io::blocking_for(TIMEOUT, move || {
+        let levels: &[&[&str]] = if search.trim().is_empty() {
+            &[&[]]
+        } else {
+            &CONTENT_FIELDS
+        };
+        let mut last = String::new();
+        let mut found = None;
+        for content in levels {
+            let query = children_wiql(&parents, &search, &filter, content);
+            match post(
+                &a.url,
+                &pat,
+                "/_apis/wit/wiql",
+                &serde_json::json!({ "query": query }),
+                &tr!("讀取子項目"),
+            ) {
+                Ok(res) => {
+                    found = Some(res);
+                    break;
+                }
+                Err(e) if e.contains("401") || e.contains("403") => return Err(e),
+                Err(e) => last = e,
+            }
+        }
+        let mut links = child_links(&found.ok_or(last)?);
+        links.truncate(CHILDREN_LIMIT);
+        let ids: Vec<u64> = links.iter().map(|(child, _)| *child).collect();
+        let mut items = vec![];
+        for chunk in ids.chunks(200) {
+            items.extend(fetch_work_items(&a.url, &pat, chunk)?);
+        }
+        Ok(WorkItemChildren { links, items })
     })
     .await
 }
