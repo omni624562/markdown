@@ -25,6 +25,7 @@ import { favoriteProjects, favoriteWikis } from "./favorite-lists.ts";
 import { favoritesFirst } from "../favorites.ts";
 import { app } from "./context.ts";
 import { openWikiRecent } from "./wiki-history.ts";
+import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { bulkEditWorkItems } from "./work-item-bulk.ts";
 
 
@@ -841,6 +842,7 @@ export function initWorkItemsPanel(): void {
         link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
         create: (wiki, parent) => void app.createWikiPage(wiki, parent).catch(app.reportError),
         recent: (wiki) => openWikiRecent(wiki),
+        backlinks: (wiki, path) => void openWikiBacklinks(wiki, path).catch(app.reportError),
         canCreate: (wiki) => !wiki.code,
         async reorder(wiki, path, index) {
           try {

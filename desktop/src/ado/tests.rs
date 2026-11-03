@@ -1214,6 +1214,48 @@ fn wiki_file_paths_become_page_paths() {
 }
 
 #[test]
+fn lists_wiki_page_files_from_repository_items() {
+    // 資料夾、附件、.order 不算；頁面路徑依 Wiki 的規則轉換，帶著內容的編號。
+    let v = json!({ "value": [
+        { "path": "/", "isFolder": true, "gitObjectType": "tree", "objectId": "t0" },
+        { "path": "/產品", "isFolder": true, "gitObjectType": "tree", "objectId": "t1" },
+        { "path": "/產品.md", "gitObjectType": "blob", "objectId": "b1" },
+        { "path": "/產品/安裝-說明.md", "gitObjectType": "blob", "objectId": "b2" },
+        { "path": "/產品/.order", "gitObjectType": "blob", "objectId": "b3" },
+        { "path": "/.attachments/圖.png", "gitObjectType": "blob", "objectId": "b4" },
+        { "path": "/沒有編號.md", "gitObjectType": "blob" }
+    ]});
+    assert_eq!(
+        wiki_page_files(&v, "/"),
+        vec![
+            (
+                "/產品".to_string(),
+                "/產品.md".to_string(),
+                "b1".to_string()
+            ),
+            (
+                "/產品/安裝 說明".to_string(),
+                "/產品/安裝-說明.md".to_string(),
+                "b2".to_string()
+            ),
+        ]
+    );
+    // 程式碼 Wiki：只看 Wiki 所在的資料夾。
+    let code = json!({ "value": [
+        { "path": "/docs/Start.md", "gitObjectType": "blob", "objectId": "c1" },
+        { "path": "/src/readme.md", "gitObjectType": "blob", "objectId": "c2" }
+    ]});
+    assert_eq!(
+        wiki_page_files(&code, "/docs"),
+        vec![(
+            "/Start".to_string(),
+            "/docs/Start.md".to_string(),
+            "c1".to_string()
+        )]
+    );
+}
+
+#[test]
 fn reads_changed_wiki_pages_of_a_commit() {
     let v = json!({ "changes": [
         { "item": { "path": "/產品", "gitObjectType": "tree" }, "changeType": "edit" },

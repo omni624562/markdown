@@ -51,6 +51,8 @@ export interface IssueSource {
   addChild?(): void;
   /** 「刪除這一頁」（Wiki 頁面；不能刪除的不給）。 */
   remove?(): void;
+  /** 「哪些頁面連到這一頁」（Wiki 頁面）。 */
+  backlinks?(): void;
   /** 「放到左側圖示列」：有沒有放、放上去或拿掉（不能放的不給）。 */
   shortcut?: { has(): boolean; toggle(): void };
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
@@ -260,6 +262,12 @@ export class IssueView {
         run: () => {
           if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
         },
+      },
+      {
+        label: t("哪些頁面連到這一頁…"),
+        icon: "link-2",
+        when: () => !!this.#source?.backlinks,
+        run: () => this.#source?.backlinks?.(),
       },
       {
         label: t("刪除這一頁…"),

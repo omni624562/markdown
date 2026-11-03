@@ -46,6 +46,8 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   create?(wiki: W, parent: string | null): void;
   /** 這個 Wiki 的最近修改（誰改了哪幾頁）。 */
   recent?(wiki: W): void;
+  /** 哪些頁面連到這一頁。 */
+  backlinks?(wiki: W, path: string): void;
   canCreate?(wiki: W): boolean;
   /**
    * 調整頁面在同一層的順序（`index` 從 0 算起，是搬完之後的位置）：拖曳、右鍵選單「往上移／往下移」、Alt+↑／↓。
@@ -274,6 +276,14 @@ export class WikiPanel<W extends WikiInfo> {
         icon: "arrow-down",
         when: () => !!this.#menuPath && this.#neighbor(this.#menuPath, 1) !== null,
         run: () => this.#menuPath && this.#step(this.#menuPath, 1),
+      },
+      {
+        label: t("哪些頁面連到這一頁…"),
+        icon: "link-2",
+        when: () => !!this.#h.backlinks && !!this.#menuPath,
+        run: () => {
+          if (this.#wiki && this.#menuPath) this.#h.backlinks?.(this.#wiki, this.#menuPath);
+        },
       },
       {
         label: this.#h.pins?.labels[0] ?? t("釘選這一頁"),
