@@ -120,12 +120,10 @@ test("每日筆記的資料夾與範本", () => {
   assert.equal(sanitize({ dailyTemplate: 3 }).problems, 1);
 });
 
-test("頂端列樣式：預設是專案列；只接受專案列與版面切換鈕組", () => {
-  assert.equal(DEFAULTS.topbarStyle, "project");
-  assert.equal(sanitize({ topbarStyle: "layout" }).settings.topbarStyle, "layout");
-  const bad = sanitize({ topbarStyle: "classic" });
-  assert.equal(bad.settings.topbarStyle, "project");
-  assert.equal(bad.problems, 1);
+test("1.118 的頂端列樣式已經拿掉：設定檔裡留著的 topbarStyle 直接忽略，不算錯誤", () => {
+  const { settings, problems } = sanitize({ topbarStyle: "layout" });
+  assert.equal(problems, 0);
+  assert.ok(!("topbarStyle" in settings));
 });
 
 test("分頁樣式：預設是原本的頂端線；只接受三種樣式", () => {

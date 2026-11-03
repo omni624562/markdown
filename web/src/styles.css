@@ -175,10 +175,9 @@ kbd {
 .custom-titlebar { --topbar-h: 42px; }
 .custom-titlebar .topbar { user-select: none; }
 /*
- * 頂端列是完整的一條：裡面不畫直線（分隔線只在下面的面板之間）；側邊欄開著時，分頁從內文的左邊開始。
- * 左右兩個側邊欄按鈕同一種樣子：開著時圖示顏色深一點，不加底色。
+ * 側邊欄開著時，分頁從內文的左邊開始。左右兩個側邊欄按鈕同一種樣子：開著時那一邊塗滿、圖示顏色深一點，不加底色。
  */
-.topbar.with-sidebar .topbar-side { display: flex; align-items: center; min-width: 0; padding: 0 8px 0 6px; overflow: hidden; }
+.topbar.with-sidebar .topbar-side { display: block; }
 .workspace.narrow.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; margin-left: auto; align-items: center; padding: 0 8px 0 12px; }
 .top-actions .btn.icon-only { color: var(--chrome-icon); }
@@ -186,38 +185,36 @@ kbd {
 .top-actions .btn.icon-only[aria-pressed="true"] { background: transparent; color: var(--fg); }
 .top-actions .btn.icon-only[aria-pressed="true"]:hover { background: var(--surface); }
 /*
- * 頂端列樣式（設定 → 外觀 → 版面，app/topbar-style.ts 搬元素）。專案列：側邊欄上方放專案與分支，
- * 右邊的按鈕前一條分隔線。版面切換鈕組：側邊欄上方放快速開啟、最近開啟（側邊欄收起時只剩搜尋圖示），
- * 左右側欄開關與「⋯」收成右邊一組，開著的那一側白底強調色。窄視窗不套用。
+ * 側邊欄一路到頂（寬視窗）：頂端列左邊那塊（圖示列與側邊欄的正上方）和下面的欄同底色、同一條邊線，
+ * 目前面板的標題列（例如檔案面板的專案名稱與按鈕）疊在那塊上（position: fixed，是搬上去，不是多一份），
+ * 分頁只在內文上方。檔案面板開著時，圖示列最上面的專案方塊藏起來（標題列已經有專案名稱）。
+ * 右邊的側欄開關、⋯、視窗按鈕也是同底色的一塊；右側欄開著時和右側欄同寬、連成一欄。
  */
-.topbar-project, .topbar-tools { display: flex; flex: 1; gap: 2px; align-items: center; min-width: 0; }
-.topbar-tools { display: none; }
-.topbar-project .project-switch { flex: 0 1 auto; margin-left: 0; padding: 4px 8px; color: var(--fg); font-size: 13px; font-weight: 600; letter-spacing: 0; }
-.topbar-project .folder-branch { flex: 0 1 auto; min-width: 0; max-width: 50%; margin: 0; padding: 4px 6px; }
-.topbar-tool { flex: 0 1 auto; gap: 6px; min-width: 0; padding: 0 8px; border-color: transparent; background: transparent; color: var(--muted); }
-.topbar-tool:hover { border-color: transparent; background: var(--active-line); color: var(--fg); }
-.topbar-tool[hidden] { display: none; }
-.topbar-tool .icon { flex: none; width: 15px; height: 15px; }
-.topbar-tool .icon:last-child:not(:first-child) { width: 13px; height: 13px; opacity: 0.7; }
-.topbar-tool span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (min-width: 721px) {
-  [data-topbar-style="project"] .top-actions::before { content: ""; align-self: center; width: 1px; height: 20px; margin-right: 6px; background: var(--border); }
-  [data-topbar-style="layout"] .topbar-project { display: none; }
-  [data-topbar-style="layout"] .topbar-tools { display: flex; justify-content: center; }
-  [data-topbar-style="layout"] .topbar .topbar-side { display: flex; align-items: center; width: var(--activity-width); padding: 0; }
-  [data-topbar-style="layout"] .topbar.with-sidebar .topbar-side { width: calc(var(--activity-width) + var(--outline-width)); padding: 0 8px; }
-  [data-topbar-style="layout"] .topbar.with-sidebar .topbar-tools { justify-content: flex-start; }
-  [data-topbar-style="layout"] .topbar:not(.with-sidebar) .topbar-tool:not(:first-child),
-  [data-topbar-style="layout"] .topbar:not(.with-sidebar) .topbar-tool > :not(:first-child) { display: none; }
-  [data-topbar-style="layout"] .tab-bar { margin-right: 10px; }
-  [data-topbar-style="layout"] .top-actions { align-self: center; gap: 2px; margin-right: 8px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--fg) 7%, var(--topbar-bg)); }
-  [data-topbar-style="layout"] .top-actions .btn.icon-only,
-  [data-topbar-style="layout"] .top-actions .nav-toggle { width: 30px; height: 26px; min-height: 26px; border-radius: 6px; }
-  [data-topbar-style="layout"] .top-actions .nav-toggle .icon { padding: 0; background: none; }
-  [data-topbar-style="layout"] .top-actions .btn.icon-only:hover,
-  [data-topbar-style="layout"] .top-actions .nav-toggle:hover { border-color: transparent; background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
-  [data-topbar-style="layout"] .top-actions .btn.icon-only[aria-pressed="true"],
-  [data-topbar-style="layout"] .top-actions .nav-toggle[aria-pressed="true"] { background: var(--bg); color: var(--accent); box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
+  .nav-toggle, .topbar.with-sidebar .topbar-side { position: relative; border-right: 1px solid var(--border); background: var(--surface); }
+  /* 蓋掉頂端列的底線，和下面的欄接在一起。 */
+  .nav-toggle::after,
+  .topbar.with-sidebar .topbar-side::after,
+  .topbar.with-right .top-actions::after,
+  .topbar.with-right .window-controls::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; background: var(--surface); }
+  .workspace:not(.narrow):not(.outline-hidden) .sidebar > .side-panel:not([hidden]) > .side-head {
+    position: fixed;
+    z-index: 30;
+    top: 0;
+    left: calc(var(--activity-width) + 1px);
+    box-sizing: border-box;
+    width: calc(var(--outline-width) - 2px);
+    height: var(--topbar-h);
+  }
+  .workspace:not(.narrow):not(.outline-hidden) #folder-branch { margin-top: 8px; }
+  .workspace:not(.narrow):not(.outline-hidden):has(#panel-files:not([hidden])) #activity-project { display: none; }
+  .tab-bar { margin-right: 12px; }
+  .top-actions { position: relative; align-self: stretch; padding: 0 4px 0 8px; border-left: 1px solid var(--border); background: var(--surface); }
+  .top-actions .btn.icon-only:hover, .top-actions .btn.icon-only[aria-pressed="true"]:hover { border-color: transparent; background: var(--active-line); }
+  .window-controls { position: relative; margin-left: 0; background: var(--surface); }
+  .topbar.with-right .top-actions { box-sizing: border-box; width: var(--outline-right-width); padding-left: 6px; }
+  .custom-titlebar .topbar.with-right .top-actions { width: calc(var(--outline-right-width) - 3 * 46px); }
+  .topbar.with-right #main-menu { margin-left: auto; }
 }
 .segmented {
   display: inline-flex;

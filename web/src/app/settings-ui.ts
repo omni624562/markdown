@@ -27,7 +27,6 @@ import type { ViewUpdate } from "@codemirror/view";
 import type { ViewMode } from "../main.ts";
 import { app } from "./context.ts";
 import { saveAdoDiagnostics } from "./ado-status.ts";
-import { applyTopbarStyle } from "./topbar-style.ts";
 
 
 const PREVIEW_WIDTH: Record<Settings["previewWidth"], string> = { narrow: "680px", medium: "820px", wide: "1080px" };
@@ -85,7 +84,6 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
   root.setProperty("--doc-line-height", DOC_LINE_HEIGHT[s.docLineHeight]);
   document.body.classList.toggle("view-switch-icons", !s.viewSwitchLabels);
   document.documentElement.dataset.tabStyle = s.tabStyle;
-  applyTopbarStyle(s.topbarStyle);
   if (!changed || changed.includes("workItemColors")) applyKindColors(s.workItemColors);
   // 介面大小：整個視窗縮放（啟動時預設 100% 就不用呼叫）。
   if (desktop && (changed ? changed.includes("uiScale") : s.uiScale !== "100")) {
