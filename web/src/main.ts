@@ -65,7 +65,7 @@ import { type TabInfo, TabBar } from "./ui/tabbar.ts";
 import { TerminalProxy } from "./terminal-proxy.ts";
 import { Updater } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
-import { choiceList } from "./multi-choice.ts";
+import { DEFAULT_WORK_ITEM_FILTER, isDefaultWorkItemFilter, parseWorkItemFilter } from "./work-item-filter.ts";
 import type { AdoWiki, AdoWorkItem, AdoWorkItemFilter, FileVersion, GitStatus } from "./desktop.ts";
 import { parseRemoteLink, urlAt } from "./remote-links.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
@@ -2428,38 +2428,8 @@ new MutationObserver(() => {
 new MutationObserver(renderStatusView).observe(issuePane, { attributes: true, attributeFilter: ["data-source", "data-source-name"] });
 
 /** 工作項目的篩選條件（記住上次的選擇）。 */
-const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {
-  role: "assigned",
-  person: "@me",
-  state: "open",
-  kinds: [],
-  projects: [],
-  areas: [],
-};
-const workItemFilter: AdoWorkItemFilter = (() => {
-  try {
-    // 舊版存的是單一的 kind、project、area。
-    const v = JSON.parse(storage.load("workitem-filter") ?? "{}") as Partial<AdoWorkItemFilter> & Record<"kind" | "project" | "area", unknown>;
-    const projects = choiceList(v.projects ?? v.project);
-    return {
-      role: v.role === "created" ? "created" : "assigned",
-      person: typeof v.person === "string" ? v.person : "@me",
-      state: v.state === "closed" || v.state === "all" ? v.state : "open",
-      kinds: choiceList(v.kinds ?? v.kind),
-      projects,
-      areas: projects.length ? choiceList(v.areas ?? v.area) : [],
-    };
-  } catch {
-    return { ...DEFAULT_WORK_ITEM_FILTER };
-  }
-})();
-const isDefaultFilter = () =>
-  workItemFilter.role === "assigned" &&
-  workItemFilter.person === "@me" &&
-  workItemFilter.state === "open" &&
-  !workItemFilter.kinds.length &&
-  !workItemFilter.projects.length &&
-  !workItemFilter.areas.length;
+const workItemFilter: AdoWorkItemFilter = parseWorkItemFilter(storage.load("workitem-filter"));
+const isDefaultFilter = () => isDefaultWorkItemFilter(workItemFilter);
 /** 清單上要不要顯示指派給誰（只看自己的就不必）。 */
 const showAssignee = () => !(workItemFilter.role === "assigned" && workItemFilter.person === "@me");
 

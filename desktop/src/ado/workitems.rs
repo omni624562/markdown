@@ -180,8 +180,10 @@ pub struct WorkItemFilter {
     pub role: String,
     /// `@me`（我）、空字串（不限）或名字（部分符合即可）。
     pub person: String,
-    /// `open`（還沒結束）、`closed`（已結束）或 `all`。
+    /// `open`（還沒結束）、`closed`（已結束）或 `all`。`states` 有值時不看這個。
     pub state: String,
+    /// 指定的狀態（例如 `New`、`Active`）；空的是照 `state`。
+    pub states: Vec<String>,
     /// 類型（空的是不限）。
     pub kinds: Vec<String>,
     /// 專案（空的是不限）。
@@ -196,6 +198,7 @@ impl Default for WorkItemFilter {
             role: "assigned".into(),
             person: "@me".into(),
             state: "open".into(),
+            states: vec![],
             kinds: vec![],
             projects: vec![],
             areas: vec![],
@@ -256,10 +259,14 @@ fn conditions(search: &str, f: &WorkItemFilter, content: &[&str], p: &str) -> Ve
         name => cond.push(format!("{p}[{role}] CONTAINS {}", wiql_string(name))),
     }
     let closed: Vec<String> = CLOSED_STATES.iter().map(|s| wiql_string(s)).collect();
-    match f.state.as_str() {
-        "open" => cond.push(format!("{p}[System.State] NOT IN ({})", closed.join(", "))),
-        "closed" => cond.push(format!("{p}[System.State] IN ({})", closed.join(", "))),
-        _ => {}
+    if let Some(states) = any_of(&f.states) {
+        cond.push(format!("{p}[System.State] IN ({states})"));
+    } else {
+        match f.state.as_str() {
+            "open" => cond.push(format!("{p}[System.State] NOT IN ({})", closed.join(", "))),
+            "closed" => cond.push(format!("{p}[System.State] IN ({})", closed.join(", "))),
+            _ => {}
+        }
     }
     if let Some(kinds) = any_of(&f.kinds) {
         cond.push(format!("{p}[System.WorkItemType] IN ({kinds})"));
@@ -779,12 +786,65 @@ pub async fn ado_work_item_children(
 }
 
 /// 一個工作項目的內容。
-/// 篩選列的選項：專案與工作項目類型。
+/// 篩選列的選項：專案、工作項目類型與狀態。
 #[derive(Serialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkItemFilterOptions {
     pub(super) projects: Vec<String>,
     pub(super) kinds: Vec<String>,
+    pub(super) states: Vec<StateOption>,
+}
+
+/// 狀態篩選的一個選項：名稱，與是不是「已結束」（和清單「進行中」的條件用同一份名單）。
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct StateOption {
+    pub(super) name: String,
+    pub(super) closed: bool,
+}
+
+/// 「已結束」的狀態（`CLOSED_STATES`，不分大小寫，和 WIQL 一樣）。
+fn is_closed_state(name: &str) -> bool {
+    CLOSED_STATES.iter().any(|c| c.eq_ignore_ascii_case(name))
+}
+
+/// 一個工作項目類型定義的狀態與階段：新版的類型有 `states`（名稱與分類），舊版從狀態轉換整理。
+pub(super) fn type_states(t: &Value) -> Vec<(u8, String)> {
+    let listed: Vec<(u8, String)> = t
+        .get("states")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|s| {
+            let name = str_of(s, "name")?.to_string();
+            let stage =
+                str_of(s, "category").map_or_else(|| stage_of_name(&name), stage_of_category);
+            Some((stage, name))
+        })
+        .collect();
+    if !listed.is_empty() {
+        return listed;
+    }
+    states_from_transitions(t)
+        .into_iter()
+        .map(|n| (stage_of_name(&n), n))
+        .collect()
+}
+
+/// 幾個類型的狀態合成一份：同名的（不分大小寫）只列一次，依流程的階段排（同一階段照出現的順序）。
+pub(super) fn merge_states(all: Vec<(u8, String)>) -> Vec<StateOption> {
+    let mut out: Vec<(u8, String)> = vec![];
+    for (stage, name) in all {
+        if !out.iter().any(|(_, n)| n.eq_ignore_ascii_case(&name)) {
+            out.push((stage, name));
+        }
+    }
+    out.sort_by_key(|(stage, _)| *stage);
+    out.into_iter()
+        .map(|(_, name)| StateOption {
+            closed: is_closed_state(&name),
+            name,
+        })
+        .collect()
 }
 
 /// 不會出現在一般清單的類型（測試、程式碼檢閱、意見反應等）。
@@ -811,19 +871,29 @@ pub async fn ado_work_item_filters(app: AppHandle) -> Result<WorkItemFilterOptio
             .collect();
         projects.sort_by_key(|p| p.to_lowercase());
         let mut kinds: Vec<String> = vec![];
+        let mut states: Vec<(u8, String)> = vec![];
         for p in projects.iter().take(20) {
             let path = format!("/{}/_apis/wit/workitemtypes", encode_segment(p));
             let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取工作項目類型")) else {
                 continue;
             };
-            for k in values(&res).iter().filter_map(|t| str_of(t, "name")) {
-                if !HIDDEN_KINDS.contains(&k) && !kinds.iter().any(|x| x == k) {
+            for t in values(&res) {
+                let Some(k) = str_of(t, "name") else { continue };
+                if HIDDEN_KINDS.contains(&k) {
+                    continue;
+                }
+                if !kinds.iter().any(|x| x == k) {
                     kinds.push(k.to_string());
                 }
+                states.extend(type_states(t));
             }
         }
         kinds.sort_by_key(|k| k.to_lowercase());
-        Ok(WorkItemFilterOptions { projects, kinds })
+        Ok(WorkItemFilterOptions {
+            projects,
+            kinds,
+            states: merge_states(states),
+        })
     })
     .await
 }
