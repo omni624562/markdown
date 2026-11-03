@@ -505,6 +505,57 @@ fn builds_wiql_for_each_search() {
     assert!(wiql_for("", &me, &[])
         .unwrap()
         .contains("[System.CreatedBy] = @Me"));
+    // 指定狀態：用 IN 列出來，不再套「進行中」的條件。
+    let picked = WorkItemFilter {
+        states: vec!["New".into(), "Active".into(), "New".into()],
+        ..Default::default()
+    };
+    let q = wiql_for("", &picked, &[]).unwrap();
+    assert!(q.contains("[System.State] IN ('New', 'Active')"));
+    assert!(!q.contains("NOT IN"));
+}
+
+#[test]
+fn lists_states_for_the_filter_in_workflow_order() {
+    // 新版：類型定義有 states（含分類）；舊版只有狀態轉換。
+    let agile = json!({
+        "name": "User Story",
+        "states": [
+            {"name": "New", "category": "Proposed"},
+            {"name": "Active", "category": "InProgress"},
+            {"name": "Resolved", "category": "Resolved"},
+            {"name": "Closed", "category": "Completed"},
+            {"name": "Removed", "category": "Removed"}
+        ]
+    });
+    let old = json!({
+        "name": "Task",
+        "transitions": {"": [{"to": "To Do"}], "To Do": [{"to": "Doing"}], "Doing": [{"to": "Done"}]}
+    });
+    assert_eq!(
+        type_states(&old),
+        vec![
+            (0, "To Do".to_string()),
+            (1, "Doing".to_string()),
+            (3, "Done".to_string())
+        ]
+    );
+    let mut all = type_states(&agile);
+    all.extend(type_states(&old));
+    // 同名的只列一次（不分大小寫）。
+    all.push((1, "active".into()));
+    let merged = merge_states(all);
+    let names: Vec<&str> = merged.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["New", "To Do", "Active", "Doing", "Resolved", "Closed", "Done", "Removed"]
+    );
+    let closed: Vec<&str> = merged
+        .iter()
+        .filter(|s| s.closed)
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(closed, ["Closed", "Done", "Removed"]);
 }
 
 #[test]

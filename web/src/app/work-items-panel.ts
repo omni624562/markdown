@@ -17,6 +17,7 @@ import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWor
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
 import { kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
+import { fromStateChoice, stateChoice, stateLabel, stateOptions, type StateOption, workItemFilterKey } from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
@@ -144,7 +145,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     queryNote.textContent = q ? t("目前列出查詢「{name}」的結果，下面的篩選條件暫時不套用。", { name: q.name }) : "";
     const set = [
       !(f.role === "assigned" && f.person === "@me"),
-      f.state !== "open",
+      f.state !== "open" || f.states.length > 0,
       f.kinds.length > 0,
       f.projects.length > 0,
       f.areas.length > 0,
@@ -218,18 +219,25 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     ["created:", t("建立者是…")],
   ]);
   person.value = [personValue];
-  // 狀態：進行中、已結束兩項，都勾（或都不勾）是全部。
-  const stateValue = (s: AdoWorkItemFilter["state"]) => (s === "all" ? [] : [s]);
+  // 狀態：伺服器上實際的狀態（New、Active、Resolved…）；勾了所有還沒結束的就是「進行中」（見 work-item-filter.ts）。
+  let states: StateOption[] = [];
   const state = new MultiSelect({
     label: t("狀態"),
     all: t("全部狀態"),
+    summary: () => stateLabel(f),
     onChange: (v) => {
-      f.state = v.length === 1 ? (v[0] as AdoWorkItemFilter["state"]) : "all";
+      Object.assign(f, fromStateChoice(v, states));
+      // 按鈕上的文字跟著條件（例如勾回所有還沒結束的，顯示「進行中」）。
+      state.value = stateChoice(f, states);
       changed();
     },
   });
-  state.setOptions([["open", t("進行中")], ["closed", t("已結束")]]);
-  state.value = stateValue(f.state);
+  const setStates = (list: StateOption[]) => {
+    states = list;
+    state.setOptions(stateOptions(states));
+    state.value = stateChoice(f, states);
+  };
+  setStates([]);
   const kind = new MultiSelect({
     label: t("類型"),
     all: t("所有類型"),
@@ -297,8 +305,9 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     loadScope();
     void desktop
       .adoWorkItemFilters()
-      .then(({ projects, kinds }) => {
+      .then(({ projects, kinds, states: list }) => {
         kind.setOptions(pairs(kinds));
+        setStates(list ?? []);
         // 常用的專案（工作板、Wiki 旁的星號勾選）排在前面。
         project.setOptions(favoritesFirst(pairs(projects), favoriteProjects.load()));
       })
@@ -311,7 +320,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     person.value = ["assigned:@me"];
     name.hidden = true;
     name.value = "";
-    state.value = ["open"];
+    state.value = stateChoice(f, states);
     kind.value = [];
     project.value = [];
     area.value = [];
@@ -777,7 +786,7 @@ export function initWorkItemsPanel(): void {
           // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
           const raw = q
             ? await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q), update)
-            : await withOfflineCopy(`wi-list:${search}:${JSON.stringify(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
+            : await withOfflineCopy(`wi-list:${search}:${workItemFilterKey(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
           const found = q ? keepFreshness(raw, filterQueryResult(raw, search)) : raw;
           app.noteWorkItems(found, !q && !search && app.isDefaultFilter());
           workItemListed = new Set(found.map((w) => w.id));

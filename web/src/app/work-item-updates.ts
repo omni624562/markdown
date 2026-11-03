@@ -10,6 +10,7 @@ import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { setErrorAction } from "../ui/toast.ts";
 import { type SeenMap, trimSeen, remember, markSeen, markOf, markAllSeen } from "../workitem-seen.ts";
+import { workItemFilterKey } from "../work-item-filter.ts";
 import { openGitHistory, historyView } from "./git-history.ts";
 import { createWorkItemDialog } from "./new-work-item.ts";
 import { forgetListCopies, refreshKeptPages, withOfflineCopy } from "./offline-copies.ts";
@@ -103,7 +104,7 @@ export async function pollWorkItems(): Promise<void> {
     const signature = () => app.pollItems.map((w) => `${w.id}@${w.changed}`).join();
     const before = signature();
     // 和「指派給你」的清單同一份副本。剛啟動時先用副本（圖示上的數字馬上出來），背景讀完再檢查一次。
-    const key = `wi-list::${JSON.stringify(app.DEFAULT_WORK_ITEM_FILTER)}`;
+    const key = `wi-list::${workItemFilterKey(app.DEFAULT_WORK_ITEM_FILTER)}`;
     const fetch = () => desktop!.adoWorkItems("", app.DEFAULT_WORK_ITEM_FILTER);
     const first = !app.pollItems.length;
     noteWorkItems(await withOfflineCopy(key, fetch, first ? () => window.setTimeout(() => void pollWorkItems(), 0) : undefined, true), true);

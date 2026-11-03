@@ -522,6 +522,8 @@ export interface AdoWorkItemFilter {
   /** `@me`（我）、空字串（不限）或名字（部分符合即可）。 */
   person: string;
   state: "open" | "closed" | "all";
+  /** 指定的狀態（例如 New、Active）；空的是照 `state`。 */
+  states: string[];
   /** 類型、專案、區域都可以複選；空的是不限。 */
   kinds: string[];
   projects: string[];
@@ -1009,7 +1011,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
     adoClone: (cloneUrl: string, name: string) => core.invoke<Cloned | null>("ado_clone", { cloneUrl, name }),
     adoWorkItems: (search: string, filter?: AdoWorkItemFilter) => core.invoke<AdoWorkItem[]>("ado_work_items", { search, filter }),
-    adoWorkItemFilters: () => core.invoke<{ projects: string[]; kinds: string[] }>("ado_work_item_filters"),
+    adoWorkItemFilters: () =>
+      core.invoke<{ projects: string[]; kinds: string[]; states?: { name: string; closed: boolean }[] }>("ado_work_item_filters"),
     adoWorkItemScope: (project: string | null) =>
       core.invoke<{ areas: string[]; people: string[] }>("ado_work_item_scope", { project }),
     /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
