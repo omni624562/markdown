@@ -53,6 +53,7 @@ pub static EN: &[(&str, &str)] = &[
     ("刪除 Wiki 頁面", "Deleting the wiki page"),
     ("讀取上層項目", "Loading parent work items"),
     ("讀取子項目", "Loading child work items"),
+    ("讀取修改記錄", "Loading the change history"),
     ("已經有同名的頁面了，請換一個名稱", "A page with this name already exists. Please choose another name."),
     ("搜尋 Wiki", "Searching the wiki"),
     ("個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖", "The personal access token is invalid or expired. Update it on the Azure DevOps/TFS page in Settings."),

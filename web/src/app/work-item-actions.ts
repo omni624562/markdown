@@ -12,6 +12,7 @@ import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
 import { decorateMarks } from "../ui/work-item-marks.ts";
 import * as storage from "../storage.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
+import { historyMarkdown } from "../work-item-history.ts";
 import { type Iteration, longFields } from "../work-item-fields.ts";
 import { openAttachment, saveAttachment } from "./ado-files.ts";
 import { insertIssueLink } from "./ado-links.ts";
@@ -192,6 +193,7 @@ export function showWorkItem(item: AdoWorkItem): void {
       editing.enhance(body);
     },
     insertLink: () => insertIssueLink(item),
+    history: () => showWorkItemHistory(item),
     shortcut: {
       has: () => barShortcuts.some((s) => isWorkItemShortcut(s) && s.workItem === item.id),
       toggle: () => toggleWorkItemShortcut(item),
@@ -206,4 +208,26 @@ export function showWorkItem(item: AdoWorkItem): void {
       return true;
     },
   });
+}
+
+/** 修改記錄：開在同一個分頁（按上一頁回到工作項目），裡面的工作項目連結也在 oMarker 開。 */
+function showWorkItemHistory(item: AdoWorkItem): void {
+  void app.issueView
+    .show({
+      key: `ado-history:${item.id}`,
+      origin: { kind: "ado", icon: "history", text: t("Azure DevOps 工作項目") },
+      label: t("修改記錄"),
+      title: t("修改記錄：{label}", { label: `${item.kind} ${item.id}` }),
+      webUrl: item.webUrl,
+      fileName: issueFileName(t("修改記錄 {label}", { label: `${item.kind} ${item.id}` }), item.title),
+      load: async () => historyMarkdown(item, await desktop!.adoWorkItemHistory(item.id)),
+      insertLink: () => insertIssueLink(item),
+      link: (href) => {
+        const id = workItemIdOf(href);
+        if (id === null) return false;
+        void app.openWorkItemById(id);
+        return true;
+      },
+    })
+    .catch(app.reportError);
 }
