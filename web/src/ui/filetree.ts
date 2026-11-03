@@ -4,6 +4,7 @@
 import { displayPath, type Entry } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { dirname, isInside } from "../paths.ts";
+import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 
 export type TreeAction = "new-file" | "new-folder" | "upload" | "download" | "rename" | "trash" | "reveal" | "copy-path";
@@ -53,6 +54,7 @@ export class FileTree {
     this.#menu.className = "menu";
     this.#menu.popover = "auto";
     this.#menu.role = "menu";
+    containWheel(this.#menu);
     this.#menu.addEventListener("keydown", (e) => {
       const items = [...this.#menu.querySelectorAll<HTMLElement>("button")];
       const i = items.indexOf(document.activeElement as HTMLElement);

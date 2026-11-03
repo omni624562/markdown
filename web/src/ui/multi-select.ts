@@ -10,6 +10,7 @@
 
 import { t } from "../i18n.ts";
 import { choiceSummary, normalizeChoice } from "../multi-choice.ts";
+import { containWheel } from "./contain-wheel.ts";
 import { placeMenu } from "./menu-place.ts";
 
 export interface MultiSelectOptions {
@@ -59,6 +60,7 @@ export class MultiSelect {
     this.#pop.className = "multi-select-pop";
     this.#pop.popover = "auto";
     this.#pop.setAttribute("aria-label", o.label);
+    containWheel(this.#pop);
     this.#search = document.createElement("input");
     this.#search.type = "search";
     this.#search.className = "multi-select-search";

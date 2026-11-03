@@ -1,4 +1,5 @@
 import { type Commands, formatKeys } from "../commands.ts";
+import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
 
@@ -53,6 +54,7 @@ function newMenu(): HTMLDivElement {
   menu.className = "menu";
   menu.popover = "auto";
   menu.role = "menu";
+  containWheel(menu);
   return menu;
 }
 

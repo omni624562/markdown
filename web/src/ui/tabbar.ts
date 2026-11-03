@@ -1,4 +1,5 @@
 import { t } from "../i18n.ts";
+import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
 
@@ -78,6 +79,7 @@ export class TabBar {
     this.#moreMenu.className = "menu tab-more-menu";
     this.#moreMenu.popover = "auto";
     this.#moreMenu.role = "menu";
+    containWheel(this.#moreMenu);
     document.body.append(this.#moreMenu);
     this.#more.addEventListener("click", () => this.#openMore());
     this.#moreMenu.addEventListener("keydown", (e) => {
