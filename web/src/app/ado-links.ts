@@ -44,6 +44,20 @@ export function wikiPageTree(wiki: AdoWiki, fresh = false): Promise<AdoWikiPage[
   return pages;
 }
 
+/** 依頁面編號問伺服器的結果（Wiki id + 編號 → 頁面路徑，找不到是 null）。 */
+const pageById = new Map<string, Promise<string | null>>();
+
+/** 頁面編號對應的頁面：先找頁面樹，樹裡沒有編號（有些伺服器不回傳）時問伺服器（記住問過的）。 */
+async function pageOfId(wiki: AdoWiki, pageId: number): Promise<string | null> {
+  const key = `${wiki.id}:${pageId}`;
+  let found = pageById.get(key);
+  if (!found) {
+    found = desktop!.adoWikiPagePath(wiki, pageId).catch(() => null);
+    setBounded(pageById, key, found, 500);
+  }
+  return found;
+}
+
 /** Wiki 網址指到哪個 Wiki 的哪一頁（依 `?pagePath=`、頁面編號或名稱）；找不到回傳 null。 */
 async function resolveWikiLink(link: Extract<RemoteLink, { kind: "wiki" }>): Promise<{ wiki: AdoWiki; path: string } | null> {
   if (!app.wikiListCache) {
@@ -54,7 +68,9 @@ async function resolveWikiLink(link: Extract<RemoteLink, { kind: "wiki" }>): Pro
   const wiki = (await app.wikiListCache).find((w) => w.name.toLowerCase() === name || w.id.toLowerCase() === name);
   if (!wiki) return null;
   if (link.path) return { wiki, path: link.path };
-  const path = findWikiPage(await wikiPageTree(wiki), link.pageId, link.slug);
+  // 網址只寫了頁面編號（`…/wikis/產品.wiki/53081`，沒有頁面名稱）而頁面樹裡找不到：問伺服器這一頁在哪裡。
+  const path =
+    findWikiPage(await wikiPageTree(wiki), link.pageId, link.slug) ?? (link.pageId !== null ? await pageOfId(wiki, link.pageId) : null);
   return path ? { wiki, path } : null;
 }
 
@@ -68,7 +84,11 @@ export async function openRemoteLink(href: string): Promise<boolean> {
       return true;
     }
     const target = await resolveWikiLink(link);
-    if (!target) return false;
+    if (!target) {
+      // 交給瀏覽器開：先說一聲（瀏覽器可能開在 oMarker 後面，看起來像沒反應）。
+      toast(t("在 oMarker 裡找不到這一頁，改用瀏覽器開啟"));
+      return false;
+    }
     app.showWikiPage(target.wiki, target.path);
     return true;
   } catch {

@@ -354,6 +354,7 @@ fn main() {
             ado::ado_wikis,
             ado::ado_wiki_pages,
             ado::ado_wiki_page,
+            ado::ado_wiki_page_path,
             offline::offline_put,
             offline::offline_get,
             offline::offline_release,
