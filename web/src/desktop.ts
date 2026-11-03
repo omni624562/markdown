@@ -411,6 +411,17 @@ export interface AdoWorkItemAttachment {
   comment: string | null;
 }
 
+/** Wiki 最近修改的一筆。 */
+export interface AdoWikiChange {
+  /** 頁面的路徑（例如 `/產品/安裝說明`）。 */
+  path: string;
+  change: "add" | "edit" | "delete" | "rename";
+  author: string;
+  date: string;
+  comment: string;
+  commitId: string;
+}
+
 export interface AdoWorkItemRelation extends AdoWorkItem {
   link: "parent" | "child" | "related" | "predecessor" | "successor" | "other";
   /** 伺服器上的連結名稱（例如 Tested By），`other` 時顯示。 */
@@ -1060,6 +1071,15 @@ function bridge(core: TauriCore, event: TauriEvent) {
         wikiId: w.wikiId,
         repositoryId: w.repositoryId ?? null,
         path: w.path,
+      }),
+    /** Wiki 最近修改：最近 30 次提交改到的頁面（新的在前）。 */
+    adoWikiRecent: (w: AdoWiki) =>
+      core.invoke<AdoWikiChange[]>("ado_wiki_recent", {
+        projectId: w.projectId,
+        wikiId: w.id,
+        repositoryId: w.repositoryId || null,
+        mappedPath: w.mappedPath || "/",
+        version: w.version ?? null,
       }),
     /** 建立新的 Wiki 頁面（已經有同名的頁面時失敗），回傳新頁面的版本。 */
     adoWikiCreate: (w: AdoWiki, path: string, content: string) =>

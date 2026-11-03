@@ -2152,7 +2152,8 @@ button.git-info:disabled { cursor: default; }
 .multi-select-pop.single .multi-select-list { padding-top: 4px; }
 /* Wiki（Azure DevOps） */
 .wiki-filters { grid-template-columns: 1fr auto; }
-.wiki-filters .wiki-new { grid-column: 1 / -1; }
+.wiki-filters .wiki-actions { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
+.wiki-filters .wiki-actions:not(:has(> :not([hidden]))) { display: none; }
 /* 常用的項目（Wiki、工作板的專案）：選單旁邊的星號，有設常用時星號填滿。 */
 .favorite-toggle { margin: 0; height: auto; min-height: 28px; }
 .favorite-toggle.active .icon { fill: currentColor; }

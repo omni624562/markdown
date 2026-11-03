@@ -466,3 +466,180 @@ pub async fn ado_wiki_history(
     })
     .await
 }
+
+/// Wiki 最近修改的一筆：哪一頁、怎麼改（`add`、`edit`、`delete`、`rename`）、誰、什麼時候、說明。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiChange {
+    /// Wiki 頁面的路徑（例如 `/產品/安裝說明`）。
+    pub(super) path: String,
+    pub(super) change: String,
+    pub(super) author: String,
+    pub(super) date: String,
+    pub(super) comment: String,
+    pub(super) commit_id: String,
+}
+
+/// 最近修改看最近幾次提交。
+const RECENT_COMMITS: usize = 30;
+
+/// Wiki 儲存庫裡的檔案路徑 → 頁面路徑：去掉 Wiki 所在的資料夾與 `.md`，
+/// 檔名裡的 `-` 是空白、`%2D` 是 `-`（和 Azure DevOps 的檔名規則一樣）。附件、`.order` 等不是頁面的回傳 None。
+pub(super) fn page_of_git_path(git_path: &str, mapped_path: &str) -> Option<String> {
+    let root = mapped_path.trim_end_matches('/');
+    let rest = if root.is_empty() {
+        git_path
+    } else {
+        let head = git_path.get(..root.len())?;
+        if !head.eq_ignore_ascii_case(root) {
+            return None;
+        }
+        &git_path[root.len()..]
+    };
+    let rest = rest.strip_prefix('/')?;
+    let len = rest.len();
+    if len < 4 || !rest[len - 3..].eq_ignore_ascii_case(".md") {
+        return None;
+    }
+    let rest = &rest[..len - 3];
+    let mut out = String::new();
+    for seg in rest.split('/') {
+        if seg.is_empty() || seg.starts_with('.') {
+            return None;
+        }
+        out.push('/');
+        out.push_str(&crate::dav::decode_percent(&seg.replace('-', " ")));
+    }
+    Some(out)
+}
+
+/// 一次提交改到的頁面（`commits/{id}/changes`）：(頁面路徑, 怎麼改)，同一頁只留一筆。
+pub(super) fn changed_pages(v: &Value, mapped_path: &str) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = vec![];
+    for c in v
+        .get("changes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let item = c.get("item");
+        if item
+            .and_then(|i| str_of(i, "gitObjectType"))
+            .is_some_and(|t| t != "blob")
+        {
+            continue;
+        }
+        let Some(page) = item
+            .and_then(|i| str_of(i, "path"))
+            .and_then(|p| page_of_git_path(p, mapped_path))
+        else {
+            continue;
+        };
+        let kind = str_of(c, "changeType")
+            .unwrap_or("edit")
+            .to_ascii_lowercase();
+        let change = if kind.contains("delete") {
+            "delete"
+        } else if kind.contains("rename") {
+            "rename"
+        } else if kind.contains("add") {
+            "add"
+        } else {
+            "edit"
+        };
+        if !out.iter().any(|(p, _)| p == &page) {
+            out.push((page, change.to_string()));
+        }
+    }
+    out
+}
+
+/// Wiki 最近修改：最近 30 次提交改到的頁面（新的在前）。每次提交改了哪些檔案要另外讀，同時讀幾個。
+#[tauri::command]
+pub async fn ado_wiki_recent(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    repository_id: Option<String>,
+    mapped_path: Option<String>,
+    version: Option<String>,
+) -> Result<Vec<WikiChange>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("讀取 Wiki 的最近修改");
+        let repo = repository_id
+            .as_deref()
+            .filter(|r| !r.is_empty())
+            .unwrap_or(&wiki_id)
+            .to_string();
+        let mapped = mapped_path.unwrap_or_else(|| "/".into());
+        let base = format!(
+            "{}/{}/_apis/git/repositories/{}",
+            a.url,
+            encode_segment(&project_id),
+            encode_segment(&repo)
+        );
+        let mut url = format!("{base}/commits?searchCriteria.$top={RECENT_COMMITS}");
+        if !mapped.trim_end_matches('/').is_empty() {
+            url.push_str(&format!(
+                "&searchCriteria.itemPath={}",
+                encode_segment(&mapped)
+            ));
+        }
+        if let Some(v) = version.as_deref().filter(|v| !v.is_empty()) {
+            url.push_str(&format!(
+                "&searchCriteria.itemVersion.version={}",
+                encode_segment(v)
+            ));
+        }
+        let call = |url: &str| {
+            read(
+                crate::update::agent()
+                    .get(&format!("{url}&api-version={API_VERSION}"))
+                    .header("Authorization", &basic(&pat))
+                    .header("Accept", "application/json")
+                    .call(),
+                &what,
+            )
+        };
+        let commits = revisions_of(&call(&url)?);
+        // 每次提交改到哪些頁面：一次讀 6 個，讀不到的那次略過（不讓整個清單失敗）。
+        let mut pages: Vec<Vec<(String, String)>> = vec![vec![]; commits.len()];
+        for (chunk_index, chunk) in commits.chunks(6).enumerate() {
+            std::thread::scope(|s| {
+                let handles: Vec<_> = chunk
+                    .iter()
+                    .map(|c| {
+                        let url =
+                            format!("{base}/commits/{}/changes?top=100", encode_segment(&c.id));
+                        let call = &call;
+                        let mapped = &mapped;
+                        s.spawn(move || {
+                            call(&url)
+                                .map(|v| changed_pages(&v, mapped))
+                                .unwrap_or_default()
+                        })
+                    })
+                    .collect();
+                for (i, h) in handles.into_iter().enumerate() {
+                    pages[chunk_index * 6 + i] = h.join().unwrap_or_default();
+                }
+            });
+        }
+        Ok(commits
+            .into_iter()
+            .zip(pages)
+            .flat_map(|(c, list)| {
+                list.into_iter().map(move |(path, change)| WikiChange {
+                    path,
+                    change,
+                    author: c.author.clone(),
+                    date: c.date.clone(),
+                    comment: c.comment.clone(),
+                    commit_id: c.id.clone(),
+                })
+            })
+            .collect())
+    })
+    .await
+}

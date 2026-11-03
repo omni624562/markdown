@@ -386,6 +386,7 @@ fn main() {
             ado::ado_wiki_save,
             ado::ado_wiki_page_info,
             ado::ado_wiki_history,
+            ado::ado_wiki_recent,
             ado::ado_wiki_create,
             ado::ado_wiki_delete,
             ado::ado_wiki_attach,

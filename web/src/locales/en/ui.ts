@@ -782,4 +782,12 @@ export const ui: Record<string, Translation> = {
   "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增":
     "Used when creating today's note; add your own with “⋯” → “Save Current Document as Template…”",
   "內建（今天要做、會議與討論、筆記）": "Built-in (To Do, Meetings, Notes)",
+  "Wiki 最近修改…": "Recent Wiki Changes…",
+  "改名或搬移": "Renamed or moved",
+  "Wiki 最近修改": "Recent Wiki Changes",
+  "輸入頁面名稱、人名或修改說明": "Type a page name, person or change note",
+  "最近沒有修改。": "No recent changes.",
+  "「{name}」已經刪除了。": "“{name}” has been deleted.",
+  "最近修改": "Recent Changes",
+  "這個 Wiki 最近誰改了哪幾頁": "Who changed which pages in this wiki recently",
 };

@@ -1137,3 +1137,50 @@ fn backlog_query_and_iteration() {
     );
     assert_eq!(backlog_iteration_of(&Value::Null, "產品"), "產品");
 }
+
+#[test]
+fn wiki_file_paths_become_page_paths() {
+    // 專案 Wiki：`-` 是空白、`%2D` 是 `-`；附件、.order、不是 .md 的不算。
+    assert_eq!(
+        page_of_git_path("/產品/安裝-說明.md", "/").as_deref(),
+        Some("/產品/安裝 說明")
+    );
+    assert_eq!(
+        page_of_git_path("/A%2DB/C%3A.md", "/").as_deref(),
+        Some("/A-B/C:")
+    );
+    assert_eq!(page_of_git_path("/產品.MD", "/").as_deref(), Some("/產品"));
+    assert_eq!(page_of_git_path("/.attachments/圖.png", "/"), None);
+    assert_eq!(page_of_git_path("/產品/.order", "/"), None);
+    assert_eq!(page_of_git_path("/.order", "/"), None);
+    // 程式碼 Wiki：只看 Wiki 所在的資料夾（不分大小寫），路徑從那裡算起。
+    assert_eq!(
+        page_of_git_path("/Docs/Guide/Start.md", "/docs").as_deref(),
+        Some("/Guide/Start")
+    );
+    assert_eq!(page_of_git_path("/src/readme.md", "/docs"), None);
+    assert_eq!(page_of_git_path("/docs.md", "/docs"), None);
+}
+
+#[test]
+fn reads_changed_wiki_pages_of_a_commit() {
+    let v = json!({ "changes": [
+        { "item": { "path": "/產品", "gitObjectType": "tree" }, "changeType": "edit" },
+        { "item": { "path": "/產品/安裝.md", "gitObjectType": "blob" }, "changeType": "edit" },
+        { "item": { "path": "/產品/新頁面.md", "gitObjectType": "blob" }, "changeType": "add" },
+        { "item": { "path": "/舊頁面.md", "gitObjectType": "blob" }, "changeType": "delete" },
+        { "item": { "path": "/改名後.md", "gitObjectType": "blob" }, "changeType": "edit, rename" },
+        { "item": { "path": "/產品/.order", "gitObjectType": "blob" }, "changeType": "edit" },
+        { "item": { "path": "/產品/安裝.md" }, "changeType": "edit" }
+    ]});
+    assert_eq!(
+        changed_pages(&v, "/"),
+        vec![
+            ("/產品/安裝".to_string(), "edit".to_string()),
+            ("/產品/新頁面".to_string(), "add".to_string()),
+            ("/舊頁面".to_string(), "delete".to_string()),
+            ("/改名後".to_string(), "rename".to_string()),
+        ]
+    );
+    assert!(changed_pages(&json!({}), "/").is_empty());
+}
