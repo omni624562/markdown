@@ -81,6 +81,11 @@ export interface Settings {
   docLineHeight: "compact" | "normal" | "relaxed";
   /** 目前的分頁怎麼標示：`line` 頂端一條強調色的線（原本）、`card` 白色卡片接著內文、`underline` 底下一條線。 */
   tabStyle: "line" | "card" | "underline";
+  /**
+   * 頂端列的樣式：`project` 左上放專案與分支、右邊的按鈕前畫一條分隔線；
+   * `layout` 左上放快速開啟、最近開啟，左右側欄開關與「⋯」收成右邊一組。
+   */
+  topbarStyle: "project" | "layout";
   /** 介面大小（百分比，桌面版）：整個視窗一起放大或縮小，和文件的字級分開。 */
   uiScale: UiScale;
   /** 用 KaTeX 顯示 `$…$` 數學公式。 */
@@ -168,6 +173,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   codeFont: "",
   docLineHeight: "normal",
   tabStyle: "line",
+  topbarStyle: "project",
   uiScale: "100",
   math: true,
   mermaid: true,
@@ -398,6 +404,11 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   if ("tabStyle" in input) {
     const v = input.tabStyle;
     if (v === "line" || v === "card" || v === "underline") out.tabStyle = v;
+    else problems++;
+  }
+  if ("topbarStyle" in input) {
+    const v = input.topbarStyle;
+    if (v === "project" || v === "layout") out.topbarStyle = v;
     else problems++;
   }
   if ("uiScale" in input) {

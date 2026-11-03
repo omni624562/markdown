@@ -64,6 +64,10 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["card", t("卡片")],
     ["underline", t("底線")],
   ],
+  topbarStyle: [
+    ["project", t("專案列")],
+    ["layout", t("版面切換鈕組")],
+  ],
   docLineHeight: [
     ["compact", t("緊湊")],
     ["normal", t("標準")],
@@ -188,6 +192,11 @@ const LOOK_GROUPS: Group[] = [
         key: "tabStyle",
         label: t("分頁樣式"),
         hint: t("目前的分頁怎麼標示：頂端一條線、和內文接在一起的卡片，或底下一條線"),
+      },
+      {
+        key: "topbarStyle",
+        label: t("頂端列樣式"),
+        hint: t("專案列：左上是專案與分支，分頁和右邊的按鈕之間有分隔線。版面切換鈕組：左上是快速開啟、最近開啟，側邊欄開關與「⋯」收成右邊一組"),
       },
       { key: "fixedToolbar", label: t("固定顯示格式工具列"), hint: t("關閉時，選取文字才會浮出格式按鈕") },
       { key: "outlineRight", label: t("大綱放在右邊"), hint: t("視窗夠寬時，大綱固定在內文右邊，目前的章節會亮起來") },

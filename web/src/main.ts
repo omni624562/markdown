@@ -3524,12 +3524,12 @@ function applyLayout(): void {
   rightToggle.hidden = !outlinePlacedRight() && !wikiPlacedRight();
   if (rightToggle.getAttribute("aria-pressed") !== String(rightOutlineShown)) {
     rightToggle.setAttribute("aria-pressed", String(rightOutlineShown));
-    rightToggle.replaceChildren(icon(rightOutlineShown ? "panel-right-close" : "panel-right"));
+    rightToggle.replaceChildren(icon(rightOutlineShown ? "panel-right-on" : "panel-right"));
   }
   const navToggle = $("[data-command='toggle-outline']");
   if (navToggle.getAttribute("aria-pressed") !== String(outlineShown)) {
     navToggle.setAttribute("aria-pressed", String(outlineShown));
-    navToggle.replaceChildren(icon(outlineShown ? "panel-left-close" : "panel-left"));
+    navToggle.replaceChildren(icon(outlineShown ? "panel-left-on" : "panel-left"));
   }
   renderEmptyState(editor.text);
   blocks = null;

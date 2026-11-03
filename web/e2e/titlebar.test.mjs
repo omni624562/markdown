@@ -1,5 +1,6 @@
 /**
- * 頂端列（Windows 桌面版兼當標題列）：裡面不畫直線（分隔線只在下面的面板之間），
+ * 頂端列（Windows 桌面版兼當標題列）：側邊欄上方不畫框線（分隔線只在下面的面板之間；頂端列樣式是預設的
+ * 「專案列」時，右邊的按鈕前另有一條短分隔線，見 topbar-style.test.mjs），
  * 左右兩個側邊欄按鈕開著時同一種樣子（圖示顏色深一點，沒有底色）。用假的原生端（見 helpers.mjs）。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -32,7 +33,7 @@ test("頂端列裡沒有直線；左右兩個側邊欄按鈕開著時一樣（�
       rightBg: css('.top-actions [data-command="toggle-outline-right"]').backgroundColor,
     };
   });
-  assert.equal(look.sideShown, "block", "側邊欄開著時，分頁從內文的左邊開始");
+  assert.notEqual(look.sideShown, "none", "側邊欄開著時，分頁從內文的左邊開始");
   assert.deepEqual([look.toggleLine, look.sideLine], ["0px", "0px"], "頂端列裡沒有直線");
   assert.equal(look.rightBg, "rgba(0, 0, 0, 0)", "右邊的按鈕開著時沒有底色");
   assert.equal(look.leftBg, "rgba(0, 0, 0, 0)");

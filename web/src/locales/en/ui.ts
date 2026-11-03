@@ -918,4 +918,9 @@ export const ui: Record<string, Translation> = {
   "目前的分頁怎麼標示：頂端一條線、和內文接在一起的卡片，或底下一條線": "How the current tab is marked: a line on top, a card joined to the document, or a line underneath",
   "頂端一條線（原本）": "Line on top (original)",
   "卡片": "Card",
+  "頂端列樣式": "Top Bar Style",
+  "專案列": "Project bar",
+  "版面切換鈕組": "Layout toggles",
+  "專案列：左上是專案與分支，分頁和右邊的按鈕之間有分隔線。版面切換鈕組：左上是快速開啟、最近開啟，側邊欄開關與「⋯」收成右邊一組":
+    "Project bar: the project and branch at the top left, with a divider between the tabs and the buttons on the right. Layout toggles: Quick Open and Recent at the top left, with the sidebar toggles and “⋯” grouped on the right",
 };

@@ -175,6 +175,16 @@ const GitHub: IconNode = [
   ["path", { d: "M9 18c-4.51 2-5-2-7-2" }],
 ];
 
+/** 側邊欄開著時的開關圖示：開著的那一邊塗滿，一眼看出開或關。 */
+const PanelLeftOn: IconNode = [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+  ["path", { d: "M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4z", fill: "currentColor" }],
+];
+const PanelRightOn: IconNode = [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+  ["path", { d: "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4z", fill: "currentColor" }],
+];
+
 const ICONS: Record<string, IconNode> = {
   eraser: Eraser,
   "square-dashed-text": SquareDashedText,
@@ -319,6 +329,8 @@ const ICONS: Record<string, IconNode> = {
   "panel-left-close": PanelLeftClose,
   "panel-right": PanelRight,
   "panel-right-close": PanelRightClose,
+  "panel-left-on": PanelLeftOn,
+  "panel-right-on": PanelRightOn,
   pencil: Pencil,
   plus: Plus,
   quote: Quote,
