@@ -1170,3 +1170,184 @@ fn backlog_query_and_iteration() {
     );
     assert_eq!(backlog_iteration_of(&Value::Null, "產品"), "產品");
 }
+
+#[test]
+fn builds_link_ops() {
+    let rel = |rel: &str, id: u64| json!({"rel": rel, "url": format!("https://tfs/DC/_apis/wit/workItems/{id}")});
+    let relations = vec![
+        rel("System.LinkTypes.Hierarchy-Reverse", 10),
+        rel("System.LinkTypes.Related", 20),
+        json!({"rel": "AttachedFile", "url": "https://tfs/DC/_apis/wit/attachments/x"}),
+        rel("System.LinkTypes.Hierarchy-Forward", 30),
+    ];
+    // 換上層：拿掉原本的上層，加新的；移除相關 #20；加子項目 #31（#30 已經有了不重複加）。
+    let change = WorkItemChange {
+        parent: Some(11),
+        links_add: vec![
+            LinkChange {
+                kind: "child".into(),
+                id: 31,
+            },
+            LinkChange {
+                kind: "child".into(),
+                id: 30,
+            },
+        ],
+        links_remove: vec![LinkChange {
+            kind: "related".into(),
+            id: 20,
+        }],
+        ..Default::default()
+    };
+    let ops = link_ops(&change, &relations, "https://tfs/DC/", 42).unwrap();
+    assert_eq!(
+        ops[0],
+        json!({"op": "remove", "path": "/relations/1"}),
+        "由後往前移除"
+    );
+    assert_eq!(ops[1], json!({"op": "remove", "path": "/relations/0"}));
+    assert_eq!(ops[2]["value"]["rel"], "System.LinkTypes.Hierarchy-Reverse");
+    assert_eq!(
+        ops[2]["value"]["url"],
+        "https://tfs/DC/_apis/wit/workItems/11"
+    );
+    assert_eq!(
+        ops[3]["value"]["url"],
+        "https://tfs/DC/_apis/wit/workItems/31"
+    );
+    assert_eq!(ops.len(), 4);
+    // 移除上層（0）：只有移除。
+    let none = WorkItemChange {
+        parent: Some(0),
+        ..Default::default()
+    };
+    assert_eq!(
+        link_ops(&none, &relations, "https://tfs/DC", 42).unwrap(),
+        vec![json!({"op": "remove", "path": "/relations/0"})]
+    );
+    // 連到自己、看不懂的種類：不接受。
+    let me = WorkItemChange {
+        parent: Some(42),
+        ..Default::default()
+    };
+    assert!(link_ops(&me, &relations, "https://tfs/DC", 42).is_err());
+    let odd = WorkItemChange {
+        links_add: vec![LinkChange {
+            kind: "cousin".into(),
+            id: 1,
+        }],
+        ..Default::default()
+    };
+    assert!(link_ops(&odd, &relations, "https://tfs/DC", 42).is_err());
+}
+
+#[test]
+fn attaches_uploaded_files_from_this_server_only() {
+    let change = WorkItemChange {
+        attachments: Some(vec![
+            "https://tfs.corp.com/tfs/DC/_apis/wit/attachments/1a2b?fileName=log.txt".into(),
+        ]),
+        ..Default::default()
+    };
+    assert!(check_attachments(&change, "https://tfs.corp.com/tfs/DC/").is_ok());
+    let ops = change_ops(&change, "me");
+    assert_eq!(ops.len(), 1);
+    assert_eq!(ops[0]["path"], "/relations/-");
+    assert_eq!(ops[0]["value"]["rel"], "AttachedFile");
+    // 別台伺服器、或不是附件的網址：不接受。
+    for url in [
+        "https://evil.example/tfs/DC/_apis/wit/attachments/1",
+        "https://tfs.corp.com/tfs/DC/_apis/git/repositories/x",
+        "https://tfs.corp.com/tfs/DCX/_apis/wit/attachments/1",
+    ] {
+        let bad = WorkItemChange {
+            attachments: Some(vec![url.into()]),
+            ..Default::default()
+        };
+        assert!(
+            check_attachments(&bad, "https://tfs.corp.com/tfs/DC").is_err(),
+            "{url}"
+        );
+    }
+}
+
+#[test]
+fn reads_work_item_history() {
+    let res = json!({"value": [
+        // 建立：系統欄位以外的都列出來。
+        {"rev": 1, "revisedBy": {"displayName": "王小明"}, "fields": {
+            "System.Rev": {"newValue": 1},
+            "System.ChangedDate": {"newValue": "2026-10-01T01:00:00Z"},
+            "System.ChangedBy": {"newValue": "王小明 <CORP\\ming>"},
+            "System.State": {"newValue": "New"},
+            "System.Title": {"newValue": "登入失敗"},
+            "System.Description": {"newValue": "<p>很長的說明</p>"}
+        }},
+        // 只改了系統欄位：略過。
+        {"rev": 2, "fields": {"System.Rev": {"oldValue": 1, "newValue": 2}, "System.Watermark": {"oldValue": 5, "newValue": 6}}},
+        // 改狀態、指派，加留言、加關聯、移除附件。
+        {"rev": 3, "revisedBy": {"displayName": "李大同"}, "revisedDate": "9999-01-01T00:00:00Z", "fields": {
+            "System.ChangedDate": {"oldValue": "2026-10-01T01:00:00Z", "newValue": "2026-10-02T03:00:00Z"},
+            "System.AssignedTo": {"oldValue": {"displayName": "王小明"}, "newValue": "李大同 <CORP\\tong>"},
+            "System.State": {"oldValue": "New", "newValue": "Active"},
+            "Microsoft.VSTS.Scheduling.RemainingWork": {"oldValue": 4.0, "newValue": 2.5},
+            "System.History": {"newValue": "<p>開始處理</p>"}
+        }, "relations": {
+            "added": [{"rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://tfs/DC/_apis/wit/workItems/42", "attributes": {"name": "Parent"}}],
+            "removed": [{"rel": "AttachedFile", "url": "https://tfs/DC/_apis/wit/attachments/x", "attributes": {"name": "log.txt"}}]
+        }}
+    ]});
+    let list = work_item_revisions(&res);
+    assert_eq!(list.len(), 2, "只改了系統欄位的那次略過");
+    // 最新的在前。
+    let latest = &list[0];
+    assert_eq!(latest.rev, 3);
+    assert_eq!(latest.author, "李大同");
+    assert_eq!(latest.date.as_deref(), Some("2026-10-02T03:00:00Z"));
+    assert_eq!(
+        latest
+            .fields
+            .iter()
+            .map(|f| f.field.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "System.State",
+            "System.AssignedTo",
+            "Microsoft.VSTS.Scheduling.RemainingWork"
+        ],
+        "常看的欄位排前面"
+    );
+    assert_eq!(latest.fields[1].old.as_deref(), Some("王小明"));
+    assert_eq!(
+        latest.fields[1].new.as_deref(),
+        Some("李大同"),
+        "人只留名字"
+    );
+    assert_eq!(latest.fields[2].new.as_deref(), Some("2.5"));
+    assert_eq!(latest.comment.as_deref(), Some("<p>開始處理</p>"));
+    assert_eq!(
+        latest.added,
+        vec![RevisionLink {
+            kind: "parent",
+            id: Some(42),
+            name: "Parent".into()
+        }]
+    );
+    assert_eq!(
+        latest.removed,
+        vec![RevisionLink {
+            kind: "attachment",
+            id: None,
+            name: "log.txt".into()
+        }]
+    );
+    let created = &list[1];
+    assert_eq!(created.author, "王小明");
+    let desc = created
+        .fields
+        .iter()
+        .find(|f| f.field == "System.Description")
+        .unwrap();
+    assert!(desc.long && desc.new.is_none(), "長文字只標出有修改");
+    assert!(work_item_revisions(&json!({})).is_empty());
+}

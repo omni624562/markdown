@@ -368,6 +368,8 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
 
 /** 要更新的工作項目欄位（沒給的不改）。 */
 export interface AdoWorkItemChange {
+  /** 加入附件：先用 adoAttachmentUpload 上傳，這裡放回傳的網址。 */
+  attachments?: string[];
   state?: string;
   assignToMe?: boolean;
   /** 留言（HTML）。 */
@@ -390,8 +392,19 @@ export interface AdoWorkItemChange {
   /** 剩餘工時、已完成工時（小時）。 */
   remaining?: number;
   completed?: number;
+  /** 換上層（原本的上層拿掉）；0 表示移除上層。 */
+  parent?: number;
+  /** 加入、移除的關聯。 */
+  linksAdd?: AdoLinkChange[];
+  linksRemove?: AdoLinkChange[];
   /** 開啟時的修訂版本（被別人改過就不更新）。 */
   rev?: number | null;
+}
+
+/** 加入或移除的一個關聯：種類與對方的編號。 */
+export interface AdoLinkChange {
+  kind: "parent" | "child" | "related" | "predecessor" | "successor";
+  id: number;
 }
 
 /** 團隊成員（指派時選人用）。 */
@@ -411,6 +424,34 @@ export interface AdoWorkItemAttachment {
   /** 上傳時間。 */
   created: string | null;
   comment: string | null;
+}
+
+/** 修改記錄裡改了的一個欄位；長文字欄位（說明等）只標出有修改，`old`、`new` 是 null。 */
+export interface AdoFieldChange {
+  /** 欄位的參考名稱（例如 System.State）。 */
+  field: string;
+  old: string | null;
+  new: string | null;
+  long: boolean;
+}
+
+/** 修改記錄裡加入或移除的關聯：工作項目（`id`）或附件、超連結（`name`）。 */
+export interface AdoRevisionLink {
+  kind: "parent" | "child" | "related" | "predecessor" | "successor" | "attachment" | "hyperlink" | "other";
+  id: number | null;
+  name: string;
+}
+
+/** 工作項目修改記錄的一筆。 */
+export interface AdoWorkItemRevision {
+  rev: number;
+  author: string;
+  date: string | null;
+  fields: AdoFieldChange[];
+  /** 這次加的留言（HTML）。 */
+  comment: string | null;
+  added: AdoRevisionLink[];
+  removed: AdoRevisionLink[];
 }
 
 export interface AdoWorkItemRelation extends AdoWorkItem {
@@ -962,6 +1003,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 工作項目的上層項目（`links` 是 [項目, 上層]），「依上層項目分組」用。 */
     adoWorkItemParents: (ids: number[]) =>
       core.invoke<{ links: [number, number][]; parents: AdoWorkItem[] }>("ado_work_item_parents", { ids }),
+    /** 工作項目的修改記錄（最新的在前）。 */
+    adoWorkItemHistory: (id: number) => core.invoke<AdoWorkItemRevision[]>("ado_work_item_history", { id }),
     /** 上層項目底下、符合搜尋文字與篩選條件的子項目（`links` 是 [子項目, 上層]）。 */
     adoWorkItemChildren: (parents: number[], search: string, filter: AdoWorkItemFilter) =>
       core.invoke<{ links: [number, number][]; items: AdoWorkItem[] }>("ado_work_item_children", { parents, search, filter }),
@@ -987,6 +1030,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     }) =>
       core.invoke<AdoWorkItem>("ado_work_item_create", { item }),
     /** 改狀態、指派給我、留言（HTML）、標題、優先順序、Sprint、標籤；`rev` 是開啟時的修訂版本。 */
+    /** 上傳檔案成工作項目的附件（還沒掛到工作項目上），回傳附件的網址。 */
+    adoAttachmentUpload: (project: string, name: string, data: ArrayBuffer) =>
+      core.invoke<string>("ado_attachment_upload", new Uint8Array(data), {
+        headers: { "x-project": encodeURIComponent(project), "x-name": encodeURIComponent(name) },
+      }),
     adoWorkItemUpdate: (id: number, change: AdoWorkItemChange) =>
       core.invoke<void>("ado_work_item_update", { id, change: { ...change, rev: change.rev ?? null } }),
     /** 改一則留言（`html` 是新的內容）；只能改自己的。 */
