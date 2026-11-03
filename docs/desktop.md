@@ -79,7 +79,7 @@
 
 編輯器 MCP 伺服器提供的工具：`get_active_document`、`get_selection`、`list_open_documents`、`read_document`、`propose_edit`、`propose_replace_selection`、`run_command`、`list_terminals`、`read_terminal_output`。
 
-自己編譯（需要 Windows，以及 [README「開發」](../README.md#開發)段落列的工具）：
+自己編譯（需要 Windows，以及 [開發與架構「開發環境」](development.md#開發環境)列的工具）：
 
 ```sh
 cd web && npm install && npm run wasm && npm run build
