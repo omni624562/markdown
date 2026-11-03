@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { darkVariant, FALLBACK_COLOR, isCustomKind, KIND_COLOR_LIMIT, kindColor, kindColorCss, kindKey, sanitizeKindColors } from "./work-item-colors.ts";
+import { darkVariant, FALLBACK_COLOR, inkOn, isCustomKind, KIND_COLOR_LIMIT, kindColor, kindColorCss, kindKey, sanitizeKindColors } from "./work-item-colors.ts";
 
 test("類型的比對用名稱：不分大小寫，空白換成連字號", () => {
   assert.equal(kindKey("User Story"), "user-story");
@@ -46,9 +46,18 @@ test("深色主題：太暗的顏色提高亮度，夠亮的不變", () => {
 
 test("產生的 CSS：預設類型都有規則，自訂的蓋過預設，名稱跳脫", () => {
   const css = kindColorCss({ Bug: "#00aa00", 'a"b': "#123456" });
-  assert.match(css, /:root \[data-wi-kind="task"\] \{ --kind: light-dark\(#8a6a00, #f2cb1d\); \}/);
-  assert.match(css, /\[data-wi-kind="bug"\] \{ --kind: light-dark\(#00aa00, #[0-9a-f]{6}\); \}/);
+  // 淺色主題的 Task 顏色夠深（白字），深色主題的黃色很亮（深色字）。
+  assert.match(css, /:root \[data-wi-kind="task"\] \{ --kind: light-dark\(#8a6a00, #f2cb1d\); --kind-ink: light-dark\(#ffffff, #1f2328\); \}/);
+  assert.match(css, /\[data-wi-kind="bug"\] \{ --kind: light-dark\(#00aa00, #[0-9a-f]{6}\); --kind-ink: light-dark\(#[0-9a-f]{6}, #[0-9a-f]{6}\); \}/);
   assert.doesNotMatch(css, /#cc293d/);
   assert.match(css, /\[data-wi-kind="a\\"b"\]/);
   assert.equal(css.split("\n").filter((l) => l.includes('"bug"')).length, 1);
+});
+
+test("類型顏色上的字：白字或深色字，取對比高的", () => {
+  assert.equal(inkOn("#0078b4"), "#ffffff");
+  assert.equal(inkOn("#773b93"), "#ffffff");
+  assert.equal(inkOn("#f2cb1d"), "#1f2328");
+  assert.equal(inkOn("#ffeb99"), "#1f2328", "自訂成很淺的顏色");
+  assert.equal(inkOn(FALLBACK_COLOR), "#ffffff");
 });

@@ -395,6 +395,11 @@ export class IssueView {
     return !this.#pane.hidden;
   }
 
+  /** 捲回最上面（再按一次開著的捷徑時）。 */
+  scrollToTop(): void {
+    this.#scroll.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   /** 顯示中內容的 Markdown（連結檢查用）；還沒讀到是空字串。 */
   get markdown(): string {
     return this.#markdown;
