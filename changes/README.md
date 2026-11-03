@@ -1,7 +1,7 @@
 # 改動片段
 
 每個改到程式的 PR 在這裡新增一個 `.md` 檔（檔名隨意，例如 `工作板配色.md`），**不要自己改版本號**。
-合併到 main 後，CI 會依這裡所有的片段升版、把說明寫進 `CHANGELOG.md`，再刪掉片段（見 [VERSIONING.md](../VERSIONING.md)）。
+合併到 main 時不會升版，片段先累積在這裡；發佈時（GitHub Actions → Desktop → Run workflow），CI 依這裡所有的片段升一個版本、把說明寫進 `CHANGELOG.md`，再刪掉片段（見 [VERSIONING.md](../VERSIONING.md)）。
 
 ```md
 bump: minor
