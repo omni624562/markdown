@@ -30,6 +30,7 @@ import { hideItem, itemOpened } from "./item-tabs.ts";
 import { offlineRefs, issueOffline } from "./offline-copies.ts";
 import { openWikiHistory } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
+import { moveWikiPage } from "./wiki-move.ts";
 import { workItemOpened } from "./work-item-updates.ts";
 import { barShortcuts, toggleWikiShortcut, wikiPanel, workItemsPanel, issuesPanel, markBarShortcuts } from "./work-items-panel.ts";
 import type { Doc } from "../main.ts";
@@ -381,6 +382,7 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
     addChild: wiki.code ? undefined : () => void app.createWikiPage(wiki, path).catch(reportError),
     remove: wiki.code ? undefined : () => void app.deleteWikiPage(wiki, path).catch(reportError),
     backlinks: () => void openWikiBacklinks(wiki, path).catch(reportError),
+    move: wiki.code ? undefined : () => void moveWikiPage(wiki, path).catch(reportError),
     shortcut: {
       has: () => barShortcuts.some((s) => !isWorkItemShortcut(s) && s.wiki === wiki.id && s.path === path),
       toggle: () => toggleWikiShortcut(wiki, path),
