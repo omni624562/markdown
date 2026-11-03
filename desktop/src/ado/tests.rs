@@ -407,6 +407,24 @@ fn lists_wikis_and_page_trees() {
     assert_eq!(pages[1].children[0].path, "/產品/安裝");
     assert_eq!(pages[1].children[0].id, Some(12));
     assert_eq!(pages[0].id, None);
+    // 依伺服器上的順序排（和網頁版目錄一樣）；沒有順序的排在後面。
+    let ordered = json!({"path": "/", "subPages": [
+        {"path": "/C"}, {"path": "/B", "order": 1}, {"path": "/A", "order": 0}
+    ]});
+    let names: Vec<_> = page_tree(&ordered).into_iter().map(|p| p.path).collect();
+    assert_eq!(names, ["/A", "/B", "/C"]);
+    assert_eq!(
+        wiki_moves_path("p 1", "w1"),
+        "/p%201/_apis/wiki/wikis/w1/pagemoves"
+    );
+    assert_eq!(
+        page_move_body("/產品", "/產品", Some(2)),
+        json!({"path": "/產品", "newPath": "/產品", "newOrder": 2})
+    );
+    assert_eq!(
+        page_move_body("/A", "/B/A", None),
+        json!({"path": "/A", "newPath": "/B/A"})
+    );
     assert_eq!(
         wiki_pages_path("p1", "w1", "/A B", Some("main")),
         "/p1/_apis/wiki/wikis/w1/pages?path=%2FA%20B&versionDescriptor.version=main"

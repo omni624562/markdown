@@ -72,19 +72,27 @@ pub struct WikiPage {
     pub(super) children: Vec<WikiPage>,
 }
 
+/// 頁面樹：同一層依伺服器上的順序（`order`，和網頁版的目錄一樣）排；沒有順序的排在後面。
 pub(super) fn page_tree(v: &Value) -> Vec<WikiPage> {
-    v.get("subPages")
+    let mut out: Vec<(u64, WikiPage)> = v
+        .get("subPages")
         .and_then(Value::as_array)
         .map_or(&[][..], Vec::as_slice)
         .iter()
         .filter_map(|p| {
-            Some(WikiPage {
-                path: str_of(p, "path")?.to_string(),
-                id: p.get("id").and_then(Value::as_u64),
-                children: page_tree(p),
-            })
+            Some((
+                p.get("order").and_then(Value::as_u64).unwrap_or(u64::MAX),
+                WikiPage {
+                    path: str_of(p, "path")?.to_string(),
+                    id: p.get("id").and_then(Value::as_u64),
+                    children: page_tree(p),
+                },
+            ))
         })
-        .collect()
+        .collect();
+    // 穩定排序：順序一樣（或都沒有）時保留伺服器給的先後。
+    out.sort_by_key(|(order, _)| *order);
+    out.into_iter().map(|(_, page)| page).collect()
 }
 
 /// Wiki 頁面 API 的路徑（`path` 是頁面路徑；程式碼 Wiki 要指定分支）。
@@ -272,6 +280,54 @@ pub async fn ado_wiki_delete(
             Ok(_) => Ok(()),
             res => read(res, &tr!("刪除 Wiki 頁面")).map(|_| ()),
         }
+    })
+    .await
+}
+
+/// 搬移頁面的 API 路徑。
+pub(super) fn wiki_moves_path(project_id: &str, wiki_id: &str) -> String {
+    format!(
+        "/{}/_apis/wiki/wikis/{}/pagemoves",
+        encode_segment(project_id),
+        encode_segment(wiki_id)
+    )
+}
+
+/// 搬移頁面的內容：`new_path` 和 `path` 一樣時只調整順序；`new_order` 是在上層底下排第幾個（從 0 算起），
+/// 沒給時由伺服器決定。
+pub(super) fn page_move_body(path: &str, new_path: &str, new_order: Option<u32>) -> Value {
+    let mut body = serde_json::json!({ "path": path, "newPath": new_path });
+    if let Some(order) = new_order {
+        body["newOrder"] = order.into();
+    }
+    body
+}
+
+/// 搬移 Wiki 頁面或調整順序（只限專案 Wiki；子頁面跟著搬）。和網頁版拖曳目錄一樣。
+#[tauri::command]
+pub async fn ado_wiki_move(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    new_path: String,
+    new_order: Option<u32>,
+) -> Result<(), String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = if path == new_path {
+            tr!("調整 Wiki 頁面順序")
+        } else {
+            tr!("搬移 Wiki 頁面")
+        };
+        post(
+            &a.url,
+            &pat,
+            &wiki_moves_path(&project_id, &wiki_id),
+            &page_move_body(&path, &new_path, new_order),
+            &what,
+        )
+        .map(|_| ())
     })
     .await
 }

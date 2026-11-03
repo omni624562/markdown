@@ -4,6 +4,7 @@
  */
 import { t } from "../i18n.ts";
 import { flattenPages, pageName, snippetParts } from "../wiki-text.ts";
+import { dropIndex, movePage, parentOf, siblingsOf } from "../wiki-order.ts";
 import { icon } from "./icons.ts";
 import { setupMenu } from "./menu.ts";
 import { FavoriteSelect } from "./favorite-select.ts";
@@ -46,6 +47,11 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   /** 這個 Wiki 的最近修改（誰改了哪幾頁）。 */
   recent?(wiki: W): void;
   canCreate?(wiki: W): boolean;
+  /**
+   * 調整頁面在同一層的順序（`index` 從 0 算起，是搬完之後的位置）：拖曳、右鍵選單「往上移／往下移」、Alt+↑／↓。
+   * 失敗時丟出錯誤（面板放回原位）。沒給，或 `canCreate` 是 false 的 Wiki（例如程式碼 Wiki）不能排序。
+   */
+  reorder?(wiki: W, path: string, index: number): Promise<void>;
   /** 釘選放在別的地方（例如左側圖示列）：給了就用它，面板上不列「已釘選」。 */
   pins?: WikiPins<W>;
   /** 拖曳頁面時另外帶的資料（型別 → 內容），例如拖到圖示列變成捷徑。 */
@@ -123,6 +129,10 @@ export class WikiPanel<W extends WikiInfo> {
   /** 樹狀目錄的右鍵選單（對哪一頁）。 */
   #menuAnchor: HTMLButtonElement;
   #menuPath: string | null = null;
+  /** 拖曳中、可以調整順序的頁面。 */
+  #dragPath: string | null = null;
+  /** 正在請伺服器調整順序（一次一個，失敗時才放得回原位）。 */
+  #reordering = false;
 
   constructor(el: HTMLElement, hooks: WikiPanelHooks<W>) {
     this.#h = hooks;
@@ -254,6 +264,18 @@ export class WikiPanel<W extends WikiInfo> {
         },
       },
       {
+        label: t("往上移"),
+        icon: "arrow-up",
+        when: () => !!this.#menuPath && this.#neighbor(this.#menuPath, -1) !== null,
+        run: () => this.#menuPath && this.#step(this.#menuPath, -1),
+      },
+      {
+        label: t("往下移"),
+        icon: "arrow-down",
+        when: () => !!this.#menuPath && this.#neighbor(this.#menuPath, 1) !== null,
+        run: () => this.#menuPath && this.#step(this.#menuPath, 1),
+      },
+      {
         label: this.#h.pins?.labels[0] ?? t("釘選這一頁"),
         icon: "pin",
         when: () => !!this.#menuPath && !this.#isPinned(this.#menuPath),
@@ -292,10 +314,37 @@ export class WikiPanel<W extends WikiInfo> {
       const path = b.dataset.path!;
       const link = this.#h.link?.(this.#wiki, path);
       const extra = this.#h.dragData?.(this.#wiki, path) ?? {};
-      if (!link && !Object.keys(extra).length) return;
+      // 樹狀目錄裡的頁面也可以拖到同一層的別的位置（調整順序）。
+      const reorder = this.#list.contains(b) && this.#canReorder();
+      if (!link && !Object.keys(extra).length && !reorder) return;
       if (link) e.dataTransfer.setData("text/plain", link);
       for (const [type, value] of Object.entries(extra)) e.dataTransfer.setData(type, value);
-      e.dataTransfer.effectAllowed = "copy";
+      this.#dragPath = reorder ? path : null;
+      e.dataTransfer.effectAllowed = reorder ? "copyMove" : "copy";
+    });
+    el.addEventListener("dragend", () => {
+      this.#dragPath = null;
+      this.#clearDrop();
+    });
+    this.#list.addEventListener("dragover", (e) => {
+      const at = this.#dropAt(e);
+      if (!at) return this.#clearDrop();
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "move";
+      this.#clearDrop(at.row);
+      at.row.dataset.drop = at.after ? "after" : "before";
+    });
+    this.#list.addEventListener("dragleave", (e) => {
+      if (!this.#list.contains(e.relatedTarget as Node)) this.#clearDrop();
+    });
+    this.#list.addEventListener("drop", (e) => {
+      const at = this.#dropAt(e);
+      const path = this.#dragPath;
+      this.#dragPath = null;
+      this.#clearDrop();
+      if (!at || !path) return;
+      e.preventDefault();
+      void this.#reorder(path, at.index);
     });
   }
 
@@ -683,6 +732,13 @@ export class WikiPanel<W extends WikiInfo> {
   /** 鍵盤操作：↑↓ 移動、→ 展開（已展開就移到第一個子頁面）、← 收合（已收合就移到上一層）、Home／End、Enter 開啟。 */
   #keydown(e: KeyboardEvent): void {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".wiki-page");
+    // Alt+↑／↓：和同一層上一頁或下一頁交換位置（和大綱搬移章節一樣）。
+    if (b && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      if (!this.#list.contains(b)) return;
+      e.preventDefault();
+      this.#step(b.dataset.path!, e.key === "ArrowUp" ? -1 : 1);
+      return;
+    }
     if (!b || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return;
     const all = this.#pageButtons();
     const i = all.indexOf(b);
@@ -745,7 +801,7 @@ export class WikiPanel<W extends WikiInfo> {
     b.className = "wiki-page";
     b.dataset.path = page.path;
     b.title = page.path;
-    b.draggable = !!(this.#h.link || this.#h.dragData);
+    b.draggable = !!(this.#h.link || this.#h.dragData || this.#h.reorder);
     const name = document.createElement("span");
     name.className = "wiki-name";
     name.textContent = pageName(page.path);
@@ -774,6 +830,76 @@ export class WikiPanel<W extends WikiInfo> {
 
   #canCreate(): boolean {
     return !!this.#wiki && !!this.#h.create && (this.#h.canCreate?.(this.#wiki) ?? true);
+  }
+
+  /** 可以調整順序：專案 Wiki、顯示樹狀目錄時（搜尋結果是平的清單，不能排）。 */
+  #canReorder(): boolean {
+    return !!this.#wiki && !!this.#h.reorder && (this.#h.canCreate?.(this.#wiki) ?? true) && !this.#input.value.trim();
+  }
+
+  /** 同一層裡上一頁或下一頁（篩選藏起來的最上層頁面跳過）；不能排序或已經在最前／最後時回傳 null。 */
+  #neighbor(path: string, step: -1 | 1): string | null {
+    if (!this.#canReorder()) return null;
+    const all = siblingsOf(this.#pages, path);
+    if (!all) return null;
+    const shown = all === this.#pages ? this.#topPages() : all;
+    const i = shown.findIndex((p) => p.path === path);
+    return i < 0 ? null : (shown[i + step]?.path ?? null);
+  }
+
+  /** 往上或往下移一個位置。 */
+  #step(path: string, step: -1 | 1): void {
+    const target = this.#neighbor(path, step);
+    const index = target === null ? null : dropIndex(this.#pages, path, target, step > 0);
+    if (index !== null) void this.#reorder(path, index);
+  }
+
+  /**
+   * 拖曳中的頁面放在哪一列的前面或後面：只限同一層，位置會變的才算。
+   * 展開著的頁面下半部不能放（線會畫在它和子頁面之間，看起來像放進去當子頁面）。
+   */
+  #dropAt(e: DragEvent): { row: HTMLElement; index: number; after: boolean } | null {
+    const drag = this.#dragPath;
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".wiki-row");
+    const path = row?.querySelector<HTMLElement>(".wiki-page")?.dataset.path;
+    if (!drag || !row || !path || parentOf(path) !== parentOf(drag)) return null;
+    const r = row.getBoundingClientRect();
+    const after = e.clientY > r.top + r.height / 2;
+    if (after && row.getAttribute("aria-expanded") === "true") return null;
+    const index = dropIndex(this.#pages, drag, path, after);
+    return index === null ? null : { row, index, after };
+  }
+
+  /** 清掉放下位置的線（`keep` 那一列留著）。 */
+  #clearDrop(keep?: HTMLElement): void {
+    for (const r of this.#list.querySelectorAll<HTMLElement>("[data-drop]")) if (r !== keep) delete r.dataset.drop;
+  }
+
+  /** 先在畫面上排好（不用等伺服器），再請伺服器調整；失敗時放回原位。 */
+  async #reorder(path: string, index: number): Promise<void> {
+    const wiki = this.#wiki;
+    if (!wiki || !this.#h.reorder || this.#reordering) return;
+    const pages = this.#pages;
+    const from = movePage(pages, path, index);
+    if (from < 0 || from === index) return;
+    this.#reordering = true;
+    const focused = this.#list.contains(document.activeElement);
+    const redraw = () => {
+      this.#render();
+      if (focused) this.#focusPage(path);
+    };
+    redraw();
+    try {
+      await this.#h.reorder(wiki, path, index);
+    } catch {
+      // 錯誤訊息由 `reorder` 顯示；這段時間重新讀過頁面樹就不用放回去了。
+      if (this.#pages === pages) {
+        movePage(pages, path, from);
+        redraw();
+      }
+    } finally {
+      this.#reordering = false;
+    }
   }
 
   /** 「新增子頁面」的按鈕（滑鼠移到列上才出現）。 */
