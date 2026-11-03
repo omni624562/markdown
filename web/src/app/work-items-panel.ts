@@ -127,8 +127,11 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   group.append(button, query, clear);
   const queryOpen = document.createElement("button");
   queryOpen.type = "button";
-  queryOpen.className = "btn btn-small workitems-query-open";
-  queryOpen.append(icon("scroll-text"), t("已儲存的查詢…"));
+  queryOpen.className = "workitems-select workitems-query-open";
+  const queryOpenLabel = document.createElement("span");
+  queryOpenLabel.textContent = t("已儲存的查詢…");
+  queryOpen.title = queryOpenLabel.textContent; // 側邊欄窄時文字會截短
+  queryOpen.append(icon("scroll-text"), queryOpenLabel);
   queryOpen.addEventListener("click", () => queryPicker.open());
   const queryNote = document.createElement("p");
   queryNote.className = "workitems-query-note";
@@ -277,6 +280,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
       changed();
     },
   });
+  project.el.classList.add("workitems-project");
   kind.value = f.kinds;
   project.value = f.projects;
   area.value = f.areas;
@@ -341,8 +345,9 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     refreshStates();
     changed();
   });
-  // 人、專案在上排（區域、狀態都看選的專案），類型、狀態在下排。
-  bar.append(queryOpen, queryNote, person.el, project.el, name, kind.el, state.el, area.el, people, reset);
+  // 專案在最上面一整列（區域、狀態都看選的專案）；下面是人與已儲存的查詢、類型與狀態，最後是區域。
+  // 正在用查詢時的說明放在最前面（「下面的篩選條件暫時不套用」）。
+  bar.append(queryNote, project.el, person.el, queryOpen, name, kind.el, state.el, area.el, people, reset);
   updateBadge();
   setOpen(storage.load("workitem-filter-open") === "1");
   return { bar, button: group };

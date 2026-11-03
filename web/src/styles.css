@@ -2126,8 +2126,6 @@ button.git-info:disabled { cursor: default; }
 .workitems-filter-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filter-clear .icon { width: 14px; height: 14px; }
 .workitems-filter-toggle[hidden] { display: none; }
-.workitems-query-open { grid-column: 1 / -1; justify-self: start; display: inline-flex; gap: 6px; align-items: center; text-align: left; }
-.workitems-query-open .icon { width: 15px; height: 15px; }
 .workitems-query-note { grid-column: 1 / -1; margin: 0; color: var(--accent); font-size: 12px; line-height: 1.5; }
 .workitems-query-note[hidden] { display: none; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
@@ -2175,11 +2173,15 @@ button.git-info:disabled { cursor: default; }
   cursor: pointer;
 }
 .workitems-filters .workitems-person { padding: 0 8px; }
+/* 「已儲存的查詢…」和旁邊「指派給我」的下拉選單同樣高、同樣的框；開的是對話框，所以不畫下拉箭頭。 */
+.workitems-filters .workitems-query-open { display: flex; gap: 6px; align-items: center; padding: 0 8px; background-image: none; text-align: left; }
+.workitems-query-open .icon { flex: none; width: 15px; height: 15px; }
+.workitems-query-open > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 名字的建議清單打字時就會出現，不需要旁邊的下拉箭頭。 */
 .workitems-filters .workitems-person::-webkit-calendar-picker-indicator { display: none !important; }
 .workitems-filters .workitems-select:hover, .workitems-filters .workitems-person:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
 .workitems-filters .workitems-select:focus-visible, .workitems-filters .workitems-person:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-.workitems-filters .workitems-person, .workitems-filters .workitems-area { grid-column: 1 / -1; }
+.workitems-filters .workitems-person, .workitems-filters .workitems-area, .workitems-filters .workitems-project { grid-column: 1 / -1; }
 .workitems-filters [hidden], .workitems-filters[hidden] { display: none; }
 .workitems-filter-reset { grid-column: 1 / -1; justify-self: start; }
 /* 篩選列的下拉選單（人、狀態、類型、專案、區域）：按鈕和下拉選單同樣子，打開是勾選清單。 */
