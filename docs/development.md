@@ -1,0 +1,121 @@
+# 開發與架構
+
+給要修改或自己編譯 oMarker 的人。使用說明見 [features.md](features.md)（功能與快速鍵）與 [desktop.md](desktop.md)（桌面版）。
+
+## 開發環境
+
+需要：Rust（stable）、[wasm-pack](https://rustwasm.github.io/wasm-pack/)、Node.js 22 以上。
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
+
+cd web
+npm install
+npm run wasm   # 編譯 Rust 成 WebAssembly，輸出到 web/pkg（修改 Rust 程式後要重跑）
+npm run dev    # 開發伺服器，預設 http://localhost:5173
+```
+
+其他指令：
+
+| 指令 | 用途 |
+| --- | --- |
+| `cargo test --workspace` | 執行 Rust 測試 |
+| `npm test`（在 `web/`） | 執行前端單元測試（Node 內建測試框架） |
+| `npm run typecheck` | TypeScript 型別檢查 |
+| `npm run build` | 建置正式版到 `web/dist`，可以直接部署到任何靜態網站主機 |
+| `npm run test:e2e` | 冒煙測試：用 Playwright 開啟 `web/dist`（先 `npm run build`；第一次要 `npx playwright install chromium`） |
+
+自己編譯桌面版見 [desktop.md](desktop.md) 最後一段。版本號與更新紀錄的規則見 [VERSIONING.md](../VERSIONING.md)。
+
+## 架構
+
+```
+crates/
+  md-core/    Rust 核心：Markdown（comrak）、純文字、JSON（serde_json）轉 HTML，大綱、字數統計、中英文間距、表格對齊
+  md-text/    文字分析：兩國用語與錯字校對、文件中的待辦、標籤與連結、改名後更新連結（網頁版與桌面版共用）
+  md-docx/    Markdown 轉 Word（.docx）
+  md-wasm/    md-core 與 md-text 的 WebAssembly 綁定（wasm-bindgen）
+  md-cli/     命令列工具 mdtool，跟網頁共用同一個核心
+
+desktop/src/  桌面版（Tauri 2）：沿用網頁介面，補上原生端的功能
+  檔案與資料夾  files.rs（讀寫、編碼、安全存檔與衝突偵測）、workspace.rs（資料夾工作區、全文搜尋）、
+                watch.rs（外部修改監看、網路磁碟輪詢）、io.rs（背景讀寫與逾時）、trust.rs（最近開啟與允許的路徑）、
+                projects.rs（多專案）、history.rs（版本記錄）、doc_index.rs（資料夾文件索引）、
+                images.rs（貼上圖片）、image_protocol.rs（預覽的本機圖片 mdimg:）、pdf.rs（直接匯出 PDF）、fonts.rs
+  Git           git.rs（狀態、提交、拉取、推送；libgit2）、git_flow.rs（分支、合併衝突）、
+                git_log.rs（提交歷史與線圖）、git_files.rs（單一檔案的歷史、網頁網址）
+  遠端與帳號    github.rs（GitHub 登入、儲存庫、Issues）、ado/（Azure DevOps：儲存庫、工作項目、Wiki）、
+                dav/（遠端資料夾：mod.rs 共用的 RemoteFs、輪詢與指令，webdav.rs WebDAV 用戶端，ssh.rs SSH／SFTP）、
+                offline.rs（工作項目與 Wiki 的離線副本）、secrets.rs（Windows 認證管理員）、notify.rs（系統通知）
+  AI 協作       ai/term.rs（內嵌終端機）、ai/view.rs（終端機專用的 webview）、ai/mcp.rs（編輯器 MCP 伺服器）、
+                ai/run.rs（選取段落快捷動作）、ai/tools.rs
+  其他          main.rs（建立視窗、註冊指令）、settings.rs、update.rs 與 winhttp.rs（自動更新）、
+                navigation.rs（導覽限制）、i18n.rs 與 locales/（後端訊息的英文翻譯）
+
+web/src/      網頁介面（桌面版也用同一份）
+  主程式        main.ts（目前分頁的狀態、編輯器與預覽、分頁、存檔、版面）、boot.ts（先載入語言）、
+                commands.ts（指令中心：工具列、選單、指令面板、快速鍵共用同一份清單）、settings.ts、
+                session.ts（分頁與草稿）、storage.ts、desktop.ts（呼叫原生端）
+  介面功能      app/：從 main.ts 拆出來的功能，各自一個檔案（app/commands.ts 註冊所有指令、activity-bar.ts 左側
+                圖示列與選單、workspace-ui.ts 資料夾與文件索引、work-items-panel.ts 與 wiki-edit.ts 等 Azure DevOps
+                介面、git-actions.ts、settings-ui.ts、pdf-export.ts……）。它們透過 app/context.ts 的 `app`
+                取用 main.ts 的狀態與函式（main.ts 的 `app` 物件列出可以用的名稱），各自的 `init…()` 在 main.ts
+                原本的位置呼叫
+  編輯器        editor.ts（CodeMirror 6）、live-preview.ts（即時預覽）、table-widget.ts 與 table-model.ts
+                （即時預覽中的表格）、table.ts、format.ts、inline-tools.ts、brackets.ts、auto-symbols.ts、words.ts、
+                writing-modes.ts、sections.ts（大綱拖曳重排）、slash-complete.ts、date-complete.ts、link-complete.ts
+  預覽          preview.ts（預覽與外掛介面）、preview-diff.ts（增量更新）、plugins/（語法上色、KaTeX、Mermaid、
+                表格、[[連結]] 與標籤、本機圖片）、scroll-sync.ts、remote-images.ts（封鎖遠端圖片）
+  中文          terms.ts 與 proofread.ts（兩國用語、錯字）、s2t.ts（簡體轉繁體）、collator.ts（中文排序）
+  文件互連      links.ts（[[文件]]、反向連結）、doc-index.ts 與 workspace-index.ts（待辦、標籤）、toc.ts、templates.ts
+  匯入匯出      docx-export.ts、docx-import.ts、docx-image.ts、zip-size.ts、html-paste.ts（智慧貼上）、
+                rich-copy.ts（複製為格式文字）、pdf-print.ts、image-compress.ts、svg-image.ts
+  Git 與遠端    git-ui.ts、git-graph.ts、github-ui.ts、ado-ui.ts、workitem-*.ts（工作項目）、wiki-*.ts（Wiki）、
+                issue-doc.ts、repo-links.ts、remote-links.ts、offline.ts、auth-errors.ts
+  終端機        terminal-proxy.ts（主畫面這一端）、terminal-main.ts（終端機 webview 的進入點，terminal.html）：
+                主畫面只能透過 Rust 送固定的要求，不能寫入終端機
+  AI 與更新     ai.ts（AI 協作：MCP 狀態同步、提議、執行指令的同意流程、快捷動作）、ci-workflow.ts、updater.ts、
+                release-notes.ts
+  ui/           分頁列、檔案樹、搜尋、待辦總覽、標籤、Issues、Wiki、簡報、圖片放大、匯出 PDF 選項、終端機（xterm.js）、
+                指令面板與快速開啟、選單、通知、差異檢視、Git 歷史、設定、WebDAV 與 SSH 連線、專案、圖示（lucide）
+  locales/      英文介面的翻譯（用語對照見 locales/README.md）
+```
+
+## 預覽外掛
+
+Rust 負責「文件 → HTML」這段需要正確與效能的部分；前端拿到 HTML 後，再交給**預覽外掛**做後續處理。
+想加入數學公式（KaTeX）、流程圖（Mermaid）等功能時，只要實作 `PreviewPlugin` 介面，不必改動 Rust：
+
+```ts
+// web/src/preview.ts
+export interface PreviewPlugin {
+  name: string;
+  apply(root: HTMLElement, scope: Scope): void | Promise<void>;
+}
+```
+
+可參考 `web/src/plugins/highlight.ts`，然後在 `web/src/main.ts` 的 `new Preview(...)` 加進去即可。
+要新增功能時，在 `app/commands.ts` 用 `commands.register(...)` 註冊一個指令，它就會自動出現在指令面板，並套用快速鍵。
+
+## 安全性
+
+核心一律不輸出原始 HTML（只有成對、不帶屬性的 `<u>`、`<mark>`、`<sup>`、`<sub>`、`<ins>` 與 `<br>` 會換成對應的格式），並會過濾 `javascript:` 等危險連結（`[[ ]]` 連結也一樣）；純文字與 JSON 的內容也都會跳脫，因此預覽可以直接把結果放進 DOM。
+
+## 命令列工具
+
+```sh
+cargo run -p md-cli -- html 筆記.md -o 筆記.html   # 轉成完整的 HTML 頁面（.txt、.json 也可以）
+cargo run -p md-cli -- html --fragment 筆記.md     # 只輸出 HTML 片段
+cargo run -p md-cli -- toc 筆記.md                 # 列出標題大綱
+cargo run -p md-cli -- stats 筆記.txt              # 字數統計
+cargo run -p md-cli -- fmt 資料.json               # 把 JSON 重新排版（加 -w 直接覆寫檔案）
+cargo run -p md-cli -- fmt 筆記.md                 # 依中文字寬對齊文件中所有表格
+cargo run -p md-cli -- fmt --spacing -w 筆記.md    # 另外在中文與英文、數字之間補空格，並直接覆寫檔案
+```
+
+文件類型依副檔名判斷，也可以用 `--format md|txt|json` 指定。省略檔名時會從標準輸入讀取，例如 `cat 筆記.md | mdtool html`。
+
+## 第三方授權
+
+英文拼字檢查的字典（`web/public/dict/en-US.*`）來自 SCOWL 的 Hunspell 字典（[wooorm/dictionaries](https://github.com/wooorm/dictionaries) 的 `dictionary-en`），授權見 `web/public/dict/en-US.LICENSE.txt`；拼字引擎是 [spellbook](https://github.com/helix-editor/spellbook)（MPL-2.0）。
