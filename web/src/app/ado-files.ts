@@ -24,6 +24,7 @@ import { adoMe, wikiCheckedAt, wikiNewer, renderWikiBar } from "./wiki-edit.ts";
 import { wikiPanel, barShortcuts, setBarShortcuts, openBarShortcut } from "./work-items-panel.ts";
 import { app } from "./context.ts";
 import { askNewWikiPage } from "./wiki-new-page.ts";
+import { backlinkWarning } from "./wiki-backlinks.ts";
 
 
 export const repoImagesPlugin: PreviewPlugin = {
@@ -252,12 +253,16 @@ export async function deleteWikiPage(wiki: AdoWiki, path: string): Promise<void>
     wikiPanel?.wiki?.id === wiki.id
       ? wikiPanel.pages
       : await withOfflineCopy(`wiki-pages:${wiki.id}`, () => desktop!.adoWikiPages(wiki)).catch(() => []);
-  const children = flattenPages(pages).filter((p) => p.startsWith(`${path}/`)).length;
+  const childPaths = flattenPages(pages).filter((p) => p.startsWith(`${path}/`));
+  const children = childPaths.length;
   const editing = app.docs.filter((d) => d.wiki?.wikiId === wiki.id && inside(d.wiki.path));
+  // 哪些頁面連到這裡（刪除後連結會失效）；第一次要讀整個 Wiki，等太久就不寫。
+  const linked = await backlinkWarning(wiki, path, childPaths);
   const parts = [
     children
       ? t("「{name}」和底下的 {n} 個子頁面都會從伺服器刪除，大家都看不到了。", { name, n: children })
       : t("「{name}」會從伺服器刪除，大家都看不到了。", { name }),
+    linked ?? "",
     editing.length ? t("正在編輯這些頁面的分頁會保留內容，但不能再存回伺服器。") : "",
     t("刪除後只能從 Wiki 儲存庫的修改記錄找回。"),
   ];

@@ -51,12 +51,21 @@ test("哪些頁面連到這一頁：相對、絕對路徑都算，自己連到�
     { page: "/其他", text: "沒有連結 [別的](/產品)" },
   ];
   assert.deepEqual(
-    findBacklinks("/產品/安裝 說明", sources, resolve).map((b) => [b.page, b.line]),
+    findBacklinks(["/產品/安裝 說明"], sources, resolve).map((b) => [b.page, b.line]),
     [
       ["/首頁", 1],
       ["/產品/規格", 1],
       ["/產品/規格", 3],
     ],
   );
-  assert.deepEqual(findBacklinks("/首頁", sources, resolve), []);
+  assert.deepEqual(findBacklinks(["/首頁"], sources, resolve), []);
+  // 刪除「產品」和底下的子頁面：連到任何一頁都算，它們自己互相連的不算。
+  assert.deepEqual(
+    findBacklinks(["/產品", "/產品/安裝 說明", "/產品/規格"], sources, resolve).map((b) => [b.page, b.line]),
+    [
+      ["/首頁", 1],
+      ["/首頁", 2],
+      ["/其他", 1],
+    ],
+  );
 });

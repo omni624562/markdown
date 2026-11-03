@@ -13,6 +13,7 @@ import { openGitHistory } from "./git-history.ts";
 import { createWorkItemDialog, createWorkItemFromSelection, copySelection, pasteFromClipboard } from "./new-work-item.ts";
 import { keptPicker, keptPages } from "./offline-copies.ts";
 import { openWikiHistory, openWikiRecent } from "./wiki-history.ts";
+import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { gitPanel, showAdo } from "./work-item-updates.ts";
 import { issuesRepo, wikiPanel } from "./work-items-panel.ts";
 import { selectAll, indentMore, indentLess } from "@codemirror/commands";
@@ -397,6 +398,16 @@ export function initGitActions(): void {
       run: () => {
         const wiki = app.wikiPage?.wiki ?? wikiPanel?.wiki;
         if (wiki) openWikiRecent(wiki);
+      },
+    },
+    {
+      id: "wiki-backlinks",
+      title: t("哪些頁面連到這一頁…"),
+      group: t("檔案"),
+      icon: "link-2",
+      when: () => !!desktop && !!app.ado?.account && app.issueView.isOpen && !!app.wikiPage,
+      run: () => {
+        if (app.wikiPage) void openWikiBacklinks(app.wikiPage.wiki, app.wikiPage.path).catch(reportError);
       },
     },
     {

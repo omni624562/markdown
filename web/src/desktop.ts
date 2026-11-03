@@ -437,6 +437,12 @@ export interface AdoWikiChange {
   commitId: string;
 }
 
+/** Wiki 每一頁的內文（找哪些頁面連到某一頁用）；`skipped` 是讀不到的頁面數。 */
+export interface AdoWikiSources {
+  pages: { path: string; text: string }[];
+  skipped: number;
+}
+
 /** 修改記錄裡改了的一個欄位；長文字欄位（說明等）只標出有修改，`old`、`new` 是 null。 */
 export interface AdoFieldChange {
   /** 欄位的參考名稱（例如 System.State）。 */
@@ -1129,6 +1135,15 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** Wiki 最近修改：最近 30 次提交改到的頁面（新的在前）。 */
     adoWikiRecent: (w: AdoWiki) =>
       core.invoke<AdoWikiChange[]>("ado_wiki_recent", {
+        projectId: w.projectId,
+        wikiId: w.id,
+        repositoryId: w.repositoryId || null,
+        mappedPath: w.mappedPath || "/",
+        version: w.version ?? null,
+      }),
+    /** Wiki 每一頁的內文（讀過、內容沒變的頁面不再讀）。 */
+    adoWikiSources: (w: AdoWiki) =>
+      core.invoke<AdoWikiSources>("ado_wiki_sources", {
         projectId: w.projectId,
         wikiId: w.id,
         repositoryId: w.repositoryId || null,

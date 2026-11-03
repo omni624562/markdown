@@ -45,6 +45,8 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   create?(wiki: W, parent: string | null): void;
   /** 這個 Wiki 的最近修改（誰改了哪幾頁）。 */
   recent?(wiki: W): void;
+  /** 哪些頁面連到這一頁。 */
+  backlinks?(wiki: W, path: string): void;
   canCreate?(wiki: W): boolean;
   /** 釘選放在別的地方（例如左側圖示列）：給了就用它，面板上不列「已釘選」。 */
   pins?: WikiPins<W>;
@@ -251,6 +253,14 @@ export class WikiPanel<W extends WikiInfo> {
         when: () => this.#canCreate(),
         run: () => {
           if (this.#wiki && this.#menuPath) this.#h.create?.(this.#wiki, this.#menuPath);
+        },
+      },
+      {
+        label: t("哪些頁面連到這一頁…"),
+        icon: "link-2",
+        when: () => !!this.#h.backlinks && !!this.#menuPath,
+        run: () => {
+          if (this.#wiki && this.#menuPath) this.#h.backlinks?.(this.#wiki, this.#menuPath);
         },
       },
       {

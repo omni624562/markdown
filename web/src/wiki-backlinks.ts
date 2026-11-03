@@ -89,20 +89,22 @@ export function linksIn(markdown: string): PageLink[] {
 }
 
 /**
- * 連到 `target` 的地方：`sources` 是每一頁的內文（依頁面樹的順序），`resolve(href, page)` 是 `page` 裡的連結
- * 指到哪一頁（找不到是 null）。自己連到自己的不算；同一頁連好幾次都列出（依行號）。
+ * 連到 `targets`（頁面路徑，例如要刪除的頁面和它的子頁面）的地方：`sources` 是每一頁的內文（依頁面樹的順序），
+ * `resolve(href, page)` 是 `page` 裡的連結指到哪一頁（找不到是 null）。
+ * `targets` 自己的內文不算（自己連到自己、要一起刪的頁面互相連）；同一頁連好幾次都列出（依行號）。
  */
 export function findBacklinks(
-  target: string,
+  targets: Iterable<string>,
   sources: Iterable<{ page: string; text: string }>,
   resolve: (href: string, page: string) => string | null,
 ): Backlink[] {
-  const key = target.toLowerCase();
+  const keys = new Set([...targets].map((p) => p.toLowerCase()));
   const out: Backlink[] = [];
   for (const { page, text } of sources) {
-    if (page.toLowerCase() === key) continue;
+    if (keys.has(page.toLowerCase())) continue;
     for (const link of linksIn(text)) {
-      if (resolve(link.href, page)?.toLowerCase() === key) out.push({ page, line: link.line, text: link.text });
+      const to = resolve(link.href, page);
+      if (to && keys.has(to.toLowerCase())) out.push({ page, line: link.line, text: link.text });
     }
   }
   return out;

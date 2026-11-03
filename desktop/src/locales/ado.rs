@@ -50,6 +50,7 @@ pub static EN: &[(&str, &str)] = &[
     ("執行查詢", "Running the query"),
     ("讀取 Wiki 頁面的修改記錄", "Loading the wiki page history"),
     ("讀取 Wiki 的最近修改", "Loading recent wiki changes"),
+    ("讀取 Wiki 頁面的內容", "Loading wiki page contents"),
     ("{what}失敗：伺服器沒有提供頁面的檔案位置", "{what} failed: The server didn't provide the page's file location."),
     ("建立 Wiki 頁面", "Creating the wiki page"),
     ("刪除 Wiki 頁面", "Deleting the wiki page"),
