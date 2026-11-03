@@ -60,6 +60,7 @@ pub static EN: &[(&str, &str)] = &[
     ),
     ("上傳附件", "Uploading the attachment"),
     ("上傳附件失敗：回應的格式不正確", "Couldn't upload the attachment: unexpected response"),
+    ("讀取修改記錄", "Loading the change history"),
     ("已經有同名的頁面了，請換一個名稱", "A page with this name already exists. Please choose another name."),
     ("搜尋 Wiki", "Searching the wiki"),
     ("個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖", "The personal access token is invalid or expired. Update it on the Azure DevOps/TFS page in Settings."),

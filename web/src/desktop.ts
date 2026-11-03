@@ -413,6 +413,34 @@ export interface AdoWorkItemAttachment {
   comment: string | null;
 }
 
+/** 修改記錄裡改了的一個欄位；長文字欄位（說明等）只標出有修改，`old`、`new` 是 null。 */
+export interface AdoFieldChange {
+  /** 欄位的參考名稱（例如 System.State）。 */
+  field: string;
+  old: string | null;
+  new: string | null;
+  long: boolean;
+}
+
+/** 修改記錄裡加入或移除的關聯：工作項目（`id`）或附件、超連結（`name`）。 */
+export interface AdoRevisionLink {
+  kind: "parent" | "child" | "related" | "predecessor" | "successor" | "attachment" | "hyperlink" | "other";
+  id: number | null;
+  name: string;
+}
+
+/** 工作項目修改記錄的一筆。 */
+export interface AdoWorkItemRevision {
+  rev: number;
+  author: string;
+  date: string | null;
+  fields: AdoFieldChange[];
+  /** 這次加的留言（HTML）。 */
+  comment: string | null;
+  added: AdoRevisionLink[];
+  removed: AdoRevisionLink[];
+}
+
 export interface AdoWorkItemRelation extends AdoWorkItem {
   link: "parent" | "child" | "related" | "predecessor" | "successor" | "other";
   /** 伺服器上的連結名稱（例如 Tested By），`other` 時顯示。 */
@@ -962,6 +990,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 工作項目的上層項目（`links` 是 [項目, 上層]），「依上層項目分組」用。 */
     adoWorkItemParents: (ids: number[]) =>
       core.invoke<{ links: [number, number][]; parents: AdoWorkItem[] }>("ado_work_item_parents", { ids }),
+    /** 工作項目的修改記錄（最新的在前）。 */
+    adoWorkItemHistory: (id: number) => core.invoke<AdoWorkItemRevision[]>("ado_work_item_history", { id }),
     /** 上層項目底下、符合搜尋文字與篩選條件的子項目（`links` 是 [子項目, 上層]）。 */
     adoWorkItemChildren: (parents: number[], search: string, filter: AdoWorkItemFilter) =>
       core.invoke<{ links: [number, number][]; items: AdoWorkItem[] }>("ado_work_item_children", { parents, search, filter }),

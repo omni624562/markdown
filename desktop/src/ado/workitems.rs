@@ -1229,6 +1229,260 @@ pub async fn ado_attachment_upload(
     .await
 }
 
+// ---- 工作項目：修改記錄 -------------------------------------------------------------
+
+/// 修改記錄裡一個改了的欄位。長文字欄位（說明、驗收條件等 HTML）只標出有修改，不帶內容。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldChange {
+    /// 欄位的參考名稱（例如 `System.State`）；前端換成看得懂的名稱。
+    pub(super) field: String,
+    pub(super) old: Option<String>,
+    pub(super) new: Option<String>,
+    pub(super) long: bool,
+}
+
+/// 修改記錄裡加入或移除的關聯：工作項目（`id`）或附件、超連結（`name`）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionLink {
+    /// `parent`、`child`、`related`、`predecessor`、`successor`、`attachment`、`hyperlink` 或 `other`。
+    pub(super) kind: &'static str,
+    pub(super) id: Option<u64>,
+    pub(super) name: String,
+}
+
+/// 修改記錄的一筆：誰、什麼時候、改了哪些欄位、留言、加了或移除哪些關聯。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemRevision {
+    pub(super) rev: u64,
+    pub(super) author: String,
+    pub(super) date: Option<String>,
+    pub(super) fields: Vec<FieldChange>,
+    /// 這次加的留言（HTML）。
+    pub(super) comment: Option<String>,
+    pub(super) added: Vec<RevisionLink>,
+    pub(super) removed: Vec<RevisionLink>,
+}
+
+/// 每次修改都會變、看了沒有意義的欄位。
+const NOISE_FIELDS: &[&str] = &[
+    "System.Rev",
+    "System.Id",
+    "System.AuthorizedDate",
+    "System.RevisedDate",
+    "System.ChangedDate",
+    "System.ChangedBy",
+    "System.AuthorizedAs",
+    "System.PersonId",
+    "System.Watermark",
+    "System.CommentCount",
+    "System.AreaId",
+    "System.IterationId",
+    "System.NodeName",
+    "System.TeamProject",
+    "System.History",
+    "System.CreatedDate",
+    "System.BoardColumnDone",
+    "System.ExternalLinkCount",
+    "System.HyperLinkCount",
+    "System.AttachedFileCount",
+    "System.RelatedLinkCount",
+    "System.RemoteLinkCount",
+    "System.Parent",
+    "Microsoft.VSTS.Common.StateChangeDate",
+];
+
+/// 人的欄位：值是「名字 <網域\帳號>」或物件，只留名字。
+const IDENTITY_FIELDS: &[&str] = &[
+    "System.AssignedTo",
+    "System.CreatedBy",
+    "Microsoft.VSTS.Common.ActivatedBy",
+    "Microsoft.VSTS.Common.ResolvedBy",
+    "Microsoft.VSTS.Common.ClosedBy",
+];
+
+/// 長文字（HTML）欄位：只標出有修改。
+const LONG_FIELDS: &[&str] = &[
+    "System.Description",
+    "Microsoft.VSTS.Common.AcceptanceCriteria",
+    "Microsoft.VSTS.TCM.ReproSteps",
+    "Microsoft.VSTS.TCM.SystemInfo",
+    "Microsoft.VSTS.TCM.Steps",
+];
+
+fn change_value(field: &str, v: Option<&Value>) -> Option<String> {
+    let v = v?;
+    if IDENTITY_FIELDS.contains(&field) || v.is_object() {
+        return person(Some(v));
+    }
+    match v {
+        Value::String(s) => Some(s.clone()).filter(|s| !s.is_empty()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+fn revision_link(r: &Value) -> Option<RevisionLink> {
+    let rel = str_of(r, "rel")?;
+    let url = str_of(r, "url").unwrap_or_default();
+    let name = r
+        .get("attributes")
+        .and_then(|a| str_of(a, "name"))
+        .unwrap_or_default()
+        .to_string();
+    let id = url
+        .to_ascii_lowercase()
+        .rfind("/workitems/")
+        .and_then(|at| url[at + "/workitems/".len()..].parse().ok());
+    let kind = match rel {
+        "System.LinkTypes.Hierarchy-Reverse" => "parent",
+        "System.LinkTypes.Hierarchy-Forward" => "child",
+        "System.LinkTypes.Related" => "related",
+        "System.LinkTypes.Dependency-Reverse" => "predecessor",
+        "System.LinkTypes.Dependency-Forward" => "successor",
+        "AttachedFile" => "attachment",
+        "Hyperlink" => "hyperlink",
+        _ => "other",
+    };
+    let name = if name.is_empty() && kind == "hyperlink" {
+        url.to_string()
+    } else if name.is_empty() {
+        rel.to_string()
+    } else {
+        name
+    };
+    Some(RevisionLink { kind, id, name })
+}
+
+/// `wit/workItems/{id}/updates` 的回應整理成修改記錄（最新的在前）；只改了系統欄位的那幾次略過。
+pub(super) fn work_item_revisions(res: &Value) -> Vec<WorkItemRevision> {
+    let mut out: Vec<WorkItemRevision> = values(res)
+        .iter()
+        .filter_map(|u| {
+            let fields = u.get("fields").and_then(Value::as_object);
+            let comment = fields
+                .and_then(|f| f.get("System.History"))
+                .and_then(|h| h.get("newValue"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .map(str::to_string);
+            let mut changes: Vec<FieldChange> = fields
+                .map(|f| {
+                    f.iter()
+                        .filter(|(name, _)| !NOISE_FIELDS.contains(&name.as_str()))
+                        .filter_map(|(name, change)| {
+                            let long = LONG_FIELDS.contains(&name.as_str());
+                            let old = change_value(name, change.get("oldValue"));
+                            let new = change_value(name, change.get("newValue"));
+                            if old == new {
+                                return None;
+                            }
+                            Some(if long {
+                                FieldChange {
+                                    field: name.clone(),
+                                    old: None,
+                                    new: None,
+                                    long,
+                                }
+                            } else {
+                                FieldChange {
+                                    field: name.clone(),
+                                    old,
+                                    new,
+                                    long,
+                                }
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            changes.sort_by_key(|c| field_order(&c.field));
+            let links = |key: &str| -> Vec<RevisionLink> {
+                u.pointer(&format!("/relations/{key}"))
+                    .and_then(Value::as_array)
+                    .map(|list| list.iter().filter_map(revision_link).collect())
+                    .unwrap_or_default()
+            };
+            let added = links("added");
+            let removed = links("removed");
+            if changes.is_empty() && comment.is_none() && added.is_empty() && removed.is_empty() {
+                return None;
+            }
+            let author = fields
+                .and_then(|f| f.get("System.ChangedBy"))
+                .and_then(|c| person(c.get("newValue")))
+                .or_else(|| person(u.get("revisedBy")))
+                .unwrap_or_default();
+            // 修改的時間是那次的 ChangedDate；revisedDate 是下一次修改的時間（最新一筆是 9999 年）。
+            let date = fields
+                .and_then(|f| f.get("System.ChangedDate"))
+                .and_then(|c| c.get("newValue"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| {
+                    str_of(u, "revisedDate")
+                        .filter(|d| !d.starts_with("9999"))
+                        .map(str::to_string)
+                });
+            Some(WorkItemRevision {
+                rev: u.get("rev").and_then(Value::as_u64).unwrap_or_default(),
+                author,
+                date,
+                fields: changes,
+                comment,
+                added,
+                removed,
+            })
+        })
+        .collect();
+    out.reverse();
+    out
+}
+
+/// 常看的欄位排前面（標題、狀態、指派…），其他照名稱。
+fn field_order(field: &str) -> (usize, String) {
+    const FIRST: &[&str] = &[
+        "System.Title",
+        "System.State",
+        "System.Reason",
+        "System.AssignedTo",
+        "System.IterationPath",
+        "System.AreaPath",
+        "Microsoft.VSTS.Common.Priority",
+        "Microsoft.VSTS.Scheduling.RemainingWork",
+        "Microsoft.VSTS.Scheduling.CompletedWork",
+        "System.Tags",
+    ];
+    let at = FIRST
+        .iter()
+        .position(|f| *f == field)
+        .unwrap_or(FIRST.len());
+    (at, field.to_string())
+}
+
+/// 工作項目的修改記錄（最新的在前，最多 200 次修改）。
+#[tauri::command]
+pub async fn ado_work_item_history(
+    app: AppHandle,
+    id: u64,
+) -> Result<Vec<WorkItemRevision>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = get(
+            &a.url,
+            &pat,
+            &format!("/_apis/wit/workItems/{id}/updates?$top=200"),
+            &tr!("讀取修改記錄"),
+        )?;
+        Ok(work_item_revisions(&res))
+    })
+    .await
+}
+
 // ---- 工作項目：改狀態、指派給我、留言 ---------------------------------------------
 
 /// 這個類型的工作項目可以設定的狀態（依流程的順序）。

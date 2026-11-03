@@ -1167,3 +1167,84 @@ fn attaches_uploaded_files_from_this_server_only() {
         );
     }
 }
+
+#[test]
+fn reads_work_item_history() {
+    let res = json!({"value": [
+        // 建立：系統欄位以外的都列出來。
+        {"rev": 1, "revisedBy": {"displayName": "王小明"}, "fields": {
+            "System.Rev": {"newValue": 1},
+            "System.ChangedDate": {"newValue": "2026-10-01T01:00:00Z"},
+            "System.ChangedBy": {"newValue": "王小明 <CORP\\ming>"},
+            "System.State": {"newValue": "New"},
+            "System.Title": {"newValue": "登入失敗"},
+            "System.Description": {"newValue": "<p>很長的說明</p>"}
+        }},
+        // 只改了系統欄位：略過。
+        {"rev": 2, "fields": {"System.Rev": {"oldValue": 1, "newValue": 2}, "System.Watermark": {"oldValue": 5, "newValue": 6}}},
+        // 改狀態、指派，加留言、加關聯、移除附件。
+        {"rev": 3, "revisedBy": {"displayName": "李大同"}, "revisedDate": "9999-01-01T00:00:00Z", "fields": {
+            "System.ChangedDate": {"oldValue": "2026-10-01T01:00:00Z", "newValue": "2026-10-02T03:00:00Z"},
+            "System.AssignedTo": {"oldValue": {"displayName": "王小明"}, "newValue": "李大同 <CORP\\tong>"},
+            "System.State": {"oldValue": "New", "newValue": "Active"},
+            "Microsoft.VSTS.Scheduling.RemainingWork": {"oldValue": 4.0, "newValue": 2.5},
+            "System.History": {"newValue": "<p>開始處理</p>"}
+        }, "relations": {
+            "added": [{"rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://tfs/DC/_apis/wit/workItems/42", "attributes": {"name": "Parent"}}],
+            "removed": [{"rel": "AttachedFile", "url": "https://tfs/DC/_apis/wit/attachments/x", "attributes": {"name": "log.txt"}}]
+        }}
+    ]});
+    let list = work_item_revisions(&res);
+    assert_eq!(list.len(), 2, "只改了系統欄位的那次略過");
+    // 最新的在前。
+    let latest = &list[0];
+    assert_eq!(latest.rev, 3);
+    assert_eq!(latest.author, "李大同");
+    assert_eq!(latest.date.as_deref(), Some("2026-10-02T03:00:00Z"));
+    assert_eq!(
+        latest
+            .fields
+            .iter()
+            .map(|f| f.field.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "System.State",
+            "System.AssignedTo",
+            "Microsoft.VSTS.Scheduling.RemainingWork"
+        ],
+        "常看的欄位排前面"
+    );
+    assert_eq!(latest.fields[1].old.as_deref(), Some("王小明"));
+    assert_eq!(
+        latest.fields[1].new.as_deref(),
+        Some("李大同"),
+        "人只留名字"
+    );
+    assert_eq!(latest.fields[2].new.as_deref(), Some("2.5"));
+    assert_eq!(latest.comment.as_deref(), Some("<p>開始處理</p>"));
+    assert_eq!(
+        latest.added,
+        vec![RevisionLink {
+            kind: "parent",
+            id: Some(42),
+            name: "Parent".into()
+        }]
+    );
+    assert_eq!(
+        latest.removed,
+        vec![RevisionLink {
+            kind: "attachment",
+            id: None,
+            name: "log.txt".into()
+        }]
+    );
+    let created = &list[1];
+    assert_eq!(created.author, "王小明");
+    let desc = created
+        .fields
+        .iter()
+        .find(|f| f.field == "System.Description")
+        .unwrap();
+    assert!(desc.long && desc.new.is_none(), "長文字只標出有修改");
+    assert!(work_item_revisions(&json!({})).is_empty());
+}
