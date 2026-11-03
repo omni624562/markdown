@@ -786,20 +786,49 @@ pub async fn ado_work_item_children(
 }
 
 /// 一個工作項目的內容。
-/// 篩選列的選項：專案、工作項目類型與狀態。
+/// 篩選列的選項：專案、工作項目類型，與每個專案、類型的狀態。
 #[derive(Serialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkItemFilterOptions {
     pub(super) projects: Vec<String>,
     pub(super) kinds: Vec<String>,
-    pub(super) states: Vec<StateOption>,
+    pub(super) state_sets: Vec<KindStates>,
 }
 
-/// 狀態篩選的一個選項：名稱，與是不是「已結束」（和清單「進行中」的條件用同一份名單）。
+/// 狀態篩選的一個選項：名稱、是不是「已結束」（和清單「進行中」的條件用同一份名單），
+/// 與在流程裡的階段（提議 0 → 進行中 1 → 已解決 2 → 已完成 3 → 已移除 4，幾個類型合併時依這個排）。
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct StateOption {
     pub(super) name: String,
     pub(super) closed: bool,
+    pub(super) stage: u8,
+}
+
+/// 一個專案裡一個工作項目類型的狀態：狀態篩選只列選的專案、類型用得到的狀態。
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct KindStates {
+    pub(super) project: String,
+    pub(super) kind: String,
+    pub(super) states: Vec<StateOption>,
+}
+
+/// 專案的工作項目類型清單（`workitemtypes` 的回應）→ 每個類型的狀態；略過不會出現在清單的類型。
+pub(super) fn kind_states(project: &str, types: &Value) -> Vec<KindStates> {
+    values(types)
+        .iter()
+        .filter_map(|t| {
+            let kind = str_of(t, "name")?;
+            if HIDDEN_KINDS.contains(&kind) {
+                return None;
+            }
+            let states = merge_states(type_states(t));
+            (!states.is_empty()).then(|| KindStates {
+                project: project.to_string(),
+                kind: kind.to_string(),
+                states,
+            })
+        })
+        .collect()
 }
 
 /// 「已結束」的狀態（`CLOSED_STATES`，不分大小寫，和 WIQL 一樣）。
@@ -840,9 +869,10 @@ pub(super) fn merge_states(all: Vec<(u8, String)>) -> Vec<StateOption> {
     }
     out.sort_by_key(|(stage, _)| *stage);
     out.into_iter()
-        .map(|(_, name)| StateOption {
+        .map(|(stage, name)| StateOption {
             closed: is_closed_state(&name),
             name,
+            stage,
         })
         .collect()
 }
@@ -871,28 +901,24 @@ pub async fn ado_work_item_filters(app: AppHandle) -> Result<WorkItemFilterOptio
             .collect();
         projects.sort_by_key(|p| p.to_lowercase());
         let mut kinds: Vec<String> = vec![];
-        let mut states: Vec<(u8, String)> = vec![];
+        let mut state_sets: Vec<KindStates> = vec![];
         for p in projects.iter().take(20) {
             let path = format!("/{}/_apis/wit/workitemtypes", encode_segment(p));
             let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取工作項目類型")) else {
                 continue;
             };
-            for t in values(&res) {
-                let Some(k) = str_of(t, "name") else { continue };
-                if HIDDEN_KINDS.contains(&k) {
-                    continue;
-                }
-                if !kinds.iter().any(|x| x == k) {
+            for k in values(&res).iter().filter_map(|t| str_of(t, "name")) {
+                if !HIDDEN_KINDS.contains(&k) && !kinds.iter().any(|x| x == k) {
                     kinds.push(k.to_string());
                 }
-                states.extend(type_states(t));
             }
+            state_sets.extend(kind_states(p, &res));
         }
         kinds.sort_by_key(|k| k.to_lowercase());
         Ok(WorkItemFilterOptions {
             projects,
             kinds,
-            states: merge_states(states),
+            state_sets,
         })
     })
     .await
@@ -906,6 +932,8 @@ pub struct WorkItemScopeOptions {
     pub(super) areas: Vec<String>,
     /// 團隊成員的顯示名稱。
     pub(super) people: Vec<String>,
+    /// 這個專案每個類型的狀態（篩選選項只讀前 20 個專案，選了其他專案時從這裡補）。
+    pub(super) state_sets: Vec<KindStates>,
 }
 
 pub(super) const MAX_AREAS: usize = 500;
@@ -1030,6 +1058,7 @@ pub async fn ado_work_item_scope(
     let project = project.filter(|p| !p.trim().is_empty());
     crate::io::blocking_for(TIMEOUT, move || {
         let mut areas = vec![];
+        let mut state_sets = vec![];
         let projects: Vec<String> = match &project {
             Some(p) => {
                 let path = format!(
@@ -1037,6 +1066,11 @@ pub async fn ado_work_item_scope(
                     encode_segment(p)
                 );
                 areas = area_paths(&get(&a.url, &pat, &path, &tr!("讀取區域"))?);
+                // 讀不到類型（權限不足）時，狀態篩選照全部專案的狀態列。
+                let path = format!("/{}/_apis/wit/workitemtypes", encode_segment(p));
+                if let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取工作項目類型")) {
+                    state_sets = kind_states(p, &res);
+                }
                 vec![p.clone()]
             }
             None => {
@@ -1079,7 +1113,11 @@ pub async fn ado_work_item_scope(
             }
         }
         people.sort_by_key(|n| n.to_lowercase());
-        Ok(WorkItemScopeOptions { areas, people })
+        Ok(WorkItemScopeOptions {
+            areas,
+            people,
+            state_sets,
+        })
     })
     .await
 }

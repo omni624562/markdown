@@ -1,7 +1,8 @@
 /**
  * 工作項目清單的篩選條件：預設值、讀回存起來的條件，與狀態篩選的選項（不碰畫面，方便測試）。
  *
- * 狀態篩選列出伺服器上實際的狀態（New、Active、Resolved、Closed…）。勾的剛好是所有「還沒結束」的狀態時
+ * 狀態篩選列出伺服器上實際的狀態（New、Active、Resolved、Closed…），只列選的專案、類型用得到的。
+ * 勾的剛好是所有「還沒結束」的狀態時
  * 存成 `state: "open"`（和以前的「進行中」一樣，新的狀態也算進去），剛好是「已結束」的是 `closed`，
  * 其他組合才存成指定的 `states`。讀不到狀態清單時，選單只有「進行中」「已結束」兩項（和以前一樣）。
  */
@@ -9,11 +10,37 @@ import type { AdoWorkItemFilter } from "./desktop.ts";
 import { t } from "./i18n.ts";
 import { choiceList } from "./multi-choice.ts";
 
-/** 狀態篩選的一個選項（後端 `ado_work_item_filters` 的 `states`）。 */
+/** 狀態篩選的一個選項。 */
 export interface StateOption {
   name: string;
   /** 「已結束」的狀態（Closed、Done、Removed…）。 */
   closed: boolean;
+  /** 流程裡的階段（提議 0 → 進行中 1 → 已解決 2 → 已完成 3 → 已移除 4），幾個類型合併時依這個排。 */
+  stage?: number;
+}
+
+/** 一個專案裡一個工作項目類型的狀態（後端 `ado_work_item_filters`、`ado_work_item_scope` 的 `stateSets`）。 */
+export interface KindStates {
+  project: string;
+  kind: string;
+  states: StateOption[];
+}
+
+/**
+ * 狀態選單要列的狀態：選的專案（沒選是全部）裡、選的類型（沒選是全部）用得到的狀態，
+ * 同名的只列一次，依流程的階段排。選的類型在這些專案裡都沒有時，列這些專案的全部狀態。
+ */
+export function statesFor(sets: readonly KindStates[], projects: readonly string[], kinds: readonly string[]): StateOption[] {
+  const inProjects = projects.length ? sets.filter((s) => projects.includes(s.project)) : sets;
+  const inKinds = kinds.length ? inProjects.filter((s) => kinds.includes(s.kind)) : inProjects;
+  const out: StateOption[] = [];
+  for (const set of inKinds.length ? inKinds : inProjects) {
+    for (const s of set.states) if (!out.some((o) => o.name.toLowerCase() === s.name.toLowerCase())) out.push(s);
+  }
+  return out
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => (a.s.stage ?? 1) - (b.s.stage ?? 1) || a.i - b.i)
+    .map(({ s }) => s);
 }
 
 export const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {

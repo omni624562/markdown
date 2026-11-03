@@ -9,6 +9,7 @@ import type { CapacityData } from "./taskboard-model.ts";
 import { t } from "./i18n.ts";
 import type { WikiPageInfo } from "./wiki-coedit.ts";
 import type { Iteration } from "./work-item-fields.ts";
+import type { KindStates } from "./work-item-filter.ts";
 
 interface TauriCore {
   /** `args` 是位元組時當成請求本文直接傳送（大檔案不用轉成 base64），其他資料放在標頭。 */
@@ -1012,9 +1013,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoClone: (cloneUrl: string, name: string) => core.invoke<Cloned | null>("ado_clone", { cloneUrl, name }),
     adoWorkItems: (search: string, filter?: AdoWorkItemFilter) => core.invoke<AdoWorkItem[]>("ado_work_items", { search, filter }),
     adoWorkItemFilters: () =>
-      core.invoke<{ projects: string[]; kinds: string[]; states?: { name: string; closed: boolean }[] }>("ado_work_item_filters"),
+      core.invoke<{ projects: string[]; kinds: string[]; stateSets?: KindStates[] }>("ado_work_item_filters"),
     adoWorkItemScope: (project: string | null) =>
-      core.invoke<{ areas: string[]; people: string[] }>("ado_work_item_scope", { project }),
+      core.invoke<{ areas: string[]; people: string[]; stateSets?: KindStates[] }>("ado_work_item_scope", { project }),
     /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
     adoImage: (url: string) => core.invoke<string>("ado_image", { url }),
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
