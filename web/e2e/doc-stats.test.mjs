@@ -51,6 +51,8 @@ test("選取文字時，統計面板另外列出選取範圍的字數", async ()
   await page.waitForFunction(() => document.querySelector("#status-cursor")?.textContent.includes("已選取"));
   await page.click("#status-stats");
   await page.waitForSelector(".stats-pop:popover-open");
+  // 字數是停手一下子後才算的；面板比較早打開時，算好了才會多出「選取範圍」這一列（電腦忙的時候會晚一點）。
+  await page.waitForFunction(() => [...document.querySelectorAll(".stats-pop .stats-grid dt")].some((dt) => dt.textContent === "選取範圍"));
   assert.match((await rows(page))["選取範圍"], /^5 字/);
   assert.deepEqual(errors, []);
   await context.close();
