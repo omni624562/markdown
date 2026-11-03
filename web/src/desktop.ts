@@ -1082,6 +1082,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),
     adoWikiPages: (w: AdoWiki) =>
       core.invoke<AdoWikiPage[]>("ado_wiki_pages", { projectId: w.projectId, wikiId: w.id, version: w.code ? w.version : null }),
+    /** 頁面編號對應的頁面路徑（網址只寫了編號時用）；伺服器太舊或沒有這一頁時是 null。 */
+    adoWikiPagePath: (w: AdoWiki, pageId: number) =>
+      core.invoke<string | null>("ado_wiki_page_path", { projectId: w.projectId, wikiId: w.id, pageId }),
     adoWikiPage: (w: AdoWiki, path: string) =>
       core.invoke<{ content: string; webUrl: string | null; etag: string | null }>("ado_wiki_page", {
         projectId: w.projectId,

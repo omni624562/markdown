@@ -912,4 +912,5 @@ export const ui: Record<string, Translation> = {
   "更新了 {n} 頁的連結": "updated links in {n} pages",
   "有 {n} 頁的連結沒有更新（{names}），請自己改一下": "Links in {n} pages were not updated ({names}); please fix them yourself",
   "{n} 個 {kind}": "{n} {kind}",
+  "在 oMarker 裡找不到這一頁，改用瀏覽器開啟": "Couldn't find this page in oMarker; opening it in the browser",
 };
