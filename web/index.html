@@ -19,7 +19,14 @@
       <button type="button" class="nav-toggle" data-command="toggle-outline" aria-pressed="false">
         <i data-icon="panel-left"></i>
       </button>
-      <div class="topbar-side" aria-hidden="true"></div>
+      <!-- 側邊欄上方：頂端列樣式是「專案列」時放專案與分支，「版面切換鈕組」時放快速開啟、最近開啟（app/topbar-style.ts）。 -->
+      <div class="topbar-side">
+        <div class="topbar-project"></div>
+        <div class="topbar-tools">
+          <button type="button" class="btn topbar-tool" data-command="quick-open"><i data-icon="search"></i><span>快速開啟</span></button>
+          <button type="button" class="btn topbar-tool" data-command="open-recent"><i data-icon="clock"></i><span>最近開啟</span><i data-icon="chevron-down"></i></button>
+        </div>
+      </div>
       <div class="tab-bar" id="tab-bar"></div>
       <div class="top-actions">
         <button type="button" class="btn icon-only" data-command="toggle-outline-right" aria-pressed="true" hidden><i data-icon="panel-right-close"></i></button>
