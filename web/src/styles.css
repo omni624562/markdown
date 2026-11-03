@@ -2162,7 +2162,8 @@ button.git-info:disabled { cursor: default; }
 .multi-select-pop.single .multi-select-list { padding-top: 4px; }
 /* Wiki（Azure DevOps） */
 .wiki-filters { grid-template-columns: 1fr auto; }
-.wiki-filters .wiki-new { grid-column: 1 / -1; }
+.wiki-filters .wiki-actions { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
+.wiki-filters .wiki-actions:not(:has(> :not([hidden]))) { display: none; }
 /* 常用的項目（Wiki、工作板的專案）：選單旁邊的星號，有設常用時星號填滿。 */
 .favorite-toggle { margin: 0; height: auto; min-height: 28px; }
 .favorite-toggle.active .icon { fill: currentColor; }
@@ -3513,6 +3514,8 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 
 /* ---- 建立工作項目 ---- */
 .choice.wi-create { width: min(560px, calc(100vw - 32px)); }
+.wiki-new-page .pdf-field select { height: 36px; }
+.wiki-new-page .wiki-new-hint { margin: -4px 0 12px; color: var(--subtle); font-size: 12.5px; }
 .wi-bulk .wi-bulk-note { display: block; margin-top: 4px; color: var(--subtle); font-size: 12px; }
 .wi-bulk .wi-bulk-note:empty { display: none; }
 .wi-bulk .pdf-field select { height: 36px; }

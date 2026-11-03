@@ -9,13 +9,13 @@ import type { PreviewPlugin } from "../preview.ts";
 import { resolveRepoPath, parseRepoFileLink, type RepoFileLink, repoFileUrl, isMarkdownName, fenceLanguage, isReadableFileName } from "../repo-links.ts";
 import { saveDraft } from "../session.ts";
 import * as storage from "../storage.ts";
-import { choose, askText } from "../ui/choice.ts";
+import { choose } from "../ui/choice.ts";
 import type { IssueSource } from "../ui/issue-view.ts";
 import { openLightbox } from "../ui/lightbox.ts";
 import { toast } from "../ui/toast.ts";
 import { recentEditor } from "../wiki-coedit.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
-import { wikiPageLink, pageName, wikiTitleProblem, flattenPages, childPagePath } from "../wiki-text.ts";
+import { wikiPageLink, pageName, flattenPages } from "../wiki-text.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { anchorItems, closeItemsWhere, itemSlot, openItem, openNextBeside, tabOrder } from "./item-tabs.ts";
@@ -23,6 +23,7 @@ import { forgetListCopies, withOfflineCopy } from "./offline-copies.ts";
 import { adoMe, wikiCheckedAt, wikiNewer, renderWikiBar } from "./wiki-edit.ts";
 import { wikiPanel, barShortcuts, setBarShortcuts, openBarShortcut } from "./work-items-panel.ts";
 import { app } from "./context.ts";
+import { askNewWikiPage } from "./wiki-new-page.ts";
 
 
 export const repoImagesPlugin: PreviewPlugin = {
@@ -227,31 +228,15 @@ export async function createWikiPage(wiki: AdoWiki, parent: string | null): Prom
     toast(t("從程式碼儲存庫發佈的 Wiki 要在儲存庫裡新增 Markdown 檔（用 Git 提交）。"));
     return;
   }
-  const where = parent ? t("新頁面會放在「{name}」底下。", { name: pageName(parent) }) : t("新頁面會放在 Wiki 的最上層。");
-  let title = "";
-  for (;;) {
-    const answer = await askText(parent ? t("新增子頁面") : t("新增頁面"), where, title, t("建立"));
-    if (answer === null) return;
-    title = answer.trim();
-    const problem = wikiTitleProblem(title);
-    const existing = new Set(flattenPages(wikiPanel?.pages ?? []).map((p) => p.toLowerCase()));
-    const message =
-      problem === "empty"
-        ? t("請輸入頁面標題。")
-        : problem === "chars"
-          ? t("頁面標題不能有 /、\\、#。")
-          : problem === "dot"
-            ? t("頁面標題不能以「.」開頭或結尾。")
-            : problem === "long"
-              ? t("頁面標題太長了。")
-              : existing.has(childPagePath(parent, title).toLowerCase())
-                ? t("已經有同名的頁面了，請換一個名稱")
-                : null;
-    if (!message) break;
-    toast(message, { tone: "error" });
-  }
-  const path = childPagePath(parent, title);
-  await desktop!.adoWikiCreate(wiki, path, `# ${title}\n\n`);
+  // 這個 Wiki 的頁面（檢查同名、找共用的範本）：清單開著別的 Wiki 時另外讀。
+  const tree =
+    wikiPanel?.wiki?.id === wiki.id
+      ? wikiPanel.pages
+      : await withOfflineCopy(`wiki-pages:${wiki.id}`, () => desktop!.adoWikiPages(wiki)).catch(() => []);
+  const answer = await askNewWikiPage(wiki, parent, flattenPages(tree));
+  if (!answer) return;
+  const { path, title, body } = answer;
+  await desktop!.adoWikiCreate(wiki, path, body);
   toast(t("已建立 Wiki 頁面「{name}」", { name: title }), { tone: "success" });
   forgetListCopies("wiki");
   void wikiPanel?.refresh().then(() => wikiPanel?.select(path));
