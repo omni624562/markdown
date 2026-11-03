@@ -782,4 +782,11 @@ export const ui: Record<string, Translation> = {
   "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增":
     "Used when creating today's note; add your own with “⋯” → “Save Current Document as Template…”",
   "內建（今天要做、會議與討論、筆記）": "Built-in (To Do, Meetings, Notes)",
+  "空白頁面": "Blank Page",
+  "這個 Wiki 的範本（{name}）": "This Wiki's Templates ({name})",
+  "這個 Wiki 的範本": "This Wiki's Templates",
+  "「{name}」底下的子頁面會列在這裡，大家共用。": "Pages under “{name}” are listed here and shared with everyone.",
+  "在 Wiki 最上層建立「範本」頁面，把範本放在它底下，就會列在這裡，大家共用。":
+    "Create a top-level “Templates” page and put templates under it to list them here and share them with everyone.",
+  "讀不到範本：{error}": "Couldn't load the template: {error}",
 };
