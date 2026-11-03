@@ -392,8 +392,19 @@ export interface AdoWorkItemChange {
   /** 剩餘工時、已完成工時（小時）。 */
   remaining?: number;
   completed?: number;
+  /** 換上層（原本的上層拿掉）；0 表示移除上層。 */
+  parent?: number;
+  /** 加入、移除的關聯。 */
+  linksAdd?: AdoLinkChange[];
+  linksRemove?: AdoLinkChange[];
   /** 開啟時的修訂版本（被別人改過就不更新）。 */
   rev?: number | null;
+}
+
+/** 加入或移除的一個關聯：種類與對方的編號。 */
+export interface AdoLinkChange {
+  kind: "parent" | "child" | "related" | "predecessor" | "successor";
+  id: number;
 }
 
 /** 團隊成員（指派時選人用）。 */

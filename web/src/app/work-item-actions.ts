@@ -20,7 +20,8 @@ import { forgetListCopies, offlineRefs } from "./offline-copies.ts";
 import { workItemSeen } from "./work-item-updates.ts";
 import { workItemsPanel, barShortcuts, toggleWorkItemShortcut } from "./work-items-panel.ts";
 import { setAttachTarget, uploadAttachments } from "./work-item-attach.ts";
-import { enhanceWorkItem, lazy, type Loaded } from "./work-item-edit.ts";
+import { enhanceWorkItem, lazy, type Loaded, type WorkItemEditHooks } from "./work-item-edit.ts";
+import { editableRelations } from "./work-item-links-edit.ts";
 import { app } from "./context.ts";
 import { workItemLoaded } from "./work-item-updates.ts";
 
@@ -104,22 +105,20 @@ function workItemEditing(item: AdoWorkItem): {
       detail = d;
     },
     enhance(body) {
-      enhanceWorkItem(
-        body,
-        {
-          detail: () => detail,
-          apply,
-          editComment,
-          states: () => states.load(),
-          iterations: () => iterations.load(),
-          me: () => app.ado?.account?.name ?? "",
-          attach,
-          id: item.id,
-          kind: item.kind,
-          project: item.project,
-        },
-        { states, iterations },
-      );
+      const hooks: WorkItemEditHooks = {
+        detail: () => detail,
+        apply,
+        editComment,
+        states: () => states.load(),
+        iterations: () => iterations.load(),
+        me: () => app.ado?.account?.name ?? "",
+        attach,
+        id: item.id,
+        kind: item.kind,
+        project: item.project,
+      };
+      enhanceWorkItem(body, hooks, { states, iterations });
+      editableRelations(body, hooks);
     },
   };
 }
@@ -210,6 +209,7 @@ export function showWorkItem(item: AdoWorkItem): void {
             kind: f.section,
             title: f.section === "desc" ? t("工作項目說明") : f.field === "reproSteps" ? t("重現步驟") : t("驗收條件"),
           })),
+          { kind: "relations" as const, title: t("相關工作項目（{n}）", { n: 0 }) },
           { kind: "comments" as const, title: t("留言（{n}）", { n: 0 }) },
           // 沒有附件也要有：「加入附件…」放在這一段。
           { kind: "attachments" as const, title: t("附件（{n}）", { n: 0 }) },

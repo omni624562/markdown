@@ -117,9 +117,7 @@ pub(super) fn relation_links(v: &Value) -> Vec<(&'static str, String, u64)> {
         .iter()
         .filter_map(|r| {
             let rel = str_of(r, "rel")?;
-            let url = str_of(r, "url")?;
-            let at = url.to_ascii_lowercase().rfind("/workitems/")?;
-            let id: u64 = url[at + "/workitems/".len()..].parse().ok()?;
+            let id = relation_target(r)?;
             let link = match rel {
                 "System.LinkTypes.Hierarchy-Reverse" => "parent",
                 "System.LinkTypes.Hierarchy-Forward" => "child",
@@ -1633,8 +1631,111 @@ pub struct WorkItemChange {
     pub remaining: Option<f64>,
     /// 已完成工時（小時）。
     pub completed: Option<f64>,
+    /// 設定上層（換掉原本的上層）；0 表示移除上層。
+    pub parent: Option<u64>,
+    /// 加入的關聯（子項目、相關、前置、後續…）。
+    pub links_add: Vec<LinkChange>,
+    /// 移除的關聯。
+    pub links_remove: Vec<LinkChange>,
     /// 加入附件：先用 `ado_attachment_upload` 上傳，這裡是回傳的網址。
     pub attachments: Option<Vec<String>>,
+}
+
+/// 加入或移除的一個關聯：種類（`parent`、`child`、`related`、`predecessor`、`successor`）與對方的編號。
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkChange {
+    pub kind: String,
+    pub id: u64,
+}
+
+/// 關聯種類對應的連結類型。
+pub(super) fn link_rel(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "parent" => "System.LinkTypes.Hierarchy-Reverse",
+        "child" => "System.LinkTypes.Hierarchy-Forward",
+        "related" => "System.LinkTypes.Related",
+        "predecessor" => "System.LinkTypes.Dependency-Reverse",
+        "successor" => "System.LinkTypes.Dependency-Forward",
+        _ => return None,
+    })
+}
+
+/// 關聯指到的工作項目編號（`.../_apis/wit/workItems/42`）。
+fn relation_target(r: &Value) -> Option<u64> {
+    let url = str_of(r, "url")?;
+    let at = url.to_ascii_lowercase().rfind("/workitems/")?;
+    url[at + "/workitems/".len()..].parse().ok()
+}
+
+/// 改關聯的 JSON Patch：先移除（由後往前，前面的位置才不會跑掉），再加入（加在最後）。
+/// `relations` 是工作項目目前的關聯（移除時要知道位置；已經有的關聯不重複加）。
+pub(super) fn link_ops(
+    change: &WorkItemChange,
+    relations: &[Value],
+    base: &str,
+    id: u64,
+) -> Result<Vec<Value>, String> {
+    let mut adds: Vec<(&'static str, u64)> = vec![];
+    if let Some(p) = change.parent.filter(|p| *p != 0) {
+        adds.push(("System.LinkTypes.Hierarchy-Reverse", p));
+    }
+    for l in &change.links_add {
+        let rel =
+            link_rel(&l.kind).ok_or_else(|| tr!("看不懂的關聯種類：{kind}", kind = l.kind))?;
+        adds.push((rel, l.id));
+    }
+    let mut removes: Vec<(&'static str, u64)> = vec![];
+    for l in &change.links_remove {
+        let rel =
+            link_rel(&l.kind).ok_or_else(|| tr!("看不懂的關聯種類：{kind}", kind = l.kind))?;
+        removes.push((rel, l.id));
+    }
+    if adds.iter().any(|(_, target)| *target == id) {
+        return Err(tr!("不能把工作項目連到自己"));
+    }
+    let mut indexes: Vec<usize> = relations
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| {
+            let rel = str_of(r, "rel").unwrap_or_default();
+            let target = relation_target(r);
+            // 換上層：原本的上層（不管是哪一個）都拿掉。
+            (change.parent.is_some() && rel == "System.LinkTypes.Hierarchy-Reverse")
+                || removes
+                    .iter()
+                    .any(|(want, t)| *want == rel && Some(*t) == target)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    indexes.sort_unstable_by(|a, b| b.cmp(a));
+    let mut ops: Vec<Value> = indexes
+        .iter()
+        .map(|i| serde_json::json!({ "op": "remove", "path": format!("/relations/{i}") }))
+        .collect();
+    let kept = |rel: &str, target: u64| {
+        relations.iter().enumerate().any(|(i, r)| {
+            !indexes.contains(&i)
+                && str_of(r, "rel") == Some(rel)
+                && relation_target(r) == Some(target)
+        })
+    };
+    let mut seen: Vec<(&str, u64)> = vec![];
+    for (rel, target) in adds {
+        if kept(rel, target) || seen.contains(&(rel, target)) {
+            continue;
+        }
+        seen.push((rel, target));
+        ops.push(serde_json::json!({
+            "op": "add",
+            "path": "/relations/-",
+            "value": {
+                "rel": rel,
+                "url": format!("{}/_apis/wit/workItems/{target}", base.trim_end_matches('/')),
+            },
+        }));
+    }
+    Ok(ops)
 }
 
 /// 附件一次最多多大（Azure DevOps 預設的上限是 60 MB）。
@@ -1788,7 +1889,21 @@ pub async fn ado_work_item_update(
     check_attachments(&change, &a.url)?;
     crate::io::blocking_for(TIMEOUT, move || {
         let me = assign_me(&a);
-        let ops = change_ops(&change, &me);
+        let mut ops = change_ops(&change, &me);
+        if change.parent.is_some() || !change.links_add.is_empty() || !change.links_remove.is_empty() {
+            // 移除關聯要知道它在第幾個；也順便避免重複加入一樣的關聯。
+            let current = get(
+                &a.url,
+                &pat,
+                &format!("/_apis/wit/workitems/{id}?$expand=relations"),
+                &tr!("讀取工作項目"),
+            )?;
+            let relations = current
+                .get("relations")
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice);
+            ops.extend(link_ops(&change, relations, &a.url, id)?);
+        }
         if ops.iter().all(|op| op["op"] == "test") {
             return Ok(());
         }

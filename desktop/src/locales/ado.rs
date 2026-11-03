@@ -53,6 +53,8 @@ pub static EN: &[(&str, &str)] = &[
     ("刪除 Wiki 頁面", "Deleting the wiki page"),
     ("讀取上層項目", "Loading parent work items"),
     ("讀取子項目", "Loading child work items"),
+    ("看不懂的關聯種類：{kind}", "Unknown link type: {kind}"),
+    ("不能把工作項目連到自己", "A work item can't be linked to itself"),
     ("附件的網址不正確", "The attachment URL is invalid"),
     (
         "「{name}」超過 60 MB，Azure DevOps 不接受這麼大的附件",
