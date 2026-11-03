@@ -50,7 +50,7 @@ test("清單上方：有幾個新的或有更新，只看這些；開過就少�
   await line.getByText("有 3 個新的或有更新").waitFor();
   assert.match(await page.locator("#side-tab-workitems .ado-badge, #ado-badge").first().getAttribute("title"), /別人的、已結束的不算/);
   await line.getByRole("button", { name: "只看這些" }).click();
-  await page.locator("#workitems-host .workitems-status", { hasText: "新的或有更新的工作項目（3）" }).waitFor();
+  await page.locator("#workitems-host .workitems-status", { hasText: "3 個指派給你、新的或有更新的工作項目" }).waitFor();
   await page.locator("#workitems-host .workitem", { hasText: "第二個" }).click();
   await line.getByText("只列出新的或有更新的（2）").waitFor();
   assert.equal(await page.textContent("#ado-badge"), "2");

@@ -652,7 +652,7 @@ export const ui: Record<string, Translation> = {
   "指派給你的工作項目有 {n} 個新的或有更新": "{n} work items assigned to you are new or updated",
   "只看這些": "Show only these",
   "全部標示為看過": "Mark all as seen",
-  "指派給你、新的或有更新的工作項目（{n}）": "New or updated work items assigned to you ({n})",
+  "{n} 個指派給你、新的或有更新的工作項目": "{n} new or updated work items assigned to you",
   "指派給你的工作項目都看過了": "You've seen all the work items assigned to you",
   "選單列出哪些 Wiki（常用的）": "Wikis to list in the menu (favorites)",
   "選單列出哪些專案（常用的）": "Projects to list in the menu (favorites)",

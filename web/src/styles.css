@@ -2050,9 +2050,14 @@ button.git-info:disabled { cursor: default; }
 .side-body.workitems > .workitems-filters { max-height: 55%; overflow-y: auto; }
 .side-body.workitems > .workitems-list { flex: 1 1 auto; min-height: 0; margin: 0 -8px; padding: 0 8px 12px; overflow-y: auto; border-top: 1px solid transparent; }
 .side-body.workitems > .workitems-list.scrolled { border-top-color: var(--border); }
-.workitems-statusrow { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; justify-content: space-between; }
-.workitems-statusrow .workitems-status { flex: 1 1 120px; min-width: 0; }
-.workitems-tools { display: inline-flex; flex: none; gap: 2px; align-items: center; max-width: 100%; }
+/*
+ * 清單上方的「N 個…」與排列方式、收合等按鈕：一直是一列。側邊欄窄時文字用「…」截短（滑鼠移上去看完整的），
+ * 按鈕不換行也不被切掉。連不上伺服器、顯示存下的資料時（有「重試」）才讓文字換行。
+ */
+.workitems-statusrow { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.workitems-statusrow .workitems-status { flex: 1 1 auto; min-width: 0; }
+.workitems-statusrow .workitems-status:not(.from-copy) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workitems-tools { display: inline-flex; flex: none; gap: 2px; align-items: center; }
 .workitems-fold { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
 .workitems-fold[hidden] { display: none; }
 .workitems-fold .icon { width: 14px; height: 14px; }
@@ -3649,9 +3654,10 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 body.ado-offline .tb-card { cursor: default; }
 
 /* 工作項目清單上方：指派給你的有幾個新的或有更新・只看這些・全部標示為看過（見 app/work-items-panel.ts）。 */
-.workitems-unseen { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; margin: 0 0 8px; padding: 6px 10px; border-radius: var(--radius); background: var(--accent-soft); font-size: 12.5px; }
+/* 「有 N 個新的或有更新」：說明一行，下面一行是動作；不管側邊欄多寬都是這樣，拉寬拉窄不會跳來跳去。 */
+.workitems-unseen { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; margin: 0 0 8px; padding: 6px 10px; border-radius: var(--radius); background: var(--accent-soft); font-size: 12.5px; }
 .workitems-unseen[hidden] { display: none; }
-.workitems-unseen > span { flex: 1 1 auto; }
+.workitems-unseen > span { flex: 1 0 100%; }
 .workitems-unseen-action { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 .workitems-unseen-action:hover { text-decoration: underline; }
 

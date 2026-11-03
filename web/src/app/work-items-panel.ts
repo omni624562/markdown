@@ -814,11 +814,11 @@ export function initWorkItemsPanel(): void {
         status: (n, search) =>
           onlyUnseen && !search
             ? n
-              ? t("指派給你、新的或有更新的工作項目（{n}）", { n })
+              ? t("{n} 個指派給你、新的或有更新的工作項目", { n })
               : t("指派給你的工作項目都看過了")
             : workItemQuery
             ? n
-              ? t("查詢「{name}」的結果（{n}）", { name: workItemQuery.name, n })
+              ? t("{n} 個結果：查詢「{name}」", { name: workItemQuery.name, n })
               : search
                 ? t("查詢「{name}」的結果裡找不到符合的工作項目", { name: workItemQuery.name })
                 : t("查詢「{name}」沒有結果", { name: workItemQuery.name })
@@ -826,10 +826,10 @@ export function initWorkItemsPanel(): void {
             ? search
               ? t("找到 {n} 個工作項目", { n })
               : app.isDefaultFilter()
-                ? t("指派給你、還沒結束的工作項目（{n}）", { n })
+                ? t("{n} 個指派給你、還沒結束的工作項目", { n })
                 : n >= WORK_ITEM_LIMIT
-                  ? t("符合篩選條件的工作項目（只列最近更新的 {n} 個）", { n })
-                  : t("符合篩選條件的工作項目（{n}）", { n })
+                  ? t("{n} 個符合篩選條件的工作項目（只列最近更新的）", { n })
+                  : t("{n} 個符合篩選條件的工作項目", { n })
             : search
               ? t("找不到符合的工作項目")
               : app.isDefaultFilter()

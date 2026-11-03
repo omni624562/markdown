@@ -358,6 +358,7 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#seq++;
     this.#list.replaceChildren();
     this.#status.textContent = "";
+    this.#status.title = "";
   }
 
   /** 重新讀取；`quiet`：清單留著、不顯示「讀取中…」（背景讀完副本的更新時）。 */
@@ -365,7 +366,10 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#loaded = true;
     const seq = ++this.#seq;
     const search = this.#input.value.trim();
-    if (!quiet) this.#status.textContent = t("讀取中…");
+    if (!quiet) {
+      this.#status.textContent = t("讀取中…");
+      this.#status.title = "";
+    }
     try {
       const items = await this.#h.list(search, () => {
         // 背景讀完：搜尋文字沒變才重畫（變了的話新的讀取已經在跑）。
@@ -374,6 +378,8 @@ export class IssuesPanel<T extends IssueSummary> {
       if (seq !== this.#seq) return;
       this.#failed = false;
       this.#status.textContent = this.#h.status(items.length, search);
+      // 側邊欄窄時文字會截短，滑鼠移上去看完整的。
+      this.#status.title = this.#status.textContent;
       noteCopy(this.#status, items, () => {
         this.#h.forget?.();
         void this.refresh();
