@@ -437,6 +437,12 @@ export interface AdoWikiChange {
   commitId: string;
 }
 
+/** Wiki 每一頁的內文（找哪些頁面連到某一頁用）；`skipped` 是讀不到的頁面數。 */
+export interface AdoWikiSources {
+  pages: { path: string; text: string }[];
+  skipped: number;
+}
+
 /** 修改記錄裡改了的一個欄位；長文字欄位（說明等）只標出有修改，`old`、`new` 是 null。 */
 export interface AdoFieldChange {
   /** 欄位的參考名稱（例如 System.State）。 */
@@ -1135,11 +1141,23 @@ function bridge(core: TauriCore, event: TauriEvent) {
         mappedPath: w.mappedPath || "/",
         version: w.version ?? null,
       }),
+    /** Wiki 每一頁的內文（讀過、內容沒變的頁面不再讀）。 */
+    adoWikiSources: (w: AdoWiki) =>
+      core.invoke<AdoWikiSources>("ado_wiki_sources", {
+        projectId: w.projectId,
+        wikiId: w.id,
+        repositoryId: w.repositoryId || null,
+        mappedPath: w.mappedPath || "/",
+        version: w.version ?? null,
+      }),
     /** 建立新的 Wiki 頁面（已經有同名的頁面時失敗），回傳新頁面的版本。 */
     adoWikiCreate: (w: AdoWiki, path: string, content: string) =>
       core.invoke<string | null>("ado_wiki_create", { projectId: w.projectId, wikiId: w.id, path, content }),
     /** 刪除 Wiki 頁面（子頁面一起刪除）。 */
     adoWikiDelete: (w: AdoWiki, path: string) => core.invoke<void>("ado_wiki_delete", { projectId: w.projectId, wikiId: w.id, path }),
+    /** 搬移頁面或調整順序（`newPath` 和 `path` 一樣時只調整順序；`newOrder` 從 0 算起，是搬完之後的位置）。 */
+    adoWikiMove: (w: AdoWiki, path: string, newPath: string, newOrder?: number) =>
+      core.invoke<void>("ado_wiki_move", { projectId: w.projectId, wikiId: w.id, path, newPath, newOrder: newOrder ?? null }),
     /** Wiki 頁面目前的版本與最後修改的人（不讀內容）。 */
     adoWikiPageInfo: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
       core.invoke<WikiPageInfo>("ado_wiki_page_info", {

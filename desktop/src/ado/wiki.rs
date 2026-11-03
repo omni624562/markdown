@@ -1,6 +1,7 @@
 //! 專案 Wiki：頁面清單、讀取、存檔、新增、刪除與歷史。
 
 use super::*;
+use std::collections::BTreeMap;
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -72,19 +73,27 @@ pub struct WikiPage {
     pub(super) children: Vec<WikiPage>,
 }
 
+/// 頁面樹：同一層依伺服器上的順序（`order`，和網頁版的目錄一樣）排；沒有順序的排在後面。
 pub(super) fn page_tree(v: &Value) -> Vec<WikiPage> {
-    v.get("subPages")
+    let mut out: Vec<(u64, WikiPage)> = v
+        .get("subPages")
         .and_then(Value::as_array)
         .map_or(&[][..], Vec::as_slice)
         .iter()
         .filter_map(|p| {
-            Some(WikiPage {
-                path: str_of(p, "path")?.to_string(),
-                id: p.get("id").and_then(Value::as_u64),
-                children: page_tree(p),
-            })
+            Some((
+                p.get("order").and_then(Value::as_u64).unwrap_or(u64::MAX),
+                WikiPage {
+                    path: str_of(p, "path")?.to_string(),
+                    id: p.get("id").and_then(Value::as_u64),
+                    children: page_tree(p),
+                },
+            ))
         })
-        .collect()
+        .collect();
+    // 穩定排序：順序一樣（或都沒有）時保留伺服器給的先後。
+    out.sort_by_key(|(order, _)| *order);
+    out.into_iter().map(|(_, page)| page).collect()
 }
 
 /// Wiki 頁面 API 的路徑（`path` 是頁面路徑；程式碼 Wiki 要指定分支）。
@@ -272,6 +281,54 @@ pub async fn ado_wiki_delete(
             Ok(_) => Ok(()),
             res => read(res, &tr!("刪除 Wiki 頁面")).map(|_| ()),
         }
+    })
+    .await
+}
+
+/// 搬移頁面的 API 路徑。
+pub(super) fn wiki_moves_path(project_id: &str, wiki_id: &str) -> String {
+    format!(
+        "/{}/_apis/wiki/wikis/{}/pagemoves",
+        encode_segment(project_id),
+        encode_segment(wiki_id)
+    )
+}
+
+/// 搬移頁面的內容：`new_path` 和 `path` 一樣時只調整順序；`new_order` 是在上層底下排第幾個（從 0 算起），
+/// 沒給時由伺服器決定。
+pub(super) fn page_move_body(path: &str, new_path: &str, new_order: Option<u32>) -> Value {
+    let mut body = serde_json::json!({ "path": path, "newPath": new_path });
+    if let Some(order) = new_order {
+        body["newOrder"] = order.into();
+    }
+    body
+}
+
+/// 搬移 Wiki 頁面或調整順序（只限專案 Wiki；子頁面跟著搬）。和網頁版拖曳目錄一樣。
+#[tauri::command]
+pub async fn ado_wiki_move(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    new_path: String,
+    new_order: Option<u32>,
+) -> Result<(), String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = if path == new_path {
+            tr!("調整 Wiki 頁面順序")
+        } else {
+            tr!("搬移 Wiki 頁面")
+        };
+        post(
+            &a.url,
+            &pat,
+            &wiki_moves_path(&project_id, &wiki_id),
+            &page_move_body(&path, &new_path, new_order),
+            &what,
+        )
+        .map(|_| ())
     })
     .await
 }
@@ -640,6 +697,157 @@ pub async fn ado_wiki_recent(
                 })
             })
             .collect())
+    })
+    .await
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiSource {
+    /// 頁面路徑（例如 `/產品/安裝說明`）。
+    pub(super) path: String,
+    /// 頁面的 Markdown。
+    pub(super) text: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiSources {
+    pub(super) pages: Vec<WikiSource>,
+    /// 讀不到的頁面數（清單可能不完整）。
+    pub(super) skipped: usize,
+}
+
+/// 一次最多讀幾頁的內文。
+const SOURCE_LIMIT: usize = 3000;
+/// 讀過的頁面內文最多記幾頁（超過就全部忘掉重來）。
+const SOURCE_CACHE_LIMIT: usize = 6000;
+/// 讀整個 Wiki 的內文可能比較久。
+const SOURCES_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// 讀過的頁面內文，依內容的編號（Git 的 objectId：內容一樣編號就一樣，不會過期）。
+static SOURCE_CACHE: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
+
+/// 儲存庫檔案清單（`items?recursionLevel=Full`）裡的 Wiki 頁面：(頁面路徑, 檔案在儲存庫裡的路徑, 內容的編號)。
+pub(super) fn wiki_page_files(v: &Value, mapped_path: &str) -> Vec<(String, String, String)> {
+    values(v)
+        .iter()
+        .filter(|i| {
+            i.get("isFolder").and_then(Value::as_bool) != Some(true)
+                && str_of(i, "gitObjectType").is_none_or(|t| t == "blob")
+        })
+        .filter_map(|i| {
+            let git = str_of(i, "path")?;
+            let id = str_of(i, "objectId")?;
+            Some((
+                page_of_git_path(git, mapped_path)?,
+                git.to_string(),
+                id.to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// Wiki 每一頁的內文（找哪些頁面連到某一頁用）：先讀儲存庫的檔案清單，再讀每一頁（一次 6 頁）。
+/// 讀過、內容沒變的頁面不再讀；讀不到的頁面略過，數量放在 `skipped`。
+#[tauri::command]
+pub async fn ado_wiki_sources(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    repository_id: Option<String>,
+    mapped_path: Option<String>,
+    version: Option<String>,
+) -> Result<WikiSources, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(SOURCES_TIMEOUT, move || {
+        let what = tr!("讀取 Wiki 頁面的內容");
+        let repo = repository_id
+            .as_deref()
+            .filter(|r| !r.is_empty())
+            .unwrap_or(&wiki_id)
+            .to_string();
+        let mapped = mapped_path.unwrap_or_else(|| "/".into());
+        let base = format!(
+            "{}/{}/_apis/git/repositories/{}",
+            a.url,
+            encode_segment(&project_id),
+            encode_segment(&repo)
+        );
+        let version = version
+            .as_deref()
+            .filter(|v| !v.is_empty())
+            .map(|v| {
+                format!(
+                    "&versionDescriptor.version={}&versionDescriptor.versionType=branch",
+                    encode_segment(v)
+                )
+            })
+            .unwrap_or_default();
+        let list = format!(
+            "{base}/items?scopePath={}&recursionLevel=Full{version}&api-version={API_VERSION}",
+            encode_segment(&mapped)
+        );
+        let items = read(
+            crate::update::agent()
+                .get(&list)
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &what,
+        )?;
+        let mut files = wiki_page_files(&items, &mapped);
+        files.truncate(SOURCE_LIMIT);
+        let mut texts: Vec<Option<String>> = {
+            let cache = SOURCE_CACHE.lock();
+            files
+                .iter()
+                .map(|(_, _, id)| cache.get(id).cloned())
+                .collect()
+        };
+        let missing: Vec<usize> = (0..files.len()).filter(|&i| texts[i].is_none()).collect();
+        for chunk in missing.chunks(6) {
+            let got: Vec<Option<String>> = std::thread::scope(|s| {
+                let handles: Vec<_> = chunk
+                    .iter()
+                    .map(|&i| {
+                        let url = format!(
+                            "{base}/items?path={}&download=true{version}&api-version={API_VERSION}",
+                            encode_segment(&files[i].1)
+                        );
+                        let pat = &pat;
+                        s.spawn(move || super::files::fetch_text(&url, pat).ok())
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .map(|h| h.join().ok().flatten())
+                    .collect()
+            });
+            let mut cache = SOURCE_CACHE.lock();
+            if cache.len() > SOURCE_CACHE_LIMIT {
+                cache.clear();
+            }
+            for (&i, text) in chunk.iter().zip(got) {
+                if let Some(text) = &text {
+                    cache.insert(files[i].2.clone(), text.clone());
+                }
+                texts[i] = text;
+            }
+        }
+        let mut skipped = 0;
+        let pages = files
+            .into_iter()
+            .zip(texts)
+            .filter_map(|((path, _, _), text)| match text {
+                Some(text) => Some(WikiSource { path, text }),
+                None => {
+                    skipped += 1;
+                    None
+                }
+            })
+            .collect();
+        Ok(WikiSources { pages, skipped })
     })
     .await
 }
