@@ -3325,14 +3325,24 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .activity-cmds { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 .activity-cmds[hidden] { display: none; }
 /* Wiki 頁面捷徑：頁名第一個字的彩色方塊（顏色依頁面固定）；拖曳 Wiki 頁面時出現放置區。太多時可以捲動。 */
-.activity-wiki { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 2px; min-height: 0; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); overflow-y: auto; scrollbar-width: none; }
+/* 和圖示列一樣寬（開著的捷徑左邊那一條才不會被捲動範圍切掉）；分隔線維持和圖示一樣寬。 */
+.activity-wiki { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; align-self: stretch; gap: 2px; min-height: 0; margin-top: 6px; padding-top: 6px; background: linear-gradient(var(--border), var(--border)) center top / 40px 1px no-repeat; overflow-y: auto; scrollbar-width: none; }
 .activity-wiki[hidden] { display: none; }
 .activity-wiki .activity-btn { flex: none; }
 .wiki-badge { --hue: 210; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: light-dark(hsl(var(--hue) 70% 91%), hsl(var(--hue) 30% 27%)); color: light-dark(hsl(var(--hue) 60% 28%), hsl(var(--hue) 70% 84%)); font: 600 13px/1 var(--font-ui); letter-spacing: -0.02em; }
 /* 工作項目捷徑：底色與左邊一條是類型的顏色（Feature 紫、User Story 藍、Bug 紅…，設定裡可以改）。 */
 .wiki-badge.workitem-badge { border-left: 3px solid var(--kind); border-radius: 4px 7px 7px 4px; background: color-mix(in srgb, var(--kind) 16%, var(--bg)); color: color-mix(in srgb, var(--kind) 70%, var(--fg)); }
-.activity-wiki-page:hover .wiki-badge { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 25%, transparent); }
-.activity-wiki-page[aria-current="page"] .wiki-badge { box-shadow: 0 0 0 2px var(--accent); }
+.activity-wiki-page:hover:not([aria-current="page"]) .wiki-badge { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 25%, transparent); }
+/* 開著的捷徑：和上面開著的面板一樣，淡淡的強調色底、左邊一條強調色。 */
+.activity-wiki-page[aria-current="page"] { background: var(--accent-soft); }
+.activity-wiki-page[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  inset: 5px auto 5px -4px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
 /* 捷徑拖到圖示列外面：放開就移除。 */
 .activity-wiki-page.activity-removing .wiki-badge { opacity: 0.5; text-decoration: line-through; box-shadow: 0 0 0 2px var(--danger); }
 .activity-wiki-drop { display: grid; flex: none; place-items: center; width: 34px; height: 34px; margin: 3px 0; border: 1.5px dashed var(--border-strong); border-radius: 8px; color: var(--subtle); }
