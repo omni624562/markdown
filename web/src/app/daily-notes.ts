@@ -1,8 +1,9 @@
 /**
  * 每日筆記：「今天的筆記」打開開啟的資料夾裡的 `每日筆記/2026-11-02.md`，還沒有就用範本建立並存檔；
  * 「前一天／後一天的筆記」跳到最近一份有寫的筆記。資料夾與範本在設定 → 編輯 → 每日筆記。
+ * 範本裡單獨一行的 `{{工作項目}}` 換成指派給你、還沒結束的工作項目（待辦清單）；連上 Azure DevOps 時內建範本也有這一段。
  */
-import { DAILY_TEMPLATE, dailyName, dateOfDaily, folderSegments, neighborNote, withCursor } from "../daily-notes.ts";
+import { dailyName, dailyTemplate, dateOfDaily, fillWorkItems, folderSegments, hasWorkItemsVar, neighborNote, withCursor, workItemChecklist } from "../daily-notes.ts";
 import { type Entry, desktop } from "../desktop.ts";
 import { dayOf } from "../doc-stats-text.ts";
 import { t } from "../i18n.ts";
@@ -10,6 +11,7 @@ import { basename, dirname } from "../paths.ts";
 import { fillTemplate } from "../templates.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { insertAtCursor } from "./image-paste.ts";
 import { openPath } from "./workspace-ui.ts";
 
 /** 開著的資料夾；還沒開資料夾時提示一下，回傳 null。 */
@@ -54,7 +56,34 @@ async function notesDir(root: string, create: boolean): Promise<string | null> {
 function templateBody(): string {
   const name = app.settings.value.dailyTemplate;
   const custom = name ? app.settings.value.templates.find((x) => x.name === name) : undefined;
-  return custom?.body.trim() ? custom.body : DAILY_TEMPLATE;
+  return custom?.body.trim() ? custom.body : dailyTemplate(!!app.ado?.account);
+}
+
+/** 指派給我、還沒結束的工作項目（和工作項目面板的預設清單一樣）。 */
+function myWorkItems() {
+  return desktop!.adoWorkItems("", app.DEFAULT_WORK_ITEM_FILTER);
+}
+
+/** 範本裡的 `{{工作項目}}` 換成待辦清單；沒有連上時拿掉，讀不到時寫原因（筆記照樣建立）。 */
+async function withWorkItems(body: string): Promise<string> {
+  if (!hasWorkItemsVar(body)) return body;
+  if (!app.ado?.account) return fillWorkItems(body, null, "");
+  try {
+    return fillWorkItems(body, await myWorkItems(), t("（目前沒有指派給你、還沒結束的工作項目）"));
+  } catch (e) {
+    return fillWorkItems(body, [], t("（讀不到指派給你的工作項目：{error}）", { error: e instanceof Error ? e.message : String(e) }));
+  }
+}
+
+/** 在游標的位置插入指派給我、還沒結束的工作項目（待辦清單）。 */
+export async function insertMyWorkItems(): Promise<void> {
+  const items = await myWorkItems();
+  if (!items.length) {
+    toast(t("目前沒有指派給你、還沒結束的工作項目"));
+    return;
+  }
+  insertAtCursor(`${workItemChecklist(items)}\n`);
+  toast(t("已插入 {n} 個工作項目", { n: items.length }));
 }
 
 /** 打開今天的筆記；還沒有就用範本建立、存檔，游標放在第一個待辦。 */
@@ -65,6 +94,8 @@ export async function openDailyNote(now = new Date()): Promise<void> {
   const name = dailyName(now);
   const existing = named(await desktop!.listDir(dir), name);
   if (existing && !existing.isDir) return openPath(existing.path);
+  // 建立之前先讀工作項目（範本有用到時），打開時內容就是完整的。
+  const body = await withWorkItems(templateBody());
   const path = await desktop!.createEntry(dir, name, false);
   app.fileListCache = null;
   app.indexStale = true;
@@ -72,7 +103,7 @@ export async function openDailyNote(now = new Date()): Promise<void> {
   await openPath(path);
   // 確定開的是剛建立的空白檔案，才填入範本。
   if (app.cur.fileHandle?.path !== path || app.editor.text) return;
-  const { text, line, column } = withCursor(fillTemplate(templateBody(), now));
+  const { text, line, column } = withCursor(fillTemplate(body, now));
   app.editor.replaceAll(text, { isolate: true });
   await app.save(false);
   app.editor.reveal(line, column);

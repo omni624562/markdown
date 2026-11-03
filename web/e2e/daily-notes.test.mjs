@@ -137,3 +137,56 @@ test("設定：資料夾可以有好幾層，選自訂範本；寫錯的資料�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("今天的筆記：連上 Azure DevOps 時多一段指派給我、還沒結束的工作項目（待辦清單）；也可以插入到目前的文件", async () => {
+  const wi = (id, title, priority) => ({
+    id,
+    title,
+    priority,
+    state: "Active",
+    kind: "Task",
+    project: "產品",
+    assignedTo: "王小明",
+    changed: "2026-11-01T00:00:00Z",
+    webUrl: `https://ado.test/c/產品/_workitems/edit/${id}`,
+  });
+  const { page, context, errors } = await open({
+    desktop: {
+      startup_target: ROOT,
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      ado_work_items: [[wi(11, "寫測試", 2), wi(12, "修正登入", 1)]],
+      list_dir: { $by: "path", values: { "/notes": [dirEntry], [DIR]: [] } },
+      create_entry: { $by: "name", values: { [`${TODAY}.md`]: `${DIR}/${TODAY}.md` } },
+      reopen_file: file(`${TODAY}.md`),
+      save_file: { status: "saved", path: `${DIR}/${TODAY}.md`, name: `${TODAY}.md` },
+    },
+  });
+  await page.waitForSelector(".cm-content");
+  await runCommand(page, "今天的筆記");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "save_file"));
+  const all = await calls(page);
+  const filter = all.find((c) => c.cmd === "ado_work_items").args.filter;
+  assert.equal(filter.person, "@me");
+  assert.equal(filter.state, "open");
+  const saved = all.find((c) => c.cmd === "save_file").args.text;
+  assert.match(
+    saved,
+    /## 今天要做\n\n- \[ \] \n\n## 工作項目\n\n- \[ \] \[#12 修正登入\]\(https:\/\/ado\.test\/c\/產品\/_workitems\/edit\/12\)\n- \[ \] \[#11 寫測試\]\(https:\/\/ado\.test\/c\/產品\/_workitems\/edit\/11\)\n\n## 會議與討論/,
+  );
+  // 游標還是在「今天要做」：直接打字就是第一個待辦。
+  // （看存檔的內容：即時預覽重畫游標所在的那一行有時慢一點，畫面上的文字不一定是原始的 Markdown。）
+  await page.keyboard.insertText("開會");
+  await page.keyboard.press("Control+S");
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "save_file").length === 2);
+  assert.match((await calls(page)).filter((c) => c.cmd === "save_file")[1].args.text, /## 今天要做\n\n- \[ \] 開會\n/);
+  // 指令：插入到目前的文件（游標的位置）。
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await runCommand(page, "插入指派給我的工作項目");
+  await page.locator(".toast", { hasText: "已插入 2 個工作項目" }).waitFor();
+  const text = await page.evaluate(() => document.querySelector(".cm-content").textContent);
+  assert.equal((text.match(/#12 修正登入/g) ?? []).length, 2);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

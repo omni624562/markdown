@@ -16,7 +16,7 @@ export function inlineText(s: string): string {
     .replace(/([\\`*_[\]<>#|~])/g, "\\$1");
 }
 
-function dateTime(iso: string | null | undefined): string {
+export function dateTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -50,18 +50,23 @@ function commentHeading(author: string, created: string | null): string {
   return `### ${[name, dateTime(created)].filter(Boolean).join("・")}`;
 }
 
-/**
- * 相關工作項目的分組：上層、子項目、前置、後續、相關，其他依伺服器上的連結名稱。
- * 每一組裡最近更新的在前面（和工作項目清單的順序一樣；伺服器給的是連結建立的順序）。
- */
-function relationsMarkdown(list: AdoWorkItemRelation[]): string {
-  const labels: Record<string, string> = {
+/** 關聯種類的名稱（相關工作項目段落的分組標題；依這個順序排）。 */
+export function relationLabels(): Record<"parent" | "child" | "predecessor" | "successor" | "related", string> {
+  return {
     parent: t("上層"),
     child: t("子項目"),
     predecessor: t("前置項目"),
     successor: t("後續項目"),
     related: t("相關"),
   };
+}
+
+/**
+ * 相關工作項目的分組：上層、子項目、前置、後續、相關，其他依伺服器上的連結名稱。
+ * 每一組裡最近更新的在前面（和工作項目清單的順序一樣；伺服器給的是連結建立的順序）。
+ */
+function relationsMarkdown(list: AdoWorkItemRelation[]): string {
+  const labels: Record<string, string> = relationLabels();
   const groups = new Map<string, AdoWorkItemRelation[]>();
   for (const key of Object.keys(labels)) groups.set(labels[key], []);
   for (const r of list) {

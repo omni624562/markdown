@@ -18,6 +18,7 @@ import { issuesRepo, wikiPanel } from "./work-items-panel.ts";
 import { selectAll, indentMore, indentLess } from "@codemirror/commands";
 import { app } from "./context.ts";
 import { logError } from "../error-log.ts";
+import { insertMyWorkItems } from "./daily-notes.ts";
 
 
 /** 開啟衝突的檔案（磁碟上是都採用本機的內容），逐段和「都採用遠端」比較。 */
@@ -440,6 +441,14 @@ export function initGitActions(): void {
       icon: "square-kanban",
       when: () => !!desktop && !!app.ado?.account && app.cur.kind === "markdown" && app.view !== "preview",
       run: () => app.workItemLinkPicker.open(),
+    },
+    {
+      id: "insert-my-work-items",
+      title: t("插入指派給我的工作項目（待辦清單）"),
+      group: t("插入"),
+      icon: "list-checks",
+      when: () => !!desktop && !!app.ado?.account && app.cur.kind === "markdown" && app.view !== "preview",
+      run: () => insertMyWorkItems(),
     },
     {
       id: "insert-wiki-link",
