@@ -3356,18 +3356,23 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .activity-wiki[hidden] { display: none; }
 .activity-wiki .activity-btn { flex: none; }
 .wiki-badge { --hue: 210; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: light-dark(hsl(var(--hue) 70% 91%), hsl(var(--hue) 30% 27%)); color: light-dark(hsl(var(--hue) 60% 28%), hsl(var(--hue) 70% 84%)); font: 600 13px/1 var(--font-ui); letter-spacing: -0.02em; }
-/* 工作項目捷徑：底色與左邊一條是類型的顏色（Feature 紫、User Story 藍、Bug 紅…，設定裡可以改）。 */
-.wiki-badge.workitem-badge { border-left: 3px solid var(--kind); border-radius: 4px 7px 7px 4px; background: color-mix(in srgb, var(--kind) 16%, var(--bg)); color: color-mix(in srgb, var(--kind) 70%, var(--fg)); }
-.activity-wiki-page:hover:not([aria-current="page"]) .wiki-badge { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 25%, transparent); }
-/* 開著的捷徑：和上面開著的面板一樣，淡淡的強調色底、左邊一條強調色。 */
-.activity-wiki-page[aria-current="page"] { background: var(--accent-soft); }
-.activity-wiki-page[aria-current="page"]::before {
+/* 工作項目捷徑：整塊塗上類型的顏色（Feature 紫、User Story 藍、Bug 紅…，設定裡可以改），字是白色或深色（取對比高的）。不用左邊一條，免得看起來像「開著」。 */
+.wiki-badge.workitem-badge { background: var(--kind); color: var(--kind-ink, #fff); }
+.activity-wiki-page:hover .wiki-badge { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 25%, transparent); }
+/*
+ * 開著的捷徑（內容開在中間）：右下角一個小圓點。
+ * 左邊一條＋底色只給上面的面板圖示（側邊欄開著哪個面板），圖示列上同一時間只有一個。
+ */
+.activity-wiki-page[aria-current="page"]::after {
   content: "";
   position: absolute;
-  inset: 5px auto 5px -4px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
+  right: 5px;
+  bottom: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
 }
 /* 捷徑拖到圖示列外面：放開就移除。 */
 .activity-wiki-page.activity-removing .wiki-badge { opacity: 0.5; text-decoration: line-through; box-shadow: 0 0 0 2px var(--danger); }

@@ -77,12 +77,41 @@ export function darkVariant(hex: string): string {
   return toHex(h, s, Math.max(l, 0.62));
 }
 
-/** 產生 CSS：每種有顏色的類型一條規則，設定 `--kind`（`[data-wi-kind]` 的元素用它上色）。 */
+/** 深色字（印在淺的類型顏色上）。 */
+const DARK_INK = "#1f2328";
+
+/** sRGB 的相對亮度（WCAG 的算法）。 */
+function luminance(hex: string): number {
+  const n = Number.parseInt(hex.slice(1), 16);
+  const ch = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * ch((n >> 16) & 255) + 0.7152 * ch((n >> 8) & 255) + 0.0722 * ch(n & 255);
+}
+
+/** 印在這個顏色上的字：白字或深色字，取對比高的（自訂成很淺的顏色時字也看得清楚）。 */
+export function inkOn(hex: string): string {
+  const l = luminance(hex);
+  const white = 1.05 / (l + 0.05);
+  const dark = (l + 0.05) / (luminance(DARK_INK) + 0.05);
+  return white >= dark ? "#ffffff" : DARK_INK;
+}
+
+/**
+ * 產生 CSS：每種有顏色的類型一條規則，設定 `--kind`（`[data-wi-kind]` 的元素用它上色）
+ * 與 `--kind-ink`（整塊塗上類型顏色時，上面的字用的顏色）。
+ */
 export function kindColorCss(custom: Readonly<Record<string, string>>): string {
-  const rules = new Map<string, string>();
-  for (const [key, c] of DEFAULT_BY_KEY) rules.set(key, `light-dark(${c.light}, ${c.dark})`);
-  for (const [name, color] of Object.entries(custom)) rules.set(kindKey(name), `light-dark(${color}, ${darkVariant(color)})`);
-  return [...rules].map(([key, value]) => `:root [data-wi-kind="${cssString(key)}"] { --kind: ${value}; }`).join("\n");
+  const rules = new Map<string, { light: string; dark: string }>();
+  for (const [key, c] of DEFAULT_BY_KEY) rules.set(key, c);
+  for (const [name, color] of Object.entries(custom)) rules.set(kindKey(name), { light: color, dark: darkVariant(color) });
+  return [...rules]
+    .map(
+      ([key, c]) =>
+        `:root [data-wi-kind="${cssString(key)}"] { --kind: light-dark(${c.light}, ${c.dark}); --kind-ink: light-dark(${inkOn(c.light)}, ${inkOn(c.dark)}); }`,
+    )
+    .join("\n");
 }
 
 /** CSS 字串裡的跳脫（類型名稱可能有任何字元）。 */
