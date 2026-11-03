@@ -174,13 +174,17 @@ kbd {
 /* 拿掉系統標題列後，視窗靠頂端列拖曳；頂端列稍微高一點，比較好抓。 */
 .custom-titlebar { --topbar-h: 42px; }
 .custom-titlebar .topbar { user-select: none; }
-/* 圖示列一直顯示（窄螢幕除外），頂端的側邊欄按鈕和它對齊。 */
-.nav-toggle { border-right: 1px solid var(--topbar-border); }
-.topbar.with-sidebar .topbar-side { display: block; border-right: 1px solid var(--topbar-border); }
+/*
+ * 頂端列是完整的一條：裡面不畫直線（分隔線只在下面的面板之間）；側邊欄開著時，分頁從內文的左邊開始。
+ * 左右兩個側邊欄按鈕同一種樣子：開著時圖示顏色深一點，不加底色。
+ */
+.topbar.with-sidebar .topbar-side { display: block; }
 .workspace.narrow.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; margin-left: auto; align-items: center; padding: 0 8px 0 12px; }
 .top-actions .btn.icon-only { color: var(--chrome-icon); }
 .top-actions .btn.icon-only:hover { color: var(--fg); }
+.top-actions .btn.icon-only[aria-pressed="true"] { background: transparent; color: var(--fg); }
+.top-actions .btn.icon-only[aria-pressed="true"]:hover { background: var(--surface); }
 .segmented {
   display: inline-flex;
   gap: 2px;
