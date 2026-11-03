@@ -2,6 +2,8 @@
  * 每日筆記（不碰畫面，方便測試）：檔名是日期（`2026-11-02.md`），放在開啟的資料夾裡指定的子資料夾；
  * 前一天、後一天是找最近一份「有寫」的筆記（中間沒寫的日子跳過）。
  */
+import { workItemLink } from "./ado-text.ts";
+import type { AdoWorkItem } from "./desktop.ts";
 import { currentLang } from "./i18n.ts";
 import { dayOf } from "./doc-stats-text.ts";
 
@@ -56,14 +58,14 @@ export function neighborNote(names: readonly string[], from: string, step: -1 | 
   return best?.name ?? null;
 }
 
-/** 內建的每日筆記範本（變數的寫法同文件範本，見 templates.ts）。 */
+/** 內建的每日筆記範本（變數的寫法同文件範本，見 templates.ts）。`{{工作項目}}` 那一段只在連上 Azure DevOps 時加上。 */
 // i18n-ignore（範本內容）
 const ZH_DAILY = `# {{日期}}（星期{{星期}}）
 
 ## 今天要做
 
 - [ ]
-
+{{work}}
 ## 會議與討論
 
 ## 筆記
@@ -74,13 +76,51 @@ const EN_DAILY = `# {{date}} ({{weekday}})
 ## To Do
 
 - [ ]
-
+{{work}}
 ## Meetings
 
 ## Notes
 `;
 
-export const DAILY_TEMPLATE = currentLang() === "en" ? EN_DAILY : ZH_DAILY;
+// i18n-ignore（範本內容）
+const ZH_WORK = "\n## 工作項目\n\n{{工作項目}}\n";
+const EN_WORK = "\n## Work Items\n\n{{workitems}}\n";
+
+/** 內建的每日筆記範本；`withWorkItems`：連上 Azure DevOps 時多一段指派給你的工作項目。 */
+export function dailyTemplate(withWorkItems: boolean): string {
+  const en = currentLang() === "en";
+  return (en ? EN_DAILY : ZH_DAILY).replace("{{work}}", withWorkItems ? (en ? EN_WORK : ZH_WORK) : "");
+}
+
+/** 說明裡寫的變數名稱（兩種寫法都認得）。 */
+// i18n-ignore（範本變數的名稱）
+export const WORK_ITEMS_VAR = currentLang() === "en" ? "{{workitems}}" : "{{工作項目}}";
+
+/** 範本裡單獨一行的 `{{工作項目}}`（或 `{{workitems}}`）。 */
+const WORK_ITEMS_LINE = /^[ \t]*\{\{\s*(?:工作項目|workitems)\s*\}\}[ \t]*$/gm;
+
+/** 範本裡有沒有工作項目的變數（有才去讀，免得沒用到也要等伺服器）。 */
+export function hasWorkItemsVar(body: string): boolean {
+  WORK_ITEMS_LINE.lastIndex = 0;
+  return WORK_ITEMS_LINE.test(body);
+}
+
+/** 工作項目的待辦清單：優先順序高的在前，一樣時最近更新的在前；每一項是連到工作項目的連結。 */
+export function workItemChecklist(items: readonly AdoWorkItem[]): string {
+  const time = (w: AdoWorkItem) => (w.changed ? Date.parse(w.changed) || 0 : 0);
+  return [...items]
+    .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99) || time(b) - time(a))
+    .map((w) => `- [ ] ${workItemLink(w)}`)
+    .join("\n");
+}
+
+/**
+ * 把範本裡的 `{{工作項目}}` 換成待辦清單。`items` 是 null（沒有連上、讀不到）時拿掉那一行；
+ * 沒有工作項目時寫 `none`（例如「目前沒有指派給你的工作項目」）。
+ */
+export function fillWorkItems(body: string, items: readonly AdoWorkItem[] | null, none: string): string {
+  return body.replace(WORK_ITEMS_LINE, () => (items === null ? "" : items.length ? workItemChecklist(items) : none));
+}
 
 /**
  * 建立後游標的位置：第一個空的待辦（`- [ ]`）後面，直接打字就是今天的第一件事（行尾補一個空白）；
