@@ -17,7 +17,7 @@ import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWor
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
 import { kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
-import { fromStateChoice, stateChoice, stateLabel, stateOptions, type StateOption, workItemFilterKey } from "../work-item-filter.ts";
+import { fromStateChoice, type KindStates, stateChoice, stateLabel, stateOptions, type StateOption, statesFor, workItemFilterKey } from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
@@ -219,8 +219,11 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     ["created:", t("建立者是…")],
   ]);
   person.value = [personValue];
-  // 狀態：伺服器上實際的狀態（New、Active、Resolved…）；勾了所有還沒結束的就是「進行中」（見 work-item-filter.ts）。
+  // 狀態：選的專案、類型實際用得到的狀態（New、Active、Resolved…）；勾了所有還沒結束的就是「進行中」（見 work-item-filter.ts）。
   let states: StateOption[] = [];
+  /** 各專案、類型的狀態：篩選選項讀到的（前 20 個專案），與選了的專案另外讀到的。 */
+  let stateSets: KindStates[] = [];
+  const projectStateSets = new Map<string, KindStates[]>();
   const state = new MultiSelect({
     label: t("狀態"),
     all: t("全部狀態"),
@@ -238,11 +241,17 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     state.value = stateChoice(f, states);
   };
   setStates([]);
+  /** 依目前選的專案、類型重新列狀態。 */
+  const refreshStates = () => {
+    const extra = [...projectStateSets.values()].flat().filter((s) => !stateSets.some((o) => o.project === s.project && o.kind === s.kind));
+    setStates(statesFor([...stateSets, ...extra], f.projects, f.kinds));
+  };
   const kind = new MultiSelect({
     label: t("類型"),
     all: t("所有類型"),
     onChange: (v) => {
       f.kinds = v;
+      refreshStates();
       changed();
     },
   });
@@ -264,6 +273,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
       f.areas = f.areas.filter((a) => v.some((p) => a === p || a.startsWith(`${p}\\`)));
       area.value = f.areas;
       loadScope();
+      refreshStates();
       changed();
     },
   });
@@ -273,7 +283,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   area.hidden = !f.projects.length;
 
   /** 區域（選了專案時）與人名建議；同一個專案只讀一次。 */
-  const scopes = new Map<string, Promise<{ areas: string[]; people: string[] }>>();
+  const scopes = new Map<string, Promise<{ areas: string[]; people: string[]; stateSets?: KindStates[] }>>();
   const scopeOf = (key: string) => {
     let p = scopes.get(key);
     if (!p) {
@@ -295,6 +305,9 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
         area.setOptions(all.flatMap(({ areas }, i) => areas.map((a): [string, string] => [a, keys.length === 1 ? a.slice(keys[i].length + 1) : a])));
         const names = [...new Set(all.flatMap((s) => s.people))].sort((a, b) => a.localeCompare(b));
         people.replaceChildren(...names.map((n) => new Option(n)));
+        // 選的專案不在篩選選項讀到的前 20 個裡時，狀態從這裡補。
+        keys.forEach((k, i) => projectStateSets.set(k, all[i].stateSets ?? []));
+        if (keys.length) refreshStates();
       })
       .catch(() => {});
   };
@@ -305,9 +318,10 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     loadScope();
     void desktop
       .adoWorkItemFilters()
-      .then(({ projects, kinds, states: list }) => {
+      .then(({ projects, kinds, stateSets: sets }) => {
         kind.setOptions(pairs(kinds));
-        setStates(list ?? []);
+        stateSets = sets ?? [];
+        refreshStates();
         // 常用的專案（工作板、Wiki 旁的星號勾選）排在前面。
         project.setOptions(favoritesFirst(pairs(projects), favoriteProjects.load()));
       })
@@ -320,14 +334,15 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     person.value = ["assigned:@me"];
     name.hidden = true;
     name.value = "";
-    state.value = stateChoice(f, states);
     kind.value = [];
     project.value = [];
     area.value = [];
     loadScope();
+    refreshStates();
     changed();
   });
-  bar.append(queryOpen, queryNote, person.el, state.el, name, kind.el, project.el, area.el, people, reset);
+  // 人、專案在上排（區域、狀態都看選的專案），類型、狀態在下排。
+  bar.append(queryOpen, queryNote, person.el, project.el, name, kind.el, state.el, area.el, people, reset);
   updateBadge();
   setOpen(storage.load("workitem-filter-open") === "1");
   return { bar, button: group };

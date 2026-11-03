@@ -556,6 +556,30 @@ fn lists_states_for_the_filter_in_workflow_order() {
         .map(|s| s.name.as_str())
         .collect();
     assert_eq!(closed, ["Closed", "Done", "Removed"]);
+    assert_eq!(
+        merged.iter().map(|s| s.stage).collect::<Vec<_>>(),
+        [0, 0, 1, 1, 2, 3, 3, 4]
+    );
+}
+
+#[test]
+fn groups_states_by_project_and_kind() {
+    let types = json!({"value": [
+        {"name": "Task", "states": [{"name": "New", "category": "Proposed"}, {"name": "Done", "category": "Completed"}]},
+        {"name": "Test Case", "states": [{"name": "Design", "category": "Proposed"}]},
+        {"name": "Bug", "transitions": {"": [{"to": "Active"}], "Active": [{"to": "Closed"}]}},
+        {"name": "Empty"}
+    ]});
+    let sets = kind_states("Mgt", &types);
+    // 測試、程式碼檢閱等類型不列；沒有狀態的類型也不列。
+    let kinds: Vec<(&str, &str)> = sets
+        .iter()
+        .map(|s| (s.project.as_str(), s.kind.as_str()))
+        .collect();
+    assert_eq!(kinds, [("Mgt", "Task"), ("Mgt", "Bug")]);
+    let bug: Vec<&str> = sets[1].states.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(bug, ["Active", "Closed"]);
+    assert!(sets[0].states[1].closed);
 }
 
 #[test]

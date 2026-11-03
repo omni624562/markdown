@@ -8,6 +8,7 @@ import {
   stateChoice,
   stateLabel,
   stateOptions,
+  statesFor,
   workItemFilterKey,
 } from "./work-item-filter.ts";
 
@@ -64,4 +65,23 @@ test("離線副本的鍵：沒有指定狀態時和以前一樣（不含 states�
   );
   assert.equal(workItemFilterKey(parseWorkItemFilter('{"state":"open"}')), workItemFilterKey(f()));
   assert.match(workItemFilterKey(f({ state: "all", states: ["New"] })), /"states":\["New"\]/);
+});
+
+test("狀態只列選的專案、類型用得到的；同名只列一次，依流程的階段排", () => {
+  const st = (name: string, stage: number, closed = false) => ({ name, stage, closed });
+  const sets = [
+    { project: "A", kind: "Task", states: [st("New", 0), st("Active", 1), st("Closed", 3, true)] },
+    { project: "A", kind: "Bug", states: [st("New", 0), st("Resolved", 2), st("Closed", 3, true)] },
+    { project: "B", kind: "Task", states: [st("To Do", 0), st("Doing", 1), st("Done", 3, true)] },
+  ];
+  const names = (projects: string[], kinds: string[]) => statesFor(sets, projects, kinds).map((s) => s.name);
+  // 沒選專案、類型：全部，依階段排。
+  assert.deepEqual(names([], []), ["New", "To Do", "Active", "Doing", "Resolved", "Closed", "Done"]);
+  assert.deepEqual(names(["A"], []), ["New", "Active", "Resolved", "Closed"]);
+  assert.deepEqual(names(["A"], ["Task"]), ["New", "Active", "Closed"]);
+  assert.deepEqual(names([], ["Task"]), ["New", "To Do", "Active", "Doing", "Closed", "Done"]);
+  // 選的類型在這個專案裡沒有：列這個專案的全部狀態。
+  assert.deepEqual(names(["B"], ["Bug"]), ["To Do", "Doing", "Done"]);
+  // 選的專案還沒讀到：沒有狀態（選單改列「進行中」「已結束」）。
+  assert.deepEqual(names(["C"], []), []);
 });
