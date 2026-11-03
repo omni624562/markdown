@@ -11,6 +11,7 @@ import { icon } from "../ui/icons.ts";
 import { choose } from "../ui/choice.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { htmlToMarkdown } from "../html-paste.ts";
+import { pasteImagesInto } from "./work-item-attach.ts";
 import { type Iteration, type LongField, iterationGroups, longFields, lossyHtml, parseTags } from "../work-item-fields.ts";
 
 export interface WorkItemEditHooks {
@@ -26,9 +27,12 @@ export interface WorkItemEditHooks {
   iterations(): Promise<Iteration[]>;
   /** 登入的帳號名稱（指派給我、留言框的頭像用）。 */
   me(): string;
-  /** 工作項目的編號與類型（還沒讀到內容也知道）。 */
+  /** 加入附件（上傳後掛到工作項目上）；成功時回傳 true（之後會重新讀取、重畫）。 */
+  attach(files: File[]): Promise<boolean>;
+  /** 工作項目的編號、類型與專案（還沒讀到內容也知道）。 */
   id: number;
   kind: string;
+  project: string;
 }
 
 /** 已經讀到的清單（選單打開時直接用；還沒讀到時先顯示「讀取中…」）。 */
@@ -106,6 +110,7 @@ const loading = (): MenuEntry => ({ label: t("讀取中…"), icon: "loader", ru
 export function enhanceWorkItem(body: HTMLElement, h: WorkItemEditHooks, cache: { states: Loaded<string[]>; iterations: Loaded<Iteration[]> }): void {
   // 留言卡片每次重畫都是新的（上方的欄位區塊沒變時會沿用舊的），所以每次都補上編輯、刪除。
   manageComments(body, h);
+  attachmentsSection(body, h);
   const hero = body.querySelector<HTMLElement>(":scope > .ado-hero");
   if (!hero || hero.dataset.editable) return;
   hero.dataset.editable = "1";
@@ -286,6 +291,7 @@ function editableSection(sec: HTMLDetailsElement, f: LongField, h: WorkItemEditH
     }
     const textarea = document.createElement("textarea");
     textarea.className = "ado-edit-text";
+    pasteImagesInto(textarea, h.project);
     textarea.value = draft ?? markdown;
     textarea.setAttribute("aria-label", name);
     textarea.rows = Math.min(24, Math.max(6, textarea.value.split("\n").length + 2));
@@ -480,6 +486,7 @@ function composeComment(body: HTMLElement, h: WorkItemEditHooks): void {
   const main = document.createElement("div");
   main.className = "ado-compose-main";
   const textarea = document.createElement("textarea");
+  pasteImagesInto(textarea, h.project);
   textarea.rows = 1;
   textarea.placeholder = t("寫留言…（可以用 Markdown）");
   textarea.setAttribute("aria-label", t("留言"));
@@ -535,6 +542,41 @@ function composeComment(body: HTMLElement, h: WorkItemEditHooks): void {
       if (!textarea.value.trim()) open(false);
     }
   });
+}
+
+/** 附件段落：標題列的「加入附件…」（可以一次選好幾個），沒有附件時說明可以把檔案拖進來。 */
+function attachmentsSection(body: HTMLElement, h: WorkItemEditHooks): void {
+  const sec = body.querySelector<HTMLDetailsElement>('.ado-sec[data-kind="attachments"]');
+  const head = sec?.querySelector<HTMLElement>(":scope > .ado-sec-head");
+  const box = sec?.querySelector<HTMLElement>(":scope > .ado-sec-body");
+  if (!sec || !head || !box || head.querySelector(".ado-attach-add")) return;
+  if (!box.childElementCount) {
+    const empty = document.createElement("p");
+    empty.className = "ado-sec-empty";
+    empty.textContent = t("還沒有附件。把檔案拖到工作項目上，或按「加入附件…」。");
+    box.append(empty);
+  }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.hidden = true;
+  input.addEventListener("change", () => {
+    const files = [...(input.files ?? [])];
+    input.value = "";
+    if (files.length) void h.attach(files);
+  });
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "ado-sec-edit ado-attach-add";
+  add.title = t("上傳檔案成這個工作項目的附件（也可以把檔案拖到工作項目上）");
+  add.append(icon("paperclip"), t("加入附件…"));
+  add.addEventListener("click", (e) => {
+    // 按鈕在段落的標題列裡：不要順便收合段落。
+    e.preventDefault();
+    e.stopPropagation();
+    input.click();
+  });
+  head.append(add, input);
 }
 
 /** 同一個人（顯示名稱可能大小寫、空白不同）。 */

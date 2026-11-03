@@ -61,3 +61,11 @@ export function extLabel(name: string): string {
   const ext = dot > 0 ? name.slice(dot + 1).replace(/[^a-z0-9]/gi, "") : "";
   return (ext || "FILE").slice(0, 4).toUpperCase();
 }
+
+/** 貼上的圖片沒有檔名（或都叫 image.png）：加上時間，附件不會同名。 */
+export function pastedName(file: { name: string; type: string }, now = new Date()): string {
+  const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : `.${file.type.split("/")[1] || "png"}`;
+  const stem = !file.name || /^image\.\w+$/i.test(file.name) ? "image" : file.name.slice(0, file.name.lastIndexOf(".")) || "image";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${stem}-${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}${ext}`;
+}

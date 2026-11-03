@@ -1137,3 +1137,33 @@ fn backlog_query_and_iteration() {
     );
     assert_eq!(backlog_iteration_of(&Value::Null, "產品"), "產品");
 }
+
+#[test]
+fn attaches_uploaded_files_from_this_server_only() {
+    let change = WorkItemChange {
+        attachments: Some(vec![
+            "https://tfs.corp.com/tfs/DC/_apis/wit/attachments/1a2b?fileName=log.txt".into(),
+        ]),
+        ..Default::default()
+    };
+    assert!(check_attachments(&change, "https://tfs.corp.com/tfs/DC/").is_ok());
+    let ops = change_ops(&change, "me");
+    assert_eq!(ops.len(), 1);
+    assert_eq!(ops[0]["path"], "/relations/-");
+    assert_eq!(ops[0]["value"]["rel"], "AttachedFile");
+    // 別台伺服器、或不是附件的網址：不接受。
+    for url in [
+        "https://evil.example/tfs/DC/_apis/wit/attachments/1",
+        "https://tfs.corp.com/tfs/DC/_apis/git/repositories/x",
+        "https://tfs.corp.com/tfs/DCX/_apis/wit/attachments/1",
+    ] {
+        let bad = WorkItemChange {
+            attachments: Some(vec![url.into()]),
+            ..Default::default()
+        };
+        assert!(
+            check_attachments(&bad, "https://tfs.corp.com/tfs/DC").is_err(),
+            "{url}"
+        );
+    }
+}

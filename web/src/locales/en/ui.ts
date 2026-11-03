@@ -782,4 +782,13 @@ export const ui: Record<string, Translation> = {
   "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增":
     "Used when creating today's note; add your own with “⋯” → “Save Current Document as Template…”",
   "內建（今天要做、會議與討論、筆記）": "Built-in (To Do, Meetings, Notes)",
+  // 工作項目的附件
+  "放開以加入附件": "Drop to attach",
+  "檔案會上傳成這個工作項目的附件": "The files are uploaded as attachments of this work item",
+  "已加入 {n} 個附件": ["Added {n} attachment", "Added {n} attachments"],
+  "已加入附件「{name}」": "Attached “{name}”",
+  "「{name}」超過 60 MB，Azure DevOps 不接受這麼大的附件": "“{name}” is larger than 60 MB, which Azure DevOps doesn't accept as an attachment",
+  "還沒有附件。把檔案拖到工作項目上，或按「加入附件…」。": "No attachments yet. Drop files on the work item, or click “Attach Files…”.",
+  "上傳檔案成這個工作項目的附件（也可以把檔案拖到工作項目上）": "Upload files as attachments of this work item (you can also drop files on it)",
+  "加入附件…": "Attach Files…",
 };
