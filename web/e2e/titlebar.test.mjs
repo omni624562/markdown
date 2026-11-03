@@ -1,7 +1,8 @@
 /**
  * 頂端列（Windows 桌面版兼當標題列）：
  * - 側邊欄一路到頂：頂端列左邊那塊和圖示列、側邊欄同底色，邊線對齊；目前面板的標題列在頂端列那一列
- *   （是搬上去，不是多一份），分頁只在內文上方。檔案面板開著時，圖示列最上面的專案方塊藏起來。
+ *   （是搬上去，不是多一份），分頁只在內文上方。圖示列不放專案方塊（檔案面板的標題列已經有專案名稱），
+ *   換面板時圖示不會跳動。
  * - 右邊：側欄開關、⋯、視窗按鈕是同底色的一塊，和分頁分開；右側欄開著時和右側欄同寬、連成一欄。
  * - 左右兩個側邊欄按鈕開著時同一種樣子（沒有底色、顏色相同）。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
@@ -27,7 +28,7 @@ async function setup() {
   return opened;
 }
 
-test("側邊欄一路到頂：左上和側邊欄同底色、邊線對齊，面板標題在頂端列那一列，專案方塊不重複", async () => {
+test("側邊欄一路到頂：左上和側邊欄同底色、邊線對齊，面板標題在頂端列那一列，專案方塊不重複、換面板圖示不跳", async () => {
   const { page, context, errors } = await setup();
   const look = await page.evaluate(() => {
     const box = (sel) => document.querySelector(sel).getBoundingClientRect();
@@ -54,16 +55,23 @@ test("側邊欄一路到頂：左上和側邊欄同底色、邊線對齊，面�
   assert.ok(Math.abs(look.toggleRight - look.activityRight) < 1.5, "邊線和圖示列的對齊");
   assert.ok(look.head.top < look.topbar.bottom && look.head.bottom <= look.topbar.bottom + 1, "面板的標題列在頂端列那一列");
   assert.ok(look.tabsLeft >= look.sidebarRight - 1, "分頁只在內文上方");
-  assert.equal(look.projectShown, false, "檔案面板開著時，圖示列的專案方塊藏起來");
+  assert.equal(look.projectShown, false, "圖示列不放專案方塊");
 
-  // 換到其他面板：標題列換成那個面板的，專案方塊回來。
+  // 換到其他面板：標題列換成那個面板的，圖示列的圖示位置不變（不會一下有專案方塊、一下沒有）。
+  const iconTop = () => page.evaluate(() => document.querySelector("#side-tab-search").getBoundingClientRect().top);
+  const before = await iconTop();
   await page.click("#side-tab-search");
   const other = await page.evaluate(() => ({
     head: document.querySelector("#panel-search > .side-head").getBoundingClientRect().top,
     projectShown: !!document.querySelector("#activity-project").getClientRects().length,
   }));
   assert.ok(other.head < 1, "搜尋面板的標題列也在最上面");
-  assert.equal(other.projectShown, true, "不是檔案面板時，專案方塊照常顯示");
+  assert.equal(other.projectShown, false, "其他面板也不放專案方塊");
+  assert.equal(await iconTop(), before, "換面板時圖示不跳動");
+  // 收起側邊欄也一樣。
+  await page.click(".nav-toggle");
+  await page.waitForFunction(() => !document.querySelector(".topbar").classList.contains("with-sidebar"));
+  assert.equal(await iconTop(), before, "收起側邊欄時圖示不跳動");
   assert.deepEqual(errors, []);
   await context.close();
 });

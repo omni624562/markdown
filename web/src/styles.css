@@ -187,7 +187,7 @@ kbd {
 /*
  * 側邊欄一路到頂（寬視窗）：頂端列左邊那塊（圖示列與側邊欄的正上方）和下面的欄同底色、同一條邊線，
  * 目前面板的標題列（例如檔案面板的專案名稱與按鈕）疊在那塊上（position: fixed，是搬上去，不是多一份），
- * 分頁只在內文上方。檔案面板開著時，圖示列最上面的專案方塊藏起來（標題列已經有專案名稱）。
+ * 分頁只在內文上方。圖示列最上面不放專案方塊（檔案面板的標題列已經有專案名稱）。
  * 右邊的側欄開關、⋯、視窗按鈕也是同底色的一塊；右側欄開著時和右側欄同寬、連成一欄。
  */
 @media (min-width: 721px) {
@@ -207,7 +207,8 @@ kbd {
     height: var(--topbar-h);
   }
   .workspace:not(.narrow):not(.outline-hidden) #folder-branch { margin-top: 8px; }
-  .workspace:not(.narrow):not(.outline-hidden):has(#panel-files:not([hidden])) #activity-project { display: none; }
+  /* 專案名稱在檔案面板的標題列（側邊欄最上面），圖示列不再放專案方塊；只在某些面板藏起來的話，換面板時整排圖示會跳一格。 */
+  .activity-bar .activity-project { display: none; }
   .tab-bar { margin-right: 12px; }
   .top-actions { position: relative; align-self: stretch; padding: 0 4px 0 8px; border-left: 1px solid var(--border); background: var(--surface); }
   .top-actions .btn.icon-only:hover, .top-actions .btn.icon-only[aria-pressed="true"]:hover { border-color: transparent; background: var(--active-line); }
