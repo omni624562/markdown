@@ -1552,7 +1552,8 @@ function renderEmptyState(text: string): void {
     { icon: "file-text", label: t("開啟檔案…"), keys: keysOf("open"), run: run("open") },
   ];
   if (desktop) actions.push({ icon: "folder-open", label: t("開啟資料夾…"), run: run("open-folder") });
-  if (cur.kind === "markdown") actions.push({ icon: "layout-template", label: t("從範本新增…"), run: run("new-from-template") });
+  // 範本一律開成新的 Markdown 分頁，和目前空白分頁是什麼類型無關。
+  actions.push({ icon: "layout-template", label: t("從範本新增…"), run: run("new-from-template") });
   const page = buildStartPage({
     hint,
     actions,

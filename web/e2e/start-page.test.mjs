@@ -52,3 +52,18 @@ test("原始碼檢視（不是即時預覽）：起始頁上方不會有目前�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("起始頁的「從範本新增…」不管空白分頁是什麼類型都有", async () => {
+  const { page, context, errors } = await open({ desktop: {} });
+  const page_ = page.locator(".empty-state.in-editor .start-page");
+  await page_.waitFor();
+  assert.ok(await page_.getByRole("button", { name: "從範本新增…" }).isVisible(), "Markdown 的空白分頁有");
+  // 空白分頁換成別的類型（例如 JSON）：起始頁還在，也還有「從範本新增…」。
+  await page.click("#doc-kind");
+  await page.locator("#doc-kind-popover button", { hasText: "JSON" }).click();
+  assert.equal(await page.textContent("#doc-kind"), "JSON");
+  await page_.waitFor();
+  await page_.getByRole("button", { name: "從範本新增…" }).waitFor();
+  assert.deepEqual(errors, []);
+  await context.close();
+});
