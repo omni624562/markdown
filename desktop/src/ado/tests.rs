@@ -426,6 +426,10 @@ fn lists_wikis_and_page_trees() {
         json!({"path": "/A", "newPath": "/B/A"})
     );
     assert_eq!(
+        wiki_page_by_id_path("p 1", "w1", 53081),
+        "/p%201/_apis/wiki/wikis/w1/pages/53081"
+    );
+    assert_eq!(
         wiki_pages_path("p1", "w1", "/A B", Some("main")),
         "/p1/_apis/wiki/wikis/w1/pages?path=%2FA%20B&versionDescriptor.version=main"
     );

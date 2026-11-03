@@ -150,3 +150,30 @@ test("Wiki 儲存庫裡的檔案開成唯讀分頁；找不到的頁面只提示
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("網址只寫頁面編號、頁面樹裡又沒有編號（有些伺服器不回傳）：問伺服器那一頁在哪裡，在 oMarker 裡開", async () => {
+  // 頁面樹沒有編號。
+  const strip = (list) => list.map(({ id: _id, children, ...p }) => ({ ...p, children: strip(children) }));
+  const START = "# 從這裡開始\n\n[返回 COMET](https://ado.test/c/Mgt/_wiki/wikis/Mgt.wiki/53059)";
+  const { page: p, context, errors } = await open({
+    desktop: {
+      ...desktop,
+      ado_wiki_pages: [strip(PAGES)],
+      ado_wiki_page: {
+        $by: "path",
+        values: { ...desktop.ado_wiki_page.values, "/ITA專區/COMET/START-HERE-illustrated": page(START) },
+      },
+      ado_wiki_page_path: "/ITA專區/COMET",
+    },
+  });
+  await openComet(p);
+  await clickLink(p, "開始");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "從這裡開始");
+  await clickLink(p, "返回 COMET");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "COMET");
+  const asked = (await calls(p)).find((c) => c.cmd === "ado_wiki_page_path").args;
+  assert.deepEqual(asked, { projectId: "p1", wikiId: "w1", pageId: 53059 });
+  assert.deepEqual(await externals(p), []);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

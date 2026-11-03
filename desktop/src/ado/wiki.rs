@@ -333,6 +333,38 @@ pub async fn ado_wiki_move(
     .await
 }
 
+/// 依頁面編號讀頁面的 API 路徑（瀏覽器網址列上的數字，例如 `…/_wiki/wikis/產品.wiki/53081`）。
+pub(super) fn wiki_page_by_id_path(project_id: &str, wiki_id: &str, page_id: u64) -> String {
+    format!(
+        "/{}/_apis/wiki/wikis/{}/pages/{page_id}",
+        encode_segment(project_id),
+        encode_segment(wiki_id)
+    )
+}
+
+/// 頁面編號對應的頁面路徑：連結只寫了編號（`…/wikis/產品.wiki/53081`），頁面樹裡又沒有編號時用。
+/// 依編號讀頁面的 API 是 5.1 才有：依序試幾個版本，伺服器太舊或找不到這一頁時回傳 None。
+#[tauri::command]
+pub async fn ado_wiki_page_path(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    page_id: u64,
+) -> Result<Option<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_page_by_id_path(&project_id, &wiki_id, page_id);
+        let what = tr!("讀取 Wiki 頁面");
+        // 讀不到（版本不支援、沒有這一頁）就換下一個版本；都不行時交給呼叫的人用瀏覽器開。
+        Ok(["5.1", "6.0", "5.1-preview.1"].iter().find_map(|version| {
+            get_version(&a.url, &pat, &api, Some(version), &what)
+                .ok()
+                .and_then(|v| str_of(&v, "path").map(str::to_string))
+        }))
+    })
+    .await
+}
+
 /// 一個 Wiki 頁面的內容（Markdown）。
 #[tauri::command]
 pub async fn ado_wiki_page(
