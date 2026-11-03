@@ -60,7 +60,7 @@ test("依上層項目分組：組裡補上不在清單上的子項目，數量�
   assert.equal(req.filter.state, "all");
   assert.deepEqual(req.filter.projects, ["產品"]);
   // 清單本身的數量不變（標題寫的是清單上的個數）。
-  assert.match(await page.textContent("#workitems-host .workitems-status"), /符合篩選條件的工作項目（3）/);
+  assert.match(await page.textContent("#workitems-host .workitems-status"), /3 個符合篩選條件的工作項目/);
   assert.deepEqual(errors, []);
   await context.close();
 });
