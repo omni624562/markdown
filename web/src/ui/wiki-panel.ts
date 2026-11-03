@@ -54,6 +54,11 @@ export interface WikiPanelHooks<W extends WikiInfo> {
    * 失敗時丟出錯誤（面板放回原位）。沒給，或 `canCreate` 是 false 的 Wiki（例如程式碼 Wiki）不能排序。
    */
   reorder?(wiki: W, path: string, index: number): Promise<void>;
+  /**
+   * 改名或搬移（右鍵選單「改名或搬移…」；拖曳到別的頁面中間＝搬進去當子頁面、拖到別層的前後＝搬到那一層）。
+   * `to` 是拖曳時放下的位置（上層頁面，null 是最上層；在那一層排第幾個）。
+   */
+  move?(wiki: W, path: string, to?: { parent: string | null; index: number }): void;
   /** 釘選放在別的地方（例如左側圖示列）：給了就用它，面板上不列「已釘選」。 */
   pins?: WikiPins<W>;
   /** 拖曳頁面時另外帶的資料（型別 → 內容），例如拖到圖示列變成捷徑。 */
@@ -266,6 +271,14 @@ export class WikiPanel<W extends WikiInfo> {
         },
       },
       {
+        label: t("改名或搬移…"),
+        icon: "text-cursor-input",
+        when: () => !!this.#menuPath && this.#canMove(),
+        run: () => {
+          if (this.#wiki && this.#menuPath) this.#h.move?.(this.#wiki, this.#menuPath);
+        },
+      },
+      {
         label: t("往上移"),
         icon: "arrow-up",
         when: () => !!this.#menuPath && this.#neighbor(this.#menuPath, -1) !== null,
@@ -342,7 +355,7 @@ export class WikiPanel<W extends WikiInfo> {
       e.preventDefault();
       e.dataTransfer!.dropEffect = "move";
       this.#clearDrop(at.row);
-      at.row.dataset.drop = at.after ? "after" : "before";
+      at.row.dataset.drop = at.zone;
     });
     this.#list.addEventListener("dragleave", (e) => {
       if (!this.#list.contains(e.relatedTarget as Node)) this.#clearDrop();
@@ -352,9 +365,11 @@ export class WikiPanel<W extends WikiInfo> {
       const path = this.#dragPath;
       this.#dragPath = null;
       this.#clearDrop();
-      if (!at || !path) return;
+      if (!at || !path || !this.#wiki) return;
       e.preventDefault();
-      void this.#reorder(path, at.index);
+      // 同一層：直接調整順序；搬到別層（或搬進去當子頁面）：開改名或搬移的對話框確認。
+      if (at.same) void this.#reorder(path, at.index);
+      else this.#h.move?.(this.#wiki, path, { parent: at.parent, index: at.index });
     });
   }
 
@@ -843,6 +858,11 @@ export class WikiPanel<W extends WikiInfo> {
   }
 
   /** 可以調整順序：專案 Wiki、顯示樹狀目錄時（搜尋結果是平的清單，不能排）。 */
+  /** 可以改名或搬移：和新增頁面一樣只限專案 Wiki。 */
+  #canMove(): boolean {
+    return !!this.#h.move && this.#canCreate();
+  }
+
   #canReorder(): boolean {
     return !!this.#wiki && !!this.#h.reorder && (this.#h.canCreate?.(this.#wiki) ?? true) && !this.#input.value.trim();
   }
@@ -865,19 +885,37 @@ export class WikiPanel<W extends WikiInfo> {
   }
 
   /**
-   * 拖曳中的頁面放在哪一列的前面或後面：只限同一層，位置會變的才算。
-   * 展開著的頁面下半部不能放（線會畫在它和子頁面之間，看起來像放進去當子頁面）。
+   * 拖曳中的頁面放在哪裡：一列的上面三成是前面、下面三成是後面、中間是搬進去當子頁面
+   * （展開著的頁面下半部也是搬進去，線畫在它和子頁面之間會看起來像放進去）。
+   * 同一層的前後只是調整順序（`same`）；別層的前後、搬進去要能搬移才行。自己和底下的子頁面不能放。
    */
-  #dropAt(e: DragEvent): { row: HTMLElement; index: number; after: boolean } | null {
+  #dropAt(e: DragEvent): { row: HTMLElement; zone: "before" | "after" | "into"; parent: string | null; index: number; same: boolean } | null {
     const drag = this.#dragPath;
     const row = (e.target as HTMLElement).closest<HTMLElement>(".wiki-row");
     const path = row?.querySelector<HTMLElement>(".wiki-page")?.dataset.path;
-    if (!drag || !row || !path || parentOf(path) !== parentOf(drag)) return null;
+    if (!drag || !row || !path || path === drag || path.startsWith(`${drag}/`)) return null;
     const r = row.getBoundingClientRect();
-    const after = e.clientY > r.top + r.height / 2;
-    if (after && row.getAttribute("aria-expanded") === "true") return null;
-    const index = dropIndex(this.#pages, drag, path, after);
-    return index === null ? null : { row, index, after };
+    const y = (e.clientY - r.top) / r.height;
+    const canMove = this.#canMove();
+    let zone: "before" | "after" | "into" = y < 0.3 ? "before" : y > 0.7 ? "after" : "into";
+    if (zone === "into" && !canMove) zone = y < 0.5 ? "before" : "after";
+    if (zone === "after" && row.getAttribute("aria-expanded") === "true") {
+      if (!canMove) return null;
+      zone = "into";
+    }
+    if (zone === "into") {
+      // 已經是它的子頁面：不用搬。
+      if (parentOf(drag) === path) return null;
+      return { row, zone, parent: path, index: this.#find(path)?.children.length ?? 0, same: false };
+    }
+    if (parentOf(path) === parentOf(drag)) {
+      const index = dropIndex(this.#pages, drag, path, zone === "after");
+      return index === null ? null : { row, zone, parent: parentOf(path) || null, index, same: true };
+    }
+    if (!canMove) return null;
+    const at = siblingsOf(this.#pages, path)?.findIndex((p) => p.path === path) ?? -1;
+    if (at < 0) return null;
+    return { row, zone, parent: parentOf(path) || null, index: zone === "after" ? at + 1 : at, same: false };
   }
 
   /** 清掉放下位置的線（`keep` 那一列留著）。 */

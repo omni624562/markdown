@@ -71,7 +71,7 @@ test("右鍵選單往上移／往下移、Alt+↑／↓：畫面先排好，再�
   await context.close();
 });
 
-test("拖曳到同一層的別的位置；不同層不能放", async () => {
+test("拖曳到同一層的別的位置；拖到別層先開對話框確認", async () => {
   const { page: p, context, errors } = await wikiPanel({ ado_wikis: [[WIKI]], ado_wiki_move: null });
   // 展開 /B。
   await p.locator('#wiki-host .wiki-row:has(.wiki-page[data-path="/B"]) .wiki-toggle').click();
@@ -82,8 +82,12 @@ test("拖曳到同一層的別的位置；不同層不能放", async () => {
   assert.deepEqual(await order(p), ["/A", "/B", "/B/3", "/B/1", "/B/2", "/C"]);
   await p.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_wiki_move"));
   assert.deepEqual((await moves(p)).map((m) => [m.path, m.newOrder]), [["/B/3", 0]]);
-  // 拖到別的上層底下（/A 是最上層）：不動。
+  // 拖到別層（/A 是最上層）：開「改名或搬移」的對話框確認（放在最上層）；取消就不動。
   await p.locator('#wiki-host .wiki-page[data-path="/B/1"]').dragTo(row("/A"), { targetPosition: { x: 40, y: 3 } });
+  const dialog = p.locator("dialog.wiki-move[open]");
+  await dialog.waitFor();
+  assert.equal(await dialog.locator("select").inputValue(), "", "放在最上層");
+  await dialog.getByRole("button", { name: "取消" }).click();
   assert.deepEqual(await order(p), ["/A", "/B", "/B/3", "/B/1", "/B/2", "/C"]);
   assert.equal((await moves(p)).length, 1);
   // 最上層：/A 拖到 /C 的下半部 → 排最後。

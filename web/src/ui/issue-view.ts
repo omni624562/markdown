@@ -53,6 +53,8 @@ export interface IssueSource {
   remove?(): void;
   /** 「哪些頁面連到這一頁」（Wiki 頁面）。 */
   backlinks?(): void;
+  /** 「改名或搬移」（Wiki 頁面；不能搬的不給）。 */
+  move?(): void;
   /** 「放到左側圖示列」：有沒有放、放上去或拿掉（不能放的不給）。 */
   shortcut?: { has(): boolean; toggle(): void };
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
@@ -262,6 +264,12 @@ export class IssueView {
         run: () => {
           if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
         },
+      },
+      {
+        label: t("改名或搬移…"),
+        icon: "text-cursor-input",
+        when: () => !!this.#source?.move,
+        run: () => this.#source?.move?.(),
       },
       {
         label: t("哪些頁面連到這一頁…"),
