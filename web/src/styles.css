@@ -627,8 +627,12 @@ kbd {
 .editor-pane { position: relative; }
 .empty-state.in-editor { pointer-events: none; }
 .empty-state.in-editor .start-page { pointer-events: auto; }
-/* 起始頁顯示時，編輯區的灰色提示（「開始寫 Markdown…」）收起來，只留一個起點。 */
+/*
+ * 起始頁顯示時，編輯區的灰色提示（「開始寫 Markdown…」）收起來，只留一個起點；
+ * 行號（空白文件的「1」）也藏起來，但保留寬度，開始打字時內容不會跳動。
+ */
 .editor-pane:has(> .empty-state.in-editor:not([hidden])) .cm-placeholder { display: none; }
+.editor-pane:has(> .empty-state.in-editor:not([hidden])) .cm-gutters { visibility: hidden; }
 
 /* ---- 起始頁：左欄「開始」「連線」，右欄最近開啟，下方小提示（ui/start-page.ts） ---- */
 .start-page { width: min(800px, 100%); color: var(--fg); font-family: var(--font-ui); text-align: left; }
