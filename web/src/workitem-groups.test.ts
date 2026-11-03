@@ -32,7 +32,7 @@ test("Feature → Story → Task：每一項只出現一次，在它的上層底
   assert.deepEqual(rest, []);
 });
 
-test("往上一路到最上層（Epic）；順序照清單上第一次出現的位置", () => {
+test("往上一路到最上層（Epic）；每一層依編號由小到大，不管清單的順序", () => {
   const items = [task(3), task(1), task(2)];
   const parentOf = new Map<number, number | null>([
     [1, 10],
@@ -51,7 +51,15 @@ test("往上一路到最上層（Epic）；順序照清單上第一次出現的�
     [200, feature(200)],
     [1000, epic(1000)],
   ]);
-  assert.equal(draw(parentTree(items, parentOf, parents).roots), "~1000(~200(~20(3 2)) ~100(~10(1)))");
+  assert.equal(draw(parentTree(items, parentOf, parents).roots), "~1000(~100(~10(1)) ~200(~20(2 3)))");
+});
+
+test("同一個 Story 的 Task 依編號由小到大（清單是最近更新的在前面）", () => {
+  const items = [task(1940132), task(1940131), task(1940130), task(1940129)];
+  const parentOf = new Map<number, number | null>(items.map((t) => [t.id, 1940123]));
+  parentOf.set(1940123, null);
+  const { roots } = parentTree(items, parentOf, new Map([[1940123, story(1940123)]]));
+  assert.equal(draw(roots), "~1940123(1940129 1940130 1940131 1940132)");
 });
 
 test("沒有上層也沒有子項目的放在最後一組；讀不到的上層當成沒有上層；上層繞成圈不會當掉", () => {

@@ -21,7 +21,7 @@ export interface TreeNode<T> {
  * 依上層項目排成樹。`items` 是清單上的項目（順序照清單：最近更新的在前面）；
  * `parentOf` 是每個項目的上層編號（清單上的與讀到的上層都要有，沒有上層是 null）；
  * `parents` 是讀到的上層項目（不在清單上的上層用）。
- * 子項目與最上層的順序照清單上第一次出現（自己或底下的項目）的位置。
+ * 每一層（子項目與最上層）都依編號由小到大排（和建立的先後一樣，Task 1、2、3 依序往下）。
  * 沒有上層、底下也沒有項目的放在 `rest`（「沒有上層項目」那一組）。讀不到的上層就當成沒有上層。
  */
 export function parentTree<T extends GroupItem>(
@@ -60,12 +60,18 @@ export function parentTree<T extends GroupItem>(
       node = parent;
     }
   }
+  const byId = (a: TreeNode<T>, b: TreeNode<T>) => a.item.id - b.item.id;
+  const sort = (list: TreeNode<T>[]) => {
+    list.sort(byId);
+    for (const n of list) sort(n.children);
+  };
   const rest: T[] = [];
   const tree: TreeNode<T>[] = [];
   for (const r of roots) {
     if (r.children.length) tree.push(r);
     else rest.push(r.item);
   }
+  sort(tree);
   return { roots: tree, rest };
 }
 
