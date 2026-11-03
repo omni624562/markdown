@@ -101,7 +101,8 @@ test("拖曳到同一層的別的位置；拖到別層先開對話框確認", as
 });
 
 test("伺服器調整失敗：放回原位並顯示錯誤；程式碼 Wiki 不能排", async () => {
-  const { page: p, context } = await wikiPanel({ ado_wikis: [[WIKI]], ado_wiki_move: { $delay: 100, $error: "權限不足" } });
+  // 伺服器慢一點才回失敗，才看得到「先排好」（太短的話，CI 比較慢的機器上還沒讀到就已經放回去了）。
+  const { page: p, context } = await wikiPanel({ ado_wikis: [[WIKI]], ado_wiki_move: { $delay: 1500, $error: "權限不足" } });
   const menu = await menuFor(p, "/C");
   await menu.getByRole("menuitem", { name: "往上移" }).click();
   assert.deepEqual(await order(p), ["/A", "/C", "/B"], "先排好");
