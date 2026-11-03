@@ -8,7 +8,7 @@
  *   node scripts/version.mjs check [基準分支]    檢查版本號一致；有改到程式時，PR 要新增一個
  *                                               changes/*.md 片段，而且不能自己改版本號（CI 用）
  *   node scripts/version.mjs release            依 changes/ 的片段升版、寫進 CHANGELOG.md、刪掉片段
- *                                               （合併到 main 後由 CI 執行）；沒有片段時不做事
+ *                                               （發佈時由 CI 執行）；沒有片段時不做事
  *   node scripts/version.mjs bump <major|minor|patch|x.y.z>
  *                                               直接改版本號（一般不需要，release 會改）
  *   node scripts/version.mjs notes [版本]        印出 CHANGELOG.md 中這一版的說明（發佈用）
@@ -223,7 +223,7 @@ function check(base) {
   const app = changed.filter((f) => APP_PATHS.test(f));
   const fragments = changed.filter((f) => f.startsWith(`${CHANGES_DIR}/`) && f.endsWith(".md") && !/readme\.md$/i.test(f));
   const problems = [];
-  // 每個片段都要看得懂（合併後 release 才不會失敗）。
+  // 每個片段都要看得懂（發佈時 release 才不會失敗）。
   for (const f of fragments) {
     try {
       parseFragment(read(f), f);
@@ -234,7 +234,7 @@ function check(base) {
   const baseToml = execFileSync("git", ["show", `${base}:desktop/Cargo.toml`], { cwd: ROOT, encoding: "utf8" });
   const baseVersion = SOURCES[0][1].exec(baseToml)[1];
   if (version !== baseVersion) {
-    problems.push(`不要自己改版本號（${baseVersion} → ${version}）：合併到 main 後 CI 會依 ${CHANGES_DIR}/ 的片段自動升版。`);
+    problems.push(`不要自己改版本號（${baseVersion} → ${version}）：發佈時 CI 會依 ${CHANGES_DIR}/ 累積的片段升版。`);
   }
   if (app.length && !fragments.length) {
     problems.push(
@@ -246,7 +246,7 @@ function check(base) {
     for (const p of problems) console.error(`✗ ${p}`);
     process.exit(1);
   }
-  console.log(app.length || fragments.length ? `✓ ${fragments.length} 個改動片段，合併後自動升版。` : `版本號 ${version}；這次沒有改到程式。`);
+  console.log(app.length || fragments.length ? `✓ ${fragments.length} 個改動片段，下次發佈時升版。` : `版本號 ${version}；這次沒有改到程式。`);
 }
 
 const [cmd, arg] = process.argv.slice(2);
