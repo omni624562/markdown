@@ -390,8 +390,8 @@ function moreChildren(items: (AdoWorkItem & IssueSummary)[]): (AdoWorkItem & Iss
       out.push(w);
     }
   }
-  // 清單是最近更新的在前面：補上的也照更新時間排。
-  return out.sort((a, b) => (b.changed ?? "").localeCompare(a.changed ?? ""));
+  // 樹裡依編號排，這裡不用排。
+  return out;
 }
 
 /** 還沒讀過上層的項目在背景讀（一次讀一批），讀到後重畫；上層的上層也這樣一層一層往上讀。 */
