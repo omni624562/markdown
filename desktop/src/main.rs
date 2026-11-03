@@ -392,6 +392,7 @@ fn main() {
             ado::ado_wiki_history,
             ado::ado_wiki_create,
             ado::ado_wiki_delete,
+            ado::ado_wiki_move,
             ado::ado_wiki_attach,
             ado::ado_wiki_image,
             pdf::pick_pdf_path,

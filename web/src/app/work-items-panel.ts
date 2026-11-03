@@ -833,6 +833,16 @@ export function initWorkItemsPanel(): void {
         link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
         create: (wiki, parent) => void app.createWikiPage(wiki, parent).catch(app.reportError),
         canCreate: (wiki) => !wiki.code,
+        async reorder(wiki, path, index) {
+          try {
+            await desktop!.adoWikiMove(wiki, path, path, index);
+          } catch (e) {
+            app.reportError(e);
+            throw e;
+          }
+          // 下次讀頁面樹時向伺服器讀新的順序。
+          forgetListCopies("wiki");
+        },
         // 釘選＝放到左側圖示列；拖曳頁面到圖示列也可以。
         pins: {
           has: (wiki, path) => barShortcuts.some((s) => !isWorkItemShortcut(s) && s.wiki === wiki.id && s.path === path),
