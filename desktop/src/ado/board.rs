@@ -187,6 +187,8 @@ pub struct TeamMember {
     pub(super) name: String,
     /// 帳號（`網域\帳號` 或信箱）：指派時送這個。
     pub(super) unique: String,
+    /// 身分的編號：留言裡 @ 人要用這個，對方才會收到通知（舊版伺服器沒給時是空字串）。
+    pub(super) id: String,
 }
 
 /// 團隊的成員（依名稱排）。
@@ -213,6 +215,100 @@ pub async fn ado_team_members(
     .await
 }
 
+/// 專案預設團隊的成員（留言 @ 人時先列出這些人）。
+#[tauri::command]
+pub async fn ado_project_members(
+    app: AppHandle,
+    project: String,
+) -> Result<Vec<TeamMember>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("讀取團隊成員");
+        let info = get(
+            &a.url,
+            &pat,
+            &format!("/_apis/projects/{}", encode_segment(&project)),
+            &what,
+        )?;
+        let Some(team) = info.get("defaultTeam").and_then(|t| str_of(t, "id")) else {
+            return Ok(vec![]);
+        };
+        let path = format!(
+            "/_apis/projects/{}/teams/{}/members?$top=500",
+            encode_segment(&project),
+            encode_segment(team)
+        );
+        Ok(team_members_of(&get(&a.url, &pat, &path, &what)?))
+    })
+    .await
+}
+
+/// 找人（和網頁版留言裡打 @ 一樣，用伺服器的身分搜尋，找得到不在團隊裡的人）。
+#[tauri::command]
+pub async fn ado_search_people(app: AppHandle, query: String) -> Result<Vec<TeamMember>, String> {
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return Ok(vec![]);
+    }
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let body = serde_json::json!({
+            "query": query,
+            "identityTypes": ["user"],
+            "operationScopes": ["ims", "source"],
+            "properties": ["DisplayName", "SignInAddress", "SamAccountName", "ScopeName", "Mail"],
+            "options": { "MinResults": 5, "MaxResults": 20 },
+        });
+        let res = post_version(
+            &a.url,
+            &pat,
+            "/_apis/IdentityPicker/Identities",
+            &body,
+            "5.0-preview.1",
+            &tr!("找人"),
+        )?;
+        Ok(picked_people(&res))
+    })
+    .await
+}
+
+/// 身分搜尋的結果：沒有伺服器上的身分（從來沒登入過，`localId` 是空的）的人 @ 了也收不到，不列出。
+pub(super) fn picked_people(res: &Value) -> Vec<TeamMember> {
+    let mut list: Vec<TeamMember> = vec![];
+    let identities = res
+        .get("results")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r.get("identities").and_then(Value::as_array))
+        .flatten();
+    for who in identities {
+        let (Some(id), Some(name)) = (
+            str_of(who, "localId").filter(|s| !s.is_empty()),
+            str_of(who, "displayName"),
+        ) else {
+            continue;
+        };
+        let unique = match (str_of(who, "scopeName"), str_of(who, "samAccountName")) {
+            (Some(scope), Some(sam)) if !scope.is_empty() && !sam.is_empty() => {
+                format!("{scope}\\{sam}")
+            }
+            _ => str_of(who, "signInAddress")
+                .or_else(|| str_of(who, "mail"))
+                .unwrap_or_default()
+                .to_string(),
+        };
+        if !list.iter().any(|m| m.id.eq_ignore_ascii_case(id)) {
+            list.push(TeamMember {
+                name: name.to_string(),
+                unique,
+                id: id.to_string(),
+            });
+        }
+    }
+    list
+}
+
 /// 5.0 以後每個成員包在 `identity` 裡，4.1 直接是身分；停用的帳號不列出。
 pub(super) fn team_members_of(res: &Value) -> Vec<TeamMember> {
     let mut list: Vec<TeamMember> = values(res)
@@ -225,6 +321,7 @@ pub(super) fn team_members_of(res: &Value) -> Vec<TeamMember> {
             Some(TeamMember {
                 name: str_of(who, "displayName")?.to_string(),
                 unique: str_of(who, "uniqueName")?.to_string(),
+                id: str_of(who, "id").unwrap_or_default().to_string(),
             })
         })
         .collect();

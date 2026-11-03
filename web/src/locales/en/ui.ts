@@ -564,7 +564,7 @@ export const ui: Record<string, Translation> = {
   "新標籤": "New tag",
   "新增標籤": "Add Tag",
   "已新增標籤": "Tags added",
-  "寫留言…（可以用 Markdown）": "Write a comment… (Markdown works)",
+  "寫留言…（可以用 Markdown，打 @ 通知同事）": "Write a comment… (Markdown works; type @ to notify someone)",
   "Ctrl+Enter 送出": "Ctrl+Enter to send",
   "還沒有內容，按「編輯」新增。": "Nothing here yet. Click \"Edit\" to add it.",
   "編輯「{name}」": "Edit \"{name}\"",
@@ -782,6 +782,7 @@ export const ui: Record<string, Translation> = {
   "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增":
     "Used when creating today's note; add your own with “⋯” → “Save Current Document as Template…”",
   "內建（今天要做、會議與討論、筆記）": "Built-in (To Do, Meetings, Notes)",
+  "要 @ 的人": "People to mention",
   "已把 {id} 移出上層，並改成「{state}」": "Removed the parent of {id} and moved it to \"{state}\"",
   "已把 {id} 移出上層": "Removed the parent of {id}",
   "已把 {id} 移到「{parent}」底下，並改成「{state}」": "Moved {id} under \"{parent}\" and to \"{state}\"",

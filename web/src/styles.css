@@ -2903,7 +2903,16 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-body .ado-edit .ado-compose-actions { display: flex; }
 /* 留言框：在留言段落的最上面，平常一行，點一下展開。 */
 .issue-body .ado-compose { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; }
-.issue-body .ado-compose-main { flex: 1; min-width: 0; }
+.issue-body .ado-compose-main { position: relative; flex: 1; min-width: 0; }
+/* 留言框打 @ 跳出的同事清單：接在留言框下面，浮在內容上方。 */
+.issue-body .mention-list { position: absolute; left: 0; z-index: 30; width: min(360px, 100%); max-height: 280px; margin: 2px 0 0; padding: 4px; overflow-y: auto; list-style: none; border: 1px solid var(--menu-border); border-radius: calc(var(--radius) + 2px); background: var(--surface-raised); color: var(--fg); box-shadow: var(--menu-shadow); }
+.issue-body .mention-list[hidden] { display: none; }
+.issue-body .mention-list li { display: flex; gap: 8px; align-items: center; min-height: 32px; margin: 0; padding: 0 8px; border-radius: 6px; cursor: pointer; }
+.issue-body .mention-list li[aria-selected="true"] { background: var(--menu-hover); }
+.issue-body .mention-list .mention-none { color: var(--subtle); cursor: default; }
+.issue-body .mention-avatar { --hue: 210; display: grid; flex: none; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: light-dark(hsl(var(--hue) 55% 42%), hsl(var(--hue) 45% 38%)); color: #fff; font-size: 11px; font-weight: 600; line-height: 1; }
+.issue-body .mention-name { flex: none; font-size: 13px; }
+.issue-body .mention-unique { overflow: hidden; color: var(--subtle); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
 .issue-body .ado-compose textarea { box-sizing: border-box; display: block; width: 100%; height: 34px; padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--font-ui); resize: none; }
 .issue-body .ado-compose.open textarea { height: auto; min-height: 84px; border-color: var(--accent); outline: 2px solid var(--accent-soft); resize: vertical; }
 .issue-body .ado-compose-actions { display: none; gap: 6px; align-items: center; margin-top: 6px; }

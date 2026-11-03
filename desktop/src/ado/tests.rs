@@ -1017,6 +1017,39 @@ fn reads_team_members_from_old_and_new_servers() {
     let names: Vec<&str> = list.iter().map(|m| m.name.as_str()).collect();
     assert_eq!(names.len(), 2);
     assert!(names.contains(&"王小明") && names.contains(&"李大同"));
+    // 有身分編號時帶回來（留言 @ 人用），沒有時是空字串。
+    let v = json!({ "value": [{ "identity": { "id": "a1b2", "displayName": "王小明", "uniqueName": "CORP\\ming" } }]});
+    assert_eq!(team_members_of(&v)[0].id, "a1b2");
+    assert_eq!(list[0].id, "");
+}
+
+#[test]
+fn reads_people_from_identity_search() {
+    // 網域帳號寫成「網域\帳號」；沒有伺服器身分（localId 是空的）的不列出；重複的只留一個。
+    let v = json!({ "results": [{ "queryToken": "王", "identities": [
+        { "localId": "id-1", "displayName": "王小明", "scopeName": "CORP", "samAccountName": "ming" },
+        { "localId": null, "displayName": "沒登入過", "scopeName": "CORP", "samAccountName": "never" },
+        { "localId": "", "displayName": "也沒登入過" },
+        { "localId": "id-2", "displayName": "Wang Da", "signInAddress": "da@corp.test" },
+        { "localId": "ID-1", "displayName": "王小明", "scopeName": "CORP", "samAccountName": "ming" }
+    ]}]});
+    let list = picked_people(&v);
+    assert_eq!(
+        list,
+        vec![
+            TeamMember {
+                name: "王小明".into(),
+                unique: "CORP\\ming".into(),
+                id: "id-1".into()
+            },
+            TeamMember {
+                name: "Wang Da".into(),
+                unique: "da@corp.test".into(),
+                id: "id-2".into()
+            },
+        ]
+    );
+    assert!(picked_people(&json!({})).is_empty());
 }
 
 #[test]

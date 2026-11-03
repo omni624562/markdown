@@ -412,6 +412,8 @@ export interface AdoTeamMember {
   name: string;
   /** 帳號：指派時送這個。 */
   unique: string;
+  /** 身分的編號：留言裡 @ 人用（舊版伺服器沒給時是空字串）。 */
+  id: string;
 }
 
 export interface AdoWorkItemAttachment {
@@ -1045,6 +1047,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoTeams: (project: string) => core.invoke<AdoTeam[]>("ado_teams", { project }),
     /** 團隊的成員（依名稱排）。 */
     adoTeamMembers: (project: string, team: string) => core.invoke<AdoTeamMember[]>("ado_team_members", { project, team }),
+    /** 專案預設團隊的成員（留言 @ 人時先列出）。 */
+    adoProjectMembers: (project: string) => core.invoke<AdoTeamMember[]>("ado_project_members", { project }),
+    /** 用伺服器的身分搜尋找人（找得到團隊以外的人）。 */
+    adoSearchPeople: (query: string) => core.invoke<AdoTeamMember[]>("ado_search_people", { query }),
     /** 團隊在某個 Sprint 的容量（成員每天的工時、休假）。`iteration` 是 Sprint 的 id。 */
     adoCapacity: (project: string, team: string, iteration: string) =>
       core.invoke<CapacityData>("ado_capacity", { project, team, iteration }),
