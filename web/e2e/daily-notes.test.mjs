@@ -174,8 +174,11 @@ test("今天的筆記：連上 Azure DevOps 時多一段指派給我、還沒結
     /## 今天要做\n\n- \[ \] \n\n## 工作項目\n\n- \[ \] \[#12 修正登入\]\(https:\/\/ado\.test\/c\/產品\/_workitems\/edit\/12\)\n- \[ \] \[#11 寫測試\]\(https:\/\/ado\.test\/c\/產品\/_workitems\/edit\/11\)\n\n## 會議與討論/,
   );
   // 游標還是在「今天要做」：直接打字就是第一個待辦。
+  // （看存檔的內容：即時預覽重畫游標所在的那一行有時慢一點，畫面上的文字不一定是原始的 Markdown。）
   await page.keyboard.insertText("開會");
-  assert.match(await page.textContent(".cm-content"), /- \[ \] 開會/);
+  await page.keyboard.press("Control+S");
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "save_file").length === 2);
+  assert.match((await calls(page)).filter((c) => c.cmd === "save_file")[1].args.text, /## 今天要做\n\n- \[ \] 開會\n/);
   // 指令：插入到目前的文件（游標的位置）。
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
