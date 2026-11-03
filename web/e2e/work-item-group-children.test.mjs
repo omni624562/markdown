@@ -49,9 +49,9 @@ test("依上層項目分組：組裡補上不在清單上的子項目，數量�
   await page.locator("#side-tab-workitems").click();
   const head = page.locator("#workitems-host .workitems-group-card", { hasText: "整理文件" });
   await head.locator(".workitem-summary", { hasText: "5 個 Task" }).waitFor();
-  // 照更新時間排：清單上的在前面，補上的依序是 10/1、9/1、8/1。
+  // 依編號由小到大排（補上的也一樣，不管更新時間）。
   const children = await page.locator("#workitems-host .workitems-child").allTextContents();
-  const order = ["同步範例", "使用範例", "更新角色", "整合教學", "發佈流程"].map((title) => children.findIndex((c) => c.includes(title)));
+  const order = ["同步範例", "使用範例", "整合教學", "更新角色", "發佈流程"].map((title) => children.findIndex((c) => c.includes(title)));
   assert.ok(order.every((i, n) => i >= 0 && (n === 0 || i > order[n - 1])), `子項目的順序：${children.join(" | ")}`);
   // 讀子項目時用的是同一組篩選條件，只讀分組裡的上層。
   const req = (await calls(page)).find((c) => c.cmd === "ado_work_item_children").args;
