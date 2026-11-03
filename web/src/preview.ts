@@ -70,6 +70,11 @@ export class Preview {
   #stale = false;
   /** 畫面上每個頂層節點的比對鍵與行號（和 `#root.childNodes` 一一對應）；null 代表下次整個重建。 */
   #keys: string[] | null = null;
+  /**
+   * 上次更新完畫面上的頂層節點（外掛處理之後）。比對前先確認畫面還是這些節點：別人重新排過內容
+   * （例如工作項目檢視把段落收進可以收合的區塊）時，數量剛好一樣也不能照位置比對，要整個重建。
+   */
+  #nodes: Node[] = [];
   #pos: (string | null)[] = [];
 
   constructor(root: HTMLElement, plugins: PreviewPlugin[] = []) {
@@ -118,6 +123,7 @@ export class Preview {
     }
     // 外掛應該一對一替換節點；數量對不上就不再比對，下次整個重建。
     if (this.#keys && this.#root.childNodes.length !== this.#keys.length) this.#keys = null;
+    this.#nodes = [...this.#root.childNodes];
     return result;
   }
 
@@ -152,7 +158,7 @@ export class Preview {
       const nodes = this.#parse(parts.slice(from, to).join(""));
       return nodes.length === to - from ? nodes : null;
     };
-    if (!oldKeys || oldKeys.length !== old.length) {
+    if (!oldKeys || oldKeys.length !== old.length || !this.#untouched(old)) {
       const all = parseExactly(0, parts.length);
       if (!all) return null;
       this.#keys = keys;
@@ -193,6 +199,11 @@ export class Preview {
     return [...added, ...middle];
   }
 
+  /** 畫面上的頂層節點還是上次更新完的那些（沒有被別人換掉、搬走）。 */
+  #untouched(old: Node[]): boolean {
+    return old.length === this.#nodes.length && old.every((n, i) => n === this.#nodes[i]);
+  }
+
   /** 比對到一半發現對不上：整個重建。 */
   #rebuild(parts: string[], keys: string[], pos: (string | null)[]): Node[] {
     const all = this.#parse(parts.join(""));
@@ -214,7 +225,7 @@ export class Preview {
     const oldPos = this.#pos;
     this.#keys = keys;
     this.#pos = pos;
-    if (!oldKeys || oldKeys.length !== old.length) {
+    if (!oldKeys || oldKeys.length !== old.length || !this.#untouched(old)) {
       this.#root.replaceChildren(...fresh);
       return fresh;
     }

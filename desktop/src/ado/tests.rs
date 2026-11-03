@@ -1137,3 +1137,73 @@ fn backlog_query_and_iteration() {
     );
     assert_eq!(backlog_iteration_of(&Value::Null, "產品"), "產品");
 }
+
+#[test]
+fn builds_link_ops() {
+    let rel = |rel: &str, id: u64| json!({"rel": rel, "url": format!("https://tfs/DC/_apis/wit/workItems/{id}")});
+    let relations = vec![
+        rel("System.LinkTypes.Hierarchy-Reverse", 10),
+        rel("System.LinkTypes.Related", 20),
+        json!({"rel": "AttachedFile", "url": "https://tfs/DC/_apis/wit/attachments/x"}),
+        rel("System.LinkTypes.Hierarchy-Forward", 30),
+    ];
+    // 換上層：拿掉原本的上層，加新的；移除相關 #20；加子項目 #31（#30 已經有了不重複加）。
+    let change = WorkItemChange {
+        parent: Some(11),
+        links_add: vec![
+            LinkChange {
+                kind: "child".into(),
+                id: 31,
+            },
+            LinkChange {
+                kind: "child".into(),
+                id: 30,
+            },
+        ],
+        links_remove: vec![LinkChange {
+            kind: "related".into(),
+            id: 20,
+        }],
+        ..Default::default()
+    };
+    let ops = link_ops(&change, &relations, "https://tfs/DC/", 42).unwrap();
+    assert_eq!(
+        ops[0],
+        json!({"op": "remove", "path": "/relations/1"}),
+        "由後往前移除"
+    );
+    assert_eq!(ops[1], json!({"op": "remove", "path": "/relations/0"}));
+    assert_eq!(ops[2]["value"]["rel"], "System.LinkTypes.Hierarchy-Reverse");
+    assert_eq!(
+        ops[2]["value"]["url"],
+        "https://tfs/DC/_apis/wit/workItems/11"
+    );
+    assert_eq!(
+        ops[3]["value"]["url"],
+        "https://tfs/DC/_apis/wit/workItems/31"
+    );
+    assert_eq!(ops.len(), 4);
+    // 移除上層（0）：只有移除。
+    let none = WorkItemChange {
+        parent: Some(0),
+        ..Default::default()
+    };
+    assert_eq!(
+        link_ops(&none, &relations, "https://tfs/DC", 42).unwrap(),
+        vec![json!({"op": "remove", "path": "/relations/0"})]
+    );
+    // 連到自己、看不懂的種類：不接受。
+    let me = WorkItemChange {
+        parent: Some(42),
+        ..Default::default()
+    };
+    assert!(link_ops(&me, &relations, "https://tfs/DC", 42).is_err());
+    let odd = WorkItemChange {
+        links_add: vec![LinkChange {
+            kind: "cousin".into(),
+            id: 1,
+        }],
+        ..Default::default()
+    };
+    assert!(link_ops(&odd, &relations, "https://tfs/DC", 42).is_err());
+}

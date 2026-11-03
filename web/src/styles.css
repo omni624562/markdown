@@ -2890,6 +2890,12 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-body .ado-sec-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .issue-body .ado-sec-edit .icon { width: 13px; height: 13px; }
 .issue-body .ado-sec-empty { margin: 0; color: var(--subtle); font-size: 13px; }
+/* 相關工作項目後面的移除鈕：滑過那一行（或用鍵盤移到）才出現。 */
+.issue-body .ado-link-remove { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: 6px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--subtle); vertical-align: middle; cursor: pointer; opacity: 0; }
+.issue-body li:hover > .ado-link-remove, .issue-body .ado-link-remove:focus-visible { opacity: 1; }
+.issue-body .ado-link-remove:hover { background: var(--danger-soft); color: var(--danger); }
+.issue-body .ado-link-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.issue-body .ado-link-remove .icon { width: 13px; height: 13px; }
 .issue-body .ado-edit { display: flex; flex-direction: column; gap: 6px; }
 .issue-body .ado-edit-note { display: flex; gap: 6px; align-items: center; margin: 0; padding: 6px 10px; border-radius: 6px; background: light-dark(#fff7e6, #3a2f1a); color: light-dark(#8a5a00, #f0c674); font-size: 12.5px; }
 .issue-body .ado-edit-note .icon { flex: none; width: 14px; height: 14px; }

@@ -18,7 +18,8 @@ import { insertIssueLink } from "./ado-links.ts";
 import { forgetListCopies, offlineRefs } from "./offline-copies.ts";
 import { workItemSeen } from "./work-item-updates.ts";
 import { workItemsPanel, barShortcuts, toggleWorkItemShortcut } from "./work-items-panel.ts";
-import { enhanceWorkItem, lazy, type Loaded } from "./work-item-edit.ts";
+import { enhanceWorkItem, lazy, type Loaded, type WorkItemEditHooks } from "./work-item-edit.ts";
+import { editableRelations } from "./work-item-links-edit.ts";
 import { app } from "./context.ts";
 import { workItemLoaded } from "./work-item-updates.ts";
 
@@ -82,20 +83,18 @@ function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): voi
       detail = d;
     },
     enhance(body) {
-      enhanceWorkItem(
-        body,
-        {
-          detail: () => detail,
-          apply,
-          editComment,
-          states: () => states.load(),
-          iterations: () => iterations.load(),
-          me: () => app.ado?.account?.name ?? "",
-          id: item.id,
-          kind: item.kind,
-        },
-        { states, iterations },
-      );
+      const hooks: WorkItemEditHooks = {
+        detail: () => detail,
+        apply,
+        editComment,
+        states: () => states.load(),
+        iterations: () => iterations.load(),
+        me: () => app.ado?.account?.name ?? "",
+        id: item.id,
+        kind: item.kind,
+      };
+      enhanceWorkItem(body, hooks, { states, iterations });
+      editableRelations(body, hooks);
     },
   };
 }
@@ -186,6 +185,7 @@ export function showWorkItem(item: AdoWorkItem): void {
             kind: f.section,
             title: f.section === "desc" ? t("工作項目說明") : f.field === "reproSteps" ? t("重現步驟") : t("驗收條件"),
           })),
+          { kind: "relations" as const, title: t("相關工作項目（{n}）", { n: 0 }) },
           { kind: "comments" as const, title: t("留言（{n}）", { n: 0 }) },
         ],
       });
