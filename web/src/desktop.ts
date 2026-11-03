@@ -1155,6 +1155,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<string | null>("ado_wiki_create", { projectId: w.projectId, wikiId: w.id, path, content }),
     /** 刪除 Wiki 頁面（子頁面一起刪除）。 */
     adoWikiDelete: (w: AdoWiki, path: string) => core.invoke<void>("ado_wiki_delete", { projectId: w.projectId, wikiId: w.id, path }),
+    /** 搬移頁面或調整順序（`newPath` 和 `path` 一樣時只調整順序；`newOrder` 從 0 算起，是搬完之後的位置）。 */
+    adoWikiMove: (w: AdoWiki, path: string, newPath: string, newOrder?: number) =>
+      core.invoke<void>("ado_wiki_move", { projectId: w.projectId, wikiId: w.id, path, newPath, newOrder: newOrder ?? null }),
     /** Wiki 頁面目前的版本與最後修改的人（不讀內容）。 */
     adoWikiPageInfo: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
       core.invoke<WikiPageInfo>("ado_wiki_page_info", {
