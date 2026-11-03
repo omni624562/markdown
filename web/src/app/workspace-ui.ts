@@ -248,7 +248,7 @@ function placeWiki(right: HTMLElement): void {
   if (onRight && panel.parentElement !== right) {
     right.append(panel);
     panel.hidden = false;
-    // 圖示列的 Wiki 圖示先藏起來（不用 hidden：連線狀態也用它）。
+    // 圖示列的 Wiki 圖示留著（按一下打開或收起右側欄）；標出它在右側（不用 hidden：連線狀態也用它）。
     tab.classList.add("placed-right");
     if (app.sidePanel === "wiki") showPanel("workitems", false);
     if (app.rightOutlineShown) wikiPanel?.shown();
@@ -257,6 +257,9 @@ function placeWiki(right: HTMLElement): void {
     tab.classList.remove("placed-right");
     panel.hidden = app.sidePanel !== "wiki";
   }
+  const tabLabel = onRight ? t("Wiki（在右側欄，按一下打開或收起右側欄）") : t("Wiki（Azure DevOps）");
+  tab.title = tabLabel;
+  tab.setAttribute("aria-label", tabLabel);
   const dock = document.getElementById("wiki-dock");
   if (dock) {
     const label = onRight ? t("移回左邊的側邊欄") : t("移到右側（和左邊的面板同時開著）");
@@ -748,7 +751,9 @@ export function initWorkspaceUi(): void {
     // 和 VS Code 一樣：再按一次目前的圖示會收起側邊欄。
     tab.addEventListener("click", () => {
       const panel = tab.dataset.panel as SidePanel;
-      if (panel === app.sidePanel && app.outlineShown) app.setOutline(false);
+      // Wiki 在右側欄：按一下打開或收起右側欄（和面板圖示再按一次收起來一樣）。
+      if (panel === "wiki" && wikiPlacedRight() && app.rightOutlineShown) setRightOutline(false);
+      else if (panel === app.sidePanel && app.outlineShown) app.setOutline(false);
       else showPanel(panel);
     });
   }
