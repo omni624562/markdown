@@ -893,4 +893,5 @@ export const ui: Record<string, Translation> = {
   "正在檢查哪些頁面連到這一頁…": "Checking which pages link here…",
   "有 {n} 個頁面連到這裡（{names}等），刪除後這些連結會失效。": "{n} pages link here ({names}, and others); those links will break after deleting.",
   "有 {n} 個頁面連到這裡（{names}），刪除後這些連結會失效。": "{n} pages link here ({names}); those links will break after deleting.",
+  "{n} 個 {kind}": "{n} {kind}",
 };

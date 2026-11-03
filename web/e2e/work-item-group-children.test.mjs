@@ -48,7 +48,7 @@ test("依上層項目分組：組裡補上不在清單上的子項目，數量�
   await page.reload();
   await page.locator("#side-tab-workitems").click();
   const head = page.locator("#workitems-host .workitems-group-card", { hasText: "整理文件" });
-  await head.locator(".workitems-group-count", { hasText: "5" }).waitFor();
+  await head.locator(".workitem-summary", { hasText: "5 個 Task" }).waitFor();
   // 照更新時間排：清單上的在前面，補上的依序是 10/1、9/1、8/1。
   const children = await page.locator("#workitems-host .workitems-child").allTextContents();
   const order = ["同步範例", "使用範例", "更新角色", "整合教學", "發佈流程"].map((title) => children.findIndex((c) => c.includes(title)));
@@ -81,10 +81,10 @@ test("依上層項目分組：讀不到子項目（舊版伺服器）時照原�
   await page.reload();
   await page.locator("#side-tab-workitems").click();
   const head = page.locator("#workitems-host .workitems-group-card", { hasText: "整理文件" });
-  await head.locator(".workitems-group-count", { hasText: "2" }).waitFor();
+  await head.locator(".workitem-summary", { hasText: "2 個 Task" }).waitFor();
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_children"));
   await page.waitForTimeout(300);
-  assert.equal(await head.locator(".workitems-group-count").textContent(), "2");
+  assert.equal(await head.locator(".workitem-summary").textContent(), "2 個 Task");
   assert.equal(await page.locator(".toast-error").count(), 0);
   assert.deepEqual(errors, []);
   await context.close();
