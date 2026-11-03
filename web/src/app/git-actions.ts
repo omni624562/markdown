@@ -13,6 +13,8 @@ import { openGitHistory } from "./git-history.ts";
 import { createWorkItemDialog, createWorkItemFromSelection, copySelection, pasteFromClipboard } from "./new-work-item.ts";
 import { keptPicker, keptPages } from "./offline-copies.ts";
 import { openWikiHistory, openWikiRecent } from "./wiki-history.ts";
+import { openWikiBacklinks } from "./wiki-backlinks.ts";
+import { moveWikiPage } from "./wiki-move.ts";
 import { gitPanel, showAdo } from "./work-item-updates.ts";
 import { issuesRepo, wikiPanel } from "./work-items-panel.ts";
 import { selectAll, indentMore, indentLess } from "@codemirror/commands";
@@ -397,6 +399,26 @@ export function initGitActions(): void {
       run: () => {
         const wiki = app.wikiPage?.wiki ?? wikiPanel?.wiki;
         if (wiki) openWikiRecent(wiki);
+      },
+    },
+    {
+      id: "wiki-move",
+      title: t("Wiki 頁面改名或搬移…"),
+      group: t("檔案"),
+      icon: "text-cursor-input",
+      when: () => !!desktop && !!app.ado?.account && app.issueView.isOpen && !!app.wikiPage && !app.wikiPage.wiki.code,
+      run: () => {
+        if (app.wikiPage) void moveWikiPage(app.wikiPage.wiki, app.wikiPage.path).catch(reportError);
+      },
+    },
+    {
+      id: "wiki-backlinks",
+      title: t("哪些頁面連到這一頁…"),
+      group: t("檔案"),
+      icon: "link-2",
+      when: () => !!desktop && !!app.ado?.account && app.issueView.isOpen && !!app.wikiPage,
+      run: () => {
+        if (app.wikiPage) void openWikiBacklinks(app.wikiPage.wiki, app.wikiPage.path).catch(reportError);
       },
     },
     {

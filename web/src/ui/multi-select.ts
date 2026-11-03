@@ -10,6 +10,7 @@
 
 import { t } from "../i18n.ts";
 import { choiceSummary, normalizeChoice } from "../multi-choice.ts";
+import { containWheel } from "./contain-wheel.ts";
 import { placeMenu } from "./menu-place.ts";
 
 export interface MultiSelectOptions {
@@ -27,6 +28,8 @@ export interface MultiSelectOptions {
   live?: boolean;
   /** 選單最上面的一行說明（例如「顯示哪些最上層頁面」）。 */
   caption?: string;
+  /** 按鈕上的文字另外決定（例如狀態勾了所有還沒結束的，寫「進行中」）；回傳 null 時照一般的寫法。 */
+  summary?(values: string[]): string | null;
 }
 
 /** 選項多到這個數目時，上面多一個搜尋框。 */
@@ -59,6 +62,7 @@ export class MultiSelect {
     this.#pop.className = "multi-select-pop";
     this.#pop.popover = "auto";
     this.#pop.setAttribute("aria-label", o.label);
+    containWheel(this.#pop);
     this.#search = document.createElement("input");
     this.#search.type = "search";
     this.#search.className = "multi-select-search";
@@ -141,9 +145,9 @@ export class MultiSelect {
 
   #render(): void {
     if (this.#o.button) return;
-    const text = choiceSummary(this.#value, this.#labelOf, this.#o.all);
+    const text = this.#o.summary?.(this.value) ?? choiceSummary(this.#value, this.#labelOf, this.#o.all);
     this.el.textContent = text;
-    this.el.title = this.#value.length ? `${this.#o.label}：${this.#value.map(this.#labelOf).join(", ")}` : this.#o.label; // i18n-ignore（名稱與冒號）
+    this.el.title = this.#value.length ? `${this.#o.label}：${this.#value.map(this.#labelOf).join(", ")}` : this.#o.summary ? `${this.#o.label}：${text}` : this.#o.label; // i18n-ignore（名稱與冒號）
     this.el.setAttribute("aria-label", `${this.#o.label}：${text}`); // i18n-ignore（名稱與冒號）
   }
 

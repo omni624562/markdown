@@ -23,10 +23,23 @@ export interface IssueSummary {
 /** 清單的一組（分組時有標題）。 */
 export interface IssueGroup<T> {
   title: string | null;
-  /** 這一組的標題列是一個項目（例如 User Story）：顯示成卡片、點一下開啟，組裡的項目縮排。 */
-  head?: T;
   items: T[];
+  /** 樹狀（例如依上層項目分組的 Epic → Feature → Story → Task）：畫在 `items` 前面。 */
+  tree?: IssueTreeNode<T>[];
 }
+
+/** 樹狀清單的一個節點：項目與它底下的子項目。有子項目的是標題列（卡片、可以收合），子項目縮排。 */
+export interface IssueTreeNode<T> {
+  item: T;
+  /** 不在清單上、只是用來分組的上層（淡色）。 */
+  dim?: boolean;
+  /** 標題列上的摘要（例如「3 個 User Story・8 個 Task」）。 */
+  summary?: string;
+  children: IssueTreeNode<T>[];
+}
+
+/** 樹狀清單最多縮排幾層（再深的和第 3 層對齊，窄的側邊欄也放得下）。 */
+const TREE_INDENT_MAX = 3;
 
 /** 清單的排列方式（排序或分組）；在清單上方切換，不用重新讀取。 */
 export interface Arrangement<T> {
@@ -345,6 +358,7 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#seq++;
     this.#list.replaceChildren();
     this.#status.textContent = "";
+    this.#status.title = "";
   }
 
   /** 重新讀取；`quiet`：清單留著、不顯示「讀取中…」（背景讀完副本的更新時）。 */
@@ -352,7 +366,10 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#loaded = true;
     const seq = ++this.#seq;
     const search = this.#input.value.trim();
-    if (!quiet) this.#status.textContent = t("讀取中…");
+    if (!quiet) {
+      this.#status.textContent = t("讀取中…");
+      this.#status.title = "";
+    }
     try {
       const items = await this.#h.list(search, () => {
         // 背景讀完：搜尋文字沒變才重畫（變了的話新的讀取已經在跑）。
@@ -361,6 +378,8 @@ export class IssuesPanel<T extends IssueSummary> {
       if (seq !== this.#seq) return;
       this.#failed = false;
       this.#status.textContent = this.#h.status(items.length, search);
+      // 側邊欄窄時文字會截短，滑鼠移上去看完整的。
+      this.#status.title = this.#status.textContent;
       noteCopy(this.#status, items, () => {
         this.#h.forget?.();
         void this.refresh();
@@ -388,14 +407,24 @@ export class IssuesPanel<T extends IssueSummary> {
     const groups = arrangement ? arrangement.arrange(this.#items) : [{ title: null, items: this.#items }];
     const rows: HTMLLIElement[] = [];
     this.#byId.clear();
-    this.#groupKeys = groups.filter((g) => g.head || g.title !== null).map((g) => `${arrangement?.id}:${g.title}`);
+    this.#groupKeys = [];
+    const prefix = `${arrangement?.id}:`;
     for (const group of groups) {
-      if (group.head) {
-        rows.push(...this.#headGroup(group as IssueGroup<T> & { head: T }, `${arrangement?.id}:${group.title}`));
-        continue;
+      if (group.tree) {
+        // 收合的節點底下也算（「全部展開」才會打開裡面收起來的）。
+        const walk = (nodes: IssueTreeNode<T>[]) => {
+          for (const n of nodes) {
+            if (!n.children.length) continue;
+            this.#groupKeys.push(`${prefix}tree:${n.item.id}`);
+            walk(n.children);
+          }
+        };
+        walk(group.tree);
+        this.#treeRows(group.tree, 0, prefix, rows);
       }
       if (group.title !== null) {
-        const key = `${arrangement?.id}:${group.title}`;
+        const key = `${prefix}${group.title}`;
+        this.#groupKeys.push(key);
         const open = !this.#collapsed.has(key);
         const li = document.createElement("li");
         li.className = "workitems-group";
@@ -443,40 +472,48 @@ export class IssuesPanel<T extends IssueSummary> {
     b.replaceChildren(icon(collapse ? "chevrons-down-up" : "chevrons-up-down"));
   }
 
-  /** 以項目當標題列的一組：左邊是收合箭頭，標題列本身可以點開那個項目；子項目縮排、左邊一條線。 */
-  #headGroup(group: IssueGroup<T> & { head: T }, key: string): HTMLLIElement[] {
-    const open = !this.#collapsed.has(key);
-    const li = this.#row(group.head);
-    li.classList.add("workitems-group-card");
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "workitems-group-toggle";
-    toggle.dataset.key = key;
-    toggle.setAttribute("aria-expanded", String(open));
-    const label = open ? t("收合 {n} 個子項目", { n: group.items.length }) : t("展開 {n} 個子項目", { n: group.items.length });
-    toggle.title = label;
-    toggle.setAttribute("aria-label", label);
-    toggle.append(icon(open ? "chevron-down" : "chevron-right"));
-    toggle.addEventListener("click", () => {
-      if (open) this.#collapsed.add(key);
-      else this.#collapsed.delete(key);
-      this.#render();
-      this.#list.querySelector<HTMLElement>(`.workitems-group-toggle[data-key="${CSS.escape(key)}"]`)?.focus();
-    });
-    const count = document.createElement("span");
-    count.className = "workitems-group-count";
-    count.textContent = String(group.items.length);
-    li.prepend(toggle);
-    li.append(count);
-    if (!open) return [li];
-    return [
-      li,
-      ...group.items.map((it) => {
-        const row = this.#row(it);
-        row.classList.add("workitems-child");
-        return row;
-      }),
-    ];
+  /**
+   * 樹狀清單（`depth` 是第幾層）：有子項目的節點是標題列（左邊收合箭頭，卡片本身可以點開那個項目，
+   * 下面一行是摘要），收起來時不畫子項目；子項目每一層縮排一點、左邊一條線。
+   */
+  #treeRows(nodes: IssueTreeNode<T>[], depth: number, prefix: string, rows: HTMLLIElement[]): void {
+    for (const node of nodes) {
+      const li = this.#row(node.item);
+      if (depth) {
+        li.classList.add("workitems-child");
+        li.dataset.depth = String(Math.min(depth, TREE_INDENT_MAX));
+      }
+      li.classList.toggle("workitems-dim", !!node.dim);
+      rows.push(li);
+      if (!node.children.length) continue;
+      const key = `${prefix}tree:${node.item.id}`;
+      const open = !this.#collapsed.has(key);
+      li.classList.add("workitems-group-card");
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "workitems-group-toggle";
+      toggle.dataset.key = key;
+      toggle.setAttribute("aria-expanded", String(open));
+      const n = node.children.length;
+      const label = open ? t("收合 {n} 個子項目", { n }) : t("展開 {n} 個子項目", { n });
+      toggle.title = label;
+      toggle.setAttribute("aria-label", label);
+      toggle.append(icon(open ? "chevron-down" : "chevron-right"));
+      toggle.addEventListener("click", () => {
+        if (open) this.#collapsed.add(key);
+        else this.#collapsed.delete(key);
+        this.#render();
+        this.#list.querySelector<HTMLElement>(`.workitems-group-toggle[data-key="${CSS.escape(key)}"]`)?.focus();
+      });
+      li.prepend(toggle);
+      if (node.summary) {
+        const summary = document.createElement("span");
+        summary.className = "workitem-summary";
+        summary.textContent = node.summary;
+        li.querySelector(".workitem")?.append(summary);
+      }
+      if (open) this.#treeRows(node.children, depth + 1, prefix, rows);
+    }
   }
 
   #row(item: T): HTMLLIElement {
@@ -563,10 +600,23 @@ export class IssuesPanel<T extends IssueSummary> {
     // 分組收起來時，展開它所在的那一組（和檔案面板展開資料夾一樣），才看得到。
     if (id !== null) {
       const arrangement = this.#h.arrangements?.find((a) => a.id === this.#arrange?.value);
-      const group = arrangement?.arrange(this.#items).find((g) => g.items.some((it) => it.id === id));
-      const key = group && (group.head || group.title !== null) ? `${arrangement?.id}:${group.title}` : null;
-      if (key && this.#collapsed.has(key)) {
-        this.#collapsed.delete(key);
+      const groups = arrangement?.arrange(this.#items) ?? [];
+      const keys: string[] = [];
+      const group = groups.find((g) => g.items.some((it) => it.id === id));
+      if (group && group.title !== null) keys.push(`${arrangement?.id}:${group.title}`);
+      // 樹狀：展開它所有的上層。
+      const path = (nodes: IssueTreeNode<T>[]): string[] | null => {
+        for (const n of nodes) {
+          if (n.item.id === id) return [];
+          const below = path(n.children);
+          if (below) return [`${arrangement?.id}:tree:${n.item.id}`, ...below];
+        }
+        return null;
+      };
+      for (const g of groups) if (g.tree) keys.push(...(path(g.tree) ?? []));
+      const closed = keys.filter((k) => this.#collapsed.has(k));
+      if (closed.length) {
+        for (const k of closed) this.#collapsed.delete(k);
         this.#render();
       }
     }

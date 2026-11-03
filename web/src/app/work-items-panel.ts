@@ -8,7 +8,7 @@ import { t } from "../i18n.ts";
 import { issueFileName, githubIssueMarkdown } from "../issue-doc.ts";
 import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
-import { type IssueSummary, type IssueGroup, shortDate, IssuesPanel } from "../ui/issues-panel.ts";
+import { type IssueSummary, type IssueGroup, type IssueTreeNode, shortDate, IssuesPanel } from "../ui/issues-panel.ts";
 import { MultiSelect } from "../ui/multi-select.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
@@ -16,7 +16,8 @@ import { WikiPanel } from "../ui/wiki-panel.ts";
 import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
-import { groupByParent } from "../workitem-groups.ts";
+import { kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
+import { fromStateChoice, type KindStates, stateChoice, stateLabel, stateOptions, type StateOption, statesFor, workItemFilterKey } from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
@@ -25,6 +26,8 @@ import { favoriteProjects, favoriteWikis } from "./favorite-lists.ts";
 import { favoritesFirst } from "../favorites.ts";
 import { app } from "./context.ts";
 import { openWikiRecent } from "./wiki-history.ts";
+import { openWikiBacklinks } from "./wiki-backlinks.ts";
+import { moveWikiPage } from "./wiki-move.ts";
 import { bulkEditWorkItems } from "./work-item-bulk.ts";
 
 
@@ -142,7 +145,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     queryNote.textContent = q ? t("目前列出查詢「{name}」的結果，下面的篩選條件暫時不套用。", { name: q.name }) : "";
     const set = [
       !(f.role === "assigned" && f.person === "@me"),
-      f.state !== "open",
+      f.state !== "open" || f.states.length > 0,
       f.kinds.length > 0,
       f.projects.length > 0,
       f.areas.length > 0,
@@ -216,23 +219,39 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     ["created:", t("建立者是…")],
   ]);
   person.value = [personValue];
-  // 狀態：進行中、已結束兩項，都勾（或都不勾）是全部。
-  const stateValue = (s: AdoWorkItemFilter["state"]) => (s === "all" ? [] : [s]);
+  // 狀態：選的專案、類型實際用得到的狀態（New、Active、Resolved…）；勾了所有還沒結束的就是「進行中」（見 work-item-filter.ts）。
+  let states: StateOption[] = [];
+  /** 各專案、類型的狀態：篩選選項讀到的（前 20 個專案），與選了的專案另外讀到的。 */
+  let stateSets: KindStates[] = [];
+  const projectStateSets = new Map<string, KindStates[]>();
   const state = new MultiSelect({
     label: t("狀態"),
     all: t("全部狀態"),
+    summary: () => stateLabel(f),
     onChange: (v) => {
-      f.state = v.length === 1 ? (v[0] as AdoWorkItemFilter["state"]) : "all";
+      Object.assign(f, fromStateChoice(v, states));
+      // 按鈕上的文字跟著條件（例如勾回所有還沒結束的，顯示「進行中」）。
+      state.value = stateChoice(f, states);
       changed();
     },
   });
-  state.setOptions([["open", t("進行中")], ["closed", t("已結束")]]);
-  state.value = stateValue(f.state);
+  const setStates = (list: StateOption[]) => {
+    states = list;
+    state.setOptions(stateOptions(states));
+    state.value = stateChoice(f, states);
+  };
+  setStates([]);
+  /** 依目前選的專案、類型重新列狀態。 */
+  const refreshStates = () => {
+    const extra = [...projectStateSets.values()].flat().filter((s) => !stateSets.some((o) => o.project === s.project && o.kind === s.kind));
+    setStates(statesFor([...stateSets, ...extra], f.projects, f.kinds));
+  };
   const kind = new MultiSelect({
     label: t("類型"),
     all: t("所有類型"),
     onChange: (v) => {
       f.kinds = v;
+      refreshStates();
       changed();
     },
   });
@@ -254,6 +273,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
       f.areas = f.areas.filter((a) => v.some((p) => a === p || a.startsWith(`${p}\\`)));
       area.value = f.areas;
       loadScope();
+      refreshStates();
       changed();
     },
   });
@@ -263,7 +283,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   area.hidden = !f.projects.length;
 
   /** 區域（選了專案時）與人名建議；同一個專案只讀一次。 */
-  const scopes = new Map<string, Promise<{ areas: string[]; people: string[] }>>();
+  const scopes = new Map<string, Promise<{ areas: string[]; people: string[]; stateSets?: KindStates[] }>>();
   const scopeOf = (key: string) => {
     let p = scopes.get(key);
     if (!p) {
@@ -285,6 +305,9 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
         area.setOptions(all.flatMap(({ areas }, i) => areas.map((a): [string, string] => [a, keys.length === 1 ? a.slice(keys[i].length + 1) : a])));
         const names = [...new Set(all.flatMap((s) => s.people))].sort((a, b) => a.localeCompare(b));
         people.replaceChildren(...names.map((n) => new Option(n)));
+        // 選的專案不在篩選選項讀到的前 20 個裡時，狀態從這裡補。
+        keys.forEach((k, i) => projectStateSets.set(k, all[i].stateSets ?? []));
+        if (keys.length) refreshStates();
       })
       .catch(() => {});
   };
@@ -295,8 +318,10 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     loadScope();
     void desktop
       .adoWorkItemFilters()
-      .then(({ projects, kinds }) => {
+      .then(({ projects, kinds, stateSets: sets }) => {
         kind.setOptions(pairs(kinds));
+        stateSets = sets ?? [];
+        refreshStates();
         // 常用的專案（工作板、Wiki 旁的星號勾選）排在前面。
         project.setOptions(favoritesFirst(pairs(projects), favoriteProjects.load()));
       })
@@ -309,14 +334,15 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     person.value = ["assigned:@me"];
     name.hidden = true;
     name.value = "";
-    state.value = ["open"];
     kind.value = [];
     project.value = [];
     area.value = [];
     loadScope();
+    refreshStates();
     changed();
   });
-  bar.append(queryOpen, queryNote, person.el, state.el, name, kind.el, project.el, area.el, people, reset);
+  // 人、專案在上排（區域、狀態都看選的專案），類型、狀態在下排。
+  bar.append(queryOpen, queryNote, person.el, project.el, name, kind.el, state.el, area.el, people, reset);
   updateBadge();
   setOpen(storage.load("workitem-filter-open") === "1");
   return { bar, button: group };
@@ -388,39 +414,73 @@ function moreChildren(items: (AdoWorkItem & IssueSummary)[]): (AdoWorkItem & Iss
       out.push(w);
     }
   }
-  // 清單是最近更新的在前面：補上的也照更新時間排。
-  return out.sort((a, b) => (b.changed ?? "").localeCompare(a.changed ?? ""));
+  // 樹裡依編號排，這裡不用排。
+  return out;
 }
 
+/** 還沒讀過上層的項目在背景讀（一次讀一批），讀到後重畫；上層的上層也這樣一層一層往上讀。 */
+function loadWorkItemParents(ids: number[]): void {
+  if (workItemParentsLoading || !desktop || !ids.length) return;
+  workItemParentsLoading = true;
+  void desktop
+    .adoWorkItemParents(ids)
+    .then(({ links, parents }) => {
+      for (const id of ids) workItemParentOf.set(id, null);
+      for (const [id, parent] of links) workItemParentOf.set(id, parent);
+      for (const p of parents) setBounded(workItemParentItems, p.id, workItemRow(p), app.CACHE_MAX);
+    })
+    .catch((e) => {
+      // 讀不到就當成都沒有上層（不要一直重試）。
+      for (const id of ids) workItemParentOf.set(id, null);
+      app.reportError(e);
+    })
+    .finally(() => {
+      workItemParentsLoading = false;
+      workItemsPanel?.rearrange();
+    });
+}
+
+/**
+ * 「依上層項目分組」：排成樹（Epic → Feature → Story → Task），每一項只出現一次。
+ * 清單上的項目的上層還沒讀到時先照原本的順序顯示；上層的上層讀到一層就重畫一次。
+ */
 function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
   const missing = items.map((w) => w.id).filter((id) => !workItemParentOf.has(id));
   if (missing.length) {
-    // 先照原本的順序顯示，讀到上層項目後再重畫。
-    if (!workItemParentsLoading && desktop) {
-      workItemParentsLoading = true;
-      void desktop
-        .adoWorkItemParents(missing)
-        .then(({ links, parents }) => {
-          for (const id of missing) workItemParentOf.set(id, null);
-          for (const [id, parent] of links) workItemParentOf.set(id, parent);
-          for (const p of parents) setBounded(workItemParentItems, p.id, workItemRow(p), app.CACHE_MAX);
-        })
-        .catch((e) => {
-          // 讀不到就當成都沒有上層（不要一直重試）。
-          for (const id of missing) workItemParentOf.set(id, null);
-          app.reportError(e);
-        })
-        .finally(() => {
-          workItemParentsLoading = false;
-          workItemsPanel?.rearrange();
-        });
-    }
+    loadWorkItemParents(missing);
     return [{ title: null, items }];
   }
   const extra = moreChildren(items);
-  return groupByParent(extra.length ? [...items, ...extra] : items, workItemParentOf, workItemParentItems, t("沒有上層項目"), (item, id) =>
-    item ? t("{kind} {id}：{title}", { kind: item.kind, id: item.id, title: item.title }) : `#${id}`,
-  );
+  const all = extra.length ? [...items, ...extra] : items;
+  // 沿著上層往上走，走到還沒讀過上層的項目就在背景讀（讀過的不再讀）。
+  const ids = new Set(all.map((w) => w.id));
+  const ancestors = new Set<number>();
+  for (const w of all) {
+    const seen = new Set<number>();
+    for (let p = workItemParentOf.get(w.id); p != null && !seen.has(p) && (ids.has(p) || workItemParentItems.has(p)); p = workItemParentOf.get(p)) {
+      seen.add(p);
+      if (!workItemParentOf.has(p)) {
+        ancestors.add(p);
+        break;
+      }
+    }
+  }
+  loadWorkItemParents([...ancestors]);
+  const { roots, rest } = parentTree(all, workItemParentOf, workItemParentItems);
+  const toNode = (n: TreeNode<AdoWorkItem & IssueSummary>): IssueTreeNode<AdoWorkItem & IssueSummary> => ({
+    item: n.item,
+    dim: n.dim,
+    summary: n.children.length
+      ? kindCounts(n)
+          .map(([kind, count]) => t("{n} 個 {kind}", { n: count, kind }))
+          .join(t("・"))
+      : undefined,
+    children: n.children.map(toNode),
+  });
+  const groups: IssueGroup<AdoWorkItem & IssueSummary>[] = [];
+  if (roots.length) groups.push({ title: null, items: [], tree: roots.map(toNode) });
+  if (rest.length) groups.push({ title: t("沒有上層項目"), items: rest });
+  return groups;
 }
 
 /** 清單上的一列：上面一行是類型、編號、指派對象與更新日期，狀態在右邊（`kind`、`state` 由清單上色）。 */
@@ -755,7 +815,7 @@ export function initWorkItemsPanel(): void {
           // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
           const raw = q
             ? await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q), update)
-            : await withOfflineCopy(`wi-list:${search}:${JSON.stringify(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
+            : await withOfflineCopy(`wi-list:${search}:${workItemFilterKey(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
           const found = q ? keepFreshness(raw, filterQueryResult(raw, search)) : raw;
           app.noteWorkItems(found, !q && !search && app.isDefaultFilter());
           workItemListed = new Set(found.map((w) => w.id));
@@ -768,11 +828,11 @@ export function initWorkItemsPanel(): void {
         status: (n, search) =>
           onlyUnseen && !search
             ? n
-              ? t("指派給你、新的或有更新的工作項目（{n}）", { n })
+              ? t("{n} 個指派給你、新的或有更新的工作項目", { n })
               : t("指派給你的工作項目都看過了")
             : workItemQuery
             ? n
-              ? t("查詢「{name}」的結果（{n}）", { name: workItemQuery.name, n })
+              ? t("{n} 個結果：查詢「{name}」", { name: workItemQuery.name, n })
               : search
                 ? t("查詢「{name}」的結果裡找不到符合的工作項目", { name: workItemQuery.name })
                 : t("查詢「{name}」沒有結果", { name: workItemQuery.name })
@@ -780,10 +840,10 @@ export function initWorkItemsPanel(): void {
             ? search
               ? t("找到 {n} 個工作項目", { n })
               : app.isDefaultFilter()
-                ? t("指派給你、還沒結束的工作項目（{n}）", { n })
+                ? t("{n} 個指派給你、還沒結束的工作項目", { n })
                 : n >= WORK_ITEM_LIMIT
-                  ? t("符合篩選條件的工作項目（只列最近更新的 {n} 個）", { n })
-                  : t("符合篩選條件的工作項目（{n}）", { n })
+                  ? t("{n} 個符合篩選條件的工作項目（只列最近更新的）", { n })
+                  : t("{n} 個符合篩選條件的工作項目", { n })
             : search
               ? t("找不到符合的工作項目")
               : app.isDefaultFilter()
@@ -855,6 +915,8 @@ export function initWorkItemsPanel(): void {
         link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
         create: (wiki, parent) => void app.createWikiPage(wiki, parent).catch(app.reportError),
         recent: (wiki) => openWikiRecent(wiki),
+        backlinks: (wiki, path) => void openWikiBacklinks(wiki, path).catch(app.reportError),
+        move: (wiki, path, to) => void moveWikiPage(wiki, path, to).catch(app.reportError),
         canCreate: (wiki) => !wiki.code,
         async reorder(wiki, path, index) {
           try {

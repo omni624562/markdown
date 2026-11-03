@@ -51,6 +51,10 @@ export interface IssueSource {
   addChild?(): void;
   /** 「刪除這一頁」（Wiki 頁面；不能刪除的不給）。 */
   remove?(): void;
+  /** 「哪些頁面連到這一頁」（Wiki 頁面）。 */
+  backlinks?(): void;
+  /** 「改名或搬移」（Wiki 頁面；不能搬的不給）。 */
+  move?(): void;
   /** 「放到左側圖示列」：有沒有放、放上去或拿掉（不能放的不給）。 */
   shortcut?: { has(): boolean; toggle(): void };
   /** 內容裡的連結（`href` 是原始寫法）：自己處理了就回傳 true，否則用瀏覽器開。 */
@@ -75,7 +79,10 @@ export interface IssueViewHooks {
   decorateFailed?(message: string): void;
   /** 把 Markdown 顯示在 `into`（預覽同一套流程：移除原始 HTML、程式碼上色、圖片處理）。 */
   render(markdown: string, into: HTMLElement): void;
+  /** 內容裡的網址（連到工作項目、Wiki 頁面的可以在 oMarker 裡開）。 */
   open(url: string): void;
+  /** 「在瀏覽器開啟」：一定用瀏覽器開（`open` 會把這個項目自己的網址又開在 oMarker 裡）。 */
+  browse(url: string): void;
   copyAsDocument(name: string, markdown: string): void;
   /** 開啟（或上一頁／下一頁切換到）一個項目，內容讀取之前（例如更新側邊欄清單上的標示）。 */
   opened(source: IssueSource): void;
@@ -262,6 +269,18 @@ export class IssueView {
         },
       },
       {
+        label: t("改名或搬移…"),
+        icon: "text-cursor-input",
+        when: () => !!this.#source?.move,
+        run: () => this.#source?.move?.(),
+      },
+      {
+        label: t("哪些頁面連到這一頁…"),
+        icon: "link-2",
+        when: () => !!this.#source?.backlinks,
+        run: () => this.#source?.backlinks?.(),
+      },
+      {
         label: t("刪除這一頁…"),
         icon: "trash",
         when: () => !!this.#source?.remove,
@@ -283,7 +302,7 @@ export class IssueView {
     actions.append(
       this.#editBtn,
       this.#historyBtn,
-      iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.open(this.#source.webUrl)),
+      iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.browse(this.#source.webUrl)),
       sep,
       iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),

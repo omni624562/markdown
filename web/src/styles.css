@@ -174,13 +174,17 @@ kbd {
 /* 拿掉系統標題列後，視窗靠頂端列拖曳；頂端列稍微高一點，比較好抓。 */
 .custom-titlebar { --topbar-h: 42px; }
 .custom-titlebar .topbar { user-select: none; }
-/* 圖示列一直顯示（窄螢幕除外），頂端的側邊欄按鈕和它對齊。 */
-.nav-toggle { border-right: 1px solid var(--topbar-border); }
-.topbar.with-sidebar .topbar-side { display: block; border-right: 1px solid var(--topbar-border); }
+/*
+ * 頂端列是完整的一條：裡面不畫直線（分隔線只在下面的面板之間）；側邊欄開著時，分頁從內文的左邊開始。
+ * 左右兩個側邊欄按鈕同一種樣子：開著時圖示顏色深一點，不加底色。
+ */
+.topbar.with-sidebar .topbar-side { display: block; }
 .workspace.narrow.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; margin-left: auto; align-items: center; padding: 0 8px 0 12px; }
 .top-actions .btn.icon-only { color: var(--chrome-icon); }
 .top-actions .btn.icon-only:hover { color: var(--fg); }
+.top-actions .btn.icon-only[aria-pressed="true"] { background: transparent; color: var(--fg); }
+.top-actions .btn.icon-only[aria-pressed="true"]:hover { background: var(--surface); }
 .segmented {
   display: inline-flex;
   gap: 2px;
@@ -232,7 +236,7 @@ kbd {
 /* 大綱和 Wiki 都在右側：上下各一半，中間一條線。 */
 .outline-right > .side-panel + .side-panel { border-top: 1px solid var(--border); }
 /* Wiki 面板移到右側時，圖示列上的 Wiki 圖示藏起來。 */
-.activity-tabs [role="tab"].placed-right { display: none; }
+/* Wiki 放在右側時，圖示列上的 Wiki 圖示照樣顯示（按一下打開或收起右側欄），不然右側欄收起來後就找不到 Wiki 了。 */
 
 .pane { min-width: 0; min-height: 0; }
 .editor-pane { grid-area: editor; display: flex; flex-direction: column; overflow: hidden; }
@@ -627,8 +631,14 @@ kbd {
 .editor-pane { position: relative; }
 .empty-state.in-editor { pointer-events: none; }
 .empty-state.in-editor .start-page { pointer-events: auto; }
-/* 起始頁顯示時，編輯區的灰色提示（「開始寫 Markdown…」）收起來，只留一個起點。 */
+/*
+ * 起始頁顯示時，編輯區的灰色提示（「開始寫 Markdown…」）收起來，只留一個起點；
+ * 行號（空白文件的「1」）也藏起來，但保留寬度，開始打字時內容不會跳動；
+ * 目前這一行的底色（原始碼檢視、純文字等不是即時預覽時才有）也不顯示，不然起始頁上方會多一條灰帶。
+ */
 .editor-pane:has(> .empty-state.in-editor:not([hidden])) .cm-placeholder { display: none; }
+.editor-pane:has(> .empty-state.in-editor:not([hidden])) .cm-gutters { visibility: hidden; }
+.editor-pane:has(> .empty-state.in-editor:not([hidden])) .cm-activeLine { background: transparent; }
 
 /* ---- 起始頁：左欄「開始」「連線」，右欄最近開啟，下方小提示（ui/start-page.ts） ---- */
 .start-page { width: min(800px, 100%); color: var(--fg); font-family: var(--font-ui); text-align: left; }
@@ -1217,6 +1227,21 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
   box-shadow: inset 0 3px 0 var(--accent);
 }
 .tab[aria-selected="true"]::before { opacity: 0.8; color: var(--accent); }
+/*
+ * 分頁樣式（設定 → 外觀）。卡片：分頁離頂端留一點空間，目前的分頁是圓角卡片、和下面的內文接在一起，
+ * 其他分頁之間一條短短的分隔線。底線：目前的分頁下緣一條強調色的線，緊貼內文。窄視窗只顯示一個分頁，不套用。
+ */
+@media (min-width: 721px) {
+  [data-tab-style="card"] .tab-bar { padding-top: 5px; }
+  [data-tab-style="card"] .tab { border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; }
+  [data-tab-style="card"] .tab:not([aria-selected="true"]) + .tab:not([aria-selected="true"]) {
+    background: linear-gradient(var(--border), var(--border)) left center / 1px 16px no-repeat;
+  }
+  [data-tab-style="card"] .tab:not([aria-selected="true"]):hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+  [data-tab-style="card"] .tab[aria-selected="true"] { border-color: var(--topbar-border); box-shadow: none; }
+  [data-tab-style="underline"] .tab { border-right: 0; }
+  [data-tab-style="underline"] .tab[aria-selected="true"] { background: transparent; box-shadow: inset 0 -2px 0 var(--accent); }
+}
 .tab-rename {
   width: 14em;
   min-width: 0;
@@ -2025,9 +2050,14 @@ button.git-info:disabled { cursor: default; }
 .side-body.workitems > .workitems-filters { max-height: 55%; overflow-y: auto; }
 .side-body.workitems > .workitems-list { flex: 1 1 auto; min-height: 0; margin: 0 -8px; padding: 0 8px 12px; overflow-y: auto; border-top: 1px solid transparent; }
 .side-body.workitems > .workitems-list.scrolled { border-top-color: var(--border); }
-.workitems-statusrow { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; justify-content: space-between; }
-.workitems-statusrow .workitems-status { flex: 1 1 120px; min-width: 0; }
-.workitems-tools { display: inline-flex; flex: none; gap: 2px; align-items: center; max-width: 100%; }
+/*
+ * 清單上方的「N 個…」與排列方式、收合等按鈕：一直是一列。側邊欄窄時文字用「…」截短（滑鼠移上去看完整的），
+ * 按鈕不換行也不被切掉。連不上伺服器、顯示存下的資料時（有「重試」）才讓文字換行。
+ */
+.workitems-statusrow { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.workitems-statusrow .workitems-status { flex: 1 1 auto; min-width: 0; }
+.workitems-statusrow .workitems-status:not(.from-copy) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workitems-tools { display: inline-flex; flex: none; gap: 2px; align-items: center; }
 .workitems-fold { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
 .workitems-fold[hidden] { display: none; }
 .workitems-fold .icon { width: 14px; height: 14px; }
@@ -2049,17 +2079,33 @@ button.git-info:disabled { cursor: default; }
 /* 依上層項目分組時標題比較長（「User Story 123：標題」）：最多兩行。 */
 .workitems-group-name.wrap { display: -webkit-box; line-height: 1.35; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .workitems-group-count { flex: none; min-width: 18px; padding: 0 5px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 8%, transparent); font-weight: 500; text-align: center; }
-/* 以項目當標題的一組（依上層項目分組）：標題列是那個項目的卡片，組與組之間有分隔；子項目縮排、左邊一條線。 */
+/*
+ * 依上層項目分組（樹狀 Epic → Feature → Story → Task）：有子項目的是標題列（那個項目的卡片，左邊收合箭頭），
+ * 最上層的組與組之間有分隔；子項目每一層縮排 12px（最多 3 層）、左邊一條線。
+ */
 .workitems-group-card { display: flex; gap: 2px; align-items: flex-start; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .workitems-list > .workitems-group-card:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.workitems-group-card.workitems-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.workitems-group-card.workitems-child > .workitems-group-toggle { margin-top: 2px; }
 .workitems-group-card > .workitem { flex: 1; min-width: 0; }
 .workitems-group-card > .workitem .workitem-title { font-weight: 600; }
-.workitems-group-card > .workitems-group-count { margin-top: 8px; color: var(--muted); font-size: 11.5px; line-height: 18px; }
+.workitem-summary { display: block; margin-top: 2px; color: var(--muted); font-size: 11.5px; }
+/* 不在清單上、只是用來分組的上層（例如不是指派給我的 Feature）。 */
+.workitems-dim > .workitem { opacity: 0.62; }
+.workitems-dim > .workitem:hover, .workitems-dim > .workitem:focus-visible { opacity: 1; }
 .workitems-group-toggle { display: grid; flex: none; place-items: center; width: 22px; height: 22px; margin-top: 6px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }
 .workitems-group-toggle:hover { background: var(--active-line); color: var(--fg); }
 .workitems-group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .workitems-group-toggle .icon { width: 14px; height: 14px; }
-.workitems-child { margin-left: 24px; padding-left: 8px; border-left: 2px solid var(--border); }
+/*
+ * 樹的子項目：每一層往右 12px，內容和上一層的內容對齊再往右一點（沒有子項目的列多留收合箭頭的寬度）；
+ * 左邊每一層畫一條線，對齊上層的收合箭頭，一路連下來。
+ */
+.workitems-child { --tree-line: linear-gradient(var(--border), var(--border)); padding-left: calc(var(--indent) + 24px); background-repeat: no-repeat; background-size: 2px 100%; }
+.workitems-child.workitems-group-card { padding-left: var(--indent); }
+.workitems-child[data-depth="1"] { --indent: 12px; background-image: var(--tree-line); background-position: 10px 0; }
+.workitems-child[data-depth="2"] { --indent: 24px; background-image: var(--tree-line), var(--tree-line); background-position: 10px 0, 22px 0; }
+.workitems-child[data-depth="3"] { --indent: 36px; background-image: var(--tree-line), var(--tree-line), var(--tree-line); background-position: 10px 0, 22px 0, 34px 0; }
 .workitems-child > .workitem { padding-top: 4px; padding-bottom: 4px; }
 .workitems-group-card ~ .workitems-group { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
 .workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
@@ -2191,6 +2237,9 @@ button.git-info:disabled { cursor: default; }
   pointer-events: none;
 }
 .wiki-row[data-drop="before"]::after { top: -1px; }
+/* 搬進去當子頁面：整列標出來（不畫線）。 */
+.wiki-row[data-drop="into"]::after { content: none; }
+.wiki-row[data-drop="into"] > .wiki-page { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
 .wiki-row[data-drop="after"]::after { bottom: -1px; }
 .wiki-toggle { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 24px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; }
 .wiki-toggle:disabled { cursor: default; }
@@ -3538,6 +3587,8 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .wi-create .pdf-field input { height: 36px; }
 .wi-create-error { margin: 0 0 10px; color: var(--danger); font-size: 13px; }
 .wi-create-error[hidden] { display: none; }
+.wiki-move .wiki-new-hint[hidden] { display: none; }
+.wiki-move-relink { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 13px; }
 
 /* 輸入框、下拉選單：四周淡灰、下緣加深（和 Windows 11 的文字框一樣），白底上也看得出範圍（WCAG 1.4.11）。
    放在最後面才蓋得過上面各自的 border 設定；:hover、:focus 的規則權重較高，不受影響。 */
@@ -3603,9 +3654,10 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 body.ado-offline .tb-card { cursor: default; }
 
 /* 工作項目清單上方：指派給你的有幾個新的或有更新・只看這些・全部標示為看過（見 app/work-items-panel.ts）。 */
-.workitems-unseen { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; margin: 0 0 8px; padding: 6px 10px; border-radius: var(--radius); background: var(--accent-soft); font-size: 12.5px; }
+/* 「有 N 個新的或有更新」：說明一行，下面一行是動作；不管側邊欄多寬都是這樣，拉寬拉窄不會跳來跳去。 */
+.workitems-unseen { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; margin: 0 0 8px; padding: 6px 10px; border-radius: var(--radius); background: var(--accent-soft); font-size: 12.5px; }
 .workitems-unseen[hidden] { display: none; }
-.workitems-unseen > span { flex: 1 1 auto; }
+.workitems-unseen > span { flex: 1 0 100%; }
 .workitems-unseen-action { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 .workitems-unseen-action:hover { text-decoration: underline; }
 

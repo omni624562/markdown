@@ -9,6 +9,7 @@ import type { CapacityData } from "./taskboard-model.ts";
 import { t } from "./i18n.ts";
 import type { WikiPageInfo } from "./wiki-coedit.ts";
 import type { Iteration } from "./work-item-fields.ts";
+import type { KindStates } from "./work-item-filter.ts";
 
 interface TauriCore {
   /** `args` 是位元組時當成請求本文直接傳送（大檔案不用轉成 base64），其他資料放在標頭。 */
@@ -437,6 +438,12 @@ export interface AdoWikiChange {
   commitId: string;
 }
 
+/** Wiki 每一頁的內文（找哪些頁面連到某一頁用）；`skipped` 是讀不到的頁面數。 */
+export interface AdoWikiSources {
+  pages: { path: string; text: string }[];
+  skipped: number;
+}
+
 /** 修改記錄裡改了的一個欄位；長文字欄位（說明等）只標出有修改，`old`、`new` 是 null。 */
 export interface AdoFieldChange {
   /** 欄位的參考名稱（例如 System.State）。 */
@@ -516,6 +523,8 @@ export interface AdoWorkItemFilter {
   /** `@me`（我）、空字串（不限）或名字（部分符合即可）。 */
   person: string;
   state: "open" | "closed" | "all";
+  /** 指定的狀態（例如 New、Active）；空的是照 `state`。 */
+  states: string[];
   /** 類型、專案、區域都可以複選；空的是不限。 */
   kinds: string[];
   projects: string[];
@@ -1003,9 +1012,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
     adoClone: (cloneUrl: string, name: string) => core.invoke<Cloned | null>("ado_clone", { cloneUrl, name }),
     adoWorkItems: (search: string, filter?: AdoWorkItemFilter) => core.invoke<AdoWorkItem[]>("ado_work_items", { search, filter }),
-    adoWorkItemFilters: () => core.invoke<{ projects: string[]; kinds: string[] }>("ado_work_item_filters"),
+    adoWorkItemFilters: () =>
+      core.invoke<{ projects: string[]; kinds: string[]; stateSets?: KindStates[] }>("ado_work_item_filters"),
     adoWorkItemScope: (project: string | null) =>
-      core.invoke<{ areas: string[]; people: string[] }>("ado_work_item_scope", { project }),
+      core.invoke<{ areas: string[]; people: string[]; stateSets?: KindStates[] }>("ado_work_item_scope", { project }),
     /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
     adoImage: (url: string) => core.invoke<string>("ado_image", { url }),
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
@@ -1076,6 +1086,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),
     adoWikiPages: (w: AdoWiki) =>
       core.invoke<AdoWikiPage[]>("ado_wiki_pages", { projectId: w.projectId, wikiId: w.id, version: w.code ? w.version : null }),
+    /** 頁面編號對應的頁面路徑（網址只寫了編號時用）；伺服器太舊或沒有這一頁時是 null。 */
+    adoWikiPagePath: (w: AdoWiki, pageId: number) =>
+      core.invoke<string | null>("ado_wiki_page_path", { projectId: w.projectId, wikiId: w.id, pageId }),
     adoWikiPage: (w: AdoWiki, path: string) =>
       core.invoke<{ content: string; webUrl: string | null; etag: string | null }>("ado_wiki_page", {
         projectId: w.projectId,
@@ -1129,6 +1142,15 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** Wiki 最近修改：最近 30 次提交改到的頁面（新的在前）。 */
     adoWikiRecent: (w: AdoWiki) =>
       core.invoke<AdoWikiChange[]>("ado_wiki_recent", {
+        projectId: w.projectId,
+        wikiId: w.id,
+        repositoryId: w.repositoryId || null,
+        mappedPath: w.mappedPath || "/",
+        version: w.version ?? null,
+      }),
+    /** Wiki 每一頁的內文（讀過、內容沒變的頁面不再讀）。 */
+    adoWikiSources: (w: AdoWiki) =>
+      core.invoke<AdoWikiSources>("ado_wiki_sources", {
         projectId: w.projectId,
         wikiId: w.id,
         repositoryId: w.repositoryId || null,

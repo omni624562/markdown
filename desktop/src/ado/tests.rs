@@ -426,6 +426,10 @@ fn lists_wikis_and_page_trees() {
         json!({"path": "/A", "newPath": "/B/A"})
     );
     assert_eq!(
+        wiki_page_by_id_path("p 1", "w1", 53081),
+        "/p%201/_apis/wiki/wikis/w1/pages/53081"
+    );
+    assert_eq!(
         wiki_pages_path("p1", "w1", "/A B", Some("main")),
         "/p1/_apis/wiki/wikis/w1/pages?path=%2FA%20B&versionDescriptor.version=main"
     );
@@ -501,6 +505,81 @@ fn builds_wiql_for_each_search() {
     assert!(wiql_for("", &me, &[])
         .unwrap()
         .contains("[System.CreatedBy] = @Me"));
+    // 指定狀態：用 IN 列出來，不再套「進行中」的條件。
+    let picked = WorkItemFilter {
+        states: vec!["New".into(), "Active".into(), "New".into()],
+        ..Default::default()
+    };
+    let q = wiql_for("", &picked, &[]).unwrap();
+    assert!(q.contains("[System.State] IN ('New', 'Active')"));
+    assert!(!q.contains("NOT IN"));
+}
+
+#[test]
+fn lists_states_for_the_filter_in_workflow_order() {
+    // 新版：類型定義有 states（含分類）；舊版只有狀態轉換。
+    let agile = json!({
+        "name": "User Story",
+        "states": [
+            {"name": "New", "category": "Proposed"},
+            {"name": "Active", "category": "InProgress"},
+            {"name": "Resolved", "category": "Resolved"},
+            {"name": "Closed", "category": "Completed"},
+            {"name": "Removed", "category": "Removed"}
+        ]
+    });
+    let old = json!({
+        "name": "Task",
+        "transitions": {"": [{"to": "To Do"}], "To Do": [{"to": "Doing"}], "Doing": [{"to": "Done"}]}
+    });
+    assert_eq!(
+        type_states(&old),
+        vec![
+            (0, "To Do".to_string()),
+            (1, "Doing".to_string()),
+            (3, "Done".to_string())
+        ]
+    );
+    let mut all = type_states(&agile);
+    all.extend(type_states(&old));
+    // 同名的只列一次（不分大小寫）。
+    all.push((1, "active".into()));
+    let merged = merge_states(all);
+    let names: Vec<&str> = merged.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["New", "To Do", "Active", "Doing", "Resolved", "Closed", "Done", "Removed"]
+    );
+    let closed: Vec<&str> = merged
+        .iter()
+        .filter(|s| s.closed)
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(closed, ["Closed", "Done", "Removed"]);
+    assert_eq!(
+        merged.iter().map(|s| s.stage).collect::<Vec<_>>(),
+        [0, 0, 1, 1, 2, 3, 3, 4]
+    );
+}
+
+#[test]
+fn groups_states_by_project_and_kind() {
+    let types = json!({"value": [
+        {"name": "Task", "states": [{"name": "New", "category": "Proposed"}, {"name": "Done", "category": "Completed"}]},
+        {"name": "Test Case", "states": [{"name": "Design", "category": "Proposed"}]},
+        {"name": "Bug", "transitions": {"": [{"to": "Active"}], "Active": [{"to": "Closed"}]}},
+        {"name": "Empty"}
+    ]});
+    let sets = kind_states("Mgt", &types);
+    // 測試、程式碼檢閱等類型不列；沒有狀態的類型也不列。
+    let kinds: Vec<(&str, &str)> = sets
+        .iter()
+        .map(|s| (s.project.as_str(), s.kind.as_str()))
+        .collect();
+    assert_eq!(kinds, [("Mgt", "Task"), ("Mgt", "Bug")]);
+    let bug: Vec<&str> = sets[1].states.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(bug, ["Active", "Closed"]);
+    assert!(sets[0].states[1].closed);
 }
 
 #[test]
@@ -1211,6 +1290,48 @@ fn wiki_file_paths_become_page_paths() {
     );
     assert_eq!(page_of_git_path("/src/readme.md", "/docs"), None);
     assert_eq!(page_of_git_path("/docs.md", "/docs"), None);
+}
+
+#[test]
+fn lists_wiki_page_files_from_repository_items() {
+    // 資料夾、附件、.order 不算；頁面路徑依 Wiki 的規則轉換，帶著內容的編號。
+    let v = json!({ "value": [
+        { "path": "/", "isFolder": true, "gitObjectType": "tree", "objectId": "t0" },
+        { "path": "/產品", "isFolder": true, "gitObjectType": "tree", "objectId": "t1" },
+        { "path": "/產品.md", "gitObjectType": "blob", "objectId": "b1" },
+        { "path": "/產品/安裝-說明.md", "gitObjectType": "blob", "objectId": "b2" },
+        { "path": "/產品/.order", "gitObjectType": "blob", "objectId": "b3" },
+        { "path": "/.attachments/圖.png", "gitObjectType": "blob", "objectId": "b4" },
+        { "path": "/沒有編號.md", "gitObjectType": "blob" }
+    ]});
+    assert_eq!(
+        wiki_page_files(&v, "/"),
+        vec![
+            (
+                "/產品".to_string(),
+                "/產品.md".to_string(),
+                "b1".to_string()
+            ),
+            (
+                "/產品/安裝 說明".to_string(),
+                "/產品/安裝-說明.md".to_string(),
+                "b2".to_string()
+            ),
+        ]
+    );
+    // 程式碼 Wiki：只看 Wiki 所在的資料夾。
+    let code = json!({ "value": [
+        { "path": "/docs/Start.md", "gitObjectType": "blob", "objectId": "c1" },
+        { "path": "/src/readme.md", "gitObjectType": "blob", "objectId": "c2" }
+    ]});
+    assert_eq!(
+        wiki_page_files(&code, "/docs"),
+        vec![(
+            "/Start".to_string(),
+            "/docs/Start.md".to_string(),
+            "c1".to_string()
+        )]
+    );
 }
 
 #[test]
