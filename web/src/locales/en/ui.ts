@@ -882,4 +882,5 @@ export const ui: Record<string, Translation> = {
   "開始日期": "Start Date",
   "完成日期": "Finish Date",
   "目標日期": "Target Date",
+  "{n} 個 {kind}": "{n} {kind}",
 };
