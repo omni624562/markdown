@@ -779,9 +779,13 @@ export const ui: Record<string, Translation> = {
   "開啟的資料夾裡的子資料夾，例如「每日筆記」或「筆記/每日」；留空就放在最上層。檔名是日期，例如 2026-11-02.md":
     "A subfolder of the open folder, such as “Daily Notes” or “Notes/Daily”; leave empty for the top level. Files are named by date, e.g. 2026-11-02.md",
   "範本": "Template",
-  "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增":
-    "Used when creating today's note; add your own with “⋯” → “Save Current Document as Template…”",
+  "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）":
+    "Used when creating today's note; add your own with “⋯” → “Save Current Document as Template…”. A line with just {name} becomes a checklist of your open work items",
   "內建（今天要做、會議與討論、筆記）": "Built-in (To Do, Meetings, Notes)",
+  "（目前沒有指派給你、還沒結束的工作項目）": "(No open work items assigned to you)",
+  "（讀不到指派給你的工作項目：{error}）": "(Couldn't load your work items: {error})",
+  "已插入 {n} 個工作項目": "Inserted {n} work items",
+  "插入指派給我的工作項目（待辦清單）": "Insert My Work Items (Checklist)",
   "目前離線，連上 Azure DevOps 之後才能修改": "You're offline. Connect to Azure DevOps to make changes",
   "一起修改 {n} 個工作項目": "Change {n} Work Items",
   "只改有選的欄位，其他的保持原樣。": "Only the fields you pick are changed; everything else stays as it is.",

@@ -14,6 +14,7 @@ import { toast } from "./toast.ts";
 import { COMMON_KINDS, isCustomKind, kindColor, kindKey } from "../work-item-colors.ts";
 import { ACCENTS, DEFAULT_PALETTE, PALETTES, type PaletteId, accentColors, parseAccent } from "../palette.ts";
 import { REPO_URL } from "../repo.ts";
+import { WORK_ITEMS_VAR } from "../daily-notes.ts";
 
 type ThemePref = "system" | "light" | "dark";
 
@@ -246,7 +247,9 @@ const EDIT_GROUPS: Group[] = [
             {
               key: "dailyTemplate" as const,
               label: t("範本"),
-              hint: t("建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增"),
+              hint: t("建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）", {
+                name: WORK_ITEMS_VAR,
+              }),
             },
           ],
         },
