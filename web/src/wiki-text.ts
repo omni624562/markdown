@@ -47,25 +47,32 @@ const EXTERNAL = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
  * 找不到這一頁（或不是頁面連結）時回傳 null。
  */
 export function resolvePageLink(href: string, current: string, pages: Iterable<string>): string | null {
-  const raw = href.trim().split(/[?#]/)[0];
-  if (!raw || EXTERNAL.test(raw)) return null;
+  return pageLinkResolver(pages)(href, current);
+}
+
+/** 同一棵頁面樹要解析很多連結時用（例如找哪些頁面連到這一頁）：只整理一次頁面清單。規則和 `resolvePageLink` 一樣。 */
+export function pageLinkResolver(pages: Iterable<string>): (href: string, current: string) => string | null {
   const byLower = new Map<string, string>();
   for (const p of pages) byLower.set(p.toLowerCase(), p);
-  // 先照 Wiki 的規則（`-` 是空白），找不到再照字面（有人手寫 `a-b`）。
-  for (const text of [raw.replace(/-/g, " "), raw]) {
-    let path: string;
-    try {
-      path = decodeURIComponent(text).replace(/\.md$/i, "");
-    } catch {
-      return null;
+  return (href, current) => {
+    const raw = href.trim().split(/[?#]/)[0];
+    if (!raw || EXTERNAL.test(raw)) return null;
+    // 先照 Wiki 的規則（`-` 是空白），找不到再照字面（有人手寫 `a-b`）。
+    for (const text of [raw.replace(/-/g, " "), raw]) {
+      let path: string;
+      try {
+        path = decodeURIComponent(text).replace(/\.md$/i, "");
+      } catch {
+        return null;
+      }
+      const bases = path.startsWith("/") ? [""] : [parentOf(current), current];
+      for (const base of bases) {
+        const found = byLower.get(normalize(base ? `${base}/${path}` : path).toLowerCase());
+        if (found) return found;
+      }
     }
-    const bases = path.startsWith("/") ? [""] : [parentOf(current), current];
-    for (const base of bases) {
-      const found = byLower.get(normalize(base ? `${base}/${path}` : path).toLowerCase());
-      if (found) return found;
-    }
-  }
-  return null;
+    return null;
+  };
 }
 
 /** 頁面路徑在 Git 儲存庫裡的資料夾名稱：`-` 寫成 `%2D`、空白寫成 `-`。 */
