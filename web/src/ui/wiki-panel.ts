@@ -504,29 +504,7 @@ export class WikiPanel<W extends WikiInfo> {
       this.#renderContent("");
       return;
     }
-    if (q) {
-      this.#hiddenNote.hidden = true;
-      this.#rootBar.hidden = true;
-      const found: WikiTreePage[] = [];
-      const walk = (list: WikiTreePage[]) => {
-        for (const p of list) {
-          if (pageName(p.path).toLowerCase().includes(q)) found.push(p);
-          walk(p.children);
-        }
-      };
-      walk(this.#pages);
-      this.#status.textContent = found.length ? t("找到 {n} 頁", { n: found.length }) : t("找不到符合的頁面");
-      this.#list.replaceChildren(...found.slice(0, MAX_RESULTS).map((p) => this.#row(p, 0, true)));
-      this.#rove();
-      this.#renderContent(this.#input.value.trim());
-      return;
-    }
-    this.#renderContent("");
-    this.#status.textContent = "";
-    noteCopy(this.#status, this.#pages, () => {
-      this.#h.forget?.();
-      void this.refresh();
-    });
+    // 「只看這裡」或篩選了最上層頁面時，樹狀目錄與搜尋都只在這個範圍裡（下面一行提示還有藏起來的頁面）。
     const root = this.#root();
     this.#renderRoot(root);
     const top = root ? root.children : this.#topPages();
@@ -540,6 +518,27 @@ export class WikiPanel<W extends WikiInfo> {
       show.addEventListener("click", () => this.#setShown([]));
       this.#hiddenNote.replaceChildren(t("已隱藏 {n} 個最上層頁面", { n: hidden }), t("・"), show);
     }
+    if (q) {
+      const found: WikiTreePage[] = [];
+      const walk = (list: WikiTreePage[]) => {
+        for (const p of list) {
+          if (pageName(p.path).toLowerCase().includes(q)) found.push(p);
+          walk(p.children);
+        }
+      };
+      walk(this.#scope());
+      this.#status.textContent = found.length ? t("找到 {n} 頁", { n: found.length }) : t("找不到符合的頁面");
+      this.#list.replaceChildren(...found.slice(0, MAX_RESULTS).map((p) => this.#row(p, 0, true)));
+      this.#rove();
+      this.#renderContent(this.#input.value.trim());
+      return;
+    }
+    this.#renderContent("");
+    this.#status.textContent = "";
+    noteCopy(this.#status, this.#pages, () => {
+      this.#h.forget?.();
+      void this.refresh();
+    });
     const rows: HTMLLIElement[] = [];
     const walk = (list: WikiTreePage[], depth: number) => {
       for (const p of list) {
@@ -597,6 +596,12 @@ export class WikiPanel<W extends WikiInfo> {
     back.textContent = t("返回整個 Wiki");
     back.addEventListener("click", () => this.#setRoot(null));
     this.#rootBar.replaceChildren(name, back);
+  }
+
+  /** 搜尋的範圍：「只看這裡」的資料夾（含它自己），或篩選後顯示的最上層頁面。 */
+  #scope(): WikiTreePage[] {
+    const root = this.#root();
+    return root ? [root] : this.#topPages();
   }
 
   /** 篩選後要顯示的最上層頁面（勾的頁面都不在了，就全部顯示）。 */
@@ -683,7 +688,8 @@ export class WikiPanel<W extends WikiInfo> {
   }
 
   #showContent(heading: HTMLElement, found: WikiContentSearch): void {
-    const exists = new Set(flattenPages(this.#pages));
+    // 只列搜尋範圍裡的頁面（伺服器搜尋整個 Wiki）。
+    const exists = new Set(flattenPages(this.#scope()));
     const results = found.results.filter((r) => exists.has(r.path));
     heading.textContent = t("內容符合（{n}）", { n: results.length });
     if (!results.length) {
