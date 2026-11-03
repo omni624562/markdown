@@ -43,6 +43,8 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   searchContent?(wiki: W, text: string): Promise<WikiContentSearch>;
   /** 新增頁面：`parent` 是上層頁面（null 是最上層）；不能新增的 Wiki（例如程式碼 Wiki）回傳 false 時不顯示按鈕。 */
   create?(wiki: W, parent: string | null): void;
+  /** 這個 Wiki 的最近修改（誰改了哪幾頁）。 */
+  recent?(wiki: W): void;
   canCreate?(wiki: W): boolean;
   /** 釘選放在別的地方（例如左側圖示列）：給了就用它，面板上不列「已釘選」。 */
   pins?: WikiPins<W>;
@@ -84,6 +86,7 @@ export class WikiPanel<W extends WikiInfo> {
   #select: FavoriteSelect;
   /** 「新增頁面」（最上層）。 */
   #newBtn: HTMLButtonElement;
+  #recentBtn: HTMLButtonElement;
   #input: HTMLInputElement;
   #status: HTMLElement;
   #list: HTMLUListElement;
@@ -149,7 +152,21 @@ export class WikiPanel<W extends WikiInfo> {
     this.#newBtn.addEventListener("click", () => {
       if (this.#wiki) this.#h.create?.(this.#wiki, null);
     });
-    bar.append(this.#select.select, this.#select.star, this.#newBtn);
+    this.#recentBtn = document.createElement("button");
+    this.#recentBtn.type = "button";
+    this.#recentBtn.className = "wiki-new wiki-recent";
+    const recentLabel = t("最近修改");
+    this.#recentBtn.title = t("這個 Wiki 最近誰改了哪幾頁");
+    this.#recentBtn.setAttribute("aria-label", recentLabel);
+    this.#recentBtn.append(icon("history"), Object.assign(document.createElement("span"), { textContent: recentLabel }));
+    this.#recentBtn.hidden = true;
+    this.#recentBtn.addEventListener("click", () => {
+      if (this.#wiki) this.#h.recent?.(this.#wiki);
+    });
+    const actions = document.createElement("div");
+    actions.className = "wiki-actions";
+    actions.append(this.#newBtn, this.#recentBtn);
+    bar.append(this.#select.select, this.#select.star, actions);
     this.#input = document.createElement("input");
     this.#input.type = "search";
     this.#input.className = "workitems-search";
@@ -350,6 +367,7 @@ export class WikiPanel<W extends WikiInfo> {
     if (wiki?.id !== this.#wiki?.id) this.#expanded.clear();
     this.#wiki = wiki;
     this.#newBtn.hidden = !this.#canCreate();
+    this.#recentBtn.hidden = !wiki || !this.#h.recent;
     this.#prefs = wiki ? this.#h.prefs(wiki.id) : { pinned: [] };
     if (!quiet) {
       this.#pages = [];
