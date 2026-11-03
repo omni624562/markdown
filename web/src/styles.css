@@ -1221,6 +1221,21 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
   box-shadow: inset 0 3px 0 var(--accent);
 }
 .tab[aria-selected="true"]::before { opacity: 0.8; color: var(--accent); }
+/*
+ * 分頁樣式（設定 → 外觀）。卡片：分頁離頂端留一點空間，目前的分頁是圓角卡片、和下面的內文接在一起，
+ * 其他分頁之間一條短短的分隔線。底線：目前的分頁下緣一條強調色的線，緊貼內文。窄視窗只顯示一個分頁，不套用。
+ */
+@media (min-width: 721px) {
+  [data-tab-style="card"] .tab-bar { padding-top: 5px; }
+  [data-tab-style="card"] .tab { border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; }
+  [data-tab-style="card"] .tab:not([aria-selected="true"]) + .tab:not([aria-selected="true"]) {
+    background: linear-gradient(var(--border), var(--border)) left center / 1px 16px no-repeat;
+  }
+  [data-tab-style="card"] .tab:not([aria-selected="true"]):hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+  [data-tab-style="card"] .tab[aria-selected="true"] { border-color: var(--topbar-border); box-shadow: none; }
+  [data-tab-style="underline"] .tab { border-right: 0; }
+  [data-tab-style="underline"] .tab[aria-selected="true"] { background: transparent; box-shadow: inset 0 -2px 0 var(--accent); }
+}
 .tab-rename {
   width: 14em;
   min-width: 0;

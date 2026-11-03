@@ -119,3 +119,12 @@ test("每日筆記的資料夾與範本", () => {
   assert.equal(sanitize({ dailyTemplate: " 我的日誌 " }).settings.dailyTemplate, "我的日誌");
   assert.equal(sanitize({ dailyTemplate: 3 }).problems, 1);
 });
+
+test("分頁樣式：預設是原本的頂端線；只接受三種樣式", () => {
+  assert.equal(DEFAULTS.tabStyle, "line");
+  assert.equal(sanitize({ tabStyle: "card" }).settings.tabStyle, "card");
+  assert.equal(sanitize({ tabStyle: "underline" }).settings.tabStyle, "underline");
+  const bad = sanitize({ tabStyle: "round" });
+  assert.equal(bad.settings.tabStyle, "line");
+  assert.equal(bad.problems, 1);
+});

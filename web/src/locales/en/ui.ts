@@ -912,4 +912,8 @@ export const ui: Record<string, Translation> = {
   "更新了 {n} 頁的連結": "updated links in {n} pages",
   "有 {n} 頁的連結沒有更新（{names}），請自己改一下": "Links in {n} pages were not updated ({names}); please fix them yourself",
   "{n} 個 {kind}": "{n} {kind}",
+  "分頁樣式": "Tab Style",
+  "目前的分頁怎麼標示：頂端一條線、和內文接在一起的卡片，或底下一條線": "How the current tab is marked: a line on top, a card joined to the document, or a line underneath",
+  "頂端一條線（原本）": "Line on top (original)",
+  "卡片": "Card",
 };

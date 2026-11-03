@@ -79,6 +79,8 @@ export interface Settings {
   codeFont: string;
   /** 即時預覽、預覽與 PDF 的行距。 */
   docLineHeight: "compact" | "normal" | "relaxed";
+  /** 目前的分頁怎麼標示：`line` 頂端一條強調色的線（原本）、`card` 白色卡片接著內文、`underline` 底下一條線。 */
+  tabStyle: "line" | "card" | "underline";
   /** 介面大小（百分比，桌面版）：整個視窗一起放大或縮小，和文件的字級分開。 */
   uiScale: UiScale;
   /** 用 KaTeX 顯示 `$…$` 數學公式。 */
@@ -165,6 +167,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   docFontCustom: "",
   codeFont: "",
   docLineHeight: "normal",
+  tabStyle: "line",
   uiScale: "100",
   math: true,
   mermaid: true,
@@ -390,6 +393,11 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   if ("docLineHeight" in input) {
     const h = input.docLineHeight;
     if (h === "compact" || h === "normal" || h === "relaxed") out.docLineHeight = h;
+    else problems++;
+  }
+  if ("tabStyle" in input) {
+    const v = input.tabStyle;
+    if (v === "line" || v === "card" || v === "underline") out.tabStyle = v;
     else problems++;
   }
   if ("uiScale" in input) {
