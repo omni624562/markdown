@@ -3508,6 +3508,8 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 
 /* ---- 建立工作項目 ---- */
 .choice.wi-create { width: min(560px, calc(100vw - 32px)); }
+.wiki-new-page .pdf-field select { height: 36px; }
+.wiki-new-page .wiki-new-hint { margin: -4px 0 12px; color: var(--subtle); font-size: 12.5px; }
 .wi-bulk .wi-bulk-note { display: block; margin-top: 4px; color: var(--subtle); font-size: 12px; }
 .wi-bulk .wi-bulk-note:empty { display: none; }
 .wi-bulk .pdf-field select { height: 36px; }
