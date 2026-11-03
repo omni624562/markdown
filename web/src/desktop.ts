@@ -368,6 +368,8 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
 
 /** 要更新的工作項目欄位（沒給的不改）。 */
 export interface AdoWorkItemChange {
+  /** 加入附件：先用 adoAttachmentUpload 上傳，這裡放回傳的網址。 */
+  attachments?: string[];
   state?: string;
   assignToMe?: boolean;
   /** 留言（HTML）。 */
@@ -1015,6 +1017,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     }) =>
       core.invoke<AdoWorkItem>("ado_work_item_create", { item }),
     /** 改狀態、指派給我、留言（HTML）、標題、優先順序、Sprint、標籤；`rev` 是開啟時的修訂版本。 */
+    /** 上傳檔案成工作項目的附件（還沒掛到工作項目上），回傳附件的網址。 */
+    adoAttachmentUpload: (project: string, name: string, data: ArrayBuffer) =>
+      core.invoke<string>("ado_attachment_upload", new Uint8Array(data), {
+        headers: { "x-project": encodeURIComponent(project), "x-name": encodeURIComponent(name) },
+      }),
     adoWorkItemUpdate: (id: number, change: AdoWorkItemChange) =>
       core.invoke<void>("ado_work_item_update", { id, change: { ...change, rev: change.rev ?? null } }),
     /** 改一則留言（`html` 是新的內容）；只能改自己的。 */

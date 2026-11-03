@@ -5,6 +5,7 @@ import { readTextFile } from "../files.ts";
 import { t } from "../i18n.ts";
 import { toast } from "../ui/toast.ts";
 import { imageFiles, insertImages } from "./image-paste.ts";
+import { dropOnWorkItem, overWorkItem } from "./work-item-attach.ts";
 import { app } from "./context.ts";
 
 
@@ -14,10 +15,17 @@ let dragDepth = 0;
 
 export function initFileDrop(): void {
   overlay = app.$(".drop-overlay");
+  const title = overlay.querySelector("strong");
+  const detail = overlay.querySelector("span");
+  const openText = [title?.textContent ?? "", detail?.textContent ?? ""];
   window.addEventListener("dragenter", (e) => {
     if (!e.dataTransfer?.types.includes("Files")) return;
     dragDepth++;
     overlay.hidden = false;
+    // 拖到開著的工作項目上：放開是加入附件，不是開檔。
+    const attach = overWorkItem(e.target);
+    if (title) title.textContent = attach ? t("放開以加入附件") : openText[0];
+    if (detail) detail.textContent = attach ? t("檔案會上傳成這個工作項目的附件") : openText[1];
   });
   window.addEventListener("dragleave", () => {
     if (--dragDepth <= 0) {
@@ -30,6 +38,7 @@ export function initFileDrop(): void {
     e.preventDefault();
     dragDepth = 0;
     overlay.hidden = true;
+    if (dropOnWorkItem(e)) return;
     const files = [...(e.dataTransfer?.files ?? [])];
     const images = imageFiles(e.dataTransfer?.files);
     if (images.length && images.length === files.length) {

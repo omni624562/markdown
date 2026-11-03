@@ -53,6 +53,13 @@ pub static EN: &[(&str, &str)] = &[
     ("刪除 Wiki 頁面", "Deleting the wiki page"),
     ("讀取上層項目", "Loading parent work items"),
     ("讀取子項目", "Loading child work items"),
+    ("附件的網址不正確", "The attachment URL is invalid"),
+    (
+        "「{name}」超過 60 MB，Azure DevOps 不接受這麼大的附件",
+        "“{name}” is larger than 60 MB, which Azure DevOps doesn't accept as an attachment",
+    ),
+    ("上傳附件", "Uploading the attachment"),
+    ("上傳附件失敗：回應的格式不正確", "Couldn't upload the attachment: unexpected response"),
     ("讀取修改記錄", "Loading the change history"),
     ("已經有同名的頁面了，請換一個名稱", "A page with this name already exists. Please choose another name."),
     ("搜尋 Wiki", "Searching the wiki"),

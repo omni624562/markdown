@@ -1177,6 +1177,58 @@ fn comment_error(e: String) -> String {
     }
 }
 
+// ---- 工作項目：上傳附件 -------------------------------------------------------------
+
+/// 上傳檔案成工作項目的附件（還沒掛到工作項目上），回傳附件的網址：之後用 `attachments` 掛上去，
+/// 或放進說明、留言的圖片。原始位元組放在請求本文，專案與檔名放在標頭（百分比編碼）。
+#[tauri::command]
+pub async fn ado_attachment_upload(
+    app: AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, String> {
+    let header = |key: &str| {
+        request
+            .headers()
+            .get(key)
+            .and_then(|v| v.to_str().ok())
+            .map(crate::dav::decode_percent)
+            .filter(|v| !v.trim().is_empty())
+            .ok_or_else(|| tr!("上傳的資料不正確"))
+    };
+    let project = header("x-project")?;
+    let name = header("x-name")?;
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(tr!("上傳的資料不正確"));
+    };
+    if bytes.len() > MAX_ATTACHMENT {
+        return Err(tr!(
+            "「{name}」超過 60 MB，Azure DevOps 不接受這麼大的附件",
+            name = name
+        ));
+    }
+    let bytes = bytes.clone();
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("上傳附件");
+        let res = crate::update::agent()
+            .post(&format!(
+                "{}/{}/_apis/wit/attachments?fileName={}&api-version={API_VERSION}",
+                a.url,
+                encode_segment(&project),
+                encode_segment(&name)
+            ))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/octet-stream")
+            .send(&bytes[..]);
+        let v = read(res, &what)?;
+        str_of(&v, "url")
+            .map(str::to_string)
+            .ok_or_else(|| tr!("上傳附件失敗：回應的格式不正確"))
+    })
+    .await
+}
+
 // ---- 工作項目：修改記錄 -------------------------------------------------------------
 
 /// 修改記錄裡一個改了的欄位。長文字欄位（說明、驗收條件等 HTML）只標出有修改，不帶內容。
@@ -1581,6 +1633,23 @@ pub struct WorkItemChange {
     pub remaining: Option<f64>,
     /// 已完成工時（小時）。
     pub completed: Option<f64>,
+    /// 加入附件：先用 `ado_attachment_upload` 上傳，這裡是回傳的網址。
+    pub attachments: Option<Vec<String>>,
+}
+
+/// 附件一次最多多大（Azure DevOps 預設的上限是 60 MB）。
+pub(super) const MAX_ATTACHMENT: usize = 60 * 1024 * 1024;
+
+/// 加入的附件必須是這台伺服器的工作項目附件（不能把任意網址掛成附件）。
+pub(super) fn check_attachments(change: &WorkItemChange, base: &str) -> Result<(), String> {
+    let base = base.trim_end_matches('/').to_ascii_lowercase();
+    for url in change.attachments.iter().flatten() {
+        let lower = url.to_ascii_lowercase();
+        if !lower.starts_with(&format!("{base}/")) || !lower.contains("/_apis/wit/attachments/") {
+            return Err(tr!("附件的網址不正確"));
+        }
+    }
+    Ok(())
 }
 
 /// 標題最多幾個字（Azure DevOps 的限制）。
@@ -1681,6 +1750,13 @@ pub(super) fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
             serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": who }),
         );
     }
+    for url in change.attachments.iter().flatten() {
+        ops.push(serde_json::json!({
+            "op": "add",
+            "path": "/relations/-",
+            "value": { "rel": "AttachedFile", "url": url },
+        }));
+    }
     for (field, hours) in [
         ("Microsoft.VSTS.Scheduling.RemainingWork", change.remaining),
         ("Microsoft.VSTS.Scheduling.CompletedWork", change.completed),
@@ -1709,6 +1785,7 @@ pub async fn ado_work_item_update(
 ) -> Result<(), String> {
     let (a, pat) = require(&app)?;
     check_change(&change)?;
+    check_attachments(&change, &a.url)?;
     crate::io::blocking_for(TIMEOUT, move || {
         let me = assign_me(&a);
         let ops = change_ops(&change, &me);

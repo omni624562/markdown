@@ -19,6 +19,7 @@ import { insertIssueLink } from "./ado-links.ts";
 import { forgetListCopies, offlineRefs } from "./offline-copies.ts";
 import { workItemSeen } from "./work-item-updates.ts";
 import { workItemsPanel, barShortcuts, toggleWorkItemShortcut } from "./work-items-panel.ts";
+import { setAttachTarget, uploadAttachments } from "./work-item-attach.ts";
 import { enhanceWorkItem, lazy, type Loaded } from "./work-item-edit.ts";
 import { app } from "./context.ts";
 import { workItemLoaded } from "./work-item-updates.ts";
@@ -30,7 +31,11 @@ const workItemStates = new Map<string, Loaded<string[]>>();
 const projectIterations = new Map<string, Loaded<Iteration[]>>();
 
 /** 工作項目的修改：送出變更、讀到最新內容時記下來（狀態、指派、修訂版本），內容畫好之後加上修改的方式。 */
-function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): void; enhance(body: HTMLElement): void } {
+function workItemEditing(item: AdoWorkItem): {
+  attach(files: File[]): Promise<boolean>;
+  update(d: AdoWorkItemDetail): void;
+  enhance(body: HTMLElement): void;
+} {
   let detail: AdoWorkItemDetail | null = null;
   let busy = false;
   const statesKey = `${item.project}|${item.kind}`;
@@ -78,7 +83,23 @@ function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): voi
       busy = false;
     }
   };
+  /** 加入附件：上傳後掛到工作項目上，重新讀取內容。 */
+  const attach = async (files: File[]): Promise<boolean> => {
+    if (!detail) return false;
+    try {
+      const done = await uploadAttachments(item.project, files);
+      if (!done.length) return false;
+      return await apply(
+        { attachments: done.map((d) => d.url) },
+        done.length === 1 ? t("已加入附件「{name}」", { name: done[0].name }) : t("已加入 {n} 個附件", { n: done.length }),
+      );
+    } catch (e) {
+      app.reportError(e);
+      return false;
+    }
+  };
   return {
+    attach,
     update(d) {
       detail = d;
     },
@@ -92,8 +113,10 @@ function workItemEditing(item: AdoWorkItem): { update(d: AdoWorkItemDetail): voi
           states: () => states.load(),
           iterations: () => iterations.load(),
           me: () => app.ado?.account?.name ?? "",
+          attach,
           id: item.id,
           kind: item.kind,
+          project: item.project,
         },
         { states, iterations },
       );
@@ -188,9 +211,13 @@ export function showWorkItem(item: AdoWorkItem): void {
             title: f.section === "desc" ? t("工作項目說明") : f.field === "reproSteps" ? t("重現步驟") : t("驗收條件"),
           })),
           { kind: "comments" as const, title: t("留言（{n}）", { n: 0 }) },
+          // 沒有附件也要有：「加入附件…」放在這一段。
+          { kind: "attachments" as const, title: t("附件（{n}）", { n: 0 }) },
         ],
       });
       editing.enhance(body);
+      // 把檔案拖到這個工作項目上：加入附件。
+      setAttachTarget(`ado:${item.id}`, (files) => void editing.attach(files));
     },
     insertLink: () => insertIssueLink(item),
     history: () => showWorkItemHistory(item),
