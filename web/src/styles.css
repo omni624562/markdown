@@ -2049,17 +2049,33 @@ button.git-info:disabled { cursor: default; }
 /* 依上層項目分組時標題比較長（「User Story 123：標題」）：最多兩行。 */
 .workitems-group-name.wrap { display: -webkit-box; line-height: 1.35; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .workitems-group-count { flex: none; min-width: 18px; padding: 0 5px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 8%, transparent); font-weight: 500; text-align: center; }
-/* 以項目當標題的一組（依上層項目分組）：標題列是那個項目的卡片，組與組之間有分隔；子項目縮排、左邊一條線。 */
+/*
+ * 依上層項目分組（樹狀 Epic → Feature → Story → Task）：有子項目的是標題列（那個項目的卡片，左邊收合箭頭），
+ * 最上層的組與組之間有分隔；子項目每一層縮排 12px（最多 3 層）、左邊一條線。
+ */
 .workitems-group-card { display: flex; gap: 2px; align-items: flex-start; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .workitems-list > .workitems-group-card:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.workitems-group-card.workitems-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.workitems-group-card.workitems-child > .workitems-group-toggle { margin-top: 2px; }
 .workitems-group-card > .workitem { flex: 1; min-width: 0; }
 .workitems-group-card > .workitem .workitem-title { font-weight: 600; }
-.workitems-group-card > .workitems-group-count { margin-top: 8px; color: var(--muted); font-size: 11.5px; line-height: 18px; }
+.workitem-summary { display: block; margin-top: 2px; color: var(--muted); font-size: 11.5px; }
+/* 不在清單上、只是用來分組的上層（例如不是指派給我的 Feature）。 */
+.workitems-dim > .workitem { opacity: 0.62; }
+.workitems-dim > .workitem:hover, .workitems-dim > .workitem:focus-visible { opacity: 1; }
 .workitems-group-toggle { display: grid; flex: none; place-items: center; width: 22px; height: 22px; margin-top: 6px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }
 .workitems-group-toggle:hover { background: var(--active-line); color: var(--fg); }
 .workitems-group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .workitems-group-toggle .icon { width: 14px; height: 14px; }
-.workitems-child { margin-left: 24px; padding-left: 8px; border-left: 2px solid var(--border); }
+/*
+ * 樹的子項目：每一層往右 12px，內容和上一層的內容對齊再往右一點（沒有子項目的列多留收合箭頭的寬度）；
+ * 左邊每一層畫一條線，對齊上層的收合箭頭，一路連下來。
+ */
+.workitems-child { --tree-line: linear-gradient(var(--border), var(--border)); padding-left: calc(var(--indent) + 24px); background-repeat: no-repeat; background-size: 2px 100%; }
+.workitems-child.workitems-group-card { padding-left: var(--indent); }
+.workitems-child[data-depth="1"] { --indent: 12px; background-image: var(--tree-line); background-position: 10px 0; }
+.workitems-child[data-depth="2"] { --indent: 24px; background-image: var(--tree-line), var(--tree-line); background-position: 10px 0, 22px 0; }
+.workitems-child[data-depth="3"] { --indent: 36px; background-image: var(--tree-line), var(--tree-line), var(--tree-line); background-position: 10px 0, 22px 0, 34px 0; }
 .workitems-child > .workitem { padding-top: 4px; padding-bottom: 4px; }
 .workitems-group-card ~ .workitems-group { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
 .workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }

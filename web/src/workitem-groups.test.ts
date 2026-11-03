@@ -1,39 +1,92 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type GroupItem, groupByParent } from "./workitem-groups.ts";
+import { type GroupItem, type TreeNode, kindCounts, parentTree } from "./workitem-groups.ts";
 
-const fmt = (it: GroupItem | undefined, id: number) => (it ? `${it.kind} ${it.id}：${it.title}` : `#${id}`);
+const task = (id: number) => ({ id, kind: "Task", title: `T${id}` });
+const story = (id: number) => ({ id, kind: "User Story", title: `S${id}` });
+const feature = (id: number) => ({ id, kind: "Feature", title: `F${id}` });
+const epic = (id: number) => ({ id, kind: "Epic", title: `E${id}` });
 
-const task = (id: number, title = `T${id}`) => ({ id, kind: "Task", title });
-const story = (id: number, title = `S${id}`) => ({ id, kind: "User Story", title });
+/** 樹畫成文字：`編號`，淡色的加 `~`，子項目放在括號裡。 */
+function draw(nodes: TreeNode<GroupItem>[]): string {
+  return nodes.map((n) => `${n.dim ? "~" : ""}${n.item.id}${n.children.length ? `(${draw(n.children)})` : ""}`).join(" ");
+}
 
-test("依上層項目分組：同一個 Story 的 Task 放一組，組的順序照清單", () => {
-  const items = [task(1), task(2), task(3), task(4)];
-  const parentOf = new Map<number, number | null>([[1, 10], [2, 20], [3, 10], [4, null]]);
-  const parents = new Map<number, ReturnType<typeof task>>([[10, story(10, "登入")], [20, story(20, "匯出")]]);
-  const groups = groupByParent(items, parentOf, parents, "沒有上層項目", fmt);
-  assert.deepEqual(
-    groups.map((g) => [g.title, g.head?.id ?? null, g.items.map((i) => i.id)]),
-    [
-      ["User Story 10：登入", 10, [1, 3]],
-      ["User Story 20：匯出", 20, [2]],
-      ["沒有上層項目", null, [4]],
-    ],
-  );
+test("Feature → Story → Task：每一項只出現一次，在它的上層底下；不在清單上的上層淡色", () => {
+  // 清單：Task 1、2 在 Story 10 底下，Story 10 在 Feature 100 底下；Story 20（指派給我）也在 Feature 100 底下。
+  const items = [task(1), story(20), task(2), story(10)];
+  const parentOf = new Map<number, number | null>([
+    [1, 10],
+    [2, 10],
+    [20, 100],
+    [10, 100],
+    [100, null],
+  ]);
+  const parents = new Map<number, GroupItem>([
+    [10, story(10)],
+    [100, feature(100)],
+  ]);
+  const { roots, rest } = parentTree(items, parentOf, parents);
+  // Story 10 在清單上：不是淡色，也不會在 Feature 底下和 Task 那一組各出現一次。
+  assert.equal(draw(roots), "~100(10(1 2) 20)");
+  assert.deepEqual(rest, []);
 });
 
-test("依上層項目分組：清單上的 Story 當組的標題列（不在組裡重複），不會再被分到它的上層", () => {
-  const items = [task(1), story(10), task(2)];
-  const parentOf = new Map<number, number | null>([[1, 10], [10, 99], [2, 10]]);
-  const groups = groupByParent(items, parentOf, new Map([[99, { id: 99, kind: "Feature", title: "F" }]]), "無", fmt);
-  assert.deepEqual(
-    groups.map((g) => [g.title, g.head?.id, g.items.map((i) => i.id)]),
-    [["User Story 10：S10", 10, [1, 2]]],
-  );
+test("往上一路到最上層（Epic）；順序照清單上第一次出現的位置", () => {
+  const items = [task(3), task(1), task(2)];
+  const parentOf = new Map<number, number | null>([
+    [1, 10],
+    [2, 20],
+    [3, 20],
+    [10, 100],
+    [20, 200],
+    [100, 1000],
+    [200, 1000],
+    [1000, null],
+  ]);
+  const parents = new Map<number, GroupItem>([
+    [10, story(10)],
+    [20, story(20)],
+    [100, feature(100)],
+    [200, feature(200)],
+    [1000, epic(1000)],
+  ]);
+  assert.equal(draw(parentTree(items, parentOf, parents).roots), "~1000(~200(~20(3 2)) ~100(~10(1)))");
 });
 
-test("依上層項目分組：讀不到上層項目時標題只寫編號；全部沒有上層時只有一組", () => {
-  assert.deepEqual(groupByParent([task(1)], new Map([[1, 42]]), new Map(), "無", fmt).map((g) => g.title), ["#42"]);
-  const groups = groupByParent([task(1), task(2)], new Map(), new Map(), "沒有上層項目", fmt);
-  assert.deepEqual(groups.map((g) => [g.title, g.items.length]), [["沒有上層項目", 2]]);
+test("沒有上層也沒有子項目的放在最後一組；讀不到的上層當成沒有上層；上層繞成圈不會當掉", () => {
+  const items = [task(1), task(2), task(3)];
+  const parentOf = new Map<number, number | null>([
+    [1, null],
+    [2, 42],
+    [3, 10],
+    [10, 3],
+  ]);
+  const { roots, rest } = parentTree(items, parentOf, new Map([[10, story(10)]]));
+  assert.deepEqual(
+    rest.map((r) => r.id),
+    [1, 2],
+  );
+  assert.equal(draw(roots), "~10(3)");
+});
+
+test("標題列的摘要：底下清單上的項目依類型計數，淡色的不算，類型照層級排", () => {
+  const items = [task(1), task(2), story(10), task(3)];
+  const parentOf = new Map<number, number | null>([
+    [1, 10],
+    [2, 20],
+    [3, 20],
+    [10, 100],
+    [20, 100],
+    [100, null],
+  ]);
+  const parents = new Map<number, GroupItem>([
+    [20, story(20)],
+    [100, feature(100)],
+  ]);
+  const [root] = parentTree(items, parentOf, parents).roots;
+  assert.deepEqual(kindCounts(root), [
+    ["User Story", 1],
+    ["Task", 3],
+  ]);
 });

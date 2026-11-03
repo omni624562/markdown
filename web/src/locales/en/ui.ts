@@ -911,4 +911,5 @@ export const ui: Record<string, Translation> = {
   "最上層": "the top level",
   "更新了 {n} 頁的連結": "updated links in {n} pages",
   "有 {n} 頁的連結沒有更新（{names}），請自己改一下": "Links in {n} pages were not updated ({names}); please fix them yourself",
+  "{n} 個 {kind}": "{n} {kind}",
 };

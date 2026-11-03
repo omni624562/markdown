@@ -8,7 +8,7 @@ import { t } from "../i18n.ts";
 import { issueFileName, githubIssueMarkdown } from "../issue-doc.ts";
 import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
-import { type IssueSummary, type IssueGroup, shortDate, IssuesPanel } from "../ui/issues-panel.ts";
+import { type IssueSummary, type IssueGroup, type IssueTreeNode, shortDate, IssuesPanel } from "../ui/issues-panel.ts";
 import { MultiSelect } from "../ui/multi-select.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
@@ -16,7 +16,7 @@ import { WikiPanel } from "../ui/wiki-panel.ts";
 import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
-import { groupByParent } from "../workitem-groups.ts";
+import { kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
@@ -394,35 +394,69 @@ function moreChildren(items: (AdoWorkItem & IssueSummary)[]): (AdoWorkItem & Iss
   return out.sort((a, b) => (b.changed ?? "").localeCompare(a.changed ?? ""));
 }
 
+/** 還沒讀過上層的項目在背景讀（一次讀一批），讀到後重畫；上層的上層也這樣一層一層往上讀。 */
+function loadWorkItemParents(ids: number[]): void {
+  if (workItemParentsLoading || !desktop || !ids.length) return;
+  workItemParentsLoading = true;
+  void desktop
+    .adoWorkItemParents(ids)
+    .then(({ links, parents }) => {
+      for (const id of ids) workItemParentOf.set(id, null);
+      for (const [id, parent] of links) workItemParentOf.set(id, parent);
+      for (const p of parents) setBounded(workItemParentItems, p.id, workItemRow(p), app.CACHE_MAX);
+    })
+    .catch((e) => {
+      // 讀不到就當成都沒有上層（不要一直重試）。
+      for (const id of ids) workItemParentOf.set(id, null);
+      app.reportError(e);
+    })
+    .finally(() => {
+      workItemParentsLoading = false;
+      workItemsPanel?.rearrange();
+    });
+}
+
+/**
+ * 「依上層項目分組」：排成樹（Epic → Feature → Story → Task），每一項只出現一次。
+ * 清單上的項目的上層還沒讀到時先照原本的順序顯示；上層的上層讀到一層就重畫一次。
+ */
 function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
   const missing = items.map((w) => w.id).filter((id) => !workItemParentOf.has(id));
   if (missing.length) {
-    // 先照原本的順序顯示，讀到上層項目後再重畫。
-    if (!workItemParentsLoading && desktop) {
-      workItemParentsLoading = true;
-      void desktop
-        .adoWorkItemParents(missing)
-        .then(({ links, parents }) => {
-          for (const id of missing) workItemParentOf.set(id, null);
-          for (const [id, parent] of links) workItemParentOf.set(id, parent);
-          for (const p of parents) setBounded(workItemParentItems, p.id, workItemRow(p), app.CACHE_MAX);
-        })
-        .catch((e) => {
-          // 讀不到就當成都沒有上層（不要一直重試）。
-          for (const id of missing) workItemParentOf.set(id, null);
-          app.reportError(e);
-        })
-        .finally(() => {
-          workItemParentsLoading = false;
-          workItemsPanel?.rearrange();
-        });
-    }
+    loadWorkItemParents(missing);
     return [{ title: null, items }];
   }
   const extra = moreChildren(items);
-  return groupByParent(extra.length ? [...items, ...extra] : items, workItemParentOf, workItemParentItems, t("沒有上層項目"), (item, id) =>
-    item ? t("{kind} {id}：{title}", { kind: item.kind, id: item.id, title: item.title }) : `#${id}`,
-  );
+  const all = extra.length ? [...items, ...extra] : items;
+  // 沿著上層往上走，走到還沒讀過上層的項目就在背景讀（讀過的不再讀）。
+  const ids = new Set(all.map((w) => w.id));
+  const ancestors = new Set<number>();
+  for (const w of all) {
+    const seen = new Set<number>();
+    for (let p = workItemParentOf.get(w.id); p != null && !seen.has(p) && (ids.has(p) || workItemParentItems.has(p)); p = workItemParentOf.get(p)) {
+      seen.add(p);
+      if (!workItemParentOf.has(p)) {
+        ancestors.add(p);
+        break;
+      }
+    }
+  }
+  loadWorkItemParents([...ancestors]);
+  const { roots, rest } = parentTree(all, workItemParentOf, workItemParentItems);
+  const toNode = (n: TreeNode<AdoWorkItem & IssueSummary>): IssueTreeNode<AdoWorkItem & IssueSummary> => ({
+    item: n.item,
+    dim: n.dim,
+    summary: n.children.length
+      ? kindCounts(n)
+          .map(([kind, count]) => t("{n} 個 {kind}", { n: count, kind }))
+          .join(t("・"))
+      : undefined,
+    children: n.children.map(toNode),
+  });
+  const groups: IssueGroup<AdoWorkItem & IssueSummary>[] = [];
+  if (roots.length) groups.push({ title: null, items: [], tree: roots.map(toNode) });
+  if (rest.length) groups.push({ title: t("沒有上層項目"), items: rest });
+  return groups;
 }
 
 /** 清單上的一列：上面一行是類型、編號、指派對象與更新日期，狀態在右邊（`kind`、`state` 由清單上色）。 */
