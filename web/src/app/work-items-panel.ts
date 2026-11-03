@@ -566,8 +566,8 @@ export function toggleWikiShortcut(wiki: AdoWiki, path: string): void {
   else addBarShortcut(item);
 }
 
-export async function openBarShortcut(item: Shortcut): Promise<void> {
-  if (!desktop) return;
+export async function openBarShortcut(item: Shortcut): Promise<boolean> {
+  if (!desktop) return false;
   if (isWorkItemShortcut(item)) {
     let w: AdoWorkItem;
     try {
@@ -575,23 +575,39 @@ export async function openBarShortcut(item: Shortcut): Promise<void> {
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       toast(t("讀不到工作項目 {id}：{error}。在捷徑上按右鍵可以移除。", { id: item.workItem, error }), { tone: "error" });
-      return;
+      return false;
     }
     // 標題、類型改了就更新圖示。
     if (w.title !== item.title || w.kind !== item.kind)
       setBarShortcuts(barShortcuts.map((s) => (sameShortcut(s, item) ? { workItem: w.id, kind: w.kind, title: w.title } : s)));
     app.showWorkItem(w);
-    return;
+    return true;
   }
   const wikis = await withOfflineCopy("wikis", () => desktop!.adoWikis());
   const wiki = wikis.find((w) => w.id === item.wiki);
   if (!wiki) {
     toast(t("找不到這個 Wiki（可能已經刪除或沒有權限），在捷徑上按右鍵可以移除。"), { tone: "error" });
-    return;
+    return false;
   }
   // 舊的釘選搬過來時不知道 Wiki 名稱，開啟時補上（滑鼠提示用）。
   if (item.wikiName !== wiki.name) setBarShortcuts(barShortcuts.map((s) => (sameShortcut(s, item) ? { ...s, wikiName: wiki.name } : s)));
   app.showWikiPage(wiki, item.path);
+  return true;
+}
+
+/**
+ * 在左側圖示列按了捷徑：開啟後側邊欄換到對應的面板（工作項目、Wiki），
+ * 和按面板圖示一樣看得到它在清單、樹上的位置（開啟時已經標出來）。側邊欄收起來時不打開。
+ */
+export async function openShortcutFromBar(item: Shortcut): Promise<void> {
+  if (await openBarShortcut(item)) showShortcutPanel(item);
+}
+
+function showShortcutPanel(item: Shortcut): void {
+  const panel = isWorkItemShortcut(item) ? "workitems" : "wiki";
+  // Wiki 放在右側、右側欄收起來時，和左邊的側邊欄收起來一樣不自己打開。
+  if (panel === "wiki" && app.wikiPlacedRight() && !app.rightOutlineShown) return;
+  app.showPanel(panel, false);
 }
 
 function renderBarShortcuts(): void {
@@ -625,9 +641,10 @@ function renderBarShortcuts(): void {
       // 開著的那一個再按一次：捲回最上面（不要「按了沒反應」）。
       if (b.getAttribute("aria-current") === "page" && app.issueView.isOpen) {
         app.issueView.scrollToTop();
+        showShortcutPanel(item);
         return;
       }
-      void openBarShortcut(item).catch(app.reportError);
+      void openShortcutFromBar(item).catch(app.reportError);
     });
     return b;
   });

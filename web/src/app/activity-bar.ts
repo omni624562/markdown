@@ -37,7 +37,7 @@ import { HISTORY_COMMANDS, historyView, markHistoryButtons } from "./git-history
 import { selectItem } from "./item-tabs.ts";
 import { selectedText } from "./new-work-item.ts";
 import { issueSide, issueView, toggleIssueSide } from "./wiki-edit.ts";
-import { barShortcuts, openBarShortcut, removeBarShortcut, shortcutBar, shortcutName, setBarShortcuts } from "./work-items-panel.ts";
+import { barShortcuts, openShortcutFromBar, removeBarShortcut, shortcutBar, shortcutName, setBarShortcuts } from "./work-items-panel.ts";
 import type { SidePanel } from "../main.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
 import { app } from "./context.ts";
@@ -797,7 +797,7 @@ export function initActivityBar(): void {
       if (item) {
         for (const id of ["wiki-shortcut-anchor", "wiki-shortcut-anchor-popover"]) document.getElementById(id)?.remove();
         const menu = floatingMenu("wiki-shortcut-anchor", [
-          { label: t("開啟"), icon: isWorkItemShortcut(item) ? "square-kanban" : "book-open-text", run: () => void openBarShortcut(item).catch(reportError) },
+          { label: t("開啟"), icon: isWorkItemShortcut(item) ? "square-kanban" : "book-open-text", run: () => void openShortcutFromBar(item).catch(reportError) },
           { label: t("從左側圖示列移除"), icon: "pin-off", run: () => removeBarShortcut(item) },
         ]);
         if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => menu.open(at)), { once: true });
