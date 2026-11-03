@@ -17,7 +17,7 @@ import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWor
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
 import { kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
-import { fromStateChoice, stateChoice, stateLabel, stateOptions, type StateOption } from "../work-item-filter.ts";
+import { fromStateChoice, stateChoice, stateLabel, stateOptions, type StateOption, workItemFilterKey } from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
@@ -786,7 +786,7 @@ export function initWorkItemsPanel(): void {
           // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
           const raw = q
             ? await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q), update)
-            : await withOfflineCopy(`wi-list:${search}:${JSON.stringify(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
+            : await withOfflineCopy(`wi-list:${search}:${workItemFilterKey(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
           const found = q ? keepFreshness(raw, filterQueryResult(raw, search)) : raw;
           app.noteWorkItems(found, !q && !search && app.isDefaultFilter());
           workItemListed = new Set(found.map((w) => w.id));

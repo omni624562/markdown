@@ -8,6 +8,7 @@ import {
   stateChoice,
   stateLabel,
   stateOptions,
+  workItemFilterKey,
 } from "./work-item-filter.ts";
 
 const STATES = [
@@ -54,4 +55,13 @@ test("讀不到狀態清單：只有「進行中」「已結束」兩項（和�
   assert.deepEqual(stateChoice(f(), []), [open]);
   assert.deepEqual(fromStateChoice([closed], []), { state: "closed", states: [] });
   assert.deepEqual(fromStateChoice([open, closed], []), { state: "all", states: [] });
+});
+
+test("離線副本的鍵：沒有指定狀態時和以前一樣（不含 states），升級後還找得到以前存的副本", () => {
+  assert.equal(
+    workItemFilterKey(f()),
+    JSON.stringify({ role: "assigned", person: "@me", state: "open", kinds: [], projects: [], areas: [] }),
+  );
+  assert.equal(workItemFilterKey(parseWorkItemFilter('{"state":"open"}')), workItemFilterKey(f()));
+  assert.match(workItemFilterKey(f({ state: "all", states: ["New"] })), /"states":\["New"\]/);
 });

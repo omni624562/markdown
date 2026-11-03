@@ -58,6 +58,12 @@ export function isDefaultWorkItemFilter(f: AdoWorkItemFilter): boolean {
   );
 }
 
+/** 離線副本的鍵：沒有指定狀態時和以前一樣（不含 `states`），升級後還找得到以前存的副本。 */
+export function workItemFilterKey(f: AdoWorkItemFilter): string {
+  const { states, ...rest } = f;
+  return JSON.stringify(states.length ? { ...rest, states } : rest);
+}
+
 /** 讀不到狀態清單時的兩個選項（值不會和狀態名稱撞在一起）。 */
 const OPEN = ":open";
 const CLOSED = ":closed";
