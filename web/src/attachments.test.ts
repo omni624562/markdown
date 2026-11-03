@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachmentKind, attachmentLink, extLabel, fileSize, withFileName } from "./attachments.ts";
+import { attachmentKind, attachmentLink, extLabel, fileSize, pastedName, withFileName } from "./attachments.ts";
 
 test("附件的類型：文字檔在 oMarker 看、圖片放大檢視、會自己執行的不直接開", () => {
   assert.equal(attachmentKind("20261005-task-1911359.md"), "text");
@@ -50,4 +50,11 @@ test("附件大小與副檔名", () => {
   assert.equal(fileSize(3.4 * 1024 * 1024), "3.4 MB");
   assert.equal(extLabel("報表.xlsx"), "XLSX");
   assert.equal(extLabel("README"), "FILE");
+});
+
+test("貼上的圖片：檔名加上時間，附件不會同名", () => {
+  const at = new Date(2026, 10, 3, 9, 5, 7);
+  assert.equal(pastedName({ name: "image.png", type: "image/png" }, at), "image-20261103-090507.png");
+  assert.equal(pastedName({ name: "", type: "image/jpeg" }, at), "image-20261103-090507.jpeg");
+  assert.equal(pastedName({ name: "螢幕擷取畫面.png", type: "image/png" }, at), "螢幕擷取畫面-20261103-090507.png");
 });

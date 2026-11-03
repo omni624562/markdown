@@ -58,6 +58,11 @@ export interface IssuesHandlers<T extends IssueSummary> {
   filters?: HTMLElement;
   /** 放在搜尋框右邊的按鈕（例如展開、收合篩選列）。 */
   filterButton?: HTMLElement;
+  /**
+   * 一次改好幾個：Ctrl＋點一下加選、Shift＋點一下選一段，或按「選取」進入選取模式；
+   * 選了之後清單上方出現「一起改…」，按了呼叫 `run`。
+   */
+  bulk?: { run(items: T[]): void };
 }
 
 /** 讀取失敗：顯示錯誤與「重試」按鈕（例如網路斷了又接上，不用重新啟動程式）。 */
@@ -142,6 +147,15 @@ export class IssuesPanel<T extends IssueSummary> {
   #foldAll: HTMLButtonElement | null = null;
   /** 目前畫面上可以收合的分組。 */
   #groupKeys: string[] = [];
+  /** 選取的項目（一起改用）；`#selecting` 是選取模式（點一下就是選取，不是開啟）。 */
+  #selected = new Set<number>();
+  #selecting = false;
+  /** Shift＋點一下選一段時的起點。 */
+  #anchor: number | null = null;
+  /** 畫面上每個編號對應的項目（分組標題列的上層項目也算）。 */
+  #byId = new Map<number, T>();
+  #bulkBar: HTMLElement | null = null;
+  #selectButton: HTMLButtonElement | null = null;
 
   constructor(el: HTMLElement, handlers: IssuesHandlers<T>) {
     this.#h = handlers;
@@ -165,6 +179,8 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#status.className = "workitems-status";
     let statusRow: HTMLElement = this.#status;
     const arrangements = handlers.arrangements;
+    const tools = document.createElement("span");
+    tools.className = "workitems-tools";
     if (arrangements?.length) {
       const select = document.createElement("select");
       select.className = "workitems-arrange";
@@ -194,11 +210,12 @@ export class IssuesPanel<T extends IssueSummary> {
         fold.focus();
       });
       this.#foldAll = fold;
+      tools.append(select, fold);
+    }
+    if (handlers.bulk) tools.append(this.#bulkTools());
+    if (tools.childElementCount) {
       statusRow = document.createElement("div");
       statusRow.className = "workitems-statusrow";
-      const tools = document.createElement("span");
-      tools.className = "workitems-tools";
-      tools.append(select, fold);
       statusRow.append(this.#status, tools);
     }
     this.#list = document.createElement("ul");
@@ -211,7 +228,108 @@ export class IssuesPanel<T extends IssueSummary> {
       search.className = "workitems-searchrow";
       search.append(this.#input, handlers.filterButton);
     }
-    el.append(search, ...(handlers.filters ? [handlers.filters] : []), statusRow, this.#list);
+    // 清單上按 Esc：取消選取。
+    this.#list.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && (this.#selected.size || this.#selecting)) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.clearSelection();
+      }
+    });
+    el.append(search, ...(handlers.filters ? [handlers.filters] : []), statusRow, ...(this.#bulkBar ? [this.#bulkBar] : []), this.#list);
+  }
+
+  /** 「選取」按鈕與選了之後出現的「已選 N 項・一起改…・取消選取」。 */
+  #bulkTools(): HTMLElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "workitems-fold workitems-pick";
+    b.title = t("選取好幾個一起改（也可以 Ctrl＋點一下加選、Shift＋點一下選一段）");
+    b.setAttribute("aria-label", t("選取好幾個一起改"));
+    b.setAttribute("aria-pressed", "false");
+    b.append(icon("list-checks"));
+    b.addEventListener("click", () => {
+      if (this.#selecting) this.clearSelection();
+      else {
+        this.#selecting = true;
+        this.#syncSelection();
+      }
+    });
+    this.#selectButton = b;
+    const bar = document.createElement("div");
+    bar.className = "workitems-bulk";
+    bar.hidden = true;
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("aria-label", t("選取的項目"));
+    const count = Object.assign(document.createElement("span"), { className: "workitems-bulk-count" });
+    const run = document.createElement("button");
+    run.type = "button";
+    run.className = "btn btn-small btn-primary workitems-bulk-run";
+    run.textContent = t("一起改…");
+    run.addEventListener("click", () => {
+      const items = this.selectedItems();
+      if (items.length) this.#h.bulk?.run(items);
+    });
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "btn btn-small";
+    clear.textContent = t("取消選取");
+    clear.addEventListener("click", () => this.clearSelection());
+    bar.append(count, run, clear);
+    this.#bulkBar = bar;
+    return b;
+  }
+
+  /** 選取的項目（依清單上的順序）。 */
+  selectedItems(): T[] {
+    const order = [...this.#list.querySelectorAll<HTMLElement>(".workitem")].map((b) => Number(b.dataset.id));
+    const ids = [...new Set([...order.filter((id) => this.#selected.has(id)), ...this.#selected])];
+    return ids.map((id) => this.#byId.get(id)).filter((it): it is T => !!it);
+  }
+
+  /** 取消選取，離開選取模式。 */
+  clearSelection(): void {
+    this.#selected.clear();
+    this.#selecting = false;
+    this.#anchor = null;
+    this.#syncSelection();
+  }
+
+  /** 選取狀態畫到清單與上方的列。 */
+  #syncSelection(): void {
+    const on = this.#selecting || this.#selected.size > 0;
+    for (const b of this.#list.querySelectorAll<HTMLElement>(".workitem")) {
+      const picked = this.#selected.has(Number(b.dataset.id));
+      b.classList.toggle("selected", picked);
+      if (on) b.setAttribute("aria-pressed", String(picked));
+      else b.removeAttribute("aria-pressed");
+    }
+    this.#list.classList.toggle("selecting", on);
+    this.#selectButton?.setAttribute("aria-pressed", String(this.#selecting));
+    this.#selectButton?.classList.toggle("active", this.#selecting);
+    const bar = this.#bulkBar;
+    if (!bar) return;
+    bar.hidden = !on;
+    const n = this.#selected.size;
+    bar.querySelector(".workitems-bulk-count")!.textContent = n ? t("已選 {n} 項", { n }) : t("點項目選取");
+    bar.querySelector<HTMLButtonElement>(".workitems-bulk-run")!.disabled = !n;
+  }
+
+  /** 點一下項目時：選取（回傳 true）或照常開啟（false）。 */
+  #pick(id: number, e: MouseEvent): boolean {
+    if (!this.#h.bulk || !(this.#selecting || e.ctrlKey || e.metaKey || e.shiftKey)) return false;
+    if (e.shiftKey && this.#anchor !== null) {
+      const order = [...this.#list.querySelectorAll<HTMLElement>(".workitem")].map((b) => Number(b.dataset.id));
+      const [a, b] = [order.indexOf(this.#anchor), order.indexOf(id)];
+      if (a >= 0 && b >= 0) for (const x of order.slice(Math.min(a, b), Math.max(a, b) + 1)) this.#selected.add(x);
+      else this.#selected.add(id);
+    } else {
+      if (this.#selected.has(id)) this.#selected.delete(id);
+      else this.#selected.add(id);
+      this.#anchor = id;
+    }
+    this.#syncSelection();
+    return true;
   }
 
   /** 第一次顯示面板時才讀取。 */
@@ -269,6 +387,7 @@ export class IssuesPanel<T extends IssueSummary> {
     const arrangement = this.#h.arrangements?.find((a) => a.id === this.#arrange?.value);
     const groups = arrangement ? arrangement.arrange(this.#items) : [{ title: null, items: this.#items }];
     const rows: HTMLLIElement[] = [];
+    this.#byId.clear();
     this.#groupKeys = groups.filter((g) => g.head || g.title !== null).map((g) => `${arrangement?.id}:${g.title}`);
     for (const group of groups) {
       if (group.head) {
@@ -306,6 +425,9 @@ export class IssuesPanel<T extends IssueSummary> {
       rows.push(...group.items.map((it) => this.#row(it)));
     }
     this.#list.replaceChildren(...rows);
+    // 重新讀到的清單裡沒有的就不算選取了。
+    for (const id of this.#selected) if (!this.#byId.has(id)) this.#selected.delete(id);
+    this.#syncSelection();
     this.#updateFoldAll();
   }
 
@@ -383,8 +505,10 @@ export class IssuesPanel<T extends IssueSummary> {
     if (item.kind) b.dataset.wiKind = kindKey(item.kind);
     if (item.id === this.#current) b.setAttribute("aria-current", "true");
     this.#rowItems.set(b, item);
+    this.#byId.set(item.id, item);
     this.#applyMark(b, item);
-    b.addEventListener("click", () => {
+    b.addEventListener("click", (e) => {
+      if (this.#pick(item.id, e)) return;
       this.select(item.id);
       this.#h.view(item);
     });

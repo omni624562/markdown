@@ -135,6 +135,11 @@ function createService(keepImages = false): TurndownService {
     filter: ["del", "s", "strike"] as TurndownService.Filter,
     replacement: (content) => (content.trim() ? `~~${content}~~` : content),
   });
+  // Azure DevOps 留言裡的 @（`<a href="#" data-vss-mention=…>@名字</a>`）：只留「@名字」，不要變成連到 # 的連結。
+  td.addRule("ado-mention", {
+    filter: (node) => node.nodeName === "A" && !!(node as El).getAttribute?.("data-vss-mention"),
+    replacement: (content) => content,
+  });
   // 危險或本機的連結只留文字。
   td.addRule("unsafe-link", {
     filter: (node) => node.nodeName === "A" && !SAFE_LINK.test(((node as El).getAttribute("href") ?? "").trim()),
