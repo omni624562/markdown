@@ -59,6 +59,11 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["125", "125%"],
     ["150", "150%"],
   ],
+  tabStyle: [
+    ["line", t("頂端一條線（原本）")],
+    ["card", t("卡片")],
+    ["underline", t("底線")],
+  ],
   docLineHeight: [
     ["compact", t("緊湊")],
     ["normal", t("標準")],
@@ -179,6 +184,11 @@ const LOOK_GROUPS: Group[] = [
       },
       { key: "docLineHeight", label: t("行距") },
       { key: "previewWidth", label: t("文字欄寬"), hint: t("預覽與匯出的版面寬度") },
+      {
+        key: "tabStyle",
+        label: t("分頁樣式"),
+        hint: t("目前的分頁怎麼標示：頂端一條線、和內文接在一起的卡片，或底下一條線"),
+      },
       { key: "fixedToolbar", label: t("固定顯示格式工具列"), hint: t("關閉時，選取文字才會浮出格式按鈕") },
       { key: "outlineRight", label: t("大綱放在右邊"), hint: t("視窗夠寬時，大綱固定在內文右邊，目前的章節會亮起來") },
       {

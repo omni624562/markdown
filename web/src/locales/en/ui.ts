@@ -914,4 +914,8 @@ export const ui: Record<string, Translation> = {
   "{n} 個 {kind}": "{n} {kind}",
   "Wiki（在右側欄，按一下打開或收起右側欄）": "Wiki (in the right sidebar; click to show or hide it)",
   "在 oMarker 裡找不到這一頁，改用瀏覽器開啟": "Couldn't find this page in oMarker; opening it in the browser",
+  "分頁樣式": "Tab Style",
+  "目前的分頁怎麼標示：頂端一條線、和內文接在一起的卡片，或底下一條線": "How the current tab is marked: a line on top, a card joined to the document, or a line underneath",
+  "頂端一條線（原本）": "Line on top (original)",
+  "卡片": "Card",
 };
