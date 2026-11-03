@@ -544,7 +544,7 @@ function renderBarShortcuts(): void {
     const badge = document.createElement("span");
     badge.className = "wiki-badge";
     if (isWorkItemShortcut(item)) {
-      // 工作項目：依類型上色（左邊一條類型的顏色），字取標題。
+      // 工作項目：整塊塗上類型的顏色，字取標題。
       const name = shortcutName(item);
       b.title = name;
       b.setAttribute("aria-label", name);
@@ -560,7 +560,14 @@ function renderBarShortcuts(): void {
       badge.textContent = shortcutInitial(name);
     }
     b.append(badge);
-    b.addEventListener("click", () => void openBarShortcut(item).catch(app.reportError));
+    b.addEventListener("click", () => {
+      // 開著的那一個再按一次：捲回最上面（不要「按了沒反應」）。
+      if (b.getAttribute("aria-current") === "page" && app.issueView.isOpen) {
+        app.issueView.scrollToTop();
+        return;
+      }
+      void openBarShortcut(item).catch(app.reportError);
+    });
     return b;
   });
   shortcutDrop.classList.remove("over");
