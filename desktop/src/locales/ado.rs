@@ -13,6 +13,7 @@ pub static EN: &[(&str, &str)] = &[
     ("讀取區域", "Loading areas"),
     ("讀取團隊", "Loading teams"),
     ("讀取團隊成員", "Loading team members"),
+    ("找人", "Searching for people"),
     ("只能讀取 Azure DevOps 伺服器上的圖片", "Only images on the Azure DevOps server can be loaded."),
     ("無法讀取圖片：{e}", "Couldn't load the image: {e}"),
     ("無法讀取圖片：不是圖片", "Couldn't load the image: It isn't an image."),

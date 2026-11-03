@@ -366,6 +366,8 @@ fn main() {
             ado::ado_ping,
             ado::ado_check,
             ado::ado_team_members,
+            ado::ado_project_members,
+            ado::ado_search_people,
             ado::ado_capacity,
             ado::ado_backlog,
             ado::ado_diagnostics_save,

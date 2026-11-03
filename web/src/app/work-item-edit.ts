@@ -12,6 +12,8 @@ import { choose } from "../ui/choice.ts";
 import { shortcutHue, shortcutInitial } from "../wiki-shortcuts.ts";
 import { htmlToMarkdown } from "../html-paste.ts";
 import { type Iteration, type LongField, iterationGroups, longFields, lossyHtml, parseTags } from "../work-item-fields.ts";
+import { applyMentions, mentionsIn } from "../mentions.ts";
+import { mentionPicker } from "./work-item-mentions.ts";
 
 export interface WorkItemEditHooks {
   /** 讀到的最新內容（還沒讀到是 null，這時不能改）。 */
@@ -481,8 +483,10 @@ function composeComment(body: HTMLElement, h: WorkItemEditHooks): void {
   main.className = "ado-compose-main";
   const textarea = document.createElement("textarea");
   textarea.rows = 1;
-  textarea.placeholder = t("寫留言…（可以用 Markdown）");
+  textarea.placeholder = t("寫留言…（可以用 Markdown，打 @ 通知同事）");
   textarea.setAttribute("aria-label", t("留言"));
+  // 要在留言框自己的按鍵處理之前：清單開著時 Enter 是選人。
+  const people = mentionPicker(textarea, () => h.detail()?.project ?? "");
   const actions = document.createElement("div");
   actions.className = "ado-compose-actions";
   const hint = document.createElement("span");
@@ -516,7 +520,7 @@ function composeComment(body: HTMLElement, h: WorkItemEditHooks): void {
     const text = textarea.value.trim();
     if (!text) return textarea.focus();
     send.disabled = true;
-    const html = renderMarkdown(text, { kind: "markdown" }).html;
+    const html = applyMentions(renderMarkdown(text, { kind: "markdown" }).html, people.mentions());
     if (await h.apply({ comment: html }, t("已新增留言"))) {
       textarea.value = "";
       open(false);
@@ -576,7 +580,7 @@ function manageComments(body: HTMLElement, h: WorkItemEditHooks): void {
     tools.append(
       button(t("編輯留言"), "pencil", () => {
         card.open = true;
-        editComment(cardBody, c.text, async (html) => h.editComment(id, html, t("已修改留言")));
+        editComment(cardBody, c.text, async (html) => h.editComment(id, html, t("已修改留言")), () => h.detail()?.project ?? "");
       }),
       button(t("刪除留言"), "trash", () => {
         void (async () => {
@@ -593,13 +597,15 @@ function manageComments(body: HTMLElement, h: WorkItemEditHooks): void {
 }
 
 /** 在留言卡片裡用 Markdown 改留言；存檔成功後整個工作項目會重新讀取、重畫。 */
-function editComment(cardBody: HTMLElement, html: string, save: (html: string) => Promise<boolean>): void {
+function editComment(cardBody: HTMLElement, html: string, save: (html: string) => Promise<boolean>, project: () => string): void {
   if (cardBody.querySelector(".ado-comment-edit")) return;
   const original = [...cardBody.childNodes];
   const form = document.createElement("div");
   form.className = "ado-compose open ado-comment-edit";
   const textarea = document.createElement("textarea");
   textarea.value = htmlToMarkdown(html, { keepImages: true }).trim();
+  // 原本的 @ 存回去還是 @；也可以再 @ 別人。
+  const people = mentionPicker(textarea, project, mentionsIn(html));
   textarea.rows = Math.min(12, Math.max(3, textarea.value.split("\n").length + 1));
   textarea.setAttribute("aria-label", t("編輯留言"));
   const actions = document.createElement("div");
@@ -627,7 +633,7 @@ function editComment(cardBody: HTMLElement, html: string, save: (html: string) =
     const text = textarea.value.trim();
     if (!text) return textarea.focus();
     ok.disabled = true;
-    if (!(await save(renderMarkdown(text, { kind: "markdown" }).html))) ok.disabled = false;
+    if (!(await save(applyMentions(renderMarkdown(text, { kind: "markdown" }).html, people.mentions())))) ok.disabled = false;
   };
   cancel.addEventListener("click", close);
   ok.addEventListener("click", () => void submit());
