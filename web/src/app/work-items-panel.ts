@@ -604,7 +604,10 @@ export async function openShortcutFromBar(item: Shortcut): Promise<void> {
 }
 
 function showShortcutPanel(item: Shortcut): void {
-  app.showPanel(isWorkItemShortcut(item) ? "workitems" : "wiki", false);
+  const panel = isWorkItemShortcut(item) ? "workitems" : "wiki";
+  // Wiki 放在右側、右側欄收起來時，和左邊的側邊欄收起來一樣不自己打開。
+  if (panel === "wiki" && app.wikiPlacedRight() && !app.rightOutlineShown) return;
+  app.showPanel(panel, false);
 }
 
 function renderBarShortcuts(): void {
