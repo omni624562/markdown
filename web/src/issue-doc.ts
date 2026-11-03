@@ -16,7 +16,7 @@ export function inlineText(s: string): string {
     .replace(/([\\`*_[\]<>#|~])/g, "\\$1");
 }
 
-function dateTime(iso: string | null | undefined): string {
+export function dateTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
