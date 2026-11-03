@@ -20,7 +20,7 @@ import { toast } from "../ui/toast.ts";
 import { type WikiPageInfo, myChanges } from "../wiki-coedit.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { pageName, wikiMarkdown, wikiPageLink } from "../wiki-text.ts";
-import { openDiagram, copyDiagram } from "./activity-bar.ts";
+import { openDiagram, copyDiagram, openUrl } from "./activity-bar.ts";
 import { finishWikiEdit } from "./ado-files.ts";
 import { openRemoteLink } from "./ado-links.ts";
 import { followWikiLink } from "./wiki-page-links.ts";
@@ -492,6 +492,7 @@ export function initWikiEdit(): void {
       void openRemoteLink(url)
         .then((opened) => (opened ? undefined : desktop?.openExternal(url)))
         .catch(reportError),
+    browse: (url) => openUrl(url),
     follow: (href) => app.openRepoFileLink(href),
     copyAsDocument(name, markdown) {
       const doc = app.makeDoc({ name, kind: "markdown", baseline: app.hash("") });
