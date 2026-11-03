@@ -3519,6 +3519,7 @@ function applyLayout(): void {
   });
   // 側邊欄打開時，分頁從編輯區的左緣開始，和下面的欄位對齊。
   $(".topbar").classList.toggle("with-sidebar", outlineShown && !narrow);
+  $(".topbar").classList.toggle("with-right", rightColumnOn());
   // 右上角的按鈕：大綱放在右邊時，收起或打開右邊那一欄。
   const rightToggle = $("[data-command='toggle-outline-right']");
   rightToggle.hidden = !outlinePlacedRight() && !wikiPlacedRight();
