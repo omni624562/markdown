@@ -117,9 +117,7 @@ pub(super) fn relation_links(v: &Value) -> Vec<(&'static str, String, u64)> {
         .iter()
         .filter_map(|r| {
             let rel = str_of(r, "rel")?;
-            let url = str_of(r, "url")?;
-            let at = url.to_ascii_lowercase().rfind("/workitems/")?;
-            let id: u64 = url[at + "/workitems/".len()..].parse().ok()?;
+            let id = relation_target(r)?;
             let link = match rel {
                 "System.LinkTypes.Hierarchy-Reverse" => "parent",
                 "System.LinkTypes.Hierarchy-Forward" => "child",
@@ -1177,6 +1175,312 @@ fn comment_error(e: String) -> String {
     }
 }
 
+// ---- 工作項目：上傳附件 -------------------------------------------------------------
+
+/// 上傳檔案成工作項目的附件（還沒掛到工作項目上），回傳附件的網址：之後用 `attachments` 掛上去，
+/// 或放進說明、留言的圖片。原始位元組放在請求本文，專案與檔名放在標頭（百分比編碼）。
+#[tauri::command]
+pub async fn ado_attachment_upload(
+    app: AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, String> {
+    let header = |key: &str| {
+        request
+            .headers()
+            .get(key)
+            .and_then(|v| v.to_str().ok())
+            .map(crate::dav::decode_percent)
+            .filter(|v| !v.trim().is_empty())
+            .ok_or_else(|| tr!("上傳的資料不正確"))
+    };
+    let project = header("x-project")?;
+    let name = header("x-name")?;
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(tr!("上傳的資料不正確"));
+    };
+    if bytes.len() > MAX_ATTACHMENT {
+        return Err(tr!(
+            "「{name}」超過 60 MB，Azure DevOps 不接受這麼大的附件",
+            name = name
+        ));
+    }
+    let bytes = bytes.clone();
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let what = tr!("上傳附件");
+        let res = crate::update::agent()
+            .post(&format!(
+                "{}/{}/_apis/wit/attachments?fileName={}&api-version={API_VERSION}",
+                a.url,
+                encode_segment(&project),
+                encode_segment(&name)
+            ))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/octet-stream")
+            .send(&bytes[..]);
+        let v = read(res, &what)?;
+        str_of(&v, "url")
+            .map(str::to_string)
+            .ok_or_else(|| tr!("上傳附件失敗：回應的格式不正確"))
+    })
+    .await
+}
+
+// ---- 工作項目：修改記錄 -------------------------------------------------------------
+
+/// 修改記錄裡一個改了的欄位。長文字欄位（說明、驗收條件等 HTML）只標出有修改，不帶內容。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldChange {
+    /// 欄位的參考名稱（例如 `System.State`）；前端換成看得懂的名稱。
+    pub(super) field: String,
+    pub(super) old: Option<String>,
+    pub(super) new: Option<String>,
+    pub(super) long: bool,
+}
+
+/// 修改記錄裡加入或移除的關聯：工作項目（`id`）或附件、超連結（`name`）。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionLink {
+    /// `parent`、`child`、`related`、`predecessor`、`successor`、`attachment`、`hyperlink` 或 `other`。
+    pub(super) kind: &'static str,
+    pub(super) id: Option<u64>,
+    pub(super) name: String,
+}
+
+/// 修改記錄的一筆：誰、什麼時候、改了哪些欄位、留言、加了或移除哪些關聯。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItemRevision {
+    pub(super) rev: u64,
+    pub(super) author: String,
+    pub(super) date: Option<String>,
+    pub(super) fields: Vec<FieldChange>,
+    /// 這次加的留言（HTML）。
+    pub(super) comment: Option<String>,
+    pub(super) added: Vec<RevisionLink>,
+    pub(super) removed: Vec<RevisionLink>,
+}
+
+/// 每次修改都會變、看了沒有意義的欄位。
+const NOISE_FIELDS: &[&str] = &[
+    "System.Rev",
+    "System.Id",
+    "System.AuthorizedDate",
+    "System.RevisedDate",
+    "System.ChangedDate",
+    "System.ChangedBy",
+    "System.AuthorizedAs",
+    "System.PersonId",
+    "System.Watermark",
+    "System.CommentCount",
+    "System.AreaId",
+    "System.IterationId",
+    "System.NodeName",
+    "System.TeamProject",
+    "System.History",
+    "System.CreatedDate",
+    "System.BoardColumnDone",
+    "System.ExternalLinkCount",
+    "System.HyperLinkCount",
+    "System.AttachedFileCount",
+    "System.RelatedLinkCount",
+    "System.RemoteLinkCount",
+    "System.Parent",
+    "Microsoft.VSTS.Common.StateChangeDate",
+];
+
+/// 人的欄位：值是「名字 <網域\帳號>」或物件，只留名字。
+const IDENTITY_FIELDS: &[&str] = &[
+    "System.AssignedTo",
+    "System.CreatedBy",
+    "Microsoft.VSTS.Common.ActivatedBy",
+    "Microsoft.VSTS.Common.ResolvedBy",
+    "Microsoft.VSTS.Common.ClosedBy",
+];
+
+/// 長文字（HTML）欄位：只標出有修改。
+const LONG_FIELDS: &[&str] = &[
+    "System.Description",
+    "Microsoft.VSTS.Common.AcceptanceCriteria",
+    "Microsoft.VSTS.TCM.ReproSteps",
+    "Microsoft.VSTS.TCM.SystemInfo",
+    "Microsoft.VSTS.TCM.Steps",
+];
+
+fn change_value(field: &str, v: Option<&Value>) -> Option<String> {
+    let v = v?;
+    if IDENTITY_FIELDS.contains(&field) || v.is_object() {
+        return person(Some(v));
+    }
+    match v {
+        Value::String(s) => Some(s.clone()).filter(|s| !s.is_empty()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+fn revision_link(r: &Value) -> Option<RevisionLink> {
+    let rel = str_of(r, "rel")?;
+    let url = str_of(r, "url").unwrap_or_default();
+    let name = r
+        .get("attributes")
+        .and_then(|a| str_of(a, "name"))
+        .unwrap_or_default()
+        .to_string();
+    let id = url
+        .to_ascii_lowercase()
+        .rfind("/workitems/")
+        .and_then(|at| url[at + "/workitems/".len()..].parse().ok());
+    let kind = match rel {
+        "System.LinkTypes.Hierarchy-Reverse" => "parent",
+        "System.LinkTypes.Hierarchy-Forward" => "child",
+        "System.LinkTypes.Related" => "related",
+        "System.LinkTypes.Dependency-Reverse" => "predecessor",
+        "System.LinkTypes.Dependency-Forward" => "successor",
+        "AttachedFile" => "attachment",
+        "Hyperlink" => "hyperlink",
+        _ => "other",
+    };
+    let name = if name.is_empty() && kind == "hyperlink" {
+        url.to_string()
+    } else if name.is_empty() {
+        rel.to_string()
+    } else {
+        name
+    };
+    Some(RevisionLink { kind, id, name })
+}
+
+/// `wit/workItems/{id}/updates` 的回應整理成修改記錄（最新的在前）；只改了系統欄位的那幾次略過。
+pub(super) fn work_item_revisions(res: &Value) -> Vec<WorkItemRevision> {
+    let mut out: Vec<WorkItemRevision> = values(res)
+        .iter()
+        .filter_map(|u| {
+            let fields = u.get("fields").and_then(Value::as_object);
+            let comment = fields
+                .and_then(|f| f.get("System.History"))
+                .and_then(|h| h.get("newValue"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .map(str::to_string);
+            let mut changes: Vec<FieldChange> = fields
+                .map(|f| {
+                    f.iter()
+                        .filter(|(name, _)| !NOISE_FIELDS.contains(&name.as_str()))
+                        .filter_map(|(name, change)| {
+                            let long = LONG_FIELDS.contains(&name.as_str());
+                            let old = change_value(name, change.get("oldValue"));
+                            let new = change_value(name, change.get("newValue"));
+                            if old == new {
+                                return None;
+                            }
+                            Some(if long {
+                                FieldChange {
+                                    field: name.clone(),
+                                    old: None,
+                                    new: None,
+                                    long,
+                                }
+                            } else {
+                                FieldChange {
+                                    field: name.clone(),
+                                    old,
+                                    new,
+                                    long,
+                                }
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            changes.sort_by_key(|c| field_order(&c.field));
+            let links = |key: &str| -> Vec<RevisionLink> {
+                u.pointer(&format!("/relations/{key}"))
+                    .and_then(Value::as_array)
+                    .map(|list| list.iter().filter_map(revision_link).collect())
+                    .unwrap_or_default()
+            };
+            let added = links("added");
+            let removed = links("removed");
+            if changes.is_empty() && comment.is_none() && added.is_empty() && removed.is_empty() {
+                return None;
+            }
+            let author = fields
+                .and_then(|f| f.get("System.ChangedBy"))
+                .and_then(|c| person(c.get("newValue")))
+                .or_else(|| person(u.get("revisedBy")))
+                .unwrap_or_default();
+            // 修改的時間是那次的 ChangedDate；revisedDate 是下一次修改的時間（最新一筆是 9999 年）。
+            let date = fields
+                .and_then(|f| f.get("System.ChangedDate"))
+                .and_then(|c| c.get("newValue"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| {
+                    str_of(u, "revisedDate")
+                        .filter(|d| !d.starts_with("9999"))
+                        .map(str::to_string)
+                });
+            Some(WorkItemRevision {
+                rev: u.get("rev").and_then(Value::as_u64).unwrap_or_default(),
+                author,
+                date,
+                fields: changes,
+                comment,
+                added,
+                removed,
+            })
+        })
+        .collect();
+    out.reverse();
+    out
+}
+
+/// 常看的欄位排前面（標題、狀態、指派…），其他照名稱。
+fn field_order(field: &str) -> (usize, String) {
+    const FIRST: &[&str] = &[
+        "System.Title",
+        "System.State",
+        "System.Reason",
+        "System.AssignedTo",
+        "System.IterationPath",
+        "System.AreaPath",
+        "Microsoft.VSTS.Common.Priority",
+        "Microsoft.VSTS.Scheduling.RemainingWork",
+        "Microsoft.VSTS.Scheduling.CompletedWork",
+        "System.Tags",
+    ];
+    let at = FIRST
+        .iter()
+        .position(|f| *f == field)
+        .unwrap_or(FIRST.len());
+    (at, field.to_string())
+}
+
+/// 工作項目的修改記錄（最新的在前，最多 200 次修改）。
+#[tauri::command]
+pub async fn ado_work_item_history(
+    app: AppHandle,
+    id: u64,
+) -> Result<Vec<WorkItemRevision>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = get(
+            &a.url,
+            &pat,
+            &format!("/_apis/wit/workItems/{id}/updates?$top=200"),
+            &tr!("讀取修改記錄"),
+        )?;
+        Ok(work_item_revisions(&res))
+    })
+    .await
+}
+
 // ---- 工作項目：改狀態、指派給我、留言 ---------------------------------------------
 
 /// 這個類型的工作項目可以設定的狀態（依流程的順序）。
@@ -1327,6 +1631,126 @@ pub struct WorkItemChange {
     pub remaining: Option<f64>,
     /// 已完成工時（小時）。
     pub completed: Option<f64>,
+    /// 設定上層（換掉原本的上層）；0 表示移除上層。
+    pub parent: Option<u64>,
+    /// 加入的關聯（子項目、相關、前置、後續…）。
+    pub links_add: Vec<LinkChange>,
+    /// 移除的關聯。
+    pub links_remove: Vec<LinkChange>,
+    /// 加入附件：先用 `ado_attachment_upload` 上傳，這裡是回傳的網址。
+    pub attachments: Option<Vec<String>>,
+}
+
+/// 加入或移除的一個關聯：種類（`parent`、`child`、`related`、`predecessor`、`successor`）與對方的編號。
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkChange {
+    pub kind: String,
+    pub id: u64,
+}
+
+/// 關聯種類對應的連結類型。
+pub(super) fn link_rel(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "parent" => "System.LinkTypes.Hierarchy-Reverse",
+        "child" => "System.LinkTypes.Hierarchy-Forward",
+        "related" => "System.LinkTypes.Related",
+        "predecessor" => "System.LinkTypes.Dependency-Reverse",
+        "successor" => "System.LinkTypes.Dependency-Forward",
+        _ => return None,
+    })
+}
+
+/// 關聯指到的工作項目編號（`.../_apis/wit/workItems/42`）。
+fn relation_target(r: &Value) -> Option<u64> {
+    let url = str_of(r, "url")?;
+    let at = url.to_ascii_lowercase().rfind("/workitems/")?;
+    url[at + "/workitems/".len()..].parse().ok()
+}
+
+/// 改關聯的 JSON Patch：先移除（由後往前，前面的位置才不會跑掉），再加入（加在最後）。
+/// `relations` 是工作項目目前的關聯（移除時要知道位置；已經有的關聯不重複加）。
+pub(super) fn link_ops(
+    change: &WorkItemChange,
+    relations: &[Value],
+    base: &str,
+    id: u64,
+) -> Result<Vec<Value>, String> {
+    let mut adds: Vec<(&'static str, u64)> = vec![];
+    if let Some(p) = change.parent.filter(|p| *p != 0) {
+        adds.push(("System.LinkTypes.Hierarchy-Reverse", p));
+    }
+    for l in &change.links_add {
+        let rel =
+            link_rel(&l.kind).ok_or_else(|| tr!("看不懂的關聯種類：{kind}", kind = l.kind))?;
+        adds.push((rel, l.id));
+    }
+    let mut removes: Vec<(&'static str, u64)> = vec![];
+    for l in &change.links_remove {
+        let rel =
+            link_rel(&l.kind).ok_or_else(|| tr!("看不懂的關聯種類：{kind}", kind = l.kind))?;
+        removes.push((rel, l.id));
+    }
+    if adds.iter().any(|(_, target)| *target == id) {
+        return Err(tr!("不能把工作項目連到自己"));
+    }
+    let mut indexes: Vec<usize> = relations
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| {
+            let rel = str_of(r, "rel").unwrap_or_default();
+            let target = relation_target(r);
+            // 換上層：原本的上層（不管是哪一個）都拿掉。
+            (change.parent.is_some() && rel == "System.LinkTypes.Hierarchy-Reverse")
+                || removes
+                    .iter()
+                    .any(|(want, t)| *want == rel && Some(*t) == target)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    indexes.sort_unstable_by(|a, b| b.cmp(a));
+    let mut ops: Vec<Value> = indexes
+        .iter()
+        .map(|i| serde_json::json!({ "op": "remove", "path": format!("/relations/{i}") }))
+        .collect();
+    let kept = |rel: &str, target: u64| {
+        relations.iter().enumerate().any(|(i, r)| {
+            !indexes.contains(&i)
+                && str_of(r, "rel") == Some(rel)
+                && relation_target(r) == Some(target)
+        })
+    };
+    let mut seen: Vec<(&str, u64)> = vec![];
+    for (rel, target) in adds {
+        if kept(rel, target) || seen.contains(&(rel, target)) {
+            continue;
+        }
+        seen.push((rel, target));
+        ops.push(serde_json::json!({
+            "op": "add",
+            "path": "/relations/-",
+            "value": {
+                "rel": rel,
+                "url": format!("{}/_apis/wit/workItems/{target}", base.trim_end_matches('/')),
+            },
+        }));
+    }
+    Ok(ops)
+}
+
+/// 附件一次最多多大（Azure DevOps 預設的上限是 60 MB）。
+pub(super) const MAX_ATTACHMENT: usize = 60 * 1024 * 1024;
+
+/// 加入的附件必須是這台伺服器的工作項目附件（不能把任意網址掛成附件）。
+pub(super) fn check_attachments(change: &WorkItemChange, base: &str) -> Result<(), String> {
+    let base = base.trim_end_matches('/').to_ascii_lowercase();
+    for url in change.attachments.iter().flatten() {
+        let lower = url.to_ascii_lowercase();
+        if !lower.starts_with(&format!("{base}/")) || !lower.contains("/_apis/wit/attachments/") {
+            return Err(tr!("附件的網址不正確"));
+        }
+    }
+    Ok(())
 }
 
 /// 標題最多幾個字（Azure DevOps 的限制）。
@@ -1427,6 +1851,13 @@ pub(super) fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
             serde_json::json!({ "op": "add", "path": "/fields/System.AssignedTo", "value": who }),
         );
     }
+    for url in change.attachments.iter().flatten() {
+        ops.push(serde_json::json!({
+            "op": "add",
+            "path": "/relations/-",
+            "value": { "rel": "AttachedFile", "url": url },
+        }));
+    }
     for (field, hours) in [
         ("Microsoft.VSTS.Scheduling.RemainingWork", change.remaining),
         ("Microsoft.VSTS.Scheduling.CompletedWork", change.completed),
@@ -1455,9 +1886,24 @@ pub async fn ado_work_item_update(
 ) -> Result<(), String> {
     let (a, pat) = require(&app)?;
     check_change(&change)?;
+    check_attachments(&change, &a.url)?;
     crate::io::blocking_for(TIMEOUT, move || {
         let me = assign_me(&a);
-        let ops = change_ops(&change, &me);
+        let mut ops = change_ops(&change, &me);
+        if change.parent.is_some() || !change.links_add.is_empty() || !change.links_remove.is_empty() {
+            // 移除關聯要知道它在第幾個；也順便避免重複加入一樣的關聯。
+            let current = get(
+                &a.url,
+                &pat,
+                &format!("/_apis/wit/workitems/{id}?$expand=relations"),
+                &tr!("讀取工作項目"),
+            )?;
+            let relations = current
+                .get("relations")
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice);
+            ops.extend(link_ops(&change, relations, &a.url, id)?);
+        }
         if ops.iter().all(|op| op["op"] == "test") {
             return Ok(());
         }

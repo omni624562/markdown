@@ -4,7 +4,7 @@
  * 點卡片在同一個分頁開啟工作項目（按 < 或 Alt+← 回到工作板）。
  */
 import { adoOnline } from "../ado-online.ts";
-import { type AdoBoardItem, type AdoTeam, type AdoTeamIteration, desktop } from "../desktop.ts";
+import { type AdoBoardItem, type AdoTeam, type AdoTeamIteration, type AdoWorkItemChange, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
 import { type Board, type BoardItem, type CapacityData, type CapacityRow, buildBoard, capacityRows, filterBoard, hoursText } from "../taskboard-model.ts";
@@ -314,6 +314,9 @@ function renderBoard(body: HTMLElement, board: Board, s: Selection, raw: Map<num
   for (const row of board.rows) {
     const r = document.createElement("div");
     r.className = "tb-row";
+    // 拖曳卡片到這一列：上層換成這一列的上層（「沒有上層」那一列是 0：移除上層）。
+    r.dataset.parent = String(row.parent?.id ?? 0);
+    r.dataset.parentTitle = row.parent?.title ?? "";
     const parent = document.createElement("div");
     parent.className = "tb-parent";
     const toggle = document.createElement("button");
@@ -359,7 +362,10 @@ function renderBoard(body: HTMLElement, board: Board, s: Selection, raw: Map<num
   body.replaceChildren(root);
 }
 
-/** 拖曳卡片到別的欄：改狀態（送出時帶修訂版本，別人剛改過會失敗並重新整理）。 */
+/**
+ * 拖曳卡片到別的欄：改狀態；拖到別的上層那一列：換上層（「沒有上層」那一列：移除上層）。
+ * 送出時帶修訂版本，別人剛改過會失敗並重新整理。
+ */
 function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem>): void {
   cell.addEventListener("dragstart", (e) => {
     const c = (e.target as HTMLElement).closest<HTMLElement>(".tb-card");
@@ -385,16 +391,24 @@ function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem
     const id = Number(e.dataTransfer?.getData("text/x-omarker-card"));
     const item = raw.get(id);
     const state = cell.dataset.state;
-    if (!item || !state || item.state === state) return;
+    const row = cell.closest<HTMLElement>(".tb-row");
+    if (!item || !state || row?.dataset.parent === undefined) return;
+    const parent = Number(row.dataset.parent);
+    const el = cell.closest(".taskboard")?.querySelector<HTMLElement>(`.tb-cell .tb-card[data-id="${id}"]`);
+    // 依卡片原本在哪一列判斷有沒有換上層（上層沒讀到的卡片放在「沒有上層」，在那一列裡拖不算移除上層）。
+    const moved = !!el && el.closest(".tb-row") !== row;
+    if (item.state === state && !moved) return;
     e.preventDefault();
-    const el = cell.closest(".taskboard")?.querySelector<HTMLElement>(`.tb-card[data-id="${id}"]`);
     if (el) cell.append(el);
+    const change: AdoWorkItemChange = { rev: item.rev };
+    if (item.state !== state) change.state = state;
+    if (moved) change.parent = parent;
     void (async () => {
       try {
-        await desktop!.adoWorkItemUpdate(id, { state, rev: item.rev });
+        await desktop!.adoWorkItemUpdate(id, change);
         // 自己改的：重新讀到工作板時記成看過（不要又被標成「有更新」）。
         justEdited.add(id);
-        toast(t("已把 {id} 改成「{state}」", { id, state }), { tone: "success" });
+        toast(movedText(id, moved ? { id: parent, title: row.dataset.parentTitle ?? "" } : null, change.state), { tone: "success" });
       } catch (err) {
         reportError(err);
       }
@@ -403,6 +417,14 @@ function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem
     })();
   });
   void s;
+}
+
+/** 拖曳後的提示：換了上層、改了狀態，或兩個都改。`parent` 為 null 表示沒換上層，編號 0 表示移除上層。 */
+function movedText(id: number, parent: { id: number; title: string } | null, state: string | undefined): string {
+  if (!parent) return t("已把 {id} 改成「{state}」", { id, state: state ?? "" });
+  if (!parent.id) return state ? t("已把 {id} 移出上層，並改成「{state}」", { id, state }) : t("已把 {id} 移出上層", { id });
+  const name = parent.title || String(parent.id);
+  return state ? t("已把 {id} 移到「{parent}」底下，並改成「{state}」", { id, parent: name, state }) : t("已把 {id} 移到「{parent}」底下", { id, parent: name });
 }
 
 // ---- 側邊欄 -------------------------------------------------------------------

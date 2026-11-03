@@ -265,10 +265,22 @@ fn get_version(
 }
 
 fn post(base: &str, pat: &str, path: &str, body: &Value, what: &str) -> Result<Value, String> {
+    post_version(base, pat, path, body, API_VERSION, what)
+}
+
+/// 指定 api-version 的 POST（預覽版的 API，例如身分搜尋）。
+fn post_version(
+    base: &str,
+    pat: &str,
+    path: &str,
+    body: &Value,
+    version: &str,
+    what: &str,
+) -> Result<Value, String> {
     let sep = if path.contains('?') { '&' } else { '?' };
     read(
         crate::update::agent()
-            .post(&format!("{base}{path}{sep}api-version={API_VERSION}"))
+            .post(&format!("{base}{path}{sep}api-version={version}"))
             .header("Authorization", &basic(pat))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")

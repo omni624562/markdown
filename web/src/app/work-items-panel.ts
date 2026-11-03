@@ -24,6 +24,7 @@ import { forgetListCopies, keepFreshness, withOfflineCopy } from "./offline-copi
 import { favoriteProjects, favoriteWikis } from "./favorite-lists.ts";
 import { favoritesFirst } from "../favorites.ts";
 import { app } from "./context.ts";
+import { bulkEditWorkItems } from "./work-item-bulk.ts";
 
 
 /** 目前列出的查詢（null 是用篩選條件）。 */
@@ -740,6 +741,8 @@ export function initWorkItemsPanel(): void {
         },
         forget: () => forgetListCopies("wi-"),
         view: (item) => app.showWorkItem(item),
+        // 選了好幾個一起改狀態、指派、優先順序、Sprint，或一起加留言。
+        bulk: { run: (items) => bulkEditWorkItems(items, () => workItemsPanel?.clearSelection()) },
         status: (n, search) =>
           onlyUnseen && !search
             ? n

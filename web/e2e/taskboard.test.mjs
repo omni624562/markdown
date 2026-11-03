@@ -87,6 +87,29 @@ test("工作板：拖曳卡片到別的欄就改狀態（帶修訂版本）", as
   await context.close();
 });
 
+test("工作板：拖到別的上層那一列就換上層；拖到「沒有上層」就移除上層", async () => {
+  const { page, context, errors } = await open({ desktop });
+  await openBoard(page);
+  const sent = async () => (await calls(page)).filter((c) => c.cmd === "ado_work_item_update").map((c) => c.args);
+  // 同一欄（New）、換到 SP83 那一列：只換上層，不改狀態。
+  await page.locator('.tb-card[data-id="1936947"]').dragTo(page.locator(".tb-row").nth(2).locator('.tb-cell[data-state="New"]'));
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_update"));
+  assert.deepEqual((await sent())[0], { id: 1936947, change: { rev: 3, parent: 1673120 } });
+  await page.locator(".toast", { hasText: "已把 1936947 移到「SP83 新人臉辨識」底下" }).waitFor();
+  await page.waitForSelector(".taskboard .tb-card");
+  // 沒有上層的工作拖到 SP102 那一列的 Resolved：換上層也改狀態。
+  await page.locator('.tb-card[data-id="1700846"]').dragTo(page.locator(".tb-row").nth(1).locator('.tb-cell[data-state="Resolved"]'));
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "ado_work_item_update").length === 2);
+  assert.deepEqual((await sent())[1], { id: 1700846, change: { rev: 3, state: "Resolved", parent: 1931940 } });
+  await page.waitForSelector(".taskboard .tb-card");
+  // 拖到「沒有上層」那一列：移除上層（0）。
+  await page.locator('.tb-card[data-id="1929183"]').dragTo(page.locator(".tb-row").nth(3).locator('.tb-cell[data-state="Resolved"]'));
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "ado_work_item_update").length === 3);
+  assert.deepEqual((await sent())[2], { id: 1929183, change: { rev: 3, parent: 0 } });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("工作板：點卡片開啟工作項目，按 Alt+← 回到工作板", async () => {
   const detail = { ...ITEMS[1], createdBy: null, area: null, iteration: null, tags: [], description: null, details: null, relations: [], attachments: [], comments: [] };
   const { page, context, errors } = await open({ desktop: { ...desktop, ado_work_item: detail } });
