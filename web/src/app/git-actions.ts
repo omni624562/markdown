@@ -12,9 +12,9 @@ import { toast } from "../ui/toast.ts";
 import { openGitHistory } from "./git-history.ts";
 import { createWorkItemDialog, createWorkItemFromSelection, copySelection, pasteFromClipboard } from "./new-work-item.ts";
 import { keptPicker, keptPages } from "./offline-copies.ts";
-import { openWikiHistory } from "./wiki-history.ts";
+import { openWikiHistory, openWikiRecent } from "./wiki-history.ts";
 import { gitPanel, showAdo } from "./work-item-updates.ts";
-import { issuesRepo } from "./work-items-panel.ts";
+import { issuesRepo, wikiPanel } from "./work-items-panel.ts";
 import { selectAll, indentMore, indentLess } from "@codemirror/commands";
 import { app } from "./context.ts";
 import { logError } from "../error-log.ts";
@@ -386,6 +386,17 @@ export function initGitActions(): void {
           const { wiki, path } = app.wikiPage;
           openWikiHistory({ projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path }, wiki);
         } else if (app.active.wiki) openWikiHistory(app.active.wiki, null);
+      },
+    },
+    {
+      id: "wiki-recent",
+      title: t("Wiki 最近修改…"),
+      group: t("檔案"),
+      icon: "history",
+      when: () => !!desktop && !!app.ado?.account && !!(wikiPanel?.wiki ?? app.wikiPage?.wiki),
+      run: () => {
+        const wiki = app.wikiPage?.wiki ?? wikiPanel?.wiki;
+        if (wiki) openWikiRecent(wiki);
       },
     },
     {

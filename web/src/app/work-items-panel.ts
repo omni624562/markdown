@@ -24,6 +24,7 @@ import { forgetListCopies, keepFreshness, withOfflineCopy } from "./offline-copi
 import { favoriteProjects, favoriteWikis } from "./favorite-lists.ts";
 import { favoritesFirst } from "../favorites.ts";
 import { app } from "./context.ts";
+import { openWikiRecent } from "./wiki-history.ts";
 import { bulkEditWorkItems } from "./work-item-bulk.ts";
 
 
@@ -832,6 +833,7 @@ export function initWorkItemsPanel(): void {
         savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
         link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
         create: (wiki, parent) => void app.createWikiPage(wiki, parent).catch(app.reportError),
+        recent: (wiki) => openWikiRecent(wiki),
         canCreate: (wiki) => !wiki.code,
         async reorder(wiki, path, index) {
           try {

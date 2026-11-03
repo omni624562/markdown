@@ -1,13 +1,13 @@
 /**
  * Wiki 頁面的修改記錄：誰、什麼時候改了什麼，和目前的內容比較。
  */
-import { type AdoWiki, desktop } from "../desktop.ts";
+import { type AdoWiki, type AdoWikiChange, desktop } from "../desktop.ts";
 import { versionTitle } from "../history-label.ts";
 import { t } from "../i18n.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { myChanges } from "../wiki-coedit.ts";
-import { revisionNote } from "../wiki-text.ts";
+import { pageName, revisionNote } from "../wiki-text.ts";
 import { app } from "./context.ts";
 
 
@@ -130,7 +130,73 @@ async function compareWikiRevision(target: WikiHistoryTarget & { wiki: AdoWiki |
   if (!started) toast(t("這一版和目前的內容相同。"));
 }
 
+/** 最近修改要看的 Wiki 與讀到的清單。 */
+let recentOf: AdoWiki | null = null;
+let recentLoad: Promise<AdoWikiChange[]> | null = null;
+// 在 init 時建立。
+let recentPicker: Picker<AdoWikiChange>;
+
+/** 打開這個 Wiki 的最近修改：誰、什麼時候改了哪一頁；選一筆開那一頁。 */
+export function openWikiRecent(wiki: AdoWiki): void {
+  recentOf = wiki;
+  recentLoad = desktop!.adoWikiRecent(wiki);
+  recentLoad.catch(app.reportError);
+  recentPicker.open();
+}
+
+function changeLabel(change: AdoWikiChange["change"]): string {
+  switch (change) {
+    case "add":
+      return t("新增");
+    case "delete":
+      return t("刪除");
+    case "rename":
+      return t("改名或搬移");
+    default:
+      return t("修改");
+  }
+}
+
+/** 上層頁面的位置（「產品 › 安裝」）；最上層的頁面是空字串。 */
+function parentTrail(path: string): string {
+  return path.split("/").filter(Boolean).slice(0, -1).join(" › ");
+}
+
 export function initWikiHistory(): void {
+  recentPicker = new Picker<AdoWikiChange>({
+    label: t("Wiki 最近修改"),
+    placeholder: t("輸入頁面名稱、人名或修改說明"),
+    stacked: true,
+    empty: t("最近沒有修改。"),
+    async query(q) {
+      if (!recentLoad) return [];
+      const list = await recentLoad;
+      const needle = q.trim().toLowerCase();
+      return needle ? list.filter((c) => `${c.path} ${c.author} ${c.comment}`.toLowerCase().includes(needle)) : list;
+    },
+    render: (c) => ({
+      title: pageName(c.path),
+      detail: [
+        changeLabel(c.change),
+        c.author || t("（不明）"),
+        c.date ? versionTitle(Date.parse(c.date)) : "",
+        parentTrail(c.path),
+        c.comment ? revisionNote(c.comment, c.path) : "",
+      ]
+        .filter(Boolean)
+        .join("・"),
+      icon: c.change === "add" ? "file-plus" : c.change === "delete" ? "trash" : c.change === "rename" ? "pencil" : "file-text",
+    }),
+    pick: (c) => {
+      if (!recentOf) return;
+      if (c.change === "delete") {
+        toast(t("「{name}」已經刪除了。", { name: pageName(c.path) }));
+        return;
+      }
+      app.showWikiPage(recentOf, c.path);
+    },
+  });
+
   wikiHistoryPicker = new Picker<WikiRevisionItem>({
     label: t("修改記錄"),
     placeholder: t("選擇一次修改，看那次改了什麼"),
