@@ -83,18 +83,14 @@ const queryPicker = new Picker<QueryChoice>({
 
 /**
  * 工作項目的篩選，一直顯示在面板上方：專案一整列（右邊的 × 一次清掉所有條件），下面是人與區域、類型與狀態，
- * 最後是搜尋框（右端的 ⌄ 開 TFS 的已儲存查詢；正在用查詢時，查詢名稱放在搜尋框左邊，按 × 取消）。
+ * 最後是搜尋框（右端的 ⌄ 開 Azure DevOps 的已儲存查詢；正在用查詢時，查詢名稱放在搜尋框左邊，按 × 取消）。
  * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
  */
 function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInputElement): void } {
   const bar = document.createElement("div");
   bar.className = "workitems-filters";
   bar.id = "workitem-filters";
-  const reset = document.createElement("button");
-  reset.type = "button";
-  reset.className = "btn btn-small workitems-filter-reset";
-  reset.textContent = t("清除篩選");
-  // 有設定條件時，專案右邊多一個「×」，一次清掉。
+  // 有設定條件時，專案右邊多一個「×」，一次清掉（只有這一個清除按鈕）。
   const clear = document.createElement("button");
   clear.type = "button";
   clear.className = "workitems-filter-clear";
@@ -102,8 +98,8 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
   clear.title = clearLabel;
   clear.setAttribute("aria-label", clearLabel);
   clear.append(icon("x"));
-  clear.addEventListener("click", () => reset.click());
-  // TFS 存的查詢：搜尋框右端的 ⌄ 開選單；選了就改列查詢的結果（篩選條件暫時不用）。
+  clear.addEventListener("click", () => resetAll());
+  // Azure DevOps 存的查詢：搜尋框右端的 ⌄ 開選單；選了就改列查詢的結果（篩選條件暫時不用）。
   const queryPick = document.createElement("button");
   queryPick.type = "button";
   queryPick.className = "workitems-query-pick";
@@ -156,7 +152,6 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     // 和預設不一樣的條件，按鈕用強調色。
     [person, state, kind, project, area].forEach((m, i) => m.el.classList.toggle("chosen", set[i]));
     const n = set.filter(Boolean).length + (q ? 1 : 0);
-    reset.hidden = !n;
     clear.hidden = !n;
   };
   const changed = () => {
@@ -330,7 +325,8 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
       })
       .catch(() => (loaded = false));
   };
-  reset.addEventListener("click", () => {
+  /** 清掉全部條件與查詢，回到預設（指派給我、進行中）。 */
+  const resetAll = () => {
     clearTimeout(timer);
     setWorkItemQuery(null, false);
     Object.assign(f, app.DEFAULT_WORK_ITEM_FILTER);
@@ -343,13 +339,13 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     loadScope();
     refreshStates();
     changed();
-  });
+  };
   // 專案在最上面一整列（區域、狀態都看選的專案），右邊是清掉全部條件的 ×；下面是人與區域（輸入名字的框在這列下面）、
   // 類型與狀態，最後是搜尋框。正在用查詢時的說明放在最前面（「下面的篩選條件暫時不套用」）。
   const top = document.createElement("div");
   top.className = "workitems-filter-top";
   top.append(project.el, clear);
-  bar.append(queryNote, top, person.el, area.el, name, kind.el, state.el, searchBox, people, reset);
+  bar.append(queryNote, top, person.el, area.el, name, kind.el, state.el, searchBox, people);
   renderState();
   return {
     filters: bar,
