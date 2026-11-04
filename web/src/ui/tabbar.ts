@@ -1,4 +1,5 @@
 import { t } from "../i18n.ts";
+import { isTextFileName } from "../kinds.ts";
 import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
@@ -270,8 +271,8 @@ export class TabBar {
     input.addEventListener("dblclick", (e) => e.stopPropagation());
     name.replaceWith(input);
     input.focus();
-    // 先選取主檔名（不含副檔名），和檔案總管一樣。
-    const dot = input.value.lastIndexOf(".");
+    // 先選取主檔名（不含副檔名），和檔案總管一樣。用標題命名的文件沒有副檔名，標題裡的「.」不算。
+    const dot = isTextFileName(input.value) ? input.value.lastIndexOf(".") : -1;
     input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
   }
 }

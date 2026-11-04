@@ -95,6 +95,7 @@ import { NOT_CONNECTED, closeProject, davDialog, openPath, openRecentFolder, ope
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
+import { docName, docTooltip, saveFileName } from "./app/doc-names.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
@@ -2631,9 +2632,9 @@ const quickOpen = new Picker<QuickItem>({
     const current = selectedItemId();
     const openItems = itemTabs.filter((tab) => tab.id !== current);
     const items: QuickItem[] = [
-      ...docs.filter((d) => d !== active || current).map((d) => ({ title: d.name, detail: t("已開啟"), doc: d })),
+      ...docs.filter((d) => d !== active || current).map((d) => ({ title: docName(d), detail: t("已開啟"), doc: d })),
       ...openItems.map((tab) => ({ title: tab.name, detail: t("已開啟"), remote: { icon: tab.icon, open: () => selectItem(tab.id) } })),
-      ...(current ? [] : [{ title: active.name, detail: t("目前分頁"), doc: active }]),
+      ...(current ? [] : [{ title: docName(active), detail: t("目前分頁"), doc: active }]),
     ];
     const seen = new Set(docs.map((d) => d.path).filter(Boolean));
     if (desktop) {
@@ -2701,10 +2702,10 @@ function renderTabs(): void {
       d.id,
       {
         id: d.id,
-        name: d === active ? cur.fileName : d.name,
+        name: docName(d),
         title: d.wiki
           ? t("Azure DevOps Wiki：{wiki}{path}（按 Ctrl+S 存回伺服器）", { wiki: d.wiki.wikiName, path: d.wiki.path })
-          : (((p) => (p ? displayPath(p) : null))(d === active ? cur.fileHandle?.path : d.path) ?? (d === active ? cur.fileName : d.name)),
+          : (((p) => (p ? displayPath(p) : null))(d === active ? cur.fileHandle?.path : d.path) ?? docTooltip(d)),
         source: d.wiki ? ("wiki" as const) : undefined,
         dirty: d.dirty,
         missing: d.missing,
@@ -2816,7 +2817,7 @@ function openBeside(doc: Doc): void {
   }
   if (doc === paneDocs.main) {
     if (paneDocs.side) {
-      toast(t("「{name}」已經在左邊了。", { name: doc === active ? cur.fileName : doc.name }));
+      toast(t("「{name}」已經在左邊了。", { name: docName(doc) }));
       return;
     }
     const i = docs.indexOf(doc);
@@ -2889,9 +2890,8 @@ function renderPaneHeads(): void {
   const head = (el: HTMLElement, pane: Pane) => {
     const doc = paneDocs[pane]!;
     const focused = pane === focusedPane;
-    const name = focused ? cur.fileName : doc.name;
-    const label = Object.assign(document.createElement("span"), { className: "pane-head-name", textContent: name });
-    label.title = (focused ? cur.fileHandle?.path : doc.path) ?? name;
+    const label = Object.assign(document.createElement("span"), { className: "pane-head-name", textContent: docName(doc) });
+    label.title = (focused ? cur.fileHandle?.path : doc.path) ?? docTooltip(doc);
     const parts: Node[] = [icon(doc.wiki ? "book-open-text" : "file-text"), label];
     if (doc.dirty) {
       const dot = document.createElement("span");
@@ -3007,7 +3007,7 @@ async function closeTab(id: string): Promise<void> {
   }
   if (doc === active) stash();
   if (doc.dirty) {
-    const choice = await choose(t("要儲存變更嗎？"), t("「{name}」有尚未存檔的變更。", { name: doc.name }), [
+    const choice = await choose(t("要儲存變更嗎？"), t("「{name}」有尚未存檔的變更。", { name: docName(doc) }), [
       { id: "save", label: t("儲存"), primary: true },
       { id: "discard", label: t("不儲存"), danger: true },
       { id: "cancel", label: t("取消") },
@@ -3207,7 +3207,7 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   if (active.wiki && !saveAs && desktop) return saveWikiPage(text, force);
   let out: Awaited<ReturnType<typeof saveFile>>;
   try {
-    out = await saveFile(text, cur.fileName, cur.kind, cur.fileHandle, { saveAs, force });
+    out = await saveFile(text, saveFileName(), cur.kind, cur.fileHandle, { saveAs, force });
   } catch (e) {
     if (isOffline(e) && cur.fileHandle?.path) {
       showOffline(cur.fileHandle.path);
