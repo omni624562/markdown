@@ -1,5 +1,6 @@
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
+import { placeMenu } from "./menu-place.ts";
 
 export interface PickerItem {
   title: string;
@@ -28,7 +29,16 @@ export interface PickerOptions<T> {
   pick(item: T): void;
   /** 清單關閉時（選了項目之後，或取消）。 */
   closed?(): void;
+  /**
+   * 開在這個元素下面（像下拉選單，和它左邊切齊、至少一樣寬），不開在畫面中間；
+   * 回傳 null 或元素看不到時照舊開在中間。
+   */
+  anchor?(): HTMLElement | null;
 }
+
+/** 開在錨點下面時的最小寬度與最大高度。 */
+const ANCHORED_MIN_WIDTH = 360;
+const ANCHORED_MAX_HEIGHT = 480;
 
 /**
  * 有搜尋框的選擇清單（指令面板、Ctrl+P 快速開啟共用）。
@@ -79,7 +89,32 @@ export class Picker<T> {
     this.#input.value = initial;
     void this.#refresh();
     this.#dialog.showModal();
+    this.#place();
     this.#input.select();
+  }
+
+  /** 有錨點時放在它下面（下面放不下就往上開），沒有時清掉位置、照舊開在畫面中間。 */
+  #place(): void {
+    const el = this.#opts.anchor?.();
+    const d = this.#dialog;
+    const anchored = !!el && el.getClientRects().length > 0;
+    d.classList.toggle("palette-anchored", anchored);
+    if (!anchored) {
+      d.style.removeProperty("left");
+      d.style.removeProperty("top");
+      d.style.removeProperty("width");
+      d.style.removeProperty("max-height");
+      return;
+    }
+    const box = el.getBoundingClientRect();
+    const width = Math.min(Math.max(box.width, ANCHORED_MIN_WIDTH), innerWidth - 16);
+    const p = placeMenu(box, { width, height: ANCHORED_MAX_HEIGHT }, { width: innerWidth, height: innerHeight });
+    Object.assign(d.style, {
+      left: `${p.left}px`,
+      top: `${p.top}px`,
+      width: `${width}px`,
+      maxHeight: `${Math.min(ANCHORED_MAX_HEIGHT, p.maxHeight)}px`,
+    });
   }
 
   async #refresh(): Promise<void> {

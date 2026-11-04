@@ -32,6 +32,17 @@ const desktop = {
   ado_query_run: [[item(3, "查詢找到的項目")]],
 };
 
+/** 已儲存查詢的清單與搜尋框的位置。 */
+const placement = (page) =>
+  page.evaluate(() => {
+    const box = document.querySelector("#workitems-host .workitems-search-box").getBoundingClientRect();
+    const dialog = document.querySelector('dialog[open][aria-label="Azure DevOps 的已儲存查詢"]').getBoundingClientRect();
+    return {
+      box: { left: box.left, bottom: box.bottom, width: box.width },
+      dialog: { left: dialog.left, top: dialog.top, width: dialog.width },
+    };
+  });
+
 /** 篩選裡各個元素的位置（看得到的才算）。 */
 const layout = (page) =>
   page.evaluate(() => {
@@ -145,11 +156,16 @@ test("搜尋框右端的 ⌄ 開已儲存的查詢；選了查詢顯示「查詢
   assert.equal(await pick.getAttribute("aria-label"), "已儲存的查詢");
   assert.equal(await pick.getAttribute("title"), "已儲存的查詢");
 
-  // ⌄ 開 Azure DevOps 的已儲存查詢。
+  // ⌄ 開 Azure DevOps 的已儲存查詢：開在搜尋框下面（不是畫面中間），沒選專案時讀所有專案的。
   await pick.click();
   const dialog = page.locator('dialog[open][aria-label="Azure DevOps 的已儲存查詢"]');
   await dialog.waitFor();
   await dialog.locator("li", { hasText: "我的 Bug" }).waitFor();
+  const near = await placement(page);
+  assert.ok(near.dialog.top >= near.box.bottom - 1 && near.dialog.top <= near.box.bottom + 8, `清單就在搜尋框下面：${JSON.stringify(near)}`);
+  assert.ok(Math.abs(near.dialog.left - near.box.left) < 2, "和搜尋框左邊切齊");
+  assert.ok(near.dialog.width >= near.box.width - 1, "至少和搜尋框一樣寬");
+  assert.deepEqual(await page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "ado_queries").map((c) => c.args.projects)), [null]);
   await dialog.locator("li", { hasText: "本週要上線的項目" }).click();
 
   // 選了查詢：搜尋框左邊是查詢名稱，篩選最上面是說明，清單是查詢的結果。
@@ -178,6 +194,41 @@ test("搜尋框右端的 ⌄ 開已儲存的查詢；選了查詢顯示「查詢
   assert.match(await page.textContent("#workitems-host .workitems-status"), /2 個指派給你、還沒結束的工作項目/);
   assert.equal(await page.evaluate(() => localStorage.getItem("md-editor:workitem-query")), null, "不再記住查詢");
   assert.ok(await page.locator("#workitems-host .workitems-search").evaluate((el) => el === document.activeElement), "游標回到搜尋框");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("選了專案：已儲存的查詢只列那個專案的（不寫專案名稱），清單開在搜尋框下面", async () => {
+  const { page, context, errors } = await open({
+    desktop: {
+      ...desktop,
+      // 原生端給了專案只讀那個專案；這裡故意混其他專案的，確認畫面上也只列選的專案。
+      ado_queries: [[
+        { id: "q1", project: "產品", name: "本週要上線的項目", folder: "Shared Queries" },
+        { id: "q3", project: "平台", name: "平台的需求數量", folder: "Shared Queries/平台" },
+      ]],
+    },
+  });
+  await page.locator("#side-tab-workitems").click();
+  await page.locator("#workitems-host .workitem-title", { hasText: "登入頁面跑版" }).waitFor();
+  // 專案只選「平台」。
+  await page.locator('#workitems-host .multi-select[aria-label^="專案："]').click();
+  const row = page.locator(".multi-select-pop:popover-open .multi-select-item", { hasText: /^平台/ });
+  await row.hover();
+  await row.locator(".multi-select-only").click();
+  await page.keyboard.press("Escape");
+  await page.locator('#workitems-host .multi-select[aria-label^="區域："]').waitFor();
+
+  await page.locator("#workitems-host .workitems-query-pick").click();
+  const dialog = page.locator('dialog[open][aria-label="Azure DevOps 的已儲存查詢"]');
+  await dialog.locator("li", { hasText: "平台的需求數量" }).waitFor();
+  const items = await dialog.locator("li[role=option]").evaluateAll((lis) => lis.map((li) => li.textContent));
+  assert.deepEqual(items, ["平台的需求數量Shared Queries/平台"], "只有選的專案的查詢，說明只寫資料夾");
+  assert.deepEqual(await page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "ado_queries").map((c) => c.args.projects)), [["平台"]]);
+  const near = await placement(page);
+  assert.ok(near.dialog.top >= near.box.bottom - 1 && near.dialog.top <= near.box.bottom + 8, `清單就在搜尋框下面：${JSON.stringify(near)}`);
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "detached" });
   assert.deepEqual(errors, []);
   await context.close();
 });
