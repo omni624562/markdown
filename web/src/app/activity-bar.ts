@@ -680,7 +680,7 @@ export async function saveAsTemplate(): Promise<void> {
     return;
   }
   app.settings.update({ templates: [{ name, body }, ...others] });
-  toast(t("已存成範本「{name}」，可以從「⋯」→「從範本新增…」使用", { name }), { tone: "success" });
+  toast(t("已存成範本「{name}」，可以從「⋯」→「{command}」使用", { name, command: app.commands.title("new-from-template") }), { tone: "success" });
 }
 
 /**

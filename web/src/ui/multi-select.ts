@@ -102,7 +102,8 @@ export class MultiSelect {
       if (this.#pop.matches(":popover-open")) this.#pop.hidePopover();
       else this.#open();
     });
-    this.#pop.addEventListener("toggle", (e) => {
+    // 用 beforetoggle：收起的當下就套用選的條件（toggle 事件排在後面才觸發，按 Esc 之後畫面會慢一拍）。
+    this.#pop.addEventListener("beforetoggle", (e) => {
       const open = (e as ToggleEvent).newState === "open";
       this.el.setAttribute("aria-expanded", String(open));
       if (!open) this.#apply();

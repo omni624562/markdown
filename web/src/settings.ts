@@ -221,6 +221,9 @@ function keybindings(v: unknown): { map: Record<string, string>; dropped: boolea
 /** 「不再提示」的詞最多記幾個。 */
 export const TERM_IGNORE_LIMIT = 500;
 
+/** 設定裡「檢查兩國用語」這個選項的名稱：設定頁與提到它的提示共用，改名時一起變。 */
+export const termCheckLabel = (): string => t("檢查兩國用語、錯字與標點");
+
 /** 個人字典最多記幾個字。 */
 export const SPELL_IGNORE_LIMIT = 2000;
 

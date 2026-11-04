@@ -3,8 +3,8 @@ import type { Translation } from "../en.ts";
 /** main.ts：編輯器外框、指令、狀態列、分頁、檔案、存檔、範本、匯入匯出等。 */
 export const main: Record<string, Translation> = {
   // 狀態列、預覽錯誤、空白文件
-  "不再提示「{word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。":
-    "\"{word}\" won't be flagged again. To undo, run \"Clear Ignored Words\" from the Command Palette.",
+  "不再提示「{word}」。之後可以在指令面板執行「{command}」恢復。":
+    "\"{word}\" won't be flagged again. To undo, run \"{command}\" from the Command Palette.",
   "第 {line} 行，第 {column} 欄": "Ln {line}, Col {column}",
   "（已選取 {n} 字）": " ({n} selected)",
   "{kind} 格式錯誤（第 {line} 行，第 {column} 欄）": "{kind} syntax error (line {line}, column {column})",
@@ -226,7 +226,7 @@ export const main: Record<string, Translation> = {
   "拼字": "Spelling",
   "「{word}」可能拼錯了": "\"{word}\" may be misspelled",
   "「{word}」可能拼錯了（找不到建議的拼法）": "\"{word}\" may be misspelled (no suggestions)",
-  "已把「{word}」加入字典。之後可以在指令面板執行「拼字檢查：清除個人字典」恢復。": "Added \"{word}\" to the dictionary. Run \"Spelling: Clear Personal Dictionary\" from the command palette to undo.",
+  "已把「{word}」加入字典。之後可以在指令面板執行「{command}」恢復。": "Added \"{word}\" to the dictionary. Run \"{command}\" from the command palette to undo.",
   "英文拼字檢查": "English Spellcheck",
   "拼錯的英文字畫上紅色波浪底線，滑鼠移上去可以換成建議的拼法或加入字典；程式碼、網址與縮寫不檢查": "Misspelled English words get a red wavy underline; hover to pick a suggestion or add the word to the dictionary. Code, URLs, and acronyms aren't checked",
   "拼字檢查：清除個人字典": "Spelling: Clear Personal Dictionary",
@@ -496,8 +496,8 @@ export const main: Record<string, Translation> = {
   "範本名稱（可以在內容中使用 {date}、{week} 等變數）：": "Template name (the content can use variables such as {date} and {week}):",
   "文件太長，無法存成範本。": "The document is too long to save as a template.",
   "自訂範本最多 {n} 個，請先刪除一些。": "You can have up to {n} custom templates. Delete some first.",
-  "已存成範本「{name}」，可以從「⋯」→「從範本新增…」使用":
-    "Saved as the template \"{name}\". Use it from \"⋯\" → \"New from Template…\".",
+  "已存成範本「{name}」，可以從「⋯」→「{command}」使用":
+    "Saved as the template \"{name}\". Use it from \"⋯\" → \"{command}\".",
 
   // 剪貼簿、流程圖
   "無法寫入剪貼簿。": "Couldn't write to the clipboard.",
@@ -533,9 +533,9 @@ export const main: Record<string, Translation> = {
     "{n} more depends on context and is marked with a wavy underline; hover over it to choose.",
     "{n} more depend on context and are marked with wavy underlines; hover over them to choose.",
   ],
-  "另有 {n} 處要依文意判斷；打開設定的「檢查兩國用語與錯字」就會標示出來。": [
-    "{n} more depends on context. Turn on the Mainland China terms check in Settings to mark it.",
-    "{n} more depend on context. Turn on the Mainland China terms check in Settings to mark them.",
+  "另有 {n} 處要依文意判斷；打開設定的「{setting}」就會標示出來。": [
+    "{n} more depends on context. Turn on \"{setting}\" in Settings to mark it.",
+    "{n} more depend on context. Turn on \"{setting}\" in Settings to mark them.",
   ],
 
   // 圖片
