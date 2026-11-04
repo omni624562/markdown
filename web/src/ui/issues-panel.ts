@@ -67,10 +67,10 @@ export interface IssuesHandlers<T extends IssueSummary> {
   link?(item: T): string;
   /** 拖曳項目時另外帶的資料（型別對應內容，例如拖到左側圖示列變成捷徑）。 */
   dragData?(item: T): Record<string, string>;
-  /** 放在搜尋框下方的篩選列（改變時呼叫 `refresh()`）。 */
+  /** 篩選列（改變時呼叫 `refresh()`）；沒有 `placeSearch` 時放在搜尋框下方。 */
   filters?: HTMLElement;
-  /** 放在搜尋框右邊的按鈕（例如展開、收合篩選列）。 */
-  filterButton?: HTMLElement;
+  /** 把搜尋框放進篩選列裡（例如工作項目的搜尋框在篩選條件下面）；沒給時搜尋框在最上面。 */
+  placeSearch?(input: HTMLInputElement): void;
   /**
    * 一次改好幾個：Ctrl＋點一下加選、Shift＋點一下選一段，或按「選取」進入選取模式；
    * 選了之後清單上方出現「一起改…」，按了呼叫 `run`。
@@ -235,12 +235,7 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#list.className = "workitems-list";
     // 清單自己捲動（上面的搜尋與篩選固定不動）；捲下去時上緣出現分隔線。
     this.#list.addEventListener("scroll", () => this.#list.classList.toggle("scrolled", this.#list.scrollTop > 0), { passive: true });
-    let search: HTMLElement = this.#input;
-    if (handlers.filterButton) {
-      search = document.createElement("div");
-      search.className = "workitems-searchrow";
-      search.append(this.#input, handlers.filterButton);
-    }
+    handlers.placeSearch?.(this.#input);
     // 清單上按 Esc：取消選取。
     this.#list.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && (this.#selected.size || this.#selecting)) {
@@ -249,7 +244,7 @@ export class IssuesPanel<T extends IssueSummary> {
         this.clearSelection();
       }
     });
-    el.append(search, ...(handlers.filters ? [handlers.filters] : []), statusRow, ...(this.#bulkBar ? [this.#bulkBar] : []), this.#list);
+    el.append(...(handlers.placeSearch ? [] : [this.#input]), ...(handlers.filters ? [handlers.filters] : []), statusRow, ...(this.#bulkBar ? [this.#bulkBar] : []), this.#list);
   }
 
   /** 「選取」按鈕與選了之後出現的「已選 N 項・一起改…・取消選取」。 */
