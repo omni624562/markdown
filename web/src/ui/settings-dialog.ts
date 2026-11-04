@@ -991,7 +991,8 @@ export class SettingsDialog {
         );
         rows.push(row);
       });
-      const cmds = v.activityCommands;
+      // 舊版釘上去、後來拿掉的指令不列出來；調整順序或移除時一併清掉。
+      const cmds = v.activityCommands.filter((id) => h.command(id));
       if (cmds.length) {
         const sep = document.createElement("p");
         sep.className = "activity-setting-sep";
