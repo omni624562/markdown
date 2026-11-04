@@ -31,7 +31,7 @@ import { Slideshow, splitSlides, slideAtLine } from "../ui/slideshow.ts";
 import type { SymbolPicker } from "../ui/symbol-picker.ts";
 import { toast } from "../ui/toast.ts";
 import { setupWindowControls } from "../ui/window-controls.ts";
-import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
+import { isFileShortcut, isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { aiFound } from "./ai-terminal.ts";
 import { reportError } from "./git-actions.ts";
 import { HISTORY_COMMANDS, historyView, markHistoryButtons } from "./git-history.ts";
@@ -39,6 +39,7 @@ import { selectItem } from "./item-tabs.ts";
 import { selectedText } from "./new-work-item.ts";
 import { issueSide, issueView, toggleIssueSide } from "./wiki-edit.ts";
 import { barShortcuts, openShortcutFromBar, removeBarShortcut, shortcutBar, shortcutName, setBarShortcuts } from "./work-items-panel.ts";
+import { fileTabMenuEntries } from "./file-shortcuts.ts";
 import type { SidePanel } from "../main.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
 import { app } from "./context.ts";
@@ -816,13 +817,13 @@ export function initActivityBar(): void {
       if ((e.target as HTMLElement).closest(".activity-project")) return;
       e.preventDefault();
       const at = new DOMRect(e.clientX, e.clientY, 0, 0);
-      // 捷徑（Wiki 頁面、工作項目）：開啟或移除。
+      // 捷徑（Wiki 頁面、工作項目、檔案）：開啟或移除。
       const shortcut = (e.target as HTMLElement).closest<HTMLElement>(".activity-wiki-page");
       const item = shortcut ? barShortcuts[Number(shortcut.dataset.index)] : undefined;
       if (item) {
         for (const id of ["wiki-shortcut-anchor", "wiki-shortcut-anchor-popover"]) document.getElementById(id)?.remove();
         const menu = floatingMenu("wiki-shortcut-anchor", [
-          { label: t("開啟"), icon: isWorkItemShortcut(item) ? "square-kanban" : "book-open-text", run: () => void openShortcutFromBar(item).catch(reportError) },
+          { label: t("開啟"), icon: isFileShortcut(item) ? "file-text" : isWorkItemShortcut(item) ? "square-kanban" : "book-open-text", run: () => void openShortcutFromBar(item).catch(reportError) },
           { label: t("從左側圖示列移除"), icon: "pin-off", run: () => removeBarShortcut(item) },
         ]);
         if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => menu.open(at)), { once: true });
@@ -1015,6 +1016,8 @@ export function initActivityBar(): void {
       { label: t("重新命名…"), icon: "pencil", when: () => !app.menuItemTab(), run: () => void app.commands.run("rename-doc") },
       "tab-copy-path",
       "tab-reveal",
+      // 本機的檔案：放到左側圖示列（已經放了是「從左側圖示列移除」）。
+      ...fileTabMenuEntries(),
     ],
     // 選單關閉後，指令面板裡的分頁指令回到「目前的分頁」。等點下的指令先讀到按右鍵的分頁。
     () => setTimeout(() => (app.menuTabId = null)),

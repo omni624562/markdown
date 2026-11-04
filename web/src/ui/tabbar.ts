@@ -38,6 +38,8 @@ export interface TabBarHandlers {
   /** 在分頁上按右鍵（或 Shift+F10、選單鍵）。 */
   menu(id: string, at: DOMRect): void;
   unpin(id: string): void;
+  /** 拖曳分頁時帶的資料（例如拖到左側圖示列變成捷徑）；null 表示這個分頁不能拖。 */
+  dragData?(id: string): Record<string, string> | null;
 }
 
 /**
@@ -131,6 +133,11 @@ export class TabBar {
     });
   }
 
+  /** 建立之後再加上的功能（各自的模組加上去，例如左側圖示列的檔案捷徑）。 */
+  extend(more: Pick<TabBarHandlers, "dragData">): void {
+    this.#handlers = { ...this.#handlers, ...more };
+  }
+
   render(tabs: TabInfo[], activeId: string): void {
     this.#el.hidden = false;
     this.#tabs = tabs;
@@ -187,6 +194,16 @@ export class TabBar {
           else this.#handlers.menu(info.id, at);
         });
         tab.addEventListener("click", () => this.#handlers.select(info.id));
+        tab.draggable = !!this.#handlers.dragData?.(info.id);
+        tab.addEventListener("dragstart", (e) => {
+          const data = e.dataTransfer && this.#handlers.dragData?.(info.id);
+          if (!data) {
+            e.preventDefault();
+            return;
+          }
+          e.dataTransfer!.effectAllowed = "copy";
+          for (const [type, value] of Object.entries(data)) e.dataTransfer!.setData(type, value);
+        });
         tab.addEventListener("dblclick", (e) => {
           if ((e.target as HTMLElement).closest(".tab-close")) return;
           if (!info.item) this.startRename(info.id);
@@ -246,6 +263,9 @@ export class TabBar {
     const tab = this.#list.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`);
     const name = tab?.querySelector<HTMLElement>(".tab-name");
     if (!tab || !name) return;
+    // 改名時不能拖曳分頁（才能用滑鼠選取輸入框裡的字）。
+    const draggable = tab.draggable;
+    tab.draggable = false;
     const input = document.createElement("input");
     input.className = "tab-rename";
     input.value = name.textContent ?? "";
@@ -257,6 +277,7 @@ export class TabBar {
       done = true;
       const value = input.value.trim();
       input.replaceWith(name);
+      tab.draggable = draggable;
       if (commit && value && value !== name.textContent) this.#handlers.rename(id, value);
       tab.focus();
     };

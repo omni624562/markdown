@@ -78,7 +78,7 @@ import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
 import { insertIssueLink, openRemoteLink, peekWorkItem, remoteCard, remoteLinkOf, wikiPagesCache, initAdoLinks } from "./app/ado-links.ts";
 import { historyView, searchPanel, initGitHistory } from "./app/git-history.ts";
 import { buildFormatBar, initNewWorkItem } from "./app/new-work-item.ts";
-import { renderAdoTab, renderIssuesTab, wikiPanel, workItemsPanel, initWorkItemsPanel } from "./app/work-items-panel.ts";
+import { markBarShortcuts, renderAdoTab, renderIssuesTab, wikiPanel, workItemsPanel, initWorkItemsPanel } from "./app/work-items-panel.ts";
 import { initAdoStatus } from "./app/ado-status.ts";
 import { gitPanel, noteWorkItems, pollWorkItems, renderAdoBadge, workItemSeen, initWorkItemUpdates } from "./app/work-item-updates.ts";
 import { groupItems, showWorkItem } from "./app/work-item-actions.ts";
@@ -2711,6 +2711,7 @@ function renderTabs(): void {
   // 只有一份空白文件時藏起分頁列的內容；有工作項目等分頁時照常顯示（才點得回文件）。
   $("#tab-bar").classList.toggle("has-items", itemTabs.length > 0);
   markBlankTab();
+  markBarShortcuts(); // 左側圖示列上的檔案捷徑：開在中間的那一個加上小圓點
   const path = cur.fileHandle?.path ?? null;
   if (path !== treeActive) {
     treeActive = path;

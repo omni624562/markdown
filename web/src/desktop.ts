@@ -734,6 +734,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<DesktopFile>("reopen_file", { path }),
         () => core.invoke<DesktopFile>("dav_read", { path }),
       ),
+    /**
+     * 左側圖示列上的檔案捷徑（清單改變時送整份）：這些檔案之後就算不在「最近開啟」裡也開得了。
+     * 原生端只接受目前就能開啟的檔案，前端不能藉此開啟任意路徑。
+     */
+    setFileShortcuts: (paths: string[]) => core.invoke<void>("set_file_shortcuts", { paths }),
     saveFile: (req: SaveRequest) =>
       route(
         req.path,

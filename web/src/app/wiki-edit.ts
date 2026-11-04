@@ -18,7 +18,7 @@ import { icon } from "../ui/icons.ts";
 import { IssueView } from "../ui/issue-view.ts";
 import { toast } from "../ui/toast.ts";
 import { type WikiPageInfo, myChanges } from "../wiki-coedit.ts";
-import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
+import { isWikiShortcut } from "../wiki-shortcuts.ts";
 import { pageName, wikiMarkdown, wikiPageLink } from "../wiki-text.ts";
 import { openDiagram, copyDiagram, openUrl } from "./activity-bar.ts";
 import { finishWikiEdit } from "./ado-files.ts";
@@ -386,7 +386,7 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
     backlinks: () => void openWikiBacklinks(wiki, path).catch(reportError),
     move: wiki.code ? undefined : () => void moveWikiPage(wiki, path).catch(reportError),
     shortcut: {
-      has: () => barShortcuts.some((s) => !isWorkItemShortcut(s) && s.wiki === wiki.id && s.path === path),
+      has: () => barShortcuts.some((s) => isWikiShortcut(s) && s.wiki === wiki.id && s.path === path),
       toggle: () => toggleWikiShortcut(wiki, path),
     },
     // 標頭顯示所在位置：Wiki 名稱 › 上層頁面…（點上層頁面切換過去）。

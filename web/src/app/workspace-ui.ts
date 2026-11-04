@@ -31,6 +31,7 @@ import type { Doc, SidePanel } from "../main.ts";
 import { app } from "./context.ts";
 import { boardPanelShown } from "./taskboard.ts";
 import { docName } from "./doc-names.ts";
+import { renameFileShortcuts } from "./file-shortcuts.ts";
 import { sectionCollapsed, setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
 
 
@@ -650,6 +651,8 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
     doc.handle = desktopHandle(moved, basename(moved));
   }
   ({ name: app.cur.fileName, handle: app.cur.fileHandle } = app.active);
+  // 左側圖示列上的檔案捷徑也換到新路徑。
+  renameFileShortcuts(entry.path, to);
   app.fileListCache = null;
   app.persistSession();
   app.renderSaveState();

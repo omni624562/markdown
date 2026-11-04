@@ -302,6 +302,7 @@ fn main() {
             window_control,
             files::open_file,
             files::reopen_file,
+            files::set_file_shortcuts,
             files::save_file,
             files::export_binary,
             files::import_docx,

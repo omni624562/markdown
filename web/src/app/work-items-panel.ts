@@ -12,7 +12,7 @@ import { type IssueSummary, type IssueGroup, type IssueTreeNode, shortDate, Issu
 import { MultiSelect } from "../ui/multi-select.ts";
 import { toast } from "../ui/toast.ts";
 import { WikiPanel } from "../ui/wiki-panel.ts";
-import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
+import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isFileShortcut, isWikiShortcut, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
 import { areaGroups, kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
@@ -28,6 +28,8 @@ import { openWikiRecent } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
 import { bulkEditWorkItems } from "./work-item-bulk.ts";
+import { drawFileShortcut, fileShortcut, fileShortcutShown, initFileShortcuts, openFileShortcut, syncFileShortcuts } from "./file-shortcuts.ts";
+import { basename } from "../paths.ts";
 
 
 // 舊版記住的 Azure DevOps 已儲存查詢（已經拿掉這個功能）。
@@ -431,9 +433,9 @@ function workItemRow(w: AdoWorkItem): AdoWorkItem & IssueSummary {
 export // 在 init 時建立。
 let workItemsPanel: IssuesPanel<AdoWorkItem & IssueSummary> | null;
 
-/** 左側圖示列上的捷徑：常看的 Wiki 頁面、工作項目（從清單拖過去，或用圖釘、分頁的右鍵選單放上去）。 */
+/** 左側圖示列上的捷徑：常看的 Wiki 頁面、工作項目、本機的檔案（從清單、檔案樹拖過去，或用圖釘、分頁的右鍵選單放上去）。 */
 export let barShortcuts: Shortcut[] = loadBarShortcuts();
-/** 正在從 Wiki、工作項目清單拖曳（圖示列上顯示放置區）。 */
+/** 正在從 Wiki、工作項目清單、檔案樹或分頁拖曳（圖示列上顯示放置區）。 */
 let shortcutDragging = false;
 export const shortcutBar = document.createElement("div");
 const shortcutDrop = document.createElement("div");
@@ -462,20 +464,23 @@ export function setBarShortcuts(list: Shortcut[]): void {
   storage.save("wiki-shortcuts", JSON.stringify(list));
   renderBarShortcuts();
   wikiPanel?.refreshPins();
+  syncFileShortcuts();
 }
 
 /** 捷徑的名稱（提示訊息、滑鼠提示用）。 */
 export function shortcutName(item: Shortcut): string {
+  if (isFileShortcut(item)) return basename(item.file);
   return isWorkItemShortcut(item) ? t("{kind} {id}：{title}", { kind: item.kind, id: item.workItem, title: item.title }) : pageName(item.path);
 }
 
-/** 捷徑對應的檢視（和 `issueKey` 比對，標出開著的那一個）。 */
-function shortcutKey(item: Shortcut): string {
-  return isWorkItemShortcut(item) ? `ado:${item.workItem}` : `wiki:${item.wiki}:${item.path}`;
+/** 捷徑的內容正開在中間（工作項目、Wiki 頁面和 `issueKey` 比對；檔案看目前的文件）。 */
+function shortcutShown(item: Shortcut): boolean {
+  if (isFileShortcut(item)) return fileShortcutShown(item);
+  return app.issueKey === (isWorkItemShortcut(item) ? `ado:${item.workItem}` : `wiki:${item.wiki}:${item.path}`);
 }
 
 /** 放到圖示列（`index` 是位置，沒給放最後面）；已經有的移過去。 */
-function addBarShortcut(item: Shortcut, index?: number): void {
+export function addBarShortcut(item: Shortcut, index?: number): void {
   const next = placeShortcut(barShortcuts, item, index);
   if (!next) {
     toast(t("左側圖示列最多放 {n} 個捷徑，先移除一些再加。", { n: SHORTCUT_LIMIT }), { tone: "error" });
@@ -505,6 +510,7 @@ export function toggleWikiShortcut(wiki: AdoWiki, path: string): void {
 
 export async function openBarShortcut(item: Shortcut): Promise<boolean> {
   if (!desktop) return false;
+  if (isFileShortcut(item)) return openFileShortcut(item);
   if (isWorkItemShortcut(item)) {
     let w: AdoWorkItem;
     try {
@@ -541,6 +547,8 @@ export async function openShortcutFromBar(item: Shortcut): Promise<void> {
 }
 
 function showShortcutPanel(item: Shortcut): void {
+  // 檔案：側邊欄維持原樣（檔案常不在目前的資料夾裡，換到檔案面板也看不到它）。
+  if (isFileShortcut(item)) return;
   const panel = isWorkItemShortcut(item) ? "workitems" : "wiki";
   // Wiki 放在右側、右側欄收起來時，和左邊的側邊欄收起來一樣不自己打開。
   if (panel === "wiki" && app.wikiPlacedRight() && !app.rightOutlineShown) return;
@@ -554,10 +562,12 @@ function renderBarShortcuts(): void {
     b.className = "activity-btn activity-wiki-page";
     b.dataset.index = String(i);
     b.draggable = true;
-    if (app.issueKey === shortcutKey(item)) b.setAttribute("aria-current", "page");
+    if (shortcutShown(item)) b.setAttribute("aria-current", "page");
     const badge = document.createElement("span");
     badge.className = "wiki-badge";
-    if (isWorkItemShortcut(item)) {
+    if (isFileShortcut(item)) {
+      drawFileShortcut(b, badge, item);
+    } else if (isWorkItemShortcut(item)) {
       // 工作項目：整塊塗上類型的顏色，字取標題。
       const name = shortcutName(item);
       b.title = name;
@@ -573,10 +583,10 @@ function renderBarShortcuts(): void {
       badge.style.setProperty("--hue", String(shortcutHue(`${item.wiki}:${item.path}`)));
       badge.textContent = shortcutInitial(name);
     }
-    b.append(badge);
+    b.prepend(badge);
     b.addEventListener("click", () => {
       // 開著的那一個再按一次：捲回最上面（不要「按了沒反應」）。
-      if (b.getAttribute("aria-current") === "page" && app.issueView.isOpen) {
+      if (!isFileShortcut(item) && b.getAttribute("aria-current") === "page" && app.issueView.isOpen) {
         app.issueView.scrollToTop();
         showShortcutPanel(item);
         return;
@@ -596,7 +606,7 @@ function renderBarShortcuts(): void {
 export function markBarShortcuts(): void {
   for (const b of shortcutBar.querySelectorAll<HTMLElement>(".activity-wiki-page")) {
     const item = barShortcuts[Number(b.dataset.index)];
-    const on = !!item && app.issueKey === shortcutKey(item);
+    const on = !!item && shortcutShown(item);
     if (on) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   }
@@ -793,9 +803,9 @@ export function initWorkItemsPanel(): void {
   shortcutDrop.title = t("放到這裡，變成圖示列上的捷徑");
   shortcutDrop.append(icon("plus"));
   app.$(".activity-cmds").after(shortcutBar);
-  // 從 Wiki、工作項目清單拖曳時，圖示列上出現放置區；放下就變成捷徑。
+  // 從 Wiki、工作項目清單、檔案樹、文件的分頁拖曳時（帶著捷徑的資料），圖示列上出現放置區；放下就變成捷徑。
   document.addEventListener("dragstart", (e) => {
-    if (!(e.target as HTMLElement).closest?.("#wiki-host .wiki-page, #workitems-host .workitem")) return;
+    if (e.defaultPrevented || !e.dataTransfer?.types.includes(SHORTCUT_DRAG_TYPE)) return;
     shortcutDragging = true;
     // 等瀏覽器取完拖曳的畫面再改版面。
     requestAnimationFrame(() => renderBarShortcuts());
@@ -813,13 +823,15 @@ export function initWorkItemsPanel(): void {
   });
   activityBar.addEventListener("drop", (e) => {
     const item = carriesShortcut(e) ? parseDraggedShortcut(e.dataTransfer!.getData(SHORTCUT_DRAG_TYPE)) : null;
-    if (!item) return;
+    // 檔案只收這台電腦上的（網頁版、遠端資料夾的檔案不能放）。
+    if (!item || (isFileShortcut(item) && !fileShortcut(item.file))) return;
     e.preventDefault();
     const index = [...shortcutBar.querySelectorAll(".activity-wiki-page, .activity-wiki-drop")].indexOf(shortcutDrop);
     shortcutDragging = false;
     addBarShortcut(item, index < 0 ? undefined : index);
   });
   renderBarShortcuts();
+  initFileShortcuts();
   wikiPanel = desktop
     ? new WikiPanel<AdoWiki>(app.$("#wiki-host"), {
         // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
@@ -858,7 +870,7 @@ export function initWorkItemsPanel(): void {
         },
         // 釘選＝放到左側圖示列；拖曳頁面到圖示列也可以。
         pins: {
-          has: (wiki, path) => barShortcuts.some((s) => !isWorkItemShortcut(s) && s.wiki === wiki.id && s.path === path),
+          has: (wiki, path) => barShortcuts.some((s) => isWikiShortcut(s) && s.wiki === wiki.id && s.path === path),
           toggle: (wiki, path) => toggleWikiShortcut(wiki, path),
           labels: [t("放到左側圖示列"), t("從左側圖示列移除")],
         },

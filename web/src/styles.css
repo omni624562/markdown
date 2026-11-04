@@ -3663,7 +3663,7 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .activity-dragging { opacity: 0.4; }
 .activity-cmds { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 .activity-cmds[hidden] { display: none; }
-/* Wiki 頁面捷徑：頁名第一個字的彩色方塊（顏色依頁面固定）；拖曳 Wiki 頁面時出現放置區。太多時可以捲動。 */
+/* Wiki 頁面、檔案捷徑：頁名、檔名第一個字的彩色方塊（顏色依頁面、檔案固定）；拖曳 Wiki 頁面、檔案時出現放置區。太多時可以捲動。 */
 /* 和圖示列一樣寬（開著的捷徑左邊那一條才不會被捲動範圍切掉）；分隔線維持和圖示一樣寬。 */
 .activity-wiki { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; align-self: stretch; gap: 2px; min-height: 0; margin-top: 6px; padding-top: 6px; background: linear-gradient(var(--border), var(--border)) center top / 40px 1px no-repeat; overflow-y: auto; scrollbar-width: none; }
 .activity-wiki[hidden] { display: none; }
@@ -3687,8 +3687,30 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
   background: var(--accent);
   box-shadow: 0 0 0 2px var(--surface);
 }
+/*
+ * 檔案捷徑：和 Wiki 頁面一樣是檔名第一個字的彩色方塊（字往上一點），右下角一個小小的副檔名標籤（txt、md），
+ * 一眼看得出是本機的檔案。開著時，右下角的小圓點（位置、大小和其他捷徑一樣）放進這個標籤的右端，標籤往左加長，兩個不會疊在一起。
+ */
+.activity-file .wiki-badge { padding-bottom: 3px; }
+.activity-file .file-ext {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  height: 11px;
+  padding: 0 3px;
+  border-radius: 5.5px;
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  font: 700 8px/11px var(--font-ui);
+  pointer-events: none;
+}
+.activity-file[aria-current="page"] .file-ext { padding-right: 12px; }
+/* 小圓點在標籤裡面：不用外圈（外圈會切斷標籤的框線）。 */
+.activity-file[aria-current="page"]:has(.file-ext)::after { box-shadow: none; }
 /* 捷徑拖到圖示列外面：放開就移除。 */
 .activity-wiki-page.activity-removing .wiki-badge { opacity: 0.5; text-decoration: line-through; box-shadow: 0 0 0 2px var(--danger); }
+.activity-wiki-page.activity-removing .file-ext { opacity: 0.5; }
 .activity-wiki-drop { display: grid; flex: none; place-items: center; width: 34px; height: 34px; margin: 3px 0; border: 1.5px dashed var(--border-strong); border-radius: 8px; color: var(--subtle); }
 .activity-wiki-drop .icon { width: 16px; height: 16px; }
 .activity-wiki-drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

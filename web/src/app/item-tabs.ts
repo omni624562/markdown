@@ -18,7 +18,7 @@ import {
 import * as storage from "../storage.ts";
 import type { IssueSource, IssueViewState } from "../ui/issue-view.ts";
 import type { TabInfo } from "../ui/tabbar.ts";
-import type { Shortcut } from "../wiki-shortcuts.ts";
+import type { ItemShortcut } from "../wiki-shortcuts.ts";
 import { app } from "./context.ts";
 import { historyView } from "./git-history.ts";
 import { offlineRefs } from "./offline-copies.ts";
@@ -38,7 +38,7 @@ export interface ItemTab {
   /** 上次顯示時的狀態；從上次還原、還沒開過的是 null。 */
   state: IssueViewState | null;
   /** 下次開啟時怎麼重新開啟（工作項目、Wiki 頁面才有）。 */
-  ref: Shortcut | null;
+  ref: ItemShortcut | null;
   /** 接在哪個文件分頁後面（null 是一般分頁的最前面）。 */
   after: string | null;
   /** 固定的分頁：排在最左邊，不會被換掉，關閉按鈕換成圖釘。 */
@@ -52,7 +52,7 @@ export interface ClosedItem {
   icon: string;
   key: string;
   state: IssueViewState | null;
-  ref: Shortcut | null;
+  ref: ItemShortcut | null;
 }
 
 const ORIGIN_ICONS: Record<string, string> = { ado: "square-kanban", wiki: "book-open-text", github: "circle-dot", repo: "git-branch" };
@@ -79,7 +79,7 @@ export let shownItem: ItemTab | null = null;
 
 function persist(): void {
   const saved: SavedItemTab[] = itemTabs
-    .filter((tab): tab is ItemTab & { ref: Shortcut; origin: "ado" | "wiki" } => !!tab.ref && (tab.origin === "ado" || tab.origin === "wiki"))
+    .filter((tab): tab is ItemTab & { ref: ItemShortcut; origin: "ado" | "wiki" } => !!tab.ref && (tab.origin === "ado" || tab.origin === "wiki"))
     .slice(0, SAVED_ITEM_TABS_LIMIT)
     .map(({ key, name, title, origin, ref, after, pinned }) => ({ key, name, title, origin, ref, after, pinned }));
   storage.save("item-tabs", JSON.stringify(saved));
@@ -191,7 +191,7 @@ export function anchorItems(tabs: ItemTab[], docId: string): void {
 
 /** 新增一個項目分頁，放在目前分頁（顯示中的項目，或目前的文件）的右邊。 */
 function addItemTab(
-  from: { key: string; name: string; origin: string; icon: string; ref: Shortcut | null },
+  from: { key: string; name: string; origin: string; icon: string; ref: ItemShortcut | null },
   near?: string | null,
 ): ItemTab {
   const id = newId();

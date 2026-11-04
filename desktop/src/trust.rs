@@ -3,6 +3,7 @@
 //! 這份清單同時是「信任清單」：重新開啟 app 時還原分頁、從「最近開啟」開檔，
 //! 都只允許清單裡的路徑（或位於清單中資料夾內的檔案），
 //! 所以前端無法藉由傳入任意路徑讀取使用者沒有選過的檔案。
+//! 放到左側圖示列的檔案（捷徑）另外記著，不會因為很久沒開、被擠出「最近開啟」而打不開。
 
 use parking_lot::Mutex;
 use std::fs;
@@ -14,6 +15,8 @@ use tauri::{AppHandle, Manager};
 /// 沒有釘選、也沒有群組的專案最多保留幾個（釘選或有群組的不限）。
 const MAX_FOLDERS: usize = 30;
 const MAX_FILES: usize = 30;
+/// 左側圖示列最多幾個捷徑（和前端的 `SHORTCUT_LIMIT` 一樣）。
+const MAX_SHORTCUTS: usize = 12;
 
 /// 專案（開過的資料夾）的設定。`folders` 裡沒有對應項目的資料夾就是全部用預設值。
 #[derive(Default, Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -54,6 +57,9 @@ pub struct Recent {
     pub files: Vec<PathBuf>,
     #[serde(default)]
     pub projects: Vec<ProjectMeta>,
+    /// 放到左側圖示列的檔案（捷徑）：一直可以開啟，不受 `MAX_FILES` 限制。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shortcuts: Vec<PathBuf>,
 }
 
 impl Recent {
@@ -212,6 +218,23 @@ impl Trust {
         self.save(app);
     }
 
+    /// 左側圖示列上的檔案換成 `paths`。已經是捷徑的照留；新加的要 `may_add` 允許（目前就能開啟的檔案），
+    /// 前端不能藉此信任任意路徑。`may_add` 可能讀取磁碟或再查這份清單，所以不在鎖裡呼叫。
+    pub fn set_shortcuts(
+        &self,
+        app: &AppHandle,
+        paths: Vec<PathBuf>,
+        may_add: impl Fn(&Path) -> bool,
+    ) {
+        let current = self.0.lock().shortcuts.clone();
+        let next = pick_shortcuts(&current, paths, may_add);
+        if next == current {
+            return;
+        }
+        self.0.lock().shortcuts = next;
+        self.save(app);
+    }
+
     /// 檔案或資料夾改名後，更新清單中的路徑。
     pub fn rename(&self, app: &AppHandle, from: &Path, to: &Path) {
         {
@@ -222,6 +245,7 @@ impl Trust {
                 .files
                 .iter_mut()
                 .chain(r.folders.iter_mut())
+                .chain(r.shortcuts.iter_mut())
                 .chain(projects)
             {
                 if let Ok(rest) = p.strip_prefix(from) {
@@ -245,6 +269,8 @@ impl Trust {
         self.save(app);
     }
 
+    /// 從清單移除（刪除的檔案、找不到的資料夾）。左側圖示列的捷徑留著：使用者自己從圖示列移除
+    /// （網路磁碟暫時沒接上時，接上後還開得了）。
     pub fn remove(&self, app: &AppHandle, path: &Path) {
         {
             let mut r = self.0.lock();
@@ -276,7 +302,33 @@ fn allowed(r: &Recent, path: &Path) -> bool {
     !path
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))
-        && r.files.iter().any(|p| p == path)
+        && (r.files.iter().any(|p| p == path) || r.shortcuts.iter().any(|p| p == path))
+}
+
+/// 新的捷徑清單：依 `paths` 的順序、去重，最多 `MAX_SHORTCUTS` 個；
+/// 原本就是捷徑的照留，新加的要是 `may_add` 允許的絕對路徑（不能有 `..`）。
+fn pick_shortcuts(
+    current: &[PathBuf],
+    paths: Vec<PathBuf>,
+    may_add: impl Fn(&Path) -> bool,
+) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for p in paths {
+        if out.len() >= MAX_SHORTCUTS {
+            break;
+        }
+        if out.contains(&p) {
+            continue;
+        }
+        let valid = p.is_absolute()
+            && !p
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir));
+        if valid && (current.contains(&p) || may_add(&p)) {
+            out.push(p);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -341,5 +393,57 @@ mod tests {
         assert!(!allowed(&r, Path::new("/筆記/子/a.md")));
         assert!(!allowed(&r, Path::new("/筆記/.git/config")));
         assert!(!allowed(&r, Path::new("/其他/../其他/單一.md")));
+    }
+
+    #[test]
+    fn shortcut_files_stay_allowed() {
+        let r = Recent {
+            shortcuts: vec!["/Notepad++/MENO.txt".into()],
+            ..Default::default()
+        };
+        assert!(allowed(&r, Path::new("/Notepad++/MENO.txt")));
+        assert!(!allowed(&r, Path::new("/Notepad++/別的.txt")));
+    }
+
+    /// 這台電腦上的絕對路徑（Windows 要有磁碟機代號）。
+    fn abs(p: &str) -> PathBuf {
+        PathBuf::from(if cfg!(windows) {
+            format!("C:{p}")
+        } else {
+            p.to_string()
+        })
+    }
+
+    #[test]
+    fn new_shortcuts_need_permission() {
+        let current = vec![abs("/a/舊的.md")];
+        let ok = abs("/開得了");
+        let can = |p: &Path| p.starts_with(&ok);
+        let next = pick_shortcuts(
+            &current,
+            vec![
+                abs("/開得了/週報.md"),
+                abs("/a/舊的.md"),
+                abs("/不行/秘密.txt"),
+                abs("/開得了/週報.md"),
+                "相對/路徑.md".into(),
+                abs("/開得了/../不行/秘密.txt"),
+            ],
+            can,
+        );
+        assert_eq!(next, [abs("/開得了/週報.md"), abs("/a/舊的.md")]);
+        // 從圖示列拿掉的就不再信任。
+        assert!(pick_shortcuts(&current, vec![], can).is_empty());
+        // 最多 MAX_SHORTCUTS 個。
+        let many = (0..20).map(|i| abs(&format!("/開得了/{i}.md"))).collect();
+        assert_eq!(pick_shortcuts(&[], many, can).len(), MAX_SHORTCUTS);
+    }
+
+    #[test]
+    fn old_recent_file_without_shortcuts() {
+        let r: Recent = serde_json::from_str(r#"{"folders":[],"files":["/a.md"]}"#).unwrap();
+        assert!(r.shortcuts.is_empty());
+        // 沒有捷徑時不寫進檔案（和舊版的格式一樣）。
+        assert!(!serde_json::to_string(&r).unwrap().contains("shortcuts"));
     }
 }
