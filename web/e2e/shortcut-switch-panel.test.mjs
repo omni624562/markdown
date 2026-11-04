@@ -59,6 +59,8 @@ test("按捷徑：側邊欄換到工作項目或 Wiki 面板；側邊欄收起�
     );
   }, ITEM);
   await page.reload();
+  // 等程式初始化完（圖示列標出目前的面板）再按，太早按會在綁好按鈕之前，按了沒反應。
+  await page.waitForSelector('.activity-tabs [role="tab"][aria-selected="true"]');
   await page.click("#side-tab-files");
   const selected = () => page.evaluate(() => document.querySelector('.activity-tabs [role="tab"][aria-selected="true"]')?.id);
   const sidebarShown = () => page.evaluate(() => !document.querySelector(".workspace").classList.contains("outline-hidden"));
