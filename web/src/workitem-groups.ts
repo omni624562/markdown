@@ -105,21 +105,21 @@ export function kindCounts<T extends GroupItem>(node: TreeNode<T>): [string, num
 
 /** 「依區域分組」的一組。 */
 export interface AreaGroup<T> {
-  /** 這一組的區域路徑（例如 `產品\ITA`，專案本身那一組是專案名稱）；沒有區域的那一組是 null。 */
+  /** 這一組的區域路徑（例如 `產品\IRIS`，專案本身那一組是專案名稱）；沒有區域的那一組是 null。 */
   area: string | null;
   /**
-   * 標題：相對於專案的路徑，用「 › 」隔開（例如「ITA › 監控」；專案本身那一組是專案名稱），
+   * 標題：相對於專案的路徑，用「 › 」隔開（例如「IRIS › 監控」；專案本身那一組是專案名稱），
    * 清單上有好幾個專案時前面加上專案。沒有區域的那一組是 null（畫面上寫「其他」）。
    */
   title: string | null;
   /**
    * 組裡的項目（照清單的順序）；`sub` 是項目在這個區域底下的子區域時標在列上的小字：相對於這一組的路徑
-   * （`ITA` 那一組裡 `ITA\監控` 的項目是「監控」，`ITA\監控\告警` 是「監控 › 告警」），剛好在這個區域時是 null。
+   * （`IRIS` 那一組裡 `IRIS\監控` 的項目是「監控」，`IRIS\監控\告警` 是「監控 › 告警」），剛好在這個區域時是 null。
    */
   items: { item: T; sub: string | null }[];
 }
 
-/** 區域路徑的分隔符號（`產品\ITA\監控`）。 */
+/** 區域路徑的分隔符號（`產品\IRIS\監控`）。 */
 const AREA_SEP = "\\";
 /** 標題、小字裡的分隔。 */
 const AREA_JOIN = " › ";
@@ -137,8 +137,8 @@ const isUnder = (path: string, area: string): boolean => path === area || path.s
 /**
  * 依區域分組。`selected` 是篩選選的區域（完整路徑），`order` 是區域下拉選單列出的順序（還沒讀到時是空的）。
  *
- * - 有選區域：一個選的區域一組，照下拉選單的順序；項目放在包含它的區域裡最深的那一個（例如選了 `ITA` 與
- *   `ITA\監控`，`ITA\監控` 底下的放在 `ITA\監控`），在更下面的子區域時 `sub` 寫出子區域（「監控」）。
+ * - 有選區域：一個選的區域一組，照下拉選單的順序；項目放在包含它的區域裡最深的那一個（例如選了 `IRIS` 與
+ *   `IRIS\監控`，`IRIS\監控` 底下的放在 `IRIS\監控`），在更下面的子區域時 `sub` 寫出子區域（「監控」）。
  *   不在任何選的區域裡的（例如輸入編號找到的）照沒選區域的方式分組，排在後面。
  * - 沒選區域：依專案底下的第一層區域（`專案\X`）分組，直接在專案底下的是專案名稱那一組；
  *   順序照下拉選單（專案本身排在它的區域前面），不知道順序的依名稱排。
@@ -230,8 +230,8 @@ export interface AreaTree<T> extends AreaGroup<T> {
 
 /**
  * 依區域＋上層項目分組：先和「依區域分組」一樣分組（`areaGroups`：組、順序、標題、項目都一樣，數量也一樣），
- * 每一組裡再只用這一組的項目依上層排成樹（`parentTree`）。例如 Task 在 Comet、它的 Story 在 ITA：
- * Task 只在 Comet 那一組，Story 在 ITA 那一組是一般的列，在 Comet 那一組是 Task 上面淡色的上層。
+ * 每一組裡再只用這一組的項目依上層排成樹（`parentTree`）。例如 Task 在 Cobalt、它的 Story 在 IRIS：
+ * Task 只在 Cobalt 那一組，Story 在 IRIS 那一組是一般的列，在 Cobalt 那一組是 Task 上面淡色的上層。
  *
  * `parentOf`、`parents` 和 `parentTree` 一樣；別的組的項目當上層時用清單上的那一份（不用另外讀到的）。
  */

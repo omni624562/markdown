@@ -22,10 +22,10 @@ const detail = (w, description) => ({
   attachments: [],
   comments: [],
 });
-const STORY = item(1895964, "信用卡額度查詢與調整", "User Story", "Active");
+const STORY = item(1895964, "會員點數查詢與調整", "User Story", "Active");
 const TASK = item(1895969, "更新需求說明書範圍");
 const MAIN = detail(
-  item(42, "BRS 差異整理"),
+  item(42, "需求差異整理"),
   [
     "<p>Story #1895964 / Task #1895969（New）：update</p>",
     "<p>第 #12 點、#9999999 已刪除</p>",
@@ -83,14 +83,14 @@ test("工作項目內容：有的「#編號」換成連結，滑鼠停一下顯�
 test("Wiki 頁面裡的「#編號」也換成工作項目連結（表格、內文）", async () => {
   const WIKI = {
     id: "w1",
-    name: "Mgt.wiki",
-    project: "Mgt",
+    name: "Contoso.wiki",
+    project: "Contoso",
     projectId: "p1",
     code: false,
     repositoryId: "r1",
     mappedPath: "/",
     version: "wikiMaster",
-    webUrl: "https://ado.test/c/Mgt/_wiki/wikis/Mgt.wiki",
+    webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki",
   };
   const content = ["# 對焦紀錄", "", "| 類型 | Work Item ID |", "| --- | --- |", "| Feature | #1940122 |", "", "相關：Story #1895964"].join("\n");
   const { page, context, errors } = await open({

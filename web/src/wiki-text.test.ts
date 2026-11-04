@@ -17,12 +17,12 @@ test("頁面連結：相對路徑以目前頁面的資料夾為準，可以加 .
 });
 
 test("頁面連結：同一層找不到時，當成目前頁面底下的子頁面", () => {
-  const tree = ["/ITA專區", "/ITA專區/COMET", "/ITA專區/COMET/START-HERE-illustrated", "/ITA專區/COMET/Skill自然語言使用範例"];
-  assert.equal(resolvePageLink("START-HERE-illustrated", "/ITA專區/COMET", tree), "/ITA專區/COMET/START-HERE-illustrated");
-  assert.equal(resolvePageLink("./Skill%E8%87%AA%E7%84%B6%E8%AA%9E%E8%A8%80%E4%BD%BF%E7%94%A8%E7%AF%84%E4%BE%8B.md", "/ITA專區/COMET", tree), "/ITA專區/COMET/Skill自然語言使用範例");
+  const tree = ["/IRIS專區", "/IRIS專區/COBALT", "/IRIS專區/COBALT/GET-STARTED-guide", "/IRIS專區/COBALT/Skill自然語言使用範例"];
+  assert.equal(resolvePageLink("GET-STARTED-guide", "/IRIS專區/COBALT", tree), "/IRIS專區/COBALT/GET-STARTED-guide");
+  assert.equal(resolvePageLink("./Skill%E8%87%AA%E7%84%B6%E8%AA%9E%E8%A8%80%E4%BD%BF%E7%94%A8%E7%AF%84%E4%BE%8B.md", "/IRIS專區/COBALT", tree), "/IRIS專區/COBALT/Skill自然語言使用範例");
   // 同一層有同名的頁面時，照一般的規則（同一層）。
   assert.equal(resolvePageLink("產品", "/產品/a-b", ["/產品", "/產品/產品", "/產品/a-b"]), "/產品/產品");
-  assert.equal(resolvePageLink("COMET", "/ITA專區/COMET", tree), "/ITA專區/COMET");
+  assert.equal(resolvePageLink("COBALT", "/IRIS專區/COBALT", tree), "/IRIS專區/COBALT");
 });
 
 test("頁面連結：網址、找不到的頁面回傳 null", () => {
@@ -115,7 +115,7 @@ test("childPagePath 組出新頁面的路徑", () => {
 });
 
 test("修改紀錄的說明：自動產生的英文說明換成簡短的說法，自己寫的照原樣", () => {
-  const path = "/📕專案需求對焦專區/DGT_00098_新阿發3.0業務中台/消費明細查詢及爭議帳申請";
+  const path = "/📕專案需求對焦專區/PRJ_00012_新客服3.0業務中台/訂單明細查詢及退貨申請";
   assert.equal(revisionNote(`Updated page '${path}'.`, path), "修改這一頁");
   assert.equal(revisionNote(`Added page '${path}'.`, path), "新增這一頁");
   assert.equal(revisionNote("Updated page '/產品/安裝'.", path), "修改「安裝」");

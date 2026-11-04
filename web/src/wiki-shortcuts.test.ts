@@ -75,11 +75,11 @@ test("捷徑：舊的釘選搬過來（去重、有上限）", () => {
 });
 
 test("捷徑圖示上的字：跳過 emoji 與符號，中文一個字、英文兩個", () => {
-  assert.equal(shortcutInitial("消費明細查詢及爭議帳申請"), "消");
+  assert.equal(shortcutInitial("訂單明細查詢及退貨申請"), "訂");
   assert.equal(shortcutInitial("📕專案需求對焦專區"), "專");
-  assert.equal(shortcutInitial("DGT_00098_新阿發3.0業務中台"), "DG");
+  assert.equal(shortcutInitial("PRJ_00012_新客服3.0業務中台"), "PR");
   assert.equal(shortcutInitial("home"), "Ho");
-  assert.equal(shortcutInitial("1730組專區"), "17");
+  assert.equal(shortcutInitial("2048組專區"), "20");
   assert.equal(shortcutInitial("A專區"), "A");
   assert.equal(shortcutInitial("！！"), "?");
 });

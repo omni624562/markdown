@@ -9,14 +9,14 @@ import { open } from "./helpers.mjs";
 
 const WIKI = {
   id: "w1",
-  name: "Mgt.wiki",
-  project: "Mgt",
+  name: "Contoso.wiki",
+  project: "Contoso",
   projectId: "p1",
   code: false,
   repositoryId: "r1",
   mappedPath: "/",
   version: "wikiMaster",
-  webUrl: "https://ado.test/c/Mgt/_wiki/wikis/Mgt.wiki",
+  webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki",
 };
 const A = "/需求專區";
 const B = `${A}/阿發3.0`;
@@ -67,7 +67,7 @@ test("Wiki 頁面：標頭一列位置，頁名只在內容最上面出現一次
   await p.waitForFunction(() => getComputedStyle(document.querySelector(".issue-head .issue-title")).visibility === "hidden");
   let h = await head(p);
   assert.equal(h.hero, true);
-  assert.deepEqual(h.crumbs, ["Mgt.wiki", "需求專區", "阿發3.0"], "標頭是完整的位置");
+  assert.deepEqual(h.crumbs, ["Contoso.wiki", "需求專區", "阿發3.0"], "標頭是完整的位置");
   assert.equal(h.title, null, "還看得到大標題時，標頭不重複顯示頁名");
 
   await p.locator(".issue-scroll").evaluate((el) => (el.scrollTop = 600));

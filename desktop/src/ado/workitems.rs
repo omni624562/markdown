@@ -1956,7 +1956,7 @@ pub struct NewWorkItem {
 }
 
 /// 「指派給我」送出的身分。帳號是「網域\帳號」或信箱時用帳號；有些伺服器的登入資訊只有帳號本身
-/// （例如員工編號 00595436），直接送出會被拒絕（unknown identity），這時改用顯示名稱，伺服器會用名稱找到人。
+/// （例如員工編號 00012345），直接送出會被拒絕（unknown identity），這時改用顯示名稱，伺服器會用名稱找到人。
 pub(super) fn assign_me(a: &Account) -> String {
     match a.account.as_deref().map(str::trim) {
         Some(acc) if acc.contains('\\') || acc.contains('@') => acc.to_string(),

@@ -249,12 +249,12 @@ fn create_ops_prefer_the_chosen_assignee() {
         kind: "Task".into(),
         title: "x".into(),
         assign_to_me: true,
-        assigned_to: Some(" CORP\\00595436 ".into()),
+        assigned_to: Some(" CORP\\00012345 ".into()),
         ..Default::default()
     };
-    let ops = create_ops(&item, "00595436", "https://tfs/DC");
+    let ops = create_ops(&item, "00012345", "https://tfs/DC");
     assert_eq!(ops[1]["path"], "/fields/System.AssignedTo");
-    assert_eq!(ops[1]["value"], "CORP\\00595436");
+    assert_eq!(ops[1]["value"], "CORP\\00012345");
     // 空白的等於沒選：照「指派給我」。
     let blank = NewWorkItem {
         assigned_to: Some("  ".into()),
@@ -270,17 +270,17 @@ fn create_ops_prefer_the_chosen_assignee() {
 fn assign_me_uses_name_when_account_has_no_domain() {
     let mut a = Account {
         url: "https://tfs.corp.com/tfs/DC".into(),
-        name: " 詹智丞 ".into(),
-        account: Some("CORP\\00595436".into()),
+        name: " 吳建宏 ".into(),
+        account: Some("CORP\\00012345".into()),
     };
-    assert_eq!(assign_me(&a), "CORP\\00595436");
+    assert_eq!(assign_me(&a), "CORP\\00012345");
     a.account = Some("ming@corp.com".into());
     assert_eq!(assign_me(&a), "ming@corp.com");
     // 只有帳號本身（員工編號）：伺服器認不得，改用顯示名稱。
-    a.account = Some("00595436".into());
-    assert_eq!(assign_me(&a), "詹智丞");
+    a.account = Some("00012345".into());
+    assert_eq!(assign_me(&a), "吳建宏");
     a.account = None;
-    assert_eq!(assign_me(&a), "詹智丞");
+    assert_eq!(assign_me(&a), "吳建宏");
 }
 
 #[test]
@@ -525,13 +525,13 @@ fn groups_states_by_project_and_kind() {
         {"name": "Bug", "transitions": {"": [{"to": "Active"}], "Active": [{"to": "Closed"}]}},
         {"name": "Empty"}
     ]});
-    let sets = kind_states("Mgt", &types);
+    let sets = kind_states("Contoso", &types);
     // 測試、程式碼檢閱等類型不列；沒有狀態的類型也不列。
     let kinds: Vec<(&str, &str)> = sets
         .iter()
         .map(|s| (s.project.as_str(), s.kind.as_str()))
         .collect();
-    assert_eq!(kinds, [("Mgt", "Task"), ("Mgt", "Bug")]);
+    assert_eq!(kinds, [("Contoso", "Task"), ("Contoso", "Bug")]);
     let bug: Vec<&str> = sets[1].states.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(bug, ["Active", "Closed"]);
     assert!(sets[0].states[1].closed);
@@ -542,8 +542,8 @@ fn builds_children_query_with_the_same_filter() {
     let f = WorkItemFilter {
         person: "".into(),
         state: "all".into(),
-        projects: vec!["Mgt".into()],
-        areas: vec!["Mgt\\Comet".into()],
+        projects: vec!["Contoso".into()],
+        areas: vec!["Contoso\\Cobalt".into()],
         ..Default::default()
     };
     let q = children_wiql(&[1657675, 42], "", &f, &[]);
@@ -552,8 +552,8 @@ fn builds_children_query_with_the_same_filter() {
     ));
     assert!(q.contains("[System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward'"));
     // 篩選條件套在子項目（Target）上。
-    assert!(q.contains("[Target].[System.TeamProject] IN ('Mgt')"));
-    assert!(q.contains("([Target].[System.AreaPath] UNDER 'Mgt\\Comet')"));
+    assert!(q.contains("[Target].[System.TeamProject] IN ('Contoso')"));
+    assert!(q.contains("([Target].[System.AreaPath] UNDER 'Contoso\\Cobalt')"));
     assert!(!q.contains("[Target].[System.State]"), "全部狀態不加條件");
     assert!(q.ends_with("MODE (MustContain)"));
     let mine = children_wiql(&[1], "登入", &WorkItemFilter::default(), CONTENT_FIELDS[1]);
@@ -865,8 +865,8 @@ fn editable_comments_keep_their_id_and_skip_deleted_ones() {
 fn reads_tfs_2019_comments() {
     // 5.0-preview.2 的留言用 revisedBy／revisedDate，不是 createdBy／createdDate。
     let v = json!({"totalCount": 2, "comments": [
-        {"revision": 5, "text": "<div>已正常顯示</div>", "revisedBy": {"displayName": "晉萱", "uniqueName": "DOMAIN\\u1"}, "revisedDate": "2026-10-29T03:00:00Z"},
-        {"revision": 3, "text": "<div>請協助確認</div>", "revisedBy": {"displayName": "林冠霖"}, "revisedDate": "2026-10-28T03:00:00Z"}
+        {"revision": 5, "text": "<div>已正常顯示</div>", "revisedBy": {"displayName": "怡君", "uniqueName": "DOMAIN\\u1"}, "revisedDate": "2026-10-29T03:00:00Z"},
+        {"revision": 3, "text": "<div>請協助確認</div>", "revisedBy": {"displayName": "周雅婷"}, "revisedDate": "2026-10-28T03:00:00Z"}
     ]});
     let c = comments_of(&v, false);
     assert_eq!(
@@ -874,8 +874,8 @@ fn reads_tfs_2019_comments() {
             .map(|c| (c.author.as_str(), c.created.as_deref()))
             .collect::<Vec<_>>(),
         [
-            ("林冠霖", Some("2026-10-28T03:00:00Z")),
-            ("晉萱", Some("2026-10-29T03:00:00Z"))
+            ("周雅婷", Some("2026-10-28T03:00:00Z")),
+            ("怡君", Some("2026-10-29T03:00:00Z"))
         ]
     );
 }
@@ -916,12 +916,12 @@ fn list_items_carry_the_area() {
     assert!(FIELDS.split(',').any(|f| f == "System.AreaPath"));
     let v = json!({"id": 7, "fields": {
         "System.Title": "監控告警規則", "System.State": "Active", "System.WorkItemType": "Task",
-        "System.TeamProject": "產品", "System.AreaPath": "產品\\ITA\\監控"
+        "System.TeamProject": "產品", "System.AreaPath": "產品\\IRIS\\監控"
     }});
     let w = item_of("https://tfs/DC", &v).unwrap();
-    assert_eq!(w.area.as_deref(), Some("產品\\ITA\\監控"));
+    assert_eq!(w.area.as_deref(), Some("產品\\IRIS\\監控"));
     let json = serde_json::to_value(&w).unwrap();
-    assert_eq!(json["area"], "產品\\ITA\\監控");
+    assert_eq!(json["area"], "產品\\IRIS\\監控");
     // 沒有區域（或空白）時是 null。
     let bare = json!({"id": 8, "fields": {"System.Title": "x", "System.AreaPath": " "}});
     assert_eq!(item_of("https://tfs/DC", &bare).unwrap().area, None);
@@ -929,7 +929,10 @@ fn list_items_carry_the_area() {
     let d = detail_of("https://tfs/DC", &v).unwrap();
     let text = serde_json::to_string(&d).unwrap();
     assert_eq!(text.matches("\"area\":").count(), 1, "{text}");
-    assert_eq!(serde_json::to_value(&d).unwrap()["area"], "產品\\ITA\\監控");
+    assert_eq!(
+        serde_json::to_value(&d).unwrap()["area"],
+        "產品\\IRIS\\監控"
+    );
 }
 
 #[test]
@@ -972,12 +975,12 @@ fn attachment_names_are_safe_and_runnable_files_are_flagged() {
 fn lists_teams_with_the_default_first() {
     let v = json!({"value": [
         {"id": "B", "name": "前端"},
-        {"id": "a1", "name": "ITA"},
+        {"id": "a1", "name": "IRIS"},
         {"id": "C", "name": "後端"}
     ]});
     let teams = teams_of(&v, Some("A1"));
     let names: Vec<&str> = teams.iter().map(|t| t.name.as_str()).collect();
-    assert_eq!(names, ["ITA", "前端", "後端"]);
+    assert_eq!(names, ["IRIS", "前端", "後端"]);
     assert!(teams[0].default);
 }
 
@@ -997,7 +1000,7 @@ fn orders_team_iterations_by_start_date() {
 #[test]
 fn board_query_uses_the_team_area() {
     let scope = json!({"field": {"referenceName": "System.AreaPath"}, "values": [
-        {"value": "P\\ITA", "includeChildren": true},
+        {"value": "P\\IRIS", "includeChildren": true},
         {"value": "P\\共用", "includeChildren": false}
     ]});
     let q = board_wiql("P", "P\\Sprint 102", Some(&scope));
@@ -1006,7 +1009,7 @@ fn board_query_uses_the_team_area() {
         "{q}"
     );
     assert!(
-        q.contains("([System.AreaPath] UNDER 'P\\ITA' OR [System.AreaPath] = 'P\\共用')"),
+        q.contains("([System.AreaPath] UNDER 'P\\IRIS' OR [System.AreaPath] = 'P\\共用')"),
         "{q}"
     );
     assert!(q.contains("<> 'Removed'"));
@@ -1021,7 +1024,7 @@ fn board_query_uses_the_team_area() {
 fn reads_board_items_with_parent_and_hours() {
     let v = json!({"id": 1936947, "rev": 4, "fields": {
         "System.Title": "提供SRE監控", "System.State": "New", "System.WorkItemType": "Task",
-        "System.TeamProject": "P", "System.AssignedTo": {"displayName": "梁朝為"},
+        "System.TeamProject": "P", "System.AssignedTo": {"displayName": "張志明"},
         "Microsoft.VSTS.Scheduling.RemainingWork": 6.5, "Microsoft.VSTS.Scheduling.CompletedWork": 1
     }, "relations": [
         {"rel": "System.LinkTypes.Related", "url": "https://ado.test/c/_apis/wit/workItems/5"},

@@ -112,69 +112,69 @@ test("標題列的摘要：底下清單上的項目依類型計數，淡色的�
 });
 
 // 「依區域分組」
-const P = "Mgt-Digital_Cloud_Platform";
+const P = "Contoso-Cloud_Platform";
 const at = (id: number, area?: string | null) => ({ id, area });
 /** 下拉選單的區域（樹狀順序）。 */
-const ORDER = [`${P}\\1730`, `${P}\\Comet`, `${P}\\ITA`, `${P}\\ITA\\監控`, `${P}\\ITA\\維運`, `${P}\\共用`];
+const ORDER = [`${P}\\2048`, `${P}\\Cobalt`, `${P}\\IRIS`, `${P}\\IRIS\\監控`, `${P}\\IRIS\\維運`, `${P}\\共用`];
 /** 分組畫成文字：`標題: 編號（子區域）…`，一組一行。 */
 function drawAreas(groups: AreaGroup<{ id: number }>[]): string[] {
   return groups.map((g) => `${g.title ?? "（其他）"}: ${g.items.map(({ item, sub }) => (sub ? `${item.id}(${sub})` : String(item.id))).join(" ")}`);
 }
 
 test("依區域分組：一個選的區域一組，照下拉選單的順序；子區域的項目在上層那一組，標出子區域", () => {
-  const items = [at(1, `${P}\\ITA\\監控`), at(2, `${P}\\Comet`), at(3, `${P}\\1730`), at(4, `${P}\\ITA`), at(5, `${P}\\ITA\\監控\\告警`)];
+  const items = [at(1, `${P}\\IRIS\\監控`), at(2, `${P}\\Cobalt`), at(3, `${P}\\2048`), at(4, `${P}\\IRIS`), at(5, `${P}\\IRIS\\監控\\告警`)];
   // 選的順序和下拉選單不同（例如存下來的舊順序）：照下拉選單排。
-  const groups = areaGroups(items, [`${P}\\ITA`, `${P}\\1730`, `${P}\\Comet`], ORDER);
-  assert.deepEqual(drawAreas(groups), ["1730: 3", "Comet: 2", "ITA: 1(監控) 4 5(監控 › 告警)"]);
+  const groups = areaGroups(items, [`${P}\\IRIS`, `${P}\\2048`, `${P}\\Cobalt`], ORDER);
+  assert.deepEqual(drawAreas(groups), ["2048: 3", "Cobalt: 2", "IRIS: 1(監控) 4 5(監控 › 告警)"]);
   assert.deepEqual(
     groups.map((g) => g.area),
-    [`${P}\\1730`, `${P}\\Comet`, `${P}\\ITA`],
+    [`${P}\\2048`, `${P}\\Cobalt`, `${P}\\IRIS`],
   );
 });
 
 test("依區域分組：放在包含它的選的區域裡最深的那一個；不分大小寫", () => {
-  const items = [at(1, `${P}\\ITA\\監控`), at(2, `${P.toLowerCase()}\\ita\\監控\\告警`), at(3, `${P}\\ita\\維運`)];
-  const groups = areaGroups(items, [`${P}\\ITA`, `${P}\\ITA\\監控`], ORDER);
-  assert.deepEqual(drawAreas(groups), ["ITA: 3(維運)", "ITA › 監控: 1 2(告警)"]);
+  const items = [at(1, `${P}\\IRIS\\監控`), at(2, `${P.toLowerCase()}\\iris\\監控\\告警`), at(3, `${P}\\iris\\維運`)];
+  const groups = areaGroups(items, [`${P}\\IRIS`, `${P}\\IRIS\\監控`], ORDER);
+  assert.deepEqual(drawAreas(groups), ["IRIS: 3(維運)", "IRIS › 監控: 1 2(告警)"]);
 });
 
 test("依區域分組：沒有項目的區域不列；不在選的區域裡的依第一層區域排在後面，沒有區域的放在最後的「其他」", () => {
-  const items = [at(1, `${P}\\共用\\文件`), at(2), at(3, `${P}\\ITA`), at(4, null), at(5, ""), at(6, P)];
-  const groups = areaGroups(items, [`${P}\\1730`, `${P}\\ITA`], ORDER);
-  assert.deepEqual(drawAreas(groups), ["ITA: 3", `${P}: 6`, "共用: 1(文件)", "（其他）: 2 4 5"]);
+  const items = [at(1, `${P}\\共用\\文件`), at(2), at(3, `${P}\\IRIS`), at(4, null), at(5, ""), at(6, P)];
+  const groups = areaGroups(items, [`${P}\\2048`, `${P}\\IRIS`], ORDER);
+  assert.deepEqual(drawAreas(groups), ["IRIS: 3", `${P}: 6`, "共用: 1(文件)", "（其他）: 2 4 5"]);
   assert.equal(groups.at(-1)!.area, null);
 });
 
 test("依區域分組：沒選區域時依專案底下的第一層區域分組，直接在專案底下的是專案那一組（排在最前面）", () => {
-  const items = [at(1, `${P}\\ITA\\監控`), at(2, `${P}\\Comet`), at(3, P), at(4, `${P}\\ITA`), at(5, `${P}\\1730\\前端`)];
+  const items = [at(1, `${P}\\IRIS\\監控`), at(2, `${P}\\Cobalt`), at(3, P), at(4, `${P}\\IRIS`), at(5, `${P}\\2048\\前端`)];
   // 照下拉選單的順序。
-  assert.deepEqual(drawAreas(areaGroups(items, [], ORDER)), [`${P}: 3`, "1730: 5(前端)", "Comet: 2", "ITA: 1(監控) 4"]);
+  assert.deepEqual(drawAreas(areaGroups(items, [], ORDER)), [`${P}: 3`, "2048: 5(前端)", "Cobalt: 2", "IRIS: 1(監控) 4"]);
   // 還沒讀到下拉選單（例如沒選專案）：專案在前面，區域依名稱排。
-  assert.deepEqual(drawAreas(areaGroups(items, [])), [`${P}: 3`, "1730: 5(前端)", "Comet: 2", "ITA: 1(監控) 4"]);
+  assert.deepEqual(drawAreas(areaGroups(items, [])), [`${P}: 3`, "2048: 5(前端)", "Cobalt: 2", "IRIS: 1(監控) 4"]);
   assert.deepEqual(drawAreas(areaGroups([at(1, "產品\\後端"), at(2, "產品\\前端"), at(3, "產品\\後端")], [])), ["前端: 2", "後端: 1 3"]);
 });
 
 test("依區域分組：清單上有好幾個專案時，標題前面加上專案", () => {
-  const items = [at(1, "平台\\ITA"), at(2, `${P}\\ITA`), at(3, "平台"), at(4, `${P}\\Comet\\API`)];
+  const items = [at(1, "平台\\IRIS"), at(2, `${P}\\IRIS`), at(3, "平台"), at(4, `${P}\\Cobalt\\API`)];
   // 不知道順序時專案依名稱排（和其他清單一樣用 collator），每個專案本身那一組在它的區域前面。
   assert.deepEqual(drawAreas(areaGroups(items, [])), [
     "平台: 3",
-    "平台 › ITA: 1",
-    `${P} › Comet: 4(API)`,
-    `${P} › ITA: 2`,
+    "平台 › IRIS: 1",
+    `${P} › Cobalt: 4(API)`,
+    `${P} › IRIS: 2`,
   ]);
   // 選的區域在不同專案也一樣。
-  assert.deepEqual(drawAreas(areaGroups(items, [`${P}\\ITA`, "平台\\ITA"], [`${P}\\ITA`, "平台\\ITA"])), [`${P} › ITA: 2`, "平台 › ITA: 1", "平台: 3", `${P} › Comet: 4(API)`]);
+  assert.deepEqual(drawAreas(areaGroups(items, [`${P}\\IRIS`, "平台\\IRIS"], [`${P}\\IRIS`, "平台\\IRIS"])), [`${P} › IRIS: 2`, "平台 › IRIS: 1", "平台: 3", `${P} › Cobalt: 4(API)`]);
 });
 
 test("依區域分組：組裡照清單原本的順序（最近更新的在前面）", () => {
-  const items = [at(9, `${P}\\ITA\\監控`), at(2, `${P}\\ITA`), at(7, `${P}\\ITA\\維運`)];
-  assert.deepEqual(drawAreas(areaGroups(items, [`${P}\\ITA`], ORDER)), ["ITA: 9(監控) 2 7(維運)"]);
+  const items = [at(9, `${P}\\IRIS\\監控`), at(2, `${P}\\IRIS`), at(7, `${P}\\IRIS\\維運`)];
+  assert.deepEqual(drawAreas(areaGroups(items, [`${P}\\IRIS`], ORDER)), ["IRIS: 9(監控) 2 7(維運)"]);
 });
 
 // 「依區域＋上層項目分組」
 type AreaItem = GroupItem & { area?: string | null };
-/** 某個區域的工作項目：`wi(5, "Task", "Comet")`；`area` 是 undefined 時沒有區域（舊的離線副本）。 */
+/** 某個區域的工作項目：`wi(5, "Task", "Cobalt")`；`area` 是 undefined 時沒有區域（舊的離線副本）。 */
 const wi = (id: number, kind: string, area?: string): AreaItem => ({ id, kind, title: `${kind} ${id}`, area: area === undefined ? undefined : `${P}\\${area}` });
 /** 分組畫成文字：`標題: 樹`，一組一行。 */
 function drawAreaTrees(groups: AreaTree<AreaItem>[]): string[] {
@@ -182,21 +182,21 @@ function drawAreaTrees(groups: AreaTree<AreaItem>[]): string[] {
 }
 
 /**
- * 選了 1730、ITA、Comet：
- * - 1730：Story 40 與它的 Task 41（在子區域「前端」）。
- * - ITA：Story 20 與它的 Task 21（在子區域「監控」）；Story 20 在 Feature 100 底下（不在清單上）。
- * - Comet：Story 30 與它的 Task 31、32；Task 5 也在 Comet，但它的上層是 ITA 的 Story 20。Story 30 也在 Feature 100 底下。
+ * 選了 2048、IRIS、Cobalt：
+ * - 2048：Story 40 與它的 Task 41（在子區域「前端」）。
+ * - IRIS：Story 20 與它的 Task 21（在子區域「監控」）；Story 20 在 Feature 100 底下（不在清單上）。
+ * - Cobalt：Story 30 與它的 Task 31、32；Task 5 也在 Cobalt，但它的上層是 IRIS 的 Story 20。Story 30 也在 Feature 100 底下。
  */
-const PICKED_AREAS = [`${P}\\1730`, `${P}\\ITA`, `${P}\\Comet`];
+const PICKED_AREAS = [`${P}\\2048`, `${P}\\IRIS`, `${P}\\Cobalt`];
 const AREA_ITEMS = [
-  wi(5, "Task", "Comet"),
-  wi(21, "Task", "ITA\\監控"),
-  wi(20, "User Story", "ITA"),
-  wi(31, "Task", "Comet"),
-  wi(41, "Task", "1730\\前端"),
-  wi(30, "User Story", "Comet"),
-  wi(32, "Task", "Comet\\API"),
-  wi(40, "User Story", "1730"),
+  wi(5, "Task", "Cobalt"),
+  wi(21, "Task", "IRIS\\監控"),
+  wi(20, "User Story", "IRIS"),
+  wi(31, "Task", "Cobalt"),
+  wi(41, "Task", "2048\\前端"),
+  wi(30, "User Story", "Cobalt"),
+  wi(32, "Task", "Cobalt\\API"),
+  wi(40, "User Story", "2048"),
 ];
 const AREA_PARENT_OF = new Map<number, number | null>([
   [5, 20],
@@ -211,20 +211,20 @@ const AREA_PARENT_OF = new Map<number, number | null>([
 ]);
 /** 讀到的上層（伺服器回的上層也包含清單上的項目，例如 Story 20）。 */
 const AREA_PARENTS = new Map<number, AreaItem>([
-  [20, { ...wi(20, "User Story", "ITA"), title: "讀到的舊標題" }],
-  [30, wi(30, "User Story", "Comet")],
-  [40, wi(40, "User Story", "1730")],
-  [100, wi(100, "Feature", "ITA")],
+  [20, { ...wi(20, "User Story", "IRIS"), title: "讀到的舊標題" }],
+  [30, wi(30, "User Story", "Cobalt")],
+  [40, wi(40, "User Story", "2048")],
+  [100, wi(100, "Feature", "IRIS")],
 ]);
 
 test("依區域＋上層項目分組：組和依區域分組一樣，組裡是只用這一組的項目排的樹；上層在別的區域時淡色地列在這一組", () => {
   const groups = areaTrees(AREA_ITEMS, PICKED_AREAS, ORDER, AREA_PARENT_OF, AREA_PARENTS);
   assert.deepEqual(drawAreaTrees(groups), [
-    "1730: 40(41)",
-    // Task 5 只在 Comet；它的 Story 20（ITA）在這裡是淡色的上層。
-    "Comet: ~100(~20(5) 30(31 32))",
-    // Feature 100 不在清單上：在 Comet、ITA 兩組各淡淡地出現一次。
-    "ITA: ~100(20(21))",
+    "2048: 40(41)",
+    // Task 5 只在 Cobalt；它的 Story 20（IRIS）在這裡是淡色的上層。
+    "Cobalt: ~100(~20(5) 30(31 32))",
+    // Feature 100 不在清單上：在 Cobalt、IRIS 兩組各淡淡地出現一次。
+    "IRIS: ~100(20(21))",
   ]);
   // 組、順序、標題、項目（數量）與子區域的小字都和依區域分組一樣。
   const plain = areaGroups(AREA_ITEMS, PICKED_AREAS, ORDER);
@@ -249,9 +249,9 @@ test("依區域＋上層項目分組：別的組的項目當上層時用清單�
   const items = [...AREA_ITEMS, wi(7, "Task"), wi(8, "Task", "共用")];
   const parentOf = new Map([...AREA_PARENT_OF, [7, 30], [8, null]]);
   const groups = areaTrees(items, PICKED_AREAS, ORDER, parentOf, AREA_PARENTS);
-  assert.deepEqual(drawAreaTrees(groups).slice(1), ["Comet: ~100(~20(5) 30(31 32))", "ITA: ~100(20(21))", "共用: 8", "（其他）: ~100(~30(7))"]);
-  const comet = groups.find((g) => g.title === "Comet")!;
-  const story20 = comet.tree[0].children[0];
+  assert.deepEqual(drawAreaTrees(groups).slice(1), ["Cobalt: ~100(~20(5) 30(31 32))", "IRIS: ~100(20(21))", "共用: 8", "（其他）: ~100(~30(7))"]);
+  const cobalt = groups.find((g) => g.title === "Cobalt")!;
+  const story20 = cobalt.tree[0].children[0];
   assert.equal(story20.item, items.find((it) => it.id === 20), "Story 20 用清單上的那一份");
   assert.equal(story20.item.title, "User Story 20");
 });

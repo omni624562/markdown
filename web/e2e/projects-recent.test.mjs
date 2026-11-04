@@ -10,13 +10,13 @@ import { open } from "./helpers.mjs";
 const project = (path, label, color = null, extra = {}) => ({ path, label, name: label, color, group: null, pinned: false, lastOpened: 0, ...extra });
 /** 原生端的清單：最近開啟的在前（釘選、有群組的也照這個順序）。 */
 const PROJECTS = [
-  project("C:\\work\\comet", "彗星計畫", "blue"),
+  project("C:\\work\\cobalt", "鈷藍計畫", "blue"),
   project("C:\\work\\notes", "notes"),
   project("C:\\work\\pinned", "釘選的專案", "red", { pinned: true }),
   project("C:\\work\\grouped", "有群組的", "green", { group: "公司" }),
   project("C:\\work\\old", "很久沒開"),
 ];
-const FILES = ["C:\\work\\comet\\README.md", "C:\\work\\notes\\週報.md"];
+const FILES = ["C:\\work\\cobalt\\README.md", "C:\\work\\notes\\週報.md"];
 const DESKTOP = {
   // 陣列是依序回應的清單，所以專案清單要再包一層。
   projects_list: [PROJECTS],
@@ -29,13 +29,13 @@ test("起始頁的「專案」：自訂名稱與顏色、最近開啟的 4 個�
   await recent.locator("h3", { hasText: "專案" }).waitFor();
   assert.deepEqual(await recent.locator("h3").allTextContents(), ["專案", "最近開啟的檔案"]);
   const projects = recent.locator(".start-recent-item:has(.project-dot)");
-  assert.deepEqual(await projects.locator(".start-recent-name").allTextContents(), ["彗星計畫", "notes", "釘選的專案", "有群組的"]);
+  assert.deepEqual(await projects.locator(".start-recent-name").allTextContents(), ["鈷藍計畫", "notes", "釘選的專案", "有群組的"]);
   assert.deepEqual(
     await projects.locator(".project-dot").evaluateAll((dots) => dots.map((d) => d.dataset.color ?? null)),
     ["blue", null, "red", "green"],
   );
   // 自訂了名稱：位置改成資料夾本身，看得出是哪個資料夾。
-  assert.equal(await projects.first().locator(".start-recent-where").textContent(), "work › comet");
+  assert.equal(await projects.first().locator(".start-recent-where").textContent(), "work › cobalt");
   assert.deepEqual(await recent.locator(".start-recent-item:not(:has(.project-dot)) .start-recent-name").allTextContents(), ["README.md", "週報.md"]);
   await recent.getByRole("button", { name: "全部專案…" }).click();
   await page.locator("dialog.project-overview[open]").waitFor();
@@ -51,7 +51,7 @@ test("檔案面板（沒開資料夾）：標題是「專案」，和起始頁�
   await box.locator("h3", { hasText: "專案" }).waitFor();
   assert.deepEqual(await box.locator("h3").allTextContents(), ["專案"]);
   const rows = box.locator(".recent-list li button:first-child");
-  assert.deepEqual(await rows.allTextContents(), ["彗星計畫", "notes", "釘選的專案", "有群組的", "很久沒開"]);
+  assert.deepEqual(await rows.allTextContents(), ["鈷藍計畫", "notes", "釘選的專案", "有群組的", "很久沒開"]);
   assert.deepEqual(
     await box.locator(".recent-list .project-dot").evaluateAll((dots) => dots.map((d) => d.dataset.color ?? null)),
     ["blue", null, "red", "green", null],
