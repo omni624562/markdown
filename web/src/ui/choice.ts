@@ -24,9 +24,10 @@ export interface ChoiceExtra {
 const CANCEL = "cancel";
 
 /**
- * 按鈕的順序與一開始聚焦的選項。有危險動作（`danger`，刪除、不儲存、覆蓋等）的對話框全部同一種規則：
- * 危險的動作排在最右邊（紅色），「取消」在它左邊、一般樣式；一開始聚焦的一定不是危險的動作
- * （呼叫端指定的、不危險的主要選項，或「取消」）。對話框可能在使用者打字時跳出來，按 Enter 不會誤按危險的動作。
+ * 按鈕的順序與一開始聚焦的選項。有危險動作（`danger`，刪除、不儲存、覆蓋等）的對話框全部同一種規則，
+ * 照 Windows 的慣例：「取消」一律在最右邊，危險的動作（紅色）緊貼在它左邊，其他不危險的選項排在最前面；
+ * 一開始聚焦的一定不是危險的動作（呼叫端指定的、不危險的主要選項，或「取消」）。這樣最右邊永遠是取消，
+ * 對話框在使用者打字時跳出來，按 Enter 也不會誤按危險的動作。
  * 沒有危險動作的對話框照呼叫端給的順序，聚焦指定的或主要選項；都沒有時回傳 null（由瀏覽器決定）。
  */
 export function choiceLayout(options: readonly ChoiceOption[], focus?: string): { order: ChoiceOption[]; focus: string | null } {
@@ -34,9 +35,12 @@ export function choiceLayout(options: readonly ChoiceOption[], focus?: string): 
   if (safe.length === options.length) {
     return { order: [...options], focus: options.find((o) => o.id === focus)?.id ?? options.find((o) => o.primary)?.id ?? null };
   }
-  const order = [...safe, ...options.filter((o) => o.danger)].map((o) => (o.danger || o.id === CANCEL ? { ...o, primary: false } : o));
+  const others = safe.filter((o) => o.id !== CANCEL);
+  const order = [...others, ...options.filter((o) => o.danger), ...safe.filter((o) => o.id === CANCEL)].map((o) =>
+    o.danger || o.id === CANCEL ? { ...o, primary: false } : o,
+  );
   const first =
-    safe.find((o) => o.id === focus) ?? safe.find((o) => o.primary && o.id !== CANCEL) ?? safe.find((o) => o.id === CANCEL) ?? safe[0];
+    safe.find((o) => o.id === focus) ?? others.find((o) => o.primary) ?? safe.find((o) => o.id === CANCEL) ?? safe[0];
   return { order, focus: first?.id ?? null };
 }
 

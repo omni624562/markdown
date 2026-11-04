@@ -1,6 +1,6 @@
 /**
- * 有危險動作的確認對話框都是同一種排法：取消在左、危險的動作（紅色）在右，
- * 一開始聚焦的不是危險的動作，按 Enter 不會誤刪、誤丟掉變更。
+ * 有危險動作的確認對話框都是同一種排法（Windows 的慣例）：取消一律在最右邊，危險的動作（紅色）
+ * 緊貼在它左邊，一開始聚焦的不是危險的動作，按 Enter 不會誤刪、誤丟掉變更。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -18,7 +18,7 @@ const buttons = (page) =>
     })),
   );
 
-test("檔案面板刪除：取消在左（預設聚焦），移到資源回收筒在右；直接按 Enter 不會刪", async () => {
+test("檔案面板刪除：移到資源回收筒在左、取消在右（預設聚焦）；直接按 Enter 不會刪", async () => {
   const { page, context, errors } = await open({
     desktop: {
       startup_target: { kind: "folder", path: "/notes", name: "notes" },
@@ -29,8 +29,8 @@ test("檔案面板刪除：取消在左（預設聚焦），移到資源回收�
   await page.keyboard.press("Delete");
   await page.locator("dialog[open].choice").waitFor();
   assert.deepEqual(await buttons(page), [
-    { label: "取消", danger: false, primary: false, focused: true },
     { label: "移到資源回收筒", danger: true, primary: false, focused: false },
+    { label: "取消", danger: false, primary: false, focused: true },
   ]);
   await page.keyboard.press("Enter");
   await page.locator("dialog[open].choice").waitFor({ state: "detached" });
@@ -39,7 +39,7 @@ test("檔案面板刪除：取消在左（預設聚焦），移到資源回收�
   await context.close();
 });
 
-test("關閉沒存的分頁：「不儲存」排在最右邊、不會預設聚焦（預設是「儲存」）", async () => {
+test("關閉沒存的分頁：［儲存］［不儲存］［取消］，「不儲存」不會預設聚焦（預設是「儲存」）", async () => {
   const { page, context, errors } = await open();
   await page.click(".cm-content");
   await page.keyboard.insertText("第一份");
@@ -49,8 +49,8 @@ test("關閉沒存的分頁：「不儲存」排在最右邊、不會預設聚�
   await page.locator("dialog[open].choice").waitFor();
   assert.deepEqual(await buttons(page), [
     { label: "儲存", danger: false, primary: true, focused: true },
-    { label: "取消", danger: false, primary: false, focused: false },
     { label: "不儲存", danger: true, primary: false, focused: false },
+    { label: "取消", danger: false, primary: false, focused: false },
   ]);
   await page.keyboard.press("Escape");
   await page.locator("dialog[open].choice").waitFor({ state: "detached" });

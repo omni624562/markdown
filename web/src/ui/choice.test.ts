@@ -4,7 +4,7 @@ import { type ChoiceOption, choiceLayout } from "./choice.ts";
 
 const ids = (options: ChoiceOption[]) => options.map((o) => o.id);
 
-test("確認對話框：取消在左、危險的動作在右，預設聚焦取消（不管呼叫端怎麼排）", () => {
+test("確認對話框：危險的動作在左、取消在最右邊，預設聚焦取消（不管呼叫端怎麼排）", () => {
   const cancelFirst = choiceLayout([
     { id: "cancel", label: "取消" },
     { id: "delete", label: "刪除", danger: true },
@@ -14,7 +14,7 @@ test("確認對話框：取消在左、危險的動作在右，預設聚焦取�
     { id: "cancel", label: "取消", primary: true },
   ]);
   for (const layout of [cancelFirst, dangerFirst]) {
-    assert.deepEqual(ids(layout.order), ["cancel", "delete"]);
+    assert.deepEqual(ids(layout.order), ["delete", "cancel"]);
     assert.equal(layout.focus, "cancel");
     // 取消一律是一般樣式，危險的動作不會是主要選項。
     assert.deepEqual(
@@ -35,14 +35,15 @@ test("危險的動作不會預設聚焦，呼叫端指定也一樣", () => {
   assert.equal(layout.focus, "cancel");
 });
 
-test("三個以上的選項：危險的動作排最右邊，預設聚焦不危險的主要選項", () => {
+test("三個以上的選項：取消在最右邊、危險的動作緊貼在它左邊，預設聚焦不危險的主要選項", () => {
   // 「要儲存變更嗎？」：預設是「儲存」，不會是「不儲存」。
   const unsaved = choiceLayout([
     { id: "save", label: "儲存", primary: true },
     { id: "discard", label: "不儲存", danger: true },
     { id: "cancel", label: "取消" },
   ]);
-  assert.deepEqual(ids(unsaved.order), ["save", "cancel", "discard"]);
+  // 和 Windows 的「要儲存嗎？」一樣：［儲存］［不儲存］［取消］。
+  assert.deepEqual(ids(unsaved.order), ["save", "discard", "cancel"]);
   assert.equal(unsaved.focus, "save");
 
   const conflict = choiceLayout([
@@ -51,7 +52,7 @@ test("三個以上的選項：危險的動作排最右邊，預設聚焦不危�
     { id: "save-as", label: "另存新檔" },
     { id: "cancel", label: "取消" },
   ]);
-  assert.deepEqual(ids(conflict.order), ["compare", "save-as", "cancel", "overwrite"]);
+  assert.deepEqual(ids(conflict.order), ["compare", "save-as", "overwrite", "cancel"]);
   assert.equal(conflict.focus, "compare");
 });
 
