@@ -88,12 +88,18 @@ test("選了專案、類型：狀態只列那個專案、類型用得到的；�
       .evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label").split("：")[0]));
   assert.deepEqual(await labels(), ["專案", "人", "類型", "狀態"]);
 
+  /** 只選某一個，收起選單；回傳收起的當下（同一個步驟裡）篩選列上有哪些。 */
   const pick = async (label, value) => {
     await page.locator(`#workitems-host .multi-select[aria-label^="${label}："]`).click();
     const row = page.locator(".multi-select-pop:popover-open .multi-select-item", { hasText: new RegExp(`^${value}`) });
     await row.hover();
     await row.locator(".multi-select-only").click();
-    await page.keyboard.press("Escape");
+    return page.evaluate(() => {
+      document.querySelector(".multi-select-pop:popover-open").hidePopover();
+      return [...document.querySelectorAll("#workitems-host .workitems-filters .multi-select:not([hidden])")].map(
+        (b) => b.getAttribute("aria-label").split("：")[0],
+      );
+    });
   };
   const stateRows = async () => {
     await page.locator('#workitems-host .multi-select[aria-label^="狀態："]').click();
@@ -103,8 +109,8 @@ test("選了專案、類型：狀態只列那個專案、類型用得到的；�
     await page.keyboard.press("Escape");
     return list;
   };
-  await pick("專案", "維運");
-  assert.deepEqual(await labels(), ["專案", "人", "區域", "類型", "狀態"]);
+  // 收起選單的當下就套用（不用等 toggle 事件）：選了專案，旁邊馬上出現區域。
+  assert.deepEqual(await pick("專案", "維運"), ["專案", "人", "區域", "類型", "狀態"]);
   assert.deepEqual(await stateRows(), ["✓To Do", "✓Doing", " Done"]);
   await pick("專案", "產品");
   await pick("類型", "Bug");
