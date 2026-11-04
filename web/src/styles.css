@@ -842,9 +842,6 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 }
 .palette[open] { display: flex; flex-direction: column; }
 .palette::backdrop { background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(2px); }
-/* 開在按鈕下面的（例如工作項目的已儲存查詢）：位置由程式算，背景不變暗，像下拉選單。 */
-.palette.palette-anchored { position: fixed; inset: auto; margin: 0; }
-.palette.palette-anchored::backdrop { background: transparent; backdrop-filter: none; }
 .palette input {
   width: 100%;
   padding: 14px 16px;
@@ -2196,10 +2193,8 @@ button.git-info:disabled { cursor: default; }
 .workitems-filter-clear:hover { border-color: var(--border); background: var(--active-line); color: var(--fg); }
 .workitems-filter-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filter-clear .icon { width: 14px; height: 14px; }
-.workitems-query-note { grid-column: 1 / -1; margin: 0; color: var(--accent); font-size: 12px; line-height: 1.5; }
-.workitems-query-note[hidden] { display: none; }
 /*
- * 工作項目篩選的最後一列：搜尋框，右端的 ⌄ 開 TFS 的已儲存查詢；正在用查詢時左邊是「查詢：名稱 ×」。
+ * 工作項目篩選的最後一列：搜尋框。
  * 框畫在外層（和上面的下拉選單同樣高），裡面的輸入框不畫框。
  */
 .workitems-search-box { grid-column: 1 / -1; display: flex; gap: 2px; align-items: center; box-sizing: border-box; min-width: 0; height: 28px; padding: 0 2px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
@@ -2207,16 +2202,6 @@ button.git-info:disabled { cursor: default; }
 .workitems-search-box:has(.workitems-search:focus-visible) { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-search-box .workitems-search { flex: 1 1 0; width: auto; min-width: 0; height: 100%; margin: 0; padding: 0 4px 0 6px; border: 0; background: transparent; font-size: 12.5px; }
 .workitems-search-box .workitems-search:focus-visible { outline: none; }
-.workitems-query-pick, .workitems-query-cancel { display: grid; flex: none; place-items: center; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
-.workitems-query-pick { width: 22px; height: 22px; border-radius: 4px; }
-.workitems-query-pick:hover { background: var(--active-line); color: var(--fg); }
-.workitems-query-pick:focus-visible, .workitems-query-name:focus-visible, .workitems-query-cancel:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.workitems-query-pick .icon { width: 15px; height: 15px; }
-.workitems-query-chip { display: inline-flex; flex: 0 1 auto; align-items: center; min-width: 0; max-width: 62%; height: 20px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font: 12px var(--font-ui); }
-.workitems-query-name { min-width: 0; height: 100%; overflow: hidden; padding: 0 2px 0 6px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.workitems-query-cancel { width: 18px; height: 100%; border-radius: 4px; color: inherit; }
-.workitems-query-cancel:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.workitems-query-cancel .icon { width: 12px; height: 12px; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
 .workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }

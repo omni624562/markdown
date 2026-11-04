@@ -46,8 +46,6 @@ pub static EN: &[(&str, &str)] = &[
     ("建立工作項目失敗：沒有權限在這個專案建立工作項目", "Couldn't create the work item: You don't have permission to create work items in this project."),
     ("建立工作項目失敗：伺服器回應 {code}", "Couldn't create the work item: The server responded with {code}."),
     ("建立工作項目失敗：{message}", "Couldn't create the work item: {message}"),
-    ("讀取已儲存的查詢", "Loading saved queries"),
-    ("執行查詢", "Running the query"),
     ("讀取 Wiki 頁面的修改紀錄", "Loading the wiki page history"),
     ("讀取 Wiki 的最近修改", "Loading recent wiki changes"),
     ("讀取 Wiki 頁面的內容", "Loading wiki page contents"),

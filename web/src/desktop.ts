@@ -508,15 +508,6 @@ export interface AdoBoardItem extends AdoWorkItem {
 }
 
 /** 工作項目清單的篩選條件。 */
-/** TFS 上存的查詢。 */
-export interface AdoSavedQuery {
-  id: string;
-  project: string;
-  name: string;
-  /** 所在的資料夾（例如 `Shared Queries/團隊`）。 */
-  folder: string;
-}
-
 export interface AdoWorkItemFilter {
   /** 依指派給誰或建立者篩選人。 */
   role: "assigned" | "created";
@@ -1029,11 +1020,6 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 上層項目底下、符合搜尋文字與篩選條件的子項目（`links` 是 [子項目, 上層]）。 */
     adoWorkItemChildren: (parents: number[], search: string, filter: AdoWorkItemFilter) =>
       core.invoke<{ links: [number, number][]; items: AdoWorkItem[] }>("ado_work_item_children", { parents, search, filter }),
-    /** TFS 上存的查詢（我的查詢、共用查詢）。 */
-    /** 已儲存的查詢；給了專案時只讀那幾個專案的，沒給時讀所有專案的（最多 20 個）。 */
-    adoQueries: (projects: string[] = []) => core.invoke<AdoSavedQuery[]>("ado_queries", { projects: projects.length ? projects : null }),
-    /** 執行存的查詢（最多 200 個工作項目）。 */
-    adoQueryRun: (q: { project: string; id: string }) => core.invoke<AdoWorkItem[]>("ado_query_run", { project: q.project, id: q.id }),
     /** 這個類型的工作項目可以設定的狀態。 */
     adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
     /** 建立工作項目（`description` 是 HTML）。 */
