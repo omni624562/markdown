@@ -457,8 +457,9 @@ kbd {
     border-radius: var(--panel-radius) var(--panel-radius) 0 0;
     background: var(--backdrop);
   }
+  /* 視窗按鈕那段多了右框線（1px），這段扣掉，兩段合起來才和下面的右側欄同寬。 */
   [data-panel-style="spaced"].custom-titlebar .topbar.with-right .top-actions {
-    width: calc(var(--outline-right-width) - var(--panel-gap) - 3 * 46px);
+    width: calc(var(--outline-right-width) - var(--panel-gap) - 3 * 46px - 1px);
     border-right: 0;
     border-top-right-radius: 0;
   }
@@ -469,7 +470,9 @@ kbd {
     border-top-right-radius: var(--panel-radius);
     background: var(--backdrop);
   }
+  /* 往上 1px：第一個分區標題列上緣的線和分頁列底下的線在同一條水平線上。 */
   [data-panel-style="spaced"] .outline-right {
+    margin-top: -1px;
     margin-left: var(--panel-gap);
     border: 1px solid var(--panel-line);
     border-top: 0;

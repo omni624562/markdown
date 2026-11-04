@@ -34,6 +34,7 @@ const boxes = (page) =>
       editor: box(".editor-pane"),
       preview: box(".preview-pane"),
       right: box(".outline-right"),
+      rightHead: box(".outline-right .side-head"),
       leftResizer: box(".sidebar-resizer.left"),
       rightResizer: box(".sidebar-resizer.right"),
       radius: getComputedStyle(document.querySelector(".sidebar")).borderBottomLeftRadius,
@@ -79,6 +80,8 @@ test("預設相連：側邊欄、內文、右側欄之間沒有間隔；在設�
   assert.deepEqual([b.topSide.left, b.topSide.right], [b.sidebar.left, b.sidebar.right], s);
   assert.deepEqual([b.topActions.left, b.topActions.right], [b.right.left, b.right.right], s);
   assert.equal(b.radius, "8px");
+  // 分頁列底下的線（分頁列最後一列）和右側欄第一個分區標題列上緣的線在同一條水平線上。
+  assert.equal(b.rightHead.top, b.tabBar.bottom - 1, s);
   // 調整寬度的把手在間隔的正中間。
   const mid = (r) => (r.left + r.right) / 2;
   assert.ok(Math.abs(mid(b.leftResizer) - (b.sidebar.right + b.editor.left) / 2) <= 1, s);
@@ -125,6 +128,15 @@ test("圓角區塊（Windows 自訂標題列）：視窗按鈕在最右邊那塊
       return { right: Math.round(innerWidth - box.right), top: Math.round(box.top), corner: corner === close };
     });
     assert.deepEqual(r, { right: 5, top: 5, corner: true }, `outlineRight=${outlineRight}`);
+    if (outlineRight) {
+      await ready(page);
+      const b = await boxes(page);
+      const right = await page.evaluate(() => Math.round(document.querySelector(".window-controls").getBoundingClientRect().right));
+      assert.equal(b.topActions.left, b.right.left, JSON.stringify(b));
+      assert.equal(right, b.right.right, JSON.stringify(b));
+      assert.equal(b.tabBar.right, b.preview.right, JSON.stringify(b));
+      assert.equal(b.rightHead.top, b.tabBar.bottom - 1, JSON.stringify(b));
+    }
     assert.deepEqual(errors, []);
     await context.close();
   }
