@@ -303,9 +303,12 @@ export function showDocStats(focusGoal = false): void {
   pop ??= buildPop();
   if (pop.matches(":popover-open") && !focusGoal) {
     pop.hidePopover();
+    app.status.stats.setAttribute("aria-expanded", "false");
     return;
   }
   if (!pop.matches(":popover-open")) pop.showPopover();
+  // toggle 事件晚一點才觸發，這裡先改，讀螢幕軟體一按下去就知道已經展開。
+  app.status.stats.setAttribute("aria-expanded", "true");
   renderPop();
   const anchor = app.status.stats.getBoundingClientRect();
   const { width, height } = pop.getBoundingClientRect();
