@@ -31,6 +31,7 @@ import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
 import { onlyBlankDoc } from "./outline.ts";
+import { docName, renumber } from "./doc-names.ts";
 import type { Doc } from "../main.ts";
 import { app } from "./context.ts";
 
@@ -76,11 +77,11 @@ function pickBeside(): void {
     query: (q) =>
       app.docs
         .filter((d) => d !== app.paneDocs.main && d !== app.paneDocs.side)
-        .map((d) => ({ d, score: fuzzyScore(q, d.name) }))
+        .map((d) => ({ d, score: fuzzyScore(q, docName(d)) }))
         .filter((x) => x.score > 0)
         .sort((a, b) => b.score - a.score)
         .map((x) => x.d),
-    render: (d) => ({ title: d.name, detail: d.path ? displayPath(d.path) : undefined, icon: d.wiki ? "book-open-text" : "file-text" }),
+    render: (d) => ({ title: docName(d), detail: d.path ? displayPath(d.path) : undefined, icon: d.wiki ? "book-open-text" : "file-text" }),
     pick: (d) => app.openBeside(d),
   });
   besidePicker.open();
@@ -104,7 +105,10 @@ export function initCommands(): void {
         saveDraft(doc.id, "");
         app.skipStartPage(doc.id);
         app.addTab(doc);
-        if (placeholder) void app.closeTab(placeholder.id);
+        if (placeholder) {
+          renumber(doc);
+          void app.closeTab(placeholder.id);
+        }
         app.editor.view.focus();
       },
     },

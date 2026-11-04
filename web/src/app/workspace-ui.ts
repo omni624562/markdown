@@ -30,6 +30,7 @@ import { wikiPanel, workItemsPanel, issuesPanel, renderIssuesTab } from "./work-
 import type { Doc, SidePanel } from "../main.ts";
 import { app } from "./context.ts";
 import { boardPanelShown } from "./taskboard.ts";
+import { docName } from "./doc-names.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -56,7 +57,7 @@ function openDocsForIndex(): OpenDoc[] {
       return {
         id: d.id,
         path: app.docPath(d),
-        name: d === app.active ? app.cur.fileName : d.name,
+        name: docName(d),
         version: doc ?? `draft:${draftVersion(d.id)}`,
         text: () => (doc ? doc.toString() : (loadDraft(d.id) ?? "")),
       };

@@ -59,6 +59,7 @@ export const common: Record<string, Translation> = {
   "大綱": "Outline",
   "未命名.md": "Untitled.md",
   "未命名": "Untitled",
+  "未命名 {n}": "Untitled {n}",
   "跟隨系統": "Follow system",
   // 好幾個區域共用的字。
   "開啟檔案": "Open File",

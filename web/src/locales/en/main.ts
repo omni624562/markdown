@@ -20,6 +20,7 @@ export const main: Record<string, Translation> = {
   " · 約 {n} 分鐘讀完": " · About {n} min read",
   "已儲存": "Saved",
   "尚未存檔": "Unsaved",
+  "{name}（尚未存檔）": "{name} (not saved yet)",
   "尚未存成檔案": "Not saved to a file",
   " · 草稿已自動保存": " · Draft saved automatically",
   "按一下存檔": "Click to save",
