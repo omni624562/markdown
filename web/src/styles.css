@@ -3247,6 +3247,62 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .settings-about span { color: var(--muted); font-size: 13px; }
 .settings-about p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 
+/* ---- 工作項目的修改紀錄（ui/work-item-history-look.ts）：精簡的標頭、依日期分段的時間軸 ---- */
+/* 內容上方已經有標題（分頁上也有名稱），標頭只留位置與動作。 */
+.issue-pane:has(.wih-head) .issue-head .issue-title { display: none; }
+.issue-body:has(> .wih-head) { max-width: 760px; }
+.issue-body .wih-head { margin: 0 0 14px; }
+.issue-body .wih-kind { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.issue-body .wih-head h1 { margin: 0; padding: 0; border: 0; font-size: 1.2em; font-weight: 600; line-height: 1.45; }
+.issue-body .wih-head .wih-summary { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+/* 日期：淡色的小字，右邊一條細線；捲動時停在最上面，直到這一天的修改捲過去。 */
+.issue-body .wih-day > h2 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  padding: 10px 0 8px;
+  border: 0;
+  background: var(--md-bg);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+.issue-body .wih-day > h2::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.issue-body .wih-day > h2 .anchor { display: none; }
+/* 每一項修改：左邊頭像（同一天的頭像用細線連起來），右邊是誰、幾點，下面是欄位與留言。 */
+.issue-body .wih-timeline { margin: 0 0 6px; padding: 0; list-style: none; }
+.issue-body .wih-entry { position: relative; display: flex; gap: 12px; margin: 0; padding: 4px 0 14px; }
+.issue-body .wih-entry:last-child { padding-bottom: 8px; }
+.issue-body .wih-entry:not(:last-child)::before { content: ""; position: absolute; top: 34px; bottom: 2px; left: 12px; width: 2px; border-radius: 1px; background: var(--border); }
+.issue-body .wih-avatar { --hue: 210; display: grid; flex: none; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: light-dark(hsl(var(--hue) 55% 42%), hsl(var(--hue) 45% 38%)); color: #fff; font-size: 12px; font-weight: 600; line-height: 1; }
+.issue-body .wih-main { flex: 1 1 auto; min-width: 0; font-size: 14px; line-height: 1.55; }
+.issue-body .wih-who { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; min-height: 26px; padding-top: 2px; }
+.issue-body .wih-name { font-weight: 600; }
+.issue-body .wih-time { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+/* 「：」「・」留在內容裡（複製、尋找時用得到），畫面上不顯示。 */
+.issue-body .wih-sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* 欄位：名稱一欄（淡色）、值一欄。 */
+.issue-body .wih-changes { margin: 2px 0 0; padding: 0; list-style: none; }
+.issue-body .wih-changes > li { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 12px; margin: 0; padding: 1px 0; }
+.issue-body .wih-changes > li.wih-note { display: block; }
+.issue-body .wih-field { color: var(--muted); overflow-wrap: anywhere; }
+.issue-body .wih-value { min-width: 0; overflow-wrap: anywhere; }
+.issue-body .wih-old, .issue-body .wih-reason, .issue-body .wih-muted { color: var(--muted); }
+.issue-body .wih-arrow { color: var(--subtle); }
+.issue-body .wih-new { font-weight: 600; }
+/* 留言：淡色的圓角框。 */
+.issue-body .wih-comment { margin: 8px 0 0; padding: 7px 12px; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--fg) 4.5%, transparent); color: var(--fg); }
+.issue-body .wih-comment > :first-child { margin-top: 0; }
+.issue-body .wih-comment > :last-child { margin-bottom: 0; }
+.issue-body .wih-comment p { margin: 0 0 0.4em; }
+.issue-body .wih-comment-label { margin-right: 0.3em; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+
 /* ---- Git 歷史（線圖） ----
  * 左邊是線圖與提交清單（只畫看得到的列），右邊是選取的提交內容與差異。 */
 .workspace.history-open > .editor-pane,
