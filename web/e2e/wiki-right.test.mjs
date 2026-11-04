@@ -9,14 +9,14 @@ import { open } from "./helpers.mjs";
 
 const WIKI = {
   id: "w1",
-  name: "Mgt.wiki",
-  project: "Mgt",
+  name: "Contoso.wiki",
+  project: "Contoso",
   projectId: "p1",
   code: false,
   repositoryId: "r1",
   mappedPath: "/",
   version: "wikiMaster",
-  webUrl: "https://ado.test/c/Mgt/_wiki/wikis/Mgt.wiki",
+  webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki",
 };
 /** 圖示右邊的那條線（Wiki 在右側欄才有）與圖示的底色。 */
 const rightBar = (page) =>

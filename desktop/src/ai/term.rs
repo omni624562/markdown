@@ -593,7 +593,7 @@ mod tests {
     fn rejects_env_vars_that_break_create_process() {
         assert!(valid_env("PATH", "C:\\Windows"));
         assert!(
-            valid_env("=C:", "C:\\Users\\nan"),
+            valid_env("=C:", "C:\\Users\\me"),
             "Windows 的隱藏變數要保留"
         );
         assert!(valid_env("EMPTY_VALUE", ""));

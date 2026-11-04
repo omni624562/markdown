@@ -1,7 +1,7 @@
 /**
- * 工作項目內文裡常見的兩種標記（例如 COMET AI 協作摘要）：
+ * 工作項目內文裡常見的兩種標記（例如 COBALT AI 協作摘要）：
  * - 標籤行：`AI-CodeGen / Copilot / AIState-delivered / HumanAction-review` 這種用「 / 」分開的英文代號。
- * - 檔案：整段只有一個檔案路徑或檔名（`.comet/reports/20261005-task-1911359.md`），
+ * - 檔案：整段只有一個檔案路徑或檔名（`.cobalt/reports/20261005-task-1911359.md`），
  *   或「附件：檔名」「詳細報告：路徑」。
  * 這裡只判斷文字（不碰畫面，方便測試）；畫面在 ui/work-item-marks.ts。
  */

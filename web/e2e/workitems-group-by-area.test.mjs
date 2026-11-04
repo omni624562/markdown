@@ -8,11 +8,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { open } from "./helpers.mjs";
 
-const P = "Mgt-Digital_Cloud_Platform";
+const P = "Contoso-Cloud_Platform";
 /** 區域下拉選單的順序（伺服器的樹狀順序，不是依名稱排）。 */
-const AREAS = ["1730", "1730\\前端", "ITA", "ITA\\監控", "ITA\\維運", "Comet", "DevOps", "AI 平台", "資安", "數據中台", "共用服務"].map((a) => `${P}\\${a}`);
+const AREAS = ["2048", "2048\\前端", "IRIS", "IRIS\\監控", "IRIS\\維運", "Cobalt", "DevOps", "AI 平台", "資安", "數據中台", "共用服務"].map((a) => `${P}\\${a}`);
 
-/** 區域的完整路徑：`at("ITA\\監控")`；空字串是專案本身。 */
+/** 區域的完整路徑：`at("IRIS\\監控")`；空字串是專案本身。 */
 const at = (rel) => (rel ? `${P}\\${rel}` : P);
 /** `area` 是 undefined 時沒有這個欄位（更新前存下的離線副本）。 */
 const item = (id, title, kind, state, area) => ({
@@ -27,13 +27,13 @@ const item = (id, title, kind, state, area) => ({
   ...(area === undefined ? {} : { area }),
   webUrl: `https://ado.test/c/${P}/_workitems/edit/${id}`,
 });
-/** 選了 1730、ITA、Comet 時伺服器回的（最近更新的在前面）。 */
+/** 選了 2048、IRIS、Cobalt 時伺服器回的（最近更新的在前面）。 */
 const PICKED = [
-  item(1940131, "監控告警規則調整", "Task", "Active", at("ITA\\監控")),
-  item(1938720, "雲端平台帳號申請流程上線", "User Story", "Active", at("1730")),
-  item(1940129, "撰寫 Comet API 串接文件", "Task", "New", at("Comet")),
-  item(1936947, "提供 SRE 監控儀表板", "User Story", "Active", at("ITA")),
-  item(1941002, "調整登入頁面版面", "Task", "Active", at("1730\\前端")),
+  item(1940131, "監控告警規則調整", "Task", "Active", at("IRIS\\監控")),
+  item(1938720, "雲端平台帳號申請流程上線", "User Story", "Active", at("2048")),
+  item(1940129, "撰寫 Cobalt API 串接文件", "Task", "New", at("Cobalt")),
+  item(1936947, "提供 SRE 監控儀表板", "User Story", "Active", at("IRIS")),
+  item(1941002, "調整登入頁面版面", "Task", "Active", at("2048\\前端")),
 ];
 /** 沒選區域時：還有別的區域、直接在專案底下的，以及沒有區域的（舊的離線副本）。 */
 const ALL = [
@@ -87,8 +87,8 @@ test("依區域分組：沒選區域依第一層區域分組；選了區域時�
   const { page, context, errors } = await open({
     desktop: {
       ado_account: { url: "https://ado.test/c", name: "王小明" },
-      ado_work_item_filters: { projects: [P, "Mgt-Infra"], kinds: ["User Story", "Task"] },
-      ado_work_item_scope: { areas: AREAS, people: ["王小明", "梁朝為"] },
+      ado_work_item_filters: { projects: [P, "Contoso-Infra"], kinds: ["User Story", "Task"] },
+      ado_work_item_scope: { areas: AREAS, people: ["王小明", "張志明"] },
       ado_work_items: [ALL],
     },
   });
@@ -118,33 +118,33 @@ test("依區域分組：沒選區域依第一層區域分組；選了區域時�
   // 沒選區域：專案本身那一組在最前面，接著依下拉選單的順序；子區域標在列上；沒有區域的放最後的「其他」。
   await expectGroups(page, [
     `${P}（1）：年度系統盤點`,
-    "1730（2）：雲端平台帳號申請流程上線、調整登入頁面版面〔前端〕",
-    "ITA（2）：監控告警規則調整〔監控〕、提供 SRE 監控儀表板",
-    "Comet（1）：撰寫 Comet API 串接文件",
+    "2048（2）：雲端平台帳號申請流程上線、調整登入頁面版面〔前端〕",
+    "IRIS（2）：監控告警規則調整〔監控〕、提供 SRE 監控儀表板",
+    "Cobalt（1）：撰寫 Cobalt API 串接文件",
     "資安（1）：弱點掃描報告追蹤",
     "數據中台（1）：報表權限調整",
     "其他（1）：舊的離線副本",
   ]);
   assert.equal(await page.evaluate(() => localStorage.getItem("md-editor:workitem-arrange")), "area", "記住排列方式");
 
-  // 選了 1730、ITA、Comet：一個區域一組，照下拉選單的順序（不是依名稱）。
-  await pickAreas(page, [`${P}\\Comet`, `${P}\\1730`, `${P}\\ITA`]);
+  // 選了 2048、IRIS、Cobalt：一個區域一組，照下拉選單的順序（不是依名稱）。
+  await pickAreas(page, [`${P}\\Cobalt`, `${P}\\2048`, `${P}\\IRIS`]);
   await expectGroups(page, [
-    "1730（2）：雲端平台帳號申請流程上線、調整登入頁面版面〔前端〕",
-    "ITA（2）：監控告警規則調整〔監控〕、提供 SRE 監控儀表板",
-    "Comet（1）：撰寫 Comet API 串接文件",
+    "2048（2）：雲端平台帳號申請流程上線、調整登入頁面版面〔前端〕",
+    "IRIS（2）：監控告警規則調整〔監控〕、提供 SRE 監控儀表板",
+    "Cobalt（1）：撰寫 Cobalt API 串接文件",
   ]);
   const req = (await page.evaluate(() => window.__fake.calls)).filter((c) => c.cmd === "ado_work_items").at(-1).args;
-  assert.deepEqual(req.filter.areas, [`${P}\\1730`, `${P}\\ITA`, `${P}\\Comet`]);
+  assert.deepEqual(req.filter.areas, [`${P}\\2048`, `${P}\\IRIS`, `${P}\\Cobalt`]);
   // 子區域的小字和類型、編號、狀態在同一行（不會多佔一行），滑鼠移上去看得到完整的區域。
   const row = page.locator("#workitems-host .workitem", { hasText: "監控告警規則調整" });
-  assert.equal(await row.locator(".workitem-meta .workitem-note").getAttribute("title"), `區域：${P} › ITA › 監控`);
+  assert.equal(await row.locator(".workitem-meta .workitem-note").getAttribute("title"), `區域：${P} › IRIS › 監控`);
   const tops = await row.evaluate((b) => [".workitem-meta-text", ".workitem-note", ".workitem-state"].map((s) => Math.round(b.querySelector(s).getBoundingClientRect().top)));
   assert.ok(Math.max(...tops) - Math.min(...tops) <= 2, `同一行：${tops}`);
 
   // 組可以收合，和其他分組一樣。
-  await page.locator("#workitems-host .workitems-group button", { hasText: "ITA" }).click();
-  assert.deepEqual(await groups(page), ["1730（2）：雲端平台帳號申請流程上線、調整登入頁面版面〔前端〕", "ITA（2）：", "Comet（1）：撰寫 Comet API 串接文件"]);
+  await page.locator("#workitems-host .workitems-group button", { hasText: "IRIS" }).click();
+  assert.deepEqual(await groups(page), ["2048（2）：雲端平台帳號申請流程上線、調整登入頁面版面〔前端〕", "IRIS（2）：", "Cobalt（1）：撰寫 Cobalt API 串接文件"]);
   assert.equal(await page.locator("#workitems-host .workitems-fold:not(.workitems-pick)").getAttribute("aria-label"), "全部收合", "可以一鍵全部收合");
   assert.deepEqual(errors, []);
   await context.close();

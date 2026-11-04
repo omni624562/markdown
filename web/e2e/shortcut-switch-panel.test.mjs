@@ -9,7 +9,7 @@ import { open } from "./helpers.mjs";
 
 const ITEM = {
   id: 1895963,
-  title: "消費明細查詢",
+  title: "訂單明細查詢",
   state: "Active",
   kind: "Feature",
   project: "產品",
@@ -30,14 +30,14 @@ const ITEM = {
 };
 const WIKI = {
   id: "w1",
-  name: "Mgt.wiki",
-  project: "Mgt",
+  name: "Contoso.wiki",
+  project: "Contoso",
   projectId: "p1",
   code: false,
   repositoryId: "r1",
   mappedPath: "/",
   version: "wikiMaster",
-  webUrl: "https://ado.test/c/Mgt/_wiki/wikis/Mgt.wiki",
+  webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki",
 };
 const desktop = {
   ado_account: { url: "https://ado.test/c", name: "王小明" },
@@ -54,7 +54,7 @@ test("按捷徑：側邊欄換到工作項目或 Wiki 面板；側邊欄收起�
       "md-editor:wiki-shortcuts",
       JSON.stringify([
         { workItem: item.id, kind: item.kind, title: item.title },
-        { wiki: "w1", wikiName: "Mgt.wiki", path: "/首頁" },
+        { wiki: "w1", wikiName: "Contoso.wiki", path: "/首頁" },
       ]),
     );
   }, ITEM);

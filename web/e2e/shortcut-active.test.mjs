@@ -9,7 +9,7 @@ import { calls, open } from "./helpers.mjs";
 
 const ITEM = {
   id: 1895963,
-  title: "消費明細查詢及爭議帳申請",
+  title: "訂單明細查詢及退貨申請",
   state: "Active",
   kind: "Feature",
   project: "產品",

@@ -3,6 +3,7 @@
  * - 「依上層項目分組」：排成一棵樹（Epic → Feature → User Story → Task），每一項只出現一次，
  *   在它的上層底下；不在清單上的上層（例如不是指派給你的 Feature）也列出來當標題列（淡色、不算數）。
  * - 「依區域分組」：篩選選了區域時一個區域一組，沒選時依專案底下的第一層區域分組（見 `areaGroups`）。
+ * - 「依區域＋上層項目分組」：和依區域分組一樣的組，組裡再依上層排成樹（見 `areaTrees`）。
  */
 
 import { collator } from "./collator.ts";
@@ -104,21 +105,21 @@ export function kindCounts<T extends GroupItem>(node: TreeNode<T>): [string, num
 
 /** 「依區域分組」的一組。 */
 export interface AreaGroup<T> {
-  /** 這一組的區域路徑（例如 `產品\ITA`，專案本身那一組是專案名稱）；沒有區域的那一組是 null。 */
+  /** 這一組的區域路徑（例如 `產品\IRIS`，專案本身那一組是專案名稱）；沒有區域的那一組是 null。 */
   area: string | null;
   /**
-   * 標題：相對於專案的路徑，用「 › 」隔開（例如「ITA › 監控」；專案本身那一組是專案名稱），
+   * 標題：相對於專案的路徑，用「 › 」隔開（例如「IRIS › 監控」；專案本身那一組是專案名稱），
    * 清單上有好幾個專案時前面加上專案。沒有區域的那一組是 null（畫面上寫「其他」）。
    */
   title: string | null;
   /**
    * 組裡的項目（照清單的順序）；`sub` 是項目在這個區域底下的子區域時標在列上的小字：相對於這一組的路徑
-   * （`ITA` 那一組裡 `ITA\監控` 的項目是「監控」，`ITA\監控\告警` 是「監控 › 告警」），剛好在這個區域時是 null。
+   * （`IRIS` 那一組裡 `IRIS\監控` 的項目是「監控」，`IRIS\監控\告警` 是「監控 › 告警」），剛好在這個區域時是 null。
    */
   items: { item: T; sub: string | null }[];
 }
 
-/** 區域路徑的分隔符號（`產品\ITA\監控`）。 */
+/** 區域路徑的分隔符號（`產品\IRIS\監控`）。 */
 const AREA_SEP = "\\";
 /** 標題、小字裡的分隔。 */
 const AREA_JOIN = " › ";
@@ -136,8 +137,8 @@ const isUnder = (path: string, area: string): boolean => path === area || path.s
 /**
  * 依區域分組。`selected` 是篩選選的區域（完整路徑），`order` 是區域下拉選單列出的順序（還沒讀到時是空的）。
  *
- * - 有選區域：一個選的區域一組，照下拉選單的順序；項目放在包含它的區域裡最深的那一個（例如選了 `ITA` 與
- *   `ITA\監控`，`ITA\監控` 底下的放在 `ITA\監控`），在更下面的子區域時 `sub` 寫出子區域（「監控」）。
+ * - 有選區域：一個選的區域一組，照下拉選單的順序；項目放在包含它的區域裡最深的那一個（例如選了 `IRIS` 與
+ *   `IRIS\監控`，`IRIS\監控` 底下的放在 `IRIS\監控`），在更下面的子區域時 `sub` 寫出子區域（「監控」）。
  *   不在任何選的區域裡的（例如輸入編號找到的）照沒選區域的方式分組，排在後面。
  * - 沒選區域：依專案底下的第一層區域（`專案\X`）分組，直接在專案底下的是專案名稱那一組；
  *   順序照下拉選單（專案本身排在它的區域前面），不知道順序的依名稱排。
@@ -216,4 +217,39 @@ export function areaGroups<T extends { area?: string | null }>(items: readonly T
   });
   if (none.length) out.push({ area: null, title: null, items: none.map((item) => ({ item, sub: null })) });
   return out;
+}
+
+/** 「依區域＋上層項目分組」的一組：和 `areaGroups` 的組一樣（區域、標題、項目），另外是組裡的樹。 */
+export interface AreaTree<T> extends AreaGroup<T> {
+  /**
+   * 只用這一組的項目依上層排成的樹（見 `parentTree`）。上層不在這一組時（在別的區域，或不在清單上）
+   * 也列出來當標題列，淡色；所以同一個上層可以在好幾組各淡淡地出現一次，組裡的項目只出現在自己的那一組。
+   */
+  tree: TreeNode<T>[];
+}
+
+/**
+ * 依區域＋上層項目分組：先和「依區域分組」一樣分組（`areaGroups`：組、順序、標題、項目都一樣，數量也一樣），
+ * 每一組裡再只用這一組的項目依上層排成樹（`parentTree`）。例如 Task 在 Cobalt、它的 Story 在 IRIS：
+ * Task 只在 Cobalt 那一組，Story 在 IRIS 那一組是一般的列，在 Cobalt 那一組是 Task 上面淡色的上層。
+ *
+ * `parentOf`、`parents` 和 `parentTree` 一樣；別的組的項目當上層時用清單上的那一份（不用另外讀到的）。
+ */
+export function areaTrees<T extends GroupItem & { area?: string | null }>(
+  items: readonly T[],
+  selected: readonly string[],
+  order: readonly string[],
+  parentOf: Map<number, number | null>,
+  parents: Map<number, T>,
+): AreaTree<T>[] {
+  const known = new Map(parents);
+  for (const it of items) known.set(it.id, it);
+  return areaGroups(items, selected, order).map((g) => ({
+    ...g,
+    tree: parentTree(
+      g.items.map(({ item }) => item),
+      parentOf,
+      known,
+    ),
+  }));
 }

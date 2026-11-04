@@ -5,7 +5,7 @@ import { type Choice, favoriteOptions, favoritesFirst, parseFavorites } from "./
 const items: Choice[] = [
   ["a", "ALM"],
   ["b", "CUB"],
-  ["c", "Mgt"],
+  ["c", "Contoso"],
   ["d", "MIDL"],
 ];
 

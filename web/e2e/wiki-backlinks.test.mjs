@@ -9,14 +9,14 @@ import { calls, open } from "./helpers.mjs";
 
 const WIKI = {
   id: "w1",
-  name: "Mgt.wiki",
-  project: "Mgt",
+  name: "Contoso.wiki",
+  project: "Contoso",
   projectId: "p1",
   code: false,
   repositoryId: "r1",
   mappedPath: "/",
   version: "wikiMaster",
-  webUrl: "https://ado.test/c/Mgt/_wiki/wikis/Mgt.wiki",
+  webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki",
 };
 const PAGES = [
   { path: "/首頁", id: 1, children: [] },
@@ -33,7 +33,7 @@ const PAGES = [
 const SOURCES = {
   pages: [
     // 刻意不照頁面樹的順序：清單要依頁面樹排。
-    { path: "/會議", text: "# 會議\n\n見 https://ado.test/c/Mgt/_wiki/wikis/Mgt.wiki/21/安裝-說明 的步驟" },
+    { path: "/會議", text: "# 會議\n\n見 https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki/21/安裝-說明 的步驟" },
     { path: "/首頁", text: "# 首頁\n\n- [安裝](/產品/安裝-說明)\n- [規格](/產品/規格)" },
     { path: "/產品/規格", text: "前置作業見 [安裝](./安裝-說明.md)。\n\n```\n[不算](/產品/安裝-說明)\n```" },
     { path: "/產品/安裝 說明", text: "# 安裝\n\n[本頁](/產品/安裝-說明)" },
