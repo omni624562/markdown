@@ -145,7 +145,7 @@ test("圓角區塊（Windows 自訂標題列）：視窗按鈕在最右邊那塊
   }
 });
 
-test("狀態列：相連時那幾項直接排在狀態列上；圓角區塊時包成一整條圓條，緊鄰檢視切換", async () => {
+test("狀態列：相連時那幾項直接排在狀態列上；圓角區塊時包成一整條圓條，和檢視切換、上面的區塊、視窗底部都隔 4px", async () => {
   const { page, context, errors } = await open({ desktop: desktop({ outlineRight: false, panelStyle: "joined" }) });
   await ready(page);
   const pill = () =>
@@ -155,11 +155,19 @@ test("狀態列：相連時那幾項直接排在狀態列上；圓角區塊時�
       const r = items.getBoundingClientRect();
       const sw = document.querySelector(".view-switch").getBoundingClientRect();
       const stats = document.querySelector("#status-stats").getBoundingClientRect();
+      // 中間那塊的右緣：分割檢視時是預覽那一半。
+      const card = document.querySelector(".preview-pane").getBoundingClientRect();
       return {
+        gaps: {
+          above: Math.round(r.top - card.bottom),
+          below: Math.round(innerHeight - r.bottom),
+          between: Math.round(sw.left - r.right),
+          right: Math.round(innerWidth - sw.right),
+          cardRight: Math.round(innerWidth - card.right),
+        },
         display: s.display,
         radius: s.borderTopLeftRadius,
         statsInside: stats.left >= r.left && stats.right <= r.right,
-        nextToSwitch: Math.round(sw.left - r.right),
         sameMiddle: Math.abs(r.top + r.height / 2 - (sw.top + sw.height / 2)) <= 1,
       };
     });
@@ -167,7 +175,8 @@ test("狀態列：相連時那幾項直接排在狀態列上；圓角區塊時�
   await pick(page, "spaced");
   const p = await pill();
   assert.deepEqual([p.display, p.radius, p.statsInside, p.sameMiddle], ["flex", "7px", true, true], JSON.stringify(p));
-  assert.ok(p.nextToSwitch > 0 && p.nextToSwitch <= 20, JSON.stringify(p));
+  // 上下、兩條之間都是 4px；檢視切換的右緣和上面的區塊對齊。
+  assert.deepEqual(p.gaps, { above: 4, below: 4, between: 4, right: 4, cardRight: 4 }, JSON.stringify(p));
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -537,6 +537,13 @@ kbd {
   [data-panel-style="spaced"] .splitter::before { inset: 0 calc(50% - 0.5px); }
   [data-panel-style="spaced"] .splitter:is(:hover, :focus-visible)::before,
   [data-panel-style="spaced"] body.resizing .splitter::before { inset: 0 2px; }
+  /* 狀態列：圓條和上面的區塊、視窗底部、彼此之間都留 4px（和區塊之間一樣），右緣和上面的區塊對齊。 */
+  [data-panel-style="spaced"] .statusbar {
+    gap: var(--panel-gap);
+    min-height: calc(28px + var(--panel-gap));
+    padding: 0 var(--panel-gap) var(--panel-gap);
+  }
+  [data-panel-style="spaced"] .view-switch { margin: 0; }
   /* 狀態列：檢視切換左邊的那幾項包成一整條圓條，和檢視切換一樣的樣子。 */
   [data-panel-style="spaced"] .status-items {
     display: flex;
