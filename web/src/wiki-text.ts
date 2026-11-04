@@ -116,6 +116,11 @@ export function wikiMarkdown(text: string): string {
     );
 }
 
+/** 頁面是不是在範圍裡（範圍是幾個頁面，含它們底下的子頁面）；沒有範圍（null）就是整個 Wiki。 */
+export function inPageScope(path: string, scope: readonly string[] | null): boolean {
+  return !scope || scope.some((s) => path === s || path.startsWith(`${s.replace(/\/+$/, "")}/`));
+}
+
 /** 把頁面樹攤平成所有頁面的路徑。 */
 export function flattenPages(pages: { path: string; children: { path: string; children: unknown[] }[] }[]): string[] {
   const out: string[] = [];

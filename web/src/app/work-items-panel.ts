@@ -854,7 +854,7 @@ export function initWorkItemsPanel(): void {
         savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
         link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
         create: (wiki, parent) => void app.createWikiPage(wiki, parent).catch(app.reportError),
-        recent: (wiki) => openWikiRecent(wiki),
+        recent: (wiki, scope) => openWikiRecent(wiki, scope),
         backlinks: (wiki, path) => void openWikiBacklinks(wiki, path).catch(app.reportError),
         move: (wiki, path, to) => void moveWikiPage(wiki, path, to).catch(app.reportError),
         canCreate: (wiki) => !wiki.code,

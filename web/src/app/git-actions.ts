@@ -386,7 +386,8 @@ export function initGitActions(): void {
       when: () => !!desktop && !!app.ado?.account && !!(wikiPanel?.wiki ?? app.wikiPage?.wiki),
       run: () => {
         const wiki = app.wikiPage?.wiki ?? wikiPanel?.wiki;
-        if (wiki) openWikiRecent(wiki);
+        // 和 Wiki 面板的「最近修改」一樣，只列樹狀目錄目前範圍裡的頁面。
+        if (wiki) openWikiRecent(wiki, wikiPanel?.wiki?.id === wiki.id ? wikiPanel.scope() : null);
       },
     },
     {
