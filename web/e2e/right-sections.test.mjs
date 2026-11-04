@@ -91,7 +91,8 @@ const heights = (page) =>
     const box = (sel) => document.querySelector(sel).getBoundingClientRect();
     return {
       column: box("#outline-right").height,
-      columnBottom: box("#outline-right").bottom,
+      // 欄的內側下緣（圓角區塊樣式時右側欄有 1px 框線）。
+      columnBottom: box("#outline-right").bottom - parseFloat(getComputedStyle(document.querySelector("#outline-right")).borderBottomWidth),
       outline: box("#panel-outline").height,
       outlineList: box("#panel-outline > .side-body").height,
       wiki: box("#panel-wiki").height,
