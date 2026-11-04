@@ -986,6 +986,8 @@ export function initActivityBar(): void {
         return { ...entry, when: () => shownMenuItem() && (entry.when?.() ?? true) };
       }),
       "-",
+      // 文件的分頁：在分頁上改名（存成檔案的和檔案面板一樣改磁碟上的檔名）。
+      { label: t("重新命名…"), icon: "pencil", when: () => !app.menuItemTab(), run: () => void app.commands.run("rename-doc") },
       "tab-copy-path",
       "tab-reveal",
     ],

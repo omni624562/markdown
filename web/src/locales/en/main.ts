@@ -63,8 +63,10 @@ export const main: Record<string, Translation> = {
     "“{name}” hasn't been loaded from its file yet, so it wasn't saved (saving now would overwrite the file with an empty document).",
   "瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。":
     "The browser blocked storage, so drafts can't be saved automatically. Remember to save manually.",
-  "已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。":
-    "This document is saved as a file. Rename it in the Files panel (select it and press F2).",
+  "網頁版無法重新命名已經存成檔案的文件；可以用「另存新檔」存成新的名稱。":
+    "The web version can't rename a document that's saved as a file. Use Save As to save it under a new name.",
+  "「{name}」不在目前開啟的資料夾裡，無法重新命名；可以用「另存新檔」存成新的名稱。":
+    "\"{name}\" isn't in the open folder, so it can't be renamed. Use Save As to save it under a new name.",
   "切換專案（{keys}）": "Switch Project ({keys})",
   "開啟資料夾或切換專案": "Open a Folder or Switch Projects",
 
@@ -246,6 +248,7 @@ export const main: Record<string, Translation> = {
   "已清除 {n} 個不再提示的詞。": ["Cleared {n} ignored word.", "Cleared {n} ignored words."],
   "開啟指令面板": "Show Command Palette",
   "重新命名文件…": "Rename Document…",
+  "重新命名…": "Rename…",
   "固定顯示／隱藏格式工具列": "Pin/Hide Formatting Toolbar",
   "搜尋與取代": "Find and Replace",
   "格式化 JSON": "Format JSON",

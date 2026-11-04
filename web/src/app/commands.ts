@@ -659,7 +659,8 @@ export function initCommands(): void {
       title: t("重新命名文件…"),
       group: t("檔案"),
       icon: "pencil",
-      run: () => app.tabBar.startRename(app.active.id),
+      // 從分頁的右鍵選單執行時是按右鍵的分頁。
+      run: () => app.tabBar.startRename(app.menuTab().id),
     },
     {
       id: "toggle-format-bar",
