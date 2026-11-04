@@ -3171,6 +3171,8 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-body .ado-file .icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
 .issue-body a.ado-file:hover { border-color: var(--accent); color: var(--accent); }
 .issue-body a.ado-file:hover .icon { color: var(--accent); }
+/* 內容裡的「#編號」換成的工作項目連結（app/work-item-refs.ts）：編號不要被折成兩行。 */
+.issue-body a.wi-ref { white-space: nowrap; }
 .issue-status { color: var(--muted); }
 .issue-status.issue-error { color: var(--danger); }
 .issue-stale { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; padding: 6px 16px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); font-size: 12.5px; }

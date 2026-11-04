@@ -23,6 +23,7 @@ import { pageName, wikiMarkdown, wikiPageLink } from "../wiki-text.ts";
 import { openDiagram, copyDiagram, openUrl } from "./activity-bar.ts";
 import { finishWikiEdit } from "./ado-files.ts";
 import { openRemoteLink } from "./ado-links.ts";
+import { linkWorkItemRefs } from "./work-item-refs.ts";
 import { followWikiLink } from "./wiki-page-links.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
@@ -410,6 +411,8 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
       insertAtCursor(wikiPageLink(title, webUrl));
       toast(t("已插入「{name}」的連結", { name: title }));
     },
+    // 內文裡的「#編號」換成工作項目連結。
+    decorate: (body) => linkWorkItemRefs(body),
     // 內文裡的相對連結（子頁面、其他頁面、儲存庫裡的檔案）都在 oMarker 裡開。
     link: (href) => followWikiLink(wiki, path, href),
   });

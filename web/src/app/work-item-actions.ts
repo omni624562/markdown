@@ -11,6 +11,7 @@ import { decorateAttachments } from "../ui/work-item-attachments.ts";
 import { decorateHistory } from "../ui/work-item-history-look.ts";
 import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
 import { decorateMarks } from "../ui/work-item-marks.ts";
+import { linkWorkItemRefs } from "./work-item-refs.ts";
 import * as storage from "../storage.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { historyMarkdown } from "../work-item-history.ts";
@@ -217,6 +218,8 @@ export function showWorkItem(item: AdoWorkItem): void {
         ],
       });
       editing.enhance(body);
+      // 說明、留言裡的「#編號」：換成工作項目連結。
+      linkWorkItemRefs(body);
       // 把檔案拖到這個工作項目上：加入附件。
       setAttachTarget(`ado:${item.id}`, (files) => void editing.attach(files));
     },
@@ -249,7 +252,10 @@ function showWorkItemHistory(item: AdoWorkItem): void {
       webUrl: item.webUrl,
       fileName: issueFileName(t("修改紀錄 {label}", { label: `${item.kind} ${item.id}` }), item.title),
       load: async () => historyMarkdown(item, await desktop!.adoWorkItemHistory(item.id)),
-      decorate: (body) => decorateHistory(body),
+      decorate: (body) => {
+        decorateHistory(body);
+        linkWorkItemRefs(body);
+      },
       insertLink: () => insertIssueLink(item),
       link: (href) => {
         const id = workItemIdOf(href);
