@@ -1,16 +1,15 @@
 /**
- * 側邊欄的 Azure DevOps 面板：工作項目（含 TFS 的已儲存查詢）、Wiki、GitHub Issues，以及釘在上方的捷徑。
+ * 側邊欄的 Azure DevOps 面板：工作項目、Wiki、GitHub Issues，以及釘在上方的捷徑。
  */
 import { workItemLink } from "../ado-text.ts";
 import { setBounded } from "../bounded.ts";
-import { type AdoSavedQuery, type AdoWorkItem, desktop, type AdoWorkItemFilter, type AdoWiki } from "../desktop.ts";
+import { type AdoWorkItem, desktop, type AdoWorkItemFilter, type AdoWiki } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { issueFileName, githubIssueMarkdown } from "../issue-doc.ts";
 import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { type IssueSummary, type IssueGroup, type IssueTreeNode, shortDate, IssuesPanel } from "../ui/issues-panel.ts";
 import { MultiSelect } from "../ui/multi-select.ts";
-import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { WikiPanel } from "../ui/wiki-panel.ts";
 import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
@@ -31,77 +30,12 @@ import { moveWikiPage } from "./wiki-move.ts";
 import { bulkEditWorkItems } from "./work-item-bulk.ts";
 
 
-/** 目前列出的查詢（null 是用篩選條件）。 */
-let workItemQuery: AdoSavedQuery | null = (() => {
-  try {
-    const v = JSON.parse(storage.load("workitem-query") ?? "null") as AdoSavedQuery | null;
-    return v && typeof v.id === "string" && typeof v.project === "string" ? v : null;
-  } catch {
-    return null;
-  }
-})();
-/** 篩選列建好後設定：更新查詢的標示與清除按鈕，並重新列出。 */
-let workItemFilterChanged: () => void = () => {};
-
-function setWorkItemQuery(q: AdoSavedQuery | null, refresh = true): void {
-  workItemQuery = q;
-  if (q) storage.save("workitem-query", JSON.stringify(q));
-  else storage.remove("workitem-query");
-  if (refresh) workItemFilterChanged();
-}
-
-/** 查詢結果裡再用搜尋框的文字（標題或編號）縮小範圍。 */
-function filterQueryResult(items: AdoWorkItem[], search: string): AdoWorkItem[] {
-  const q = search.trim().replace(/^#/, "").toLowerCase();
-  return q ? items.filter((w) => String(w.id).startsWith(q) || w.title.toLowerCase().includes(q)) : items;
-}
-
-/** 讀過的已儲存查詢，依專案（篩選選的專案，沒選是空字串＝所有專案）分開記。 */
-const savedQueries = new Map<string, Promise<AdoSavedQuery[]>>();
-type QueryChoice = AdoSavedQuery | { clear: true };
-
-/** 篩選選了專案時只讀那幾個專案的查詢，沒選時讀所有專案的。 */
-function loadSavedQueries(projects: string[]): Promise<AdoSavedQuery[]> {
-  const key = [...projects].sort().join("\n");
-  let p = savedQueries.get(key);
-  if (!p) {
-    p = desktop!.adoQueries(projects);
-    savedQueries.set(key, p);
-    p.catch(() => savedQueries.delete(key));
-  }
-  return p;
-}
-
-const queryPicker = new Picker<QueryChoice>({
-  label: t("Azure DevOps 的已儲存查詢"),
-  placeholder: t("輸入查詢名稱或資料夾"),
-  empty: t("找不到已儲存的查詢（可以在 Azure DevOps 網頁版的「查詢」建立）"),
-  async query(text) {
-    if (!desktop) return [];
-    const projects = app.workItemFilter.projects;
-    const needle = text.trim().toLowerCase();
-    // 只列選的專案的查詢（原生端已經只讀那幾個專案，這裡再保險一次）。
-    const all = (await loadSavedQueries(projects)).filter((q) => !projects.length || projects.includes(q.project));
-    const found = needle ? all.filter((q) => `${q.name} ${q.folder} ${q.project}`.toLowerCase().includes(needle)) : all;
-    return workItemQuery && !needle ? [{ clear: true }, ...found] : found;
-  },
-  render: (q) =>
-    "clear" in q
-      ? { title: t("不用查詢，回到篩選條件"), detail: t("目前：{name}", { name: workItemQuery?.name ?? "" }), icon: "x" }
-      : {
-          title: q.name,
-          // 只選了一個專案時不用每一列都寫專案名稱。
-          detail: [app.workItemFilter.projects.length === 1 ? "" : q.project, q.folder].filter(Boolean).join(" › "),
-          icon: "scroll-text",
-        },
-  pick: (q) => setWorkItemQuery("clear" in q ? null : q),
-  // 開在搜尋框下面（按 ⌄ 的地方），不開在畫面中間。
-  anchor: () => document.querySelector<HTMLElement>("#workitems-host .workitems-search-box"),
-});
+// 舊版記住的 Azure DevOps 已儲存查詢（已經拿掉這個功能）。
+storage.remove("workitem-query");
 
 /**
  * 工作項目的篩選，一直顯示在面板上方：專案一整列（右邊的 × 一次清掉所有條件），下面是人與區域、類型與狀態，
- * 最後是搜尋框（右端的 ⌄ 開 Azure DevOps 的已儲存查詢；正在用查詢時，查詢名稱放在搜尋框左邊，按 × 取消）。
+ * 最後是搜尋框。
  * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
  */
 function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInputElement): void } {
@@ -117,49 +51,10 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
   clear.setAttribute("aria-label", clearLabel);
   clear.append(icon("x"));
   clear.addEventListener("click", () => resetAll());
-  // Azure DevOps 存的查詢：搜尋框右端的 ⌄ 開選單；選了就改列查詢的結果（篩選條件暫時不用）。
-  const queryPick = document.createElement("button");
-  queryPick.type = "button";
-  queryPick.className = "workitems-query-pick";
-  const queryPickLabel = t("已儲存的查詢");
-  queryPick.title = queryPickLabel;
-  queryPick.setAttribute("aria-label", queryPickLabel);
-  queryPick.setAttribute("aria-haspopup", "dialog");
-  queryPick.append(icon("chevron-down"));
-  queryPick.addEventListener("click", () => queryPicker.open());
-  // 正在用查詢：搜尋框左邊的「查詢：名稱 ×」，點名稱換查詢，按 × 回到篩選條件。
-  const chip = document.createElement("span");
-  chip.className = "workitems-query-chip";
-  const chipName = document.createElement("button");
-  chipName.type = "button";
-  chipName.className = "workitems-query-name";
-  chipName.addEventListener("click", () => queryPicker.open());
-  const chipCancel = document.createElement("button");
-  chipCancel.type = "button";
-  chipCancel.className = "workitems-query-cancel";
-  const cancelLabel = t("不用查詢，回到篩選條件");
-  chipCancel.title = cancelLabel;
-  chipCancel.setAttribute("aria-label", cancelLabel);
-  chipCancel.append(icon("x"));
-  let searchInput: HTMLInputElement | null = null;
-  chipCancel.addEventListener("click", () => {
-    setWorkItemQuery(null);
-    searchInput?.focus();
-  });
-  chip.append(chipName, chipCancel);
   const searchBox = document.createElement("div");
   searchBox.className = "workitems-search-box";
-  searchBox.append(chip, queryPick);
-  const queryNote = document.createElement("p");
-  queryNote.className = "workitems-query-note";
-  /** 依目前的查詢與條件：查詢的標示、和預設不同的條件用強調色、有條件時才有清除按鈕。 */
+  /** 依目前的條件：和預設不同的條件用強調色、有條件時才有清除按鈕。 */
   const renderState = () => {
-    const q = workItemQuery;
-    chip.hidden = !q;
-    chipName.textContent = q ? t("查詢：{name}", { name: q.name }) : "";
-    chipName.title = q ? t("目前列出查詢「{name}」的結果（按一下換查詢或取消）", { name: q.name }) : "";
-    queryNote.hidden = !q;
-    queryNote.textContent = q ? t("目前列出查詢「{name}」的結果，下面的篩選條件暫時不套用。", { name: q.name }) : "";
     const set = [
       !(f.role === "assigned" && f.person === "@me"),
       f.state !== "open" || f.states.length > 0,
@@ -169,15 +64,10 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     ];
     // 和預設不一樣的條件，按鈕用強調色。
     [person, state, kind, project, area].forEach((m, i) => m.el.classList.toggle("chosen", set[i]));
-    const n = set.filter(Boolean).length + (q ? 1 : 0);
-    clear.hidden = !n;
+    clear.hidden = !set.some(Boolean);
   };
   const changed = () => {
     storage.save("workitem-filter", JSON.stringify(app.workItemFilter));
-    renderState();
-    void workItemsPanel?.refresh();
-  };
-  workItemFilterChanged = () => {
     renderState();
     void workItemsPanel?.refresh();
   };
@@ -343,10 +233,9 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
       })
       .catch(() => (loaded = false));
   };
-  /** 清掉全部條件與查詢，回到預設（指派給我、進行中）。 */
+  /** 清掉全部條件，回到預設（指派給我、進行中）。 */
   const resetAll = () => {
     clearTimeout(timer);
-    setWorkItemQuery(null, false);
     Object.assign(f, app.DEFAULT_WORK_ITEM_FILTER);
     person.value = ["assigned:@me"];
     name.hidden = true;
@@ -359,18 +248,15 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     changed();
   };
   // 專案在最上面一整列（區域、狀態都看選的專案），右邊是清掉全部條件的 ×；下面是人與區域（輸入名字的框在這列下面）、
-  // 類型與狀態，最後是搜尋框。正在用查詢時的說明放在最前面（「下面的篩選條件暫時不套用」）。
+  // 類型與狀態，最後是搜尋框。
   const top = document.createElement("div");
   top.className = "workitems-filter-top";
   top.append(project.el, clear);
-  bar.append(queryNote, top, person.el, area.el, name, kind.el, state.el, searchBox, people);
+  bar.append(top, person.el, area.el, name, kind.el, state.el, searchBox, people);
   renderState();
   return {
     filters: bar,
-    placeSearch: (input) => {
-      searchInput = input;
-      chip.after(input);
-    },
+    placeSearch: (input) => searchBox.append(input),
   };
 }
 
@@ -388,7 +274,7 @@ const WORK_ITEM_LIMIT = 100;
  * 不在清單上，組裡就會比上層項目實際的子項目少；另外依目前的搜尋與篩選讀上層底下的子項目補進組裡。
  */
 const workItemChildren = new Map<number, (AdoWorkItem & IssueSummary)[]>();
-/** 讀子項目用的搜尋與篩選；存的查詢、「只看這些」時是 null（不補）。 */
+/** 讀子項目用的搜尋與篩選；「只看這些」時是 null（不補）。 */
 let workItemChildScope: { search: string; filter: AdoWorkItemFilter } | null = null;
 /** 每次重新讀清單就換一代，舊的子項目結果不用。 */
 let workItemChildGen = 0;
@@ -829,19 +715,15 @@ export function initWorkItemsPanel(): void {
         list: async (search, update) => {
           app.loadWorkItemFilterOptions();
           // 「只看這些」：圖示上的數字算的那些（指派給你、新的或有更新的），不用再讀一次。
-          resetWorkItemChildren(onlyUnseen && !search ? null : workItemQuery ? null : { search, filter: { ...app.workItemFilter } });
+          resetWorkItemChildren(onlyUnseen && !search ? null : { search, filter: { ...app.workItemFilter } });
           if (onlyUnseen && !search) {
             const items = unseenItems();
             workItemListed = new Set(items.map((w) => w.id));
             return items.map(workItemRow);
           }
-          const q = workItemQuery;
           // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
-          const raw = q
-            ? await withOfflineCopy(`wi-query:${q.project}:${q.id}`, () => desktop!.adoQueryRun(q), update)
-            : await withOfflineCopy(`wi-list:${search}:${workItemFilterKey(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
-          const found = q ? keepFreshness(raw, filterQueryResult(raw, search)) : raw;
-          app.noteWorkItems(found, !q && !search && app.isDefaultFilter());
+          const found = await withOfflineCopy(`wi-list:${search}:${workItemFilterKey(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
+          app.noteWorkItems(found, !search && app.isDefaultFilter());
           workItemListed = new Set(found.map((w) => w.id));
           return keepFreshness(found, found.map(workItemRow));
         },
@@ -854,12 +736,6 @@ export function initWorkItemsPanel(): void {
             ? n
               ? t("{n} 個指派給你、新的或有更新的工作項目", { n })
               : t("指派給你的工作項目都看過了")
-            : workItemQuery
-            ? n
-              ? t("{n} 個結果：查詢「{name}」", { name: workItemQuery.name, n })
-              : search
-                ? t("查詢「{name}」的結果裡找不到符合的工作項目", { name: workItemQuery.name })
-                : t("查詢「{name}」沒有結果", { name: workItemQuery.name })
             : n
             ? search
               ? t("找到 {n} 個工作項目", { n })

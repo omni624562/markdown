@@ -54,7 +54,7 @@ export function markSeen(seen: SeenMap | null, item: Item): { seen: SeenMap; cha
 
 /**
  * 只留 `limit` 個：`keep`（目前指派給你的項目）一定留著，其餘留最近更新的。
- * 不能只看更新時間：搜尋、已儲存的查詢一次就記下上百個比較新的項目，會把指派給你、比較久沒更新的
+ * 不能只看更新時間：搜尋、篩選一次就記下上百個比較新的項目，會把指派給你、比較久沒更新的
  * 項目擠掉，下次檢查時它們又變成「新的」，圖示上的數字就一直消不掉。
  */
 export function trimSeen(seen: SeenMap, limit = SEEN_LIMIT, keep: ReadonlySet<number> = new Set()): SeenMap {

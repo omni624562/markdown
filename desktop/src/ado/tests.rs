@@ -144,39 +144,6 @@ fn same_server_compares_scheme_host_and_port() {
 }
 
 #[test]
-fn flattens_saved_queries() {
-    let v = serde_json::json!({ "value": [
-        { "id": "f1", "name": "My Queries", "path": "My Queries", "isFolder": true, "children": [
-            { "id": "q1", "name": "我的 Bug", "path": "My Queries/我的 Bug" }
-        ] },
-        { "id": "f2", "name": "Shared Queries", "path": "Shared Queries", "isFolder": true, "children": [
-            { "id": "f3", "name": "團隊", "path": "Shared Queries/團隊", "isFolder": true, "children": [
-                { "id": "q2", "name": "本週", "path": "Shared Queries/團隊/本週" }
-            ] }
-        ] }
-    ] });
-    let mut out = vec![];
-    flatten_queries("P", values(&v), &mut out);
-    assert_eq!(
-        out,
-        vec![
-            SavedQuery {
-                id: "q1".into(),
-                project: "P".into(),
-                name: "我的 Bug".into(),
-                folder: "My Queries".into()
-            },
-            SavedQuery {
-                id: "q2".into(),
-                project: "P".into(),
-                name: "本週".into(),
-                folder: "Shared Queries/團隊".into()
-            },
-        ]
-    );
-}
-
-#[test]
 fn reads_wiki_revisions() {
     let v = serde_json::json!({ "value": [
         { "commitId": "b2", "comment": " 更新 安裝.md \n", "author": { "name": "王小明", "date": "2026-10-28T02:42:00Z" } },
@@ -216,18 +183,6 @@ fn reads_work_item_parents() {
     ] });
     assert_eq!(parent_relation(&old), Some((7, 4)));
     assert_eq!(parent_relation(&serde_json::json!({ "id": 7 })), None);
-}
-
-#[test]
-fn reads_query_result_ids() {
-    let flat = serde_json::json!({ "workItems": [{ "id": 3 }, { "id": 1 }, { "id": 3 }] });
-    assert_eq!(query_ids(&flat), vec![3, 1]);
-    let tree = serde_json::json!({ "workItemRelations": [
-        { "target": { "id": 10 } },
-        { "source": { "id": 10 }, "target": { "id": 11 } }
-    ] });
-    assert_eq!(query_ids(&tree), vec![10, 11]);
-    assert!(query_ids(&serde_json::json!({})).is_empty());
 }
 
 #[test]

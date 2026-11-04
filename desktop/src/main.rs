@@ -364,8 +364,6 @@ fn main() {
             ado::ado_work_item_children,
             ado::ado_attachment_upload,
             ado::ado_work_item_history,
-            ado::ado_queries,
-            ado::ado_query_run,
             ado::ado_ping,
             ado::ado_check,
             ado::ado_team_members,
