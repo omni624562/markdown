@@ -1,5 +1,5 @@
 /**
- * 從圖示列或「顯示搜尋」「顯示標籤」指令打開搜尋、標籤面板時，游標直接在輸入框裡，可以馬上打字；
+ * 從圖示列或「在資料夾中搜尋」「顯示標籤」指令打開搜尋、標籤面板時，游標直接在輸入框裡，可以馬上打字；
  * 其他面板不動焦點，啟動時還原面板也不搶焦點。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -55,10 +55,10 @@ test("按圖示列的搜尋、標籤：游標直接在輸入框，馬上可以�
   await context.close();
 });
 
-test("「顯示搜尋」「顯示標籤」指令：游標直接在輸入框", async () => {
+test("「在資料夾中搜尋」「顯示標籤」指令：游標直接在輸入框", async () => {
   const { page, context, errors } = await open({ desktop: DESKTOP });
   await page.locator("#panel-files").waitFor();
-  await runCommand(page, "顯示搜尋");
+  await runCommand(page, "在資料夾中搜尋");
   await page.waitForFunction(() => document.activeElement?.id === "search-input");
   // 指令面板關掉之後焦點沒有被拿回去。
   await page.waitForTimeout(300);

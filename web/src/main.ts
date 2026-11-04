@@ -3627,8 +3627,8 @@ renderNow();
 renderTabs();
 persistSession();
 updateCursor(editor.view);
-// 第一次使用：圖示列旁邊短暫顯示每個圖示的名稱（畫面排好之後）。
-if (firstLaunch) window.setTimeout(() => showActivityLabels(), 800);
+// 第一次使用：圖示列旁邊短暫顯示每個圖示的名稱（畫面排好之後；側邊欄開著時留到之後啟動）。
+window.setTimeout(() => showActivityLabels(firstLaunch), 800);
 // 分頁關掉、專案移除後留下的草稿會一直佔著儲存空間：啟動一陣子後（分頁都存好了）清掉。
 setTimeout(() => dropOrphanDrafts(), 10_000);
 

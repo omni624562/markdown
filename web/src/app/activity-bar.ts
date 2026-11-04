@@ -15,6 +15,7 @@ import { basename, dirname, localImagePath } from "../paths.ts";
 import { richHtml, fileUrl as localFileUrl } from "../rich-copy.ts";
 import { saveDraft } from "../session.ts";
 import { type Settings, ACTIVITY_LIMIT } from "../settings.ts";
+import * as storage from "../storage.ts";
 import { type SlashItem, slashCompletion } from "../slash-complete.ts";
 import { type SvgImageOptions, standaloneSvg, svgDataUrl, svgToPng } from "../svg-image.ts";
 import { type Template, BUILTIN_TEMPLATES, fillTemplate, templateFileName, TEMPLATE_LIMITS } from "../templates.ts";
@@ -87,16 +88,32 @@ export function applyActivityLayout(): void {
   renderActivityCommands();
 }
 
+/** 圖示名稱還沒顯示成（第一次開啟時側邊欄開著）：之後啟動、側邊欄收起來時再顯示。 */
+const LABELS_PENDING = "activity-labels-pending";
+
+const sidebarOpen = () => app.$("#sidebar").getClientRects().length > 0;
+
 /**
- * 第一次開啟：在圖示列每個圖示旁邊短暫顯示名稱（圖示沒有文字，第一次用的人不知道是什麼），
- * 最下面提示按右鍵可以選要顯示的圖示。幾秒後、點任何地方或按任何鍵就收起來。
+ * 啟動時（畫面排好之後）：第一次使用，或之前還沒顯示成的，在圖示旁邊短暫顯示名稱。
+ * 只在側邊欄收起來時顯示（名稱落在內文邊上）；側邊欄開著時名稱會蓋住面板，先不顯示，留到之後啟動。
  */
-export function showActivityLabels(duration = 9000): void {
+export function showActivityLabels(firstLaunch: boolean): void {
+  if (!firstLaunch && storage.load(LABELS_PENDING) === null) return;
+  storage.save(LABELS_PENDING, "1");
+  if (!sidebarOpen() && renderActivityLabels()) storage.remove(LABELS_PENDING);
+}
+
+/**
+ * 在圖示列每個圖示旁邊短暫顯示名稱（圖示沒有文字，第一次用的人不知道是什麼），
+ * 最下面提示按右鍵可以選要顯示的圖示。幾秒後、點任何地方或按任何鍵就收起來。圖示列沒有顯示時回傳 false。
+ * 顯示時側邊欄才打開（例如啟動時資料夾比較晚開好）：名稱會蓋住面板，收起來，留到之後啟動。
+ */
+function renderActivityLabels(duration = 9000): boolean {
   const bar = app.$(".activity-bar");
   const shown = (el: HTMLElement) => el.getClientRects().length > 0;
-  if (!shown(bar) || document.querySelector(".activity-labels")) return;
+  if (!shown(bar) || document.querySelector(".activity-labels")) return false;
   const buttons = [...bar.querySelectorAll<HTMLElement>("#activity-project, .activity-tabs [role=tab], .activity-cmds button")].filter(shown);
-  if (!buttons.length) return;
+  if (!buttons.length) return false;
   const box = document.createElement("div");
   box.className = "activity-labels";
   // 只是看的提示：名稱已經在每個按鈕的 aria-label 裡。
@@ -121,6 +138,7 @@ export function showActivityLabels(duration = 9000): void {
   const stop = new AbortController();
   const close = () => {
     stop.abort();
+    watch.disconnect();
     clearTimeout(timer);
     box.classList.add("closing");
     window.setTimeout(() => box.remove(), 300);
@@ -128,6 +146,13 @@ export function showActivityLabels(duration = 9000): void {
   const timer = window.setTimeout(close, duration);
   for (const type of ["pointerdown", "keydown", "wheel"] as const) window.addEventListener(type, close, { capture: true, signal: stop.signal });
   window.addEventListener("resize", close, { signal: stop.signal });
+  const watch = new MutationObserver(() => {
+    if (!sidebarOpen()) return;
+    storage.save(LABELS_PENDING, "1");
+    close();
+  });
+  watch.observe(app.workspace, { attributes: true, attributeFilter: ["class"] });
+  return true;
 }
 
 /** 釘上去的指令按鈕。 */

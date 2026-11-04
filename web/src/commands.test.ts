@@ -116,6 +116,40 @@ test("自訂快速鍵：覆蓋、拿掉、還原內建的", () => {
   assert.equal(commands.get("paste-plain")!.shownKeys, "Mod-Shift-v");
 });
 
+test("同一個 id 只能登記一次：重複的不登記，主控台記一筆錯誤，不會出現兩個同名的指令", () => {
+  const commands = new Commands();
+  const cmd = (id: string) => ({ id, title: id, group: "g", run() {} });
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (msg: string) => logged.push(msg);
+  try {
+    commands.register(cmd("git-commit"), cmd("git-push"));
+    commands.register(cmd("git-commit"));
+    commands.register(cmd("a"), cmd("a"));
+  } finally {
+    console.error = original;
+  }
+  assert.equal(logged.length, 2);
+  assert.match(logged[0], /git-commit/);
+  assert.match(logged[1], /\ba\b/);
+  assert.deepEqual(
+    commands.all().map((c) => c.id),
+    ["git-commit", "git-push", "a"],
+  );
+});
+
+test("設定裡留著已經拿掉的指令的快速鍵：直接忽略，其他指令照常", () => {
+  const commands = new Commands();
+  const cmd = (id: string, keys?: string) => ({ id, title: id, group: "g", keys, run() {} });
+  commands.setBindings({ "customize-shortcuts": "Mod-Alt-k", "show-search": "", bold: "Mod-Shift-b" });
+  commands.register(cmd("bold", "Mod-b"), cmd("show-shortcuts", "F1"));
+  assert.equal(commands.get("customize-shortcuts"), undefined);
+  assert.equal(commands.get("bold")!.keys, "Mod-Shift-b");
+  assert.equal(commands.get("show-shortcuts")!.keys, "F1");
+  assert.equal(commands.match(ev("KeyK", { ctrlKey: true, altKey: true }, "k")), undefined);
+  assert.deepEqual(commands.usedBy("Mod-Alt-k"), []);
+});
+
 test("改快速鍵：跟內建一樣就不記，搶來的指令改成沒有快速鍵", () => {
   const defaults: Record<string, string | undefined> = { bold: "Mod-b", italic: "Mod-i", plain: undefined };
   const def = (id: string) => defaults[id];

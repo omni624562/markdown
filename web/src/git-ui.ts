@@ -83,6 +83,18 @@ function count(n: number): HTMLElement {
   return Object.assign(document.createElement("span"), { className: "git-count", textContent: String(n) });
 }
 
+/** 面板標題列上只有圖示的按鈕。 */
+function headButton(iconName: string, label: string, run: () => void): HTMLButtonElement {
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "btn icon-only";
+  el.title = label;
+  el.setAttribute("aria-label", label);
+  el.append(icon(iconName));
+  el.addEventListener("click", run);
+  return el;
+}
+
 export class GitPanel {
   #d: Desktop;
   #settings: SettingsStore;
@@ -104,9 +116,21 @@ export class GitPanel {
   #message: HTMLTextAreaElement;
   /** 這次合併中，每個衝突檔案「都採用遠端」的內容（重新開啟程式後就沒有了）。 */
   #theirs = new Map<string, string>();
+  /** 面板標題列的按鈕（和其他面板一樣放在標題旁邊）：Git 歷史、建立 PR、立刻檢查遠端。 */
+  #head: HTMLElement;
+  #historyButton: HTMLButtonElement;
+  #prButton: HTMLButtonElement;
+  #checkButton: HTMLButtonElement;
 
-  constructor(host: HTMLElement, d: Desktop, settings: SettingsStore, tree: FileTree, github: GitHub, hooks: GitPanelHooks) {
+  constructor(host: HTMLElement, head: HTMLElement, d: Desktop, settings: SettingsStore, tree: FileTree, github: GitHub, hooks: GitPanelHooks) {
     this.#host = host;
+    this.#head = head;
+    this.#historyButton = headButton("git-graph", t("Git 歷史（線圖）"), () => hooks.history());
+    this.#prButton = headButton("git-pull-request", t("建立 Pull Request"), () => hooks.createPr());
+    // 立刻向遠端檢查，比對本機和遠端差幾個提交（不合併、不動檔案）。
+    this.#checkButton = headButton("refresh-cw", t("立刻檢查遠端"), () => void this.#fetchRemote(true));
+    this.#checkButton.title = t("立刻檢查遠端（比對本機和遠端差幾個提交）");
+    head.append(this.#historyButton, this.#prButton, this.#checkButton);
     this.#github = github;
     this.#d = d;
     this.#settings = settings;
@@ -170,6 +194,8 @@ export class GitPanel {
   }
 
   async refresh(): Promise<void> {
+    // 先知道有沒有登入 GitHub，拉取、推送按鈕才不會在啟動時誤停用。
+    await this.#github.ready();
     if (!this.#hooks.root()) {
       this.#status = null;
     } else {
@@ -238,37 +264,43 @@ export class GitPanel {
     }
     const b = s.branch;
     const changes = s.changes;
+    // 遠端在 GitHub 但還沒登入：拉取、推送一定失敗，先停用，提示先登入（「提交」不需要登入）。
+    const signIn = this.#needsSignIn(s);
 
-    // 分支與同步按鈕
+    // 標題列的按鈕
+    this.#head.hidden = false;
+    this.#historyButton.disabled = this.#busy;
+    this.#prButton.hidden = !s.remote;
+    this.#prButton.disabled = this.#busy;
+    this.#checkButton.disabled = this.#busy || this.#fetching || !b?.upstream || s.merging;
+    this.#checkButton.classList.toggle("spinning", this.#fetching);
+
+    // 分支與同步按鈕（排成一列）
     const branch = document.createElement("div");
     branch.className = "git-branch";
     const info = document.createElement("button");
     info.type = "button";
     info.className = "git-info";
-    info.title = b?.upstream
+    const branchName = b?.name ?? t("（未知分支）");
+    const tracking = b?.upstream
       ? t("追蹤 {upstream}；按一下切換或建立分支", { upstream: b.upstream })
       : t("這個分支還沒有設定遠端；按一下切換或建立分支");
+    // 第一行是完整的分支名稱（面板窄時名稱會截斷）。
+    info.title = [branchName, tracking].join("\n");
     info.disabled = this.#busy || s.merging;
     info.addEventListener("click", () => this.#hooks.switchBranch());
-    info.append(icon("git-branch"), Object.assign(document.createElement("strong"), { textContent: b?.name ?? t("（未知分支）") }));
+    info.append(icon("git-branch"), Object.assign(document.createElement("strong"), { textContent: branchName }));
     const sync = document.createElement("div");
     sync.className = "git-sync";
-    const pr = this.#button("", "git-pull-request", async () => this.#hooks.createPr());
-    pr.title = t("建立 Pull Request");
-    pr.setAttribute("aria-label", t("建立 Pull Request"));
-    const history = this.#button("", "git-graph", async () => this.#hooks.history());
-    history.title = t("Git 歷史（線圖）");
-    history.setAttribute("aria-label", t("Git 歷史（線圖）"));
-    // 立刻向遠端檢查，比對本機和遠端差幾個提交（不合併、不動檔案）。
-    const check = this.#button("", "refresh-cw", () => this.#fetchRemote(true));
-    check.title = t("立刻檢查遠端（比對本機和遠端差幾個提交）");
-    check.setAttribute("aria-label", t("立刻檢查遠端"));
-    check.disabled ||= this.#fetching || !b?.upstream || s.merging;
-    check.classList.toggle("spinning", this.#fetching);
     // 拉取、推送按鈕上顯示和遠端差幾個提交。
     const pull = this.#button(t("拉取"), "arrow-down-to-line", () => this.pull());
     const push = this.#button(t("推送"), "arrow-up-from-line", () => this.push());
-    if (b?.upstream) {
+    if (signIn) {
+      for (const el of [pull, push]) {
+        el.disabled = true;
+        el.title = t("登入 GitHub 才能拉取與推送。");
+      }
+    } else if (b?.upstream) {
       if (b.behind) pull.append(count(b.behind));
       if (b.ahead) push.append(count(b.ahead));
       const checked = this.#fetchError
@@ -280,7 +312,7 @@ export class GitPanel {
       pull.title = `${incoming}\n${checked}`;
       push.title = b.ahead ? t("{n} 個提交還沒推送", { n: b.ahead }) : t("沒有要推送的提交");
     }
-    sync.append(history, check, pull, push, ...(s.remote ? [pr] : []));
+    sync.append(pull, push);
     branch.append(info, sync);
 
     // 提交
@@ -293,9 +325,13 @@ export class GitPanel {
     actions.className = "git-actions";
     const commit = this.#button(t("提交"), "git-commit-horizontal", () => this.commit(false));
     const commitPush = this.#button(t("提交並推送"), "arrow-up-from-line", () => this.commit(true));
-    commitPush.classList.add("btn-primary");
     for (const el of [commit, commitPush]) el.disabled = this.#busy || !changes.length || s.merging;
     commit.title = t("提交（Ctrl+Enter）");
+    if (signIn) {
+      commitPush.disabled = true;
+      commitPush.title = t("登入 GitHub 才能推送；可以先按「提交」，登入後再推送。");
+    }
+    (signIn ? commit : commitPush).classList.add("btn-primary");
     actions.append(commit, commitPush);
 
     // 變更清單
@@ -359,6 +395,7 @@ export class GitPanel {
 
   /** 還沒有開啟資料夾，或資料夾還不是 Git 儲存庫：引導用 GitHub 同步。 */
   #renderSetup(): void {
+    this.#head.hidden = true;
     const root = this.#hooks.root();
     const box = document.createElement("div");
     box.className = "git-setup";
@@ -415,19 +452,23 @@ export class GitPanel {
       );
       return box;
     }
-    if (/^https:\/\/github\.com\//i.test(s.remote) && !this.#github.account) {
+    if (this.#needsSignIn(s)) {
       const box = document.createElement("div");
       box.className = "git-hint";
-      box.append(
-        Object.assign(document.createElement("span"), { textContent: t("登入 GitHub 才能拉取與推送。") }),
-        this.#button(t("用 GitHub 登入"), "shield-check", async () => {
-          await this.#github.login();
-          this.#render();
-        }),
-      );
+      const login = this.#button(t("用 GitHub 登入"), "shield-check", async () => {
+        await this.#github.login();
+        this.#render();
+      });
+      login.classList.add("btn-primary");
+      box.append(Object.assign(document.createElement("span"), { textContent: t("登入 GitHub 才能拉取與推送。") }), login);
       return box;
     }
     return null;
+  }
+
+  /** 遠端在 GitHub、還沒登入：拉取與推送都會失敗。 */
+  #needsSignIn(s: GitStatus): boolean {
+    return !!s.remote && /^https:\/\/github\.com\//i.test(s.remote) && !this.#github.account;
   }
 
   #button(label: string, iconName: string, run: () => Promise<void>): HTMLButtonElement {
