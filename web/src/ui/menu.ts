@@ -62,6 +62,36 @@ function newMenu(): HTMLDivElement {
  * 下拉選單：用原生 Popover API（點外面、按 Esc 自動關閉），
  * 項目直接取自指令中心，名稱與快速鍵和指令面板一致。
  */
+/** 項目名稱前面的圖示（記下名稱，連續相同的只畫第一個）。 */
+function leadIcon(name: string): SVGElement {
+  const el = icon(name);
+  el.dataset.icon = name;
+  return el;
+}
+
+/**
+ * 連續幾項用同一個圖示（例如分頁選單的關閉分頁、關閉其他分頁、關閉所有分頁……）時只在第一項畫，
+ * 後面的換成一樣寬的空白，文字照樣對齊；分隔線之後重新算。
+ */
+export function hideRepeatedIcons(items: readonly HTMLElement[]): void {
+  let prev: string | null = null;
+  for (const el of items) {
+    if (el.classList.contains("menu-sep")) {
+      prev = null;
+      continue;
+    }
+    const lead = el.firstElementChild instanceof SVGElement ? el.firstElementChild : null;
+    const name = lead?.dataset.icon ?? null;
+    if (lead && name && name === prev) {
+      const blank = document.createElement("span");
+      blank.className = "icon menu-icon-blank";
+      blank.setAttribute("aria-hidden", "true");
+      lead.replaceWith(blank);
+    }
+    prev = name;
+  }
+}
+
 export function setupMenu(button: HTMLButtonElement, commands: Commands | null, entries: MenuEntry[]): HTMLDivElement {
   const root = newMenu();
   root.id = `${button.id || "menu"}-popover`;
@@ -96,7 +126,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
         const checked = cmd.checked?.();
         item.role = checked === undefined ? "menuitem" : "menuitemradio";
         if (checked !== undefined) item.setAttribute("aria-checked", String(checked));
-        if (cmd.icon) item.append(icon(cmd.icon));
+        if (cmd.icon) item.append(leadIcon(cmd.icon));
         item.append(Object.assign(document.createElement("span"), { textContent: menuTitle(cmd.title, parent) }));
         const keys = cmd.keys ?? cmd.shownKeys;
         if (keys) item.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys(keys) }));
@@ -117,7 +147,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
         item.setAttribute("aria-haspopup", "menu");
         item.setAttribute("aria-expanded", "false");
         item.classList.add("has-submenu");
-        if (entry.icon) item.append(icon(entry.icon));
+        if (entry.icon) item.append(leadIcon(entry.icon));
         item.append(Object.assign(document.createElement("span"), { textContent: entry.label }), icon("chevron-right"));
         const open = (focusFirst: boolean) => {
           clearTimeout(hoverTimer);
@@ -164,7 +194,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
         const checked = entry.checked?.();
         item.role = checked === undefined ? "menuitem" : "menuitemradio";
         if (checked !== undefined) item.setAttribute("aria-checked", String(checked));
-        if (entry.icon) item.append(icon(entry.icon));
+        if (entry.icon) item.append(leadIcon(entry.icon));
         item.append(Object.assign(document.createElement("span"), { textContent: entry.label }));
         if (checked) item.append(icon("check"));
         item.addEventListener("click", () => {
@@ -186,6 +216,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
       shown.push(el);
     }
     if (shown.length && isSep(shown[shown.length - 1])) shown.pop();
+    hideRepeatedIcons(shown);
     // 子選單（已經放進 menu）留在最後面。
     menu.prepend(...shown);
   };
