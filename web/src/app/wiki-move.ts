@@ -6,7 +6,7 @@
 import { type AdoWiki, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { toast } from "../ui/toast.ts";
-import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
+import { isWikiShortcut } from "../wiki-shortcuts.ts";
 import { movedPaths, relinkText } from "../wiki-relink.ts";
 import { childPagePath, flattenPages, pageLinkResolver, pageName, wikiTitleProblem } from "../wiki-text.ts";
 import { siblingsOf } from "../wiki-order.ts";
@@ -232,8 +232,8 @@ export async function moveWikiPage(wiki: AdoWiki, path: string, to?: WikiMoveTar
   await desktop!.adoWikiMove(wiki, path, newPath, index);
   const moved = movedPaths(prep.pages, path, newPath);
   // 左側圖示列的捷徑換到新位置；開著的分頁關掉，開著的那一頁在新位置重新開。
-  if (barShortcuts.some((s) => !isWorkItemShortcut(s) && s.wiki === wiki.id && moved.has(s.path))) {
-    setBarShortcuts(barShortcuts.map((s) => (!isWorkItemShortcut(s) && s.wiki === wiki.id && moved.has(s.path) ? { ...s, path: moved.get(s.path)! } : s)));
+  if (barShortcuts.some((s) => isWikiShortcut(s) && s.wiki === wiki.id && moved.has(s.path))) {
+    setBarShortcuts(barShortcuts.map((s) => (isWikiShortcut(s) && s.wiki === wiki.id && moved.has(s.path) ? { ...s, path: moved.get(s.path)! } : s)));
   }
   const showing = app.issueView.isOpen && app.wikiPage?.wiki.id === wiki.id ? moved.get(app.wikiPage.path) : undefined;
   closeItemsWhere((key) => {

@@ -16,6 +16,8 @@ test("讀回存下的分頁", () => {
     { key: "ado:1", name: "重複", origin: "ado", ref: { workItem: 1, kind: "Bug", title: "x" } },
     { key: "github:3", name: "不能還原", origin: "github", ref: { workItem: 3, kind: "Bug", title: "x" } },
     { key: "ado:4", name: "壞的", origin: "ado", ref: { workItem: -4 } },
+    // 檔案捷徑不是項目分頁（檔案開成文件的分頁）。
+    { key: "wiki:w:/x", name: "檔案", origin: "wiki", ref: { file: "D:\\筆記\\週報.md" } },
     "x",
   ]);
   assert.deepEqual(parseSavedItemTabs(raw), [

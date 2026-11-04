@@ -390,25 +390,27 @@ pub async fn open_file(
     Ok(Some(opened))
 }
 
-/// 重新開啟先前開過的檔案（還原分頁、最近開啟）。只允許信任清單裡的路徑。
+/// 前端可以用路徑開啟的檔案：這次開過的、信任清單（最近開啟、左側圖示列的捷徑）裡的，
+/// 或目前開啟的資料夾裡的文件。工作區的判斷要讀取磁碟（解析符號連結後的實際路徑），請在背景執行。
+fn may_reopen(app: &AppHandle, path: &Path) -> bool {
+    app.state::<KnownFiles>().contains(path)
+        || app.state::<Trust>().allows(path)
+        || (crate::workspace::is_editable_doc(path)
+            && app.state::<crate::workspace::Workspace>().contains(path))
+}
+
+/// 重新開啟先前開過的檔案（還原分頁、最近開啟、左側圖示列的捷徑）。只允許信任清單裡的路徑。
 #[tauri::command]
 pub async fn reopen_file(
     app: AppHandle,
     path: String,
-    known: State<'_, KnownFiles>,
     trust: State<'_, Trust>,
 ) -> Result<OpenedFile, String> {
     let path = PathBuf::from(path);
-    let known_file = known.contains(&path);
     let app2 = app.clone();
     let p = path.clone();
     let opened = crate::io::blocking(move || {
-        // 信任清單與工作區的判斷需要讀取磁碟（解析符號連結後的實際路徑），也放在背景執行。
-        let allowed = known_file
-            || app2.state::<Trust>().allows(&p)
-            || (crate::workspace::is_editable_doc(&p)
-                && app2.state::<crate::workspace::Workspace>().contains(&p));
-        if !allowed {
+        if !may_reopen(&app2, &p) {
             return Err(tr!(
                 "這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。"
             ));
@@ -418,6 +420,19 @@ pub async fn reopen_file(
     .await?;
     trust.add_file(&app, &path);
     Ok(opened)
+}
+
+/// 左側圖示列上的檔案捷徑（前端的清單改變時送整份）：記在信任清單，之後就算很久沒開、
+/// 被擠出「最近開啟」，按捷徑也開得了。新加的只接受目前就能開啟的檔案（`may_reopen`）。
+#[tauri::command]
+pub async fn set_file_shortcuts(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
+    let paths: Vec<PathBuf> = paths.into_iter().take(64).map(PathBuf::from).collect();
+    crate::io::blocking(move || {
+        app.state::<Trust>()
+            .set_shortcuts(&app, paths, |p| may_reopen(&app, p));
+        Ok(())
+    })
+    .await
 }
 
 /// 在背景執行緒讀取檔案（網路磁碟斷線時不會卡住介面）。

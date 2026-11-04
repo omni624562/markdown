@@ -19,6 +19,10 @@ export interface FileTreeHandlers {
   remote?(): boolean;
   /** 從電腦拖曳檔案到資料夾（只有遠端資料夾會用到）。 */
   dropFiles?(dir: string, files: File[]): void;
+  /** 右鍵選單最後多加的項目（例如「放到左側圖示列」）；`when` 回傳 false 時不列出。 */
+  menuItems?(entry: Entry): { label: string; when?: () => boolean; run(): void }[];
+  /** 拖曳檔案或資料夾時帶的資料（例如拖到左側圖示列變成捷徑）；null 表示不能拖。 */
+  dragData?(entry: Entry): Record<string, string> | null;
 }
 
 const MENU: { action: TreeAction; label: string; dirOnly?: boolean; fileOnly?: boolean; remote?: boolean; key?: string }[] = [
@@ -49,6 +53,17 @@ export class FileTree {
     el.role = "tree";
     el.addEventListener("keydown", (e) => this.#onKey(e));
     this.#setupDrop();
+    // 拖曳檔案（例如拖到左側圖示列）：資料由 `dragData` 決定，沒有就不能拖。
+    el.addEventListener("dragstart", (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>(".tree-row");
+      const data = row && e.dataTransfer ? this.#handlers.dragData?.(this.#entryOf(row)) : null;
+      if (!data) {
+        e.preventDefault();
+        return;
+      }
+      e.dataTransfer!.effectAllowed = "copy";
+      for (const [type, value] of Object.entries(data)) e.dataTransfer!.setData(type, value);
+    });
 
     this.#menu = document.createElement("div");
     this.#menu.className = "menu";
@@ -108,6 +123,11 @@ export class FileTree {
 
   get root(): Entry | null {
     return this.#root;
+  }
+
+  /** 建立之後再加上的功能（各自的模組加上去，例如左側圖示列的檔案捷徑）。 */
+  extend(more: Pick<FileTreeHandlers, "menuItems" | "dragData">): void {
+    this.#handlers = { ...this.#handlers, ...more };
   }
 
   /** 換一個工作區（null 代表沒有開啟資料夾）；`expanded` 是要展開的資料夾（上次的狀態）。 */
@@ -301,6 +321,7 @@ export class FileTree {
     row.dataset.dir = entry.isDir ? "1" : "";
     row.title = entry.detail ? `${displayPath(entry.path)}\n${entry.detail}` : displayPath(entry.path);
     row.style.setProperty("--level", String(level));
+    row.draggable = !!this.#handlers.dragData?.(entry);
     if (entry.isDir) {
       row.setAttribute("aria-expanded", String(this.#expanded.has(entry.path)));
       row.append(icon("chevron-right"), icon("folder"));
@@ -419,13 +440,17 @@ export class FileTree {
   }
 
   #showMenu(entry: Entry, x: number, y: number): void {
-    this.#menu.replaceChildren(
+    const remote = !!this.#handlers.remote?.();
+    const items: { label: string; key?: string; run(): void }[] = [
       ...MENU.filter((m) => {
-        const remote = !!this.#handlers.remote?.();
         if ((m.dirOnly && !entry.isDir) || (m.fileOnly && entry.isDir)) return false;
         // 遠端資料夾才能上傳、下載；遠端的檔案不在這台電腦上，不能在檔案總管中顯示。
         return m.remote ? remote : !(remote && m.action === "reveal");
-      }).map((m) => {
+      }).map((m) => ({ label: m.label, key: m.key, run: () => this.#handlers.action(m.action, entry) })),
+      ...(this.#handlers.menuItems?.(entry) ?? []).filter((m) => m.when?.() ?? true),
+    ];
+    this.#menu.replaceChildren(
+      ...items.map((m) => {
         const b = document.createElement("button");
         b.type = "button";
         b.role = "menuitem";
@@ -433,7 +458,7 @@ export class FileTree {
         if (m.key) b.append(Object.assign(document.createElement("kbd"), { textContent: m.key }));
         b.addEventListener("click", () => {
           this.#menu.hidePopover();
-          this.#handlers.action(m.action, entry);
+          m.run();
         });
         return b;
       }),

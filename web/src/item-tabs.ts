@@ -4,7 +4,7 @@
  */
 
 import { kindKey } from "./work-item-colors.ts";
-import { type Shortcut, isWorkItemShortcut, toShortcut } from "./wiki-shortcuts.ts";
+import { type ItemShortcut, isFileShortcut, isWorkItemShortcut, toShortcut } from "./wiki-shortcuts.ts";
 
 /** 關掉 `closing` 之後切到哪一個分頁：右邊那一個，最右邊時改左邊；沒有其他分頁時回傳 null。 */
 export function neighborAfterClose(ids: readonly string[], closing: string): string | null {
@@ -75,7 +75,7 @@ export interface SavedItemTab {
   title: string;
   /** 來源（`ado`、`wiki`），決定圖示。 */
   origin: "ado" | "wiki";
-  ref: Shortcut;
+  ref: ItemShortcut;
   /** 接在哪個文件分頁後面（null 是一般分頁的最前面）。 */
   after: string | null;
   pinned: boolean;
@@ -99,7 +99,7 @@ export function parseSavedItemTabs(raw: string | null): SavedItemTab[] {
     if (!x || typeof x !== "object") continue;
     const o = x as Record<string, unknown>;
     const ref = toShortcut(o.ref);
-    if (!ref || typeof o.key !== "string" || typeof o.name !== "string" || (o.origin !== "ado" && o.origin !== "wiki")) continue;
+    if (!ref || isFileShortcut(ref) || typeof o.key !== "string" || typeof o.name !== "string" || (o.origin !== "ado" && o.origin !== "wiki")) continue;
     if (out.some((t) => t.key === o.key)) continue;
     const pinned = o.pinned === true;
     out.push({
@@ -119,7 +119,7 @@ export function parseSavedItemTabs(raw: string | null): SavedItemTab[] {
  * 項目分頁上顯示的字：工作項目名稱前面加編號、圖示用類型的顏色（`kind` 是 `kindKey`）；
  * Wiki 頁面的滑鼠提示是完整位置（Wiki › 上層 › 頁面），和文件分頁提示完整路徑一樣。
  */
-export function itemTabText(name: string, title: string, ref: Shortcut | null): { name: string; title: string; kind?: string } {
+export function itemTabText(name: string, title: string, ref: ItemShortcut | null): { name: string; title: string; kind?: string } {
   if (!ref) return { name, title };
   if (isWorkItemShortcut(ref)) return { name: `${ref.workItem} ${name}`, title, kind: kindKey(ref.kind) };
   const where = [ref.wikiName, ...ref.path.split("/").filter(Boolean)].filter(Boolean);

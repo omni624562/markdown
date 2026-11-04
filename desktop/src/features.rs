@@ -114,6 +114,7 @@ mod tests {
         "window_control",
         "open_file",
         "reopen_file",
+        "set_file_shortcuts",
         "save_file",
         "export_binary",
         "import_docx",

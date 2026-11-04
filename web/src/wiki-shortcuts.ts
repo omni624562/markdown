@@ -1,7 +1,8 @@
 /**
- * 左側圖示列上的捷徑：常看的 Wiki 頁面、工作項目（例如 User Story、Feature）放到圖示列，點一下開啟。
- * 這裡只有資料的處理（讀寫、去重、顯示的字與顏色），畫面在 main.ts。
+ * 左側圖示列上的捷徑：常看的 Wiki 頁面、工作項目（例如 User Story、Feature）、本機的文字檔放到圖示列，點一下開啟。
+ * 這裡只有資料的處理（讀寫、去重、顯示的字與顏色），畫面在 app/work-items-panel.ts 與 app/file-shortcuts.ts。
  */
+import { basename, isAbsolutePath } from "./paths.ts";
 
 export interface WikiShortcut {
   /** Wiki 的 id。 */
@@ -21,16 +22,44 @@ export interface WorkItemShortcut {
   title: string;
 }
 
-export type Shortcut = WikiShortcut | WorkItemShortcut;
+export interface FileShortcut {
+  /** 本機檔案的完整路徑，例如 `D:\筆記\MENO.txt`（SSH、WebDAV 等遠端資料夾的檔案不行）。 */
+  file: string;
+}
+
+/** 在項目分頁開啟的捷徑（Wiki 頁面、工作項目）。 */
+export type ItemShortcut = WikiShortcut | WorkItemShortcut;
+export type Shortcut = ItemShortcut | FileShortcut;
 
 /** 圖示列最多放幾個捷徑。 */
 export const SHORTCUT_LIMIT = 12;
 
-/** 拖曳 Wiki 頁面、工作項目時帶的資料型別（放到圖示列上變成捷徑）。 */
+/** 拖曳 Wiki 頁面、工作項目、檔案時帶的資料型別（放到圖示列上變成捷徑）。 */
 export const SHORTCUT_DRAG_TYPE = "application/x-omarker-shortcut";
 
 export function isWorkItemShortcut(s: Shortcut): s is WorkItemShortcut {
   return "workItem" in s;
+}
+
+export function isWikiShortcut(s: Shortcut): s is WikiShortcut {
+  return "wiki" in s;
+}
+
+export function isFileShortcut(s: Shortcut): s is FileShortcut {
+  return "file" in s;
+}
+
+/** 路徑最長幾個字（Windows 的長路徑上限）。 */
+const MAX_PATH = 32767;
+
+/**
+ * 可以放到圖示列的檔案路徑：本機的絕對路徑（`C:\…`、`\\nas\…`、`/home/…`），有檔名、沒有 `..`、沒有控制字元。
+ * SSH、WebDAV 的遠端路徑（`ssh://…`、`webdav://…`）、相對路徑都不行。
+ */
+export function isShortcutFile(path: string): boolean {
+  if (!path || path.length > MAX_PATH || !isAbsolutePath(path) || /[\u0000-\u001f]/.test(path)) return false;
+  const parts = path.split(/[\\/]/);
+  return !parts.includes("..") && !!basename(path);
 }
 
 /** 檢查格式並只留需要的欄位；格式不對回傳 null。 */
@@ -41,6 +70,8 @@ export function toShortcut(v: unknown): Shortcut | null {
     if (!Number.isInteger(o.workItem) || o.workItem <= 0 || typeof o.kind !== "string" || typeof o.title !== "string") return null;
     return { workItem: o.workItem, kind: o.kind, title: o.title };
   }
+  // 本機檔案：有 `file` 就一定要是可以開啟的本機路徑（不會被當成 Wiki 頁面）。
+  if ("file" in o) return typeof o.file === "string" && isShortcutFile(o.file) ? { file: o.file } : null;
   const wikiName = o.wikiName ?? "";
   if (typeof o.wiki !== "string" || typeof o.path !== "string" || !o.path.startsWith("/") || typeof wikiName !== "string") return null;
   return { wiki: o.wiki, wikiName, path: o.path };
@@ -61,7 +92,7 @@ export function parseShortcuts(raw: string | null): Shortcut[] {
   }
 }
 
-/** 讀取拖曳帶過來的 Wiki 頁面或工作項目；都不是時回傳 null。 */
+/** 讀取拖曳帶過來的 Wiki 頁面、工作項目或檔案；都不是時回傳 null。 */
 export function parseDraggedShortcut(raw: string): Shortcut | null {
   try {
     return toShortcut(JSON.parse(raw));
@@ -72,6 +103,7 @@ export function parseDraggedShortcut(raw: string): Shortcut | null {
 
 export function sameShortcut(a: Shortcut, b: Shortcut): boolean {
   if (isWorkItemShortcut(a) || isWorkItemShortcut(b)) return isWorkItemShortcut(a) && isWorkItemShortcut(b) && a.workItem === b.workItem;
+  if (isFileShortcut(a) || isFileShortcut(b)) return isFileShortcut(a) && isFileShortcut(b) && a.file === b.file;
   return a.wiki === b.wiki && a.path === b.path;
 }
 
@@ -111,6 +143,22 @@ export function shortcutInitial(name: string): string {
   const two = chars.slice(0, 2);
   if (two.length > 1 && CJK.test(two[1])) two.pop();
   return two[0].toUpperCase() + (two[1] ?? "");
+}
+
+/** 檔案捷徑圖示上的字：取檔名（不含副檔名），例如「MENO.txt」是「ME」、「週報.md」是「週」。 */
+export function fileInitial(path: string): string {
+  const name = basename(path);
+  const dot = name.lastIndexOf(".");
+  return shortcutInitial(dot > 0 ? name.slice(0, dot) : name);
+}
+
+/** 檔案捷徑右下角的副檔名（小寫，最多 4 個字；`.markdown`、`.mdown`、`.mkd` 都寫成 `md`）；沒有副檔名時是空字串。 */
+export function fileExtension(path: string): string {
+  const name = basename(path);
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return "";
+  const ext = name.slice(dot + 1).toLowerCase();
+  return ["markdown", "mdown", "mkd"].includes(ext) ? "md" : [...ext].slice(0, 4).join("");
 }
 
 /** 依頁面決定圖示的色相（0–359），同一頁每次都一樣。 */

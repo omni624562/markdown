@@ -14,7 +14,7 @@ import type { IssueSource } from "../ui/issue-view.ts";
 import { openLightbox } from "../ui/lightbox.ts";
 import { toast } from "../ui/toast.ts";
 import { recentEditor } from "../wiki-coedit.ts";
-import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
+import { isWikiShortcut } from "../wiki-shortcuts.ts";
 import { wikiPageLink, pageName, flattenPages } from "../wiki-text.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
@@ -278,7 +278,7 @@ export async function deleteWikiPage(wiki: AdoWiki, path: string): Promise<void>
     const [kind, id, ...rest] = key.split(":");
     return kind === "wiki" && id === wiki.id && inside(rest.join(":"));
   });
-  const left = barShortcuts.filter((s) => isWorkItemShortcut(s) || !(s.wiki === wiki.id && inside(s.path)));
+  const left = barShortcuts.filter((s) => !isWikiShortcut(s) || !(s.wiki === wiki.id && inside(s.path)));
   if (left.length !== barShortcuts.length) setBarShortcuts(left);
   forgetListCopies("wiki");
   void wikiPanel?.refresh();

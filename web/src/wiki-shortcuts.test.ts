@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { migratePinned, parseDraggedShortcut, parseShortcuts, placeShortcut, sameShortcut, SHORTCUT_LIMIT, shortcutHue, shortcutInitial } from "./wiki-shortcuts.ts";
+import {
+  fileExtension,
+  fileInitial,
+  isFileShortcut,
+  isWikiShortcut,
+  isWorkItemShortcut,
+  migratePinned,
+  parseDraggedShortcut,
+  parseShortcuts,
+  placeShortcut,
+  sameShortcut,
+  SHORTCUT_LIMIT,
+  shortcutHue,
+  shortcutInitial,
+  toShortcut,
+} from "./wiki-shortcuts.ts";
 
 const s = (path: string, wiki = "w1") => ({ wiki, wikiName: "", path });
 
@@ -73,4 +88,74 @@ test("捷徑圖示的顏色：同一頁每次一樣", () => {
   assert.equal(shortcutHue("w1:/A"), shortcutHue("w1:/A"));
   assert.ok(shortcutHue("w1:/A") >= 0 && shortcutHue("w1:/A") < 360);
   assert.notEqual(shortcutHue("w1:/A"), shortcutHue("w1:/B"));
+});
+
+const f = (file: string) => ({ file });
+const MENO = "D:\\Tools\\Notepad++\\MENO.txt";
+
+test("捷徑：本機檔案只收這台電腦上的絕對路徑", () => {
+  const list = parseShortcuts(
+    JSON.stringify([
+      f(MENO),
+      f("/home/u/筆記/週報.md"),
+      f("\\\\nas\\共用\\README-v6.5.0.md"),
+      // 多的欄位拿掉。
+      { file: "C:/筆記/a.md", extra: 1 },
+      // SSH、WebDAV 的遠端檔案不行。
+      f("ssh://cd34/筆記/a.md"),
+      f("webdav://ab12/週報.md"),
+      // 相對路徑、資料夾、往上一層、控制字元、空字串、不是字串都不行。
+      f("筆記\\相對.md"),
+      f("D:\\筆記\\"),
+      f("D:\\筆記\\..\\秘密.txt"),
+      f("/home/u/../秘密.txt"),
+      f("D:\\a\u0000.md"),
+      f(""),
+      { file: 42 },
+      // 有 `file` 但格式不對：不會被當成 Wiki 頁面。
+      { file: null, wiki: "w1", path: "/A" },
+    ]),
+  );
+  assert.deepEqual(list, [f(MENO), f("/home/u/筆記/週報.md"), f("\\\\nas\\共用\\README-v6.5.0.md"), f("C:/筆記/a.md")]);
+  assert.deepEqual(toShortcut({ file: MENO, wiki: "w1", path: "/A" }), f(MENO));
+  assert.equal(toShortcut({ file: "D:\\" + "長".repeat(40000) + ".md" }), null);
+  assert.ok(isFileShortcut(list[0]) && !isWikiShortcut(list[0]) && !isWorkItemShortcut(list[0]));
+});
+
+test("捷徑：拖曳帶過來的檔案", () => {
+  assert.deepEqual(parseDraggedShortcut(JSON.stringify(f(MENO))), f(MENO));
+  assert.equal(parseDraggedShortcut(JSON.stringify(f("ssh://cd34/a.md"))), null);
+  assert.equal(parseDraggedShortcut(JSON.stringify({ file: ["D:\\a.md"] })), null);
+});
+
+test("捷徑：檔案、Wiki 頁面、工作項目放在同一列，一起算上限", () => {
+  const list = parseShortcuts(JSON.stringify([s("/A"), f(MENO), w(7)]));
+  assert.deepEqual(list, [s("/A"), f(MENO), w(7)]);
+  assert.ok(sameShortcut(f(MENO), f(MENO)));
+  assert.ok(!sameShortcut(f(MENO), f("D:\\Tools\\Notepad++\\別的.txt")));
+  assert.ok(!sameShortcut(f(MENO), s("/A")));
+  assert.ok(!sameShortcut(s("/A"), f(MENO)));
+  assert.ok(!sameShortcut(f(MENO), w(7)));
+  // 已經有的檔案只會移位置，不會重複。
+  assert.deepEqual(placeShortcut(list, f(MENO), 0), [f(MENO), s("/A"), w(7)]);
+  const full = [...Array.from({ length: SHORTCUT_LIMIT - 1 }, (_, i) => s(`/${i}`)), f(MENO)];
+  assert.equal(placeShortcut(full, f("D:\\筆記\\週報.md")), null);
+  assert.equal(placeShortcut(full, f(MENO), 0)?.length, SHORTCUT_LIMIT);
+  // 讀取時也只留前 SHORTCUT_LIMIT 個。
+  const many = Array.from({ length: SHORTCUT_LIMIT + 3 }, (_, i) => f(`D:\\筆記\\${i}.md`));
+  assert.equal(parseShortcuts(JSON.stringify(many)).length, SHORTCUT_LIMIT);
+});
+
+test("檔案捷徑圖示上的字與副檔名", () => {
+  assert.equal(fileInitial(MENO), "ME");
+  assert.equal(fileInitial("D:\\筆記\\週報.md"), "週");
+  assert.equal(fileInitial("/home/u/README-v6.5.0.md"), "RE");
+  assert.equal(fileInitial("/home/u/.env"), "En");
+  assert.equal(fileExtension(MENO), "txt");
+  assert.equal(fileExtension("D:\\筆記\\週報.MD"), "md");
+  assert.equal(fileExtension("/home/u/README-v6.5.0.md"), "md");
+  assert.equal(fileExtension("/home/u/說明.markdown"), "md");
+  assert.equal(fileExtension("/home/u/a.properties"), "prop");
+  assert.equal(fileExtension("/home/u/Makefile"), "");
+  assert.equal(fileExtension("/home/u/.env"), "");
 });
