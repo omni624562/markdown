@@ -65,6 +65,10 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["card", t("卡片")],
     ["underline", t("底線")],
   ],
+  panelStyle: [
+    ["joined", t("相連（原本）")],
+    ["spaced", t("圓角區塊、留間隔")],
+  ],
   docLineHeight: [
     ["compact", t("緊湊")],
     ["normal", t("標準")],
@@ -195,6 +199,11 @@ const LAYOUT_GROUPS: Group[] = [
         key: "tabStyle",
         label: t("分頁樣式"),
         hint: t("目前的分頁怎麼標示：頂端一條線、和內文接在一起的卡片，或底下一條線"),
+      },
+      {
+        key: "panelStyle",
+        label: t("區塊樣式"),
+        hint: t("側邊欄、編輯區、右側欄連在一起，或各自是圓角的區塊、中間留一點間隔（視窗很窄時一律相連）"),
       },
       { key: "fixedToolbar", label: t("固定顯示格式工具列"), hint: t("關閉時，選取文字才會浮出格式按鈕") },
       { key: "outlineRight", label: t("大綱放在右邊"), hint: t("視窗夠寬時，大綱固定在內文右邊，目前的章節會亮起來") },

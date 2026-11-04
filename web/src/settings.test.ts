@@ -136,3 +136,11 @@ test("分頁樣式：預設是原本的頂端線；只接受三種樣式", () =>
   assert.equal(bad.settings.tabStyle, "line");
   assert.equal(bad.problems, 1);
 });
+
+test("區塊樣式：預設是原本的相連；只接受相連與圓角區塊兩種", () => {
+  assert.equal(DEFAULTS.panelStyle, "joined");
+  assert.equal(sanitize({ panelStyle: "spaced" }).settings.panelStyle, "spaced");
+  const bad = sanitize({ panelStyle: "floating" });
+  assert.equal(bad.settings.panelStyle, "joined");
+  assert.equal(bad.problems, 1);
+});

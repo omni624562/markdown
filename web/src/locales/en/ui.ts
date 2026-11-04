@@ -910,4 +910,8 @@ export const ui: Record<string, Translation> = {
   "目前的分頁怎麼標示：頂端一條線、和內文接在一起的卡片，或底下一條線": "How the current tab is marked: a line on top, a card joined to the document, or a line underneath",
   "頂端一條線（原本）": "Line on top (original)",
   "卡片": "Card",
+  "區塊樣式": "Panel Style",
+  "側邊欄、編輯區、右側欄連在一起，或各自是圓角的區塊、中間留一點間隔（視窗很窄時一律相連）": "Whether the sidebar, editor and right sidebar are joined, or separate rounded panels with a small gap between them (always joined in a narrow window)",
+  "相連（原本）": "Joined (original)",
+  "圓角區塊、留間隔": "Rounded, with gaps",
 };
