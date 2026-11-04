@@ -18,11 +18,16 @@ export interface IssueSummary {
   kind?: string;
   /** 狀態：顯示在小字右邊，前面的圓點顏色依狀態（新的、進行中、已解決、完成、移除）。 */
   state?: string;
+  /** 小字後面另外標的一段（例如依區域分組時，項目所在的子區域「監控」）與它的滑鼠提示（沒給時是 `note`）。 */
+  note?: string;
+  noteTitle?: string;
 }
 
 /** 清單的一組（分組時有標題）。 */
 export interface IssueGroup<T> {
   title: string | null;
+  /** 收合用的識別（標題可能重複時給，例如區域的名稱和「其他」一樣）；沒給時用標題。 */
+  key?: string;
   items: T[];
   /** 樹狀（例如依上層項目分組的 Epic → Feature → Story → Task）：畫在 `items` 前面。 */
   tree?: IssueTreeNode<T>[];
@@ -418,7 +423,7 @@ export class IssuesPanel<T extends IssueSummary> {
         this.#treeRows(group.tree, 0, prefix, rows);
       }
       if (group.title !== null) {
-        const key = `${prefix}${group.title}`;
+        const key = `${prefix}${group.key ?? group.title}`;
         this.#groupKeys.push(key);
         const open = !this.#collapsed.has(key);
         const li = document.createElement("li");
@@ -520,6 +525,7 @@ export class IssuesPanel<T extends IssueSummary> {
     const top = document.createElement("span");
     top.className = "workitem-meta";
     top.append(Object.assign(document.createElement("span"), { className: "workitem-meta-text", textContent: item.meta }));
+    if (item.note) top.append(Object.assign(document.createElement("span"), { className: "workitem-note", textContent: item.note, title: item.noteTitle ?? item.note }));
     if (item.state) {
       const state = document.createElement("span");
       state.className = "workitem-state";
@@ -598,7 +604,7 @@ export class IssuesPanel<T extends IssueSummary> {
       const groups = arrangement?.arrange(this.#items) ?? [];
       const keys: string[] = [];
       const group = groups.find((g) => g.items.some((it) => it.id === id));
-      if (group && group.title !== null) keys.push(`${arrangement?.id}:${group.title}`);
+      if (group && group.title !== null) keys.push(`${arrangement?.id}:${group.key ?? group.title}`);
       // 樹狀：展開它所有的上層。
       const path = (nodes: IssueTreeNode<T>[]): string[] | null => {
         for (const n of nodes) {

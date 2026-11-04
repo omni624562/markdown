@@ -2312,6 +2312,12 @@ button.git-info:disabled { cursor: default; }
 .workitem:hover, .workitem:focus-visible { background: var(--active-line); }
 .workitem-meta { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; margin: 0; color: var(--muted); font-size: 11.5px; }
 .workitem-meta-text { min-width: 0; }
+/* 小字後面另外標的一段（依區域分組時項目所在的子區域，例如 ITA 那一組裡的「監控」）：淡淡的底色，和編號、日期分得開。 */
+.workitem-note { min-width: 0; max-width: 100%; overflow: hidden; padding: 0 5px; border-radius: 4px; background: color-mix(in srgb, var(--fg) 7%, transparent); white-space: nowrap; text-overflow: ellipsis; }
+/* 有子區域標籤的那一行不換行：放不下時標籤先縮成「…」（字比較寬的電腦上狀態也不會被擠到下一行）。 */
+.workitem-meta:has(> .workitem-note) { flex-wrap: nowrap; }
+.workitem-meta:has(> .workitem-note) > .workitem-meta-text, .workitem-meta:has(> .workitem-note) > .workitem-state { flex: none; }
+.workitem-meta > .workitem-note { flex: 0 1 auto; }
 /* 狀態放在小字右邊，圓點顏色和工作項目內容上方的狀態一樣。 */
 .workitem-state { margin-left: auto; white-space: nowrap; }
 .workitem-state .ado-state-dot { width: 7px; height: 7px; margin-right: 4px; vertical-align: 0; }

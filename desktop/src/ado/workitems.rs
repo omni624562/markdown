@@ -15,6 +15,8 @@ pub struct WorkItem {
     pub(super) changed: Option<String>,
     /// 優先順序（1 最高）；流程範本沒有這個欄位時是空的。
     pub(super) priority: Option<u64>,
+    /// 區域（例如「產品\前端」）：清單「依區域分組」與內容上方的專案與區域都用這個。
+    pub(super) area: Option<String>,
     pub(super) web_url: String,
 }
 
@@ -26,8 +28,7 @@ pub struct WorkItemDetail {
     pub(super) created_by: Option<String>,
     /// 狀態的原因（例如 Fixed、Moved to the backlog）。
     pub(super) reason: Option<String>,
-    /// 區域與反覆項目（例如「產品\前端」「產品\Sprint 3」）。
-    pub(super) area: Option<String>,
+    /// 反覆項目（例如「產品\Sprint 3」）；區域在 `item` 裡（清單也要用）。
     pub(super) iteration: Option<String>,
     pub(super) tags: Vec<String>,
     /// 說明（HTML，前端轉成 Markdown 顯示）。
@@ -164,7 +165,7 @@ pub(super) const CLOSED_STATES: &[&str] = &[
     "關閉",   // i18n-ignore
     "完成",   // i18n-ignore
 ];
-pub(super) const FIELDS: &str = "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.AssignedTo,System.ChangedDate";
+pub(super) const FIELDS: &str = "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.AssignedTo,System.ChangedDate,System.AreaPath";
 /// 優先順序欄位（清單排序用）；自訂的流程範本可能沒有。
 pub(super) const PRIORITY: &str = "Microsoft.VSTS.Common.Priority";
 
@@ -382,6 +383,7 @@ pub(super) fn item_of(base: &str, v: &Value) -> Option<WorkItem> {
             .and_then(Value::as_str)
             .map(str::to_string),
         priority: field(v, PRIORITY).and_then(Value::as_u64),
+        area: Some(field_str(v, "System.AreaPath")).filter(|a| !a.trim().is_empty()),
     })
 }
 
