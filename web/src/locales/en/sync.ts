@@ -61,6 +61,7 @@ export const sync: Record<string, Translation> = {
   "還沒有登入 GitHub": "Not signed in to GitHub",
   "這個儲存庫還沒有連到 GitHub。": "This repository isn't connected to GitHub yet.",
   "登入 GitHub 才能拉取與推送。": "Sign in to GitHub to pull and push.",
+  "登入 GitHub 才能推送；可以先按「提交」，登入後再推送。": "Sign in to GitHub to push. You can commit now and push after signing in.",
   "{label}：{error}": "{label}: {error}",
   "Git：{message}": "Git: {message}",
   "合併失敗": "Merge failed",
