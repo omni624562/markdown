@@ -523,6 +523,27 @@ kbd {
   [data-panel-style="spaced"] .splitter::before { inset: 0 calc(50% - 0.5px); }
   [data-panel-style="spaced"] .splitter:is(:hover, :focus-visible)::before,
   [data-panel-style="spaced"] body.resizing .splitter::before { inset: 0 2px; }
+  /* 狀態列：檢視切換左邊的那幾項包成一整條圓條，和檢視切換一樣的樣子。 */
+  [data-panel-style="spaced"] .status-items {
+    display: flex;
+    flex: 0 1 auto;
+    gap: 16px;
+    align-items: center;
+    min-width: 0;
+    min-height: 28px;
+    padding: 0 12px;
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--fg) 6%, transparent);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  /* 終端機面板：也是圓角區塊，左右和上面的區塊對齊。終端機（另一個視窗，一定是直角）放在內距裡面，
+     直角藏在圓角裡（terminal-proxy.ts 依面板的框線與內距算位置）。Linux 的終端機排在主畫面下方，這裡只是把手，不變。 */
+  [data-panel-style="spaced"] .terminal-panel:not(.stacked) {
+    margin: 0 var(--panel-gap) var(--panel-gap) var(--activity-width);
+    padding: 4px;
+    border: 1px solid var(--panel-line);
+    border-radius: var(--panel-radius);
+  }
   /* 調整側邊欄寬度的把手在間隔的正中間。 */
   [data-panel-style="spaced"] .sidebar-resizer.left { left: calc(var(--activity-width) + var(--outline-width) - var(--panel-gap) / 2 - 3.5px); }
   [data-panel-style="spaced"] .sidebar-resizer.right { right: calc(var(--outline-right-width) + var(--panel-gap) / 2 - 3.5px); }
@@ -998,15 +1019,17 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .save-state .icon { display: none; }
 /* 放不下時（視窗窄、下載更新的進度很長）：只有文字長的項目縮小、用「…」截斷，不會把字數擠出視窗左邊；
  * 檢視切換、字數與圖示按鈕不縮。 */
-.statusbar > * { flex-shrink: 0; }
-.statusbar > :is(#status-update, #doc-kind, #status-save, .status-view) { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 檢視切換左邊的那幾項包在 .status-items 裡：平常不另外成一個框（display: contents），和直接排在狀態列上一樣。 */
+.status-items { display: contents; }
+.statusbar > *, .status-items > * { flex-shrink: 0; }
+.status-items > :is(#status-update, #doc-kind, #status-save, .status-view) { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :is(#doc-kind, #status-save) > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 視窗窄時：項目之間靠近一點，存檔狀態與終端機只留圖示（完整的文字在 aria-label 與滑鼠提示）。 */
 @media (max-width: 720px) {
   .statusbar { gap: 10px; padding-inline: 10px; }
   .save-state .icon { display: block; }
   .save-state-label, .status-terminal span { display: none; }
-  .statusbar > #status-save { flex-shrink: 0; }
+  .status-items > #status-save { flex-shrink: 0; }
 }
 
 /* ---- 下拉選單（Popover） ---- */
