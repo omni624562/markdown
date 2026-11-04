@@ -2273,6 +2273,12 @@ button.git-info:disabled { cursor: default; }
  */
 .workitems-child { --tree-line: linear-gradient(var(--border), var(--border)); padding-left: calc(var(--indent) + 24px); background-repeat: no-repeat; background-size: 2px 100%; }
 .workitems-child.workitems-group-card { padding-left: var(--indent); }
+/*
+ * 最上層沒有子項目的列：空出箭頭（22px）和間距（2px），和旁邊可以展開的卡片對齊；
+ * 上面一樣有分隔線（和卡片相同的規則），不會看起來像上一張收起來的卡片的一部分。
+ */
+.workitems-tree-leaf { margin-top: 8px; padding-top: 8px; padding-left: 24px; border-top: 1px solid var(--border); }
+.workitems-list > .workitems-tree-leaf:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .workitems-child[data-depth="1"] { --indent: 12px; background-image: var(--tree-line); background-position: 10px 0; }
 .workitems-child[data-depth="2"] { --indent: 24px; background-image: var(--tree-line), var(--tree-line); background-position: 10px 0, 22px 0; }
 .workitems-child[data-depth="3"] { --indent: 36px; background-image: var(--tree-line), var(--tree-line), var(--tree-line); background-position: 10px 0, 22px 0, 34px 0; }
@@ -2284,8 +2290,8 @@ button.git-info:disabled { cursor: default; }
  */
 .workitems-group-tree ~ .workitems-group-tree { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
 /* 組裡的上層與上層之間用虛線，和組與組之間的實線分得開（不會看成另一個沒有標題的組）。 */
-.workitems-group-tree ~ .workitems-group-card:not(.workitems-child) { border-top-style: dashed; }
-.workitems-group + .workitems-group-card { margin-top: 0; padding-top: 0; border-top: 0; }
+.workitems-group-tree ~ .workitems-group-card:not(.workitems-child), .workitems-group-tree ~ .workitems-tree-leaf { border-top-style: dashed; }
+.workitems-group + .workitems-group-card, .workitems-group + .workitems-tree-leaf { margin-top: 0; padding-top: 0; border-top: 0; }
 .workitems-child .workitem-meta:has(> .workitem-note), .workitems-group-card .workitem-meta:has(> .workitem-note) { flex-wrap: wrap; }
 .workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
 .workitems-searchrow .workitems-search { flex: 1; min-width: 0; }

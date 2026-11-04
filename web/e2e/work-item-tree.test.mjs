@@ -94,8 +94,12 @@ test("樹狀：一路讀到最上層，每一項只出現一次；不在清單�
   const lefts = await page
     .locator("#workitems-host .workitems-list > li:not(.workitems-group) .workitem")
     .evaluateAll((bs) => bs.map((b) => Math.round(b.getBoundingClientRect().left - b.closest("ul").getBoundingClientRect().left)));
-  const [root, f, s10, t1, t2, s20, t3] = lefts;
+  const [root, f, s10, t1, t2, s20, t3, bug] = lefts;
   assert.deepEqual([f - root, s10 - f, t1 - s10, t2 - t1, s20 - f, t3 - s20], [12, 12, 12, 0, 12, 12], `內容的位置：${lefts}`);
+  // 最上層沒有子項目的「修錯字」和旁邊可以展開的「數位訂單」對齊（空出箭頭的位置），上面一樣有分隔線。
+  assert.equal(bug, root, `最上層沒有子項目的列要和可以展開的卡片對齊：${lefts}`);
+  const line = await page.locator("#workitems-host .workitems-list > li", { hasText: "修錯字" }).evaluate((li) => getComputedStyle(li).borderTopStyle);
+  assert.equal(line, "solid");
   // 往上讀了三次：清單上的、上層（Story 10、Feature 100）、最上層（Epic 1000）。
   const asked = (await calls(page)).filter((c) => c.cmd === "ado_work_item_parents").map((c) => [...c.args.ids].sort((a, b) => a - b));
   assert.deepEqual(asked, [[1, 2, 3, 4, 20], [10, 100], [1000]]);
