@@ -392,7 +392,7 @@ pub async fn open_file(
 
 /// 前端可以用路徑開啟的檔案：這次開過的、信任清單（最近開啟、左側圖示列的捷徑）裡的，
 /// 或目前開啟的資料夾裡的文件。工作區的判斷要讀取磁碟（解析符號連結後的實際路徑），請在背景執行。
-fn may_reopen(app: &AppHandle, path: &Path) -> bool {
+pub(crate) fn may_reopen(app: &AppHandle, path: &Path) -> bool {
     app.state::<KnownFiles>().contains(path)
         || app.state::<Trust>().allows(path)
         || (crate::workspace::is_editable_doc(path)
