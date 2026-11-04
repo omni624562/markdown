@@ -2349,12 +2349,6 @@ button.git-info:disabled { cursor: default; }
 .wiki-new svg { flex: none; width: 15px; height: 15px; }
 .wiki-quick { margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .wiki-quick[hidden] { display: none; }
-/* Wiki 篩選：只顯示勾選的最上層頁面。 */
-.wiki-hidden-note { margin: 6px 6px 0; color: var(--muted); font-size: 12px; }
-.wiki-hidden-note[hidden] { display: none; }
-.wiki-hidden-show { padding: 0 2px; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
-.wiki-hidden-show:hover { text-decoration: underline; }
-.wiki-hidden-show:disabled { color: var(--subtle); text-decoration: none; cursor: default; }
 /* 「只看這裡」：樹狀目錄上方的資料夾名稱與「返回整個 Wiki」。 */
 .wiki-root { display: flex; gap: 6px; align-items: center; margin: 0 0 4px; padding: 4px 4px 6px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
 .wiki-root[hidden] { display: none; }

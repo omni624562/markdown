@@ -664,7 +664,6 @@ export const ui: Record<string, Translation> = {
   "oMarker 在背景或縮小時，有新的工作項目指派給你就跳出 Windows 通知，點一下就開啟它": "When oMarker is in the background or minimized, show a Windows notification when a work item is newly assigned to you. Click it to open the item.",
   "修改紀錄": "History",
   "修改紀錄：誰、什麼時候改了這一頁，改了什麼": "History: who changed this page, when, and what they changed",
-  "已隱藏 {n} 個最上層頁面": ["{n} top-level page hidden", "{n} top-level pages hidden"],
   "篩選：已隱藏 {n} 個最上層頁面": ["Filter: {n} top-level page hidden", "Filter: {n} top-level pages hidden"],
   "篩選：只顯示勾選的最上層頁面": "Filter: show only the top-level pages you check",
   "顯示哪些最上層頁面": "Top-level pages to show",
