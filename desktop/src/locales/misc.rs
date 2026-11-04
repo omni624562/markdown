@@ -3,11 +3,11 @@
 pub static EN: &[(&str, &str)] = &[
     ("找不到這個版本", "Couldn't find this version."),
     (
-        "無法查看這個檔案的版本記錄",
+        "無法查看這個檔案的版本紀錄",
         "Can't view the version history of this file.",
     ),
     (
-        "找不到版本記錄資料夾",
+        "找不到版本紀錄資料夾",
         "Couldn't find the version history folder.",
     ),
     ("無法讀取版本：{e}", "Couldn't read the version: {e}"),
@@ -54,7 +54,6 @@ pub static EN: &[(&str, &str)] = &[
     ("HTTP 不會加密，個人存取權杖可能被看到，只能用在公司內部網路的伺服器。請改用 https:// 開頭的網址", "HTTP isn't encrypted, so your personal access token could be seen. It's only allowed for servers on your company network. Use a URL starting with https:// instead."),
     ("請先在設定開啟「啟用 AI 協作」", "Turn on \"Enable AI Collaboration\" in Settings first."),
     ("Git 與 GitHub", "Git and GitHub"),
-    ("Azure DevOps／TFS", "Azure DevOps/TFS"),
     ("遠端資料夾（WebDAV、SSH）", "Remote folders (WebDAV, SSH)"),
     ("「{name}」已在設定關閉，要使用請先到設定開啟。", "\"{name}\" is turned off in Settings. Turn it on there to use it."),
     ("啟用 AI 協作", "Enable AI Collaboration"),

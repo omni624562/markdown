@@ -29,7 +29,7 @@ impl Feature {
     fn name(self) -> String {
         match self {
             Feature::Git => tr!("Git 與 GitHub"),
-            Feature::Ado => tr!("Azure DevOps／TFS"),
+            Feature::Ado => "Azure DevOps".to_string(),
             Feature::Remote => tr!("遠端資料夾（WebDAV、SSH）"),
         }
     }

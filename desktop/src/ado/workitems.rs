@@ -1582,7 +1582,7 @@ pub async fn ado_work_item_history(
             &a.url,
             &pat,
             &format!("/_apis/wit/workItems/{id}/updates?$top=200"),
-            &tr!("讀取修改記錄"),
+            &tr!("讀取修改紀錄"),
         )?;
         Ok(work_item_revisions(&res))
     })

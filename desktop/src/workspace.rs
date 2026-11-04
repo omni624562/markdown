@@ -571,7 +571,7 @@ pub async fn rename_entry(
 fn rename_entry_now(app: &AppHandle, path: &str, new_name: &str) -> Result<String, String> {
     let root = app.state::<Workspace>().require_root()?;
     let from = resolve_inside(&root, Path::new(path))?;
-    check_entry(&root, &from, &tr!("不能重新命名工作區資料夾本身"))?;
+    check_entry(&root, &from, &tr!("不能重新命名專案資料夾本身"))?;
     let to = from
         .parent()
         .ok_or_else(|| tr!("路徑無效"))?
@@ -594,7 +594,7 @@ pub async fn trash_entry(app: AppHandle, path: String) -> Result<(), String> {
     crate::io::blocking(move || {
         let root = app.state::<Workspace>().require_root()?;
         let path = resolve_inside(&root, Path::new(&path))?;
-        check_entry(&root, &path, &tr!("不能刪除工作區資料夾本身"))?;
+        check_entry(&root, &path, &tr!("不能刪除專案資料夾本身"))?;
         // 網路磁碟上的檔案通常沒有資源回收筒，系統會回報錯誤。
         trash::delete(&path).map_err(|e| tr!("無法移到資源回收筒：{e}", e = e))?;
         app.state::<Trust>().remove(&app, &path);

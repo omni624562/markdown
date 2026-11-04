@@ -14,7 +14,7 @@ pub static EN: &[(&str, &str)] = &[
     ("這個網址不是資料夾", "This URL isn't a folder."),
     ("這個網址不是 WebDAV 伺服器（請確認 NAS 已開啟 WebDAV 服務與連接埠）", "This URL isn't a WebDAV server (make sure the WebDAV service and port are enabled on the NAS)."),
     ("無法連線", "Couldn't connect"),
-    ("無法儲存「{name}」", "Couldn't save \"{name}\""),
+    ("無法存檔「{name}」", "Couldn't save \"{name}\""),
     ("不能重新命名遠端資料夾本身", "You can't rename the remote folder itself."),
     ("不能刪除遠端資料夾本身", "You can't delete the remote folder itself."),
     ("無法刪除", "Couldn't delete"),

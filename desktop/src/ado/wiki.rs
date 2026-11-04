@@ -516,7 +516,7 @@ pub async fn ado_wiki_history(
 ) -> Result<WikiHistory, String> {
     let (a, pat) = require(&app)?;
     crate::io::blocking_for(TIMEOUT, move || {
-        let what = tr!("讀取 Wiki 頁面的修改記錄");
+        let what = tr!("讀取 Wiki 頁面的修改紀錄");
         let api = wiki_pages_path(&project_id, &wiki_id, &path, None);
         let page = read(
             crate::update::agent()

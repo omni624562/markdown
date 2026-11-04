@@ -797,14 +797,14 @@ pub async fn dav_write(
                     Ok(etag) => Ok(Ok((etag, None))),
                     Err(DavError::Changed) => match session.client.get(&rel).await {
                         Ok((bytes, _)) => Ok(Err(decode(&bytes).0)),
-                        Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
+                        Err(e) => Err(e.message(&tr!("無法存檔「{name}」", name = name_of(&rel)))),
                     },
-                    Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
+                    Err(e) => Err(e.message(&tr!("無法存檔「{name}」", name = name_of(&rel)))),
                 },
                 // 讀不到遠端的版本（例如網路不穩）：回報錯誤，不要拿空白的內容當成「伺服器版本」。
-                Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
+                Err(e) => Err(e.message(&tr!("無法存檔「{name}」", name = name_of(&rel)))),
             },
-            Err(e) => Err(e.message(&tr!("無法儲存「{name}」", name = name_of(&rel)))),
+            Err(e) => Err(e.message(&tr!("無法存檔「{name}」", name = name_of(&rel)))),
         }
     })
     .await?;

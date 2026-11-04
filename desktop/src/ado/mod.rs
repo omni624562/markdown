@@ -213,7 +213,7 @@ fn read_with_etag(
             Ok((v, etag))
         }
         Err(ureq::Error::StatusCode(401)) => Err(tr!(
-            "{what}失敗：個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖",
+            "{what}失敗：個人存取權杖無效或已過期，請到設定的 Azure DevOps 頁更新權杖",
             what = what
         )),
         Err(ureq::Error::StatusCode(403)) => Err(tr!("{what}失敗：沒有權限", what = what)),
@@ -436,5 +436,5 @@ pub fn ado_disconnect(app: AppHandle) {
 }
 
 fn require(app: &AppHandle) -> Result<(Account, String), String> {
-    connection(app).ok_or_else(|| tr!("請先到設定的 Azure DevOps／TFS 頁連線"))
+    connection(app).ok_or_else(|| tr!("請先到設定的 Azure DevOps 頁連線"))
 }
