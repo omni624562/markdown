@@ -31,6 +31,7 @@ import type { Doc, SidePanel } from "../main.ts";
 import { app } from "./context.ts";
 import { boardPanelShown } from "./taskboard.ts";
 import { docName } from "./doc-names.ts";
+import { sectionCollapsed, setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -114,6 +115,7 @@ async function renderBacklinks(): Promise<void> {
   if (seq !== backlinksSeq) return;
   el.hidden = false;
   el.replaceChildren();
+  showBacklinksCount(list.length);
   const h = document.createElement("h3");
   h.textContent = list.length ? t("反向連結（{n}）", { n: list.length }) : t("反向連結");
   el.append(h);
@@ -238,6 +240,7 @@ export function placeOutline(): void {
     panel.hidden = app.sidePanel !== "outline";
   }
   placeWiki(right);
+  syncRightSections();
   right.hidden = !rightColumnOn();
 }
 
@@ -301,12 +304,15 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
   pendingPanel = panel === requested ? null : requested;
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
   if (panel === "outline" && outlinePlacedRight()) {
+    // 要看大綱（指令、快速鍵）：右側欄的大綱收合著時展開；啟動時還原等自動的切換不動使用者收合的分區。
+    if (reveal) setSectionCollapsed("outline", false);
     if (!app.rightOutlineShown) setRightOutline(true);
     else app.updateActiveHeading();
     return;
   }
   // Wiki 在右側時一直顯示（右側欄收起來時打開），不用切換左邊的側邊欄。
   if (panel === "wiki" && wikiPlacedRight()) {
+    if (reveal) setSectionCollapsed("wiki", false);
     if (!app.rightOutlineShown) setRightOutline(true);
     wikiPanel?.shown();
     return;
@@ -791,9 +797,11 @@ export function initWorkspaceUi(): void {
     // 和 VS Code 一樣：再按一次目前的圖示會收起側邊欄。
     tab.addEventListener("click", () => {
       const panel = tab.dataset.panel as SidePanel;
-      // Wiki 在右側欄：按一下打開或收起右側欄（和面板圖示再按一次收起來一樣）。
-      if (panel === "wiki" && wikiPlacedRight() && app.rightOutlineShown) setRightOutline(false);
-      else if (panel === app.sidePanel && app.outlineShown) app.setOutline(false);
+      // Wiki 在右側欄：按一下打開或收起右側欄（和面板圖示再按一次收起來一樣）；Wiki 那一區收合著時先展開。
+      if (panel === "wiki" && wikiPlacedRight() && app.rightOutlineShown) {
+        if (sectionCollapsed("wiki")) setSectionCollapsed("wiki", false);
+        else setRightOutline(false);
+      } else if (panel === app.sidePanel && app.outlineShown) app.setOutline(false);
       else showPanel(panel, true, true);
     });
   }

@@ -284,6 +284,8 @@ export const ui: Record<string, Translation> = {
   "拖曳調整寬度（雙擊恢復）": "Drag to resize (double-click to reset)",
   "調整側邊欄寬度（方向鍵調整，雙擊恢復）": "Resize Sidebar (arrow keys to adjust, double-click to reset)",
   "調整編輯區與預覽的寬度（方向鍵調整，雙擊恢復）": "Resize editor and Preview (arrow keys to adjust, double-click to reset)",
+  "拖曳調整高度（雙擊恢復）": "Drag to resize (double-click to reset)",
+  "調整大綱與 Wiki 的高度（方向鍵調整，雙擊恢復）": "Resize Outline and Wiki (arrow keys to adjust, double-click to reset)",
   "簡報": "Presentation",
   "上一頁": "Previous Slide",
   "上一頁（←）": "Previous Slide (←)",
