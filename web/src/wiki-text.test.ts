@@ -125,10 +125,10 @@ test("修改紀錄的說明：自動產生的英文說明換成簡短的說法�
 });
 
 test("頁面在不在樹狀目錄的範圍裡：範圍頁面本身與底下的子頁面才算；沒有範圍就是整個 Wiki", () => {
-  const scope = ["/專案需求對焦專區", "/ITA專區"];
+  const scope = ["/專案需求對焦專區", "/IRIS專區"];
   assert.equal(inPageScope("/專案需求對焦專區", scope), true);
-  assert.equal(inPageScope("/ITA專區/部署流程/檢查表", scope), true);
+  assert.equal(inPageScope("/IRIS專區/部署流程/檢查表", scope), true);
   assert.equal(inPageScope("/上線列車/2026年/1127上線", scope), false, "藏起來的最上層頁面");
-  assert.equal(inPageScope("/ITA專區2", scope), false, "名稱開頭相同的別的頁面");
+  assert.equal(inPageScope("/IRIS專區2", scope), false, "名稱開頭相同的別的頁面");
   assert.equal(inPageScope("/上線列車", null), true);
 });
