@@ -1300,7 +1300,7 @@ function editorOptions(): EditorOptions {
         ignored: () => new Set(settings.value.termIgnore),
         ignore: (word) => {
           settings.update({ termIgnore: [...settings.value.termIgnore, word].slice(-TERM_IGNORE_LIMIT) });
-          toast(t("不再提示「{word}」。之後可以在指令面板執行「清除不再提示的詞」恢復。", { word }));
+          toast(t("不再提示「{word}」。之後可以在指令面板執行「{command}」恢復。", { word, command: commands.title("clear-term-ignore") }));
         },
       }),
       spellcheck({
@@ -1310,7 +1310,7 @@ function editorOptions(): EditorOptions {
         ignore: (word) => {
           const lower = word.toLowerCase();
           settings.update({ spellIgnore: [...settings.value.spellIgnore.filter((w) => w !== lower), lower].slice(-SPELL_IGNORE_LIMIT) });
-          toast(t("已把「{word}」加入字典。之後可以在指令面板執行「拼字檢查：清除個人字典」恢復。", { word }));
+          toast(t("已把「{word}」加入字典。之後可以在指令面板執行「{command}」恢復。", { word, command: commands.title("clear-spell-ignore") }));
         },
       }),
       linkCompletion(
@@ -3384,14 +3384,14 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     icon: "download",
     items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich", "-", "import-docx"],
   },
-  { label: t("文件工具"), icon: "wand-sparkles", items: ["doc-stats", "history", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
+  { label: t("文件工具"), icon: "wand-sparkles", items: ["doc-stats", "history", "save-as-template", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
   "-",
   { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
   { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark", "-", "choose-palette"] },
   {
     label: t("說明"),
     icon: "circle-help",
-    items: ["show-shortcuts", "show-welcome", "show-changelog", "-", "check-update", "report-issue", "-", "about"],
+    items: ["show-shortcuts", "show-welcome", "show-changelog", "-", "check-update", "report-issue", "copy-error-log", "-", "about"],
   },
   "palette",
   "settings",

@@ -625,14 +625,14 @@ export const ui: Record<string, Translation> = {
   "診斷資料": "Diagnostics",
   "把伺服器對常用請求的實際回應存成檔案（人名、信箱、標題與內容會拿掉），回報問題時附上": "Save the server's actual responses to common requests to a file (names, email addresses, titles and content are removed) to attach when reporting a problem",
   "儲存…": "Save…",
-  "發生錯誤：{error}。可以用「說明：複製錯誤紀錄」把細節貼給開發者。": "Something went wrong: {error}. Use “Help: Copy error log” to send the details to the developers.",
+  "發生錯誤：{error}。可以用「{command}」把細節貼給開發者。": "Something went wrong: {error}. Use “{command}” to send the details to the developers.",
   "目前沒有錯誤紀錄": "No errors have been logged",
   "已複製 {n} 筆錯誤紀錄": "Copied {n} error log entries",
   "無法複製到剪貼簿：{error}": "Couldn't copy to the clipboard: {error}",
   "未處理的錯誤": "Unhandled error",
   "說明：複製錯誤紀錄": "Help: Copy error log",
   "操作": "Action",
-  "畫面有一部分沒辦法顯示（{error}），內容照常顯示。可以用「說明：複製錯誤紀錄」回報。": "Part of this view couldn't be shown ({error}); the content is still shown. Use “Help: Copy error log” to report it.",
+  "畫面有一部分沒辦法顯示（{error}），內容照常顯示。可以用「{command}」回報。": "Part of this view couldn't be shown ({error}); the content is still shown. Use “{command}” to report it.",
   "指派給你、還沒結束的工作項目裡，有 {n} 個是新的或看過之後有更新（別人的、已結束的不算）":
     "{n} of the open work items assigned to you are new or updated since you last looked (other people's and closed items don't count)",
   "只列出新的或有更新的（{n}）": "Showing only new or updated items ({n})",
@@ -654,7 +654,7 @@ export const ui: Record<string, Translation> = {
   "目前離線，連上 Azure DevOps 之後才能拖曳改狀態": "You're offline; connect to Azure DevOps to drag cards to another state",
   "（{time} 的資料，更新中…）": "(data from {time}, updating…)",
   "連不上伺服器，顯示 {time} 存下的資料。": "Couldn't reach the server; showing data saved at {time}.",
-  "已保留離線：沒有網路時也能開啟（指令面板的「保留離線的頁面」）": "Kept offline: you can open it without a connection (\"Pages kept offline\" in the command palette)",
+  "已保留離線：沒有網路時也能開啟（指令面板的「{command}」）": "Kept offline: you can open it without a connection (\"{command}\" in the command palette)",
   "保留離線的頁面": "Pages kept offline",
   "輸入標題": "Type a title",
   "還沒有保留離線的頁面。在工作項目或 Wiki 頁面的分頁上按右鍵，選「保留離線」。": "No pages are kept offline yet. Right-click the tab of a work item or wiki page and choose \"Keep offline\".",
@@ -768,8 +768,8 @@ export const ui: Record<string, Translation> = {
   "開啟的資料夾裡的子資料夾，例如「每日筆記」或「筆記/每日」；留空就放在最上層。檔名是日期，例如 2026-11-02.md":
     "A subfolder of the open folder, such as “Daily Notes” or “Notes/Daily”; leave empty for the top level. Files are named by date, e.g. 2026-11-02.md",
   "範本": "Template",
-  "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）":
-    "Used when creating today's note; add your own with “⋯” → “Save Current Document as Template…”. A line with just {name} becomes a checklist of your open work items",
+  "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「{menu}」→「{command}」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）":
+    "Used when creating today's note; add your own with “⋯” → “{menu}” → “{command}”. A line with just {name} becomes a checklist of your open work items",
   "內建（今天要做、會議與討論、筆記）": "Built-in (To Do, Meetings, Notes)",
   "Wiki 最近修改…": "Recent Wiki Changes…",
   "改名或搬移": "Renamed or moved",

@@ -455,7 +455,9 @@ export function initWikiEdit(): void {
   });
   issueView = new IssueView(app.$(".workspace"), {
     decorateFailed: (error) =>
-      toast(t("畫面有一部分沒辦法顯示（{error}），內容照常顯示。可以用「說明：複製錯誤紀錄」回報。", { error }), { tone: "error" }),
+      toast(t("畫面有一部分沒辦法顯示（{error}），內容照常顯示。可以用「{command}」回報。", { error, command: app.commands.title("copy-error-log") }), {
+        tone: "error",
+      }),
     render(markdown, into) {
       issuePreview ??= new Preview(into, [
         highlightPlugin(),

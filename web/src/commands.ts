@@ -224,6 +224,11 @@ export class Commands {
     return this.#list.find((c) => c.id === id);
   }
 
+  /** 指令的名稱：提示文字提到指令時用這個，指令改名時提示跟著變。沒有這個指令時是 id。 */
+  title(id: string): string {
+    return this.get(id)?.title ?? id;
+  }
+
   available(): Command[] {
     return this.#list.filter((c) => c.when?.() ?? true);
   }

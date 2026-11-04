@@ -8,7 +8,7 @@ import { refreshLivePreview } from "../live-preview.ts";
 import { recheckTerms, scanDocument } from "../proofread.ts";
 import { recheckSpelling } from "../spellcheck.ts";
 import { type Convert, loadConverter, conversionChanges, looksSimplified } from "../s2t.ts";
-import { type Settings, FONT_SIZE_RANGE } from "../settings.ts";
+import { type Settings, FONT_SIZE_RANGE, termCheckLabel } from "../settings.ts";
 import * as storage from "../storage.ts";
 import { sureFixes } from "../terms.ts";
 import type { SettingsDialog } from "../ui/settings-dialog.ts";
@@ -200,7 +200,7 @@ export function fixTerms(): void {
       left
         ? app.settings.value.termCheck
           ? t("另有 {n} 處要依文意判斷，已畫上波浪底線，滑鼠移上去可以選擇。", { n: left })
-          : t("另有 {n} 處要依文意判斷；打開設定的「檢查兩國用語與錯字」就會標示出來。", { n: left })
+          : t("另有 {n} 處要依文意判斷；打開設定的「{setting}」就會標示出來。", { n: left, setting: termCheckLabel() })
         : "",
     ];
     // 英文的句子之間要空一格。
