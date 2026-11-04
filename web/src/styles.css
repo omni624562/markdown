@@ -2194,13 +2194,14 @@ button.git-info:disabled { cursor: default; }
 .workitems-filter-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filter-clear .icon { width: 14px; height: 14px; }
 /*
- * 工作項目篩選的最後一列：搜尋框。
- * 框畫在外層（和上面的下拉選單同樣高），裡面的輸入框不畫框。
+ * 工作項目篩選的最後一列：搜尋框，左邊是放大鏡。
+ * 框畫在外層（和上面的下拉選單同樣的框、同樣高），裡面的輸入框不畫框。
  */
 .workitems-search-box { grid-column: 1 / -1; display: flex; gap: 2px; align-items: center; box-sizing: border-box; min-width: 0; height: 28px; padding: 0 2px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .workitems-search-box:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
 .workitems-search-box:has(.workitems-search:focus-visible) { outline: 2px solid var(--accent); outline-offset: -1px; }
-.workitems-search-box .workitems-search { flex: 1 1 0; width: auto; min-width: 0; height: 100%; margin: 0; padding: 0 4px 0 6px; border: 0; background: transparent; font-size: 12.5px; }
+.workitems-search-box > .icon { flex: none; width: 14px; height: 14px; margin-left: 6px; color: var(--muted); }
+.workitems-search-box .workitems-search { flex: 1 1 0; width: auto; min-width: 0; height: 100%; margin: 0; padding: 0 4px 0 2px; border: 0; background: transparent; font-size: 12.5px; }
 .workitems-search-box .workitems-search:focus-visible { outline: none; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
@@ -2256,7 +2257,8 @@ button.git-info:disabled { cursor: default; }
 .workitems-filters [hidden], .workitems-filters[hidden] { display: none; }
 /* 篩選列的下拉選單（人、狀態、類型、專案、區域）：按鈕和下拉選單同樣子，打開是勾選清單。 */
 .workitems-filters .multi-select { display: block; text-align: start; }
-.workitems-filters .multi-select.chosen { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
+/* 和預設不同的條件：框和其他欄位一樣，只換成淡強調色底、強調色粗體字（框的顏色不變，所有欄位看起來同一種）。 */
+.workitems-filters .multi-select.chosen { background-color: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .multi-select-pop { position: fixed; inset: auto; display: none; min-width: 220px; max-width: min(380px, calc(100vw - 16px)); margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--menu-border); border-radius: calc(var(--radius) + 2px); background: var(--surface-raised); color: var(--fg); box-shadow: var(--menu-shadow); }
 .multi-select-pop:popover-open { display: flex; flex-direction: column; }
 .multi-select-caption { flex: none; padding: 8px 12px 2px; color: var(--muted); font-size: 12px; font-weight: 600; }
