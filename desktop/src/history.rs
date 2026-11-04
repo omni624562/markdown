@@ -401,7 +401,7 @@ fn allowed(
     if remote || known.contains(path) || trust.allows(path) || workspace.contains(path) {
         Ok(())
     } else {
-        Err(tr!("無法查看這個檔案的版本記錄"))
+        Err(tr!("無法查看這個檔案的版本紀錄"))
     }
 }
 
@@ -433,7 +433,7 @@ pub async fn history_read(app: AppHandle, path: String, id: u64) -> Result<Strin
             &app.state::<Trust>(),
             &app.state::<Workspace>(),
         )?;
-        let root = root(&app).ok_or_else(|| tr!("找不到版本記錄資料夾"))?;
+        let root = root(&app).ok_or_else(|| tr!("找不到版本紀錄資料夾"))?;
         read_at(&root, &path, id).map_err(|e| tr!("無法讀取版本：{e}", e = e))
     })
     .await

@@ -308,7 +308,7 @@ pub async fn ado_diagnostics_save(
     );
     let picked = rfd::AsyncFileDialog::new()
         .set_parent(&window)
-        .set_title(tr!("儲存診斷資料"))
+        .set_title(tr!("把診斷資料存檔"))
         .set_file_name(name)
         .add_filter("JSON", &["json"])
         .save_file()
@@ -322,7 +322,7 @@ pub async fn ado_diagnostics_save(
         let report = serde_json::json!({
             "app": env!("CARGO_PKG_VERSION"),
             "created": chrono::Local::now().to_rfc3339(),
-            "note": tr!("人名、信箱、標題與內容已經拿掉；寄出前可以先打開看看。"),
+            "note": tr!("人名、信箱、標題與內容已經拿掉；寄出前可以先開啟看看。"),
             "steps": collect(&a.url, &pat),
         });
         let text = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;

@@ -157,7 +157,7 @@ pub(super) fn ping_of(code: u16, body: &str) -> AdoPing {
     let auth = || AdoPing {
         status: "auth",
         name: None,
-        message: tr!("個人存取權杖無效或已過期，請到設定的 Azure DevOps／TFS 頁更新權杖"),
+        message: tr!("個人存取權杖無效或已過期，請到設定的 Azure DevOps 頁更新權杖"),
     };
     match code {
         401 | 403 => auth(),
