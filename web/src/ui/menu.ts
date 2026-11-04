@@ -80,7 +80,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
       if (openSub?.matches(":popover-open")) openSub.hidePopover();
       openSub = null;
     };
-    const items = list.flatMap((entry): HTMLElement[] => {
+    const build = (entry: MenuEntry): HTMLElement[] => {
       if (entry === "-") {
         const hr = document.createElement("div");
         hr.className = "menu-sep";
@@ -109,7 +109,10 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
         const sub = newMenu();
         sub.classList.add("submenu");
         fill(sub, entry.items, entry.label);
-        if (!sub.querySelector("button")) return [];
+        const count = sub.querySelectorAll(":scope > button").length;
+        if (!count) return [];
+        // 只剩一項的子選單不必多點一層：那一項直接放在這一層（用完整的名稱，例如沒開資料夾時的「Git」）。
+        if (count === 1) return entry.items.filter((e) => e !== "-").flatMap(build);
         item.role = "menuitem";
         item.setAttribute("aria-haspopup", "menu");
         item.setAttribute("aria-expanded", "false");
@@ -173,7 +176,8 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
       item.addEventListener("pointerenter", closeSub);
       focusOnHover(item);
       return [item];
-    });
+    };
+    const items = list.flatMap(build);
     // 隱藏的項目可能讓分隔線相鄰或出現在頭尾，一併拿掉。
     const isSep = (el: HTMLElement) => el.classList.contains("menu-sep");
     const shown: HTMLElement[] = [];
