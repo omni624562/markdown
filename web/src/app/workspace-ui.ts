@@ -32,7 +32,7 @@ import { app } from "./context.ts";
 import { boardPanelShown } from "./taskboard.ts";
 import { docName } from "./doc-names.ts";
 import { renameFileShortcuts } from "./file-shortcuts.ts";
-import { sectionCollapsed, setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
+import { setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -262,7 +262,7 @@ function placeWiki(right: HTMLElement): void {
     tab.classList.remove("placed-right");
     panel.hidden = app.sidePanel !== "wiki";
   }
-  const tabLabel = onRight ? t("Wiki（在右側欄，按一下顯示或隱藏右側欄）") : t("Wiki（Azure DevOps）");
+  const tabLabel = onRight ? t("Wiki（在右側欄；按一下打開 Wiki，游標移到搜尋框）") : t("Wiki（Azure DevOps）");
   tab.title = tabLabel;
   tab.setAttribute("aria-label", tabLabel);
   const dock = document.getElementById("wiki-dock");
@@ -316,6 +316,8 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
     if (reveal) setSectionCollapsed("wiki", false);
     if (!app.rightOutlineShown) setRightOutline(true);
     wikiPanel?.shown();
+    // 從圖示列打開：和搜尋、標籤面板一樣，游標直接放進搜尋框。
+    if (focusInput) wikiPanel?.focusSearch();
     return;
   }
   app.sidePanel = panel;
@@ -800,11 +802,10 @@ export function initWorkspaceUi(): void {
     // 和 VS Code 一樣：再按一次目前的圖示會收起側邊欄。
     tab.addEventListener("click", () => {
       const panel = tab.dataset.panel as SidePanel;
-      // Wiki 在右側欄：按一下打開或收起右側欄（和面板圖示再按一次收起來一樣）；Wiki 那一區收合著時先展開。
-      if (panel === "wiki" && wikiPlacedRight() && app.rightOutlineShown) {
-        if (sectionCollapsed("wiki")) setSectionCollapsed("wiki", false);
-        else setRightOutline(false);
-      } else if (panel === app.sidePanel && app.outlineShown) app.setOutline(false);
+      // Wiki 在右側欄：按一下就是「到 Wiki」：右側欄收著或 Wiki 那一區收合時打開，游標放進 Wiki 的搜尋框；
+      // 不會收起整個右側欄（連大綱一起收掉）。要收右側欄用右側欄的按鈕或 Ctrl+Alt+B。
+      if (panel === "wiki" && wikiPlacedRight()) showPanel(panel, true, true);
+      else if (panel === app.sidePanel && app.outlineShown) app.setOutline(false);
       else showPanel(panel, true, true);
     });
   }
