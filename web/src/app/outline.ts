@@ -122,10 +122,14 @@ export function renderSaveState(): void {
     desktop?.setTitle(title).catch(console.error);
   }
   app.status.save.dataset.state = dirty ? "dirty" : "saved";
-  if (!dirty) app.status.save.textContent = app.cur.fileBacked ? t("已儲存") : "";
-  else
-    app.status.save.textContent =
-      (app.active.wiki ? t("尚未存回 Wiki") : app.cur.fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (app.cur.draftSaved ? t(" · 草稿已自動保存") : "");
+  const state = !dirty
+    ? app.cur.fileBacked
+      ? t("已儲存")
+      : ""
+    : (app.active.wiki ? t("尚未存回 Wiki") : app.cur.fileBacked ? t("尚未存檔") : t("尚未存成檔案")) + (app.cur.draftSaved ? t(" · 草稿已自動保存") : "");
+  // 視窗窄時只顯示存檔的圖示（文字藏起來，見 styles.css）：名稱一律用完整的狀態。
+  app.status.save.querySelector(".save-state-label")!.textContent = state;
+  app.status.save.setAttribute("aria-label", state);
   // 已儲存時不佔位置；只有需要注意時才顯示。
   app.status.save.hidden = !dirty;
   app.status.save.title = dirty ? app.withKeys(t("按一下存檔"), app.commands.get("save")?.keys) : "";

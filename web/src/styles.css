@@ -763,6 +763,19 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .save-state[data-state="saved"] { color: var(--success); }
 .save-state:disabled { cursor: default; background: transparent; }
 .save-state[data-state="dirty"] { color: var(--fg); }
+.save-state .icon { display: none; }
+/* 放不下時（視窗窄、下載更新的進度很長）：只有文字長的項目縮小、用「…」截斷，不會把字數擠出視窗左邊；
+ * 檢視切換、字數與圖示按鈕不縮。 */
+.statusbar > * { flex-shrink: 0; }
+.statusbar > :is(#status-update, #doc-kind, #status-save, .status-view) { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+:is(#doc-kind, #status-save) > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 視窗窄時：項目之間靠近一點，存檔狀態與終端機只留圖示（完整的文字在 aria-label 與滑鼠提示）。 */
+@media (max-width: 720px) {
+  .statusbar { gap: 10px; padding-inline: 10px; }
+  .save-state .icon { display: block; }
+  .save-state-label, .status-terminal span { display: none; }
+  .statusbar > #status-save { flex-shrink: 0; }
+}
 
 /* ---- 下拉選單（Popover） ---- */
 .menu {
@@ -1829,6 +1842,18 @@ button.git-info:disabled { cursor: default; }
 .cm-lp-table table { margin: 0; }
 .cm-lp-math-block { text-align: center; }
 .cm-lp-math { cursor: pointer; }
+/* 預覽中的表格（plugins/tables.ts）：短的儲存格、日期與數字不從中間斷開；表格因此放不下時左右捲動。
+ * 捲動的提示：邊緣的陰影比 document.css 的深一點，捲軸用細的，看得出旁邊還有欄位。 */
+.markdown-body .cell-nowrap, .markdown-body .nobr { white-space: nowrap; }
+.markdown-body table:not(.fits) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  background:
+    linear-gradient(to right, var(--md-bg) 30%, transparent) left center / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--md-bg) 30%, transparent) right center / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--md-fg) 32%, transparent), transparent) left center / 18px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--md-fg) 32%, transparent), transparent) right center / 18px 100% no-repeat scroll;
+}
 /* 預覽中的程式碼區塊：左上角語言，滑過時右上角「複製」。 */
 .markdown-body .code-block { position: relative; }
 .markdown-body .code-block > pre { margin-bottom: 1em; }

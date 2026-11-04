@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { plainTaskText, setTaskDone } from "./doc-index.ts";
+import { plainTaskText, setTaskDone, withoutDue } from "./doc-index.ts";
 import { parseDoc as parse } from "./test-wasm.ts";
 
 // 解析在 Rust（crates/md-text，那裡有完整的測試）；這裡確認 WebAssembly 版給前端的結果。
@@ -65,4 +65,19 @@ test("勾選待辦", () => {
 
 test("待辦顯示的純文字", () => {
   assert.equal(plainTaskText("**完成** [提案](a.md) 與 [[週報|本週週報]]、`code`、<mark>重點</mark>"), "完成 提案 與 本週週報、code、重點");
+});
+
+test("待辦總覽的文字拿掉截止日（日期另外標在右邊）", () => {
+  assert.equal(withoutDue("寫完提案 @小明 10/25", "2026-10-25"), "寫完提案 @小明");
+  assert.equal(withoutDue("交報告 @小明 2026-10-25 前", "2026-10-25"), "交報告 @小明");
+  assert.equal(withoutDue("10月25日前交報告", "2026-10-25"), "交報告");
+  assert.equal(withoutDue("交報告（10/25 前）", "2026-10-25"), "交報告");
+  assert.equal(withoutDue("📅 2026/1/5 交報告", "2026-01-05"), "交報告");
+  assert.equal(withoutDue("截止：10/25，交報告", "2026-10-25"), "交報告");
+  assert.equal(withoutDue("Send the report due 10/25 to Amy", "2026-10-25"), "Send the report to Amy");
+  // 和截止日不同的日期、其他數字不動。
+  assert.equal(withoutDue("比例 1/2/3 的報告 10/25", "2026-10-25"), "比例 1/2/3 的報告");
+  // 找不到同一天、或拿掉後什麼都不剩：照原樣。
+  assert.equal(withoutDue("交報告 10/26", "2026-10-25"), "交報告 10/26");
+  assert.equal(withoutDue("10/25", "2026-10-25"), "10/25");
 });

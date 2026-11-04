@@ -208,10 +208,10 @@
       <span id="status-cursor"></span>
       <button type="button" id="status-stats" class="status-btn status-stats"></button>
       <button type="button" id="doc-kind" class="status-btn status-kind" aria-label="文件類型" title="文件類型（依副檔名自動判斷，也可以在這裡切換）"></button>
-      <button type="button" id="status-save" class="status-btn save-state"></button>
+      <button type="button" id="status-save" class="status-btn save-state"><i data-icon="save"></i><span class="save-state-label"></span></button>
       <button type="button" id="status-ado" class="status-btn ado-state" hidden><i data-icon="square-kanban"></i><span class="ado-dot" aria-hidden="true"></span><span class="ado-state-label"></span></button>
       <span id="status-update" class="update-state" role="status" hidden></span>
-      <button type="button" class="status-btn" data-command="toggle-terminal" hidden><i data-icon="square-terminal"></i><span>終端機</span></button>
+      <button type="button" class="status-btn status-terminal" data-command="toggle-terminal" aria-label="終端機" hidden><i data-icon="square-terminal"></i><span>終端機</span></button>
     </footer>
 
     <input type="file" id="file-input" hidden />
