@@ -140,7 +140,7 @@ export function remoteCard(link: RemoteLink, hint: string): HTMLElement {
   return card;
 }
 
-// 預覽裡的連結也一樣：滑鼠停一下顯示摘要卡片。
+// 預覽、工作項目與 Wiki 內容裡的連結：滑鼠停一下顯示摘要卡片。
 let previewCard: { link: HTMLAnchorElement; card: HTMLElement | null; timer: number } | null = null;
 function hidePreviewCard(): void {
   if (!previewCard) return;
@@ -155,12 +155,13 @@ export function insertIssueLink(item: Pick<IssueSummary, "id" | "title" | "webUr
   toast(t("已插入「#{id}」的連結", { id: item.id }));
 }
 
-export function initAdoLinks(): void {
-  app.previewEl.addEventListener("mouseover", (e) => {
+/** `root` 裡的連結滑鼠停一下顯示摘要卡片；`pick` 決定哪些連結要顯示、連到哪裡。 */
+export function watchLinkCards(root: HTMLElement, pick: (a: HTMLAnchorElement) => RemoteLink | null): void {
+  root.addEventListener("mouseover", (e) => {
     const a = (e.target as Element).closest?.<HTMLAnchorElement>("a[href]");
     if (a === previewCard?.link) return;
     hidePreviewCard();
-    const link = a && remoteLinkOf(a.getAttribute("href") ?? "");
+    const link = a && pick(a);
     if (!a || !link) return;
     const state: { link: HTMLAnchorElement; card: HTMLElement | null; timer: number } = { link: a, card: null, timer: 0 };
     state.timer = window.setTimeout(() => {
@@ -177,7 +178,12 @@ export function initAdoLinks(): void {
     }, 400);
     previewCard = state;
   });
-  app.previewEl.addEventListener("mouseleave", hidePreviewCard);
-  app.previewEl.addEventListener("scroll", hidePreviewCard, { passive: true });
-  app.previewEl.addEventListener("click", hidePreviewCard);
+  root.addEventListener("mouseleave", hidePreviewCard);
+  root.addEventListener("click", hidePreviewCard);
+}
+
+export function initAdoLinks(): void {
+  watchLinkCards(app.previewEl, (a) => remoteLinkOf(a.getAttribute("href") ?? ""));
+  // 捲動（預覽本身，或工作項目、Wiki 內容外層的捲動區）時卡片位置就不對了：收起來。
+  document.addEventListener("scroll", hidePreviewCard, { capture: true, passive: true });
 }
