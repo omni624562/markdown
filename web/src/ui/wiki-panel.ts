@@ -478,6 +478,12 @@ export class WikiPanel<W extends WikiInfo> {
   }
 
   /** 目前選的 Wiki。 */
+  /** 游標移到搜尋框（選取原本的字，直接打字就換掉）。 */
+  focusSearch(): void {
+    this.#input.focus();
+    this.#input.select();
+  }
+
   get wiki(): W | null {
     return this.#wiki;
   }
