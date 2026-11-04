@@ -496,8 +496,8 @@ export const main: Record<string, Translation> = {
   "範本名稱（可以在內容中使用 {date}、{week} 等變數）：": "Template name (the content can use variables such as {date} and {week}):",
   "文件太長，無法存成範本。": "The document is too long to save as a template.",
   "自訂範本最多 {n} 個，請先刪除一些。": "You can have up to {n} custom templates. Delete some first.",
-  "已存成範本「{name}」，可以從「⋯」→「{command}」使用":
-    "Saved as the template \"{name}\". Use it from \"⋯\" → \"{command}\".",
+  "已存成範本「{name}」，可以從「☰」→「{command}」使用":
+    "Saved as the template \"{name}\". Use it from \"☰\" → \"{command}\".",
 
   // 剪貼簿、流程圖
   "無法寫入剪貼簿。": "Couldn't write to the clipboard.",

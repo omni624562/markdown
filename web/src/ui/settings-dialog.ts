@@ -270,7 +270,7 @@ const EDIT_GROUPS: Group[] = [
               label: t("範本"),
               // 提到的指令名稱從指令中心取（開設定時才算），指令改名時跟著變。
               get hint() {
-                return t("建立今天的筆記時用的範本；自訂範本可以用「⋯」→「{menu}」→「{command}」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）", {
+                return t("建立今天的筆記時用的範本；自訂範本可以用「☰」→「{menu}」→「{command}」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）", {
                   menu: t("文件工具"),
                   command: commandTitle("save-as-template"),
                   name: WORK_ITEMS_VAR,
@@ -869,7 +869,7 @@ export class SettingsDialog {
       look.setTheme(themeSelect.value as ThemePref);
       render();
     });
-    const themeRow = this.#row("theme", t("明暗"), t("跟隨系統、淺色或深色；也可以在 ⋯ →「外觀」切換"), () => themeSelect);
+    const themeRow = this.#row("theme", t("明暗"), t("跟隨系統、淺色或深色；也可以在 ☰ →「外觀」切換"), () => themeSelect);
     const themeHint = themeRow.querySelector("small")!;
 
     // ---- 一鍵還原：森林綠、配色預設的強調色（明暗不變）。
@@ -909,7 +909,7 @@ export class SettingsDialog {
       themeSelect.disabled = !!info?.darkOnly;
       themeHint.textContent = info?.darkOnly
         ? t("「{name}」固定是深色；換成其他配色後，這個選項才有作用", { name: info.label })
-        : t("跟隨系統、淺色或深色；也可以在 ⋯ →「外觀」切換");
+        : t("跟隨系統、淺色或深色；也可以在 ☰ →「外觀」切換");
       resetBtn.disabled = current === DEFAULT_PALETTE && !accent;
     };
     render();

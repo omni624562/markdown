@@ -137,8 +137,11 @@ kbd {
   border-bottom: 1px solid var(--topbar-border);
   background: var(--topbar-bg);
 }
-/* 側邊欄（含圖示列）預設收起，用左上角的按鈕叫出來；寬度和下面的圖示列對齊。 */
-.nav-toggle {
+/*
+ * 左上角：主選單（☰）在圖示列的正上方、寬度和圖示列對齊；側邊欄開關在圖示列最上面（寬視窗）。
+ * 窄視窗時左上角是側邊欄開關（打開抽屜），主選單移到右上角。
+ */
+.nav-menu, .nav-toggle {
   display: grid;
   flex: none;
   place-items: center;
@@ -149,10 +152,14 @@ kbd {
   color: var(--chrome-icon);
   cursor: pointer;
 }
-.nav-toggle .icon { padding: 5px; box-sizing: content-box; border-radius: 6px; transition: background 0.12s, color 0.12s; }
-.nav-toggle:hover .icon { background: var(--active-line); color: var(--fg); }
-.nav-toggle:focus-visible { outline-offset: -6px; }
+.nav-menu .icon, .nav-toggle .icon { padding: 5px; box-sizing: content-box; border-radius: 6px; transition: background 0.12s, color 0.12s; }
+.nav-menu:hover .icon, .nav-toggle:hover .icon, .nav-menu[aria-expanded="true"] .icon { background: var(--active-line); color: var(--fg); }
+.nav-menu:focus-visible, .nav-toggle:focus-visible { outline-offset: -6px; }
 .nav-toggle[aria-pressed="true"] { color: var(--fg); }
+/* 圖示列最上面的側邊欄開關，下面一條細線和面板的圖示分開。 */
+.activity-toggle .icon { width: 20px; height: 20px; }
+.activity-toggle[aria-pressed="true"] { color: var(--fg); }
+.activity-sep { flex: none; width: 24px; height: 1px; margin: 3px 0 5px; background: var(--border); }
 .topbar-side { display: none; flex: none; width: var(--outline-width); }
 /* ---- Windows 桌面版的標題列按鈕 ---- */
 .window-controls { display: flex; flex: none; align-self: stretch; margin-left: 8px; }
@@ -191,9 +198,13 @@ kbd {
  * 右邊的側欄開關、⋯、視窗按鈕也是同底色的一塊；右側欄開著時和右側欄同寬、連成一欄。
  */
 @media (min-width: 721px) {
-  .nav-toggle, .topbar.with-sidebar .topbar-side { position: relative; border-right: 1px solid var(--border); background: var(--surface); }
+  /* 寬視窗：側邊欄開關在圖示列最上面，頂端列左上角只放主選單。 */
+  .topbar > .nav-toggle { display: none; }
+  /* 右上角沒有按鈕時（右側欄開關藏起來）整塊藏起來；Windows 的視窗按鈕和分頁之間用一條線分開。 */
+  .top-actions[hidden] + .window-controls { margin-left: auto; border-left: 1px solid var(--border); }
+  .nav-menu, .topbar.with-sidebar .topbar-side { position: relative; border-right: 1px solid var(--border); background: var(--surface); }
   /* 蓋掉頂端列的底線，和下面的欄接在一起。 */
-  .nav-toggle::after,
+  .nav-menu::after,
   .topbar.with-sidebar .topbar-side::after,
   .topbar.with-right .top-actions::after,
   .topbar.with-right .window-controls::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; background: var(--surface); }
@@ -215,7 +226,6 @@ kbd {
   .window-controls { position: relative; margin-left: 0; background: var(--surface); }
   .topbar.with-right .top-actions { box-sizing: border-box; width: var(--outline-right-width); padding-left: 6px; }
   .custom-titlebar .topbar.with-right .top-actions { width: calc(var(--outline-right-width) - 3 * 46px); }
-  .topbar.with-right #main-menu { margin-left: auto; }
 }
 .segmented {
   display: inline-flex;
@@ -421,7 +431,7 @@ kbd {
   [data-panel-style="spaced"] body { background: var(--backdrop); }
   [data-panel-style="spaced"] .topbar { padding-right: var(--panel-gap); border-bottom: 0; background: var(--backdrop); }
   [data-panel-style="spaced"] .topbar > ::after { display: none; }
-  [data-panel-style="spaced"] .nav-toggle { border-right: 0; background: transparent; }
+  [data-panel-style="spaced"] .nav-menu { border-right: 0; background: transparent; }
   [data-panel-style="spaced"] .activity-bar { border-right: 0; background: transparent; }
   [data-panel-style="spaced"] .statusbar { border-top: 0; background: var(--backdrop); }
   [data-panel-style="spaced"] .workspace { padding: 0 var(--panel-gap) var(--panel-gap) 0; }
@@ -493,7 +503,8 @@ kbd {
     box-shadow: inset 0 -1px 0 var(--panel-line);
   }
   [data-panel-style="spaced"][data-tab-style="line"] .tab[aria-selected="true"] { box-shadow: inset 0 2px 0 var(--accent); }
-  [data-panel-style="spaced"] .topbar:not(.with-right) .tab-bar { border-right: 0; border-top-right-radius: 0; }
+  /* 分頁列後面還有東西（右上角的按鈕、視窗按鈕）時，右端交給最後一個。 */
+  [data-panel-style="spaced"] .topbar:not(.with-right) .tab-bar:has(~ :not([hidden])) { border-right: 0; border-top-right-radius: 0; }
   [data-panel-style="spaced"] .topbar:not(.with-right) :is(.top-actions, .window-controls) {
     margin-top: var(--panel-gap);
     border: solid var(--panel-line);
@@ -1218,7 +1229,12 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
   :root { --editor-font-size: 16px; } /* iOS 字級低於 16px 會在聚焦時自動放大 */
   .split-only { display: none !important; }
   .top-actions { padding: 0 6px; }
-  .nav-toggle { width: 44px; border-right: 0; }
+  .nav-menu, .nav-toggle { width: 44px; border-right: 0; }
+  /* 窄視窗：左上角是側邊欄開關（打開抽屜），主選單在右上角（視窗按鈕前面）；圖示列裡的開關不用。 */
+  .topbar > .nav-menu { order: 1; }
+  .topbar:has(> .top-actions[hidden]) > .nav-menu { margin-left: auto; }
+  .topbar > .window-controls { order: 2; }
+  .activity-toggle, .activity-sep { display: none; }
   /* 手機只顯示目前的分頁（用側邊抽屜或 Ctrl+P 切換其他文件）。 */
   .tab-bar .tabs { flex: 1 1 auto; }
   .tab-bar .tab:not([aria-selected="true"]) { display: none; }

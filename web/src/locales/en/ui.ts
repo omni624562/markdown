@@ -717,7 +717,7 @@ export const ui: Record<string, Translation> = {
   "自訂顏色…": "Custom color…",
   "按鈕、連結、選取範圍、目前的分頁與焦點框；自訂顏色時，按鈕上的字會自動選看得清楚的顏色": "Buttons, links, selection, the current tab, and focus rings; with a custom color, button text automatically switches to a readable color",
   "明暗": "Color Mode",
-  "跟隨系統、淺色或深色；也可以在 ⋯ →「外觀」切換": "Follow the system, light, or dark; you can also switch it from ⋯ → Appearance",
+  "跟隨系統、淺色或深色；也可以在 ☰ →「外觀」切換": "Follow the system, light, or dark; you can also switch it from ☰ → Appearance",
   "恢復預設配色": "Restore default colors",
   "森林綠、配色預設的強調色": "Forest, with the scheme's own accent color",
   "「{name}」固定是深色；換成其他配色後，這個選項才有作用": "“{name}” is always dark; this option takes effect after you switch to another color scheme",
@@ -768,8 +768,8 @@ export const ui: Record<string, Translation> = {
   "開啟的資料夾裡的子資料夾，例如「每日筆記」或「筆記/每日」；留空就放在最上層。檔名是日期，例如 2026-11-02.md":
     "A subfolder of the open folder, such as “Daily Notes” or “Notes/Daily”; leave empty for the top level. Files are named by date, e.g. 2026-11-02.md",
   "範本": "Template",
-  "建立今天的筆記時用的範本；自訂範本可以用「⋯」→「{menu}」→「{command}」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）":
-    "Used when creating today's note; add your own with “⋯” → “{menu}” → “{command}”. A line with just {name} becomes a checklist of your open work items",
+  "建立今天的筆記時用的範本；自訂範本可以用「☰」→「{menu}」→「{command}」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）":
+    "Used when creating today's note; add your own with “☰” → “{menu}” → “{command}”. A line with just {name} becomes a checklist of your open work items",
   "內建（今天要做、會議與討論、筆記）": "Built-in (To Do, Meetings, Notes)",
   "Wiki 最近修改…": "Recent Wiki Changes…",
   "改名或搬移": "Renamed or moved",

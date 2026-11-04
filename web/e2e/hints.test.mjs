@@ -1,12 +1,12 @@
 /**
- * 提示文字對得上實際的選單與名稱：提示裡說的指令在「⋯」選單找得到，名稱和指令面板、設定頁一致。
+ * 提示文字對得上實際的選單與名稱：提示裡說的指令在「☰」選單找得到，名稱和指令面板、設定頁一致。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { open, runCommand } from "./helpers.mjs";
 
-/** 打開「⋯」裡的子選單 `label`，回傳子選單裡的項目名稱；`pick` 是要按的項目。 */
+/** 打開「☰」裡的子選單 `label`，回傳子選單裡的項目名稱；`pick` 是要按的項目。 */
 async function submenu(page, label, pick) {
   await page.click("#main-menu");
   const menu = page.locator("#main-menu-popover");
@@ -20,7 +20,7 @@ async function submenu(page, label, pick) {
   return items;
 }
 
-test("錯誤提示說的「說明：複製錯誤紀錄」：「⋯」→「說明」裡就有", async () => {
+test("錯誤提示說的「說明：複製錯誤紀錄」：「☰」→「說明」裡就有", async () => {
   const { page, context, errors } = await open();
   await page.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText: async (text) => void (window.__copied = text) } });
@@ -41,14 +41,14 @@ test("錯誤提示說的「說明：複製錯誤紀錄」：「⋯」→「說�
   await context.close();
 });
 
-test("「把目前文件存成範本…」在「⋯」→「文件工具」；每日筆記範本的說明指的就是那裡", async () => {
+test("「把目前文件存成範本…」在「☰」→「文件工具」；每日筆記範本的說明指的就是那裡", async () => {
   const { page, context, errors } = await open({ desktop: {} });
   const items = await submenu(page, "文件工具");
   assert.ok(items.includes("把目前文件存成範本…"), items.join("、"));
   await page.keyboard.press("Control+,");
   const dialog = page.locator("dialog.settings[open]");
   await dialog.waitFor();
-  assert.match(await dialog.textContent(), /自訂範本可以用「⋯」→「文件工具」→「把目前文件存成範本…」新增/);
+  assert.match(await dialog.textContent(), /自訂範本可以用「☰」→「文件工具」→「把目前文件存成範本…」新增/);
   assert.deepEqual(errors, []);
   await context.close();
 });
