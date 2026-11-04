@@ -129,8 +129,6 @@ export class WikiPanel<W extends WikiInfo> {
   #filterBtn: HTMLButtonElement;
   #filterCount: HTMLElement;
   #filter: MultiSelect;
-  /** 樹狀目錄下方的「已隱藏 N 個・全部顯示」。 */
-  #hiddenNote: HTMLElement;
   /** 「只看這裡」時，樹狀目錄上方的資料夾名稱與「返回整個 Wiki」。 */
   #rootBar: HTMLElement;
   /** 樹狀目錄的右鍵選單（對哪一頁）。 */
@@ -239,9 +237,6 @@ export class WikiPanel<W extends WikiInfo> {
     const searchRow = document.createElement("div");
     searchRow.className = "workitems-searchrow";
     searchRow.append(this.#input, this.#filterBtn);
-    this.#hiddenNote = document.createElement("p");
-    this.#hiddenNote.className = "wiki-hidden-note";
-    this.#hiddenNote.hidden = true;
     this.#rootBar = document.createElement("div");
     this.#rootBar.className = "wiki-root";
     this.#rootBar.hidden = true;
@@ -328,7 +323,7 @@ export class WikiPanel<W extends WikiInfo> {
       if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(open), { once: true });
       else open();
     });
-    el.append(bar, searchRow, this.#status, this.#quick, this.#rootBar, this.#list, this.#hiddenNote, this.#content);
+    el.append(bar, searchRow, this.#status, this.#quick, this.#rootBar, this.#list, this.#content);
     this.#updateFilter();
     // 把頁面拖到文件裡，插入 `[頁面名稱](網址)`。
     el.addEventListener("dragstart", (e) => {
@@ -497,27 +492,16 @@ export class WikiPanel<W extends WikiInfo> {
     this.#renderQuick(!q);
     this.#updateFilter();
     if (!this.#pages.length) {
-      this.#hiddenNote.hidden = true;
       this.#rootBar.hidden = true;
       this.#status.textContent = t("這個 Wiki 還沒有頁面");
       this.#list.replaceChildren();
       this.#renderContent("");
       return;
     }
-    // 「只看這裡」或篩選了最上層頁面時，樹狀目錄與搜尋都只在這個範圍裡（下面一行提示還有藏起來的頁面）。
+    // 「只看這裡」或篩選了最上層頁面時，樹狀目錄與搜尋都只在這個範圍裡（篩選按鈕上的數字與提示說明藏了幾個）。
     const root = this.#root();
     this.#renderRoot(root);
     const top = root ? root.children : this.#topPages();
-    const hidden = root ? 0 : this.#pages.length - top.length;
-    this.#hiddenNote.hidden = !hidden;
-    if (hidden) {
-      const show = document.createElement("button");
-      show.type = "button";
-      show.className = "wiki-hidden-show";
-      show.textContent = t("全部顯示");
-      show.addEventListener("click", () => this.#setShown([]));
-      this.#hiddenNote.replaceChildren(t("已隱藏 {n} 個最上層頁面", { n: hidden }), t("・"), show);
-    }
     if (q) {
       const found: WikiTreePage[] = [];
       const walk = (list: WikiTreePage[]) => {

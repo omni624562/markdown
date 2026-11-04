@@ -57,18 +57,20 @@ test("篩選了最上層頁面：名稱與內容的搜尋都只在勾選的頁�
   await row.hover();
   await row.locator(".multi-select-only").click();
   await p.keyboard.press("Escape");
-  await p.locator("#wiki-host .wiki-hidden-note", { hasText: "已隱藏 2 個最上層頁面" }).waitFor();
+  // 藏了幾個寫在篩選按鈕的提示裡，樹狀目錄下面不另外多一行。
+  await p.locator('#wiki-host .wiki-filter-toggle[title="篩選：已隱藏 2 個最上層頁面"]').waitFor();
+  assert.equal(await p.locator("#wiki-host .wiki-hidden-note").count(), 0);
 
   await p.fill("#wiki-host .workitems-search", "安裝");
   await p.locator("#wiki-host .workitems-status", { hasText: "找到 1 頁" }).waitFor();
   assert.deepEqual(await found(p), ["/產品/安裝說明"]);
-  // 搜尋時也提示還有藏起來的最上層頁面。
-  assert.ok(await p.locator("#wiki-host .wiki-hidden-note").isVisible());
   await p.locator("#wiki-host .wiki-content h3", { hasText: "內容符合（1）" }).waitFor();
   assert.deepEqual(await content(p), ["/產品/規格"]);
 
-  // 全部顯示：找整個 Wiki。
-  await p.click("#wiki-host .wiki-hidden-note .wiki-hidden-show");
+  // 篩選勾回全部：找整個 Wiki。
+  await p.click("#wiki-host .wiki-filter-toggle");
+  await p.locator(".multi-select-pop:popover-open .multi-select-all input").check();
+  await p.keyboard.press("Escape");
   await p.locator("#wiki-host .workitems-status", { hasText: "找到 2 頁" }).waitFor();
   assert.deepEqual(await found(p), ["/產品/安裝說明", "/文件/安裝手冊"]);
   await p.locator("#wiki-host .wiki-content h3", { hasText: "內容符合（2）" }).waitFor();
