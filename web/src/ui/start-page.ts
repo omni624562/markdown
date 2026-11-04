@@ -1,9 +1,10 @@
 /**
- * 起始頁：空白文件時顯示在編輯區（或預覽區）中間。左欄「開始」「連線」，右欄最近開啟的資料夾與檔案，
+ * 起始頁：空白文件時顯示在編輯區（或預覽區）中間。左欄「開始」「連線」，右欄專案與最近開啟的檔案，
  * 下方一排小提示。直接打字就開始寫，起始頁跟著消失（呼叫端在文件有內容時藏起來）。
  */
 import { t } from "../i18n.ts";
-import { recentLabel } from "../start-page.ts";
+import type { Project } from "../desktop.ts";
+import { projectLabel, recentLabel } from "../start-page.ts";
 import { icon } from "./icons.ts";
 
 export interface StartAction {
@@ -29,12 +30,15 @@ export interface StartPageOptions {
 }
 
 export interface StartRecent {
-  folders: string[];
+  /** 最近開啟的專案（自訂的名稱與顏色），最近開啟的在前。 */
+  projects: Pick<Project, "path" | "label" | "color">[];
   files: string[];
   /** 完整路徑的顯示方式（滑鼠提示）。 */
   display(path: string): string;
-  openFolder(path: string): void;
+  openProject(path: string): void;
   openFile(path: string): void;
+  /** 「全部專案…」。 */
+  allProjects(): void;
 }
 
 const button = (className: string, ...children: (Node | string)[]): HTMLButtonElement => {
@@ -110,25 +114,44 @@ export function buildStartPage(o: StartPageOptions): HTMLElement {
   return page;
 }
 
-/** 補上右欄「最近開啟的資料夾」「最近開啟的檔案」：名稱加上所在位置的最後兩層，完整路徑在滑鼠提示裡。 */
+/** 專案的顏色點（沒有設定顏色時是空心圓）。 */
+function projectDot(color: string | null): HTMLElement {
+  const dot = Object.assign(document.createElement("span"), { className: "project-dot" });
+  if (color) dot.dataset.color = color;
+  return dot;
+}
+
+/**
+ * 補上右欄「專案」「最近開啟的檔案」：名稱加上所在位置的最後兩層，完整路徑在滑鼠提示裡。
+ * 專案用自訂的名稱與顏色（和切換專案、專案總覽一樣），下面是「全部專案…」。
+ */
 export function fillStartRecent(page: HTMLElement, r: StartRecent): void {
   const box = page.querySelector<HTMLElement>(".start-recent");
   if (!box) return;
-  const row = (kind: "folder" | "file", path: string) => {
-    const { name, where } = recentLabel(path);
+  const row = (mark: Element, { name, where }: { name: string; where: string }, path: string, open: () => void) => {
     const b = button(
       "start-recent-item",
-      icon(kind === "folder" ? "folder" : "file-text"),
+      mark,
       Object.assign(document.createElement("span"), { className: "start-recent-name", textContent: name }),
       Object.assign(document.createElement("span"), { className: "start-recent-where", textContent: where }),
     );
     b.title = r.display(path);
-    b.addEventListener("click", () => (kind === "folder" ? r.openFolder(path) : r.openFile(path)));
+    b.addEventListener("click", open);
     return b;
   };
   const parts: HTMLElement[] = [];
-  if (r.folders.length) parts.push(heading(t("最近開啟的資料夾")), ...r.folders.map((p) => row("folder", p)));
-  if (r.files.length) parts.push(heading(t("最近開啟的檔案")), ...r.files.map((p) => row("file", p)));
+  if (r.projects.length) {
+    const all = button("start-recent-more", icon("layout-dashboard"), t("全部專案…"));
+    all.addEventListener("click", () => r.allProjects());
+    parts.push(
+      heading(t("專案")),
+      ...r.projects.map((p) => row(projectDot(p.color), projectLabel(p.path, p.label), p.path, () => r.openProject(p.path))),
+      all,
+    );
+  }
+  if (r.files.length) {
+    parts.push(heading(t("最近開啟的檔案")), ...r.files.map((p) => row(icon("file-text"), recentLabel(p), p, () => r.openFile(p))));
+  }
   box.replaceChildren(...parts);
   box.hidden = !parts.length;
   page.classList.toggle("has-recent", !!parts.length);

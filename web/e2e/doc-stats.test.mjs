@@ -20,7 +20,13 @@ test("狀態列的字數可以打開文件統計：中英文字數、閱讀與�
   const { page, context, errors } = await open();
   await setText(page, "# 週報\n\n本週完成 Markdown editor 的測試。\n");
   await page.waitForFunction(() => document.querySelector("#status-stats").textContent === "11 字");
-  await page.click("#status-stats");
+  // 按下去當下就是「已展開」（不是等 toggle 事件晚一點才改）。
+  const expandedNow = await page.evaluate(() => {
+    const button = document.querySelector("#status-stats");
+    button.click();
+    return button.getAttribute("aria-expanded");
+  });
+  assert.equal(expandedNow, "true");
   await page.waitForSelector(".stats-pop:popover-open");
   const r = await rows(page);
   // 週報(2) + 本週完成(4) + 的測試(3) = 9 個中文字；Markdown、editor 兩個英文字。

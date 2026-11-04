@@ -2,7 +2,7 @@
  * 待辦總覽：把資料夾中所有文件的 `- [ ]` 集中列出，可以依負責人篩選、依檔案或截止日排列，
  * 直接在這裡勾選完成；點文字跳到那一行。
  */
-import { type Task, isoDate, plainTaskText } from "../doc-index.ts";
+import { type Task, isoDate, plainTaskText, withoutDue } from "../doc-index.ts";
 import type { IndexedDoc } from "../workspace-index.ts";
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
@@ -170,7 +170,8 @@ export class TasksPanel {
     text.type = "button";
     text.className = "task-text";
     text.title = t("{file}：第 {line} 行", { file: item.doc.rel, line: item.line });
-    const plain = plainTaskText(item.text);
+    // 截止日另外標在右邊：文字裡的那個日期不再寫一次（檔案內容不變）。
+    const plain = item.due ? withoutDue(plainTaskText(item.text), item.due) : plainTaskText(item.text);
     // @負責人另外上色
     for (const part of plain.split(/((?<=^|[\s，、：:（(])@[\p{L}\p{N}_-]+)/u)) {
       if (!part) continue;

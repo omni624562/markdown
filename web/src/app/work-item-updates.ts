@@ -172,7 +172,7 @@ export function initWorkItemUpdates(): void {
   app.commands.register({
     id: "workitems-mark-all-seen",
     title: t("工作項目：全部標示為看過"),
-    group: t("檢視"),
+    group: "Azure DevOps",
     icon: "check",
     when: () => app.pollItems.some((w) => markOf(workItemSeen, w)),
     run: () => markAllWorkItemsSeen(),
@@ -220,7 +220,7 @@ export function initWorkItemUpdates(): void {
     return undefined;
   });
   gitPanel = desktop && app.fileTree && app.github
-      ? new GitPanel(app.$("#git-host"), desktop, app.settings, app.fileTree, app.github, {
+      ? new GitPanel(app.$("#git-host"), app.$("#git-head"), desktop, app.settings, app.fileTree, app.github, {
           root: () => app.workspaceRoot?.path ?? null,
           open: (path) => void app.openPath(path).catch(app.reportError),
           resolve: (path, theirs) => void app.resolveMergeConflict(path, theirs).catch(app.reportError),

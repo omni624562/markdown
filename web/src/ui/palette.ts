@@ -15,6 +15,7 @@ export function commandGroups(): string[] {
     t("資料夾與專案"),
     t("匯入與匯出"),
     "Git",
+    "Azure DevOps",
     t("AI 與終端機"),
     t("說明"),
   ];

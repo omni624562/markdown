@@ -46,7 +46,7 @@ import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
-import { type StartAction, buildStartPage, fillStartRecent } from "./ui/start-page.ts";
+import { type StartAction, buildStartPage } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
 import { KindPicker } from "./ui/kind-picker.ts";
 import { Picker } from "./ui/picker.ts";
@@ -91,13 +91,15 @@ import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focuse
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
 import type { IssueFact } from "./ui/issue-view.ts";
 import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
-import { NOT_CONNECTED, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
+import { NOT_CONNECTED, canRenameFile, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, renameEntry, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
+import { docName, docTooltip, saveFileName } from "./app/doc-names.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
+import { renderStartRecent } from "./app/recent-files.ts";
 import { initErrorHandling } from "./app/error-handling.ts";
 
 export type ViewMode = "editor" | "live" | "split" | "preview";
@@ -508,9 +510,6 @@ const app = {
   },
   get quickOpen() {
     return quickOpen;
-  },
-  get recentPicker() {
-    return recentPicker;
   },
   get refreshActivityCommands() {
     return refreshActivityCommands;
@@ -1503,7 +1502,7 @@ function startConnect(): StartAction[] {
 }
 
 /**
- * 空白文件的起始頁：開始（新增、開啟檔案、開啟資料夾、從範本新增）、連線、最近開啟的資料夾與檔案、小提示。
+ * 空白文件的起始頁：開始（新增、開啟檔案、開啟資料夾、從範本新增）、連線、專案與最近開啟的檔案、小提示。
  * 有預覽時放在預覽區；即時預覽、原始碼只有編輯區，改放在編輯區中間（不擋打字，打字就消失）。
  */
 function renderEmptyState(text: string): void {
@@ -1567,20 +1566,7 @@ function renderEmptyState(text: string): void {
     tour: () => openWelcome(),
   });
   emptyStateEl.replaceChildren(page);
-  if (desktop) void renderRecentFiles(page, key);
-}
-
-/** 起始頁右欄：最近開啟的資料夾（最多 4 個）與檔案（最多 5 個），點了直接開啟。 */
-async function renderRecentFiles(page: HTMLElement, key: string): Promise<void> {
-  const { folders, files } = await desktop!.recent().catch(() => ({ folders: [] as string[], files: [] as string[] }));
-  if (key !== emptyStateKey) return;
-  fillStartRecent(page, {
-    folders: folders.slice(0, 4),
-    files: files.slice(0, 5),
-    display: displayPath,
-    openFolder: (path) => void openRecentFolder(path),
-    openFile: (path) => void openPath(path).catch(reportError),
-  });
+  void renderStartRecent(page, () => key !== emptyStateKey);
 }
 
 let outlineKey = "";
@@ -2064,10 +2050,7 @@ const tabBar = new TabBar($("#tab-bar"), {
   create: () => void commands.run("new"),
   canRename: (id) => {
     const doc = docs.find((d) => d.id === id);
-    if (!doc) return false;
-    if ((doc === active ? cur.fileHandle : doc.handle) === null) return true;
-    toast(t("已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。"));
-    return false;
+    return !!doc && ((doc === active ? cur.fileHandle : doc.handle) === null || canRenameFile(tabPath(doc)));
   },
   rename: (id, name) => renameDoc(id, name),
   menu: (id, at) => {
@@ -2124,10 +2107,12 @@ async function closeTabs(list: Doc[]): Promise<void> {
   }
 }
 
-/** 還沒存成檔案的文件改名（存檔時當成預設檔名）。輸入已知的副檔名時順便切換文件類型。 */
+/** 在分頁上改名：存成檔案的和檔案面板一樣改磁碟上的檔名；還沒存成檔案的只改名稱（存檔時的預設檔名），輸入已知的副檔名時順便切換文件類型。 */
 function renameDoc(id: string, name: string): void {
   const doc = docs.find((d) => d.id === id);
   if (!doc) return;
+  const path = tabPath(doc);
+  if (path) return void renameEntry({ path, name: basename(path), isDir: false }, name).catch(reportError);
   if (doc !== active) {
     doc.name = name;
     persistSession();
@@ -2631,9 +2616,9 @@ const quickOpen = new Picker<QuickItem>({
     const current = selectedItemId();
     const openItems = itemTabs.filter((tab) => tab.id !== current);
     const items: QuickItem[] = [
-      ...docs.filter((d) => d !== active || current).map((d) => ({ title: d.name, detail: t("已開啟"), doc: d })),
+      ...docs.filter((d) => d !== active || current).map((d) => ({ title: docName(d), detail: t("已開啟"), doc: d })),
       ...openItems.map((tab) => ({ title: tab.name, detail: t("已開啟"), remote: { icon: tab.icon, open: () => selectItem(tab.id) } })),
-      ...(current ? [] : [{ title: active.name, detail: t("目前分頁"), doc: active }]),
+      ...(current ? [] : [{ title: docName(active), detail: t("目前分頁"), doc: active }]),
     ];
     const seen = new Set(docs.map((d) => d.path).filter(Boolean));
     if (desktop) {
@@ -2701,10 +2686,10 @@ function renderTabs(): void {
       d.id,
       {
         id: d.id,
-        name: d === active ? cur.fileName : d.name,
+        name: docName(d),
         title: d.wiki
           ? t("Azure DevOps Wiki：{wiki}{path}（按 Ctrl+S 存回伺服器）", { wiki: d.wiki.wikiName, path: d.wiki.path })
-          : (((p) => (p ? displayPath(p) : null))(d === active ? cur.fileHandle?.path : d.path) ?? (d === active ? cur.fileName : d.name)),
+          : (((p) => (p ? displayPath(p) : null))(d === active ? cur.fileHandle?.path : d.path) ?? docTooltip(d)),
         source: d.wiki ? ("wiki" as const) : undefined,
         dirty: d.dirty,
         missing: d.missing,
@@ -2816,7 +2801,7 @@ function openBeside(doc: Doc): void {
   }
   if (doc === paneDocs.main) {
     if (paneDocs.side) {
-      toast(t("「{name}」已經在左邊了。", { name: doc === active ? cur.fileName : doc.name }));
+      toast(t("「{name}」已經在左邊了。", { name: docName(doc) }));
       return;
     }
     const i = docs.indexOf(doc);
@@ -2889,9 +2874,8 @@ function renderPaneHeads(): void {
   const head = (el: HTMLElement, pane: Pane) => {
     const doc = paneDocs[pane]!;
     const focused = pane === focusedPane;
-    const name = focused ? cur.fileName : doc.name;
-    const label = Object.assign(document.createElement("span"), { className: "pane-head-name", textContent: name });
-    label.title = (focused ? cur.fileHandle?.path : doc.path) ?? name;
+    const label = Object.assign(document.createElement("span"), { className: "pane-head-name", textContent: docName(doc) });
+    label.title = (focused ? cur.fileHandle?.path : doc.path) ?? docTooltip(doc);
     const parts: Node[] = [icon(doc.wiki ? "book-open-text" : "file-text"), label];
     if (doc.dirty) {
       const dot = document.createElement("span");
@@ -3007,7 +2991,7 @@ async function closeTab(id: string): Promise<void> {
   }
   if (doc === active) stash();
   if (doc.dirty) {
-    const choice = await choose(t("要儲存變更嗎？"), t("「{name}」有尚未存檔的變更。", { name: doc.name }), [
+    const choice = await choose(t("要儲存變更嗎？"), t("「{name}」有尚未存檔的變更。", { name: docName(doc) }), [
       { id: "save", label: t("儲存"), primary: true },
       { id: "discard", label: t("不儲存"), danger: true },
       { id: "cancel", label: t("取消") },
@@ -3207,7 +3191,7 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   if (active.wiki && !saveAs && desktop) return saveWikiPage(text, force);
   let out: Awaited<ReturnType<typeof saveFile>>;
   try {
-    out = await saveFile(text, cur.fileName, cur.kind, cur.fileHandle, { saveAs, force });
+    out = await saveFile(text, saveFileName(), cur.kind, cur.fileHandle, { saveAs, force });
   } catch (e) {
     if (isOffline(e) && cur.fileHandle?.path) {
       showOffline(cur.fileHandle.path);
@@ -3242,32 +3226,6 @@ initOfflineDrive();
 
 initCommands();
 initAiTerminal();
-
-// ---- 最近開啟（W8） ------------------------------------------------------------
-
-const RECENT_LIMITS = { files: 10, folders: 5 } as const;
-
-const recentPicker = new Picker<{ path: string; folder: boolean }>({
-  label: t("最近開啟"),
-  placeholder: t("輸入檔名或資料夾名稱"),
-  empty: t("還沒有最近開啟的檔案或資料夾。"),
-  async query(q) {
-    if (!desktop) return [];
-    const { files, folders } = await desktop.recent();
-    const items = [
-      ...files.slice(0, RECENT_LIMITS.files).map((path) => ({ path, folder: false })),
-      ...folders.slice(0, RECENT_LIMITS.folders).map((path) => ({ path, folder: true })),
-    ];
-    const needle = q.trim().toLowerCase();
-    return needle ? items.filter((i) => i.path.toLowerCase().includes(needle)) : items;
-  },
-  render: (i) => ({
-    title: basename(i.path) || i.path,
-    detail: i.folder ? t("資料夾 · {dir}", { dir: displayPath(dirname(i.path)) }) : displayPath(dirname(i.path)),
-    icon: i.folder ? "folder" : "file-text",
-  }),
-  pick: (i) => void (i.folder ? openRecentFolder(i.path) : openPath(i.path)).catch(reportError),
-});
 
 // ---- 本機版本記錄（E12） ------------------------------------------------------
 
@@ -3399,6 +3357,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "new-from-template",
   "daily-note",
   "open",
+  "open-recent",
   "save",
   "save-as",
   "-",
@@ -3408,15 +3367,10 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     items: [
       "switch-project",
       "project-overview",
-      "project-settings",
-      "close-folder",
       "-",
       "open-folder",
-      "github-open",
-      "ado-open",
-      "connect-webdav",
-      "connect-ssh",
-      "open-recent",
+      { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },
+      { label: t("連線到遠端資料夾"), icon: "cloud", items: ["connect-webdav", "connect-ssh"] },
     ],
   },
   {
@@ -3441,20 +3395,6 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   },
   "palette",
   "settings",
-]);
-setupMenu($<HTMLButtonElement>("#files-more"), commands, [
-  "switch-project",
-  "project-overview",
-  "project-settings",
-  "close-folder",
-  "open-folder",
-  "github-open",
-  "ado-open",
-  "connect-webdav",
-  "connect-ssh",
-  "open-recent",
-  "-",
-  "check-links",
 ]);
 // 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。
 for (const [tab, id] of [
@@ -3627,8 +3567,8 @@ renderNow();
 renderTabs();
 persistSession();
 updateCursor(editor.view);
-// 第一次使用：圖示列旁邊短暫顯示每個圖示的名稱（畫面排好之後）。
-if (firstLaunch) window.setTimeout(() => showActivityLabels(), 800);
+// 第一次使用：圖示列旁邊短暫顯示每個圖示的名稱（畫面排好之後；側邊欄開著時留到之後啟動）。
+window.setTimeout(() => showActivityLabels(firstLaunch), 800);
 // 分頁關掉、專案移除後留下的草稿會一直佔著儲存空間：啟動一陣子後（分頁都存好了）清掉。
 setTimeout(() => dropOrphanDrafts(), 10_000);
 

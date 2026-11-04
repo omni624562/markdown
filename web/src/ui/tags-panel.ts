@@ -66,6 +66,12 @@ export class TagsPanel {
     this.#render();
   }
 
+  /** 游標放進篩選框（從圖示列或指令打開面板時）。 */
+  focus(): void {
+    this.#filter.focus();
+    this.#filter.select();
+  }
+
   /** 展開某個標籤（Ctrl＋點文件中的標籤時）。 */
   async select(tag: string): Promise<void> {
     this.#filter.value = "";

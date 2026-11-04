@@ -9,7 +9,7 @@ import { fromDesktop, desktopHandle } from "../files.ts";
 import { t } from "../i18n.ts";
 import { backlinks } from "../links.ts";
 import { dirname, rebase, basename, isInside } from "../paths.ts";
-import { projectSections, samePath } from "../projects.ts";
+import { samePath } from "../projects.ts";
 import { draftVersion, loadDraft, loadProjectView, dropDraft, loadSession } from "../session.ts";
 import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
@@ -30,6 +30,7 @@ import { wikiPanel, workItemsPanel, issuesPanel, renderIssuesTab } from "./work-
 import type { Doc, SidePanel } from "../main.ts";
 import { app } from "./context.ts";
 import { boardPanelShown } from "./taskboard.ts";
+import { docName } from "./doc-names.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -56,7 +57,7 @@ function openDocsForIndex(): OpenDoc[] {
       return {
         id: d.id,
         path: app.docPath(d),
-        name: d === app.active ? app.cur.fileName : d.name,
+        name: docName(d),
         version: doc ?? `draft:${draftVersion(d.id)}`,
         text: () => (doc ? doc.toString() : (loadDraft(d.id) ?? "")),
       };
@@ -287,7 +288,11 @@ export function panelAvailable(panel: SidePanel): void {
   if (pendingPanel === panel) showPanel(panel, false);
 }
 
-export function showPanel(panel: SidePanel, reveal = true): void {
+/**
+ * 切換側邊欄的面板。`reveal`：側邊欄收著時打開（啟動時還原面板不打開）。
+ * `focusInput`：從圖示列或指令打開搜尋、標籤面板時，游標直接放進輸入框（其他面板不動焦點）。
+ */
+export function showPanel(panel: SidePanel, reveal = true, focusInput = false): void {
   const requested = panel;
   if (panel === "git" && app.$("#side-tab-git").hidden) panel = "files";
   if ((panel === "workitems" || panel === "board" || panel === "wiki") && app.$(`#side-tab-${panel}`).hidden) panel = "files";
@@ -327,9 +332,19 @@ export function showPanel(panel: SidePanel, reveal = true): void {
     searchPanel?.rerun();
   }
   refreshIndexPanels();
+  if (focusInput && app.outlineShown) {
+    if (panel === "search") searchPanel?.focus();
+    if (panel === "tags") tagsPanel.focus();
+  }
 }
 
-/** 沒有開啟資料夾時，檔案面板顯示說明、開啟按鈕與最近開啟的資料夾。 */
+/** 沒開資料夾時，檔案面板列出幾個專案（側邊欄比起始頁有空間，列得比較多）。 */
+const FILES_PANEL_PROJECTS = 10;
+
+/**
+ * 沒有開啟資料夾時，檔案面板顯示說明、開啟按鈕與「專案」：和起始頁同一份清單、同樣的順序（最近開啟的在前），
+ * 用自訂的名稱與顏色；後面是記住的遠端連線與「全部專案…」。
+ */
 export async function renderFilesEmpty(): Promise<void> {
   const box = app.$("#files-empty");
   app.$("#files-head").hidden = !app.workspaceRoot;
@@ -379,17 +394,17 @@ export async function renderFilesEmpty(): Promise<void> {
     app.projectUi!.refresh(),
     app.features.remote ? desktop.davConnections().catch(() => []) : [],
   ]);
-  const folders = projectSections(projects).flatMap((s) => s.items).slice(0, 10);
+  const folders = projects.slice(0, FILES_PANEL_PROJECTS);
   if ((!folders.length && !conns.length) || app.workspaceRoot) return;
   const h = document.createElement("h3");
-  h.textContent = t("最近開啟");
+  h.textContent = t("專案");
   const list = document.createElement("ul");
   list.className = "recent-list";
-  const add = (iconName: string, label: string, title: string, run: () => void, forget?: () => void) => {
+  const add = (mark: Element, label: string, title: string, run: () => void, forget?: () => void) => {
     const b = document.createElement("button");
     b.type = "button";
     b.title = title;
-    b.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }));
+    b.append(mark, Object.assign(document.createElement("span"), { textContent: label }));
     b.addEventListener("click", run);
     const li = document.createElement("li");
     li.append(b);
@@ -405,19 +420,23 @@ export async function renderFilesEmpty(): Promise<void> {
     }
     list.append(li);
   };
-  for (const p of folders) add("folder", p.label, displayPath(p.path), () => void openRecentFolder(p.path));
+  for (const p of folders) {
+    const dot = Object.assign(document.createElement("span"), { className: "project-dot" });
+    if (p.color) dot.dataset.color = p.color;
+    add(dot, p.label, displayPath(p.path), () => void openRecentFolder(p.path));
+  }
   for (const c of conns) {
     const where = c.kind === "ssh" ? c.url : t("{url}（{user}）", { url: c.url, user: c.username });
-    add(c.kind === "ssh" ? "server" : "cloud", c.name, where, () => void openRemote(c), () =>
+    add(icon(c.kind === "ssh" ? "server" : "cloud"), c.name, where, () => void openRemote(c), () =>
       void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError),
     );
   }
   box.append(h, list);
-  if (projects.length > folders.length) {
+  if (projects.length) {
     const more = document.createElement("button");
     more.type = "button";
     more.className = "btn";
-    more.append(icon("layout-grid"), t("全部 {n} 個專案…", { n: projects.length }));
+    more.append(icon("layout-dashboard"), t("全部專案…"));
     more.addEventListener("click", () => void commands.run("project-overview").catch(reportError));
     box.append(more);
   }
@@ -601,6 +620,49 @@ function pickAndUpload(dir: string): void {
   input.click();
 }
 
+/**
+ * 重新命名檔案或資料夾（檔案面板的「重新命名」、在分頁上改已經存成檔案的文件都走這裡）：改磁碟上的名稱，
+ * 開著的分頁跟著換到新路徑與新名稱，再問要不要更新其他文件裡連到它的連結。
+ */
+export async function renameEntry(entry: Entry, name: string): Promise<void> {
+  const d = desktop;
+  if (!d) return;
+  const parent = dirname(entry.path);
+  // 改名前記下各文件的連結，改名後才知道哪些要更新。
+  const local = !isRemote(entry.path) && !!app.workspaceRoot;
+  const before = local ? await indexedDocs().catch(() => []) : [];
+  app.fileListCache ??= local && app.workspaceRoot ? await d.listFiles(app.workspaceRoot.path).catch(() => []) : app.fileListCache;
+  const filesBefore = app.markdownFiles(app.fileListCache ?? []);
+  const to = await d.renameEntry(entry.path, name);
+  // 已開啟的分頁（含改名資料夾底下的檔案）改用新路徑。
+  app.stash();
+  for (const doc of app.docs) {
+    const moved = doc.path && rebase(doc.path, entry.path, to);
+    if (!moved) continue;
+    doc.path = moved;
+    if (doc.path === to) doc.name = basename(to);
+    doc.handle = desktopHandle(moved, basename(moved));
+  }
+  ({ name: app.cur.fileName, handle: app.cur.fileHandle } = app.active);
+  app.fileListCache = null;
+  app.persistSession();
+  app.renderSaveState();
+  app.renderTabs();
+  await app.fileTree?.refresh([parent]);
+  if (local && (entry.isDir || /\.(md|markdown)$/i.test(entry.path))) await app.updateLinksAfterRename(entry.path, to, before, filesBefore);
+}
+
+/**
+ * 在分頁上改已經存成檔案的文件：和檔案面板一樣，只能改目前開啟的資料夾（本機或遠端）裡的檔案；
+ * 不行時說明原因，回傳 false。
+ */
+export function canRenameFile(path: string | null): boolean {
+  if (desktop && path && app.workspaceRoot && isInside(path, app.workspaceRoot.path)) return true;
+  if (!desktop) toast(t("網頁版無法重新命名已經存成檔案的文件；可以用「另存新檔」存成新的名稱。"));
+  else toast(t("「{name}」不在目前開啟的資料夾裡，無法重新命名；可以用「另存新檔」存成新的名稱。", { name: basename(path ?? "") }));
+  return false;
+}
+
 export async function treeAction(action: TreeAction, entry: Entry): Promise<void> {
   const d = desktop;
   if (!d || !app.fileTree) return;
@@ -626,31 +688,9 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
       break;
     }
     case "rename": {
-      const parent = dirname(entry.path);
-      const name = await app.fileTree.promptName(parent, entry.name, "rename", entry.path);
+      const name = await app.fileTree.promptName(dirname(entry.path), entry.name, "rename", entry.path);
       if (!name || name === entry.name) return;
-      // 改名前記下各文件的連結，改名後才知道哪些要更新。
-      const local = !isRemote(entry.path) && !!app.workspaceRoot;
-      const before = local ? await indexedDocs().catch(() => []) : [];
-      app.fileListCache ??= local && app.workspaceRoot ? await d.listFiles(app.workspaceRoot.path).catch(() => []) : app.fileListCache;
-      const filesBefore = app.markdownFiles(app.fileListCache ?? []);
-      const to = await d.renameEntry(entry.path, name);
-      // 已開啟的分頁（含改名資料夾底下的檔案）改用新路徑。
-      app.stash();
-      for (const doc of app.docs) {
-        const moved = doc.path && rebase(doc.path, entry.path, to);
-        if (!moved) continue;
-        doc.path = moved;
-        if (doc.path === to) doc.name = basename(to);
-        doc.handle = desktopHandle(moved, basename(moved));
-      }
-      ({ name: app.cur.fileName, handle: app.cur.fileHandle } = app.active);
-      app.fileListCache = null;
-      app.persistSession();
-      app.renderSaveState();
-      app.renderTabs();
-      await app.fileTree.refresh([parent]);
-      if (local && (entry.isDir || /\.(md|markdown)$/i.test(entry.path))) await app.updateLinksAfterRename(entry.path, to, before, filesBefore);
+      await renameEntry(entry, name);
       break;
     }
     case "trash": {
@@ -754,7 +794,7 @@ export function initWorkspaceUi(): void {
       // Wiki 在右側欄：按一下打開或收起右側欄（和面板圖示再按一次收起來一樣）。
       if (panel === "wiki" && wikiPlacedRight() && app.rightOutlineShown) setRightOutline(false);
       else if (panel === app.sidePanel && app.outlineShown) app.setOutline(false);
-      else showPanel(panel);
+      else showPanel(panel, true, true);
     });
   }
   app.$(".activity-tabs").addEventListener("keydown", (e) => {

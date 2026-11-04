@@ -8,7 +8,6 @@ export const html: Record<string, Translation> = {
   "待辦總覽": "Tasks",
   "Issues（GitHub）": "Issues (GitHub)",
   "側邊欄內容": "Sidebar Content",
-  "開啟其他資料夾": "Open Another Folder",
   "工作區檔案": "Workspace Files",
   "原始碼控制": "Source Control",
   "格式工具列": "Formatting Toolbar",

@@ -12,6 +12,7 @@ import { toast } from "../ui/toast.ts";
 import { openGitHistory } from "./git-history.ts";
 import { createWorkItemDialog, createWorkItemFromSelection, copySelection, pasteFromClipboard } from "./new-work-item.ts";
 import { keptPicker, keptPages } from "./offline-copies.ts";
+import { recentFilesPicker } from "./recent-files.ts";
 import { openWikiHistory, openWikiRecent } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
@@ -254,30 +255,6 @@ export function initGitActions(): void {
     },
     ...(
       [
-        [
-          "git-commit",
-          t("Git：提交變更…"),
-          "git-commit-horizontal",
-          () => {
-            app.showPanel("git");
-            gitPanel?.focusMessage();
-          },
-        ],
-        ["git-pull", t("Git：拉取"), "arrow-down-to-line", () => gitPanel?.pull()],
-        ["git-push", t("Git：推送"), "arrow-up-from-line", () => gitPanel?.push()],
-      ] as const
-    ).map(
-      ([id, title, iconName, run]): Command => ({
-        id,
-        title,
-        group: t("檔案"),
-        icon: iconName,
-        when: () => !!gitPanel?.status?.repo,
-        run: () => void run(),
-      }),
-    ),
-    ...(
-      [
         ["github-open", t("GitHub：下載或開啟儲存庫…"), "github", () => app.github?.openRepo(), () => true],
         ["github-publish", t("GitHub：把這個資料夾上傳到 GitHub…"), "arrow-up-from-line", () => app.github?.publish(), () => !!app.workspaceRoot && !isRemote(app.workspaceRoot.path)],
         ["github-login", t("GitHub：登入"), "shield-check", () => app.github?.login(), () => !app.github?.account],
@@ -292,12 +269,28 @@ export function initGitActions(): void {
           },
           () => !!gitPanel?.status?.repo,
         ],
+        ["git-pull", t("Git：拉取"), "arrow-down-to-line", () => gitPanel?.pull(), () => !!gitPanel?.status?.repo],
+        ["git-push", t("Git：推送"), "arrow-up-from-line", () => gitPanel?.push(), () => !!gitPanel?.status?.repo],
         ["git-sync", t("Git：同步（拉取再推送）"), "arrow-down-up", () => void gitSync(), () => !!gitPanel?.status?.remote && !gitPanel.status.merging],
         ["git-branch-switch", t("Git：切換或建立分支…"), "git-branch", () => void switchBranch().catch(reportError), () => !!gitPanel?.status?.repo && !gitPanel.status.merging],
         ["git-create-pr", t("Git：建立 Pull Request…"), "git-pull-request", () => void createPullRequest().catch(reportError), () => !!gitPanel?.status?.remote],
         ["git-merge-finish", t("Git：完成合併"), "git-merge", () => void gitPanel?.finishMerge(), () => !!gitPanel?.status?.merging],
         ["github-pages", t("GitHub：發佈成網站（GitHub Pages）…"), "globe", () => void publishPages(), () => !!app.github?.account && !!issuesRepo],
         ["github-gist", t("GitHub：分享成 Gist…"), "share-2", () => void shareGist(), () => !!app.github?.account],
+      ] as const
+    ).map(
+      ([id, title, iconName, run, when]): Command => ({
+        id,
+        title,
+        group: "Git",
+        icon: iconName,
+        when: () => !!app.github && when(),
+        run: () => void run(),
+      }),
+    ),
+    // Azure DevOps 的指令都看 app.ado，跟 Git 整合有沒有開無關。
+    ...(
+      [
         ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "briefcase-business", () => app.ado?.openRepo(), () => !!app.ado],
         ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showAdo("workitems"), () => !!app.ado?.account],
         ["ado-wiki", t("Azure DevOps／TFS：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!app.ado?.account],
@@ -313,22 +306,17 @@ export function initGitActions(): void {
         ],
       ] as const
     ).map(
-      ([id, title, iconName, run, when]): Command => ({
-        id,
-        title,
-        group: "Git",
-        icon: iconName,
-        when: () => !!app.github && when(),
-        run: () => void run(),
-      }),
+      ([id, title, iconName, run, when]): Command => ({ id, title, group: "Azure DevOps", icon: iconName, when, run: () => void run() }),
     ),
     {
       id: "open-recent",
-      title: t("最近開啟…"),
+      title: t("最近開啟的檔案…"),
       group: t("檔案"),
       icon: "clock",
+      // 跟 VS Code 一樣；只有桌面版有這個指令，網頁版的 Ctrl+R 照樣是瀏覽器的重新整理。
+      keys: desktop ? "Mod-r" : undefined,
       when: () => !!desktop,
-      run: () => app.recentPicker.open(),
+      run: () => recentFilesPicker.open(),
     },
     {
       id: "activity-add",
@@ -342,7 +330,7 @@ export function initGitActions(): void {
       title: t("圖示列：自訂…"),
       group: t("檢視"),
       icon: "settings",
-      run: () => app.settingsDialog.open(t("外觀")),
+      run: () => app.settingsDialog.open(t("版面")),
     },
     {
       id: "git-history",
@@ -380,7 +368,7 @@ export function initGitActions(): void {
     {
       id: "wiki-history",
       title: t("Wiki 頁面的修改記錄…"),
-      group: t("檔案"),
+      group: "Azure DevOps",
       icon: "history",
       when: () => !!desktop && (!!app.active.wiki || (app.issueView.isOpen && !!app.wikiPage && !app.wikiPage.wiki.code)),
       run: () => {
@@ -393,7 +381,7 @@ export function initGitActions(): void {
     {
       id: "wiki-recent",
       title: t("Wiki 最近修改…"),
-      group: t("檔案"),
+      group: "Azure DevOps",
       icon: "history",
       when: () => !!desktop && !!app.ado?.account && !!(wikiPanel?.wiki ?? app.wikiPage?.wiki),
       run: () => {
@@ -404,7 +392,7 @@ export function initGitActions(): void {
     {
       id: "wiki-move",
       title: t("Wiki 頁面改名或搬移…"),
-      group: t("檔案"),
+      group: "Azure DevOps",
       icon: "text-cursor-input",
       when: () => !!desktop && !!app.ado?.account && app.issueView.isOpen && !!app.wikiPage && !app.wikiPage.wiki.code,
       run: () => {
@@ -414,7 +402,7 @@ export function initGitActions(): void {
     {
       id: "wiki-backlinks",
       title: t("哪些頁面連到這一頁…"),
-      group: t("檔案"),
+      group: "Azure DevOps",
       icon: "link-2",
       when: () => !!desktop && !!app.ado?.account && app.issueView.isOpen && !!app.wikiPage,
       run: () => {

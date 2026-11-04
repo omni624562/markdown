@@ -450,10 +450,9 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 面板標題列的按鈕平常淡出，滑鼠移到側邊欄或用鍵盤操作時才明顯。 */
-.side-actions { display: flex; gap: 0; opacity: 0; transition: opacity 0.12s; }
+/* 面板標題列的按鈕（新增檔案、重新整理等）一直顯示，第一次用的人也找得到；圖示用淡一點的顏色，滑鼠移上去才變深。 */
+.side-actions { display: flex; gap: 0; }
 .side-actions[hidden] { display: none; }
-.sidebar:hover .side-actions, .outline-right:hover .side-actions, .side-actions:focus-within { opacity: 1; }
 .side-actions .btn { width: 26px; min-height: 26px; height: 26px; color: var(--muted); }
 .side-actions .btn:hover { color: var(--fg); border-color: transparent; }
 .side-actions .btn .icon { width: 16px; height: 16px; }
@@ -479,6 +478,7 @@ kbd {
 }
 .recent-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-list button .icon { width: 16px; height: 16px; color: var(--muted); }
+.recent-list button .project-dot { margin: 0 3.5px; }
 .recent-list button:hover { background: var(--active-line); }
 
 /* 檔案樹 */
@@ -697,6 +697,11 @@ kbd {
 .start-recent-item:hover, .start-recent-item:focus-visible { background: var(--active-line); }
 .start-recent-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .start-recent-where { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+/* 專案的顏色點佔一個圖示的寬度，和檔案、遠端連線的圖示對齊。 */
+.start-recent-item .project-dot { align-self: center; margin: 0 3.5px; }
+.start-recent-more { display: inline-flex; gap: 6px; align-items: center; margin-top: 2px; padding: 4px 8px; border: 0; border-radius: 7px; background: none; color: var(--accent); font: 13px var(--font-ui); cursor: pointer; }
+.start-recent-more:hover, .start-recent-more:focus-visible { background: var(--active-line); }
+.start-recent-more .icon { width: 15px; height: 15px; }
 .start-tips { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
 .start-tip { display: inline-flex; gap: 6px; align-items: center; padding: 2px 4px; border: 0; border-radius: 5px; background: none; color: inherit; font: inherit; }
 button.start-tip { cursor: pointer; }
@@ -763,6 +768,19 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .save-state[data-state="saved"] { color: var(--success); }
 .save-state:disabled { cursor: default; background: transparent; }
 .save-state[data-state="dirty"] { color: var(--fg); }
+.save-state .icon { display: none; }
+/* 放不下時（視窗窄、下載更新的進度很長）：只有文字長的項目縮小、用「…」截斷，不會把字數擠出視窗左邊；
+ * 檢視切換、字數與圖示按鈕不縮。 */
+.statusbar > * { flex-shrink: 0; }
+.statusbar > :is(#status-update, #doc-kind, #status-save, .status-view) { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+:is(#doc-kind, #status-save) > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 視窗窄時：項目之間靠近一點，存檔狀態與終端機只留圖示（完整的文字在 aria-label 與滑鼠提示）。 */
+@media (max-width: 720px) {
+  .statusbar { gap: 10px; padding-inline: 10px; }
+  .save-state .icon { display: block; }
+  .save-state-label, .status-terminal span { display: none; }
+  .statusbar > #status-save { flex-shrink: 0; }
+}
 
 /* ---- 下拉選單（Popover） ---- */
 .menu {
@@ -960,7 +978,6 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 }
 @media (pointer: coarse) {
   :root { --control-h: 40px; --topbar-h: 46px; }
-  .side-actions { opacity: 1; }
   .format-bar .btn { min-height: 38px; }
   .format-bar .btn.icon-only { width: 38px; }
 }
@@ -1131,6 +1148,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
   padding: 11px 16px;
 }
 .settings-row + .settings-row { border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent); }
+/* 搜尋設定時不符合的列（不用 hidden：hidden 是依狀態藏的，清掉搜尋後要維持原樣）。 */
+.settings-row.search-miss { display: none; }
 .settings-row > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .settings-row label { color: var(--fg); font-size: 14px; font-weight: 500; }
 .settings-row small { max-width: 46ch; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
@@ -1678,22 +1697,22 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 /* 用 GitHub 登入：顯示要在網頁輸入的代碼。 */
 .github-code { margin: 4px 0 8px; padding: 14px; border: 1px dashed var(--border-strong); border-radius: 10px; font: 600 28px/1.2 var(--font-mono); letter-spacing: 0.18em; text-align: center; user-select: all; }
 .github-wait { color: var(--muted); font-size: 12.5px; }
-/* 分支一列、功能按鈕一列：面板變窄時分支名稱不會被按鈕擠掉。 */
-.git-branch { display: flex; flex-direction: column; gap: 4px; align-items: stretch; margin: 0 4px 8px; }
+/* 分支名稱和拉取、推送排成一列：名稱太長時用「…」截斷，按鈕不換行（其他按鈕在面板標題列）。 */
+.git-branch { display: flex; gap: 4px; align-items: center; margin: 0 4px 8px; }
 .git-info { display: flex; flex: 1; gap: 5px; align-items: center; min-width: 0; overflow: hidden; color: var(--fg); font-size: 13px; white-space: nowrap; }
 .git-info .icon { width: 15px; height: 15px; color: var(--muted); }
 .git-info strong { min-width: 3em; overflow: hidden; font-weight: 600; text-overflow: ellipsis; }
 .git-info small { color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; }
-button.git-info { flex: none; align-self: flex-start; max-width: calc(100% + 4px); padding: 2px 4px; margin-left: -4px; border: 0; border-radius: 5px; background: none; font-family: var(--font-ui); text-align: left; cursor: pointer; }
+button.git-info { flex: 0 1 auto; padding: 2px 4px; margin-left: -4px; border: 0; border-radius: 5px; background: none; font-family: var(--font-ui); text-align: left; cursor: pointer; }
 button.git-info:hover:not(:disabled) { background: var(--active-line); }
 button.git-info:disabled { cursor: default; }
 .git-merge { flex-direction: column; align-items: stretch; gap: 6px; }
 .git-merge-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.git-sync { display: flex; flex-wrap: wrap; gap: 2px; margin-left: -6px; }
+.git-sync { display: flex; flex: none; gap: 2px; margin-left: auto; }
 .git-sync .btn { min-height: 26px; padding: 0 6px; color: var(--muted); font-size: 12px; }
 .git-sync .btn:hover { color: var(--fg); }
 .git-sync .btn .icon { width: 14px; height: 14px; }
-.git-sync .btn.spinning .icon { animation: git-spin 0.9s linear infinite; }
+#git-head .btn.spinning .icon { animation: git-spin 0.9s linear infinite; }
 @keyframes git-spin { to { transform: rotate(360deg); } }
 .git-count { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
 .git-message {
@@ -1713,7 +1732,7 @@ button.git-info:disabled { cursor: default; }
 .git-actions { display: flex; gap: 6px; margin: 8px 0 14px; }
 .git-actions .btn { flex: 1; min-height: 30px; padding: 0 8px; border-color: var(--border-strong); font-size: 13px; }
 .git-actions .btn .icon { width: 15px; height: 15px; }
-.git-actions .btn:disabled, .git-sync .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.git-actions .btn:disabled, .git-sync .btn:disabled, #git-head .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .git-changes-head { margin: 0 4px 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; }
 .tree-row > span:not(.git-badge) { flex: 1; }
 .git-badge { flex: none; margin-left: 4px; font: 600 11px var(--font-mono); }
@@ -1829,6 +1848,18 @@ button.git-info:disabled { cursor: default; }
 .cm-lp-table table { margin: 0; }
 .cm-lp-math-block { text-align: center; }
 .cm-lp-math { cursor: pointer; }
+/* 預覽中的表格（plugins/tables.ts）：短的儲存格、日期與數字不從中間斷開；表格因此放不下時左右捲動。
+ * 捲動的提示：邊緣的陰影比 document.css 的深一點，捲軸用細的，看得出旁邊還有欄位。 */
+.markdown-body .cell-nowrap, .markdown-body .nobr { white-space: nowrap; }
+.markdown-body table:not(.fits) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  background:
+    linear-gradient(to right, var(--md-bg) 30%, transparent) left center / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--md-bg) 30%, transparent) right center / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--md-fg) 32%, transparent), transparent) left center / 18px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--md-fg) 32%, transparent), transparent) right center / 18px 100% no-repeat scroll;
+}
 /* 預覽中的程式碼區塊：左上角語言，滑過時右上角「複製」。 */
 .markdown-body .code-block { position: relative; }
 .markdown-body .code-block > pre { margin-bottom: 1em; }
@@ -2078,7 +2109,7 @@ button.git-info:disabled { cursor: default; }
 .side-body.workitems { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
 .side-body.workitems[hidden] { display: none; }
 .side-body.workitems > * { flex: none; }
-/* 篩選展開時太高（視窗很矮）也不會把清單擠不見：篩選自己捲動。 */
+/* 篩選太高（視窗很矮）也不會把清單擠不見：篩選自己捲動。 */
 .side-body.workitems > .workitems-filters { max-height: 55%; overflow-y: auto; }
 .side-body.workitems > .workitems-list { flex: 1 1 auto; min-height: 0; margin: 0 -8px; padding: 0 8px 12px; overflow-y: auto; border-top: 1px solid transparent; }
 .side-body.workitems > .workitems-list.scrolled { border-top-color: var(--border); }
@@ -2151,15 +2182,36 @@ button.git-info:disabled { cursor: default; }
 /* 改過幾項條件：放在按鈕裡、圖示右邊（不要浮在外面，窄的時候會被切掉或蓋住圖示）。 */
 .workitems-filter-count { box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font: 600 10.5px/16px var(--font-ui); text-align: center; }
 .workitems-filter-count[hidden] { display: none; }
-.workitems-filter-group { display: inline-flex; flex: none; gap: 2px; align-items: flex-start; }
-.workitems-filter-clear { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; width: 24px; height: 30px; margin: 2px 0 6px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.workitems-filter-toggle[hidden] { display: none; }
+/* 工作項目篩選的第一列：專案佔滿，右邊是清掉全部條件的 ×（有條件時才出現）。 */
+.workitems-filter-top { grid-column: 1 / -1; display: flex; gap: 2px; align-items: center; min-width: 0; }
+.workitems-filter-top .multi-select { flex: 1 1 auto; }
+.workitems-filter-clear { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; width: 24px; height: 28px; margin: 0; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .workitems-filter-clear[hidden] { display: none; }
 .workitems-filter-clear:hover { border-color: var(--border); background: var(--active-line); color: var(--fg); }
 .workitems-filter-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .workitems-filter-clear .icon { width: 14px; height: 14px; }
-.workitems-filter-toggle[hidden] { display: none; }
 .workitems-query-note { grid-column: 1 / -1; margin: 0; color: var(--accent); font-size: 12px; line-height: 1.5; }
 .workitems-query-note[hidden] { display: none; }
+/*
+ * 工作項目篩選的最後一列：搜尋框，右端的 ⌄ 開 TFS 的已儲存查詢；正在用查詢時左邊是「查詢：名稱 ×」。
+ * 框畫在外層（和上面的下拉選單同樣高），裡面的輸入框不畫框。
+ */
+.workitems-search-box { grid-column: 1 / -1; display: flex; gap: 2px; align-items: center; box-sizing: border-box; min-width: 0; height: 28px; padding: 0 2px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.workitems-search-box:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
+.workitems-search-box:has(.workitems-search:focus-visible) { outline: 2px solid var(--accent); outline-offset: -1px; }
+.workitems-search-box .workitems-search { flex: 1 1 0; width: auto; min-width: 0; height: 100%; margin: 0; padding: 0 4px 0 6px; border: 0; background: transparent; font-size: 12.5px; }
+.workitems-search-box .workitems-search:focus-visible { outline: none; }
+.workitems-query-pick, .workitems-query-cancel { display: grid; flex: none; place-items: center; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.workitems-query-pick { width: 22px; height: 22px; border-radius: 4px; }
+.workitems-query-pick:hover { background: var(--active-line); color: var(--fg); }
+.workitems-query-pick:focus-visible, .workitems-query-name:focus-visible, .workitems-query-cancel:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.workitems-query-pick .icon { width: 15px; height: 15px; }
+.workitems-query-chip { display: inline-flex; flex: 0 1 auto; align-items: center; min-width: 0; max-width: 62%; height: 20px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font: 12px var(--font-ui); }
+.workitems-query-name { min-width: 0; height: 100%; overflow: hidden; padding: 0 2px 0 6px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.workitems-query-cancel { width: 18px; height: 100%; border-radius: 4px; color: inherit; }
+.workitems-query-cancel:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.workitems-query-cancel .icon { width: 12px; height: 12px; }
 .workitems-status { margin: 4px 4px 8px; color: var(--muted); font-size: 12px; }
 .workitems-list { margin: 0; padding: 0; list-style: none; }
 .workitem { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.4 var(--font-ui); text-align: left; cursor: pointer; }
@@ -2205,15 +2257,12 @@ button.git-info:disabled { cursor: default; }
   cursor: pointer;
 }
 .workitems-filters .workitems-person { padding: 0 8px; }
-/* 「已儲存的查詢…」和旁邊「指派給我」的下拉選單同樣高、同樣的框；開的是對話框，所以不畫下拉箭頭。 */
-.workitems-filters .workitems-query-open { display: flex; gap: 6px; align-items: center; padding: 0 8px; background-image: none; text-align: left; }
-.workitems-query-open .icon { flex: none; width: 15px; height: 15px; }
-.workitems-query-open > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 名字的建議清單打字時就會出現，不需要旁邊的下拉箭頭。 */
 .workitems-filters .workitems-person::-webkit-calendar-picker-indicator { display: none !important; }
 .workitems-filters .workitems-select:hover, .workitems-filters .workitems-person:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
 .workitems-filters .workitems-select:focus-visible, .workitems-filters .workitems-person:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-.workitems-filters .workitems-person, .workitems-filters .workitems-area, .workitems-filters .workitems-project { grid-column: 1 / -1; }
+/* 輸入名字的框佔一整列；沒選專案（沒有區域）時人也佔一整列。 */
+.workitems-filters .workitems-person, .workitems-filters .workitems-wide { grid-column: 1 / -1; }
 .workitems-filters [hidden], .workitems-filters[hidden] { display: none; }
 .workitems-filter-reset { grid-column: 1 / -1; justify-self: start; }
 /* 篩選列的下拉選單（人、狀態、類型、專案、區域）：按鈕和下拉選單同樣子，打開是勾選清單。 */
@@ -2249,8 +2298,6 @@ button.git-info:disabled { cursor: default; }
 .favorite-toggle.active .icon { fill: currentColor; }
 .tb-project-row { display: flex; grid-column: 1 / -1; gap: 6px; align-items: stretch; min-width: 0; }
 .tb-project-row > select { flex: 1; min-width: 0; }
-/* 遠端的清單（工作項目、Wiki、Issues）常要重新讀取：重新整理按鈕一直顯示。 */
-#panel-workitems .side-actions, #panel-wiki .side-actions, #panel-issues .side-actions { opacity: 1; }
 /* 讀取失敗時錯誤訊息旁的「重試」。 */
 .load-retry { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; vertical-align: middle; }
 .load-retry .icon { width: 13px; height: 13px; }
@@ -2566,6 +2613,11 @@ input[type="checkbox"]:not(.switch):disabled { opacity: 0.5; cursor: not-allowed
 .markdown-body .task-list-item input[type="checkbox"] { width: 1em; height: 1em; margin: 0 0.45em 0 -1.5em; vertical-align: -0.12em; }
 .markdown-body .task-list-item > input[type="checkbox"]:has(+ p) { margin-top: 0.45em; }
 input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45em 0 0; vertical-align: -0.12em; }
+/* 預覽的待辦不能點（disabled），但要看得清楚：不變淡、游標是一般的箭頭；
+ * 沒勾的框線用 --subtle（和底色的對比在淺色、深色都超過 3:1，--border-strong 只有約 1.5:1），即時預覽的勾選框也一樣。 */
+.markdown-body .task-list-item input[type="checkbox"]:disabled { opacity: 1; cursor: default; }
+.markdown-body .task-list-item input[type="checkbox"]:not(:checked),
+input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: var(--subtle); }
 .markdown-body input[type="checkbox"]:checked, input[type="checkbox"].cm-lp-checkbox:checked { background-size: 80%; }
 .pdf-dialog h2 { margin-bottom: 18px; }
 .tasks-filters .segmented { flex: 1 1 100%; }
@@ -3629,7 +3681,7 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .search-box,
 .settings-row select, .settings-row input[type="number"], .settings-row .font-input,
 .choice-input,
-.workitems-search,
+.workitems-search, .workitems-search-box,
 .workitems-filters .workitems-select, .workitems-filters .workitems-person,
 .multi-select-search,
 .tasks-filters select,
