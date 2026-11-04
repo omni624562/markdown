@@ -8,6 +8,7 @@ import { issueFileName, stateTone, workItemMarkdown, workItemIdOf } from "../iss
 import type { IssueFact } from "../ui/issue-view.ts";
 import { toast } from "../ui/toast.ts";
 import { decorateAttachments } from "../ui/work-item-attachments.ts";
+import { decorateHistory } from "../ui/work-item-history-look.ts";
 import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
 import { decorateMarks } from "../ui/work-item-marks.ts";
 import * as storage from "../storage.ts";
@@ -237,7 +238,7 @@ export function showWorkItem(item: AdoWorkItem): void {
   });
 }
 
-/** 修改記錄：開在同一個分頁（按上一頁回到工作項目），裡面的工作項目連結也在 oMarker 開。 */
+/** 修改紀錄：開在同一個分頁（按上一頁回到工作項目），排成時間軸；裡面的工作項目連結也在 oMarker 開。 */
 function showWorkItemHistory(item: AdoWorkItem): void {
   void app.issueView
     .show({
@@ -248,6 +249,7 @@ function showWorkItemHistory(item: AdoWorkItem): void {
       webUrl: item.webUrl,
       fileName: issueFileName(t("修改紀錄 {label}", { label: `${item.kind} ${item.id}` }), item.title),
       load: async () => historyMarkdown(item, await desktop!.adoWorkItemHistory(item.id)),
+      decorate: (body) => decorateHistory(body),
       insertLink: () => insertIssueLink(item),
       link: (href) => {
         const id = workItemIdOf(href);
