@@ -66,8 +66,8 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["underline", t("底線")],
   ],
   panelStyle: [
-    ["joined", t("相連（原本）")],
-    ["spaced", t("圓角區塊、留間隔")],
+    ["spaced", t("圓角區塊、留間隔（預設）")],
+    ["joined", t("相連")],
   ],
   docLineHeight: [
     ["compact", t("緊湊")],
