@@ -1,6 +1,6 @@
 /**
- * 起始頁顯示在編輯區上面時：編輯區的灰色提示、行號（空白文件的「1」）與目前這一行的底色都收起來，
- * 只留起始頁；開始打字後起始頁消失，行號回來。先執行 `npm run build`，再 `npm run test:e2e`。
+ * 起始頁顯示在編輯區上面時：編輯區的灰色提示、行號（空白文件的「1」）、目前這一行的底色、空白行的「＋」
+ * 與游標都收起來，只留起始頁；開始打字後起始頁消失，行號、游標回來。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -29,6 +29,38 @@ test("起始頁顯示時不露出行號；開始打字後行號回來、位置�
   const after = await look();
   assert.equal(after.gutter, "visible", "打字後行號回來");
   assert.equal(after.left, before.left, "內容不會跳動");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("清空文件回到起始頁：左上角不會留著空白行的「＋」和游標；再打字就回來", async () => {
+  const { page, context, errors } = await open({ desktop: {} });
+  await page.locator(".empty-state.in-editor .start-page").waitFor();
+  await page.locator(".cm-content").focus();
+  await page.keyboard.type("寫一點");
+  await page.waitForFunction(() => document.querySelector(".empty-state")?.hidden);
+  // 全選刪掉：起始頁又出現，編輯區還是有焦點（可以直接打字）。
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Delete");
+  await page.locator(".empty-state.in-editor:not([hidden]) .start-page").waitFor();
+  const look = () =>
+    page.evaluate(() => {
+      const handle = document.querySelector(".editor-pane .cm-insert-handle");
+      const cursor = document.querySelector(".editor-pane .cm-cursorLayer");
+      return {
+        focused: document.querySelector(".editor-pane .cm-editor").classList.contains("cm-focused"),
+        handle: !!handle && handle.getClientRects().length > 0 && getComputedStyle(handle).visibility !== "hidden",
+        cursor: !!cursor && getComputedStyle(cursor).visibility !== "hidden",
+      };
+    });
+  const cleared = await look();
+  assert.equal(cleared.focused, true, "編輯區還有焦點");
+  assert.equal(cleared.handle, false, "起始頁顯示時沒有空白行的「＋」");
+  assert.equal(cleared.cursor, false, "起始頁顯示時看不到游標");
+  await page.keyboard.type("再寫");
+  await page.waitForFunction(() => document.querySelector(".empty-state")?.hidden);
+  const typed = await look();
+  assert.equal(typed.cursor, true, "打字後游標回來");
   assert.deepEqual(errors, []);
   await context.close();
 });
