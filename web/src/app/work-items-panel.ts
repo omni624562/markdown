@@ -15,7 +15,7 @@ import { WikiPanel } from "../ui/wiki-panel.ts";
 import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isFileShortcut, isWikiShortcut, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
-import { areaGroups, kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
+import { areaGroups, areaTrees, kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
 import { fromStateChoice, type KindStates, stateChoice, stateLabel, stateOptions, type StateOption, statesFor, workItemFilterKey } from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
@@ -362,19 +362,15 @@ function loadWorkItemParents(ids: number[]): void {
     });
 }
 
-/**
- * 「依上層項目分組」：排成樹（Epic → Feature → Story → Task），每一項只出現一次。
- * 清單上的項目的上層還沒讀到時先照原本的順序顯示；上層的上層讀到一層就重畫一次。
- */
-function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
+/** 清單上的項目都讀過上層了沒有；還沒讀的在背景讀（讀到後重畫），先照原本的方式顯示。 */
+function parentsKnown(items: (AdoWorkItem & IssueSummary)[]): boolean {
   const missing = items.map((w) => w.id).filter((id) => !workItemParentOf.has(id));
-  if (missing.length) {
-    loadWorkItemParents(missing);
-    return [{ title: null, items }];
-  }
-  const extra = moreChildren(items);
-  const all = extra.length ? [...items, ...extra] : items;
-  // 沿著上層往上走，走到還沒讀過上層的項目就在背景讀（讀過的不再讀）。
+  loadWorkItemParents(missing);
+  return !missing.length;
+}
+
+/** 沿著上層往上走，走到還沒讀過上層的項目就在背景讀（讀過的不再讀；讀到一層就重畫一次）。 */
+function loadAncestors(all: (AdoWorkItem & IssueSummary)[]): void {
   const ids = new Set(all.map((w) => w.id));
   const ancestors = new Set<number>();
   for (const w of all) {
@@ -388,19 +384,40 @@ function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<A
     }
   }
   loadWorkItemParents([...ancestors]);
-  const roots = parentTree(all, workItemParentOf, workItemParentItems);
-  const toNode = (n: TreeNode<AdoWorkItem & IssueSummary>): IssueTreeNode<AdoWorkItem & IssueSummary> => ({
-    item: n.item,
+}
+
+/**
+ * 樹的節點換成清單畫的節點：有子項目的是標題列，寫摘要（「3 個 User Story・8 個 Task」，淡色的不算）。
+ * `row` 可以換掉列上的項目（例如加上子區域的小字）。
+ */
+function issueTree(
+  n: TreeNode<AdoWorkItem & IssueSummary>,
+  row: (item: AdoWorkItem & IssueSummary) => AdoWorkItem & IssueSummary = (item) => item,
+): IssueTreeNode<AdoWorkItem & IssueSummary> {
+  return {
+    item: row(n.item),
     dim: n.dim,
     summary: n.children.length
       ? kindCounts(n)
           .map(([kind, count]) => t("{n} 個 {kind}", { n: count, kind }))
           .join(t("・"))
       : undefined,
-    children: n.children.map(toNode),
-  });
+    children: n.children.map((c) => issueTree(c, row)),
+  };
+}
+
+/**
+ * 「依上層項目分組」：排成樹（Epic → Feature → Story → Task），每一項只出現一次。
+ * 清單上的項目的上層還沒讀到時先照原本的順序顯示；上層的上層讀到一層就重畫一次。
+ */
+function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
+  if (!parentsKnown(items)) return [{ title: null, items }];
+  const extra = moreChildren(items);
+  const all = extra.length ? [...items, ...extra] : items;
+  loadAncestors(all);
+  const roots = parentTree(all, workItemParentOf, workItemParentItems);
   // 沒有上層的項目也是樹的最上層（例如 Epic 底下的都不在清單上），不另外分「沒有上層」一組。
-  return [{ title: null, items: [], tree: roots.map(toNode) }];
+  return [{ title: null, items: [], tree: roots.map((n) => issueTree(n)) }];
 }
 
 /** 區域下拉選單列出的順序（「依區域分組」的組照這個順序）；還沒讀到時是空的。 */
@@ -413,13 +430,41 @@ let workItemAreaOrder: string[] = [];
  */
 function groupByArea(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
   return areaGroups(items, app.workItemFilter.areas, workItemAreaOrder).map((g) => ({
-    // 區域可能就叫「其他」：收合用路徑分開。
-    key: g.area === null ? "none" : `area:${g.area.toLowerCase()}`,
+    key: areaGroupKey(g.area),
     title: g.title ?? t("其他"),
-    items: g.items.map(({ item, sub }) =>
-      sub ? { ...item, note: sub, noteTitle: t("區域：{area}", { area: (item.area ?? "").split("\\").join(" › ") }) } : item,
-    ),
+    items: g.items.map(({ item, sub }) => withSubArea(item, sub)),
   }));
+}
+
+/** 區域那一組收合用的識別：區域可能就叫「其他」，用路徑分開。 */
+const areaGroupKey = (area: string | null): string => (area === null ? "none" : `area:${area.toLowerCase()}`);
+
+/** 在子區域的項目：列上的小字旁邊標出子區域（`sub`，例如「監控」），滑鼠移上去看完整的區域。 */
+function withSubArea(item: AdoWorkItem & IssueSummary, sub: string | null): AdoWorkItem & IssueSummary {
+  return sub ? { ...item, note: sub, noteTitle: t("區域：{area}", { area: (item.area ?? "").split("\\").join(" › ") }) } : item;
+}
+
+/**
+ * 「依區域＋上層項目分組」：組和「依區域分組」一樣（順序、標題、數量、子區域的小字），組裡再和「依上層項目分組」一樣
+ * 排成樹，只用這一組的項目。上層在別的區域時（例如 Task 在 Comet、它的 Story 在 ITA），Story 淡淡地列在 Comet 那一組
+ * 當 Task 的上層，Task 只出現在 Comet；組的數量只算這一組的項目。上層還沒讀到時先照依區域分組顯示，讀到後重畫。
+ *
+ * 不補不在清單上的子項目（`moreChildren`）：補的是符合同樣篩選、只是因為清單只取最近更新的 100 個而沒列到的，
+ * 補進來組的數量、甚至組本身就和依區域分組不一樣了；依區域分組也只列清單上的，兩種排法列的項目一致比較好懂。
+ */
+function groupByAreaAndParent(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
+  if (!parentsKnown(items)) return groupByArea(items);
+  loadAncestors(items);
+  return areaTrees(items, app.workItemFilter.areas, workItemAreaOrder, workItemParentOf, workItemParentItems).map((g) => {
+    // 子區域的小字只標在這一組自己的項目上（淡色的上層不標）。
+    const subs = new Map(g.items.map(({ item, sub }) => [item.id, sub]));
+    return {
+      key: areaGroupKey(g.area),
+      title: g.title ?? t("其他"),
+      items: [],
+      tree: g.tree.map((n) => issueTree(n, (item) => withSubArea(item, subs.get(item.id) ?? null))),
+    };
+  });
 }
 
 /** 清單上的一列：上面一行是類型、編號、指派對象與更新日期，狀態在右邊（`kind`、`state` 由清單上色）。 */
@@ -734,6 +779,7 @@ export function initWorkItemsPanel(): void {
           { id: "parent", label: t("依上層項目分組"), arrange: (items) => groupByParentItems(items) },
           { id: "kind", label: t("依類型分組"), arrange: (items) => app.groupItems(items, (w) => w.kind) },
           { id: "area", label: t("依區域分組"), arrange: (items) => groupByArea(items) },
+          { id: "area-parent", label: t("依區域＋上層項目分組"), arrange: (items) => groupByAreaAndParent(items) },
         ],
         arrangement: {
           load: () => storage.load("workitem-arrange"),

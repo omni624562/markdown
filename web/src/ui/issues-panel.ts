@@ -29,7 +29,11 @@ export interface IssueGroup<T> {
   /** 收合用的識別（標題可能重複時給，例如區域的名稱和「其他」一樣）；沒給時用標題。 */
   key?: string;
   items: T[];
-  /** 樹狀（例如依上層項目分組的 Epic → Feature → Story → Task）：畫在 `items` 前面。 */
+  /**
+   * 樹狀（例如依上層項目分組的 Epic → Feature → Story → Task）：畫在 `items` 前面；有標題時畫在標題下面，
+   * 跟著標題收合。標題上的數量是 `items` 加上樹裡不是淡色的項目（淡色的上層不算）。
+   * 樹的節點各自收合：有標題時收合的識別包含這一組，同一個上層在好幾組出現時各收各的。
+   */
   tree?: IssueTreeNode<T>[];
 }
 
@@ -349,7 +353,12 @@ export class IssuesPanel<T extends IssueSummary> {
   shown(): void {
     if (!this.#loaded) void this.refresh();
     // 面板藏著時標出的項目捲不過去：顯示出來後再捲到看得到的地方。
-    else requestAnimationFrame(() => this.#list.querySelector<HTMLElement>('.workitem[aria-current="true"]')?.scrollIntoView({ block: "nearest" }));
+    else requestAnimationFrame(() => this.#currentRow()?.scrollIntoView({ block: "nearest" }));
+  }
+
+  /** 標出來的那一列；同一項出現好幾次時（在好幾組當淡色的上層）優先用它自己的那一列。 */
+  #currentRow(): HTMLElement | null {
+    return this.#list.querySelector<HTMLElement>('li:not(.workitems-dim) > .workitem[aria-current="true"]') ?? this.#list.querySelector<HTMLElement>('.workitem[aria-current="true"]');
   }
 
   /** 連線狀態或資料夾改變時清掉舊的內容。 */
@@ -410,24 +419,26 @@ export class IssuesPanel<T extends IssueSummary> {
     this.#groupKeys = [];
     const prefix = `${arrangement?.id}:`;
     for (const group of groups) {
+      const treeKey = this.#treeKey(prefix, group);
       if (group.tree) {
-        // 收合的節點底下也算（「全部展開」才會打開裡面收起來的）。
+        // 收合的節點底下也算，收起來的組裡的也算（「全部展開」才會打開裡面收起來的）。
         const walk = (nodes: IssueTreeNode<T>[]) => {
           for (const n of nodes) {
             if (!n.children.length) continue;
-            this.#groupKeys.push(`${prefix}tree:${n.item.id}`);
+            this.#groupKeys.push(`${treeKey}${n.item.id}`);
             walk(n.children);
           }
         };
         walk(group.tree);
-        this.#treeRows(group.tree, 0, prefix, rows);
       }
       if (group.title !== null) {
-        const key = `${prefix}${group.key ?? group.title}`;
+        const key = this.#groupKey(prefix, group);
         this.#groupKeys.push(key);
         const open = !this.#collapsed.has(key);
         const li = document.createElement("li");
         li.className = "workitems-group";
+        // 組裡是樹（依區域＋上層項目分組）：組與組之間畫分隔線。
+        li.classList.toggle("workitems-group-tree", !!group.tree);
         const b = document.createElement("button");
         b.type = "button";
         b.setAttribute("aria-expanded", String(open));
@@ -438,7 +449,7 @@ export class IssuesPanel<T extends IssueSummary> {
         name.classList.toggle("wrap", name.textContent.length > 24);
         const count = document.createElement("span");
         count.className = "workitems-group-count";
-        count.textContent = String(group.items.length);
+        count.textContent = String(group.items.length + (group.tree ? listedCount(group.tree) : 0));
         b.append(icon(open ? "chevron-down" : "chevron-right"), name, count);
         b.addEventListener("click", () => {
           if (open) this.#collapsed.add(key);
@@ -451,6 +462,7 @@ export class IssuesPanel<T extends IssueSummary> {
         rows.push(li);
         if (!open) continue;
       }
+      if (group.tree) this.#treeRows(group.tree, 0, treeKey, rows);
       rows.push(...group.items.map((it) => this.#row(it)));
     }
     this.#list.replaceChildren(...rows);
@@ -458,6 +470,16 @@ export class IssuesPanel<T extends IssueSummary> {
     for (const id of this.#selected) if (!this.#byId.has(id)) this.#selected.delete(id);
     this.#syncSelection();
     this.#updateFoldAll();
+  }
+
+  /** 分組標題收合用的識別（排列方式＋組的 `key` 或標題）。 */
+  #groupKey(prefix: string, group: IssueGroup<T>): string {
+    return `${prefix}${group.key ?? group.title}`;
+  }
+
+  /** 樹的節點收合用的識別（後面接項目編號）：有標題的組加上組的識別，同一個上層在好幾組裡各收各的。 */
+  #treeKey(prefix: string, group: IssueGroup<T>): string {
+    return group.title === null ? `${prefix}tree:` : `${this.#groupKey(prefix, group)}:tree:`;
   }
 
   /** 「全部收合／全部展開」：兩組以上才顯示；有任何一組開著就是「全部收合」。 */
@@ -473,20 +495,19 @@ export class IssuesPanel<T extends IssueSummary> {
   }
 
   /**
-   * 樹狀清單（`depth` 是第幾層）：有子項目的節點是標題列（左邊收合箭頭，卡片本身可以點開那個項目，
+   * 樹狀清單（`depth` 是第幾層，`treeKey` 見 `#treeKey`）：有子項目的節點是標題列（左邊收合箭頭，卡片本身可以點開那個項目，
    * 下面一行是摘要），收起來時不畫子項目；子項目每一層縮排一點、左邊一條線。
    */
-  #treeRows(nodes: IssueTreeNode<T>[], depth: number, prefix: string, rows: HTMLLIElement[]): void {
+  #treeRows(nodes: IssueTreeNode<T>[], depth: number, treeKey: string, rows: HTMLLIElement[]): void {
     for (const node of nodes) {
-      const li = this.#row(node.item);
+      const li = this.#row(node.item, !!node.dim);
       if (depth) {
         li.classList.add("workitems-child");
         li.dataset.depth = String(Math.min(depth, TREE_INDENT_MAX));
       }
-      li.classList.toggle("workitems-dim", !!node.dim);
       rows.push(li);
       if (!node.children.length) continue;
-      const key = `${prefix}tree:${node.item.id}`;
+      const key = `${treeKey}${node.item.id}`;
       const open = !this.#collapsed.has(key);
       li.classList.add("workitems-group-card");
       const toggle = document.createElement("button");
@@ -512,12 +533,14 @@ export class IssuesPanel<T extends IssueSummary> {
         summary.textContent = node.summary;
         li.querySelector(".workitem")?.append(summary);
       }
-      if (open) this.#treeRows(node.children, depth + 1, prefix, rows);
+      if (open) this.#treeRows(node.children, depth + 1, treeKey, rows);
     }
   }
 
-  #row(item: T): HTMLLIElement {
+  /** 清單的一列；`dim` 是樹裡淡色的上層（不在清單上，或在別的組）。 */
+  #row(item: T, dim = false): HTMLLIElement {
     const li = document.createElement("li");
+    li.classList.toggle("workitems-dim", dim);
     const b = document.createElement("button");
     b.type = "button";
     b.className = "workitem";
@@ -542,6 +565,7 @@ export class IssuesPanel<T extends IssueSummary> {
     b.dataset.id = String(item.id);
     if (item.kind) b.dataset.wiKind = kindKey(item.kind);
     if (item.id === this.#current) b.setAttribute("aria-current", "true");
+    li.append(b);
     this.#rowItems.set(b, item);
     this.#byId.set(item.id, item);
     this.#applyMark(b, item);
@@ -560,13 +584,13 @@ export class IssuesPanel<T extends IssueSummary> {
         e.dataTransfer.effectAllowed = "copy";
       });
     }
-    li.append(b);
     return li;
   }
 
   #applyMark(b: HTMLElement, item: T): void {
     b.querySelector(".workitem-dot")?.remove();
-    const mark = this.#h.mark?.(item) ?? null;
+    // 淡色的上層只是用來分組：在別的組也有它自己的列時，小圓點標在那一列就好。
+    const mark = b.closest(".workitems-dim") ? null : (this.#h.mark?.(item) ?? null);
     b.classList.toggle("workitem-marked", !!mark);
     if (!mark) return;
     const dot = document.createElement("span");
@@ -602,19 +626,26 @@ export class IssuesPanel<T extends IssueSummary> {
     if (id !== null) {
       const arrangement = this.#h.arrangements?.find((a) => a.id === this.#arrange?.value);
       const groups = arrangement?.arrange(this.#items) ?? [];
-      const keys: string[] = [];
-      const group = groups.find((g) => g.items.some((it) => it.id === id));
-      if (group && group.title !== null) keys.push(`${arrangement?.id}:${group.key ?? group.title}`);
-      // 樹狀：展開它所有的上層。
-      const path = (nodes: IssueTreeNode<T>[]): string[] | null => {
+      const prefix = `${arrangement?.id}:`;
+      // 樹狀：它所有的上層（`dim`：它在這裡是淡色的上層）。
+      const path = (nodes: IssueTreeNode<T>[], treeKey: string): { keys: string[]; dim: boolean } | null => {
         for (const n of nodes) {
-          if (n.item.id === id) return [];
-          const below = path(n.children);
-          if (below) return [`${arrangement?.id}:tree:${n.item.id}`, ...below];
+          if (n.item.id === id) return { keys: [], dim: !!n.dim };
+          const below = path(n.children, treeKey);
+          if (below) return { keys: [`${treeKey}${n.item.id}`, ...below.keys], dim: below.dim };
         }
         return null;
       };
-      for (const g of groups) if (g.tree) keys.push(...(path(g.tree) ?? []));
+      // 它出現的地方要展開的組與上層。淡色的上層可能在好幾組各出現一次：有它自己的列時只展開那裡，不然展開第一個。
+      const found: { keys: string[]; dim: boolean }[] = [];
+      for (const g of groups) {
+        const head = g.title === null ? [] : [this.#groupKey(prefix, g)];
+        if (g.items.some((it) => it.id === id)) found.push({ keys: head, dim: false });
+        const inTree = g.tree ? path(g.tree, this.#treeKey(prefix, g)) : null;
+        if (inTree) found.push({ keys: [...head, ...inTree.keys], dim: inTree.dim });
+      }
+      const own = found.filter((f) => !f.dim);
+      const keys = (own.length ? own : found.slice(0, 1)).flatMap((f) => f.keys);
       const closed = keys.filter((k) => this.#collapsed.has(k));
       if (closed.length) {
         for (const k of closed) this.#collapsed.delete(k);
@@ -625,6 +656,11 @@ export class IssuesPanel<T extends IssueSummary> {
       if (b.dataset.id === String(id)) b.setAttribute("aria-current", "true");
       else b.removeAttribute("aria-current");
     }
-    this.#list.querySelector<HTMLElement>('.workitem[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+    this.#currentRow()?.scrollIntoView({ block: "nearest" });
   }
+}
+
+/** 樹裡清單上的項目有幾個（淡色的上層不算）。 */
+function listedCount<T>(nodes: IssueTreeNode<T>[]): number {
+  return nodes.reduce((n, node) => n + (node.dim ? 0 : 1) + listedCount(node.children), 0);
 }

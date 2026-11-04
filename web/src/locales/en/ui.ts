@@ -461,6 +461,7 @@ export const ui: Record<string, Translation> = {
   "依狀態分組": "Group by state",
   "依類型分組": "Group by type",
   "依區域分組": "Group by area",
+  "依區域＋上層項目分組": "Group by area and parent",
   "其他": "Other",
   "區域：{area}": "Area: {area}",
   "（未設定）": "(Not set)",

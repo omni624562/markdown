@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type AreaGroup, type GroupItem, type TreeNode, areaGroups, kindCounts, parentTree } from "./workitem-groups.ts";
+import { type AreaGroup, type AreaTree, type GroupItem, type TreeNode, areaGroups, areaTrees, kindCounts, parentTree } from "./workitem-groups.ts";
 
 const task = (id: number) => ({ id, kind: "Task", title: `T${id}` });
 const story = (id: number) => ({ id, kind: "User Story", title: `S${id}` });
@@ -170,4 +170,88 @@ test("依區域分組：清單上有好幾個專案時，標題前面加上專�
 test("依區域分組：組裡照清單原本的順序（最近更新的在前面）", () => {
   const items = [at(9, `${P}\\ITA\\監控`), at(2, `${P}\\ITA`), at(7, `${P}\\ITA\\維運`)];
   assert.deepEqual(drawAreas(areaGroups(items, [`${P}\\ITA`], ORDER)), ["ITA: 9(監控) 2 7(維運)"]);
+});
+
+// 「依區域＋上層項目分組」
+type AreaItem = GroupItem & { area?: string | null };
+/** 某個區域的工作項目：`wi(5, "Task", "Comet")`；`area` 是 undefined 時沒有區域（舊的離線副本）。 */
+const wi = (id: number, kind: string, area?: string): AreaItem => ({ id, kind, title: `${kind} ${id}`, area: area === undefined ? undefined : `${P}\\${area}` });
+/** 分組畫成文字：`標題: 樹`，一組一行。 */
+function drawAreaTrees(groups: AreaTree<AreaItem>[]): string[] {
+  return groups.map((g) => `${g.title ?? "（其他）"}: ${draw(g.tree)}`);
+}
+
+/**
+ * 選了 1730、ITA、Comet：
+ * - 1730：Story 40 與它的 Task 41（在子區域「前端」）。
+ * - ITA：Story 20 與它的 Task 21（在子區域「監控」）；Story 20 在 Feature 100 底下（不在清單上）。
+ * - Comet：Story 30 與它的 Task 31、32；Task 5 也在 Comet，但它的上層是 ITA 的 Story 20。Story 30 也在 Feature 100 底下。
+ */
+const PICKED_AREAS = [`${P}\\1730`, `${P}\\ITA`, `${P}\\Comet`];
+const AREA_ITEMS = [
+  wi(5, "Task", "Comet"),
+  wi(21, "Task", "ITA\\監控"),
+  wi(20, "User Story", "ITA"),
+  wi(31, "Task", "Comet"),
+  wi(41, "Task", "1730\\前端"),
+  wi(30, "User Story", "Comet"),
+  wi(32, "Task", "Comet\\API"),
+  wi(40, "User Story", "1730"),
+];
+const AREA_PARENT_OF = new Map<number, number | null>([
+  [5, 20],
+  [21, 20],
+  [20, 100],
+  [31, 30],
+  [32, 30],
+  [30, 100],
+  [41, 40],
+  [40, null],
+  [100, null],
+]);
+/** 讀到的上層（伺服器回的上層也包含清單上的項目，例如 Story 20）。 */
+const AREA_PARENTS = new Map<number, AreaItem>([
+  [20, { ...wi(20, "User Story", "ITA"), title: "讀到的舊標題" }],
+  [30, wi(30, "User Story", "Comet")],
+  [40, wi(40, "User Story", "1730")],
+  [100, wi(100, "Feature", "ITA")],
+]);
+
+test("依區域＋上層項目分組：組和依區域分組一樣，組裡是只用這一組的項目排的樹；上層在別的區域時淡色地列在這一組", () => {
+  const groups = areaTrees(AREA_ITEMS, PICKED_AREAS, ORDER, AREA_PARENT_OF, AREA_PARENTS);
+  assert.deepEqual(drawAreaTrees(groups), [
+    "1730: 40(41)",
+    // Task 5 只在 Comet；它的 Story 20（ITA）在這裡是淡色的上層。
+    "Comet: ~100(~20(5) 30(31 32))",
+    // Feature 100 不在清單上：在 Comet、ITA 兩組各淡淡地出現一次。
+    "ITA: ~100(20(21))",
+  ]);
+  // 組、順序、標題、項目（數量）與子區域的小字都和依區域分組一樣。
+  const plain = areaGroups(AREA_ITEMS, PICKED_AREAS, ORDER);
+  assert.deepEqual(
+    groups.map(({ area, title, items }) => ({ area, title, items })),
+    plain.map(({ area, title, items }) => ({ area, title, items })),
+  );
+  assert.deepEqual(
+    groups.map((g) => g.items.length),
+    [2, 4, 2],
+  );
+  // 每個清單上的項目只在一組裡是一般的列（不是淡色），而且就是它的區域那一組。
+  const solid = (nodes: TreeNode<AreaItem>[]): number[] => nodes.flatMap((n) => [...(n.dim ? [] : [n.item.id]), ...solid(n.children)]);
+  for (const g of groups)
+    assert.deepEqual(
+      solid(g.tree).sort((a, b) => a - b),
+      g.items.map(({ item }) => item.id).sort((a, b) => a - b),
+    );
+});
+
+test("依區域＋上層項目分組：別的組的項目當上層時用清單上的那一份；沒有區域的放在最後的「其他」，也排成樹", () => {
+  const items = [...AREA_ITEMS, wi(7, "Task"), wi(8, "Task", "共用")];
+  const parentOf = new Map([...AREA_PARENT_OF, [7, 30], [8, null]]);
+  const groups = areaTrees(items, PICKED_AREAS, ORDER, parentOf, AREA_PARENTS);
+  assert.deepEqual(drawAreaTrees(groups).slice(1), ["Comet: ~100(~20(5) 30(31 32))", "ITA: ~100(20(21))", "共用: 8", "（其他）: ~100(~30(7))"]);
+  const comet = groups.find((g) => g.title === "Comet")!;
+  const story20 = comet.tree[0].children[0];
+  assert.equal(story20.item, items.find((it) => it.id === 20), "Story 20 用清單上的那一份");
+  assert.equal(story20.item.title, "User Story 20");
 });
