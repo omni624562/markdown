@@ -10,53 +10,53 @@ import { test } from "node:test";
 import { open } from "./helpers.mjs";
 
 const ROOT = { kind: "folder", path: "/notes", name: "notes" };
-const COMET = "/notes/COMET Release Channel.md";
-const DEPLOY = "/notes/ITA/部署流程.md";
+const COBALT = "/notes/COBALT Release Channel.md";
+const DEPLOY = "/notes/IRIS/部署流程.md";
 const WEEKLY = "/notes/週報/2026-W44.md";
-const COMET_TEXT = ["# COMET Release Channel", "", "## 使用方式", "", "## 本版摘要", "", "### 新增或改善", "", "### 修正", "", "## 檔案說明", "", "## 注意", ""].join("\n");
-const DEPLOY_TEXT = "# 部署流程\n\n完成後到 [[COMET Release Channel]] 下載安裝檔。\n";
-const WEEKLY_TEXT = "# 2026-W44 週報\n\nCOMET 1.4 版已經上線，見 [[COMET Release Channel]]。\n";
+const COBALT_TEXT = ["# COBALT Release Channel", "", "## 使用方式", "", "## 本版摘要", "", "### 新增或改善", "", "### 修正", "", "## 檔案說明", "", "## 注意", ""].join("\n");
+const DEPLOY_TEXT = "# 部署流程\n\n完成後到 [[COBALT Release Channel]] 下載安裝檔。\n";
+const WEEKLY_TEXT = "# 2026-W44 週報\n\nCOMET 1.4 版已經上線，見 [[COBALT Release Channel]]。\n";
 const info = (links) => ({ tasks: [], tags: [], links });
 const file = (path, text) => ({ path, name: path.slice(path.lastIndexOf("/") + 1), text, encoding: "utf-8" });
 const entry = (path, isDir = false) => ({ name: path.slice(path.lastIndexOf("/") + 1), path, isDir });
 const WIKI = {
   id: "w1",
-  name: "Mgt.wiki",
-  project: "Mgt",
+  name: "Contoso.wiki",
+  project: "Contoso",
   projectId: "p1",
   code: false,
   repositoryId: "r1",
   mappedPath: "/",
   version: "wikiMaster",
-  webUrl: "https://ado.test/c/Mgt/_wiki/wikis/Mgt.wiki",
+  webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki",
 };
 const desktop = (settings) => ({
   load_settings: JSON.stringify(settings),
   startup_target: ROOT,
   list_dir: {
     $by: "path",
-    values: { "/notes": [entry("/notes/ITA", true), entry("/notes/週報", true), entry(COMET)], "/notes/ITA": [entry(DEPLOY)], "/notes/週報": [entry(WEEKLY)] },
+    values: { "/notes": [entry("/notes/IRIS", true), entry("/notes/週報", true), entry(COBALT)], "/notes/IRIS": [entry(DEPLOY)], "/notes/週報": [entry(WEEKLY)] },
   },
   // 陣列是依序用掉的回應（見 helpers.mjs），回傳陣列時要再包一層。
   list_files: [
     [
-      { path: COMET, rel: "COMET Release Channel.md" },
-      { path: DEPLOY, rel: "ITA/部署流程.md" },
+      { path: COBALT, rel: "COBALT Release Channel.md" },
+      { path: DEPLOY, rel: "IRIS/部署流程.md" },
       { path: WEEKLY, rel: "週報/2026-W44.md" },
     ],
   ],
   scan_docs: [
     [
-      { path: COMET, rel: "COMET Release Channel.md", mtime: 1, info: info([]) },
-      { path: DEPLOY, rel: "ITA/部署流程.md", mtime: 1, info: info([{ line: 3, target: "COMET Release Channel", kind: "wiki" }]) },
-      { path: WEEKLY, rel: "週報/2026-W44.md", mtime: 1, info: info([{ line: 3, target: "COMET Release Channel", kind: "wiki" }]) },
+      { path: COBALT, rel: "COBALT Release Channel.md", mtime: 1, info: info([]) },
+      { path: DEPLOY, rel: "IRIS/部署流程.md", mtime: 1, info: info([{ line: 3, target: "COBALT Release Channel", kind: "wiki" }]) },
+      { path: WEEKLY, rel: "週報/2026-W44.md", mtime: 1, info: info([{ line: 3, target: "COBALT Release Channel", kind: "wiki" }]) },
     ],
   ],
   read_docs: { $by: "paths", values: { [WEEKLY]: [WEEKLY_TEXT], [DEPLOY]: [DEPLOY_TEXT], [`${DEPLOY},${WEEKLY}`]: [DEPLOY_TEXT, WEEKLY_TEXT] } },
-  reopen_file: { $by: "path", values: { [COMET]: file(COMET, COMET_TEXT), [DEPLOY]: file(DEPLOY, DEPLOY_TEXT), [WEEKLY]: file(WEEKLY, WEEKLY_TEXT) } },
+  reopen_file: { $by: "path", values: { [COBALT]: file(COBALT, COBALT_TEXT), [DEPLOY]: file(DEPLOY, DEPLOY_TEXT), [WEEKLY]: file(WEEKLY, WEEKLY_TEXT) } },
   ado_account: { url: "https://ado.test/c", name: "王小明" },
   ado_wikis: [[WIKI]],
-  ado_wiki_pages: [[{ path: "/ITA專區", id: 1, children: [{ path: "/ITA專區/部署流程", id: 2, children: [] }] }]],
+  ado_wiki_pages: [[{ path: "/IRIS專區", id: 1, children: [{ path: "/IRIS專區/部署流程", id: 2, children: [] }] }]],
 });
 
 /** 用 Ctrl+P 開啟檔案。 */
@@ -68,7 +68,7 @@ async function openFile(page, name) {
   await page.waitForFunction((n) => document.querySelector("#tab-bar .tab[aria-selected=true] .tab-name")?.textContent?.startsWith(n), name);
 }
 
-/** 大綱放在右邊（設定），Wiki 也移到右側（`wikiRight`），開著連到「COMET Release Channel」的文件。 */
+/** 大綱放在右邊（設定），Wiki 也移到右側（`wikiRight`），開著連到「COBALT Release Channel」的文件。 */
 async function setup({ outlineRight = true, wikiRight = true } = {}) {
   const opened = await open({ desktop: desktop({ outlineRight }) });
   const { page } = opened;
@@ -77,8 +77,8 @@ async function setup({ outlineRight = true, wikiRight = true } = {}) {
   await page.waitForSelector("#file-tree .tree-row");
   // 先開連過來的那份（用掉一開始的空白分頁），再開目標文件（反向連結有兩份）。
   await openFile(page, "部署流程");
-  await openFile(page, "COMET");
-  if (wikiRight) await page.locator('#outline-right .wiki-page[data-path="/ITA專區"]').waitFor();
+  await openFile(page, "COBALT");
+  if (wikiRight) await page.locator('#outline-right .wiki-page[data-path="/IRIS專區"]').waitFor();
   return opened;
 }
 
@@ -160,7 +160,7 @@ test("大綱、反向連結、Wiki 各有標題列：收合後只剩標題列、
   await toggle(page, "wiki").focus();
   await page.keyboard.press("Enter");
   assert.equal(await expanded(page, "wiki"), true);
-  await page.locator('#outline-right .wiki-page[data-path="/ITA專區"]').waitFor();
+  await page.locator('#outline-right .wiki-page[data-path="/IRIS專區"]').waitFor();
   await toggle(page, "backlinks").focus();
   await page.keyboard.press("Space");
   assert.equal(await expanded(page, "backlinks"), true);
@@ -204,7 +204,7 @@ test("分隔線：拖曳調整大綱與 Wiki 的高度，重新載入後還記�
 
   // 重新載入：位置還在。
   await page.reload();
-  await page.locator('#outline-right .wiki-page[data-path="/ITA專區"]').waitFor();
+  await page.locator('#outline-right .wiki-page[data-path="/IRIS專區"]').waitFor();
   const reloaded = await heights(page);
   assert.ok(Math.abs(reloaded.outline - dragged.outline) < 2, `重新載入後一樣高（${dragged.outline}、${reloaded.outline}）`);
 
@@ -247,7 +247,7 @@ test("只有大綱或只有 Wiki 在右側：照樣有標題列、沒有分隔�
     assert.equal(await page.locator("#panel-outline > .side-body > #backlinks").count(), 1);
     // Wiki 移回左邊：標題換回文字。
     await page.click("#wiki-dock");
-    await page.locator('#panel-wiki:not([hidden]) .wiki-page[data-path="/ITA專區"]').waitFor();
+    await page.locator('#panel-wiki:not([hidden]) .wiki-page[data-path="/IRIS專區"]').waitFor();
     assert.equal(await page.locator("#panel-wiki > .side-head h2").textContent(), "Wiki");
     assert.equal(await page.locator("#panel-wiki .rs-toggle").count(), 0);
     assert.equal(await page.locator("#panel-wiki > .side-body").isVisible(), true);

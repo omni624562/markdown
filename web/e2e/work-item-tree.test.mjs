@@ -19,11 +19,11 @@ const item = (id, title, kind = "Task") => ({
   priority: 2,
   webUrl: `https://ado.test/c/產品/_workitems/edit/${id}`,
 });
-const EPIC = item(1000, "數位帳務", "Epic");
-const FEATURE = item(100, "消費明細查詢", "Feature");
+const EPIC = item(1000, "數位訂單", "Epic");
+const FEATURE = item(100, "訂單明細查詢", "Feature");
 const STORY10 = item(10, "查詢條件", "User Story");
 // 清單（指派給我的）：Task 1、2 在 Story 10（不是我的）底下；Story 20（我的）和 Story 10 都在 Feature 100 底下。
-const LISTED = [item(1, "API 規格"), item(20, "爭議帳申請", "User Story"), item(2, "畫面切版"), item(3, "申請表單"), item(4, "修錯字", "Bug")];
+const LISTED = [item(1, "API 規格"), item(20, "退貨申請", "User Story"), item(2, "畫面切版"), item(3, "申請表單"), item(4, "修錯字", "Bug")];
 const desktop = {
   ado_account: { url: "https://ado.test/c", name: "王小明" },
   ado_work_items: [LISTED],
@@ -74,19 +74,19 @@ async function treeList() {
   });
   await opened.page.reload();
   await opened.page.locator("#side-tab-workitems").click();
-  await opened.page.locator("#workitems-host .workitem-title", { hasText: "數位帳務" }).waitFor();
+  await opened.page.locator("#workitems-host .workitem-title", { hasText: "數位訂單" }).waitFor();
   return opened;
 }
 
 test("樹狀：一路讀到最上層，每一項只出現一次；不在清單上的上層淡色；標題列寫摘要；每一層縮排", async () => {
   const { page, context, errors } = await treeList();
   assert.deepEqual(await rows(page), [
-    ["數位帳務", true, 0, "1 個 User Story・3 個 Task"],
-    ["消費明細查詢", true, 1, "1 個 User Story・3 個 Task"],
+    ["數位訂單", true, 0, "1 個 User Story・3 個 Task"],
+    ["訂單明細查詢", true, 1, "1 個 User Story・3 個 Task"],
     ["查詢條件", true, 2, "2 個 Task"],
     ["API 規格", false, 3, ""],
     ["畫面切版", false, 3, ""],
-    ["爭議帳申請", false, 2, "1 個 Task"],
+    ["退貨申請", false, 2, "1 個 Task"],
     ["申請表單", false, 3, ""],
     ["修錯字", false, 0, ""],
   ]);
@@ -108,10 +108,10 @@ test("收合一層、全部收合到只剩最上層、全部展開；開啟收�
   const titles = async () => (await rows(page)).map((r) => (typeof r === "string" ? r : r[0]));
   // 收合「查詢條件」：它底下的 Task 不見了。
   await page.locator('#workitems-host .workitems-group-toggle[data-key="parent:tree:10"]').click();
-  assert.deepEqual(await titles(), ["數位帳務", "消費明細查詢", "查詢條件", "爭議帳申請", "申請表單", "修錯字"]);
+  assert.deepEqual(await titles(), ["數位訂單", "訂單明細查詢", "查詢條件", "退貨申請", "申請表單", "修錯字"]);
   // 全部收合：只剩最上層（沒有上層的 Bug 也是最上層的一列，排在 Epic 後面）。
   await page.click("#workitems-host .workitems-fold");
-  assert.deepEqual(await titles(), ["數位帳務", "修錯字"]);
+  assert.deepEqual(await titles(), ["數位訂單", "修錯字"]);
   // 全部展開：裡面收起來的也打開。
   await page.click("#workitems-host .workitems-fold");
   assert.equal((await titles()).length, 8);
@@ -119,8 +119,8 @@ test("收合一層、全部收合到只剩最上層、全部展開；開啟收�
   await page.click("#workitems-host .workitems-fold");
   await page.locator(".activity-wiki-page").first().click();
   await page.locator('#workitems-host .workitem[aria-current="true"]', { hasText: "畫面切版" }).waitFor();
-  // 只展開它的上層；其他收起來的（「爭議帳申請」）維持收起來。
-  assert.deepEqual(await titles(), ["數位帳務", "消費明細查詢", "查詢條件", "API 規格", "畫面切版", "爭議帳申請", "修錯字"]);
+  // 只展開它的上層；其他收起來的（「退貨申請」）維持收起來。
+  assert.deepEqual(await titles(), ["數位訂單", "訂單明細查詢", "查詢條件", "API 規格", "畫面切版", "退貨申請", "修錯字"]);
   assert.deepEqual(errors, []);
   await context.close();
 });

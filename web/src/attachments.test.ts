@@ -27,21 +27,21 @@ test("附件網址：留言裡的網址寫法和連線設定不同時也認得�
   const expected = (base: string) => ({ url: `${base}${path.slice("/tfs/DefaultCollection".length)}`, name: "20261015-task-1922925.md" });
   // 只寫電腦名稱 ↔ 完整名稱（兩個方向）、http ↔ https、埠號不同、大小寫不同。
   for (const [href, base] of [
-    [`https://pialm01${path}`, "https://pialm01.corp.local/tfs/DefaultCollection"],
-    [`https://pialm01.corp.local${path}`, "https://pialm01/tfs/DefaultCollection"],
-    [`https://pialm01${path}`, "http://pialm01:8080/tfs/DefaultCollection"],
-    [`http://PIALM01${path}`, "https://pialm01/tfs/defaultcollection/"],
+    [`https://almsrv01${path}`, "https://almsrv01.corp.local/tfs/DefaultCollection"],
+    [`https://almsrv01.corp.local${path}`, "https://almsrv01/tfs/DefaultCollection"],
+    [`https://almsrv01${path}`, "http://almsrv01:8080/tfs/DefaultCollection"],
+    [`http://ALMSRV01${path}`, "https://almsrv01/tfs/defaultcollection/"],
   ]) {
     assert.deepEqual(attachmentLink(href, base), expected(base.replace(/\/+$/, "")), href);
   }
   // 連線設定的是伺服器（沒有集合）：多一層集合也認得。
-  assert.equal(attachmentLink(`https://pialm01${path}`, "https://pialm01/tfs")?.url, `https://pialm01${path}`);
+  assert.equal(attachmentLink(`https://almsrv01${path}`, "https://almsrv01/tfs")?.url, `https://almsrv01${path}`);
   // 別台伺服器、別的集合、不是附件：不認。
-  assert.equal(attachmentLink(`https://pialm02${path}`, "https://pialm01/tfs/DefaultCollection"), null);
-  assert.equal(attachmentLink(`https://pialm01.evil.com${path}`, "https://pialm01.corp.local/tfs/DefaultCollection"), null);
+  assert.equal(attachmentLink(`https://almsrv02${path}`, "https://almsrv01/tfs/DefaultCollection"), null);
+  assert.equal(attachmentLink(`https://almsrv01.evil.com${path}`, "https://almsrv01.corp.local/tfs/DefaultCollection"), null);
   assert.equal(attachmentLink(`https://tfs.corp.com.evil.com/tfs/DC/_apis/wit/attachments/x?fileName=a.md`, "https://tfs.corp.com/tfs/DC"), null);
-  assert.equal(attachmentLink(`https://pialm01${path}`, "https://pialm01/tfs/OtherCollection"), null);
-  assert.equal(attachmentLink("ftp://pialm01/tfs/DefaultCollection/_apis/wit/attachments/x", "https://pialm01/tfs/DefaultCollection"), null);
+  assert.equal(attachmentLink(`https://almsrv01${path}`, "https://almsrv01/tfs/OtherCollection"), null);
+  assert.equal(attachmentLink("ftp://almsrv01/tfs/DefaultCollection/_apis/wit/attachments/x", "https://almsrv01/tfs/DefaultCollection"), null);
 });
 
 test("附件大小與副檔名", () => {

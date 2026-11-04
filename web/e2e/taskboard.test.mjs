@@ -10,10 +10,10 @@ const base = { project: "產品", changed: "2026-10-30T00:00:00Z", priority: nul
 const w = (id, kind, title, state, parent, assignedTo, extra = {}) => ({ ...base, id, kind, title, state, parent, assignedTo, ...extra });
 
 const ITEMS = [
-  w(1931940, "User Story", "SP102 值機", "Active", null, "梁朝為", { priority: 1 }),
-  w(1936947, "Task", "提供 SRE 監控的方式", "New", 1931940, "梁朝為", { remaining: 6 }),
-  w(1929183, "Task", "CUBE Beta 測試用 WIFI", "Resolved", 1931940, "黃昭翔"),
-  w(1691088, "Task", "批次壓縮程式開發", "New", 1673120, "許晉嘉"),
+  w(1931940, "User Story", "SP102 報到流程", "Active", null, "張志明", { priority: 1 }),
+  w(1936947, "Task", "提供 SRE 監控的方式", "New", 1931940, "張志明", { remaining: 6 }),
+  w(1929183, "Task", "App Beta 測試用 WIFI", "Resolved", 1931940, "林大偉"),
+  w(1691088, "Task", "批次壓縮程式開發", "New", 1673120, "陳美玲"),
   w(1700846, "Task", "沒有上層的工作", "Active", null, "王小明"),
 ];
 
@@ -23,7 +23,7 @@ const desktop = {
   ado_work_item_filters: { projects: ["產品"], kinds: [] },
   ado_teams: [
     [
-      { id: "t1", name: "ITA", default: true },
+      { id: "t1", name: "IRIS", default: true },
       { id: "t2", name: "前端", default: false },
     ],
   ],
@@ -33,7 +33,7 @@ const desktop = {
   ]],
   ado_board: [ITEMS],
   // 上層不在這個 Sprint：另外讀標題。
-  ado_work_items_by_ids: [[w(1673120, "User Story", "SP83 新人臉辨識", "New", null, "許晉嘉")]],
+  ado_work_items_by_ids: [[w(1673120, "User Story", "SP83 會員登入改版", "New", null, "陳美玲")]],
   // 「已移除」不顯示成一欄。
   ado_work_item_states: [["New", "Active", "Resolved", "Closed", "Removed"]],
 };
@@ -59,11 +59,11 @@ test("工作板：上層項目一列、狀態一欄，選了目前的 Sprint", a
   assert.equal(await page.textContent(".tb-head .tb-col-head:nth-child(2) .tb-count"), "2");
   const rows = await page.$$eval(".taskboard .tb-row:not(.tb-head) .tb-parent", (els) => els.map((e) => e.textContent ?? ""));
   assert.equal(rows.length, 3);
-  assert.match(rows[0], /SP102 值機/);
-  assert.match(rows[1], /SP83 新人臉辨識/, "上層不在 Sprint 裡也讀得到標題");
+  assert.match(rows[0], /SP102 報到流程/);
+  assert.match(rows[1], /SP83 會員登入改版/, "上層不在 Sprint 裡也讀得到標題");
   assert.match(rows[2], /沒有上層/);
   const resolved = page.locator(".tb-row").nth(1).locator('.tb-cell[data-state="Resolved"] .tb-card');
-  assert.match(await resolved.textContent(), /CUBE Beta/);
+  assert.match(await resolved.textContent(), /App Beta/);
   assert.match(await page.locator('.tb-card[data-id="1936947"]').textContent(), /剩 6 小時/);
   // 只看我：只剩王小明的卡片。
   await page.selectOption("#board-person", "@me");
@@ -95,7 +95,7 @@ test("工作板：拖到別的上層那一列就換上層；拖到「沒有上�
   await page.locator('.tb-card[data-id="1936947"]').dragTo(page.locator(".tb-row").nth(2).locator('.tb-cell[data-state="New"]'));
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_update"));
   assert.deepEqual((await sent())[0], { id: 1936947, change: { rev: 3, parent: 1673120 } });
-  await page.locator(".toast", { hasText: "已把 1936947 移到「SP83 新人臉辨識」底下" }).waitFor();
+  await page.locator(".toast", { hasText: "已把 1936947 移到「SP83 會員登入改版」底下" }).waitFor();
   await page.waitForSelector(".taskboard .tb-card");
   // 沒有上層的工作拖到 SP102 那一列的 Resolved：換上層也改狀態。
   await page.locator('.tb-card[data-id="1700846"]').dragTo(page.locator(".tb-row").nth(1).locator('.tb-cell[data-state="Resolved"]'));
@@ -190,7 +190,7 @@ test("工作板：改卡片的指派與工時、在上層項目底下新增 Task
       ...desktop,
       ado_team_members: [[
         { name: "王小明", unique: "CORP\\ming" },
-        { name: "梁朝為", unique: "CORP\\liang" },
+        { name: "張志明", unique: "CORP\\chang" },
       ]],
       ado_work_item_create: { ...ITEMS[1], id: 9001, title: "新的工作" },
     },
@@ -212,7 +212,7 @@ test("工作板：改卡片的指派與工時、在上層項目底下新增 Task
   assert.equal(update.change.completed, undefined, "沒改的不送");
   assert.equal(update.change.rev, 3);
   // 新增 Task。
-  const row = page.locator(".tb-row", { hasText: "SP102 值機" });
+  const row = page.locator(".tb-row", { hasText: "SP102 報到流程" });
   await row.hover();
   await row.locator(".tb-add").click();
   const add = page.locator("dialog.tb-edit-dialog[open]");
@@ -237,20 +237,20 @@ test("工作板：上方顯示每個人的容量，排太多的標紅", async ()
   const { page, context, errors } = await open({
     desktop: {
       ...desktop,
-      // Sprint 結束日放在很遠的以後：不管哪天跑測試，梁朝為都還有時間。
+      // Sprint 結束日放在很遠的以後：不管哪天跑測試，張志明都還有時間。
       ado_team_iterations: [[{ id: "i2", name: "Sprint 102", path: "產品\\Sprint 102", start: "2026-10-26T00:00:00Z", finish: "2099-12-31T00:00:00Z", current: true }]],
       ado_board: [ITEMS.map((w) => (w.id === 1691088 ? { ...w, remaining: 3 } : w))],
-      ado_capacity: { members: [{ name: "梁朝為", perDay: 6, daysOff: [] }], teamDaysOff: [] },
+      ado_capacity: { members: [{ name: "張志明", perDay: 6, daysOff: [] }], teamDaysOff: [] },
     },
   });
   await openBoard(page);
   const strip = page.locator(".tb-capacity");
   await strip.waitFor();
-  // 梁朝為有容量；許晉嘉、王小明有工作但不在團隊容量裡（時間不知道），標成排太多。
+  // 張志明有容量；陳美玲、王小明有工作但不在團隊容量裡（時間不知道），標成排太多。
   const people = await strip.locator(".tb-cap-name").allTextContents();
-  assert.ok(people.includes("梁朝為"));
-  assert.equal(await strip.locator(".tb-cap", { hasText: "梁朝為" }).getAttribute("class"), "tb-cap");
-  assert.match(await strip.locator(".tb-cap", { hasText: "許晉嘉" }).getAttribute("class"), /over/);
+  assert.ok(people.includes("張志明"));
+  assert.equal(await strip.locator(".tb-cap", { hasText: "張志明" }).getAttribute("class"), "tb-cap");
+  assert.match(await strip.locator(".tb-cap", { hasText: "陳美玲" }).getAttribute("class"), /over/);
   assert.deepEqual(errors, []);
   await context.close();
 });
