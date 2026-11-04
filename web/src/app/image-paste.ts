@@ -103,7 +103,7 @@ export async function insertImages(original: File[]): Promise<void> {
     toast(t("請先存檔：圖片會存到文件所在資料夾的 assets 資料夾裡。"), {
       duration: 8000,
       action: {
-        label: t("儲存"),
+        label: t("存檔"),
         run: () =>
           void app.save(false)
             .then(() => (app.cur.fileHandle?.path ? insertImages(files) : undefined))

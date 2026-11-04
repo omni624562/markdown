@@ -198,11 +198,11 @@ export function initWikiHistory(): void {
   });
 
   wikiHistoryPicker = new Picker<WikiRevisionItem>({
-    label: t("修改記錄"),
+    label: t("修改紀錄"),
     placeholder: t("選擇一次修改，看那次改了什麼"),
     // 第一行是誰、什麼時候，第二行是修改說明（很長時截掉）。
     stacked: true,
-    empty: t("這一頁還沒有修改記錄。"),
+    empty: t("這一頁還沒有修改紀錄。"),
     async query(q) {
       if (!wikiHistoryLoad) return [];
       const { revisions } = await wikiHistoryLoad;

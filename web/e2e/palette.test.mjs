@@ -57,9 +57,9 @@ test("指令面板：Git 與 Azure DevOps 各自一區，提交只出現一次�
   assert.deepEqual(sectionOf("Git：推送"), ["Git"]);
   for (const title of [
     "開啟工作項目…",
-    "Azure DevOps／TFS：工作項目",
-    "Azure DevOps／TFS：建立工作項目…",
-    "Azure DevOps：儲存診斷資料…",
+    "Azure DevOps：工作項目",
+    "Azure DevOps：建立工作項目…",
+    "Azure DevOps：診斷資料存檔…",
     "顯示工作板（Azure DevOps）",
   ]) {
     assert.deepEqual(sectionOf(title), ["Azure DevOps"], title);

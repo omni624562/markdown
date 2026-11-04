@@ -119,7 +119,7 @@ export const sync: Record<string, Translation> = {
   "會從這台電腦刪除個人存取權杖。資料夾和檔案都會留在電腦上；之後要推送或拉取 Azure DevOps 的儲存庫，需要重新連線。":
     "This deletes your personal access token from this computer. Your folders and files stay on this computer. To push to or pull from Azure DevOps repositories later, you'll need to connect again.",
   "已中斷 Azure DevOps 連線": "Disconnected from Azure DevOps.",
-  "請先在設定的 Azure DevOps／TFS 頁輸入伺服器網址與個人存取權杖": "First enter your server URL and personal access token on the Azure DevOps/TFS page of Settings.",
+  "請先在設定的 Azure DevOps 頁輸入伺服器網址與個人存取權杖": "First enter your server URL and personal access token on the Azure DevOps page of Settings.",
   "正在讀取儲存庫清單…": "Loading repositories…",
   "搜尋 {n} 個儲存庫與 Wiki…": ["Search {n} repository and wiki…", "Search {n} repositories and wikis…"],
   "這個集合還沒有儲存庫": "This collection has no repositories yet",
@@ -139,7 +139,7 @@ export const sync: Record<string, Translation> = {
   "執行": "Run",
   "這次開啟期間，這個指令都直接執行": "Always Run This Command Until I Close the App",
   "AI 等太久已經放棄，指令沒有執行。": "The AI stopped waiting, so the command wasn't run.",
-  "上一個 AI 動作還在處理中。": "The previous AI action is still running.",
+  "上一個 AI 快速動作還在處理中。": "The previous AI quick action is still running.",
   "AI 處理失敗：{error}": "AI failed: {error}",
   "原本選取的文字已經改變，無法套用 AI 的結果。已把結果複製到剪貼簿。":
     "The originally selected text has changed, so the AI result can't be applied. The result was copied to the clipboard.",
@@ -205,7 +205,7 @@ export const sync: Record<string, Translation> = {
   "紫": "Purple",
   "粉紅": "Pink",
   "灰": "Gray",
-  // settings.ts：內建的快捷動作
+  // settings.ts：內建的 AI 快速動作
   "改寫得更精簡": "Make It Concise",
   "把這段文字改寫得更精簡、通順，保留原意與所有重要資訊。":
     "Rewrite this text to be more concise and fluent, keeping the original meaning and all important information.",

@@ -95,7 +95,7 @@ export class Ado {
   async #ensure(): Promise<boolean> {
     await this.#loaded;
     if (this.#account) return true;
-    toast(t("請先在設定的 Azure DevOps／TFS 頁輸入伺服器網址與個人存取權杖"));
+    toast(t("請先在設定的 Azure DevOps 頁輸入伺服器網址與個人存取權杖"));
     this.#hooks.openSettings();
     return false;
   }
@@ -114,7 +114,7 @@ export class Ado {
       wait.dismiss();
     }
     const picker = new Picker<AdoRepo>({
-      label: t("從 Azure DevOps／TFS 下載或開啟儲存庫"),
+      label: t("Azure DevOps：下載儲存庫"),
       placeholder: repos.length ? t("搜尋 {n} 個儲存庫與 Wiki…", { n: repos.length }) : t("這個集合還沒有儲存庫"),
       empty: t("找不到符合的儲存庫"),
       query: (text) => {

@@ -1,5 +1,5 @@
 /**
- * 視覺小地方：預覽的待辦看得清楚、即時預覽的程式碼區塊不露出圍欄、⋯ →「主題」標出目前的選擇、
+ * 視覺小地方：預覽的待辦看得清楚、即時預覽的程式碼區塊不露出圍欄、⋯ →「外觀」標出目前的明暗、
  * 即時預覽與 Wiki、工作板與專案總覽的圖示不一樣。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -51,7 +51,7 @@ test("預覽的待辦：不變淡、沒勾的框線和底色對比至少 3:1（�
   for (const theme of ["淺色", "深色"]) {
     // 預覽模式看不到編輯區：直接按快速鍵開指令面板。
     await page.keyboard.press("Control+Shift+P");
-    await page.locator("dialog[open] input").first().fill(`主題：${theme}`);
+    await page.locator("dialog[open] input").first().fill(`明暗：${theme}`);
     await page.keyboard.press("Enter");
     await page.waitForFunction((dark) => (document.documentElement.dataset.theme === "dark") === dark, theme === "深色");
     // 勾選框的框線換色有轉場：直接跳到結束再量。
@@ -102,34 +102,34 @@ test("即時預覽的程式碼區塊：游標不在裡面時只留語言名稱�
   await context.close();
 });
 
-test("⋯ →「主題」：跟隨系統／淺色／深色標出目前選的那一項", async () => {
+test("⋯ →「外觀」：明暗的跟隨系統／淺色／深色標出目前選的那一項", async () => {
   const { page, context, errors } = await open();
   const openTheme = async () => {
     await page.click("#main-menu");
     const root = page.locator("#main-menu-popover");
-    await root.getByRole("menuitem", { name: "主題" }).click();
+    await root.getByRole("menuitem", { name: "外觀" }).click();
     const sub = root.locator(".submenu:popover-open");
     await sub.waitFor();
     return sub;
   };
-  /** 每一項：名稱、aria-checked、最後面有沒有打勾的圖示（前面還有主題本身的圖示）。 */
+  /** 每一項：名稱、aria-checked、最後面有沒有打勾的圖示（前面還有指令本身的圖示）。 */
   const state = (sub) =>
     sub
       .locator('[role="menuitemradio"]')
       .evaluateAll((els) => els.map((b) => [b.textContent, b.getAttribute("aria-checked"), b.querySelectorAll(".icon").length === 2 && b.lastElementChild.matches(".icon")]));
   let sub = await openTheme();
   assert.deepEqual(await state(sub), [
-    ["跟隨系統", "true", true],
-    ["淺色", "false", false],
-    ["深色", "false", false],
+    ["明暗：跟隨系統", "true", true],
+    ["明暗：淺色", "false", false],
+    ["明暗：深色", "false", false],
   ]);
-  await sub.getByRole("menuitemradio", { name: "深色" }).click();
+  await sub.getByRole("menuitemradio", { name: "明暗：深色" }).click();
   await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
   sub = await openTheme();
   assert.deepEqual(await state(sub), [
-    ["跟隨系統", "false", false],
-    ["淺色", "false", false],
-    ["深色", "true", true],
+    ["明暗：跟隨系統", "false", false],
+    ["明暗：淺色", "false", false],
+    ["明暗：深色", "true", true],
   ]);
   assert.deepEqual(errors, []);
   await context.close();

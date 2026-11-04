@@ -187,11 +187,11 @@ export class AiController {
     return this.#run !== null;
   }
 
-  /** 對目前的選取範圍執行快捷動作（或自訂指示）。 */
+  /** 對目前的選取範圍執行 AI 快速動作（或自訂指示）。 */
   async runAction(action: QuickAction): Promise<void> {
     const { editor, review } = this.#host;
     if (this.#run) {
-      toast(t("上一個 AI 動作還在處理中。"));
+      toast(t("上一個 AI 快速動作還在處理中。"));
       return;
     }
     const { from, to } = editor.view.state.selection.main;

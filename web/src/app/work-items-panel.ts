@@ -60,9 +60,9 @@ let savedQueries: Promise<AdoSavedQuery[]> | null = null;
 type QueryChoice = AdoSavedQuery | { clear: true };
 
 const queryPicker = new Picker<QueryChoice>({
-  label: t("TFS 的已儲存查詢"),
+  label: t("Azure DevOps 的已儲存查詢"),
   placeholder: t("輸入查詢名稱或資料夾"),
-  empty: t("找不到已儲存的查詢（可以在 TFS 網頁版的「查詢」建立）"),
+  empty: t("找不到已儲存的查詢（可以在 Azure DevOps 網頁版的「查詢」建立）"),
   async query(text) {
     if (!desktop) return [];
     if (!savedQueries) {

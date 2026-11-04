@@ -118,15 +118,15 @@ function placeholderText(kind: DocKind): string {
   }
 }
 
-/** CodeMirror 內建介面（搜尋與取代列、跳到行、摺疊）的中文字串；英文介面直接用 CodeMirror 內建的英文。 */
+/** CodeMirror 內建介面（尋找與取代列、跳到行、摺疊）的中文字串；選項的名稱和自己的尋找列（find-panel.ts）、資料夾搜尋一樣；英文介面直接用 CodeMirror 內建的英文。 */
 const PHRASES = {
   Find: "尋找", // i18n-ignore
   Replace: "取代", // i18n-ignore
   next: "下一個", // i18n-ignore
   previous: "上一個", // i18n-ignore
   all: "全選", // i18n-ignore
-  "match case": "大小寫須相符", // i18n-ignore
-  regexp: "正規表示式", // i18n-ignore
+  "match case": "區分大小寫", // i18n-ignore
+  regexp: "使用正規表示式", // i18n-ignore
   "by word": "全字拼寫須相符", // i18n-ignore
   replace: "取代", // i18n-ignore
   "replace all": "全部取代", // i18n-ignore

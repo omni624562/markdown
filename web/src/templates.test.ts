@@ -21,7 +21,7 @@ test("ISO 週次", () => {
 test("內建範本與檔名", () => {
   assert.deepEqual(
     BUILTIN_TEMPLATES.map((t) => t.name),
-    ["週報", "會議記錄", "OKR", "專案提案", "空白文件"],
+    ["週報", "會議紀錄", "OKR", "專案提案", "空白文件"],
   );
   assert.equal(templateFileName("週報", NOW), "週報 2026-10-21.md");
   assert.equal(templateFileName("A/B:C", NOW), "ABC 2026-10-21.md");

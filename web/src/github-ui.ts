@@ -95,7 +95,7 @@ export class GitHub {
       return;
     }
     const picker = new Picker<GitHubRepo>({
-      label: t("從 GitHub 下載或開啟儲存庫"),
+      label: t("GitHub：下載儲存庫"),
       placeholder: repos.length ? t("搜尋 {n} 個儲存庫…", { n: repos.length }) : t("你的 GitHub 帳號還沒有儲存庫"),
       empty: t("找不到符合的儲存庫"),
       query: (text) => {

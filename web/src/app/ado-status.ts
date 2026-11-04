@@ -68,21 +68,21 @@ function renderAdoStatus(): void {
   adoStatus.setAttribute("aria-label", adoStatus.title);
 }
 
-/** 儲存診斷資料：選檔案後讀幾個常用的請求，把回應（拿掉人名、信箱、標題與內容）存起來。 */
+/** 診斷資料存檔：選檔案後讀幾個常用的請求，把回應（拿掉人名、信箱、標題與內容）存起來。 */
 export async function saveAdoDiagnostics(): Promise<void> {
   if (!desktop) return;
   try {
     const path = await desktop.adoDiagnosticsSave();
-    if (path) toast(t("已儲存診斷資料：{path}（寄出前可以先打開看看）", { path }), { tone: "success", duration: 10_000 });
+    if (path) toast(t("診斷資料已存檔：{path}（寄出前可以先開啟看看）", { path }), { tone: "success", duration: 10_000 });
   } catch (e) {
-    toast(t("無法儲存診斷資料：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });
+    toast(t("診斷資料無法存檔：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });
   }
 }
 
 export function initAdoStatus(): void {
   app.commands.register({
     id: "ado-diagnostics",
-    title: t("Azure DevOps：儲存診斷資料…"),
+    title: t("Azure DevOps：診斷資料存檔…"),
     group: "Azure DevOps",
     icon: "bug",
     when: () => !!app.ado?.account,
@@ -90,7 +90,7 @@ export function initAdoStatus(): void {
   });
   adoStatus = app.$("#status-ado");
   adoStatus.addEventListener("click", () => {
-    if (adoPing?.status === "auth") app.settingsDialog.open(t("Azure DevOps／TFS"));
+    if (adoPing?.status === "auth") app.settingsDialog.open("Azure DevOps");
     else void pingAdo();
   });
   window.setInterval(() => {

@@ -161,7 +161,7 @@ export function initAiTerminal(): void {
     });
   }
   aiPicker = new Picker<QuickAction & { custom?: boolean }>({
-    label: t("AI 快捷動作"),
+    label: t("AI 快速動作"),
     placeholder: t("選擇動作，或直接輸入要 AI 怎麼處理選取的文字"),
     empty: t("沒有符合的動作；按 Enter 會把輸入的文字當成指示"),
     query(q) {

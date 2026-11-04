@@ -41,7 +41,7 @@ crates/
 desktop/src/  桌面版（Tauri 2）：沿用網頁介面，補上原生端的功能
   檔案與資料夾  files.rs（讀寫、編碼、安全存檔與衝突偵測）、workspace.rs（資料夾工作區、全文搜尋）、
                 watch.rs（外部修改監看、網路磁碟輪詢）、io.rs（背景讀寫與逾時）、trust.rs（最近開啟與允許的路徑）、
-                projects.rs（多專案）、history.rs（版本記錄）、doc_index.rs（資料夾文件索引）、
+                projects.rs（多專案）、history.rs（版本紀錄）、doc_index.rs（資料夾文件索引）、
                 images.rs（貼上圖片）、image_protocol.rs（預覽的本機圖片 mdimg:）、pdf.rs（直接匯出 PDF）、fonts.rs
   Git           git.rs（狀態、提交、拉取、推送；libgit2）、git_flow.rs（分支、合併衝突）、
                 git_log.rs（提交歷史與線圖）、git_files.rs（單一檔案的歷史、網頁網址）
@@ -49,7 +49,7 @@ desktop/src/  桌面版（Tauri 2）：沿用網頁介面，補上原生端的�
                 dav/（遠端資料夾：mod.rs 共用的 RemoteFs、輪詢與指令，webdav.rs WebDAV 用戶端，ssh.rs SSH／SFTP）、
                 offline.rs（工作項目與 Wiki 的離線副本）、secrets.rs（Windows 認證管理員）、notify.rs（系統通知）
   AI 協作       ai/term.rs（內嵌終端機）、ai/view.rs（終端機專用的 webview）、ai/mcp.rs（編輯器 MCP 伺服器）、
-                ai/run.rs（選取段落快捷動作）、ai/tools.rs
+                ai/run.rs（AI 快速動作）、ai/tools.rs
   其他          main.rs（建立視窗、註冊指令）、settings.rs、update.rs 與 winhttp.rs（自動更新）、
                 navigation.rs（導覽限制）、i18n.rs 與 locales/（後端訊息的英文翻譯）
 
@@ -75,7 +75,7 @@ web/src/      網頁介面（桌面版也用同一份）
                 issue-doc.ts、repo-links.ts、remote-links.ts、offline.ts、auth-errors.ts
   終端機        terminal-proxy.ts（主畫面這一端）、terminal-main.ts（終端機 webview 的進入點，terminal.html）：
                 主畫面只能透過 Rust 送固定的要求，不能寫入終端機
-  AI 與更新     ai.ts（AI 協作：MCP 狀態同步、提議、執行指令的同意流程、快捷動作）、ci-workflow.ts、updater.ts、
+  AI 與更新     ai.ts（AI 協作：MCP 狀態同步、提議、執行指令的同意流程、AI 快速動作）、ci-workflow.ts、updater.ts、
                 release-notes.ts
   ui/           分頁列、檔案樹、搜尋、待辦總覽、標籤、Issues、Wiki、簡報、圖片放大、匯出 PDF 選項、終端機（xterm.js）、
                 指令面板與快速開啟、選單、通知、差異檢視、Git 歷史、設定、WebDAV 與 SSH 連線、專案、圖示（lucide）

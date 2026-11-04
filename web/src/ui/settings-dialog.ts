@@ -364,7 +364,7 @@ export class SettingsDialog {
             t("整合功能"),
             this.#rows([
               { key: "gitEnabled", label: t("Git 與 GitHub"), hint: t("關掉後不顯示，也不能使用；切換後會重新載入介面") },
-              { key: "adoEnabled", label: t("Azure DevOps／TFS"), hint: t("工作項目、Wiki 與儲存庫") },
+              { key: "adoEnabled", label: "Azure DevOps", hint: t("工作項目、Wiki 與儲存庫") },
               { key: "remoteEnabled", label: t("遠端資料夾（WebDAV、SSH）") },
             ]),
           )
@@ -512,11 +512,11 @@ export class SettingsDialog {
     }
     section.append(
       ...this.#group(undefined, [
-        this.#row("aiEnabled", t("啟用 AI 協作"), t("開啟後可以使用終端機與選取段落快捷動作"), () => this.#control("aiEnabled")),
+        this.#row("aiEnabled", t("啟用 AI 協作"), t("開啟後可以使用終端機與 AI 快速動作"), () => this.#control("aiEnabled")),
       ]),
     );
     const permissions = this.#group(t("AI 可以做的事"), [
-      this.#row("aiTool", t("快捷動作使用"), undefined, () => this.#control("aiTool")),
+      this.#row("aiTool", t("AI 快速動作使用"), undefined, () => this.#control("aiTool")),
       this.#row("mcpServer", t("讀取目前的文件"), t("Claude Code／Codex 可以讀取你正在看的文件並提出修改；只接受本機連線"), () =>
         this.#control("mcpServer"),
       ),
@@ -575,7 +575,7 @@ export class SettingsDialog {
     });
     const title = document.createElement("h4");
     title.className = "settings-group-title";
-    title.textContent = t("選取段落快捷動作");
+    title.textContent = t("AI 快速動作");
     const hint = document.createElement("p");
     hint.className = "settings-group-hint";
     hint.textContent = t("選取文字後按 Ctrl+J（或按右鍵）執行；提示詞會連同選取的文字一起送出。");
@@ -725,7 +725,7 @@ export class SettingsDialog {
       section.append(
         ...this.#group(t("說明"), [
           this.#row("shortcuts", t("快速鍵"), t("查看所有快速鍵，也可以換成你習慣的按法"), button("shortcuts", t("開啟"), "keyboard", about.shortcuts)),
-          this.#row("welcome", t("歡迎文件"), t("3 分鐘認識主要功能"), button("welcome", t("開啟"), "book-open-text", about.welcome)),
+          this.#row("welcome", t("3 分鐘認識 oMarker"), t("介紹主要功能的範例文件，可以直接修改"), button("welcome", t("開啟"), "book-open-text", about.welcome)),
           this.#row("changelog", t("更新紀錄"), t("每一版改了什麼"), button("changelog", t("開啟"), "scroll-text", about.changelog)),
         ]),
         ...this.#group(t("意見回饋"), [
@@ -836,7 +836,7 @@ export class SettingsDialog {
     swatches.append(auto, ...presets, custom);
     const accentRow = this.#row("accent", t("強調色"), t("按鈕、連結、選取範圍、目前的分頁與焦點框；自訂顏色時，按鈕上的字會自動選看得清楚的顏色"), () => swatches);
 
-    // ---- 明暗：和 ⋯ →「主題」同一份狀態。
+    // ---- 明暗：和 ⋯ →「外觀」同一份狀態。
     const themeSelect = document.createElement("select");
     themeSelect.id = "setting-theme";
     for (const [v, l] of [
@@ -850,7 +850,7 @@ export class SettingsDialog {
       look.setTheme(themeSelect.value as ThemePref);
       render();
     });
-    const themeRow = this.#row("theme", t("明暗"), t("跟隨系統、淺色或深色；也可以在 ⋯ →「主題」切換"), () => themeSelect);
+    const themeRow = this.#row("theme", t("明暗"), t("跟隨系統、淺色或深色；也可以在 ⋯ →「外觀」切換"), () => themeSelect);
     const themeHint = themeRow.querySelector("small")!;
 
     // ---- 一鍵還原：森林綠、配色預設的強調色（明暗不變）。
@@ -890,7 +890,7 @@ export class SettingsDialog {
       themeSelect.disabled = !!info?.darkOnly;
       themeHint.textContent = info?.darkOnly
         ? t("「{name}」固定是深色；換成其他配色後，這個選項才有作用", { name: info.label })
-        : t("跟隨系統、淺色或深色；也可以在 ⋯ →「主題」切換");
+        : t("跟隨系統、淺色或深色；也可以在 ⋯ →「外觀」切換");
       resetBtn.disabled = current === DEFAULT_PALETTE && !accent;
     };
     render();
@@ -1101,7 +1101,7 @@ export class SettingsDialog {
     const section = this.#section(
       t("Git 與 GitHub"),
       "git-branch",
-      t("自動同步與 GitHub 帳號；同步也適用 Azure DevOps／TFS 的儲存庫。Git 已經內建，不需要另外安裝"),
+      t("自動同步與 GitHub 帳號；同步也適用 Azure DevOps 的儲存庫。Git 已經內建，不需要另外安裝"),
       ["Git", "GitHub"],
     );
     const accountBtn = document.createElement("button");
@@ -1143,12 +1143,12 @@ export class SettingsDialog {
 
   /** Azure DevOps 頁：沒連線時輸入網址與權杖；連線後顯示帳號、權限檢查、通知與工作項目類型的顏色。 */
   #adoPage(ado: AdoSettingsHooks): { section: HTMLElement; refresh(): void } {
-    // 分類名稱只寫「Azure DevOps」（寫成「Azure DevOps／TFS」在左邊排不下一行）；TFS 寫在說明裡。
+    // 分類名稱只寫「Azure DevOps」（寫成「Azure DevOps／TFS」在左邊排不下一行）；連線的說明寫「Azure DevOps／TFS」，用 TFS 的人也認得出來。
     const section = this.#section(
       "Azure DevOps",
       "briefcase-business",
-      t("公司自架的 Azure DevOps Server（TFS）或雲端版：連線、通知與工作項目類型的顏色"),
-      [t("Azure DevOps／TFS"), "Azure DevOps／TFS"], // i18n-ignore：舊的分類名稱（呼叫端用它打開這一頁）
+      t("公司自架的 Azure DevOps／TFS 或雲端版：連線、通知與工作項目類型的顏色"),
+      ["Azure DevOps／TFS", "Azure DevOps/TFS"], // i18n-ignore：舊的分類名稱（以前的呼叫端用它開啟這一頁）
     );
     const input = (id: string, type: string, placeholder: string) => {
       const el = document.createElement("input");
@@ -1166,7 +1166,7 @@ export class SettingsDialog {
     const patRow = this.#row(
       "ado-pat",
       t("個人存取權杖（PAT）"),
-      t("在 ADO 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code、Work Items 與 Wiki（都選 Read & write）"),
+      t("在 Azure DevOps 網頁右上角的使用者設定 →「Personal access tokens」建立，權限勾選 Code、Work Items 與 Wiki（都選 Read & write）"),
       () => pat,
     );
     // 已連線時：權杖過期或要換帳號，不用先中斷連線，直接輸入新的權杖。
@@ -1213,7 +1213,7 @@ export class SettingsDialog {
     const notifyRow = this.#row(
       "adoNotify",
       t("新指派給我時通知"),
-      t("oMarker 在背景或縮小時，有新的工作項目指派給你就跳出 Windows 通知，點一下就打開它"),
+      t("oMarker 在背景或縮小時，有新的工作項目指派給你就跳出 Windows 通知，點一下就開啟它"),
       () => this.#control("adoNotify"),
     );
     // 權限檢查：逐項列出權杖能做什麼，缺的告訴使用者怎麼補。
@@ -1249,7 +1249,7 @@ export class SettingsDialog {
           if (list.some((c) => c.status === "fail")) {
             const tip = document.createElement("li");
             tip.className = "ado-check-tip";
-            tip.textContent = t("缺少的權限：到 ADO 網頁右上角的使用者設定 →「Personal access tokens」，編輯這個權杖勾選需要的項目，再按上面的「更新權杖」貼上（權杖內容不變時不用重貼）。");
+            tip.textContent = t("缺少的權限：到 Azure DevOps 網頁右上角的使用者設定 →「Personal access tokens」，編輯這個權杖勾選需要的項目，再按上面的「更新權杖」貼上（權杖內容不變時不用重貼）。");
             results.append(tip);
           }
         })
@@ -1267,7 +1267,7 @@ export class SettingsDialog {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "btn";
-        b.textContent = t("儲存…");
+        b.textContent = t("存檔…");
         b.addEventListener("click", () => {
           this.#dialog.close();
           ado.diagnostics();

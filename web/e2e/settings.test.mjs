@@ -93,9 +93,9 @@ test("設定（桌面版）：Git 與 GitHub 同一頁、Azure DevOps 一行排�
   const about = await page.locator("dialog[open] section:not([hidden])").innerText();
   assert.equal(about.match(/版本 0\.0\.0/g)?.length, 1, about);
 
-  // 用舊的分類名稱打開（例如工作項目面板的「開啟連線設定」）仍然到 Azure DevOps 頁。
+  // 指令「Azure DevOps：連線設定…」（和工作項目面板的「開啟連線設定」一樣）到 Azure DevOps 頁。
   await page.keyboard.press("Escape");
-  await desktopCommand(page, "Azure DevOps／TFS：連線設定");
+  await desktopCommand(page, "Azure DevOps：連線設定");
   await page.locator("dialog[open] [role=tab][aria-selected=true]", { hasText: "Azure DevOps" }).waitFor();
   assert.deepEqual(errors, []);
   await context.close();

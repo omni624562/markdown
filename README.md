@@ -11,7 +11,7 @@
 - **即時預覽**：像 Obsidian 一樣在編輯區直接看到排版
 - **中文友善**：兩國用語與錯字檢查、簡體轉繁體、中英文間自動補空格，注音、倉頡組字不受影響
 - **匯入匯出**：Word、PDF、HTML，以及複製成格式文字貼到 Word、Outlook
-- **桌面版**：資料夾與多專案、Git（GitHub、Azure DevOps／TFS）、工作項目與 Wiki、遠端資料夾、AI 協作
+- **桌面版**：資料夾與多專案、Git（GitHub、Azure DevOps）、工作項目與 Wiki、遠端資料夾、AI 協作
 
 ## 說明文件
 

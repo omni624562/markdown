@@ -39,7 +39,7 @@ test("檔案面板刪除：移到資源回收筒在左、取消在右（預設�
   await context.close();
 });
 
-test("關閉沒存的分頁：［儲存］［不儲存］［取消］，「不儲存」不會預設聚焦（預設是「儲存」）", async () => {
+test("關閉沒存的分頁：［存檔］［不存檔］［取消］，「不存檔」不會預設聚焦（預設是「存檔」）", async () => {
   const { page, context, errors } = await open();
   await page.click(".cm-content");
   await page.keyboard.insertText("第一份");
@@ -48,8 +48,8 @@ test("關閉沒存的分頁：［儲存］［不儲存］［取消］，「不�
   await page.locator("#tab-bar .tab[aria-selected=true] .tab-close").click();
   await page.locator("dialog[open].choice").waitFor();
   assert.deepEqual(await buttons(page), [
-    { label: "儲存", danger: false, primary: true, focused: true },
-    { label: "不儲存", danger: true, primary: false, focused: false },
+    { label: "存檔", danger: false, primary: true, focused: true },
+    { label: "不存檔", danger: true, primary: false, focused: false },
     { label: "取消", danger: false, primary: false, focused: false },
   ]);
   await page.keyboard.press("Escape");

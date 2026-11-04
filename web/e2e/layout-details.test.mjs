@@ -17,7 +17,7 @@ test("⋯ 選單：沒開資料夾時「Git」只剩一項，直接放在第一�
     .evaluateAll((els) => els.map((b) => [b.querySelector("span")?.textContent, b.classList.contains("has-submenu")]));
   assert.ok(top.some(([name, sub]) => name === "顯示原始碼控制（Git）" && !sub), JSON.stringify(top));
   assert.ok(!top.some(([name]) => name === "Git"), JSON.stringify(top));
-  assert.ok(top.some(([name, sub]) => name === "主題" && sub), JSON.stringify(top));
+  assert.ok(top.some(([name, sub]) => name === "外觀" && sub), JSON.stringify(top));
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -1,6 +1,6 @@
 /**
  * 工作項目的篩選一直顯示在清單上面（沒有展開、收合的按鈕）：專案一整列（有條件時右邊是清掉全部的 ×）；
- * 人與區域（沒選專案時人佔一整列，輸入名字的框在這列下面）；類型與狀態；最後是搜尋框，右端的 ⌄ 開 TFS 的已儲存查詢，
+ * 人與區域（沒選專案時人佔一整列，輸入名字的框在這列下面）；類型與狀態；最後是搜尋框，右端的 ⌄ 開 Azure DevOps 的已儲存查詢，
  * 正在用查詢時搜尋框左邊是「查詢：名稱 ×」，篩選最上面有說明。用假的原生端（見 helpers.mjs）。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -142,9 +142,9 @@ test("搜尋框右端的 ⌄ 開已儲存的查詢；選了查詢顯示「查詢
   assert.equal(await pick.getAttribute("aria-label"), "已儲存的查詢");
   assert.equal(await pick.getAttribute("title"), "已儲存的查詢");
 
-  // ⌄ 開 TFS 的已儲存查詢。
+  // ⌄ 開 Azure DevOps 的已儲存查詢。
   await pick.click();
-  const dialog = page.locator('dialog[open][aria-label="TFS 的已儲存查詢"]');
+  const dialog = page.locator('dialog[open][aria-label="Azure DevOps 的已儲存查詢"]');
   await dialog.waitFor();
   await dialog.locator("li", { hasText: "我的 Bug" }).waitFor();
   await dialog.locator("li", { hasText: "本週要上線的項目" }).click();

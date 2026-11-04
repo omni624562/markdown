@@ -25,7 +25,7 @@ export interface ProjectHooks {
   changed(): void;
   /** 專案裡有沒有還沒存檔的分頁。 */
   unsaved(path: string): boolean;
-  /** 可以下載儲存庫的地方（GitHub、Azure DevOps／TFS）。 */
+  /** 可以下載儲存庫的地方（GitHub、Azure DevOps）。 */
   repoSources(): RepoSource[];
 }
 
@@ -356,7 +356,7 @@ export class ProjectUi {
       title: t("專案設定"),
       name: t("名稱"),
       group: t("群組"),
-      groupHint: t("例如：公司 TFS、個人（留白就是不分組）"),
+      groupHint: t("例如：公司、個人（留白就是不分組）"),
       color: t("顏色"),
       pin: t("釘選在清單最上面"),
       relocate: t("重新指定位置…"),

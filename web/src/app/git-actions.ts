@@ -242,7 +242,7 @@ export function initGitActions(): void {
     },
     {
       id: "ai-actions",
-      title: t("AI：處理選取的文字…"),
+      title: t("AI 快速動作…"),
       group: t("AI 與終端機"),
       icon: "sparkles",
       keys: "Mod-j",
@@ -255,7 +255,7 @@ export function initGitActions(): void {
     },
     ...(
       [
-        ["github-open", t("GitHub：下載或開啟儲存庫…"), "github", () => app.github?.openRepo(), () => true],
+        ["github-open", t("GitHub：下載儲存庫…"), "github", () => app.github?.openRepo(), () => true],
         ["github-publish", t("GitHub：把這個資料夾上傳到 GitHub…"), "arrow-up-from-line", () => app.github?.publish(), () => !!app.workspaceRoot && !isRemote(app.workspaceRoot.path)],
         ["github-login", t("GitHub：登入"), "shield-check", () => app.github?.login(), () => !app.github?.account],
         ["github-logout", t("GitHub：登出"), "x", () => app.github?.logout(), () => !!app.github?.account],
@@ -291,15 +291,15 @@ export function initGitActions(): void {
     // Azure DevOps 的指令都看 app.ado，跟 Git 整合有沒有開無關。
     ...(
       [
-        ["ado-open", t("Azure DevOps／TFS：下載或開啟儲存庫、Wiki…"), "briefcase-business", () => app.ado?.openRepo(), () => !!app.ado],
-        ["ado-items", t("Azure DevOps／TFS：工作項目"), "square-kanban", () => showAdo("workitems"), () => !!app.ado?.account],
-        ["ado-wiki", t("Azure DevOps／TFS：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!app.ado?.account],
-        ["ado-offline", t("Azure DevOps／TFS：保留離線的頁面…"), "download", () => keptPicker.open(), () => !!desktop && keptPages.length > 0],
-        ["ado-connect", t("Azure DevOps／TFS：連線設定…"), "shield-check", () => app.settingsDialog.open(t("Azure DevOps／TFS")), () => !!app.ado],
-        ["ado-create-work-item", t("Azure DevOps／TFS：建立工作項目…"), "plus", () => createWorkItemDialog(), () => !!app.ado?.account],
+        ["ado-open", t("Azure DevOps：下載儲存庫…"), "briefcase-business", () => app.ado?.openRepo(), () => !!app.ado],
+        ["ado-items", t("Azure DevOps：工作項目"), "square-kanban", () => showAdo("workitems"), () => !!app.ado?.account],
+        ["ado-wiki", t("Azure DevOps：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!app.ado?.account],
+        ["ado-offline", t("Azure DevOps：保留離線的頁面…"), "download", () => keptPicker.open(), () => !!desktop && keptPages.length > 0],
+        ["ado-connect", t("Azure DevOps：連線設定…"), "shield-check", () => app.settingsDialog.open("Azure DevOps"), () => !!app.ado],
+        ["ado-create-work-item", t("Azure DevOps：建立工作項目…"), "plus", () => createWorkItemDialog(), () => !!app.ado?.account],
         [
           "ado-create-from-selection",
-          t("Azure DevOps／TFS：用選取的文字建立工作項目…"),
+          t("Azure DevOps：用選取的文字建立工作項目…"),
           "plus",
           () => createWorkItemFromSelection(),
           () => !!app.ado?.account && app.cur.kind === "markdown" && !app.editor.view.state.selection.main.empty,
@@ -367,7 +367,7 @@ export function initGitActions(): void {
     },
     {
       id: "wiki-history",
-      title: t("Wiki 頁面的修改記錄…"),
+      title: t("Wiki 頁面的修改紀錄…"),
       group: "Azure DevOps",
       icon: "history",
       when: () => !!desktop && (!!app.active.wiki || (app.issueView.isOpen && !!app.wikiPage && !app.wikiPage.wiki.code)),
@@ -411,7 +411,7 @@ export function initGitActions(): void {
     },
     {
       id: "history",
-      title: t("版本記錄…"),
+      title: t("版本紀錄…"),
       group: t("檔案"),
       icon: "history",
       when: () => !!desktop && !!app.cur.fileHandle?.path,
@@ -427,7 +427,7 @@ export function initGitActions(): void {
     },
     {
       id: "ai-cancel",
-      title: t("AI：取消處理中的動作"),
+      title: t("AI：取消處理中的快速動作"),
       group: t("AI 與終端機"),
       icon: "circle-stop",
       when: () => !!app.ai?.running,
