@@ -4,6 +4,7 @@ name: 設為穩定版
 # 在 GitHub 的 Actions → 設為穩定版 → Run workflow 執行；版本號不填就用目前的最新版。
 # 穩定版的 Release（標籤 stable）裡是那一版的 omarker.exe 與它自己的 version.json（已簽章，
 # 網址指向 v<版本號> 的 omarker.exe），所以不需要重新建置或簽章。
+# 版本號的 Release 只保留最近 3 個（見「清理舊版本」），所以只能選最近這幾版；設為穩定版的那一版之後不會被清掉。
 on:
   workflow_dispatch:
     inputs:
