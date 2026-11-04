@@ -533,7 +533,7 @@ export const main: Record<string, Translation> = {
     "{n} more depends on context and is marked with a wavy underline; hover over it to choose.",
     "{n} more depend on context and are marked with wavy underlines; hover over them to choose.",
   ],
-  "另有 {n} 處要依文意判斷；打開設定的「{setting}」就會標示出來。": [
+  "另有 {n} 處要依文意判斷；在設定中開啟「{setting}」就會標示出來。": [
     "{n} more depends on context. Turn on \"{setting}\" in Settings to mark it.",
     "{n} more depend on context. Turn on \"{setting}\" in Settings to mark them.",
   ],
