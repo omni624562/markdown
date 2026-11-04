@@ -2,7 +2,7 @@
  * 編輯器裡的兩國用語、錯字與中文標點檢查：畫上波浪底線，滑鼠移上去可以直接換成建議的寫法。
  * 程式碼、網址、HTML、數學公式與文件開頭的 YAML 設定不檢查。
  */
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { type Action, type Diagnostic, linter } from "@codemirror/lint";
 import { type EditorState, type Extension, StateEffect } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
@@ -18,7 +18,10 @@ const SKIP = /^(InlineCode|FencedCode|CodeBlock|HTMLTag|HTMLBlock|Comment|Commen
  */
 export function skipRanges(state: EditorState, from = 0, to = state.doc.length): [number, number][] {
   const out: [number, number][] = [];
-  syntaxTree(state).iterate({
+  // 語法樹可能只解析到前面一段（建立狀態時只先解析開頭，而且有時間上限）：要檢查的範圍先補解析完，
+  // 程式碼才認得出來；真的太久才退回目前解析到的部分。
+  const tree = ensureSyntaxTree(state, to, 500) ?? syntaxTree(state);
+  tree.iterate({
     from,
     to,
     enter(node) {
