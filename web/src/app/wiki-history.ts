@@ -7,7 +7,7 @@ import { t } from "../i18n.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { myChanges } from "../wiki-coedit.ts";
-import { pageName, revisionNote } from "../wiki-text.ts";
+import { inPageScope, pageName, revisionNote } from "../wiki-text.ts";
 import { app } from "./context.ts";
 
 
@@ -130,15 +130,21 @@ async function compareWikiRevision(target: WikiHistoryTarget & { wiki: AdoWiki |
   if (!started) toast(t("這一版和目前的內容相同。"));
 }
 
-/** 最近修改要看的 Wiki 與讀到的清單。 */
+/** 最近修改要看的 Wiki、範圍（樹狀目錄篩選後的頁面，null 是整個 Wiki）與讀到的清單。 */
 let recentOf: AdoWiki | null = null;
+let recentScope: string[] | null = null;
 let recentLoad: Promise<AdoWikiChange[]> | null = null;
 // 在 init 時建立。
 let recentPicker: Picker<AdoWikiChange>;
 
-/** 打開這個 Wiki 的最近修改：誰、什麼時候改了哪一頁；選一筆開那一頁。 */
-export function openWikiRecent(wiki: AdoWiki): void {
+/**
+ * 打開這個 Wiki 的最近修改：誰、什麼時候改了哪一頁；選一筆開那一頁。
+ * `scope`：Wiki 面板樹狀目錄目前的範圍（篩選了最上層頁面或「只看這裡」），只列範圍裡的頁面，
+ * 不然樹狀目錄裡藏起來的資料夾也會出現，看起來像別的 Wiki 的內容。
+ */
+export function openWikiRecent(wiki: AdoWiki, scope: string[] | null = null): void {
   recentOf = wiki;
+  recentScope = scope;
   recentLoad = desktop!.adoWikiRecent(wiki);
   recentLoad.catch(app.reportError);
   recentPicker.open();
@@ -167,10 +173,11 @@ export function initWikiHistory(): void {
     label: t("Wiki 最近修改"),
     placeholder: t("輸入頁面名稱、人名或修改說明"),
     stacked: true,
-    empty: t("最近沒有修改。"),
+    empty: () => (recentScope ? t("樹狀目錄目前的範圍裡最近沒有修改（篩選了最上層頁面或「只看這裡」）。") : t("最近沒有修改。")),
     async query(q) {
       if (!recentLoad) return [];
-      const list = await recentLoad;
+      const scope = recentScope;
+      const list = (await recentLoad).filter((c) => inPageScope(c.path, scope));
       const needle = q.trim().toLowerCase();
       return needle ? list.filter((c) => `${c.path} ${c.author} ${c.comment}`.toLowerCase().includes(needle)) : list;
     },

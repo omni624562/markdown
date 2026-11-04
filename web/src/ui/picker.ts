@@ -17,7 +17,8 @@ export interface PickerItem {
 export interface PickerOptions<T> {
   label: string;
   placeholder: string;
-  empty: string;
+  /** 沒有項目時的說明（可以依目前的狀況給不同的說明）。 */
+  empty: string | (() => string);
   /** 分類與快速鍵各佔固定寬度的一欄，上下對齊（指令面板）。 */
   columns?: boolean;
   /** 說明放在名稱下面一行（說明很長時，例如修改記錄）。 */
@@ -139,7 +140,7 @@ export class Picker<T> {
     if (!items.length) {
       const li = document.createElement("li");
       li.className = "palette-empty";
-      li.textContent = this.#opts.empty;
+      li.textContent = typeof this.#opts.empty === "function" ? this.#opts.empty() : this.#opts.empty;
       this.#list.append(li);
     }
     this.#highlight();

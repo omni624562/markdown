@@ -775,6 +775,7 @@ export const ui: Record<string, Translation> = {
   "Wiki 最近修改": "Recent Wiki Changes",
   "輸入頁面名稱、人名或修改說明": "Type a page name, person or change note",
   "最近沒有修改。": "No recent changes.",
+  "樹狀目錄目前的範圍裡最近沒有修改（篩選了最上層頁面或「只看這裡」）。": "No recent changes within the pages the tree is showing (top-level pages are filtered, or a folder is in focus).",
   "「{name}」已經刪除了。": "“{name}” has been deleted.",
   "最近修改": "Recent Changes",
   "這個 Wiki 最近誰改了哪幾頁": "Who changed which pages in this wiki recently",
