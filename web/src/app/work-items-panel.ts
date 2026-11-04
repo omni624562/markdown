@@ -53,6 +53,8 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
   clear.addEventListener("click", () => resetAll());
   const searchBox = document.createElement("div");
   searchBox.className = "workitems-search-box";
+  // 左邊的放大鏡：一眼看出這是搜尋框，不是另一個下拉選單。
+  searchBox.append(icon("search"));
   /** 依目前的條件：和預設不同的條件用強調色、有條件時才有清除按鈕。 */
   const renderState = () => {
     const set = [
