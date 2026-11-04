@@ -3044,6 +3044,19 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 @media (prefers-reduced-motion: reduce) {
   .issue-pane.issue-hero > .issue-head, .issue-pane.issue-hero .issue-head .issue-title { transition: none; }
 }
+/*
+ * Wiki 頁面（內容最上面是頁名的大標題）：標頭只留一列位置（Wiki › 上層 › 上層），位置可以縮短；
+ * 捲過大標題時，位置縮成「… › 上一層」，後面接著粗體頁名（點頁名或上方空白都不會跳動）。
+ */
+.issue-pane.issue-page-hero .issue-heading { gap: 4px; }
+.issue-pane.issue-page-hero .issue-meta { flex: 0 1 auto; min-width: 0; }
+.issue-pane.issue-page-hero .issue-label > :last-child { margin-right: 0; }
+.issue-pane.issue-page-hero .issue-head .issue-title { flex: 0 1 auto; }
+.issue-pane.issue-page-hero.issue-title-away .issue-label > :not(:last-child) { display: none; }
+.issue-pane.issue-page-hero.issue-title-away .issue-label:has(> .issue-crumb-sep)::before { content: "… ›"; margin-right: 4px; color: var(--subtle); }
+.issue-pane.issue-page-hero.issue-title-away .issue-head .issue-title::before { content: "›"; margin-right: 4px; color: var(--subtle); font-weight: 400; }
+.issue-pane.issue-title-away .issue-head .issue-title { cursor: pointer; }
+.issue-body > h1.page-hero { margin-top: 0; }
 .issue-actions .btn-primary { margin-right: 4px; }
 /* 內容的動作和檢視的動作（並排、找字、重新整理、關閉）中間的分隔線。 */
 .issue-actions-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }

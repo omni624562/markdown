@@ -222,6 +222,12 @@ export class IssueView {
     this.#label.className = "issue-label";
     this.#title = document.createElement("h2");
     this.#title.className = "issue-title";
+    // 捲動後標頭帶出的標題（工作項目、Wiki 頁面）：按一下捲回最上面。
+    this.#title.addEventListener("click", () => {
+      if (!this.#pane.classList.contains("issue-title-away")) return;
+      const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      this.#scroll.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
+    });
     heading.append(this.#meta, this.#title);
     const nav = document.createElement("div");
     nav.className = "issue-nav";
@@ -566,7 +572,7 @@ export class IssueView {
     this.#updateNav();
     this.#pane.dataset.source = source.origin.kind;
     this.#pane.dataset.sourceName = source.origin.text;
-    this.#pane.classList.remove("issue-hero", "issue-scrolled", "issue-title-away");
+    this.#pane.classList.remove("issue-hero", "issue-page-hero", "issue-scrolled", "issue-title-away");
     this.#label.replaceChildren(...this.#crumbs(source));
     // 來源只用一個圖示標示（狀態列和上方的色條也標了來源與「唯讀」），位置一列放完。
     const origin = document.createElement("span");
@@ -694,9 +700,12 @@ export class IssueView {
     }
     // 工作項目：內容最上面的類型標籤與編號搬到標頭這一列（和上一頁、下一頁、右邊的按鈕同一列），
     // 標題接在下面，不再多佔一列；往下捲到看不到標題時，標頭帶出標題。
+    // Wiki 頁面（內容最上面是頁名的大標題 `h1.page-hero`）：標頭只留位置一列，捲過大標題時在位置後面帶出頁名。
     const kind = this.#body.querySelector<HTMLElement>(".ado-hero > .ado-hero-kind");
     if (kind) this.#meta.replaceChildren(kind);
-    this.#pane.classList.toggle("issue-hero", !!kind);
+    const page = !kind && !!this.#body.querySelector(":scope > h1.page-hero");
+    this.#pane.classList.toggle("issue-hero", !!kind || page);
+    this.#pane.classList.toggle("issue-page-hero", page);
     this.#updateHeroHead();
   }
 
@@ -706,7 +715,7 @@ export class IssueView {
    */
   #updateHeroHead(): void {
     const hero = this.#pane.classList.contains("issue-hero");
-    const h1 = hero ? this.#body.querySelector<HTMLElement>(".ado-hero h1") : null;
+    const h1 = hero ? this.#body.querySelector<HTMLElement>(".ado-hero h1, :scope > h1.page-hero") : null;
     const heading = this.#heading;
     if (h1 && !this.#pane.hidden) {
       // padding 在 heading 裡面，不影響它自己的位置：直接量兩者左邊的距離。
