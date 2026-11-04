@@ -9,7 +9,7 @@ import { fromDesktop, desktopHandle } from "../files.ts";
 import { t } from "../i18n.ts";
 import { backlinks } from "../links.ts";
 import { dirname, rebase, basename, isInside } from "../paths.ts";
-import { projectSections, samePath } from "../projects.ts";
+import { samePath } from "../projects.ts";
 import { draftVersion, loadDraft, loadProjectView, dropDraft, loadSession } from "../session.ts";
 import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
@@ -338,7 +338,13 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
   }
 }
 
-/** 沒有開啟資料夾時，檔案面板顯示說明、開啟按鈕與最近開啟的資料夾。 */
+/** 沒開資料夾時，檔案面板列出幾個專案（側邊欄比起始頁有空間，列得比較多）。 */
+const FILES_PANEL_PROJECTS = 10;
+
+/**
+ * 沒有開啟資料夾時，檔案面板顯示說明、開啟按鈕與「專案」：和起始頁同一份清單、同樣的順序（最近開啟的在前），
+ * 用自訂的名稱與顏色；後面是記住的遠端連線與「全部專案…」。
+ */
 export async function renderFilesEmpty(): Promise<void> {
   const box = app.$("#files-empty");
   app.$("#files-head").hidden = !app.workspaceRoot;
@@ -388,17 +394,17 @@ export async function renderFilesEmpty(): Promise<void> {
     app.projectUi!.refresh(),
     app.features.remote ? desktop.davConnections().catch(() => []) : [],
   ]);
-  const folders = projectSections(projects).flatMap((s) => s.items).slice(0, 10);
+  const folders = projects.slice(0, FILES_PANEL_PROJECTS);
   if ((!folders.length && !conns.length) || app.workspaceRoot) return;
   const h = document.createElement("h3");
-  h.textContent = t("最近開啟");
+  h.textContent = t("專案");
   const list = document.createElement("ul");
   list.className = "recent-list";
-  const add = (iconName: string, label: string, title: string, run: () => void, forget?: () => void) => {
+  const add = (mark: Element, label: string, title: string, run: () => void, forget?: () => void) => {
     const b = document.createElement("button");
     b.type = "button";
     b.title = title;
-    b.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }));
+    b.append(mark, Object.assign(document.createElement("span"), { textContent: label }));
     b.addEventListener("click", run);
     const li = document.createElement("li");
     li.append(b);
@@ -414,19 +420,23 @@ export async function renderFilesEmpty(): Promise<void> {
     }
     list.append(li);
   };
-  for (const p of folders) add("folder", p.label, displayPath(p.path), () => void openRecentFolder(p.path));
+  for (const p of folders) {
+    const dot = Object.assign(document.createElement("span"), { className: "project-dot" });
+    if (p.color) dot.dataset.color = p.color;
+    add(dot, p.label, displayPath(p.path), () => void openRecentFolder(p.path));
+  }
   for (const c of conns) {
     const where = c.kind === "ssh" ? c.url : t("{url}（{user}）", { url: c.url, user: c.username });
-    add(c.kind === "ssh" ? "server" : "cloud", c.name, where, () => void openRemote(c), () =>
+    add(icon(c.kind === "ssh" ? "server" : "cloud"), c.name, where, () => void openRemote(c), () =>
       void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError),
     );
   }
   box.append(h, list);
-  if (projects.length > folders.length) {
+  if (projects.length) {
     const more = document.createElement("button");
     more.type = "button";
     more.className = "btn";
-    more.append(icon("layout-dashboard"), t("全部 {n} 個專案…", { n: projects.length }));
+    more.append(icon("layout-dashboard"), t("全部專案…"));
     more.addEventListener("click", () => void commands.run("project-overview").catch(reportError));
     box.append(more);
   }
