@@ -2223,9 +2223,10 @@ button.git-info:disabled { cursor: default; }
  * 按鈕不換行也不被切掉。連不上伺服器、顯示存下的資料時（有「重試」）才讓文字換行。
  */
 .workitems-statusrow { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-.workitems-statusrow .workitems-status { flex: 1 1 auto; min-width: 0; }
+/* 「N 個…」佔剩下的寬度，至少留得下數字（「100…」）；再窄就換排列方式選單的文字截短。 */
+.workitems-statusrow .workitems-status { flex: 1 1 0; min-width: 3em; }
 .workitems-statusrow .workitems-status:not(.from-copy) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.workitems-tools { display: inline-flex; flex: none; gap: 2px; align-items: center; }
+.workitems-tools { display: inline-flex; flex: 0 1 auto; gap: 2px; align-items: center; min-width: 0; }
 .workitems-fold { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
 .workitems-fold[hidden] { display: none; }
 .workitems-fold .icon { width: 14px; height: 14px; }
@@ -2236,7 +2237,8 @@ button.git-info:disabled { cursor: default; }
 .workitems-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 6px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 8px; background: var(--accent-soft); }
 .workitems-bulk[hidden] { display: none; }
 .workitems-bulk-count { flex: 1 1 auto; min-width: 0; color: var(--accent); font-size: 12.5px; font-weight: 600; }
-.workitems-arrange { flex: none; max-width: 100%; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 12px var(--font-ui); cursor: pointer; }
+/* 寬度跟著選的那一個（不是最長的選項「依區域＋上層項目分組」），旁邊的「N 個…」才不會被擠掉。 */
+.workitems-arrange { flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 12px var(--font-ui); text-overflow: ellipsis; cursor: pointer; field-sizing: content; }
 .workitems-arrange:hover { color: var(--fg); background: var(--active-line); }
 .workitems-arrange:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .workitems-group button { display: flex; gap: 4px; align-items: center; width: 100%; margin-top: 6px; padding: 3px 4px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: 600 12px var(--font-ui); text-align: left; cursor: pointer; }
@@ -2276,6 +2278,15 @@ button.git-info:disabled { cursor: default; }
 .workitems-child[data-depth="3"] { --indent: 36px; background-image: var(--tree-line), var(--tree-line), var(--tree-line); background-position: 10px 0, 22px 0, 34px 0; }
 .workitems-child > .workitem { padding-top: 4px; padding-bottom: 4px; }
 .workitems-group-card ~ .workitems-group { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
+/*
+ * 依區域＋上層項目分組：區域的標題下面是那一組的樹。組與組之間有分隔線；標題下面的第一張卡片不用再畫線。
+ * 樹裡的列比較窄：有子區域小字時那一行可以換行（放不下的狀態、小字換到下一行），不要把小字擠成「…」。
+ */
+.workitems-group-tree ~ .workitems-group-tree { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
+/* 組裡的上層與上層之間用虛線，和組與組之間的實線分得開（不會看成另一個沒有標題的組）。 */
+.workitems-group-tree ~ .workitems-group-card:not(.workitems-child) { border-top-style: dashed; }
+.workitems-group + .workitems-group-card { margin-top: 0; padding-top: 0; border-top: 0; }
+.workitems-child .workitem-meta:has(> .workitem-note), .workitems-group-card .workitem-meta:has(> .workitem-note) { flex-wrap: wrap; }
 .workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
 .workitems-searchrow .workitems-search { flex: 1; min-width: 0; }
 .workitems-filter-toggle { display: inline-flex; flex: none; gap: 3px; align-items: center; justify-content: center; box-sizing: border-box; min-width: 30px; height: 30px; margin: 2px 0 6px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; }

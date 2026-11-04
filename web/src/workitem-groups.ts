@@ -3,6 +3,7 @@
  * - 「依上層項目分組」：排成一棵樹（Epic → Feature → User Story → Task），每一項只出現一次，
  *   在它的上層底下；不在清單上的上層（例如不是指派給你的 Feature）也列出來當標題列（淡色、不算數）。
  * - 「依區域分組」：篩選選了區域時一個區域一組，沒選時依專案底下的第一層區域分組（見 `areaGroups`）。
+ * - 「依區域＋上層項目分組」：和依區域分組一樣的組，組裡再依上層排成樹（見 `areaTrees`）。
  */
 
 import { collator } from "./collator.ts";
@@ -216,4 +217,39 @@ export function areaGroups<T extends { area?: string | null }>(items: readonly T
   });
   if (none.length) out.push({ area: null, title: null, items: none.map((item) => ({ item, sub: null })) });
   return out;
+}
+
+/** 「依區域＋上層項目分組」的一組：和 `areaGroups` 的組一樣（區域、標題、項目），另外是組裡的樹。 */
+export interface AreaTree<T> extends AreaGroup<T> {
+  /**
+   * 只用這一組的項目依上層排成的樹（見 `parentTree`）。上層不在這一組時（在別的區域，或不在清單上）
+   * 也列出來當標題列，淡色；所以同一個上層可以在好幾組各淡淡地出現一次，組裡的項目只出現在自己的那一組。
+   */
+  tree: TreeNode<T>[];
+}
+
+/**
+ * 依區域＋上層項目分組：先和「依區域分組」一樣分組（`areaGroups`：組、順序、標題、項目都一樣，數量也一樣），
+ * 每一組裡再只用這一組的項目依上層排成樹（`parentTree`）。例如 Task 在 Cobalt、它的 Story 在 IRIS：
+ * Task 只在 Cobalt 那一組，Story 在 IRIS 那一組是一般的列，在 Cobalt 那一組是 Task 上面淡色的上層。
+ *
+ * `parentOf`、`parents` 和 `parentTree` 一樣；別的組的項目當上層時用清單上的那一份（不用另外讀到的）。
+ */
+export function areaTrees<T extends GroupItem & { area?: string | null }>(
+  items: readonly T[],
+  selected: readonly string[],
+  order: readonly string[],
+  parentOf: Map<number, number | null>,
+  parents: Map<number, T>,
+): AreaTree<T>[] {
+  const known = new Map(parents);
+  for (const it of items) known.set(it.id, it);
+  return areaGroups(items, selected, order).map((g) => ({
+    ...g,
+    tree: parentTree(
+      g.items.map(({ item }) => item),
+      parentOf,
+      known,
+    ),
+  }));
 }
