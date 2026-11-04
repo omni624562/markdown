@@ -12,6 +12,7 @@ import { toast } from "../ui/toast.ts";
 import { openGitHistory } from "./git-history.ts";
 import { createWorkItemDialog, createWorkItemFromSelection, copySelection, pasteFromClipboard } from "./new-work-item.ts";
 import { keptPicker, keptPages } from "./offline-copies.ts";
+import { recentFilesPicker } from "./recent-files.ts";
 import { openWikiHistory, openWikiRecent } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
@@ -324,11 +325,13 @@ export function initGitActions(): void {
     ),
     {
       id: "open-recent",
-      title: t("最近開啟…"),
+      title: t("最近開啟的檔案…"),
       group: t("檔案"),
       icon: "clock",
+      // 跟 VS Code 一樣；只有桌面版有這個指令，網頁版的 Ctrl+R 照樣是瀏覽器的重新整理。
+      keys: desktop ? "Mod-r" : undefined,
       when: () => !!desktop,
-      run: () => app.recentPicker.open(),
+      run: () => recentFilesPicker.open(),
     },
     {
       id: "activity-add",

@@ -46,7 +46,7 @@ import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
-import { type StartAction, buildStartPage, fillStartRecent } from "./ui/start-page.ts";
+import { type StartAction, buildStartPage } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
 import { KindPicker } from "./ui/kind-picker.ts";
 import { Picker } from "./ui/picker.ts";
@@ -98,6 +98,7 @@ import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBl
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
+import { renderStartRecent } from "./app/recent-files.ts";
 import { initErrorHandling } from "./app/error-handling.ts";
 
 export type ViewMode = "editor" | "live" | "split" | "preview";
@@ -508,9 +509,6 @@ const app = {
   },
   get quickOpen() {
     return quickOpen;
-  },
-  get recentPicker() {
-    return recentPicker;
   },
   get refreshActivityCommands() {
     return refreshActivityCommands;
@@ -1503,7 +1501,7 @@ function startConnect(): StartAction[] {
 }
 
 /**
- * 空白文件的起始頁：開始（新增、開啟檔案、開啟資料夾、從範本新增）、連線、最近開啟的資料夾與檔案、小提示。
+ * 空白文件的起始頁：開始（新增、開啟檔案、開啟資料夾、從範本新增）、連線、專案與最近開啟的檔案、小提示。
  * 有預覽時放在預覽區；即時預覽、原始碼只有編輯區，改放在編輯區中間（不擋打字，打字就消失）。
  */
 function renderEmptyState(text: string): void {
@@ -1567,20 +1565,7 @@ function renderEmptyState(text: string): void {
     tour: () => openWelcome(),
   });
   emptyStateEl.replaceChildren(page);
-  if (desktop) void renderRecentFiles(page, key);
-}
-
-/** 起始頁右欄：最近開啟的資料夾（最多 4 個）與檔案（最多 5 個），點了直接開啟。 */
-async function renderRecentFiles(page: HTMLElement, key: string): Promise<void> {
-  const { folders, files } = await desktop!.recent().catch(() => ({ folders: [] as string[], files: [] as string[] }));
-  if (key !== emptyStateKey) return;
-  fillStartRecent(page, {
-    folders: folders.slice(0, 4),
-    files: files.slice(0, 5),
-    display: displayPath,
-    openFolder: (path) => void openRecentFolder(path),
-    openFile: (path) => void openPath(path).catch(reportError),
-  });
+  void renderStartRecent(page, () => key !== emptyStateKey);
 }
 
 let outlineKey = "";
@@ -3243,32 +3228,6 @@ initOfflineDrive();
 initCommands();
 initAiTerminal();
 
-// ---- 最近開啟（W8） ------------------------------------------------------------
-
-const RECENT_LIMITS = { files: 10, folders: 5 } as const;
-
-const recentPicker = new Picker<{ path: string; folder: boolean }>({
-  label: t("最近開啟"),
-  placeholder: t("輸入檔名或資料夾名稱"),
-  empty: t("還沒有最近開啟的檔案或資料夾。"),
-  async query(q) {
-    if (!desktop) return [];
-    const { files, folders } = await desktop.recent();
-    const items = [
-      ...files.slice(0, RECENT_LIMITS.files).map((path) => ({ path, folder: false })),
-      ...folders.slice(0, RECENT_LIMITS.folders).map((path) => ({ path, folder: true })),
-    ];
-    const needle = q.trim().toLowerCase();
-    return needle ? items.filter((i) => i.path.toLowerCase().includes(needle)) : items;
-  },
-  render: (i) => ({
-    title: basename(i.path) || i.path,
-    detail: i.folder ? t("資料夾 · {dir}", { dir: displayPath(dirname(i.path)) }) : displayPath(dirname(i.path)),
-    icon: i.folder ? "folder" : "file-text",
-  }),
-  pick: (i) => void (i.folder ? openRecentFolder(i.path) : openPath(i.path)).catch(reportError),
-});
-
 // ---- 本機版本記錄（E12） ------------------------------------------------------
 
 const historyPicker = new Picker<FileVersion & { path: string }>({
@@ -3399,6 +3358,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "new-from-template",
   "daily-note",
   "open",
+  "open-recent",
   "save",
   "save-as",
   "-",
@@ -3408,15 +3368,10 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     items: [
       "switch-project",
       "project-overview",
-      "project-settings",
-      "close-folder",
       "-",
       "open-folder",
-      "github-open",
-      "ado-open",
-      "connect-webdav",
-      "connect-ssh",
-      "open-recent",
+      { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },
+      { label: t("連線到遠端資料夾"), icon: "cloud", items: ["connect-webdav", "connect-ssh"] },
     ],
   },
   {
@@ -3441,20 +3396,6 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   },
   "palette",
   "settings",
-]);
-setupMenu($<HTMLButtonElement>("#files-more"), commands, [
-  "switch-project",
-  "project-overview",
-  "project-settings",
-  "close-folder",
-  "open-folder",
-  "github-open",
-  "ado-open",
-  "connect-webdav",
-  "connect-ssh",
-  "open-recent",
-  "-",
-  "check-links",
 ]);
 // 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。
 for (const [tab, id] of [

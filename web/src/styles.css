@@ -479,6 +479,7 @@ kbd {
 }
 .recent-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-list button .icon { width: 16px; height: 16px; color: var(--muted); }
+.recent-list button .project-dot { margin: 0 3.5px; }
 .recent-list button:hover { background: var(--active-line); }
 
 /* 檔案樹 */
@@ -697,6 +698,11 @@ kbd {
 .start-recent-item:hover, .start-recent-item:focus-visible { background: var(--active-line); }
 .start-recent-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .start-recent-where { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+/* 專案的顏色點佔一個圖示的寬度，和檔案、遠端連線的圖示對齊。 */
+.start-recent-item .project-dot { align-self: center; margin: 0 3.5px; }
+.start-recent-more { display: inline-flex; gap: 6px; align-items: center; margin-top: 2px; padding: 4px 8px; border: 0; border-radius: 7px; background: none; color: var(--accent); font: 13px var(--font-ui); cursor: pointer; }
+.start-recent-more:hover, .start-recent-more:focus-visible { background: var(--active-line); }
+.start-recent-more .icon { width: 15px; height: 15px; }
 .start-tips { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
 .start-tip { display: inline-flex; gap: 6px; align-items: center; padding: 2px 4px; border: 0; border-radius: 5px; background: none; color: inherit; font: inherit; }
 button.start-tip { cursor: pointer; }
