@@ -499,6 +499,8 @@ export class IssuesPanel<T extends IssueSummary> {
    * 下面一行是摘要），收起來時不畫子項目；子項目每一層縮排一點、左邊一條線。
    */
   #treeRows(nodes: IssueTreeNode<T>[], depth: number, treeKey: string, rows: HTMLLIElement[]): void {
+    // 最上層有可以展開的項目時，沒有子項目的那幾列也空出箭頭的位置，卡片才對得齊（下面幾層本來就有空）。
+    const alignLeaves = depth === 0 && nodes.some((n) => n.children.length);
     for (const node of nodes) {
       const li = this.#row(node.item, !!node.dim);
       if (depth) {
@@ -506,7 +508,10 @@ export class IssuesPanel<T extends IssueSummary> {
         li.dataset.depth = String(Math.min(depth, TREE_INDENT_MAX));
       }
       rows.push(li);
-      if (!node.children.length) continue;
+      if (!node.children.length) {
+        li.classList.toggle("workitems-tree-leaf", alignLeaves);
+        continue;
+      }
       const key = `${treeKey}${node.item.id}`;
       const open = !this.#collapsed.has(key);
       li.classList.add("workitems-group-card");
