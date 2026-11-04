@@ -5,6 +5,16 @@ import { EditorState } from "@codemirror/state";
 import "./test-wasm.ts";
 import { scanDocument } from "./proofread.ts";
 
+test("長文件：還沒解析到的後半段，程式碼裡的字也不檢查", () => {
+  // 建立狀態時只先解析開頭一段（約 3,000 字元，而且有時間上限），後面的程式碼要檢查前補解析才認得出來。
+  const para = "這段影片的視頻品質很好，`視頻` 在程式碼裡不算。\n\n";
+  const text = para.repeat(300);
+  const state = EditorState.create({ doc: text, extensions: [markdown()] });
+  const found = scanDocument(state, new Set());
+  assert.equal(found.length, 300, "每段只有程式碼外面那一個");
+  assert.ok(found.every((m) => text.slice(m.from - 1, m.from) !== "`"));
+});
+
 test("只檢查一段時，位置和整份檢查的結果一致", () => {
   const para = "這段影片的視頻品質很好，`視頻` 在程式碼裡不算。\n\n";
   const text = para.repeat(50);
