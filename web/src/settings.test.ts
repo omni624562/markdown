@@ -69,7 +69,9 @@ test("左側圖示列：只接受合法的 id，去掉重複", () => {
   assert.deepEqual(settings.activityHidden, ["tags"]);
   assert.deepEqual(settings.activityCommands, ["git-history", "toggle-terminal"]);
   assert.equal(problems, 2);
-  assert.deepEqual(sanitize({}).settings.activityCommands, ["git-history"]);
+  // 預設不釘指令（Git 歷史在原始碼控制面板的標題列）；存過的設定照舊。
+  assert.deepEqual(sanitize({}).settings.activityCommands, []);
+  assert.deepEqual(sanitize({ activityCommands: ["git-history"] }).settings.activityCommands, ["git-history"]);
   assert.deepEqual(sanitize({ activityCommands: "x" }).settings.activityCommands, DEFAULTS.activityCommands);
 });
 

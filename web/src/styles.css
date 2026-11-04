@@ -1678,22 +1678,22 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
 /* 用 GitHub 登入：顯示要在網頁輸入的代碼。 */
 .github-code { margin: 4px 0 8px; padding: 14px; border: 1px dashed var(--border-strong); border-radius: 10px; font: 600 28px/1.2 var(--font-mono); letter-spacing: 0.18em; text-align: center; user-select: all; }
 .github-wait { color: var(--muted); font-size: 12.5px; }
-/* 分支一列、功能按鈕一列：面板變窄時分支名稱不會被按鈕擠掉。 */
-.git-branch { display: flex; flex-direction: column; gap: 4px; align-items: stretch; margin: 0 4px 8px; }
+/* 分支名稱和拉取、推送排成一列：名稱太長時用「…」截斷，按鈕不換行（其他按鈕在面板標題列）。 */
+.git-branch { display: flex; gap: 4px; align-items: center; margin: 0 4px 8px; }
 .git-info { display: flex; flex: 1; gap: 5px; align-items: center; min-width: 0; overflow: hidden; color: var(--fg); font-size: 13px; white-space: nowrap; }
 .git-info .icon { width: 15px; height: 15px; color: var(--muted); }
 .git-info strong { min-width: 3em; overflow: hidden; font-weight: 600; text-overflow: ellipsis; }
 .git-info small { color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; }
-button.git-info { flex: none; align-self: flex-start; max-width: calc(100% + 4px); padding: 2px 4px; margin-left: -4px; border: 0; border-radius: 5px; background: none; font-family: var(--font-ui); text-align: left; cursor: pointer; }
+button.git-info { flex: 0 1 auto; padding: 2px 4px; margin-left: -4px; border: 0; border-radius: 5px; background: none; font-family: var(--font-ui); text-align: left; cursor: pointer; }
 button.git-info:hover:not(:disabled) { background: var(--active-line); }
 button.git-info:disabled { cursor: default; }
 .git-merge { flex-direction: column; align-items: stretch; gap: 6px; }
 .git-merge-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.git-sync { display: flex; flex-wrap: wrap; gap: 2px; margin-left: -6px; }
+.git-sync { display: flex; flex: none; gap: 2px; margin-left: auto; }
 .git-sync .btn { min-height: 26px; padding: 0 6px; color: var(--muted); font-size: 12px; }
 .git-sync .btn:hover { color: var(--fg); }
 .git-sync .btn .icon { width: 14px; height: 14px; }
-.git-sync .btn.spinning .icon { animation: git-spin 0.9s linear infinite; }
+#git-head .btn.spinning .icon { animation: git-spin 0.9s linear infinite; }
 @keyframes git-spin { to { transform: rotate(360deg); } }
 .git-count { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
 .git-message {
@@ -1713,7 +1713,7 @@ button.git-info:disabled { cursor: default; }
 .git-actions { display: flex; gap: 6px; margin: 8px 0 14px; }
 .git-actions .btn { flex: 1; min-height: 30px; padding: 0 8px; border-color: var(--border-strong); font-size: 13px; }
 .git-actions .btn .icon { width: 15px; height: 15px; }
-.git-actions .btn:disabled, .git-sync .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.git-actions .btn:disabled, .git-sync .btn:disabled, #git-head .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .git-changes-head { margin: 0 4px 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; }
 .tree-row > span:not(.git-badge) { flex: 1; }
 .git-badge { flex: none; margin-left: 4px; font: 600 11px var(--font-mono); }
