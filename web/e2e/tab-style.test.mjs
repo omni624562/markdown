@@ -33,7 +33,8 @@ test("分頁樣式：原本頂端一條線；卡片離頂端 5px、圓角外框�
   assert.equal(await page.evaluate(() => document.documentElement.dataset.tabStyle), "line");
   const line = await look(page);
   assert.equal(line.gap, "0px");
-  assert.match(line.shadow, / 0px 3px 0px 0px inset/);
+  // 頂端一條強調色的線：預設的圓角區塊是 2px（相連時 3px）。
+  assert.match(line.shadow, / 0px [23]px 0px 0px inset/);
 
   await pick(page, "card");
   const card = await look(page);

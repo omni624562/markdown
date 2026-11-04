@@ -81,7 +81,7 @@ export interface Settings {
   docLineHeight: "compact" | "normal" | "relaxed";
   /** 目前的分頁怎麼標示：`line` 頂端一條強調色的線（原本）、`card` 白色卡片接著內文、`underline` 底下一條線。 */
   tabStyle: "line" | "card" | "underline";
-  /** 側邊欄、編輯區、右側欄怎麼排：`joined` 連在一起（原本）、`spaced` 各自是圓角的區塊，中間留一點間隔。 */
+  /** 側邊欄、編輯區、右側欄怎麼排：`spaced` 各自是圓角的區塊，中間留一點間隔（預設）、`joined` 連在一起（1.122 以前的樣子）。 */
   panelStyle: "joined" | "spaced";
   /** 介面大小（百分比，桌面版）：整個視窗一起放大或縮小，和文件的字級分開。 */
   uiScale: UiScale;
@@ -170,7 +170,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   codeFont: "",
   docLineHeight: "normal",
   tabStyle: "line",
-  panelStyle: "joined",
+  panelStyle: "spaced",
   uiScale: "100",
   math: true,
   mermaid: true,
@@ -408,7 +408,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   }
   if ("panelStyle" in input) {
     const v = input.panelStyle;
-    if (v === "joined" || v === "spaced") out.panelStyle = v;
+    if (v === "spaced" || v === "joined") out.panelStyle = v;
     else problems++;
   }
   if ("uiScale" in input) {
