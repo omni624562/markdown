@@ -903,7 +903,7 @@ export const ui: Record<string, Translation> = {
   "更新了 {n} 頁的連結": "updated links in {n} pages",
   "有 {n} 頁的連結沒有更新（{names}），請自己改一下": "Links in {n} pages were not updated ({names}); please fix them yourself",
   "{n} 個 {kind}": "{n} {kind}",
-  "Wiki（在右側欄，按一下顯示或隱藏右側欄）": "Wiki (in the right sidebar; click to show or hide it)",
+  "Wiki（在右側欄；按一下打開 Wiki，游標移到搜尋框）": "Wiki (in the right sidebar; click to open it and focus its search box)",
   "在 oMarker 裡找不到這一頁，改用瀏覽器開啟": "Couldn't find this page in oMarker; opening it in the browser",
   "分頁樣式": "Tab Style",
   "目前的分頁怎麼標示：頂端一條線、和內文接在一起的卡片，或底下一條線": "How the current tab is marked: a line on top, a card joined to the document, or a line underneath",

@@ -175,9 +175,10 @@ test("Wiki 收合時按圖示列的 Wiki：展開 Wiki（不是收起整個右�
   await page.click("#side-tab-wiki");
   assert.equal(await expanded(page, "wiki"), true);
   assert.equal(await page.locator("#outline-right").isVisible(), true);
-  // 已經展開：再按一下照舊收起右側欄。
+  // 已經展開：再按一下不收起右側欄，游標放進 Wiki 的搜尋框。
   await page.click("#side-tab-wiki");
-  await page.waitForFunction(() => document.getElementById("outline-right").hidden);
+  assert.equal(await page.locator("#outline-right").isVisible(), true);
+  assert.equal(await page.evaluate(() => document.activeElement?.matches("#panel-wiki input[type=search]")), true);
   assert.deepEqual(errors, []);
   await context.close();
 });
