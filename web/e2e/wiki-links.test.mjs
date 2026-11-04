@@ -86,7 +86,8 @@ const desktop = {
   ado_repo_text: '{ "version": "6.3.0" }',
 };
 
-const heading = (p) => p.textContent(".issue-body h1");
+/** 頁面內容自己的大標題（不算頁名和內容標題不同時，最上面補上的頁名）。 */
+const heading = (p) => p.textContent(".issue-body h1:not([data-added])");
 const externals = async (p) => (await calls(p)).filter((c) => c.cmd === "open_external").map((c) => c.args.url);
 
 async function openComet(p) {
@@ -94,7 +95,7 @@ async function openComet(p) {
   // 頁面樹一開始收著：展開「ITA專區」再點「COMET」。
   await p.locator("#wiki-host li", { has: p.locator('.wiki-page[data-path="/ITA專區"]') }).locator(".wiki-toggle").first().click();
   await p.click('#wiki-host .wiki-page[data-path="/ITA專區/COMET"]');
-  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "COMET");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "COMET");
 }
 
 async function clickLink(p, text) {
@@ -107,16 +108,16 @@ test("Wiki 頁面裡的子頁面、完整網址、工作項目都在 oMarker 裡
 
   // 相對路徑寫成「子頁面」（不是「COMET/子頁面」）：當成目前頁面底下的子頁面。
   await clickLink(p, "開始");
-  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "從這裡開始");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "從這裡開始");
   // 子頁面裡的 ../COMET 回到上一層。
   await clickLink(p, "回到 COMET");
-  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "COMET");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "COMET");
 
   // 完整網址：只寫電腦名稱、http，也認得是連線中的伺服器。
   await clickLink(p, "Skill 範例");
-  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "Skill 範例");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "Skill 範例");
   await p.keyboard.press("Alt+ArrowLeft");
-  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "COMET");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "COMET");
 
   await clickLink(p, "工作項目");
   await p.waitForSelector(".ado-hero h1");
@@ -137,7 +138,7 @@ test("Wiki 儲存庫裡的檔案開成唯讀分頁；找不到的頁面只提示
   assert.equal(read.args.path, "/ITA專區/release-zip-manifest.json");
   assert.equal(read.args.repo, "Mgt.wiki");
   await p.keyboard.press("Alt+ArrowLeft");
-  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "COMET");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "COMET");
 
   await clickLink(p, "沒有這頁");
   await p.waitForSelector(".toast", { hasText: "找不到連結的頁面：沒有這頁" });
@@ -168,9 +169,9 @@ test("網址只寫頁面編號、頁面樹裡又沒有編號（有些伺服器�
   });
   await openComet(p);
   await clickLink(p, "開始");
-  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "從這裡開始");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "從這裡開始");
   await clickLink(p, "返回 COMET");
-  await p.waitForFunction(() => document.querySelector(".issue-body h1")?.textContent === "COMET");
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "COMET");
   const asked = (await calls(p)).find((c) => c.cmd === "ado_wiki_page_path").args;
   assert.deepEqual(asked, { projectId: "p1", wikiId: "w1", pageId: 53059 });
   assert.deepEqual(await externals(p), []);
