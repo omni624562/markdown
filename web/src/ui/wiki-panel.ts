@@ -44,8 +44,8 @@ export interface WikiPanelHooks<W extends WikiInfo> {
   searchContent?(wiki: W, text: string): Promise<WikiContentSearch>;
   /** 新增頁面：`parent` 是上層頁面（null 是最上層）；不能新增的 Wiki（例如程式碼 Wiki）回傳 false 時不顯示按鈕。 */
   create?(wiki: W, parent: string | null): void;
-  /** 這個 Wiki 的最近修改（誰改了哪幾頁）。 */
-  recent?(wiki: W): void;
+  /** 這個 Wiki 的最近修改（誰改了哪幾頁）；`scope` 是樹狀目錄目前的範圍（見 `scope()`）。 */
+  recent?(wiki: W, scope: string[] | null): void;
   /** 哪些頁面連到這一頁。 */
   backlinks?(wiki: W, path: string): void;
   canCreate?(wiki: W): boolean;
@@ -176,7 +176,7 @@ export class WikiPanel<W extends WikiInfo> {
     this.#recentBtn.append(icon("history"), Object.assign(document.createElement("span"), { textContent: recentLabel }));
     this.#recentBtn.hidden = true;
     this.#recentBtn.addEventListener("click", () => {
-      if (this.#wiki) this.#h.recent?.(this.#wiki);
+      if (this.#wiki) this.#h.recent?.(this.#wiki, this.scope());
     });
     const actions = document.createElement("div");
     actions.className = "wiki-actions";
@@ -586,6 +586,17 @@ export class WikiPanel<W extends WikiInfo> {
     back.textContent = t("返回整個 Wiki");
     back.addEventListener("click", () => this.#setRoot(null));
     this.#rootBar.replaceChildren(name, back);
+  }
+
+  /**
+   * 樹狀目錄目前的範圍（頁面路徑，含底下的子頁面）：「只看這裡」的資料夾，或篩選後顯示的最上層頁面；
+   * 顯示整個 Wiki 時是 null。最近修改等清單用它，才不會列出樹狀目錄裡藏起來的頁面。
+   */
+  scope(): string[] | null {
+    const root = this.#root();
+    if (root) return [root.path];
+    const top = this.#topPages();
+    return top.length < this.#pages.length ? top.map((p) => p.path) : null;
   }
 
   /** 搜尋的範圍：「只看這裡」的資料夾（含它自己），或篩選後顯示的最上層頁面。 */

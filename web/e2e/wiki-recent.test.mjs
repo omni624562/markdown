@@ -60,3 +60,33 @@ test("Wiki 最近修改：列出誰改了哪一頁，可以找；選一筆開那
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Wiki 最近修改只列樹狀目錄目前範圍裡的頁面：篩選掉的最上層頁面底下改的不列", async () => {
+  const pages = [
+    { path: "/產品", id: 1, children: [{ path: "/產品/安裝說明", id: 2, children: [] }] },
+    { path: "/上線列車", id: 3, children: [{ path: "/上線列車/1127上線", id: 4, children: [] }] },
+  ];
+  const recent = [
+    change("/上線列車/1127上線", "edit", "陳大文", "2026-11-03T08:00:00Z", "上線清單"),
+    change("/產品/安裝說明", "edit", "王小明", "2026-11-02T08:00:00Z", "補上 Windows 的步驟"),
+  ];
+  const { page: p, context, errors } = await open({ desktop: { ...desktop, ado_wiki_pages: [pages], ado_wiki_recent: [recent] } });
+  // 篩選：只顯示「產品」。
+  await p.evaluate(() => localStorage.setItem("md-editor:ado-wiki-pages:w1", JSON.stringify({ shown: ["/產品"] })));
+  await p.reload();
+  await p.click("#side-tab-wiki");
+  await p.locator('#wiki-host .wiki-page[data-path="/產品"]').waitFor();
+  assert.equal(await p.locator('#wiki-host .wiki-page[data-path="/上線列車"]').count(), 0, "樹狀目錄裡藏起來了");
+  await p.click("#wiki-host .wiki-recent");
+  const options = p.locator("dialog.palette[open] [role=option]");
+  await options.first().waitFor();
+  const texts = await options.allTextContents();
+  assert.equal(texts.length, 1, "藏起來的「上線列車」底下改的不列");
+  assert.match(texts[0], /安裝說明/);
+  // 找藏起來的頁面：範圍外的找不到，說明是範圍的關係。
+  await p.locator("dialog.palette[open] input").fill("上線");
+  await p.locator("dialog.palette[open] li", { hasText: "樹狀目錄目前的範圍裡最近沒有修改" }).waitFor();
+  await p.keyboard.press("Escape");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
