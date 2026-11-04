@@ -610,9 +610,33 @@ pub async fn reveal_entry(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 fn reveal_now(app: &AppHandle, path: &str) -> Result<(), String> {
-    let root = app.state::<Workspace>().require_root()?;
-    let path = resolve_inside(&root, Path::new(path))?;
+    let root = app.state::<Workspace>().root();
+    let path = reveal_target(root.as_deref(), Path::new(path), |p| {
+        crate::files::may_reopen(app, p)
+    })?;
     reveal_path(&path)
+}
+
+/// 「在檔案總管中顯示」可以選取的位置：目前開啟的資料夾內的項目，或使用者開過的檔案
+/// （`opened`：這次開過的、最近開啟、左側圖示列的捷徑，見 `files::may_reopen`）。
+/// 單獨開啟、不在資料夾裡的檔案，分頁的「在檔案總管中顯示」也要能用；其他位置一樣不行。
+fn reveal_target(
+    root: Option<&Path>,
+    path: &Path,
+    opened: impl Fn(&Path) -> bool,
+) -> Result<PathBuf, String> {
+    let inside = root.map(|root| resolve_inside(root, path));
+    if let Some(Ok(path)) = inside {
+        return Ok(path);
+    }
+    let plain = path.is_absolute() && !path.components().any(|c| matches!(c, Component::ParentDir));
+    if plain && opened(path) {
+        return Ok(path.to_path_buf());
+    }
+    match inside {
+        Some(Err(e)) => Err(e),
+        _ => Err(tr!("還沒有開啟資料夾")),
+    }
 }
 
 /// 在檔案總管中選取 `path`（呼叫端要先確認可以讓使用者看這個位置）。
@@ -953,6 +977,45 @@ pub async fn replace_in_folder(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reveals_folder_entries_and_opened_files_only() {
+        let dir = temp_ws("reveal");
+        let outside = std::env::temp_dir().join(format!("md-ws-reveal-out-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(&outside).unwrap();
+        let memo = outside.join("備忘.txt");
+        fs::write(&memo, "內容").unwrap();
+        let other = outside.join("其他.txt");
+        fs::write(&other, "內容").unwrap();
+        let opened = |p: &Path| p == memo;
+
+        // 資料夾裡的項目（含資料夾、圖片）照舊可以。
+        let readme = dir.join("README.md");
+        assert_eq!(
+            reveal_target(Some(&dir), &readme, opened),
+            Ok(readme.clone())
+        );
+        assert!(reveal_target(Some(&dir), &dir.join("第2章"), opened).is_ok());
+        // 單獨開過的檔案：有沒有開資料夾都可以。
+        assert_eq!(reveal_target(Some(&dir), &memo, opened), Ok(memo.clone()));
+        assert_eq!(reveal_target(None, &memo, opened), Ok(memo.clone()));
+        // 沒開過、也不在資料夾裡的不行；有 `..` 的也不行（就算繞回開過的檔案）。
+        assert_eq!(
+            reveal_target(Some(&dir), &other, opened),
+            Err(tr!("只能存取目前開啟的資料夾內的檔案"))
+        );
+        assert_eq!(
+            reveal_target(None, &other, opened),
+            Err(tr!("還沒有開啟資料夾"))
+        );
+        let sneaky = outside.join("x").join("..").join("備忘.txt");
+        assert!(reveal_target(None, &sneaky, |_| true).is_err());
+        assert!(reveal_target(None, Path::new("備忘.txt"), |_| true).is_err());
+
+        fs::remove_dir_all(&dir).unwrap();
+        fs::remove_dir_all(&outside).unwrap();
+    }
 
     #[test]
     fn checks_only_local_absolute_paths() {
