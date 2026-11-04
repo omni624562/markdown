@@ -1,5 +1,5 @@
 /**
- * Azure DevOps 診斷資料：指令「Azure DevOps：診斷資料存檔…」呼叫原生端存檔，存好提示路徑（用假的原生端，見 helpers.mjs）。
+ * Azure DevOps 診斷資料：指令「Azure DevOps：把診斷資料存檔…」呼叫原生端存檔，存好提示路徑（用假的原生端，見 helpers.mjs）。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";

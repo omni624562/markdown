@@ -68,21 +68,21 @@ function renderAdoStatus(): void {
   adoStatus.setAttribute("aria-label", adoStatus.title);
 }
 
-/** 診斷資料存檔：選檔案後讀幾個常用的請求，把回應（拿掉人名、信箱、標題與內容）存起來。 */
+/** 把診斷資料存檔：選檔案後讀幾個常用的請求，把回應（拿掉人名、信箱、標題與內容）存起來。 */
 export async function saveAdoDiagnostics(): Promise<void> {
   if (!desktop) return;
   try {
     const path = await desktop.adoDiagnosticsSave();
     if (path) toast(t("診斷資料已存檔：{path}（寄出前可以先開啟看看）", { path }), { tone: "success", duration: 10_000 });
   } catch (e) {
-    toast(t("診斷資料無法存檔：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });
+    toast(t("無法把診斷資料存檔：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error" });
   }
 }
 
 export function initAdoStatus(): void {
   app.commands.register({
     id: "ado-diagnostics",
-    title: t("Azure DevOps：診斷資料存檔…"),
+    title: t("Azure DevOps：把診斷資料存檔…"),
     group: "Azure DevOps",
     icon: "bug",
     when: () => !!app.ado?.account,
