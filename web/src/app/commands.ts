@@ -489,9 +489,9 @@ export function initCommands(): void {
     },
     { id: "show-files", title: t("顯示檔案"), group: t("檢視"), icon: "folder", keys: "Mod-Shift-e", run: () => app.showPanel("files") },
     { id: "show-outline", title: t("顯示大綱"), group: t("檢視"), icon: "list-tree", run: () => app.showPanel("outline") },
-    { id: "show-search", title: t("顯示搜尋"), group: t("檢視"), icon: "search", when: () => !!desktop, run: () => app.showPanel("search") },
+    { id: "show-search", title: t("顯示搜尋"), group: t("檢視"), icon: "search", when: () => !!desktop, run: () => app.showPanel("search", true, true) },
     { id: "show-tasks", title: t("顯示待辦總覽"), group: t("檢視"), icon: "list-checks", run: () => app.showPanel("tasks") },
-    { id: "show-tags", title: t("顯示標籤"), group: t("檢視"), icon: "tags", run: () => app.showPanel("tags") },
+    { id: "show-tags", title: t("顯示標籤"), group: t("檢視"), icon: "tags", run: () => app.showPanel("tags", true, true) },
     {
       id: "show-git",
       title: t("顯示原始碼控制（Git）"),

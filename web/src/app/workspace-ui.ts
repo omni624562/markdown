@@ -287,7 +287,11 @@ export function panelAvailable(panel: SidePanel): void {
   if (pendingPanel === panel) showPanel(panel, false);
 }
 
-export function showPanel(panel: SidePanel, reveal = true): void {
+/**
+ * 切換側邊欄的面板。`reveal`：側邊欄收著時打開（啟動時還原面板不打開）。
+ * `focusInput`：從圖示列或指令打開搜尋、標籤面板時，游標直接放進輸入框（其他面板不動焦點）。
+ */
+export function showPanel(panel: SidePanel, reveal = true, focusInput = false): void {
   const requested = panel;
   if (panel === "git" && app.$("#side-tab-git").hidden) panel = "files";
   if ((panel === "workitems" || panel === "board" || panel === "wiki") && app.$(`#side-tab-${panel}`).hidden) panel = "files";
@@ -327,6 +331,10 @@ export function showPanel(panel: SidePanel, reveal = true): void {
     searchPanel?.rerun();
   }
   refreshIndexPanels();
+  if (focusInput && app.outlineShown) {
+    if (panel === "search") searchPanel?.focus();
+    if (panel === "tags") tagsPanel.focus();
+  }
 }
 
 /** 沒有開啟資料夾時，檔案面板顯示說明、開啟按鈕與最近開啟的資料夾。 */
@@ -754,7 +762,7 @@ export function initWorkspaceUi(): void {
       // Wiki 在右側欄：按一下打開或收起右側欄（和面板圖示再按一次收起來一樣）。
       if (panel === "wiki" && wikiPlacedRight() && app.rightOutlineShown) setRightOutline(false);
       else if (panel === app.sidePanel && app.outlineShown) app.setOutline(false);
-      else showPanel(panel);
+      else showPanel(panel, true, true);
     });
   }
   app.$(".activity-tabs").addEventListener("keydown", (e) => {
