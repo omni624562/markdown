@@ -450,10 +450,9 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 面板標題列的按鈕平常淡出，滑鼠移到側邊欄或用鍵盤操作時才明顯。 */
-.side-actions { display: flex; gap: 0; opacity: 0; transition: opacity 0.12s; }
+/* 面板標題列的按鈕（新增檔案、重新整理等）一直顯示，第一次用的人也找得到；圖示用淡一點的顏色，滑鼠移上去才變深。 */
+.side-actions { display: flex; gap: 0; }
 .side-actions[hidden] { display: none; }
-.sidebar:hover .side-actions, .outline-right:hover .side-actions, .side-actions:focus-within { opacity: 1; }
 .side-actions .btn { width: 26px; min-height: 26px; height: 26px; color: var(--muted); }
 .side-actions .btn:hover { color: var(--fg); border-color: transparent; }
 .side-actions .btn .icon { width: 16px; height: 16px; }
@@ -960,7 +959,6 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 }
 @media (pointer: coarse) {
   :root { --control-h: 40px; --topbar-h: 46px; }
-  .side-actions { opacity: 1; }
   .format-bar .btn { min-height: 38px; }
   .format-bar .btn.icon-only { width: 38px; }
 }
@@ -2249,8 +2247,6 @@ button.git-info:disabled { cursor: default; }
 .favorite-toggle.active .icon { fill: currentColor; }
 .tb-project-row { display: flex; grid-column: 1 / -1; gap: 6px; align-items: stretch; min-width: 0; }
 .tb-project-row > select { flex: 1; min-width: 0; }
-/* 遠端的清單（工作項目、Wiki、Issues）常要重新讀取：重新整理按鈕一直顯示。 */
-#panel-workitems .side-actions, #panel-wiki .side-actions, #panel-issues .side-actions { opacity: 1; }
 /* 讀取失敗時錯誤訊息旁的「重試」。 */
 .load-retry { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; vertical-align: middle; }
 .load-retry .icon { width: 13px; height: 13px; }
