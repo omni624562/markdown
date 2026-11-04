@@ -248,11 +248,15 @@ function dayKey(date: string | null): string {
   return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** 星期幾（中文標題用，不靠 Intl：不同版本的 ICU 在「日」和「週」之間有沒有空格不一樣）。 */
+const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"]; // i18n-ignore（只在中文介面用）
+
 /** 分段的標題：「2026年9月23日 週三」「Wed, Sep 23, 2026」。 */
 export function dayLabel(date: string | null): string {
   const d = new Date(timeOf(date));
   if (Number.isNaN(d.getTime())) return t("（不明）");
-  return new Intl.DateTimeFormat(currentLang(), { year: "numeric", month: "short", day: "numeric", weekday: "short" }).format(d);
+  if (currentLang() === "en") return new Intl.DateTimeFormat("en", { year: "numeric", month: "short", day: "numeric", weekday: "short" }).format(d);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 週${WEEKDAYS[d.getDay()]}`; // i18n-ignore（中文的日期格式）
 }
 
 /** 幾點幾分（24 小時制）。 */
