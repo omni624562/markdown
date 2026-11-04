@@ -571,7 +571,7 @@ export function initTaskboard(): void {
   app.commands.register({
     id: "show-board",
     title: t("顯示工作板（Azure DevOps）"),
-    group: t("檢視"),
+    group: "Azure DevOps",
     icon: "layout-grid",
     when: () => !!app.ado?.account,
     run: () => app.showPanel("board"),

@@ -172,7 +172,7 @@ export function initWorkItemUpdates(): void {
   app.commands.register({
     id: "workitems-mark-all-seen",
     title: t("工作項目：全部標示為看過"),
-    group: t("檢視"),
+    group: "Azure DevOps",
     icon: "check",
     when: () => app.pollItems.some((w) => markOf(workItemSeen, w)),
     run: () => markAllWorkItemsSeen(),
