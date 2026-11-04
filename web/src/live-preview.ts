@@ -864,12 +864,18 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
         case "FencedCode": {
           const first = doc.lineAt(from).number;
           const last = doc.lineAt(to).number;
-          const inside = rangeActive(from, to);
+          // 圍欄（```）所在的行：開頭一定是，結尾要有收尾的圍欄才算（沒寫完的區塊一路延伸到文件結尾）。
+          const fenceMarks = node.getChildren("CodeMark");
+          const closing = fenceMarks.length > 1 ? fenceMarks[fenceMarks.length - 1] : null;
+          const closeLine = closing ? doc.lineAt(closing.from).number : -1;
           for (let l = first; l <= last; l++) {
-            const fence = (l === first || l === last) && last > first;
-            const cls = `cm-lp-codeblock${l === first ? " cm-lp-codeblock-first" : ""}${l === last ? " cm-lp-codeblock-last" : ""}${fence && !inside ? " cm-lp-fence" : ""}`;
+            const fence = l === first || l === closeLine;
+            const cls = `cm-lp-codeblock${l === first ? " cm-lp-codeblock-first" : ""}${l === last ? " cm-lp-codeblock-last" : ""}${fence ? " cm-lp-fence" : ""}`;
             decos.push(lineClass(cls).range(doc.line(l).from));
           }
+          // 游標不在區塊裡：開頭只留語言名稱，結尾的 ``` 也藏起來（還沒寫結尾的區塊照原樣顯示，看得出後面為什麼都是程式碼）。
+          // 圍欄的行高不管游標在不在都一樣（cm-lp-fence），進出區塊時版面不會跳。
+          if (closing && !rangeActive(from, to)) for (const mark of fenceMarks) hide(mark.from, mark.to);
           return false;
         }
         case "Table":

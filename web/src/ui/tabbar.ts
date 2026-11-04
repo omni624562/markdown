@@ -1,4 +1,5 @@
 import { t } from "../i18n.ts";
+import { isTextFileName } from "../kinds.ts";
 import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
@@ -264,14 +265,17 @@ export class TabBar {
       if (e.isComposing) return;
       if (e.key === "Enter") finish(true);
       else if (e.key === "Escape") finish(false);
+      else return;
+      // 改檔名後可能接著跳出對話框（例如要不要更新連結）：這次的 Enter 不能按到對話框的按鈕。
+      e.preventDefault();
     });
     input.addEventListener("blur", () => finish(true));
     input.addEventListener("click", (e) => e.stopPropagation());
     input.addEventListener("dblclick", (e) => e.stopPropagation());
     name.replaceWith(input);
     input.focus();
-    // 先選取主檔名（不含副檔名），和檔案總管一樣。
-    const dot = input.value.lastIndexOf(".");
+    // 先選取主檔名（不含副檔名），和檔案總管一樣。用標題命名的文件沒有副檔名，標題裡的「.」不算。
+    const dot = isTextFileName(input.value) ? input.value.lastIndexOf(".") : -1;
     input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
   }
 }

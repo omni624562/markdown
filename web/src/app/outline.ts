@@ -5,6 +5,7 @@ import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { subtreeEnd, moveSection, sectionRange, swapSection } from "../sections.ts";
 import { app } from "./context.ts";
+import { docName, refreshDocName } from "./doc-names.ts";
 
 
 let draggingSection: number | null = null;
@@ -110,13 +111,13 @@ export function renderSaveState(): void {
   if (app.active.dirty !== dirty) {
     app.active.dirty = dirty;
     app.renderTabs();
-  }
-  // 只有一份還沒存過的空白文件時，不需要「未命名.md」分頁與標題；開始打字才出現。
+  } else refreshDocName();
+  // 只有一份還沒存過的空白文件時，不需要「未命名」分頁與標題；開始打字才出現。
   const blank = onlyBlankDoc();
   app.$("#tab-bar").classList.toggle("blank", blank);
   markBlankTab();
   app.editor.setFileName(app.cur.fileName);
-  const title = blank ? "oMarker" : `${dirty ? "● " : ""}${app.cur.fileName} - oMarker`;
+  const title = blank ? "oMarker" : `${dirty ? "● " : ""}${docName(app.active)} - oMarker`;
   if (document.title !== title) {
     document.title = title;
     desktop?.setTitle(title).catch(console.error);

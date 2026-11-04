@@ -83,7 +83,7 @@ export function initAdoStatus(): void {
   app.commands.register({
     id: "ado-diagnostics",
     title: t("Azure DevOps：儲存診斷資料…"),
-    group: t("說明"),
+    group: "Azure DevOps",
     icon: "bug",
     when: () => !!app.ado?.account,
     run: () => void saveAdoDiagnostics(),

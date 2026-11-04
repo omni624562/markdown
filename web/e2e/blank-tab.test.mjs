@@ -56,11 +56,13 @@ test("關掉最後一份有內容的文件：換到工作項目，不留下空�
   await page.locator(".cm-content").click();
   await page.keyboard.type("內容");
   await openItem(page);
-  // 回到文件，清空後關掉（清空了就不會問要不要存檔）。
-  await page.locator("#tab-bar .tab", { hasText: "未命名" }).last().click();
+  // 回到文件（分頁用第一行命名），清空後關掉（清空了就不會問要不要存檔）。
+  await page.locator("#tab-bar .tab", { hasText: "內容" }).click();
   await page.locator(".cm-content").click();
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Delete");
+  // 清空之後分頁名稱換回「未命名」（畫面更新後才換）。
+  await page.waitForFunction(() => [...document.querySelectorAll("#tab-bar .tab-name")].some((n) => n.textContent === "未命名"));
   while ((await tabs(page)).some((n) => n.startsWith("未命名"))) {
     await page.keyboard.press("Control+W");
     await page.waitForTimeout(100);
@@ -76,10 +78,12 @@ test("文件都關掉後再按新增文件：只會有一個「未命名」", as
   await openItem(page);
   await page.keyboard.press("Control+N");
   await page.waitForSelector(".cm-content");
-  assert.deepEqual((await tabs(page)).sort(), ["42 修正登入", "未命名.md"]);
+  assert.deepEqual((await tabs(page)).sort(), ["42 修正登入", "未命名"]);
   await page.locator(".cm-content").click();
   await page.keyboard.type("內容");
-  assert.equal((await tabs(page)).filter((n) => n.startsWith("未命名")).length, 1);
+  // 打了字的文件用第一行命名：沒有留下另一個空白的「未命名」。
+  await page.waitForFunction(() => [...document.querySelectorAll("#tab-bar .tab-name")].some((n) => n.textContent === "內容"));
+  assert.deepEqual((await tabs(page)).sort(), ["42 修正登入", "內容"]);
   assert.deepEqual(errors, []);
   await context.close();
 });

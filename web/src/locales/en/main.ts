@@ -20,6 +20,7 @@ export const main: Record<string, Translation> = {
   " · 約 {n} 分鐘讀完": " · About {n} min read",
   "已儲存": "Saved",
   "尚未存檔": "Unsaved",
+  "{name}（尚未存檔）": "{name} (not saved yet)",
   "尚未存成檔案": "Not saved to a file",
   " · 草稿已自動保存": " · Draft saved automatically",
   "按一下存檔": "Click to save",
@@ -63,8 +64,10 @@ export const main: Record<string, Translation> = {
     "“{name}” hasn't been loaded from its file yet, so it wasn't saved (saving now would overwrite the file with an empty document).",
   "瀏覽器封鎖了儲存空間，草稿無法自動保存，請記得手動存檔。":
     "The browser blocked storage, so drafts can't be saved automatically. Remember to save manually.",
-  "已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。":
-    "This document is saved as a file. Rename it in the Files panel (select it and press F2).",
+  "網頁版無法重新命名已經存成檔案的文件；可以用「另存新檔」存成新的名稱。":
+    "The web version can't rename a document that's saved as a file. Use Save As to save it under a new name.",
+  "「{name}」不在目前開啟的資料夾裡，無法重新命名；可以用「另存新檔」存成新的名稱。":
+    "\"{name}\" isn't in the open folder, so it can't be renamed. Use Save As to save it under a new name.",
   "切換專案（{keys}）": "Switch Project ({keys})",
   "開啟資料夾或切換專案": "Open a Folder or Switch Projects",
 
@@ -246,6 +249,7 @@ export const main: Record<string, Translation> = {
   "已清除 {n} 個不再提示的詞。": ["Cleared {n} ignored word.", "Cleared {n} ignored words."],
   "開啟指令面板": "Show Command Palette",
   "重新命名文件…": "Rename Document…",
+  "重新命名…": "Rename…",
   "固定顯示／隱藏格式工具列": "Pin/Hide Formatting Toolbar",
   "搜尋與取代": "Find and Replace",
   "格式化 JSON": "Format JSON",
@@ -611,7 +615,6 @@ export const main: Record<string, Translation> = {
   "連線到遠端資料夾": "Connect to Remote Folder",
   "說明：快速鍵一覽": "Help: Keyboard Shortcuts",
   "說明：開啟歡迎文件": "Help: Open Welcome Document",
-  "顯示搜尋": "Show Search",
   "顯示待辦總覽": "Show Tasks",
   "顯示標籤": "Show Tags",
   "顯示原始碼控制（Git）": "Show Source Control (Git)",
@@ -780,7 +783,6 @@ export const main: Record<string, Translation> = {
   "修改「{name}」": "Edited \"{name}\"",
   "刪除了這一頁": "Deleted this page",
   "刪除了「{name}」": "Deleted \"{name}\"",
-  "自訂快速鍵…": "Customize Keyboard Shortcuts…",
   "快速鍵": "Keyboard shortcuts",
   "搜尋指令或快速鍵": "Search commands or keys",
   "按一下快速鍵，就能換成你習慣的按法；搜尋可以找到還沒有快速鍵的指令。": "Click a shortcut to change it. Search to find commands that don't have one yet.",

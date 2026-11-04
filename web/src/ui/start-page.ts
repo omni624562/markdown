@@ -141,7 +141,7 @@ export function fillStartRecent(page: HTMLElement, r: StartRecent): void {
   };
   const parts: HTMLElement[] = [];
   if (r.projects.length) {
-    const all = button("start-recent-more", icon("layout-grid"), t("全部專案…"));
+    const all = button("start-recent-more", icon("layout-dashboard"), t("全部專案…"));
     all.addEventListener("click", () => r.allProjects());
     parts.push(
       heading(t("專案")),

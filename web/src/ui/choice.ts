@@ -16,8 +16,32 @@ export interface ChoiceExtra {
   code?: string;
   /** 從外部關閉對話框（例如等待逾時），結果視同取消。 */
   signal?: AbortSignal;
-  /** 一開始聚焦的選項（預設是主要選項）。對話框可能在使用者打字時跳出來，危險的動作不要預設聚焦。 */
+  /** 一開始聚焦的選項（預設是主要選項）。危險的動作不會預設聚焦（見 {@link choiceLayout}）。 */
   focus?: string;
+}
+
+/** 取消的選項 id。 */
+const CANCEL = "cancel";
+
+/**
+ * 按鈕的順序與一開始聚焦的選項。有危險動作（`danger`，刪除、不儲存、覆蓋等）的對話框全部同一種規則，
+ * 照 Windows 的慣例：「取消」一律在最右邊，危險的動作（紅色）緊貼在它左邊，其他不危險的選項排在最前面；
+ * 一開始聚焦的一定不是危險的動作（呼叫端指定的、不危險的主要選項，或「取消」）。這樣最右邊永遠是取消，
+ * 對話框在使用者打字時跳出來，按 Enter 也不會誤按危險的動作。
+ * 沒有危險動作的對話框照呼叫端給的順序，聚焦指定的或主要選項；都沒有時回傳 null（由瀏覽器決定）。
+ */
+export function choiceLayout(options: readonly ChoiceOption[], focus?: string): { order: ChoiceOption[]; focus: string | null } {
+  const safe = options.filter((o) => !o.danger);
+  if (safe.length === options.length) {
+    return { order: [...options], focus: options.find((o) => o.id === focus)?.id ?? options.find((o) => o.primary)?.id ?? null };
+  }
+  const others = safe.filter((o) => o.id !== CANCEL);
+  const order = [...others, ...options.filter((o) => o.danger), ...safe.filter((o) => o.id === CANCEL)].map((o) =>
+    o.danger || o.id === CANCEL ? { ...o, primary: false } : o,
+  );
+  const first =
+    safe.find((o) => o.id === focus) ?? others.find((o) => o.primary) ?? safe.find((o) => o.id === CANCEL) ?? safe[0];
+  return { order, focus: first?.id ?? null };
 }
 
 /** 請使用者輸入一行文字（例如範本名稱）。取消時回傳 null。 */
@@ -77,9 +101,10 @@ export function choose(
   }
   dialog.append(actions);
 
+  const layout = choiceLayout(options, extra.focus);
   return new Promise((resolve) => {
     let result: string | null = null;
-    for (const opt of options) {
+    for (const opt of layout.order) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = `btn${opt.primary ? " btn-primary" : ""}${opt.danger ? " btn-danger" : ""}`;
@@ -100,8 +125,6 @@ export function choose(
     extra.signal?.addEventListener("abort", () => dialog.close(), { once: true });
     document.body.append(dialog);
     dialog.showModal();
-    const index = extra.focus ? options.findIndex((o) => o.id === extra.focus) : -1;
-    const buttons = actions.querySelectorAll<HTMLButtonElement>("button");
-    (index >= 0 ? buttons[index] : actions.querySelector<HTMLButtonElement>(".btn-primary"))?.focus();
+    actions.querySelectorAll<HTMLButtonElement>("button")[layout.order.findIndex((o) => o.id === layout.focus)]?.focus();
   });
 }

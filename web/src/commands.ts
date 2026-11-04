@@ -15,6 +15,8 @@ export interface Command {
   shownKeys?: string;
   /** 回傳 false 時不顯示於指令面板、快速鍵也不觸發。 */
   when?: () => boolean;
+  /** 單選的其中一項（例如「主題：深色」）：選單裡打勾標出目前選的那一項。 */
+  checked?: () => boolean;
   run(): void | Promise<void>;
 }
 
@@ -167,12 +169,21 @@ export class Commands {
   #defaults = new Map<string, Pick<Command, "keys" | "shownKeys">>();
   #bindings: Readonly<Record<string, string>> = {};
 
+  /**
+   * 登記指令。同一個 id 只能登記一次：重複的話指令面板會列出兩次，快速鍵、圖示列與自訂快速鍵
+   * 都只認得第一個。重複的那個不登記，並在主控台記一筆錯誤（端對端測試會把主控台錯誤當成失敗，
+   * 一定抓得到；正式版不會因此整個開不起來）。
+   */
   register(...cmds: Command[]): void {
     for (const c of cmds) {
-      if (!this.#defaults.has(c.id)) this.#defaults.set(c.id, { keys: c.keys, shownKeys: c.shownKeys });
+      if (this.#defaults.has(c.id)) {
+        console.error(`指令 id 重複：${c.id}`); // i18n-ignore（開發者錯誤）
+        continue;
+      }
+      this.#defaults.set(c.id, { keys: c.keys, shownKeys: c.shownKeys });
       this.#apply(c);
+      this.#list.push(c);
     }
-    this.#list.push(...cmds);
   }
 
   /** 自訂過的指令用自訂的快速鍵，原本只顯示的（例如編輯區處理的 Ctrl+Shift+V）就不再顯示。 */
@@ -200,15 +211,12 @@ export class Commands {
     return this.#list;
   }
 
-  /** 已經使用這組快速鍵的其他指令（不論目前能不能用；包括只顯示的快速鍵）。同一個 id 只列一次。 */
+  /** 已經使用這組快速鍵的其他指令（不論目前能不能用；包括只顯示的快速鍵）。 */
   usedBy(keys: string, except?: string): Command[] {
     const want = normalizeKeys(keys);
-    const seen = new Set<string>();
     return this.#list.filter((c) => {
       const k = c.keys ?? c.shownKeys;
-      if (c.id === except || seen.has(c.id) || !k || normalizeKeys(k) !== want) return false;
-      seen.add(c.id);
-      return true;
+      return c.id !== except && !!k && normalizeKeys(k) === want;
     });
   }
 

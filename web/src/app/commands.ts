@@ -31,6 +31,7 @@ import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
 import { onlyBlankDoc } from "./outline.ts";
+import { docName, renumber } from "./doc-names.ts";
 import type { Doc } from "../main.ts";
 import { app } from "./context.ts";
 
@@ -76,11 +77,11 @@ function pickBeside(): void {
     query: (q) =>
       app.docs
         .filter((d) => d !== app.paneDocs.main && d !== app.paneDocs.side)
-        .map((d) => ({ d, score: fuzzyScore(q, d.name) }))
+        .map((d) => ({ d, score: fuzzyScore(q, docName(d)) }))
         .filter((x) => x.score > 0)
         .sort((a, b) => b.score - a.score)
         .map((x) => x.d),
-    render: (d) => ({ title: d.name, detail: d.path ? displayPath(d.path) : undefined, icon: d.wiki ? "book-open-text" : "file-text" }),
+    render: (d) => ({ title: docName(d), detail: d.path ? displayPath(d.path) : undefined, icon: d.wiki ? "book-open-text" : "file-text" }),
     pick: (d) => app.openBeside(d),
   });
   besidePicker.open();
@@ -104,7 +105,10 @@ export function initCommands(): void {
         saveDraft(doc.id, "");
         app.skipStartPage(doc.id);
         app.addTab(doc);
-        if (placeholder) void app.closeTab(placeholder.id);
+        if (placeholder) {
+          renumber(doc);
+          void app.closeTab(placeholder.id);
+        }
         app.editor.view.focus();
       },
     },
@@ -324,7 +328,7 @@ export function initCommands(): void {
       id: "project-overview",
       title: t("專案總覽"),
       group: t("資料夾與專案"),
-      icon: "layout-grid",
+      icon: "layout-dashboard",
       when: () => !!app.projectUi,
       run: () => app.projectUi!.openOverview(),
     },
@@ -355,13 +359,6 @@ export function initCommands(): void {
       group: t("說明"),
       icon: "command",
       keys: "F1",
-      run: () => showShortcuts(),
-    },
-    {
-      id: "customize-shortcuts",
-      title: t("自訂快速鍵…"),
-      group: t("說明"),
-      icon: "keyboard",
       run: () => showShortcuts(),
     },
     {
@@ -489,7 +486,6 @@ export function initCommands(): void {
     },
     { id: "show-files", title: t("顯示檔案"), group: t("檢視"), icon: "folder", keys: "Mod-Shift-e", run: () => app.showPanel("files") },
     { id: "show-outline", title: t("顯示大綱"), group: t("檢視"), icon: "list-tree", run: () => app.showPanel("outline") },
-    { id: "show-search", title: t("顯示搜尋"), group: t("檢視"), icon: "search", when: () => !!desktop, run: () => app.showPanel("search") },
     { id: "show-tasks", title: t("顯示待辦總覽"), group: t("檢視"), icon: "list-checks", run: () => app.showPanel("tasks") },
     { id: "show-tags", title: t("顯示標籤"), group: t("檢視"), icon: "tags", run: () => app.showPanel("tags") },
     {
@@ -659,7 +655,8 @@ export function initCommands(): void {
       title: t("重新命名文件…"),
       group: t("檔案"),
       icon: "pencil",
-      run: () => app.tabBar.startRename(app.active.id),
+      // 從分頁的右鍵選單執行時是按右鍵的分頁。
+      run: () => app.tabBar.startRename(app.menuTab().id),
     },
     {
       id: "toggle-format-bar",
@@ -818,7 +815,7 @@ export function initCommands(): void {
           preview: t("只顯示預覽"),
         }[mode],
         group: t("檢視"),
-        icon: { editor: "code", live: "book-open-text", split: "columns-2", preview: "eye" }[mode],
+        icon: { editor: "code", live: "file-pen-line", split: "columns-2", preview: "eye" }[mode],
         when: () => mode !== "split" || !app.narrowQuery.matches,
         run: () => app.setView(mode),
       }),
@@ -886,6 +883,7 @@ export function initCommands(): void {
         title: { system: t("主題：跟隨系統"), light: t("主題：淺色"), dark: t("主題：深色") }[pref],
         group: t("檢視"),
         icon: { system: "monitor", light: "sun", dark: "moon" }[pref],
+        checked: () => app.themePref === pref,
         run: () => app.setTheme(pref),
       }),
     ),
