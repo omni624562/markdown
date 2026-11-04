@@ -7,9 +7,14 @@ import { test } from "node:test";
 import { open, runCommand, setText } from "./helpers.mjs";
 
 const statusText = (page) => page.textContent("#status-stats");
-/** 統計面板的「項目：值」。 */
+/**
+ * 統計面板的「項目：值」。在同一次 evaluate 裡找元素、讀內容：`$$eval` 是先找元素、再另外執行一次讀取，
+ * 中間面板如果剛好重畫（字數停手後才重算），找到的舊元素已經拿掉，讀不到後面的值。
+ */
 const rows = (page) =>
-  page.$$eval(".stats-pop .stats-grid dt", (dts) => Object.fromEntries(dts.map((dt) => [dt.textContent, dt.nextElementSibling.textContent])));
+  page.evaluate(() =>
+    Object.fromEntries([...document.querySelectorAll(".stats-pop .stats-grid dt")].map((dt) => [dt.textContent, dt.nextElementSibling.textContent])),
+  );
 
 test("狀態列的字數可以打開文件統計：中英文字數、閱讀與朗讀時間、今天新增", async () => {
   const { page, context, errors } = await open();
