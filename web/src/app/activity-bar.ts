@@ -97,10 +97,10 @@ const sidebarOpen = () => app.$("#sidebar").getClientRects().length > 0;
  * 啟動時（畫面排好之後）：第一次使用，或之前還沒顯示成的，在圖示旁邊短暫顯示名稱。
  * 只在側邊欄收起來時顯示（名稱落在內文邊上）；側邊欄開著時名稱會蓋住面板，先不顯示，留到之後啟動。
  */
-export function firstRunActivityLabels(firstLaunch: boolean): void {
+export function showActivityLabels(firstLaunch: boolean): void {
   if (!firstLaunch && storage.load(LABELS_PENDING) === null) return;
   storage.save(LABELS_PENDING, "1");
-  if (!sidebarOpen() && showActivityLabels()) storage.remove(LABELS_PENDING);
+  if (!sidebarOpen() && renderActivityLabels()) storage.remove(LABELS_PENDING);
 }
 
 /**
@@ -108,7 +108,7 @@ export function firstRunActivityLabels(firstLaunch: boolean): void {
  * 最下面提示按右鍵可以選要顯示的圖示。幾秒後、點任何地方或按任何鍵就收起來。圖示列沒有顯示時回傳 false。
  * 顯示時側邊欄才打開（例如啟動時資料夾比較晚開好）：名稱會蓋住面板，收起來，留到之後啟動。
  */
-function showActivityLabels(duration = 9000): boolean {
+function renderActivityLabels(duration = 9000): boolean {
   const bar = app.$(".activity-bar");
   const shown = (el: HTMLElement) => el.getClientRects().length > 0;
   if (!shown(bar) || document.querySelector(".activity-labels")) return false;

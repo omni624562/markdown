@@ -84,7 +84,7 @@ import { gitPanel, noteWorkItems, pollWorkItems, renderAdoBadge, workItemSeen, i
 import { groupItems, showWorkItem } from "./app/work-item-actions.ts";
 import { createPullRequest, reportError, resolveMergeConflict, showExternalChanges, switchBranch, initGitActions } from "./app/git-actions.ts";
 import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady, initAiTerminal } from "./app/ai-terminal.ts";
-import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, openWelcome, refreshActivityCommands, refreshToc, separator, firstRunActivityLabels, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
+import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, openWelcome, refreshActivityCommands, refreshToc, separator, showActivityLabels, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
 import { showShortcuts } from "./app/shortcuts-dialog.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
 import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focusedItem, hideItem, itemTabInfo, itemTabs, reopenItem, selectItem, selectedItemId, setItemPinned, tabOrder } from "./app/item-tabs.ts";
@@ -3628,7 +3628,7 @@ renderTabs();
 persistSession();
 updateCursor(editor.view);
 // 第一次使用：圖示列旁邊短暫顯示每個圖示的名稱（畫面排好之後；側邊欄開著時留到之後啟動）。
-window.setTimeout(() => firstRunActivityLabels(firstLaunch), 800);
+window.setTimeout(() => showActivityLabels(firstLaunch), 800);
 // 分頁關掉、專案移除後留下的草稿會一直佔著儲存空間：啟動一陣子後（分頁都存好了）清掉。
 setTimeout(() => dropOrphanDrafts(), 10_000);
 
