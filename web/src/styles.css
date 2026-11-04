@@ -265,8 +265,91 @@ kbd {
   background: var(--surface);
 }
 
-/* 大綱和 Wiki 都在右側：上下各一半，中間一條線。 */
-.outline-right > .side-panel + .side-panel { border-top: 1px solid var(--border); }
+/* 右側欄的分區（大綱、反向連結、Wiki）：和 VS Code 一樣，每區一列淡底的標題列，按一下收合或展開（app/right-sections.ts）。
+   收合的分區只剩標題列，其他展開的分區撐滿整欄。 */
+.outline-right .side-head {
+  height: 24px;
+  padding: 0 4px 0 0;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 4%, var(--surface));
+}
+.outline-right .side-head h2 { display: flex; align-self: stretch; color: var(--fg); font-size: 12px; letter-spacing: 0; }
+.rs-toggle {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  padding: 0 6px 0 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.rs-toggle .icon { flex: none; width: 14px; height: 14px; color: var(--muted); transition: transform 0.12s; }
+.rs-toggle[aria-expanded="false"] .icon { transform: rotate(-90deg); }
+.rs-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rs-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs-badge {
+  flex: none;
+  min-width: 18px;
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.rs-badge[hidden] { display: none; }
+.outline-right .side-head .side-actions .btn { width: 22px; height: 22px; min-height: 22px; }
+.outline-right .side-head .side-actions .btn .icon { width: 15px; height: 15px; }
+/* 收合：只剩標題列（大綱收合時「全部收合」也用不到）。 */
+.outline-right > .side-panel.rs-collapsed { flex: none; }
+.outline-right > #panel-outline.rs-collapsed > .side-body,
+.outline-right > #panel-wiki.rs-collapsed > :not(.side-head),
+.outline-right > #panel-outline.rs-collapsed > .side-head > .side-actions,
+.rs-backlinks.rs-collapsed > .rs-body { display: none; }
+.outline-right > .side-panel > .side-body { padding-top: 4px; }
+/* 大綱那一塊：大綱的清單撐滿，反向連結照內容的高度（最多一半，多的捲動）；大綱收合時反向連結接在標題列下面。 */
+.outline-right > #panel-outline > .side-body { flex: 1 1 0; min-height: 48px; }
+.outline-right > #panel-outline.rs-collapsed { flex: 0 1 auto; }
+.outline-right.rs-wiki-open > #panel-outline.rs-collapsed { max-height: 50%; }
+.rs-backlinks { display: flex; flex: 0 1 auto; flex-direction: column; min-height: 0; max-height: 50%; }
+.outline-right > #panel-outline.rs-collapsed > .rs-backlinks { max-height: none; }
+.outline-right.rs-fill-backlinks > #panel-outline:has(#backlinks:not([hidden])),
+.outline-right.rs-fill-backlinks .rs-backlinks { flex: 1 1 0; }
+.rs-backlinks:has(#backlinks[hidden]) { display: none; }
+.rs-backlinks > .rs-body { flex: 0 1 auto; min-height: 0; overflow: auto; padding: 4px 8px 8px; }
+.rs-backlinks .backlinks { margin: 0; padding: 0; border: 0; }
+.rs-backlinks .backlinks > h3 { display: none; }
+/* 大綱與 Wiki 都展開：依記住的比例分高度，中間一條可以拖曳的分隔線（上下都留最小高度）。 */
+.outline-right.rs-split > #panel-outline { flex: var(--rs-top, 0.5) 1 0; min-height: 96px; }
+.outline-right.rs-split > #panel-wiki { flex: var(--rs-bottom, 0.5) 1 0; min-height: 120px; }
+.rs-splitter { position: relative; flex: none; height: 7px; margin-bottom: -1px; border-top: 1px solid var(--border); cursor: row-resize; touch-action: none; }
+.rs-splitter[hidden] { display: none; }
+.rs-splitter::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  transform: translateX(-50%);
+  transition: background 0.12s, width 0.12s;
+}
+.rs-splitter:hover::before, .rs-splitter:focus-visible::before, .rs-splitter.dragging::before { width: 48px; background: var(--accent); }
+.rs-splitter:focus-visible { outline: none; }
+@media (forced-colors: active) {
+  .rs-splitter::before { background: CanvasText; forced-color-adjust: none; }
+  .rs-splitter:hover::before, .rs-splitter:focus-visible::before, .rs-splitter.dragging::before { background: Highlight; }
+}
 /* Wiki 面板移到右側時，圖示列上的 Wiki 圖示藏起來。 */
 /* Wiki 放在右側時，圖示列上的 Wiki 圖示照樣顯示（按一下打開或收起右側欄），不然右側欄收起來後就找不到 Wiki 了。 */
 
