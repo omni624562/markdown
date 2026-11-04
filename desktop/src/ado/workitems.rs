@@ -526,17 +526,27 @@ pub(super) fn flatten_queries(project: &str, nodes: &[Value], out: &mut Vec<Save
     }
 }
 
-/// 所有專案（最多 20 個）存的查詢；讀不到的專案略過。
+/// 存的查詢：給了專案（工作項目篩選選的專案）時只讀那幾個專案的，沒給時讀所有專案的
+/// （依名稱排，最多 20 個）；讀不到的專案略過。
 #[tauri::command]
-pub async fn ado_queries(app: AppHandle) -> Result<Vec<SavedQuery>, String> {
+pub async fn ado_queries(
+    app: AppHandle,
+    projects: Option<Vec<String>>,
+) -> Result<Vec<SavedQuery>, String> {
     let (a, pat) = require(&app)?;
     crate::io::blocking_for(TIMEOUT, move || {
-        let res = get(&a.url, &pat, "/_apis/projects?$top=1000", &tr!("讀取專案"))?;
-        let mut projects: Vec<String> = values(&res)
-            .iter()
-            .filter_map(|p| str_of(p, "name").map(str::to_string))
-            .collect();
-        projects.sort_by_key(|p| p.to_lowercase());
+        let projects = match projects.filter(|p| !p.is_empty()) {
+            Some(projects) => projects,
+            None => {
+                let res = get(&a.url, &pat, "/_apis/projects?$top=1000", &tr!("讀取專案"))?;
+                let mut all: Vec<String> = values(&res)
+                    .iter()
+                    .filter_map(|p| str_of(p, "name").map(str::to_string))
+                    .collect();
+                all.sort_by_key(|p| p.to_lowercase());
+                all
+            }
+        };
         let mut out = vec![];
         for project in projects.iter().take(20) {
             let path = format!(

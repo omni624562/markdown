@@ -840,6 +840,9 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 }
 .palette[open] { display: flex; flex-direction: column; }
 .palette::backdrop { background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(2px); }
+/* 開在按鈕下面的（例如工作項目的已儲存查詢）：位置由程式算，背景不變暗，像下拉選單。 */
+.palette.palette-anchored { position: fixed; inset: auto; margin: 0; }
+.palette.palette-anchored::backdrop { background: transparent; backdrop-filter: none; }
 .palette input {
   width: 100%;
   padding: 14px 16px;

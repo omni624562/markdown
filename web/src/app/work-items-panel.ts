@@ -56,8 +56,21 @@ function filterQueryResult(items: AdoWorkItem[], search: string): AdoWorkItem[] 
   return q ? items.filter((w) => String(w.id).startsWith(q) || w.title.toLowerCase().includes(q)) : items;
 }
 
-let savedQueries: Promise<AdoSavedQuery[]> | null = null;
+/** 讀過的已儲存查詢，依專案（篩選選的專案，沒選是空字串＝所有專案）分開記。 */
+const savedQueries = new Map<string, Promise<AdoSavedQuery[]>>();
 type QueryChoice = AdoSavedQuery | { clear: true };
+
+/** 篩選選了專案時只讀那幾個專案的查詢，沒選時讀所有專案的。 */
+function loadSavedQueries(projects: string[]): Promise<AdoSavedQuery[]> {
+  const key = [...projects].sort().join("\n");
+  let p = savedQueries.get(key);
+  if (!p) {
+    p = desktop!.adoQueries(projects);
+    savedQueries.set(key, p);
+    p.catch(() => savedQueries.delete(key));
+  }
+  return p;
+}
 
 const queryPicker = new Picker<QueryChoice>({
   label: t("Azure DevOps 的已儲存查詢"),
@@ -65,20 +78,25 @@ const queryPicker = new Picker<QueryChoice>({
   empty: t("找不到已儲存的查詢（可以在 Azure DevOps 網頁版的「查詢」建立）"),
   async query(text) {
     if (!desktop) return [];
-    if (!savedQueries) {
-      savedQueries = desktop.adoQueries();
-      savedQueries.catch(() => (savedQueries = null));
-    }
+    const projects = app.workItemFilter.projects;
     const needle = text.trim().toLowerCase();
-    const all = await savedQueries;
+    // 只列選的專案的查詢（原生端已經只讀那幾個專案，這裡再保險一次）。
+    const all = (await loadSavedQueries(projects)).filter((q) => !projects.length || projects.includes(q.project));
     const found = needle ? all.filter((q) => `${q.name} ${q.folder} ${q.project}`.toLowerCase().includes(needle)) : all;
     return workItemQuery && !needle ? [{ clear: true }, ...found] : found;
   },
   render: (q) =>
     "clear" in q
       ? { title: t("不用查詢，回到篩選條件"), detail: t("目前：{name}", { name: workItemQuery?.name ?? "" }), icon: "x" }
-      : { title: q.name, detail: [q.project, q.folder].filter(Boolean).join(" › "), icon: "scroll-text" },
+      : {
+          title: q.name,
+          // 只選了一個專案時不用每一列都寫專案名稱。
+          detail: [app.workItemFilter.projects.length === 1 ? "" : q.project, q.folder].filter(Boolean).join(" › "),
+          icon: "scroll-text",
+        },
   pick: (q) => setWorkItemQuery("clear" in q ? null : q),
+  // 開在搜尋框下面（按 ⌄ 的地方），不開在畫面中間。
+  anchor: () => document.querySelector<HTMLElement>("#workitems-host .workitems-search-box"),
 });
 
 /**
