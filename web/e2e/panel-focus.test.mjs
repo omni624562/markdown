@@ -13,6 +13,8 @@ const DESKTOP = {
   list_dir: { $by: "path", values: { "/notes": [{ name: "a.md", path: "/notes/a.md", isDir: false }] } },
   // 標籤圖示預設收起來：這裡顯示出來。
   load_settings: JSON.stringify({ activityHidden: [] }),
+  // 打字後停一下就會送出搜尋：要有回應，不然回來的是 null，測試跑得慢時（CI）搜尋面板會出錯。
+  search: { files: [], total: 0, truncated: false },
 };
 
 const active = (page) => page.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute("aria-label") || document.activeElement?.tagName);
