@@ -1,7 +1,11 @@
 /**
- * 工作項目清單「依上層項目分組」：排成一棵樹（Epic → Feature → User Story → Task），每一項只出現一次，
- * 在它的上層底下；不在清單上的上層（例如不是指派給你的 Feature）也列出來當標題列（淡色、不算數）。
+ * 工作項目清單的分組：
+ * - 「依上層項目分組」：排成一棵樹（Epic → Feature → User Story → Task），每一項只出現一次，
+ *   在它的上層底下；不在清單上的上層（例如不是指派給你的 Feature）也列出來當標題列（淡色、不算數）。
+ * - 「依區域分組」：篩選選了區域時一個區域一組，沒選時依專案底下的第一層區域分組（見 `areaGroups`）。
  */
+
+import { collator } from "./collator.ts";
 
 export interface GroupItem {
   id: number;
@@ -96,4 +100,120 @@ export function kindCounts<T extends GroupItem>(node: TreeNode<T>): [string, num
     level = level.flatMap((n) => n.children);
   }
   return [...counts];
+}
+
+/** 「依區域分組」的一組。 */
+export interface AreaGroup<T> {
+  /** 這一組的區域路徑（例如 `產品\ITA`，專案本身那一組是專案名稱）；沒有區域的那一組是 null。 */
+  area: string | null;
+  /**
+   * 標題：相對於專案的路徑，用「 › 」隔開（例如「ITA › 監控」；專案本身那一組是專案名稱），
+   * 清單上有好幾個專案時前面加上專案。沒有區域的那一組是 null（畫面上寫「其他」）。
+   */
+  title: string | null;
+  /**
+   * 組裡的項目（照清單的順序）；`sub` 是項目在這個區域底下的子區域時標在列上的小字：相對於這一組的路徑
+   * （`ITA` 那一組裡 `ITA\監控` 的項目是「監控」，`ITA\監控\告警` 是「監控 › 告警」），剛好在這個區域時是 null。
+   */
+  items: { item: T; sub: string | null }[];
+}
+
+/** 區域路徑的分隔符號（`產品\ITA\監控`）。 */
+const AREA_SEP = "\\";
+/** 標題、小字裡的分隔。 */
+const AREA_JOIN = " › ";
+
+const segments = (path: string): string[] =>
+  path
+    .split(AREA_SEP)
+    .map((s) => s.trim())
+    .filter(Boolean);
+/** 比對用：不分大小寫（Azure DevOps 的區域路徑不分大小寫），去掉多餘的空白與分隔符號。 */
+const areaKey = (path: string): string => segments(path).join(AREA_SEP).toLowerCase();
+/** `path` 等於 `area` 或在它底下。 */
+const isUnder = (path: string, area: string): boolean => path === area || path.startsWith(area + AREA_SEP);
+
+/**
+ * 依區域分組。`selected` 是篩選選的區域（完整路徑），`order` 是區域下拉選單列出的順序（還沒讀到時是空的）。
+ *
+ * - 有選區域：一個選的區域一組，照下拉選單的順序；項目放在包含它的區域裡最深的那一個（例如選了 `ITA` 與
+ *   `ITA\監控`，`ITA\監控` 底下的放在 `ITA\監控`），在更下面的子區域時 `sub` 寫出子區域（「監控」）。
+ *   不在任何選的區域裡的（例如輸入編號找到的）照沒選區域的方式分組，排在後面。
+ * - 沒選區域：依專案底下的第一層區域（`專案\X`）分組，直接在專案底下的是專案名稱那一組；
+ *   順序照下拉選單（專案本身排在它的區域前面），不知道順序的依名稱排。
+ * - 沒有區域的（更新前存下的離線副本）放在最後一組（`area`、`title` 是 null）。
+ *
+ * 比對不分大小寫；沒有項目的組不列出（和其他分組一樣）。
+ */
+export function areaGroups<T extends { area?: string | null }>(items: readonly T[], selected: readonly string[], order: readonly string[] = []): AreaGroup<T>[] {
+  const index = new Map<string, number>();
+  order.forEach((p, i) => {
+    const k = areaKey(p);
+    if (!index.has(k)) index.set(k, i);
+  });
+  const orderKeys = [...index.keys()];
+  /** 在下拉選單的第幾個；專案本身（選單上沒有）排在它的第一個區域前面；不知道的排在最後。 */
+  const rank = (key: string): number => {
+    const i = index.get(key);
+    if (i !== undefined) return i;
+    if (!key.includes(AREA_SEP)) {
+      const first = orderKeys.findIndex((k) => k.startsWith(key + AREA_SEP));
+      if (first >= 0) return index.get(orderKeys[first])! - 0.5;
+    }
+    return order.length;
+  };
+  // 選的區域：去掉重複，照下拉選單的順序（不在選單裡的照原本的順序排在後面）。
+  const chosen = new Map<string, string>();
+  for (const a of selected) {
+    const k = areaKey(a);
+    if (k && !chosen.has(k)) chosen.set(k, segments(a).join(AREA_SEP));
+  }
+  const picked = [...chosen.keys()].sort((a, b) => rank(a) - rank(b));
+  // 深的在前面：找包含項目的區域時先找到最深的。
+  const deepestFirst = [...picked].sort((a, b) => segments(b).length - segments(a).length);
+
+  const groups = new Map<string, { area: string; items: { item: T; sub: string | null }[] }>();
+  const none: T[] = [];
+  for (const item of items) {
+    const parts = segments(item.area ?? "");
+    if (!parts.length) {
+      none.push(item);
+      continue;
+    }
+    const key = parts.join(AREA_SEP).toLowerCase();
+    const inPicked = deepestFirst.find((a) => isUnder(key, a));
+    const groupKey = inPicked ?? parts.slice(0, 2).join(AREA_SEP).toLowerCase();
+    let group = groups.get(groupKey);
+    if (!group) {
+      group = { area: inPicked ? chosen.get(inPicked)! : parts.slice(0, 2).join(AREA_SEP), items: [] };
+      groups.set(groupKey, group);
+    }
+    const base = segments(group.area);
+    const sub = parts.length > base.length ? parts.slice(base.length).join(AREA_JOIN) : null;
+    group.items.push({ item, sub });
+  }
+
+  const project = (key: string) => key.split(AREA_SEP)[0];
+  const others = [...groups.keys()]
+    .filter((k) => !chosen.has(k))
+    .sort(
+      (a, b) =>
+        rank(a) - rank(b) ||
+        collator.compare(project(a), project(b)) ||
+        segments(a).length - segments(b).length ||
+        collator.compare(a, b),
+    );
+  const keys = [...picked.filter((k) => groups.has(k)), ...others];
+  // 清單上有好幾個專案時，標題前面加上專案才分得出來。
+  const several = new Set(keys.map(project)).size > 1;
+  const titleOf = (area: string) => {
+    const parts = segments(area);
+    return (several || parts.length === 1 ? parts : parts.slice(1)).join(AREA_JOIN);
+  };
+  const out: AreaGroup<T>[] = keys.map((k) => {
+    const g = groups.get(k)!;
+    return { area: g.area, title: titleOf(g.area), items: g.items };
+  });
+  if (none.length) out.push({ area: null, title: null, items: none.map((item) => ({ item, sub: null })) });
+  return out;
 }

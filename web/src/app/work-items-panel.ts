@@ -15,7 +15,7 @@ import { WikiPanel } from "../ui/wiki-panel.ts";
 import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
-import { kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
+import { areaGroups, kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
 import { fromStateChoice, type KindStates, stateChoice, stateLabel, stateOptions, type StateOption, statesFor, workItemFilterKey } from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
@@ -211,6 +211,12 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
         if (!now()) return;
         // 區域路徑的第一層是專案本身：只選一個專案時顯示時省略，選了幾個時留著才分得出來。
         area.setOptions(all.flatMap(({ areas }, i) => areas.map((a): [string, string] => [a, keys.length === 1 ? a.slice(keys[i].length + 1) : a])));
+        // 「依區域分組」的組照這個順序排（順序變了才重畫）。
+        const order = all.flatMap(({ areas }) => areas);
+        if (order.join("\n") !== workItemAreaOrder.join("\n")) {
+          workItemAreaOrder = order;
+          workItemsPanel?.rearrange();
+        }
         const names = [...new Set(all.flatMap((s) => s.people))].sort((a, b) => a.localeCompare(b));
         people.replaceChildren(...names.map((n) => new Option(n)));
         // 選的專案不在篩選選項讀到的前 20 個裡時，狀態從這裡補。
@@ -393,6 +399,25 @@ function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<A
   });
   // 沒有上層的項目也是樹的最上層（例如 Epic 底下的都不在清單上），不另外分「沒有上層」一組。
   return [{ title: null, items: [], tree: roots.map(toNode) }];
+}
+
+/** 區域下拉選單列出的順序（「依區域分組」的組照這個順序）；還沒讀到時是空的。 */
+let workItemAreaOrder: string[] = [];
+
+/**
+ * 「依區域分組」：篩選選了區域時一個區域一組（照下拉選單的順序），在子區域的項目列上標出子區域（例如 ITA 那一組裡的「監控」，
+ * 滑鼠移上去看完整的區域）；沒選區域時依專案底下的第一層區域分組。
+ * 沒有區域的（更新前存下的離線副本）放在最後的「其他」，重新整理後就會分好。
+ */
+function groupByArea(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
+  return areaGroups(items, app.workItemFilter.areas, workItemAreaOrder).map((g) => ({
+    // 區域可能就叫「其他」：收合用路徑分開。
+    key: g.area === null ? "none" : `area:${g.area.toLowerCase()}`,
+    title: g.title ?? t("其他"),
+    items: g.items.map(({ item, sub }) =>
+      sub ? { ...item, note: sub, noteTitle: t("區域：{area}", { area: (item.area ?? "").split("\\").join(" › ") }) } : item,
+    ),
+  }));
 }
 
 /** 清單上的一列：上面一行是類型、編號、指派對象與更新日期，狀態在右邊（`kind`、`state` 由清單上色）。 */
@@ -698,6 +723,7 @@ export function initWorkItemsPanel(): void {
           { id: "state", label: t("依狀態分組"), arrange: (items) => app.groupItems(items, (w) => w.state) },
           { id: "parent", label: t("依上層項目分組"), arrange: (items) => groupByParentItems(items) },
           { id: "kind", label: t("依類型分組"), arrange: (items) => app.groupItems(items, (w) => w.kind) },
+          { id: "area", label: t("依區域分組"), arrange: (items) => groupByArea(items) },
         ],
         arrangement: {
           load: () => storage.load("workitem-arrange"),

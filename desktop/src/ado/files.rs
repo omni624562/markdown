@@ -325,7 +325,6 @@ pub(super) fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
         item: item_of(base, v)?,
         created_by: person(field(v, "System.CreatedBy")),
         reason: text("System.Reason"),
-        area: text("System.AreaPath"),
         iteration: text("System.IterationPath"),
         tags: field_str(v, "System.Tags")
             .split(';')

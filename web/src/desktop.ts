@@ -340,6 +340,8 @@ export interface AdoWorkItem {
   changed: string | null;
   /** 優先順序（1 最高）；流程範本沒有這個欄位時是 null。 */
   priority: number | null;
+  /** 區域（例如「產品\\前端」）；更新前存下的離線副本沒有。 */
+  area?: string | null;
   webUrl: string;
 }
 

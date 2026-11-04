@@ -893,7 +893,7 @@ fn reads_work_item_fields() {
     let d = detail_of("https://tfs/DC", &v).unwrap();
     assert_eq!(d.tags, ["前端", "登入"]);
     assert_eq!(d.item.priority, Some(2));
-    assert_eq!(d.area.as_deref(), Some("產品\\前端"));
+    assert_eq!(d.item.area.as_deref(), Some("產品\\前端"));
     assert_eq!(d.iteration, None);
     assert_eq!(d.item.title, "修正登入");
     assert_eq!(d.item.assigned_to.as_deref(), Some("王小明"));
@@ -908,6 +908,28 @@ fn reads_work_item_fields() {
         person(Some(&json!("王小明 <CORP\\ming>"))).as_deref(),
         Some("王小明")
     );
+}
+
+#[test]
+fn list_items_carry_the_area() {
+    // 清單（依區域分組）也要知道區域：一起讀 System.AreaPath。
+    assert!(FIELDS.split(',').any(|f| f == "System.AreaPath"));
+    let v = json!({"id": 7, "fields": {
+        "System.Title": "監控告警規則", "System.State": "Active", "System.WorkItemType": "Task",
+        "System.TeamProject": "產品", "System.AreaPath": "產品\\ITA\\監控"
+    }});
+    let w = item_of("https://tfs/DC", &v).unwrap();
+    assert_eq!(w.area.as_deref(), Some("產品\\ITA\\監控"));
+    let json = serde_json::to_value(&w).unwrap();
+    assert_eq!(json["area"], "產品\\ITA\\監控");
+    // 沒有區域（或空白）時是 null。
+    let bare = json!({"id": 8, "fields": {"System.Title": "x", "System.AreaPath": " "}});
+    assert_eq!(item_of("https://tfs/DC", &bare).unwrap().area, None);
+    // 詳細內容的區域只出現一次（和清單共用同一個欄位），JSON 的樣子不變。
+    let d = detail_of("https://tfs/DC", &v).unwrap();
+    let text = serde_json::to_string(&d).unwrap();
+    assert_eq!(text.matches("\"area\":").count(), 1, "{text}");
+    assert_eq!(serde_json::to_value(&d).unwrap()["area"], "產品\\ITA\\監控");
 }
 
 #[test]
