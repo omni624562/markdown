@@ -2,6 +2,7 @@
  * 區塊樣式（設定 → 版面 → 區塊樣式）：相連（原本）或圓角區塊、留間隔。
  * 留間隔時，側邊欄、中間（分頁列＋內文）、右側欄是三塊圓角的區塊，彼此留 4px、上緣對齊；
  * 調整寬度的把手在間隔正中間；窄視窗一律相連；Windows 的視窗按鈕滑到視窗最右上角仍然按得到。
+ * 狀態列上檢視切換左邊的那幾項包成一整條圓條；終端機面板也是圓角區塊，終端機（另一個視窗）放在框線與內距裡面。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -127,4 +128,69 @@ test("圓角區塊（Windows 自訂標題列）：視窗按鈕在最右邊那塊
     assert.deepEqual(errors, []);
     await context.close();
   }
+});
+
+test("狀態列：相連時那幾項直接排在狀態列上；圓角區塊時包成一整條圓條，緊鄰檢視切換", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ outlineRight: false }) });
+  await ready(page);
+  const pill = () =>
+    page.evaluate(() => {
+      const items = document.querySelector(".status-items");
+      const s = getComputedStyle(items);
+      const r = items.getBoundingClientRect();
+      const sw = document.querySelector(".view-switch").getBoundingClientRect();
+      const stats = document.querySelector("#status-stats").getBoundingClientRect();
+      return {
+        display: s.display,
+        radius: s.borderTopLeftRadius,
+        statsInside: stats.left >= r.left && stats.right <= r.right,
+        nextToSwitch: Math.round(sw.left - r.right),
+        sameMiddle: Math.abs(r.top + r.height / 2 - (sw.top + sw.height / 2)) <= 1,
+      };
+    });
+  assert.equal((await pill()).display, "contents");
+  await pick(page, "spaced");
+  const p = await pill();
+  assert.deepEqual([p.display, p.radius, p.statsInside, p.sameMiddle], ["flex", "7px", true, true], JSON.stringify(p));
+  assert.ok(p.nextToSwitch > 0 && p.nextToSwitch <= 20, JSON.stringify(p));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("終端機：圓角區塊時面板是圓角的框，終端機放在框線與內距裡面；換樣式時終端機跟著移", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ outlineRight: false }) });
+  await ready(page);
+  await page.click(".status-terminal");
+  await page.locator("#terminal-panel:not([hidden])").waitFor();
+  /** 最近一次告訴原生端的終端機位置，以及面板的位置。 */
+  const layout = () =>
+    page.evaluate(() => {
+      const calls = window.__fake.calls.filter((c) => c.cmd === "term_layout" && c.args?.bounds);
+      const b = calls.at(-1)?.args.bounds;
+      const r = document.querySelector("#terminal-panel").getBoundingClientRect();
+      const s = getComputedStyle(document.querySelector("#terminal-panel"));
+      return { n: calls.length, bounds: b && Object.fromEntries(Object.entries(b).map(([k, v]) => [k, Math.round(v)])), panel: { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }, radius: s.borderTopLeftRadius };
+    });
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "term_layout" && c.args?.bounds));
+  let l = await layout();
+  // 相連：上緣 1px 是框線，其他三邊貼齊。
+  assert.deepEqual(l.bounds, { x: l.panel.left, y: l.panel.top + 1, width: l.panel.width, height: l.panel.height - 1 }, JSON.stringify(l));
+  assert.equal(l.radius, "0px");
+
+  const before = l.n;
+  await pick(page, "spaced");
+  await page.waitForFunction((n) => window.__fake.calls.filter((c) => c.cmd === "term_layout" && c.args?.bounds).length > n, before);
+  await page.waitForTimeout(100);
+  l = await layout();
+  // 圓角區塊：四邊各扣 1px 框線＋4px 內距；面板和上面的區塊左右對齊。
+  assert.deepEqual(l.bounds, { x: l.panel.left + 5, y: l.panel.top + 5, width: l.panel.width - 10, height: l.panel.height - 10 }, JSON.stringify(l));
+  assert.equal(l.radius, "8px");
+  const editor = await page.evaluate(() => {
+    const r = document.querySelector(".sidebar").getBoundingClientRect();
+    const e = document.querySelector(".preview-pane").getBoundingClientRect();
+    return { left: Math.round(r.left), right: Math.round(e.right) };
+  });
+  assert.deepEqual([l.panel.left, l.panel.left + l.panel.width], [editor.left, editor.right], JSON.stringify({ l, editor }));
+  assert.deepEqual(errors, []);
+  await context.close();
 });

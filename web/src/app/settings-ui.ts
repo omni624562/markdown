@@ -87,6 +87,7 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
   document.documentElement.dataset.panelStyle = s.panelStyle;
   if (!changed || changed.includes("workItemColors")) applyKindColors(s.workItemColors);
   // 介面大小：整個視窗縮放（啟動時預設 100% 就不用呼叫）。
+  if (changed?.includes("panelStyle")) app.terminal?.relayout();
   if (desktop && (changed ? changed.includes("uiScale") : s.uiScale !== "100")) {
     void desktop.setUiZoom(Number(s.uiScale) / 100).catch(reportError);
     app.terminal?.relayout();

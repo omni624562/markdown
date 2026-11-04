@@ -123,13 +123,19 @@ export class TerminalProxy {
         void this.#d.termLayout(null).catch(() => {}).finally(done);
         return;
       }
+      // 終端機放在面板的內容區：扣掉框線（原本只有上緣 1px，調整高度的把手也在那裡）與內距
+      // （區塊樣式「圓角區塊」時面板是圓角的框，終端機往內縮，直角藏在圓角裡面）。
       const r = this.#el.getBoundingClientRect();
-      // 上緣的 1px 是面板的框線（調整高度的把手也在這裡）。
-      const top = r.top + 1;
+      const s = getComputedStyle(this.#el);
+      const px = (v: string) => Number.parseFloat(v) || 0;
+      const left = r.left + px(s.borderLeftWidth) + px(s.paddingLeft);
+      const right = r.right - px(s.borderRightWidth) - px(s.paddingRight);
+      const top = r.top + px(s.borderTopWidth) + px(s.paddingTop);
+      const bottom = r.bottom - px(s.borderBottomWidth) - px(s.paddingBottom);
       const z = this.#zoom();
-      const height = this.#stacked ? this.#height() : r.bottom - top;
+      const height = this.#stacked ? this.#height() : bottom - top;
       void this.#d
-        .termLayout({ x: r.left * z, y: top * z, width: r.width * z, height: height * z })
+        .termLayout({ x: left * z, y: top * z, width: (right - left) * z, height: height * z })
         .then((stacked) => {
           if (stacked === this.#stacked) return;
           this.#stacked = stacked;

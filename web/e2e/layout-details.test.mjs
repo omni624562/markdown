@@ -25,7 +25,7 @@ test("⋯ 選單：沒開資料夾時「Git」只剩一項，直接放在第一�
 /** 狀態列上看得到的項目：左右邊界，以及有沒有超出視窗。 */
 const statusItems = (page) =>
   page.evaluate(() =>
-    [...document.querySelectorAll(".statusbar > *")]
+    [...document.querySelectorAll(".statusbar > :not(.status-items), .status-items > *")]
       .filter((el) => el.getClientRects().length)
       .map((el) => {
         const r = el.getBoundingClientRect();
