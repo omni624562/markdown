@@ -88,7 +88,6 @@ test("樹狀：一路讀到最上層，每一項只出現一次；不在清單�
     ["畫面切版", false, 3, ""],
     ["爭議帳申請", false, 2, "1 個 Task"],
     ["申請表單", false, 3, ""],
-    "# 沒有上層項目",
     ["修錯字", false, 0, ""],
   ]);
   // 每一層往右 12px：子項目的內容比上一層的內容多 12px（第 3 層以後一樣）。
@@ -109,19 +108,19 @@ test("收合一層、全部收合到只剩最上層、全部展開；開啟收�
   const titles = async () => (await rows(page)).map((r) => (typeof r === "string" ? r : r[0]));
   // 收合「查詢條件」：它底下的 Task 不見了。
   await page.locator('#workitems-host .workitems-group-toggle[data-key="parent:tree:10"]').click();
-  assert.deepEqual(await titles(), ["數位帳務", "消費明細查詢", "查詢條件", "爭議帳申請", "申請表單", "# 沒有上層項目", "修錯字"]);
-  // 全部收合：只剩最上層與「沒有上層項目」的標題。
+  assert.deepEqual(await titles(), ["數位帳務", "消費明細查詢", "查詢條件", "爭議帳申請", "申請表單", "修錯字"]);
+  // 全部收合：只剩最上層（沒有上層的 Bug 也是最上層的一列，排在 Epic 後面）。
   await page.click("#workitems-host .workitems-fold");
-  assert.deepEqual(await titles(), ["數位帳務", "# 沒有上層項目"]);
+  assert.deepEqual(await titles(), ["數位帳務", "修錯字"]);
   // 全部展開：裡面收起來的也打開。
   await page.click("#workitems-host .workitems-fold");
-  assert.equal((await titles()).length, 9);
+  assert.equal((await titles()).length, 8);
   // 再全部收合，然後從左側圖示列的捷徑開啟「畫面切版」：清單展開它的上層、標出來。
   await page.click("#workitems-host .workitems-fold");
   await page.locator(".activity-wiki-page").first().click();
   await page.locator('#workitems-host .workitem[aria-current="true"]', { hasText: "畫面切版" }).waitFor();
-  // 只展開它的上層；其他收起來的（「爭議帳申請」、「沒有上層項目」）維持收起來。
-  assert.deepEqual(await titles(), ["數位帳務", "消費明細查詢", "查詢條件", "API 規格", "畫面切版", "爭議帳申請", "# 沒有上層項目"]);
+  // 只展開它的上層；其他收起來的（「爭議帳申請」）維持收起來。
+  assert.deepEqual(await titles(), ["數位帳務", "消費明細查詢", "查詢條件", "API 規格", "畫面切版", "爭議帳申請", "修錯字"]);
   assert.deepEqual(errors, []);
   await context.close();
 });
