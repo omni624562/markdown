@@ -472,6 +472,23 @@ kbd {
   border-radius: 0 2px 2px 0;
   background: var(--accent);
 }
+/*
+ * Wiki 放在右側欄：圖示的「右邊」一條線（左邊的面板是左邊一條），一眼看得出 Wiki 在右邊。
+ * 右側欄正顯示著 Wiki 時和面板開著一樣：強調色的線、圖示與底色；右側欄收起來或 Wiki 那一區收合時，只留一條淡灰色的線。
+ */
+.activity-tabs #side-tab-wiki.placed-right::after {
+  content: "";
+  position: absolute;
+  inset: 5px -4px 5px auto;
+  width: 3px;
+  border-radius: 2px 0 0 2px;
+  background: color-mix(in srgb, var(--chrome-icon) 55%, transparent);
+}
+.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right::after { background: var(--accent); }
 .activity-tabs button:focus-visible, .activity-btn:focus-visible { outline-offset: -2px; }
 /* 第一次開啟：圖示旁邊短暫顯示名稱（不擋滑鼠，點任何地方就收起來）。 */
 .activity-labels { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
