@@ -90,14 +90,15 @@ test("預設相連：側邊欄、內文、右側欄之間沒有間隔；在設�
   await context.close();
 });
 
-test("圓角區塊：沒有右側欄時，右上角的按鈕在分頁列那一條裡，和內文的右緣對齊", async () => {
+test("圓角區塊：沒有右側欄時，分頁列一路到內文的右緣（右上角沒有按鈕時那塊藏起來，分頁列自己收尾）", async () => {
   const { page, context, errors } = await open({ desktop: desktop({ panelStyle: "spaced", outlineRight: false }) });
   await ready(page);
   const b = await boxes(page);
   const s = JSON.stringify(b);
-  assert.equal(b.tabBar.right, b.topActions.left, s);
-  assert.equal(b.topActions.top, 4, s);
-  assert.equal(b.topActions.right, b.preview.right, s);
+  assert.equal(b.topActions, null, s);
+  assert.equal(b.tabBar.top, 4, s);
+  assert.equal(b.tabBar.right, b.preview.right, s);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".tab-bar")).borderTopRightRadius), "8px");
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -3,7 +3,8 @@
  * - 側邊欄一路到頂：頂端列左邊那塊和圖示列、側邊欄同底色，邊線對齊；目前面板的標題列在頂端列那一列
  *   （是搬上去，不是多一份），分頁只在內文上方。圖示列不放專案方塊（檔案面板的標題列已經有專案名稱），
  *   換面板時圖示不會跳動。
- * - 右邊：側欄開關、⋯、視窗按鈕是同底色的一塊，和分頁分開；右側欄開著時和右側欄同寬、連成一欄。
+ * - 左上角是主選單（☰），和圖示列對齊；側邊欄開關在圖示列最上面。
+ * - 右邊：側欄開關、視窗按鈕是同底色的一塊，和分頁分開；右側欄開著時和右側欄同寬、連成一欄。
  * - 左右兩個側邊欄按鈕開著時同一種樣子（沒有底色、顏色相同）。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -17,8 +18,8 @@ async function setup() {
   });
   const { page } = opened;
   await page.setViewportSize({ width: 1500, height: 600 });
-  if (!(await page.evaluate(() => document.querySelector(".topbar").classList.contains("with-sidebar")))) await page.click(".nav-toggle");
-  await page.locator('.nav-toggle[aria-pressed="true"]').waitFor();
+  if (!(await page.evaluate(() => document.querySelector(".topbar").classList.contains("with-sidebar")))) await page.click(".activity-toggle");
+  await page.locator('.activity-toggle[aria-pressed="true"]').waitFor();
   if (!(await page.locator("#panel-files").isVisible())) await page.click("#side-tab-files");
   // 有開專案時圖示列最上面才有專案方塊；假的原生端沒有專案，直接顯示出來看會不會藏起來。
   await page.evaluate(() => (document.querySelector("#activity-project").hidden = false));
@@ -36,11 +37,11 @@ test("側邊欄一路到頂：左上和側邊欄同底色、邊線對齊，面�
     return {
       sideBg: css(".topbar-side").backgroundColor,
       sidebarBg: css(".sidebar").backgroundColor,
-      toggleBg: css(".nav-toggle").backgroundColor,
+      toggleBg: css(".nav-menu").backgroundColor,
       activityBg: css(".activity-bar").backgroundColor,
       sideRight: box(".topbar-side").right,
       sidebarRight: box(".sidebar").right,
-      toggleRight: box(".nav-toggle").right,
+      toggleRight: box(".nav-menu").right,
       activityRight: box(".activity-bar").right,
       head: box("#panel-files > .side-head"),
       topbar: box(".topbar"),
@@ -69,7 +70,7 @@ test("側邊欄一路到頂：左上和側邊欄同底色、邊線對齊，面�
   assert.equal(other.projectShown, false, "其他面板也不放專案方塊");
   assert.equal(await iconTop(), before, "換面板時圖示不跳動");
   // 收起側邊欄也一樣。
-  await page.click(".nav-toggle");
+  await page.click(".activity-toggle");
   await page.waitForFunction(() => !document.querySelector(".topbar").classList.contains("with-sidebar"));
   assert.equal(await iconTop(), before, "收起側邊欄時圖示不跳動");
   assert.deepEqual(errors, []);
@@ -89,8 +90,8 @@ test("右邊的按鈕是同底色的一塊：右側欄開著時和右側欄同�
       actionsBg: css(".top-actions").backgroundColor,
       controlsBg: css(".window-controls").backgroundColor,
       columnBg: css("#outline-right").backgroundColor,
-      leftColor: css(".nav-toggle").color,
-      leftBg: css(".nav-toggle .icon").backgroundColor,
+      leftColor: css(".activity-toggle").color,
+      leftBg: css(".activity-toggle .icon").backgroundColor,
       rightColor: css('.top-actions [data-command="toggle-outline-right"]').color,
       rightBg: css('.top-actions [data-command="toggle-outline-right"]').backgroundColor,
     };

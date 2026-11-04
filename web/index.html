@@ -16,6 +16,9 @@
     <a class="skip-link" href="#editor">跳到編輯區</a>
 
     <header class="topbar">
+      <!-- 主選單（☰）在最左上角、圖示列的正上方；窄視窗時移到右上角。 -->
+      <button type="button" id="main-menu" class="nav-menu" title="更多功能" aria-label="更多功能"><i data-icon="menu"></i></button>
+      <!-- 側邊欄開關：窄視窗時在左上角（打開抽屜）；寬視窗時用圖示列最上面那一顆。 -->
       <button type="button" class="nav-toggle" data-command="toggle-outline" aria-pressed="false">
         <i data-icon="panel-left"></i>
       </button>
@@ -23,12 +26,14 @@
       <div class="tab-bar" id="tab-bar"></div>
       <div class="top-actions">
         <button type="button" class="btn icon-only" data-command="toggle-outline-right" aria-pressed="true" hidden><i data-icon="panel-right-close"></i></button>
-        <button type="button" id="main-menu" class="btn icon-only" title="更多功能" aria-label="更多功能"><i data-icon="ellipsis"></i></button>
       </div>
     </header>
 
     <main class="workspace" data-view="split">
       <nav class="activity-bar" aria-label="側邊欄">
+        <!-- 寬視窗的側邊欄開關：圖示列最上面，側邊欄開著或收起都在同一個位置；下面一條細線和面板的圖示分開。 -->
+        <button type="button" class="activity-btn activity-toggle" data-command="toggle-outline" aria-pressed="false"><i data-icon="panel-left"></i></button>
+        <div class="activity-sep" aria-hidden="true"></div>
         <button type="button" class="activity-project" id="activity-project" hidden><span class="project-avatar"></span></button>
         <div class="activity-tabs" role="tablist" aria-label="側邊欄" aria-orientation="vertical">
           <button type="button" role="tab" id="side-tab-files" data-panel="files" aria-controls="panel-files" aria-label="檔案">

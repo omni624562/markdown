@@ -3464,12 +3464,14 @@ function applyLayout(): void {
   // 右上角的按鈕：大綱放在右邊時，收起或打開右邊那一欄。
   const rightToggle = $("[data-command='toggle-outline-right']");
   rightToggle.hidden = !outlinePlacedRight() && !wikiPlacedRight();
+  $(".top-actions").hidden = rightToggle.hidden;
   if (rightToggle.getAttribute("aria-pressed") !== String(rightOutlineShown)) {
     rightToggle.setAttribute("aria-pressed", String(rightOutlineShown));
     rightToggle.replaceChildren(icon(rightOutlineShown ? "panel-right-on" : "panel-right"));
   }
-  const navToggle = $("[data-command='toggle-outline']");
-  if (navToggle.getAttribute("aria-pressed") !== String(outlineShown)) {
+  // 側邊欄開關：寬視窗在圖示列最上面，窄視窗在左上角（兩顆一起更新）。
+  for (const navToggle of document.querySelectorAll<HTMLElement>("[data-command='toggle-outline']")) {
+    if (navToggle.getAttribute("aria-pressed") === String(outlineShown)) continue;
     navToggle.setAttribute("aria-pressed", String(outlineShown));
     navToggle.replaceChildren(icon(outlineShown ? "panel-left-on" : "panel-left"));
   }
