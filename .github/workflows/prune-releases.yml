@@ -1,0 +1,42 @@
+name: 清理舊版本
+
+# 手動執行（Actions → 清理舊版本 → Run workflow）：版本號的 Release 與標籤（v1.2.3）只保留最近幾個，
+# 其他的連同標籤一起刪掉（見 scripts/prune-releases.mjs）。
+# 「最新版」（latest）、「穩定版」（stable）與穩定版指向的那一版一定保留。
+# 預設只試跑（列出會刪哪些），確認後取消勾選再執行一次才會真的刪。
+# 平常不用手動執行：每次發佈（Desktop workflow）結束時會自動只保留最近 3 個。
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: 保留最近幾個版本
+        required: true
+        default: "3"
+      dry_run:
+        description: 只試跑（列出會刪哪些，不真的刪）
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # 和發佈「最新版」排隊，不要同時改 Release。
+    concurrency:
+      group: publish-latest
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: 清理舊版本
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ inputs.keep }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          extra=""
+          if [ "$DRY_RUN" = "true" ]; then extra="--dry-run"; fi
+          node scripts/prune-releases.mjs --keep "$KEEP" $extra
