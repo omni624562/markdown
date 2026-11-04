@@ -147,7 +147,7 @@ export function initOfflineCopies(): void {
           }
           saveKept(keep(keptPages, { key: source.key, title: source.title, label: source.label, ref, images, savedAt: Date.now() }));
           void desktop!.offlinePut(`page:${source.key}`, pageCopy(markdown), true).catch(app.reportError);
-          toast(t("已保留離線：沒有網路時也能開啟（指令面板的「保留離線的頁面」）"));
+          toast(t("已保留離線：沒有網路時也能開啟（指令面板的「{command}」）", { command: app.commands.title("ado-offline") }));
         },
       }
     : undefined;

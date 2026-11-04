@@ -127,3 +127,10 @@ test("改快速鍵：跟內建一樣就不記，搶來的指令改成沒有快�
   // 把 Ctrl+I 給 plain：italic 變成沒有快速鍵。
   assert.deepEqual(withBinding({}, "plain", "Mod-i", def, ["italic"], false), { plain: "Mod-i", italic: "" });
 });
+
+test("提示文字用的指令名稱：跟著指令的標題，找不到時是 id", () => {
+  const commands = new Commands();
+  commands.register({ id: "copy-error-log", title: "說明：複製錯誤紀錄", group: "說明", run() {} });
+  assert.equal(commands.title("copy-error-log"), "說明：複製錯誤紀錄");
+  assert.equal(commands.title("gone"), "gone");
+});

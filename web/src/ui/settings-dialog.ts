@@ -5,6 +5,7 @@ import {
   type QuickAction,
   type Settings,
   type SettingsStore,
+  termCheckLabel,
 } from "../settings.ts";
 import { desktop } from "../desktop.ts";
 import { fontStack, installedFonts } from "../fonts.ts";
@@ -209,6 +210,9 @@ const LOOK_GROUPS: Group[] = [
   },
 ];
 
+/** 指令的名稱（說明文字提到指令時用）：建立設定對話框時從指令中心取，指令改名時跟著變。 */
+let commandTitle = (id: string): string => id;
+
 /** 「編輯」頁。 */
 const EDIT_GROUPS: Group[] = [
   {
@@ -226,7 +230,7 @@ const EDIT_GROUPS: Group[] = [
       { key: "tableAutoFormat", label: t("表格自動對齊"), hint: t("在表格中按 Tab 時，依中文字寬對齊直線") },
       {
         key: "termCheck",
-        label: t("檢查兩國用語、錯字與標點"),
+        label: termCheckLabel(),
         hint: t("中國用語、常見錯字與中文裡的半形標點畫上波浪底線，滑鼠移上去就能修正"),
       },
       {
@@ -257,9 +261,14 @@ const EDIT_GROUPS: Group[] = [
             {
               key: "dailyTemplate" as const,
               label: t("範本"),
-              hint: t("建立今天的筆記時用的範本；自訂範本可以用「⋯」→「把目前文件存成範本…」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）", {
-                name: WORK_ITEMS_VAR,
-              }),
+              // 提到的指令名稱從指令中心取（開設定時才算），指令改名時跟著變。
+              get hint() {
+                return t("建立今天的筆記時用的範本；自訂範本可以用「⋯」→「{menu}」→「{command}」新增。範本裡單獨一行寫 {name}，會換成指派給你、還沒結束的工作項目（待辦清單）", {
+                  menu: t("文件工具"),
+                  command: commandTitle("save-as-template"),
+                  name: WORK_ITEMS_VAR,
+                });
+              },
             },
           ],
         },
@@ -294,6 +303,7 @@ export class SettingsDialog {
   ) {
     this.#ai = ai;
     this.#store = store;
+    if (activityHooks) commandTitle = (id) => activityHooks.command(id)?.title ?? id;
     const d = document.createElement("dialog");
     d.className = "settings";
     d.setAttribute("aria-labelledby", "settings-title");
