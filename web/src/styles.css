@@ -2264,7 +2264,6 @@ button.git-info:disabled { cursor: default; }
 /* 輸入名字的框佔一整列；沒選專案（沒有區域）時人也佔一整列。 */
 .workitems-filters .workitems-person, .workitems-filters .workitems-wide { grid-column: 1 / -1; }
 .workitems-filters [hidden], .workitems-filters[hidden] { display: none; }
-.workitems-filter-reset { grid-column: 1 / -1; justify-self: start; }
 /* 篩選列的下拉選單（人、狀態、類型、專案、區域）：按鈕和下拉選單同樣子，打開是勾選清單。 */
 .workitems-filters .multi-select { display: block; text-align: start; }
 .workitems-filters .multi-select.chosen { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }

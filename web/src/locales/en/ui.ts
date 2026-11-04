@@ -477,7 +477,6 @@ export const ui: Record<string, Translation> = {
   "Wiki・{where}": "Wiki · {where}",
   "輸入檔名、Wiki 頁面，或 #編號 開啟工作項目": "Type a file name, a wiki page, or #number for a work item",
   "開啟工作項目…": "Open Work Item…",
-  "清除篩選": "Clear filters",
   "清除全部篩選條件（回到「指派給我、進行中」）": "Clear all filters (back to “Assigned to Me, Active”)",
   "Wiki 頁面": "Wiki pages",
   "Azure DevOps：{state}": "Azure DevOps: {state}",

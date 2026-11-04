@@ -123,6 +123,9 @@ test("篩選一直顯示：專案一整列（右邊是 ×）、人｜區域、�
   look = await layout(page);
   assert.ok(look.name.top > look.person.bottom - 1 && look.name.bottom < look.kind.top + 1, "名字的框在人、區域下面，類型、狀態上面");
 
+  // 清除條件只有專案右邊的 ×，沒有另外的「清除篩選」按鈕。
+  assert.equal(await page.locator("#workitems-host .workitems-filters button", { hasText: "清除篩選" }).count(), 0);
+  assert.equal(await page.locator("#workitems-host .workitems-filter-clear:visible").count(), 1);
   // 按 ×：回到預設，× 與區域都不見。
   await page.locator("#workitems-host .workitems-filter-clear").click();
   await page.locator('#workitems-host .multi-select[aria-label^="區域："]').waitFor({ state: "hidden" });
