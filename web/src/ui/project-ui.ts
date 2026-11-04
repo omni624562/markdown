@@ -151,7 +151,7 @@ export class ProjectUi {
     }
     const actions: SwitchItem[] = [
       { kind: "action", id: "open-folder", title: t("開啟資料夾…"), icon: "folder-open" },
-      { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-grid" },
+      { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-dashboard" },
     ];
     if (this.current) actions.push({ kind: "action", id: "edit", title: t("目前專案的設定…"), icon: "pencil" });
     if (this.#h.current()) actions.push({ kind: "action", id: "close", title: t("關閉專案"), icon: "folder-x" });

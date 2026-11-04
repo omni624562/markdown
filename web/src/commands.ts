@@ -15,6 +15,8 @@ export interface Command {
   shownKeys?: string;
   /** 回傳 false 時不顯示於指令面板、快速鍵也不觸發。 */
   when?: () => boolean;
+  /** 單選的其中一項（例如「主題：深色」）：選單裡打勾標出目前選的那一項。 */
+  checked?: () => boolean;
   run(): void | Promise<void>;
 }
 

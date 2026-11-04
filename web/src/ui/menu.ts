@@ -92,11 +92,15 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
       if (typeof entry === "string") {
         const cmd = commands?.get(entry);
         if (!cmd || !(cmd.when?.() ?? true)) return [];
-        item.role = "menuitem";
+        // 單選的指令（例如主題的跟隨系統／淺色／深色）：目前選的那一項打勾。
+        const checked = cmd.checked?.();
+        item.role = checked === undefined ? "menuitem" : "menuitemradio";
+        if (checked !== undefined) item.setAttribute("aria-checked", String(checked));
         if (cmd.icon) item.append(icon(cmd.icon));
         item.append(Object.assign(document.createElement("span"), { textContent: menuTitle(cmd.title, parent) }));
         const keys = cmd.keys ?? cmd.shownKeys;
         if (keys) item.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys(keys) }));
+        if (checked) item.append(icon("check"));
         item.addEventListener("click", () => {
           root.hidePopover();
           void commands?.run(cmd.id);

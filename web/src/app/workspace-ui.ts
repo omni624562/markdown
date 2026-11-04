@@ -418,7 +418,7 @@ export async function renderFilesEmpty(): Promise<void> {
     const more = document.createElement("button");
     more.type = "button";
     more.className = "btn";
-    more.append(icon("layout-grid"), t("全部 {n} 個專案…", { n: projects.length }));
+    more.append(icon("layout-dashboard"), t("全部 {n} 個專案…", { n: projects.length }));
     more.addEventListener("click", () => void commands.run("project-overview").catch(reportError));
     box.append(more);
   }
