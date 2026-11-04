@@ -2283,6 +2283,8 @@ button.git-info:disabled { cursor: default; }
  * 樹裡的列比較窄：有子區域小字時那一行可以換行（放不下的狀態、小字換到下一行），不要把小字擠成「…」。
  */
 .workitems-group-tree ~ .workitems-group-tree { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
+/* 組裡的上層與上層之間用虛線，和組與組之間的實線分得開（不會看成另一個沒有標題的組）。 */
+.workitems-group-tree ~ .workitems-group-card:not(.workitems-child) { border-top-style: dashed; }
 .workitems-group + .workitems-group-card { margin-top: 0; padding-top: 0; border-top: 0; }
 .workitems-child .workitem-meta:has(> .workitem-note), .workitems-group-card .workitem-meta:has(> .workitem-note) { flex-wrap: wrap; }
 .workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
