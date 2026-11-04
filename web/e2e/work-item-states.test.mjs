@@ -50,7 +50,6 @@ test("狀態篩選：列出伺服器上的狀態；只看某幾個狀態；勾�
   const { page, context, errors } = await open({ desktop });
   await page.click("#side-tab-workitems");
   await page.locator("#workitems-host .workitem-title", { hasText: "工作 1" }).waitFor();
-  await page.locator("#workitems-host .workitems-filter-toggle:not(.workitems-query)").click();
   const button = page.locator("#workitems-host .multi-select", { hasText: "進行中" });
   await button.click();
   const pop = page.locator(".multi-select-pop:popover-open");
@@ -78,16 +77,16 @@ test("狀態篩選：列出伺服器上的狀態；只看某幾個狀態；勾�
   await context.close();
 });
 
-test("選了專案、類型：狀態只列那個專案、類型用得到的；篩選列是「專案」「人｜查詢」「類型｜狀態」", async () => {
+test("選了專案、類型：狀態只列那個專案、類型用得到的；篩選列是「專案」「人｜區域」「類型｜狀態」", async () => {
   const { page, context, errors } = await open({ desktop });
   await page.click("#side-tab-workitems");
   await page.locator("#workitems-host .workitem-title", { hasText: "工作 1" }).waitFor();
-  await page.locator("#workitems-host .workitems-filter-toggle:not(.workitems-query)").click();
-  // 篩選列的順序：專案（最上面一整列），人（旁邊是已儲存的查詢），類型、狀態。
-  const labels = await page
-    .locator("#workitems-host .workitems-filters > .multi-select:not([hidden])")
-    .evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label").split("：")[0]));
-  assert.deepEqual(labels, ["專案", "人", "類型", "狀態"]);
+  // 篩選列的順序：專案（最上面一整列），人（選了專案時旁邊是區域），類型、狀態。
+  const labels = () =>
+    page
+      .locator("#workitems-host .workitems-filters .multi-select:not([hidden])")
+      .evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label").split("：")[0]));
+  assert.deepEqual(await labels(), ["專案", "人", "類型", "狀態"]);
 
   const pick = async (label, value) => {
     await page.locator(`#workitems-host .multi-select[aria-label^="${label}："]`).click();
@@ -105,6 +104,7 @@ test("選了專案、類型：狀態只列那個專案、類型用得到的；�
     return list;
   };
   await pick("專案", "維運");
+  assert.deepEqual(await labels(), ["專案", "人", "區域", "類型", "狀態"]);
   assert.deepEqual(await stateRows(), ["✓To Do", "✓Doing", " Done"]);
   await pick("專案", "產品");
   await pick("類型", "Bug");

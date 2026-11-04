@@ -52,7 +52,7 @@ test("滾輪在下拉選單上：選單不用捲時後面的清單不動；選�
   const { page, context, errors } = await open({ desktop });
   await page.locator("#side-tab-workitems").click();
   await page.locator("#workitems-host .workitem-title", { hasText: "工作 80" }).waitFor({ state: "attached" });
-  await page.locator("#workitems-host .workitems-filter-toggle:not(.workitems-query)").click();
+  // 篩選一直顯示在清單上面，不用先展開。
   assert.equal(await listScroll(page), 0, "清單一開始在最上面");
 
   // 狀態選單只有幾項，不用捲：滾輪不能捲到後面的清單。

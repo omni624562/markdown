@@ -40,7 +40,7 @@ let workItemQuery: AdoSavedQuery | null = (() => {
     return null;
   }
 })();
-/** 篩選列建好後設定：更新按鈕上的數字並重新列出。 */
+/** 篩選列建好後設定：更新查詢的標示與清除按鈕，並重新列出。 */
 let workItemFilterChanged: () => void = () => {};
 
 function setWorkItemQuery(q: AdoSavedQuery | null, refresh = true): void {
@@ -82,32 +82,19 @@ const queryPicker = new Picker<QueryChoice>({
 });
 
 /**
- * 工作項目的篩選列：人（指派給、建立者）、狀態、類型、專案、區域。
+ * 工作項目的篩選，一直顯示在面板上方：專案一整列（右邊的 × 一次清掉所有條件），下面是人與區域、類型與狀態，
+ * 最後是搜尋框（右端的 ⌄ 開 TFS 的已儲存查詢；正在用查詢時，查詢名稱放在搜尋框左邊，按 × 取消）。
  * 選項第一次列出工作項目時才讀取；區域只在選了專案後出現，人名是團隊成員的建議（也可以自己輸入）。
- * 平常收起來，按搜尋框右邊的「篩選」按鈕展開；按鈕上的數字是改過幾項條件。
  */
-function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
+function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInputElement): void } {
   const bar = document.createElement("div");
   bar.className = "workitems-filters";
   bar.id = "workitem-filters";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "workitems-filter-toggle";
-  button.setAttribute("aria-controls", bar.id);
-  const badge = document.createElement("span");
-  badge.className = "workitems-filter-count";
-  button.append(icon("sliders-horizontal"), badge);
-  const setOpen = (open: boolean) => {
-    bar.hidden = !open;
-    button.setAttribute("aria-expanded", String(open));
-    storage.save("workitem-filter-open", open ? "1" : "");
-  };
-  button.addEventListener("click", () => setOpen(bar.hidden));
   const reset = document.createElement("button");
   reset.type = "button";
   reset.className = "btn btn-small workitems-filter-reset";
   reset.textContent = t("清除篩選");
-  // 有設定條件時，篩選按鈕旁邊多一個「×」，不用展開篩選列就能一次清掉。
+  // 有設定條件時，專案右邊多一個「×」，一次清掉。
   const clear = document.createElement("button");
   clear.type = "button";
   clear.className = "workitems-filter-clear";
@@ -116,34 +103,47 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   clear.setAttribute("aria-label", clearLabel);
   clear.append(icon("x"));
   clear.addEventListener("click", () => reset.click());
-  // TFS 存的查詢：選了就改列查詢的結果（篩選條件暫時不用）。
-  const query = document.createElement("button");
-  query.type = "button";
-  query.className = "workitems-filter-toggle workitems-query";
-  query.append(icon("scroll-text"));
-  query.addEventListener("click", () => queryPicker.open());
-  const group = document.createElement("span");
-  group.className = "workitems-filter-group";
-  group.append(button, query, clear);
-  const queryOpen = document.createElement("button");
-  queryOpen.type = "button";
-  queryOpen.className = "workitems-select workitems-query-open";
-  const queryOpenLabel = document.createElement("span");
-  queryOpenLabel.textContent = t("已儲存的查詢…");
-  queryOpen.title = queryOpenLabel.textContent; // 側邊欄窄時文字會截短
-  queryOpen.append(icon("scroll-text"), queryOpenLabel);
-  queryOpen.addEventListener("click", () => queryPicker.open());
+  // TFS 存的查詢：搜尋框右端的 ⌄ 開選單；選了就改列查詢的結果（篩選條件暫時不用）。
+  const queryPick = document.createElement("button");
+  queryPick.type = "button";
+  queryPick.className = "workitems-query-pick";
+  const queryPickLabel = t("已儲存的查詢");
+  queryPick.title = queryPickLabel;
+  queryPick.setAttribute("aria-label", queryPickLabel);
+  queryPick.setAttribute("aria-haspopup", "dialog");
+  queryPick.append(icon("chevron-down"));
+  queryPick.addEventListener("click", () => queryPicker.open());
+  // 正在用查詢：搜尋框左邊的「查詢：名稱 ×」，點名稱換查詢，按 × 回到篩選條件。
+  const chip = document.createElement("span");
+  chip.className = "workitems-query-chip";
+  const chipName = document.createElement("button");
+  chipName.type = "button";
+  chipName.className = "workitems-query-name";
+  chipName.addEventListener("click", () => queryPicker.open());
+  const chipCancel = document.createElement("button");
+  chipCancel.type = "button";
+  chipCancel.className = "workitems-query-cancel";
+  const cancelLabel = t("不用查詢，回到篩選條件");
+  chipCancel.title = cancelLabel;
+  chipCancel.setAttribute("aria-label", cancelLabel);
+  chipCancel.append(icon("x"));
+  let searchInput: HTMLInputElement | null = null;
+  chipCancel.addEventListener("click", () => {
+    setWorkItemQuery(null);
+    searchInput?.focus();
+  });
+  chip.append(chipName, chipCancel);
+  const searchBox = document.createElement("div");
+  searchBox.className = "workitems-search-box";
+  searchBox.append(chip, queryPick);
   const queryNote = document.createElement("p");
   queryNote.className = "workitems-query-note";
-  const updateBadge = () => {
+  /** 依目前的查詢與條件：查詢的標示、和預設不同的條件用強調色、有條件時才有清除按鈕。 */
+  const renderState = () => {
     const q = workItemQuery;
-    query.classList.toggle("active", !!q);
-    const queryLabel = q ? t("目前列出查詢「{name}」的結果（按一下換查詢或取消）", { name: q.name }) : t("TFS 的已儲存查詢");
-    query.title = queryLabel;
-    query.setAttribute("aria-label", queryLabel);
-    query.setAttribute("aria-pressed", String(!!q));
-    // 平常收在篩選列裡；正在用查詢時才放在搜尋框旁邊，看得出來、也方便換掉。
-    query.hidden = !q;
+    chip.hidden = !q;
+    chipName.textContent = q ? t("查詢：{name}", { name: q.name }) : "";
+    chipName.title = q ? t("目前列出查詢「{name}」的結果（按一下換查詢或取消）", { name: q.name }) : "";
     queryNote.hidden = !q;
     queryNote.textContent = q ? t("目前列出查詢「{name}」的結果，下面的篩選條件暫時不套用。", { name: q.name }) : "";
     const set = [
@@ -153,25 +153,19 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
       f.projects.length > 0,
       f.areas.length > 0,
     ];
-    // 和預設不一樣的條件，按鈕用強調色（和徽章的數字一致）。
+    // 和預設不一樣的條件，按鈕用強調色。
     [person, state, kind, project, area].forEach((m, i) => m.el.classList.toggle("chosen", set[i]));
     const n = set.filter(Boolean).length + (q ? 1 : 0);
-    badge.textContent = n ? String(n) : "";
-    badge.hidden = !n;
     reset.hidden = !n;
     clear.hidden = !n;
-    button.classList.toggle("active", n > 0);
-    const label = n ? t("篩選（已設定 {n} 項）", { n }) : t("篩選");
-    button.title = label;
-    button.setAttribute("aria-label", label);
   };
   const changed = () => {
     storage.save("workitem-filter", JSON.stringify(app.workItemFilter));
-    updateBadge();
+    renderState();
     void workItemsPanel?.refresh();
   };
   workItemFilterChanged = () => {
-    updateBadge();
+    renderState();
     void workItemsPanel?.refresh();
   };
   const pairs = (values: string[]): [string, string][] => values.map((v) => [v, v]);
@@ -284,7 +278,12 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   kind.value = f.kinds;
   project.value = f.projects;
   area.value = f.areas;
-  area.hidden = !f.projects.length;
+  /** 區域只在選了專案時出現（和人同一列）；沒有區域時人佔一整列。 */
+  const showArea = (on: boolean) => {
+    area.hidden = !on;
+    person.el.classList.toggle("workitems-wide", !on);
+  };
+  showArea(f.projects.length > 0);
 
   /** 區域（選了專案時）與人名建議；同一個專案只讀一次。 */
   const scopes = new Map<string, Promise<{ areas: string[]; people: string[]; stateSets?: KindStates[] }>>();
@@ -299,7 +298,7 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
   };
   const loadScope = () => {
     const keys = [...f.projects];
-    area.hidden = !keys.length;
+    showArea(keys.length > 0);
     if (!desktop) return;
     const now = () => keys.join("\n") === f.projects.join("\n");
     void Promise.all((keys.length ? keys : [""]).map(scopeOf))
@@ -345,12 +344,20 @@ function workItemFilterBar(): { bar: HTMLElement; button: HTMLElement } {
     refreshStates();
     changed();
   });
-  // 專案在最上面一整列（區域、狀態都看選的專案）；下面是人與已儲存的查詢、類型與狀態，最後是區域。
-  // 正在用查詢時的說明放在最前面（「下面的篩選條件暫時不套用」）。
-  bar.append(queryNote, project.el, person.el, queryOpen, name, kind.el, state.el, area.el, people, reset);
-  updateBadge();
-  setOpen(storage.load("workitem-filter-open") === "1");
-  return { bar, button: group };
+  // 專案在最上面一整列（區域、狀態都看選的專案），右邊是清掉全部條件的 ×；下面是人與區域（輸入名字的框在這列下面）、
+  // 類型與狀態，最後是搜尋框。正在用查詢時的說明放在最前面（「下面的篩選條件暫時不套用」）。
+  const top = document.createElement("div");
+  top.className = "workitems-filter-top";
+  top.append(project.el, clear);
+  bar.append(queryNote, top, person.el, area.el, name, kind.el, state.el, searchBox, people, reset);
+  renderState();
+  return {
+    filters: bar,
+    placeSearch: (input) => {
+      searchInput = input;
+      chip.after(input);
+    },
+  };
 }
 
 /** 「依上層項目分組」：每個工作項目的上層（null 是沒有）與讀到的上層項目；讀過的不再讀。 */
@@ -779,7 +786,7 @@ export function renderUnseenLine(): void {
 export function initWorkItemsPanel(): void {
   workItemsPanel = desktop
     ? new IssuesPanel<AdoWorkItem & IssueSummary>(app.$("#workitems-host"), {
-        placeholder: t("搜尋標題或內容，或輸入編號"),
+        placeholder: t("搜尋標題、內容或 #編號"),
         arrangements: [
           // 伺服器回傳的順序就是最近更新的在前面。
           { id: "recent", label: t("最近更新"), arrange: (items) => [{ title: null, items }] },
@@ -806,10 +813,7 @@ export function initWorkItemsPanel(): void {
         link: (item) => workItemLink(item),
         // 拖到左側圖示列變成捷徑（例如常看的 User Story、Feature）。
         dragData: (item) => ({ [SHORTCUT_DRAG_TYPE]: JSON.stringify({ workItem: item.id, kind: item.kind, title: item.title }) }),
-        ...(() => {
-          const { bar, button } = workItemFilterBar();
-          return { filters: bar, filterButton: button };
-        })(),
+        ...workItemFilterBar(),
         list: async (search, update) => {
           app.loadWorkItemFilterOptions();
           // 「只看這些」：圖示上的數字算的那些（指派給你、新的或有更新的），不用再讀一次。
