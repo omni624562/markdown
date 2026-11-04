@@ -912,6 +912,6 @@ export const ui: Record<string, Translation> = {
   "卡片": "Card",
   "區塊樣式": "Panel Style",
   "側邊欄、編輯區、右側欄連在一起，或各自是圓角的區塊、中間留一點間隔（視窗很窄時一律相連）": "Whether the sidebar, editor and right sidebar are joined, or separate rounded panels with a small gap between them (always joined in a narrow window)",
-  "相連（原本）": "Joined (original)",
-  "圓角區塊、留間隔": "Rounded, with gaps",
+  "相連": "Joined",
+  "圓角區塊、留間隔（預設）": "Rounded, with gaps (default)",
 };

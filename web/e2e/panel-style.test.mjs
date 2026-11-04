@@ -1,5 +1,5 @@
 /**
- * 區塊樣式（設定 → 版面 → 區塊樣式）：相連（原本）或圓角區塊、留間隔。
+ * 區塊樣式（設定 → 版面 → 區塊樣式）：圓角區塊、留間隔（預設）或相連。
  * 留間隔時，側邊欄、中間（分頁列＋內文）、右側欄是三塊圓角的區塊，彼此留 4px、上緣對齊；
  * 調整寬度的把手在間隔正中間；窄視窗一律相連；Windows 的視窗按鈕滑到視窗最右上角仍然按得到。
  * 狀態列上檢視切換左邊的那幾項包成一整條圓條；終端機面板也是圓角區塊，終端機（另一個視窗）放在框線與內距裡面。
@@ -56,11 +56,13 @@ async function pick(page, value) {
   await page.keyboard.press("Escape");
 }
 
-test("預設相連：側邊欄、內文、右側欄之間沒有間隔；在設定改成圓角區塊後，三塊彼此留 4px、上緣對齊", async () => {
+test("預設圓角區塊；改成相連時側邊欄、內文、右側欄之間沒有間隔；改回圓角區塊後，三塊彼此留 4px、上緣對齊", async () => {
   const { page, context, errors } = await open({ desktop: desktop() });
   await ready(page);
   await page.locator(".outline-right:not([hidden])").waitFor();
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.panelStyle), "joined");
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.panelStyle), "spaced");
+  await pick(page, "joined");
+  await page.waitForTimeout(100);
   let b = await boxes(page);
   assert.equal(b.editor.left, b.sidebar.right, JSON.stringify(b));
   assert.equal(b.right.left, b.preview.right, JSON.stringify(b));
@@ -144,7 +146,7 @@ test("圓角區塊（Windows 自訂標題列）：視窗按鈕在最右邊那塊
 });
 
 test("狀態列：相連時那幾項直接排在狀態列上；圓角區塊時包成一整條圓條，緊鄰檢視切換", async () => {
-  const { page, context, errors } = await open({ desktop: desktop({ outlineRight: false }) });
+  const { page, context, errors } = await open({ desktop: desktop({ outlineRight: false, panelStyle: "joined" }) });
   await ready(page);
   const pill = () =>
     page.evaluate(() => {
@@ -171,7 +173,7 @@ test("狀態列：相連時那幾項直接排在狀態列上；圓角區塊時�
 });
 
 test("終端機：圓角區塊時面板是圓角的框，終端機放在框線與內距裡面；換樣式時終端機跟著移", async () => {
-  const { page, context, errors } = await open({ desktop: desktop({ outlineRight: false }) });
+  const { page, context, errors } = await open({ desktop: desktop({ outlineRight: false, panelStyle: "joined" }) });
   await ready(page);
   await page.click(".status-terminal");
   await page.locator("#terminal-panel:not([hidden])").waitFor();

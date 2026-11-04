@@ -14,7 +14,8 @@ import { open } from "./helpers.mjs";
 
 async function setup() {
   const opened = await open({
-    desktop: { custom_title_bar: true, window_control: false, load_settings: JSON.stringify({ outlineRight: true }) },
+    // 這裡檢查「相連」的區塊樣式；「圓角區塊、留間隔」（預設）見 panel-style.test.mjs。
+    desktop: { custom_title_bar: true, window_control: false, load_settings: JSON.stringify({ outlineRight: true, panelStyle: "joined" }) },
   });
   const { page } = opened;
   await page.setViewportSize({ width: 1500, height: 600 });
