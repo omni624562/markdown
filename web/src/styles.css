@@ -2566,6 +2566,11 @@ input[type="checkbox"]:not(.switch):disabled { opacity: 0.5; cursor: not-allowed
 .markdown-body .task-list-item input[type="checkbox"] { width: 1em; height: 1em; margin: 0 0.45em 0 -1.5em; vertical-align: -0.12em; }
 .markdown-body .task-list-item > input[type="checkbox"]:has(+ p) { margin-top: 0.45em; }
 input[type="checkbox"].cm-lp-checkbox { width: 1em; height: 1em; margin: 0 0.45em 0 0; vertical-align: -0.12em; }
+/* 預覽的待辦不能點（disabled），但要看得清楚：不變淡、游標是一般的箭頭；
+ * 沒勾的框線用 --subtle（和底色的對比在淺色、深色都超過 3:1，--border-strong 只有約 1.5:1），即時預覽的勾選框也一樣。 */
+.markdown-body .task-list-item input[type="checkbox"]:disabled { opacity: 1; cursor: default; }
+.markdown-body .task-list-item input[type="checkbox"]:not(:checked),
+input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: var(--subtle); }
 .markdown-body input[type="checkbox"]:checked, input[type="checkbox"].cm-lp-checkbox:checked { background-size: 80%; }
 .pdf-dialog h2 { margin-bottom: 18px; }
 .tasks-filters .segmented { flex: 1 1 100%; }
