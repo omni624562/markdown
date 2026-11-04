@@ -478,7 +478,7 @@ function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<A
     }
   }
   loadWorkItemParents([...ancestors]);
-  const { roots, rest } = parentTree(all, workItemParentOf, workItemParentItems);
+  const roots = parentTree(all, workItemParentOf, workItemParentItems);
   const toNode = (n: TreeNode<AdoWorkItem & IssueSummary>): IssueTreeNode<AdoWorkItem & IssueSummary> => ({
     item: n.item,
     dim: n.dim,
@@ -489,10 +489,8 @@ function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<A
       : undefined,
     children: n.children.map(toNode),
   });
-  const groups: IssueGroup<AdoWorkItem & IssueSummary>[] = [];
-  if (roots.length) groups.push({ title: null, items: [], tree: roots.map(toNode) });
-  if (rest.length) groups.push({ title: t("沒有上層項目"), items: rest });
-  return groups;
+  // 沒有上層的項目也是樹的最上層（例如 Epic 底下的都不在清單上），不另外分「沒有上層」一組。
+  return [{ title: null, items: [], tree: roots.map(toNode) }];
 }
 
 /** 清單上的一列：上面一行是類型、編號、指派對象與更新日期，狀態在右邊（`kind`、`state` 由清單上色）。 */

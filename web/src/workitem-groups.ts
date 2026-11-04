@@ -21,14 +21,15 @@ export interface TreeNode<T> {
  * 依上層項目排成樹。`items` 是清單上的項目（順序照清單：最近更新的在前面）；
  * `parentOf` 是每個項目的上層編號（清單上的與讀到的上層都要有，沒有上層是 null）；
  * `parents` 是讀到的上層項目（不在清單上的上層用）。
- * 每一層（子項目與最上層）都依編號由小到大排（和建立的先後一樣，Task 1、2、3 依序往下）。
- * 沒有上層、底下也沒有項目的放在 `rest`（「沒有上層項目」那一組）。讀不到的上層就當成沒有上層。
+ * 子項目依編號由小到大排（和建立的先後一樣，Task 1、2、3 依序往下）；最上層先依層級
+ * （Epic → Feature → Story → Task），同一層再依編號。沒有上層、底下也沒有項目的（例如 Epic 底下的
+ * 項目都不在清單上）也是最上層的一列，不另外分一組。讀不到的上層就當成沒有上層。
  */
 export function parentTree<T extends GroupItem>(
   items: T[],
   parentOf: Map<number, number | null>,
   parents: Map<number, T>,
-): { roots: TreeNode<T>[]; rest: T[] } {
+): TreeNode<T>[] {
   const listed = new Map(items.map((it) => [it.id, it]));
   const nodes = new Map<number, TreeNode<T>>();
   /** 已經接到上層（或確定是最上層）的節點。 */
@@ -65,14 +66,25 @@ export function parentTree<T extends GroupItem>(
     list.sort(byId);
     for (const n of list) sort(n.children);
   };
-  const rest: T[] = [];
-  const tree: TreeNode<T>[] = [];
-  for (const r of roots) {
-    if (r.children.length) tree.push(r);
-    else rest.push(r.item);
-  }
-  sort(tree);
-  return { roots: tree, rest };
+  sort(roots);
+  roots.sort((a, b) => kindLevel(a.item.kind) - kindLevel(b.item.kind) || a.item.id - b.item.id);
+  return roots;
+}
+
+/** 常見類型（Agile、Scrum、CMMI、Basic 流程）的層級，最上層是 0；沒列到的（自訂類型）當成 Story 那一層。 */
+const LEVELS: Record<string, number> = {
+  Epic: 0,
+  Feature: 1,
+  "User Story": 2,
+  "Product Backlog Item": 2,
+  Requirement: 2,
+  Issue: 2,
+  Bug: 2,
+  Task: 3,
+};
+
+export function kindLevel(kind: string): number {
+  return LEVELS[kind] ?? 2;
 }
 
 /** 節點底下（不含自己）清單上的項目，依類型計數；類型照第一次出現的層級排（例如 User Story 在 Task 前面）。 */
