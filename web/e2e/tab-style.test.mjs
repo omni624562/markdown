@@ -1,5 +1,5 @@
 /**
- * 分頁樣式（設定 → 外觀 → 分頁樣式）：頂端一條線（原本）、卡片、底線。
+ * 分頁樣式（設定 → 版面 → 分頁樣式）：頂端一條線（原本）、卡片、底線。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -21,7 +21,7 @@ const look = (page) =>
 
 async function pick(page, value) {
   await runCommand(page, "設定");
-  await page.click("dialog[open] [role=tab]:has-text('外觀')");
+  await page.click("dialog[open] [role=tab]:has-text('版面')");
   await page.locator("dialog[open]").getByLabel("分頁樣式").selectOption(value);
   await page.waitForFunction((v) => document.documentElement.dataset.tabStyle === v, value);
   await page.keyboard.press("Escape");

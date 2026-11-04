@@ -1131,6 +1131,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
   padding: 11px 16px;
 }
 .settings-row + .settings-row { border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent); }
+/* 搜尋設定時不符合的列（不用 hidden：hidden 是依狀態藏的，清掉搜尋後要維持原樣）。 */
+.settings-row.search-miss { display: none; }
 .settings-row > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .settings-row label { color: var(--fg); font-size: 14px; font-weight: 500; }
 .settings-row small { max-width: 46ch; color: var(--muted); font-size: 12.5px; line-height: 1.55; }

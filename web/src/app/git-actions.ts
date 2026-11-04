@@ -342,7 +342,7 @@ export function initGitActions(): void {
       title: t("圖示列：自訂…"),
       group: t("檢視"),
       icon: "settings",
-      run: () => app.settingsDialog.open(t("外觀")),
+      run: () => app.settingsDialog.open(t("版面")),
     },
     {
       id: "git-history",
