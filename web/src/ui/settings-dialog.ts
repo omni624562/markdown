@@ -80,24 +80,18 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["60", t("每小時")],
   ],
 };
-/** 設定的 GitHub 頁：帳號與儲存庫（桌面版）。 */
+/** 設定的「Git 與 GitHub」頁：GitHub 帳號（桌面版）。 */
 export interface GitHubHooks {
   account(): { login: string } | null;
-  /** 有開啟（本機的）資料夾，才能上傳到 GitHub。 */
-  canPublish(): boolean;
   login(): void;
   logout(): void;
-  openRepo(): void;
-  publish(): void;
 }
 
-/** 設定的 Azure DevOps／TFS 頁：連線、儲存庫與工作項目（桌面版）。 */
+/** 設定的 Azure DevOps 頁：連線、通知與工作項目類型的顏色（桌面版）。 */
 export interface AdoSettingsHooks {
   account(): { name: string; url: string } | null;
   connect(url: string, pat: string): Promise<boolean>;
   disconnect(): void;
-  openRepo(): void;
-  workItems(): void;
   /** 伺服器上的工作項目類型（設定類型的顏色時列出來）。 */
   kinds(): Promise<string[]>;
   /** 逐項檢查權杖能做什麼。 */
@@ -130,7 +124,7 @@ export interface AboutHooks {
   changelog(): void;
 }
 
-/** 「外觀」頁的左側圖示列：面板圖示的順序與顯示、釘上去的指令按鈕。 */
+/** 「版面」頁的左側圖示列：面板圖示的順序與顯示、釘上去的指令按鈕。 */
 export interface ActivityHooks {
   /** 面板圖示（依目前的順序）。`available` 是這台電腦、這個資料夾能不能用。 */
   panels(): { id: string; label: string; icon: string; available: boolean }[];
@@ -174,12 +168,24 @@ const LOOK_GROUPS: Group[] = [
     ],
   },
   {
-    title: t("版面"),
+    title: t("文件內容"),
+    fields: [
+      { key: "math", label: t("顯示數學公式"), hint: t("$…$ 與 $$…$$，使用 KaTeX") },
+      { key: "mermaid", label: t("顯示流程圖"), hint: t("```mermaid 程式碼區塊") },
+      { key: "blockRemoteImages", label: t("封鎖遠端圖片"), hint: t("不載入網路上的圖片，避免別人得知你何時開啟文件") },
+    ],
+  },
+];
+
+/** 「版面」頁（另外還有左側圖示列）。 */
+const LAYOUT_GROUPS: Group[] = [
+  {
+    // 分頁的標題就是「版面」，卡片上方不再重複一次。
     fields: [
       {
         key: "uiScale",
         label: t("介面大小"),
-        hint: t("整個視窗一起放大或縮小（選單、側邊欄、按鈕）；文件的字級在上面另外設定"),
+        hint: t("整個視窗一起放大或縮小（選單、側邊欄、按鈕）；文件的字級在「外觀」另外設定"),
         desktopOnly: true,
       },
       { key: "docLineHeight", label: t("行距") },
@@ -197,14 +203,6 @@ const LOOK_GROUPS: Group[] = [
         hint: t("狀態列右邊的「原始碼／即時預覽／分割／預覽」；關閉時只顯示圖示，名稱在滑鼠提示裡"),
       },
       { key: "lineNumbers", label: t("顯示行號"), hint: t("原始碼檢視") },
-    ],
-  },
-  {
-    title: t("文件內容"),
-    fields: [
-      { key: "math", label: t("顯示數學公式"), hint: t("$…$ 與 $$…$$，使用 KaTeX") },
-      { key: "mermaid", label: t("顯示流程圖"), hint: t("```mermaid 程式碼區塊") },
-      { key: "blockRemoteImages", label: t("封鎖遠端圖片"), hint: t("不載入網路上的圖片，避免別人得知你何時開啟文件") },
     ],
   },
 ];
@@ -276,11 +274,13 @@ export class SettingsDialog {
 
   #ai: AiHooks | null;
   #actions!: HTMLElement;
-  /** 重新整理 Git 頁的帳號狀態（登入、登出後）。 */
+  /** 重新整理 Git 與 Azure DevOps 頁的帳號狀態（登入、登出、連線後）。 */
   #refreshGit = () => {};
   #page = 0;
   /** 依搜尋文字篩選選項（空白時回到分類頁）。 */
   #filter: (query: string) => void = () => {};
+  /** 每一頁的舊名稱（見 #section）。 */
+  #aliases = new Map<HTMLElement, string[]>();
 
   constructor(
     store: SettingsStore,
@@ -373,84 +373,33 @@ export class SettingsDialog {
     );
     body.append(general);
 
-    const look = this.#section(t("外觀"), "palette", t("配色、字型、版面與文件內容的顯示方式"));
+    const look = this.#section(t("外觀"), "palette", t("配色、明暗、字型與文件內容的顯示方式"));
     look.append(...this.#paletteGroup(lookHooks, d));
     for (const g of LOOK_GROUPS) look.append(...this.#group(g.title, this.#rows(g.fields)));
-    if (activityHooks) look.append(...this.#activityGroup(activityHooks));
     body.append(look);
+
+    const layoutPage = this.#section(t("版面"), "layout-panel-left", t("介面大小、分頁樣式、行距與左側圖示列"));
+    for (const g of LAYOUT_GROUPS) layoutPage.append(...this.#group(g.title, this.#rows(g.fields)));
+    if (activityHooks) layoutPage.append(...this.#activityGroup(activityHooks));
+    body.append(layoutPage);
 
     const edit = this.#section(t("編輯"), "pen-line", t("寫作模式、輸入輔助與貼上"));
     for (const g of EDIT_GROUPS) edit.append(...this.#group(g.title, this.#rows(g.fields)));
     body.append(edit);
 
     body.append(this.#aiSection());
-    if (github) {
-      const git = this.#section("Git", "git-branch", t("同步的方式，GitHub 與 Azure DevOps／TFS 都適用；Git 已經內建，不需要另外安裝"));
-      const hub = this.#section("GitHub", "github", t("GitHub 帳號、下載與上傳儲存庫"));
-      const accountBtn = document.createElement("button");
-      accountBtn.type = "button";
-      accountBtn.id = "setting-github";
-      // 登入過期（權杖被撤銷）時不用先登出：直接重新登入就會換成新的權杖。
-      const reloginBtn = document.createElement("button");
-      reloginBtn.type = "button";
-      reloginBtn.className = "btn";
-      reloginBtn.textContent = t("重新登入");
-      reloginBtn.addEventListener("click", () => github.login());
-      const accountRow = this.#row("github", t("GitHub 帳號"), t("讀取中…"), () => {
-        const box = document.createElement("span");
-        box.className = "setting-buttons";
-        box.id = "setting-github-buttons";
-        box.append(reloginBtn, accountBtn);
-        return box;
-      });
-      const accountHint = accountRow.querySelector("small")!;
-      accountBtn.addEventListener("click", () => (github.account() ? github.logout() : github.login()));
-      const action = (id: string, label: string, run: () => void) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "btn";
-        b.id = `setting-${id}`;
-        b.textContent = label;
-        b.addEventListener("click", () => {
-          d.close();
-          run();
-        });
-        return b;
-      };
-      const publishBtn = action("github-publish", t("上傳…"), () => github.publish());
-      const adoPage = ado ? this.#adoPage(ado, action) : null;
-      this.#refreshGit = () => {
-        adoPage?.refresh();
-        const a = github.account();
-        accountHint.textContent = a ? t("已登入：{name}", { name: a.login }) : t("登入後就能把資料夾同步到 GitHub，在其他電腦也能下載");
-        accountBtn.className = a ? "btn" : "btn btn-primary";
-        accountBtn.textContent = a ? t("登出") : t("用 GitHub 登入");
-        reloginBtn.hidden = !a;
-        publishBtn.disabled = !github.canPublish();
-        publishBtn.title = publishBtn.disabled ? t("請先開啟要上傳的資料夾") : "";
-      };
-      this.#refreshGit();
-      d.addEventListener("toggle", () => this.#refreshGit());
-      hub.append(
-        ...this.#group(t("帳號"), [accountRow]),
-        ...this.#group(t("儲存庫"), [
-          this.#row("github-open", t("從 GitHub 下載或開啟儲存庫"), t("選一個儲存庫，下載到電腦並開啟"), () =>
-            action("github-open", t("開啟…"), () => github.openRepo()),
-          ),
-          this.#row("github-publish", t("上傳到 GitHub"), t("把目前開啟的資料夾建立成新的 GitHub 儲存庫"), () => publishBtn),
-        ]),
-      );
-      git.append(
-        ...this.#group(t("自動同步"), [
-          this.#row("gitAutoSync", t("自動同步"), t("定時提交、拉取、推送；兩邊改到同一個地方時會暫停，不會蓋掉任何內容"), () =>
-            this.#control("gitAutoSync"),
-          ),
-          this.#row("gitSyncMinutes", t("同步頻率"), undefined, () => this.#control("gitSyncMinutes")),
-        ]),
-      );
-      body.append(git, hub);
-      if (adoPage) body.append(adoPage.section);
-    }
+    // 下載、上傳儲存庫與顯示工作項目是一次性的動作，在 ⋯ 選單、指令面板與 Git 面板：設定裡只放帳號與選項。
+    const gitPage = github ? this.#gitPage(github) : null;
+    const adoPage = ado ? this.#adoPage(ado) : null;
+    if (gitPage) body.append(gitPage.section);
+    if (adoPage) body.append(adoPage.section);
+    this.#refreshGit = () => {
+      gitPage?.refresh();
+      adoPage?.refresh();
+      this.#hideEmptyGroups();
+    };
+    this.#refreshGit();
+    d.addEventListener("toggle", () => this.#refreshGit());
 
     body.append(this.#aboutSection(update, about, d));
     this.#buildNav(nav, body);
@@ -475,9 +424,12 @@ export class SettingsDialog {
     this.#dialog.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus();
     void this.#refreshTools();
     if (page) {
-      // 呼叫端可能傳中文原文或翻譯過的名稱。
+      // 呼叫端可能傳中文原文或翻譯過的名稱，也可能是改名、合併前的舊名稱。
       const names = [page, t(page)];
-      const tab = [...this.#dialog.querySelectorAll<HTMLButtonElement>("[role=tab]")].find((b) => names.includes(b.textContent ?? ""));
+      const tab = [...this.#dialog.querySelectorAll<HTMLButtonElement>("[role=tab]")].find((b) => {
+        const section = this.#dialog.querySelector<HTMLElement>(`#${b.getAttribute("aria-controls")}`);
+        return [b.textContent ?? "", ...(section ? (this.#aliases.get(section) ?? []) : [])].some((n) => names.includes(n));
+      });
       tab?.click();
     }
   }
@@ -517,27 +469,32 @@ export class SettingsDialog {
     });
     nav.append(...tabs);
     show(0);
+    // 搜尋不到的列用 class 藏起來，不動 `hidden`：`hidden` 是依狀態藏的（例如還沒連線時的帳號列），清掉搜尋後要維持原樣。
     this.#filter = (query) => {
       const q = query.trim().toLowerCase();
       const rows = [...body.querySelectorAll<HTMLElement>(".settings-row")];
+      for (const r of rows) r.classList.toggle("search-miss", !!q && !(r.textContent ?? "").toLowerCase().includes(q));
+      this.#hideEmptyGroups();
       if (!q) {
-        for (const el of body.querySelectorAll<HTMLElement>(".settings-row, .settings-group, .settings-group-title")) el.hidden = false;
         nav.classList.remove("searching");
         show(this.#page);
         return;
       }
       nav.classList.add("searching");
-      for (const r of rows) r.hidden = !(r.textContent ?? "").toLowerCase().includes(q);
-      for (const card of body.querySelectorAll<HTMLElement>(".settings-group")) {
-        const empty = ![...card.querySelectorAll<HTMLElement>(".settings-row")].some((r) => !r.hidden);
-        card.hidden = empty;
-        const title = card.previousElementSibling;
-        if (title instanceof HTMLElement && title.classList.contains("settings-group-title")) title.hidden = empty;
-      }
-      sections.forEach((sec) => (sec.hidden = ![...sec.querySelectorAll<HTMLElement>(".settings-row")].some((r) => !r.hidden)));
+      sections.forEach((sec) => (sec.hidden = !rows.some((r) => sec.contains(r) && shown(r))));
       tabs.forEach((tab) => tab.setAttribute("aria-selected", "false"));
       body.scrollTop = 0;
     };
+  }
+
+  /** 卡片裡的選項都藏起來時（還沒連線、搜尋不到），卡片連同上方的小標題一起藏起來，不留一張空卡片。 */
+  #hideEmptyGroups(): void {
+    for (const card of this.#dialog.querySelectorAll<HTMLElement>(".settings-group")) {
+      const empty = ![...card.querySelectorAll<HTMLElement>(":scope > .settings-row")].some(shown);
+      card.hidden = empty;
+      const title = card.previousElementSibling;
+      if (title instanceof HTMLElement && title.classList.contains("settings-group-title")) title.hidden = empty;
+    }
   }
 
   #aiSection(): HTMLElement {
@@ -698,9 +655,11 @@ export class SettingsDialog {
     logo.alt = "";
     const name = document.createElement("div");
     const title = Object.assign(document.createElement("strong"), { textContent: "oMarker" });
-    const version = Object.assign(document.createElement("span"), { textContent: about ? t("版本 {version}", { version: about.version }) : "" });
     const tagline = Object.assign(document.createElement("p"), { textContent: t("給中文寫作的 Markdown 編輯器：即時預覽、資料夾、Git 與 AI 協作") });
-    name.append(title, version, tagline);
+    name.append(title);
+    // 版本號只寫一次：有更新功能時寫在下面「更新」的第一列（旁邊是發佈日期與「檢查更新」），否則寫在名稱下面。
+    if (!update && about) name.append(Object.assign(document.createElement("span"), { textContent: t("版本 {version}", { version: about.version }) }));
+    name.append(tagline);
     hero.append(logo, name);
     section.append(hero);
 
@@ -718,7 +677,6 @@ export class SettingsDialog {
         const pending = update.pending();
         label.textContent = t("版本 {version}", { version: v.label });
         label.title = v.title;
-        version.textContent = t("版本 {version}", { version: v.label });
         hint.textContent = pending ? t("{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）", { version: pending }) : v.detail;
         hint.classList.toggle("settings-ready", !!pending);
         const checking = !pending && update.checking();
@@ -1050,9 +1008,11 @@ export class SettingsDialog {
     return this.#group(t("左側圖示列"), [hint]);
   }
 
-  #section(title: string, iconName: string, desc?: string): HTMLElement {
+  /** `aliases`：舊的分類名稱，`open()` 用它們也找得到這一頁（例如「GitHub」合併到「Git 與 GitHub」）。 */
+  #section(title: string, iconName: string, desc?: string, aliases: string[] = []): HTMLElement {
     const s = document.createElement("section");
     s.dataset.icon = iconName;
+    this.#aliases.set(s, aliases);
     const h = document.createElement("h3");
     h.textContent = title;
     s.append(h);
@@ -1136,16 +1096,59 @@ export class SettingsDialog {
     return sel;
   }
 
-  /** Azure DevOps：沒連線時輸入網址與權杖；連線後顯示帳號、下載儲存庫與工作項目。 */
-  /** Azure DevOps／TFS 頁：沒連線時輸入網址與權杖；連線後顯示帳號、下載儲存庫與工作項目。 */
-  #adoPage(
-    ado: AdoSettingsHooks,
-    action: (id: string, label: string, run: () => void) => HTMLButtonElement,
-  ): { section: HTMLElement; refresh(): void } {
+  /** 「Git 與 GitHub」頁：自動同步與 GitHub 帳號。 */
+  #gitPage(github: GitHubHooks): { section: HTMLElement; refresh(): void } {
     const section = this.#section(
-      t("Azure DevOps／TFS"),
+      t("Git 與 GitHub"),
+      "git-branch",
+      t("自動同步與 GitHub 帳號；同步也適用 Azure DevOps／TFS 的儲存庫。Git 已經內建，不需要另外安裝"),
+      ["Git", "GitHub"],
+    );
+    const accountBtn = document.createElement("button");
+    accountBtn.type = "button";
+    accountBtn.id = "setting-github";
+    // 登入過期（權杖被撤銷）時不用先登出：直接重新登入就會換成新的權杖。
+    const reloginBtn = document.createElement("button");
+    reloginBtn.type = "button";
+    reloginBtn.className = "btn";
+    reloginBtn.textContent = t("重新登入");
+    reloginBtn.addEventListener("click", () => github.login());
+    const accountRow = this.#row("github", t("GitHub 帳號"), t("讀取中…"), () => {
+      const box = document.createElement("span");
+      box.className = "setting-buttons";
+      box.id = "setting-github-buttons";
+      box.append(reloginBtn, accountBtn);
+      return box;
+    });
+    const accountHint = accountRow.querySelector("small")!;
+    accountBtn.addEventListener("click", () => (github.account() ? github.logout() : github.login()));
+    section.append(
+      ...this.#group(t("自動同步"), [
+        this.#row("gitAutoSync", t("自動同步"), t("定時提交、拉取、推送；兩邊改到同一個地方時會暫停，不會蓋掉任何內容"), () =>
+          this.#control("gitAutoSync"),
+        ),
+        this.#row("gitSyncMinutes", t("同步頻率"), undefined, () => this.#control("gitSyncMinutes")),
+      ]),
+      ...this.#group(t("帳號"), [accountRow]),
+    );
+    const refresh = () => {
+      const a = github.account();
+      accountHint.textContent = a ? t("已登入：{name}", { name: a.login }) : t("登入後就能把資料夾同步到 GitHub，在其他電腦也能下載");
+      accountBtn.className = a ? "btn" : "btn btn-primary";
+      accountBtn.textContent = a ? t("登出") : t("用 GitHub 登入");
+      reloginBtn.hidden = !a;
+    };
+    return { section, refresh };
+  }
+
+  /** Azure DevOps 頁：沒連線時輸入網址與權杖；連線後顯示帳號、權限檢查、通知與工作項目類型的顏色。 */
+  #adoPage(ado: AdoSettingsHooks): { section: HTMLElement; refresh(): void } {
+    // 分類名稱只寫「Azure DevOps」（寫成「Azure DevOps／TFS」在左邊排不下一行）；TFS 寫在說明裡。
+    const section = this.#section(
+      "Azure DevOps",
       "briefcase-business",
-      t("公司自架的 Azure DevOps Server（TFS）或雲端版：連線、下載儲存庫與工作項目"),
+      t("公司自架的 Azure DevOps Server（TFS）或雲端版：連線、通知與工作項目類型的顏色"),
+      [t("Azure DevOps／TFS"), "Azure DevOps／TFS"], // i18n-ignore：舊的分類名稱（呼叫端用它打開這一頁）
     );
     const input = (id: string, type: string, placeholder: string) => {
       const el = document.createElement("input");
@@ -1207,12 +1210,6 @@ export class SettingsDialog {
     pat.addEventListener("keydown", (e) => {
       if (e.key === "Enter") void connect();
     });
-    const openRow = this.#row("ado-open", t("從 Azure DevOps／TFS 下載或開啟儲存庫"), t("選一個儲存庫或專案 Wiki，下載到電腦並開啟"), () =>
-      action("ado-open", t("開啟…"), () => ado.openRepo()),
-    );
-    const itemsRow = this.#row("ado-items", t("工作項目"), t("在側邊欄列出指派給你的工作項目，可以插入連結到文件"), () =>
-      action("ado-items", t("顯示"), () => ado.workItems()),
-    );
     const notifyRow = this.#row(
       "adoNotify",
       t("新指派給我時通知"),
@@ -1266,7 +1263,17 @@ export class SettingsDialog {
       "ado-diagnostics",
       t("診斷資料"),
       t("把伺服器對常用請求的實際回應存成檔案（人名、信箱、標題與內容會拿掉），回報問題時附上"),
-      () => action("ado-diagnostics", t("儲存…"), () => ado.diagnostics()),
+      () => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn";
+        b.textContent = t("儲存…");
+        b.addEventListener("click", () => {
+          this.#dialog.close();
+          ado.diagnostics();
+        });
+        return b;
+      },
     );
     const colors = this.#kindColors(ado);
     const refresh = () => {
@@ -1276,7 +1283,7 @@ export class SettingsDialog {
       urlRow.hidden = patRow.hidden = !asking;
       // 上面兩列藏起來時，帳號是第一列，不需要分隔線。
       statusRow.style.borderTop = asking ? "" : "0";
-      openRow.hidden = itemsRow.hidden = notifyRow.hidden = checkRow.hidden = diagnoseRow.hidden = colors.row.hidden = colors.grid.hidden = !a;
+      notifyRow.hidden = checkRow.hidden = diagnoseRow.hidden = colors.row.hidden = colors.grid.hidden = !a;
       colors.account(a?.url ?? null);
       if (!a) results.hidden = true;
       label.textContent = a ? t("帳號") : t("連線");
@@ -1287,11 +1294,14 @@ export class SettingsDialog {
       renewBtn.textContent = editing ? t("取消") : t("更新權杖");
       connectBtn.className = asking ? "btn btn-primary" : "btn";
       connectBtn.textContent = !a ? t("連線") : editing ? t("更新連線") : t("中斷連線");
+      // 在這一頁按「連線」後直接呼叫這裡：「工作項目」那一組要跟著出現。
+      this.#hideEmptyGroups();
     };
     refresh();
     section.append(
       ...this.#group(t("連線"), [urlRow, patRow, statusRow, checkRow, results, diagnoseRow]),
-      ...this.#group(t("儲存庫與工作項目"), [openRow, itemsRow, notifyRow, colors.row, colors.grid]),
+      // 沒連線時這一組都藏起來，連小標題一起（見 #hideEmptyGroups）。
+      ...this.#group(t("工作項目"), [notifyRow, colors.row, colors.grid]),
     );
     return { section, refresh };
   }
@@ -1469,7 +1479,13 @@ export class SettingsDialog {
     for (const el of this.#dialog.querySelectorAll<HTMLElement>("[data-ai-group]")) el.classList.toggle("is-off", !v.aiEnabled);
     // 正在輸入時不要重畫，避免游標跳走。
     if (!this.#actions?.contains(document.activeElement)) this.#renderActions();
+    this.#hideEmptyGroups();
   }
+}
+
+/** 選項列看得到：沒有依狀態藏起來，也沒有被搜尋篩掉。 */
+function shown(row: HTMLElement): boolean {
+  return !row.hidden && !row.classList.contains("search-miss");
 }
 
 /** 字型欄位用輸入的字型顯示；名稱不完整時退回介面字型。 */

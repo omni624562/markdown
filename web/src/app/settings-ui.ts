@@ -1,7 +1,7 @@
 /**
  * 設定：套用設定、字型大小、簡體轉繁體、設定對話框。
  */
-import { desktop, isRemote } from "../desktop.ts";
+import { desktop } from "../desktop.ts";
 import { fontStack } from "../fonts.ts";
 import { t, currentLang } from "../i18n.ts";
 import { refreshLivePreview } from "../live-preview.ts";
@@ -20,7 +20,7 @@ import { applyActivityLayout, openUrl, openWelcome, openChangelog, panelOrder, P
 import { showShortcuts } from "./shortcuts-dialog.ts";
 import { reportError } from "./git-actions.ts";
 import { buildFormatBar } from "./new-work-item.ts";
-import { showAdo, gitPanel } from "./work-item-updates.ts";
+import { gitPanel } from "./work-item-updates.ts";
 import { renderAdoTab, renderIssuesTab } from "./work-items-panel.ts";
 import { kindColorCss } from "../work-item-colors.ts";
 import type { ViewUpdate } from "@codemirror/view";
@@ -253,11 +253,8 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
     app.github
       ? {
           account: () => app.github!.account,
-          canPublish: () => !!app.workspaceRoot && !isRemote(app.workspaceRoot.path),
           login: () => void app.github!.login(),
           logout: () => void app.github!.logout(),
-          openRepo: () => void app.github!.openRepo(),
-          publish: () => void app.github!.publish(),
         }
       : null,
     app.ado
@@ -265,8 +262,6 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
           account: () => app.ado!.account,
           connect: (url, pat) => app.ado!.connect(url, pat),
           disconnect: () => void app.ado!.disconnect(),
-          openRepo: () => void app.ado!.openRepo(),
-          workItems: () => showAdo("workitems"),
           kinds: () => desktop!.adoWorkItemFilters().then((f) => f.kinds),
           check: () => desktop!.adoCheck(),
           diagnostics: () => void saveAdoDiagnostics(),
