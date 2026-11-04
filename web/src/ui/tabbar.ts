@@ -265,6 +265,9 @@ export class TabBar {
       if (e.isComposing) return;
       if (e.key === "Enter") finish(true);
       else if (e.key === "Escape") finish(false);
+      else return;
+      // 改檔名後可能接著跳出對話框（例如要不要更新連結）：這次的 Enter 不能按到對話框的按鈕。
+      e.preventDefault();
     });
     input.addEventListener("blur", () => finish(true));
     input.addEventListener("click", (e) => e.stopPropagation());

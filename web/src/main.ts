@@ -91,7 +91,7 @@ import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focuse
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
 import type { IssueFact } from "./ui/issue-view.ts";
 import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
-import { NOT_CONNECTED, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
+import { NOT_CONNECTED, canRenameFile, closeProject, davDialog, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, renameEntry, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
@@ -2065,10 +2065,7 @@ const tabBar = new TabBar($("#tab-bar"), {
   create: () => void commands.run("new"),
   canRename: (id) => {
     const doc = docs.find((d) => d.id === id);
-    if (!doc) return false;
-    if ((doc === active ? cur.fileHandle : doc.handle) === null) return true;
-    toast(t("已經存成檔案的文件，請在「檔案」面板中重新命名（選取後按 F2）。"));
-    return false;
+    return !!doc && ((doc === active ? cur.fileHandle : doc.handle) === null || canRenameFile(tabPath(doc)));
   },
   rename: (id, name) => renameDoc(id, name),
   menu: (id, at) => {
@@ -2125,10 +2122,12 @@ async function closeTabs(list: Doc[]): Promise<void> {
   }
 }
 
-/** 還沒存成檔案的文件改名（存檔時當成預設檔名）。輸入已知的副檔名時順便切換文件類型。 */
+/** 在分頁上改名：存成檔案的和檔案面板一樣改磁碟上的檔名；還沒存成檔案的只改名稱（存檔時的預設檔名），輸入已知的副檔名時順便切換文件類型。 */
 function renameDoc(id: string, name: string): void {
   const doc = docs.find((d) => d.id === id);
   if (!doc) return;
+  const path = tabPath(doc);
+  if (path) return void renameEntry({ path, name: basename(path), isDir: false }, name).catch(reportError);
   if (doc !== active) {
     doc.name = name;
     persistSession();
