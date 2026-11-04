@@ -169,11 +169,15 @@ export class Commands {
 
   /**
    * 登記指令。同一個 id 只能登記一次：重複的話指令面板會列出兩次，快速鍵、圖示列與自訂快速鍵
-   * 都只認得第一個，所以直接丟出錯誤（啟動就失敗，測試一定抓得到）。
+   * 都只認得第一個。重複的那個不登記，並在主控台記一筆錯誤（端對端測試會把主控台錯誤當成失敗，
+   * 一定抓得到；正式版不會因此整個開不起來）。
    */
   register(...cmds: Command[]): void {
     for (const c of cmds) {
-      if (this.#defaults.has(c.id)) throw new Error(`指令 id 重複：${c.id}`); // i18n-ignore（開發者錯誤）
+      if (this.#defaults.has(c.id)) {
+        console.error(`指令 id 重複：${c.id}`); // i18n-ignore（開發者錯誤）
+        continue;
+      }
       this.#defaults.set(c.id, { keys: c.keys, shownKeys: c.shownKeys });
       this.#apply(c);
       this.#list.push(c);

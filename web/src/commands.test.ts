@@ -116,12 +116,22 @@ test("自訂快速鍵：覆蓋、拿掉、還原內建的", () => {
   assert.equal(commands.get("paste-plain")!.shownKeys, "Mod-Shift-v");
 });
 
-test("同一個 id 只能登記一次：重複時丟出錯誤，不會出現兩個同名的指令", () => {
+test("同一個 id 只能登記一次：重複的不登記，主控台記一筆錯誤，不會出現兩個同名的指令", () => {
   const commands = new Commands();
   const cmd = (id: string) => ({ id, title: id, group: "g", run() {} });
-  commands.register(cmd("git-commit"), cmd("git-push"));
-  assert.throws(() => commands.register(cmd("git-commit")), /git-commit/);
-  assert.throws(() => commands.register(cmd("a"), cmd("a")), /\ba\b/);
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (msg: string) => logged.push(msg);
+  try {
+    commands.register(cmd("git-commit"), cmd("git-push"));
+    commands.register(cmd("git-commit"));
+    commands.register(cmd("a"), cmd("a"));
+  } finally {
+    console.error = original;
+  }
+  assert.equal(logged.length, 2);
+  assert.match(logged[0], /git-commit/);
+  assert.match(logged[1], /\ba\b/);
   assert.deepEqual(
     commands.all().map((c) => c.id),
     ["git-commit", "git-push", "a"],
