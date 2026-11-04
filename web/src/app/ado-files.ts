@@ -264,7 +264,7 @@ export async function deleteWikiPage(wiki: AdoWiki, path: string): Promise<void>
       : t("「{name}」會從伺服器刪除，大家都看不到了。", { name }),
     linked ?? "",
     editing.length ? t("正在編輯這些頁面的分頁會保留內容，但不能再存回伺服器。") : "",
-    t("刪除後只能從 Wiki 儲存庫的修改記錄找回。"),
+    t("刪除後只能從 Wiki 儲存庫的修改紀錄找回。"),
   ];
   const choice = await choose(t("刪除 Wiki 頁面？"), parts.filter(Boolean).join(currentLang() === "en" ? " " : ""), [
     { id: "delete", label: children ? t("刪除這一頁和子頁面") : t("刪除這一頁"), danger: true },

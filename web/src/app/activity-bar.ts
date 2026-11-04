@@ -298,14 +298,14 @@ export async function startAiTool(tool: "claude" | "codex"): Promise<void> {
   await app.terminal?.start(tool);
 }
 
-/** 說明：在新分頁開啟歡迎文件（起始頁的「3 分鐘認識 oMarker」、「說明」選單）。 */
+/** 說明：在新分頁開啟「3 分鐘認識 oMarker」（起始頁、「說明」選單）。 */
 export function openWelcome(): void {
-  const existing = app.docs.find((d) => !d.path && d.name === t("歡迎使用 oMarker.md"));
+  const existing = app.docs.find((d) => !d.path && d.name === t("3 分鐘認識 oMarker.md"));
   if (existing) {
     app.activate(existing);
     return;
   }
-  const doc = app.makeDoc({ name: t("歡迎使用 oMarker.md"), kind: "markdown", baseline: app.hash(app.sample) });
+  const doc = app.makeDoc({ name: t("3 分鐘認識 oMarker.md"), kind: "markdown", baseline: app.hash(app.sample) });
   saveDraft(doc.id, app.sample);
   app.addTab(doc);
 }
@@ -971,7 +971,7 @@ export function initActivityBar(): void {
       "tab-close-saved",
       "-",
       {
-        label: t("固定分頁"),
+        label: t("釘選分頁"),
         icon: "pin",
         checked: () => app.tabPinned(app.menuItemTab()?.id ?? app.menuTab().id),
         run: () => void app.commands.run("tab-pin"),

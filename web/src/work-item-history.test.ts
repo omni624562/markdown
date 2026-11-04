@@ -26,7 +26,7 @@ const rev = (r: Partial<AdoWorkItemRevision>): AdoWorkItemRevision => ({
   ...r,
 });
 
-test("修改記錄：每次一段，欄位原本 → 之後，長文字只標有修改，加減關聯與留言", () => {
+test("修改紀錄：每次一段，欄位原本 → 之後，長文字只標有修改，加減關聯與留言", () => {
   const md = historyMarkdown(item, [
     rev({
       rev: 3,
@@ -42,7 +42,7 @@ test("修改記錄：每次一段，欄位原本 → 之後，長文字只標有
       comment: "<p>開始處理</p>",
     }),
   ]);
-  assert.match(md, /^# 修改記錄：Bug 123：登入 \\\[失敗\\\]\n/);
+  assert.match(md, /^# 修改紀錄：Bug 123：登入 \\\[失敗\\\]\n/);
   assert.match(md, /### 李大同・2026-10-02 \d\d:00/);
   assert.match(md, /- \*\*狀態\*\*：New → Active/);
   assert.match(md, /- \*\*指派給\*\*：李大同\n/, "原本沒有值時只寫之後的");
@@ -53,8 +53,8 @@ test("修改記錄：每次一段，欄位原本 → 之後，長文字只標有
   assert.match(md, /留言：\n\n> 開始處理/);
 });
 
-test("修改記錄：沒有記錄、欄位名稱與工作項目網址", () => {
-  assert.match(historyMarkdown(item, []), /還沒有修改記錄/);
+test("修改紀錄：沒有紀錄、欄位名稱與工作項目網址", () => {
+  assert.match(historyMarkdown(item, []), /還沒有修改紀錄/);
   assert.equal(fieldName("Microsoft.VSTS.Scheduling.RemainingWork"), "剩餘工時");
   assert.equal(fieldName("Custom.Foo"), "Foo");
   assert.equal(workItemUrl(item, 9), "https://tfs/DC/產品/_workitems/edit/9");

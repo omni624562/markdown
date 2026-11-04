@@ -891,7 +891,7 @@ let docs: Doc[] = docsFrom(restored);
 const firstLaunch = !docs.length;
 if (firstLaunch) {
   // 第一次使用：空白文件，畫面上是起始頁（新增、開啟、連線、「3 分鐘認識 oMarker」）。
-  // 歡迎文件很長，不再一開始就塞給使用者；想看時從起始頁或「說明」開啟。
+  // 「3 分鐘認識 oMarker」很長，不再一開始就塞給使用者；想看時從起始頁或「說明」開啟。
   docs = [makeDoc({ name: t("未命名.md"), kind: "markdown", baseline: hash("") })];
 }
 let active: Doc = docs.find((d) => d.id === restored?.activeId) ?? docs[0];
@@ -1496,7 +1496,7 @@ function startConnect(): StartAction[] {
   if (!desktop || !accountsReady) return [];
   const list: StartAction[] = [];
   if (ado && !ado.account)
-    list.push({ icon: "briefcase-business", label: t("連線 Azure DevOps／TFS…"), run: () => settingsDialog.open(t("Azure DevOps／TFS")) });
+    list.push({ icon: "briefcase-business", label: t("連線 Azure DevOps／TFS…"), run: () => settingsDialog.open("Azure DevOps") });
   if (github && !github.account) list.push({ icon: "github", label: t("登入 GitHub…"), run: () => settingsDialog.open("GitHub") });
   return list;
 }
@@ -2170,8 +2170,8 @@ const projectUi = desktop
       unsaved: (path) =>
         (peekSession(path)?.docs ?? []).some((m) => m.baseline !== null && draftState(m).dirty),
       repoSources: () => [
-        ...(github ? [{ id: "github", title: t("從 GitHub 下載儲存庫…"), icon: "github", run: () => void github.openRepo() }] : []),
-        ...(ado ? [{ id: "ado", title: t("從 Azure DevOps／TFS 下載儲存庫…"), icon: "briefcase-business", run: () => void ado?.openRepo() }] : []),
+        ...(github ? [{ id: "github", title: t("GitHub：下載儲存庫…"), icon: "github", run: () => void github.openRepo() }] : []),
+        ...(ado ? [{ id: "ado", title: t("Azure DevOps：下載儲存庫…"), icon: "briefcase-business", run: () => void ado?.openRepo() }] : []),
       ],
     })
   : null;
@@ -2253,7 +2253,7 @@ const ado = desktop && features.ado
         void gitPanel?.refresh();
         renderEmptyState(editor.text);
       },
-      openSettings: () => settingsDialog.open(t("Azure DevOps／TFS")),
+      openSettings: () => settingsDialog.open("Azure DevOps"),
     })
   : null;
 // 帳號讀到後，起始頁才列出還沒連線的 Azure DevOps、GitHub。
@@ -2991,9 +2991,9 @@ async function closeTab(id: string): Promise<void> {
   }
   if (doc === active) stash();
   if (doc.dirty) {
-    const choice = await choose(t("要儲存變更嗎？"), t("「{name}」有尚未存檔的變更。", { name: docName(doc) }), [
-      { id: "save", label: t("儲存"), primary: true },
-      { id: "discard", label: t("不儲存"), danger: true },
+    const choice = await choose(t("要存檔嗎？"), t("「{name}」有尚未存檔的變更。", { name: docName(doc) }), [
+      { id: "save", label: t("存檔"), primary: true },
+      { id: "discard", label: t("不存檔"), danger: true },
       { id: "cancel", label: t("取消") },
     ]);
     if (choice === "save") {
@@ -3219,7 +3219,7 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   gitPanel?.refreshSoon(300);
   setBaseline(text, true);
   setFileName(out.name);
-  toast(out.handle ? t("已儲存到「{name}」", { name: out.name }) : t("已下載「{name}」", { name: out.name }), { tone: "success" });
+  toast(out.handle ? t("已存檔為「{name}」", { name: out.name }) : t("已下載「{name}」", { name: out.name }), { tone: "success" });
 }
 
 initOfflineDrive();
@@ -3230,9 +3230,9 @@ initAiTerminal();
 // ---- 本機版本記錄（E12） ------------------------------------------------------
 
 const historyPicker = new Picker<FileVersion & { path: string }>({
-  label: t("版本記錄"),
+  label: t("版本紀錄"),
   placeholder: t("選擇一個版本，和目前的內容比較"),
-  empty: t("這個檔案還沒有版本記錄。存檔時會自動保存。"),
+  empty: t("這個檔案還沒有版本紀錄。存檔時會自動保存。"),
   async query(q) {
     const path = cur.fileHandle?.path;
     if (!desktop || !path) return [];
@@ -3387,7 +3387,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   { label: t("文件工具"), icon: "wand-sparkles", items: ["doc-stats", "history", "save-as-template", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
   "-",
   { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
-  { label: t("主題"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark", "-", "choose-palette"] },
+  { label: t("外觀"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark", "-", "choose-palette"] },
   {
     label: t("說明"),
     icon: "circle-help",

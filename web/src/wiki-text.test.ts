@@ -114,7 +114,7 @@ test("childPagePath 組出新頁面的路徑", () => {
   assert.equal(childPagePath("/產品/安裝", "Windows"), "/產品/安裝/Windows");
 });
 
-test("修改記錄的說明：自動產生的英文說明換成簡短的說法，自己寫的照原樣", () => {
+test("修改紀錄的說明：自動產生的英文說明換成簡短的說法，自己寫的照原樣", () => {
   const path = "/📕專案需求對焦專區/DGT_00098_新阿發3.0業務中台/消費明細查詢及爭議帳申請";
   assert.equal(revisionNote(`Updated page '${path}'.`, path), "修改這一頁");
   assert.equal(revisionNote(`Added page '${path}'.`, path), "新增這一頁");

@@ -249,7 +249,7 @@ function placeWiki(right: HTMLElement): void {
   if (onRight && panel.parentElement !== right) {
     right.append(panel);
     panel.hidden = false;
-    // 圖示列的 Wiki 圖示留著（按一下打開或收起右側欄）；標出它在右側（不用 hidden：連線狀態也用它）。
+    // 圖示列的 Wiki 圖示留著（按一下顯示或隱藏右側欄）；標出它在右側（不用 hidden：連線狀態也用它）。
     tab.classList.add("placed-right");
     if (app.sidePanel === "wiki") showPanel("workitems", false);
     if (app.rightOutlineShown) wikiPanel?.shown();
@@ -258,7 +258,7 @@ function placeWiki(right: HTMLElement): void {
     tab.classList.remove("placed-right");
     panel.hidden = app.sidePanel !== "wiki";
   }
-  const tabLabel = onRight ? t("Wiki（在右側欄，按一下打開或收起右側欄）") : t("Wiki（Azure DevOps）");
+  const tabLabel = onRight ? t("Wiki（在右側欄，按一下顯示或隱藏右側欄）") : t("Wiki（Azure DevOps）");
   tab.title = tabLabel;
   tab.setAttribute("aria-label", tabLabel);
   const dock = document.getElementById("wiki-dock");
@@ -825,7 +825,7 @@ export function initWorkspaceUi(): void {
     const p = document.createElement("p");
     p.className = "side-empty";
     // 「{keys}」換成快速鍵的 <kbd>。
-    const [before, after] = t("搜尋整個資料夾的內容需要桌面版。要搜尋目前的文件，請按 {keys}。").split("{keys}");
+    const [before, after] = t("搜尋整個資料夾的內容需要桌面版。要在目前的文件中尋找，請按 {keys}。").split("{keys}");
     p.textContent = before;
     p.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys("Mod-f") }), after ?? "");
     app.$("#search-host").append(p);

@@ -30,6 +30,8 @@
 | 未存檔的變更 | unsaved changes |
 | 草稿 | draft |
 | 原始碼／即時預覽／分割／預覽 | Source／Live Preview／Split／Preview |
+| 並排（兩份文件左右並排） | Side by Side |
+| 明暗（跟隨系統／淺色／深色） | Color Mode (Follow System／Light／Dark) |
 | 大綱／側邊欄／狀態列 | Outline／Sidebar／Status Bar |
 | 指令面板 | Command Palette |
 | 設定（外觀、編輯、進階） | Settings (Appearance, Editing, Advanced) |
@@ -43,11 +45,11 @@
 | 建立 Pull Request | Create Pull Request |
 | 工作項目 | Work Items |
 | 個人存取權杖 | personal access token |
-| 集合（ADO） | collection |
-| 版本記錄 | Version History |
+| 集合（Azure DevOps） | collection |
+| 版本紀錄 | Version History |
 | 自動存檔 | Auto Save |
 | 終端機 | Terminal |
-| 快捷動作（AI） | Quick Actions |
+| AI 快速動作 | AI Quick Actions |
 | 範本 | Template |
 | 待辦總覽 | Tasks |
 | 標籤 | Tags |
@@ -61,7 +63,8 @@
 | 檔案總管 | File Explorer |
 | 資源回收筒 | Recycle Bin |
 | 釘選／群組 | Pin／Group |
-| 尋找與取代 | Find and Replace |
+| 尋找與取代（目前的文件）／在資料夾中搜尋 | Find and Replace／Search in Folder |
+| 下載儲存庫 | Download Repository |
 | 正規表示式 | regular expression |
 | 匯出／匯入 | Export／Import |
 | 範例文件 | sample document |

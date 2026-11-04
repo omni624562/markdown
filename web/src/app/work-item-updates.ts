@@ -216,7 +216,7 @@ export function initWorkItemUpdates(): void {
     const problem = authProblem(message);
     const github = app.github;
     if (problem === "github" && github) return { label: t("重新登入 GitHub"), primary: true, run: () => void github.login() };
-    if (problem === "ado" && app.ado) return { label: t("開啟連線設定"), primary: true, run: () => app.settingsDialog.open(t("Azure DevOps／TFS")) };
+    if (problem === "ado" && app.ado) return { label: t("開啟連線設定"), primary: true, run: () => app.settingsDialog.open("Azure DevOps") };
     return undefined;
   });
   gitPanel = desktop && app.fileTree && app.github

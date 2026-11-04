@@ -165,8 +165,8 @@ export class TabBar {
         close.tabIndex = -1;
         close.classList.toggle("dirty", info.dirty);
         if (info.pinned) {
-          close.title = info.dirty ? t("已固定（有未存檔的變更）；按一下取消固定") : t("已固定；按一下取消固定");
-          close.setAttribute("aria-label", t("取消固定「{name}」", { name: info.name }));
+          close.title = info.dirty ? t("已釘選（有未存檔的變更）；按一下取消釘選") : t("已釘選；按一下取消釘選");
+          close.setAttribute("aria-label", t("取消釘選「{name}」", { name: info.name }));
           close.append(icon("pin"));
         } else {
           close.title = info.dirty ? t("關閉（有未存檔的變更）") : t("關閉");

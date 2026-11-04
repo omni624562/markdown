@@ -69,7 +69,7 @@ export interface GitPanelHooks {
   createPr(): void;
   /** 開啟 Git 歷史。 */
   history(): void;
-  /** 從 Azure DevOps／TFS 下載儲存庫（有這個功能時）。 */
+  /** 從 Azure DevOps 下載儲存庫（有這個功能時）。 */
   openAdo: (() => void) | null;
   /** 儲存庫狀態改變（更新活動列圖示的變更數）。沒有開啟資料夾時是 null。 */
   changed(status: GitStatus | null): void;
@@ -403,7 +403,7 @@ export class GitPanel {
     const text = document.createElement("p");
     const actions = document.createElement("div");
     actions.className = "git-setup-actions";
-    const open = this.#button(t("從 GitHub 開啟儲存庫"), "github", () => this.#github.openRepo());
+    const open = this.#button(t("GitHub：下載儲存庫…"), "github", () => this.#github.openRepo());
     if (root) {
       title.textContent = t("這個資料夾還沒有同步到 GitHub");
       text.textContent = t("上傳到 GitHub 之後，可以在其他電腦下載同一個資料夾，每次的修改都會留下紀錄，也可以自動同步。不需要安裝 Git。");
@@ -417,7 +417,7 @@ export class GitPanel {
       actions.append(open);
     }
     const ado = this.#hooks.openAdo;
-    if (ado) actions.append(this.#button(t("從 Azure DevOps／TFS 下載"), "briefcase-business", async () => ado()));
+    if (ado) actions.append(this.#button(t("Azure DevOps：下載儲存庫…"), "briefcase-business", async () => ado()));
     box.append(title, text, actions, this.#accountLine());
     this.#host.replaceChildren(box);
   }

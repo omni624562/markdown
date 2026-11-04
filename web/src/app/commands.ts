@@ -245,7 +245,7 @@ export function initCommands(): void {
     },
     {
       id: "tab-close-saved",
-      title: t("關閉已儲存的分頁"),
+      title: t("關閉已存檔的分頁"),
       group: t("分頁"),
       icon: "x",
       // 工作項目等沒有要存的，也算已儲存。
@@ -254,7 +254,7 @@ export function initCommands(): void {
     },
     {
       id: "tab-pin",
-      title: t("固定／取消固定分頁"),
+      title: t("釘選／取消釘選分頁"),
       group: t("分頁"),
       icon: "pin",
       run() {
@@ -363,7 +363,7 @@ export function initCommands(): void {
     },
     {
       id: "show-welcome",
-      title: t("說明：開啟歡迎文件"),
+      title: t("說明：3 分鐘認識 oMarker"),
       group: t("說明"),
       icon: "book-open-text",
       run: () => openWelcome(),
@@ -667,7 +667,7 @@ export function initCommands(): void {
     },
     {
       id: "find",
-      title: t("搜尋與取代"),
+      title: t("尋找與取代"),
       group: t("編輯"),
       icon: "search",
       keys: "Mod-f",
@@ -811,7 +811,7 @@ export function initCommands(): void {
         title: {
           editor: t("只顯示原始碼"),
           live: t("即時預覽（在編輯區直接顯示排版）"),
-          split: t("原始碼與預覽並排"),
+          split: t("分割（原始碼與預覽）"),
           preview: t("只顯示預覽"),
         }[mode],
         group: t("檢視"),
@@ -880,7 +880,7 @@ export function initCommands(): void {
     ...(["system", "light", "dark"] as const).map(
       (pref): Command => ({
         id: `theme-${pref}`,
-        title: { system: t("主題：跟隨系統"), light: t("主題：淺色"), dark: t("主題：深色") }[pref],
+        title: { system: t("明暗：跟隨系統"), light: t("明暗：淺色"), dark: t("明暗：深色") }[pref],
         group: t("檢視"),
         icon: { system: "monitor", light: "sun", dark: "moon" }[pref],
         checked: () => app.themePref === pref,

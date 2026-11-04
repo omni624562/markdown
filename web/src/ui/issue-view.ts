@@ -1,7 +1,7 @@
 /**
  * 工作項目、GitHub issue 開在主要區域的唯讀檢視（蓋在編輯區與預覽上面，或並排在右邊）：
  * 上方是位置、標題與動作（最常用的一個用文字按鈕，其他用圖示，少用的放在分頁的右鍵選單），
- * 內容由預覽同一套流程顯示。Ctrl+F 在內容裡找字，Esc 回到文件。
+ * 內容由預覽同一套流程顯示。Ctrl+F 在內容中尋找，Esc 回到文件。
  * 每一項是分頁列上的一個分頁（app/item-tabs.ts）；這個檢視一次顯示一個，切換分頁時換上那個分頁的狀態。
  */
 import { formatKeys } from "../commands.ts";
@@ -238,7 +238,7 @@ export class IssueView {
     this.#editBtn.title = t("在同一個分頁編輯，按 Ctrl+S 存回伺服器；按狀態列的「完成編輯」換回閱讀");
     this.#editBtn.hidden = true;
     this.#editBtn.addEventListener("click", () => this.#source?.edit?.());
-    this.#historyBtn = iconButton(t("修改記錄：誰、什麼時候改了這一頁，改了什麼"), "history", () => this.#source?.history?.());
+    this.#historyBtn = iconButton(t("修改紀錄：誰、什麼時候改了這一頁，改了什麼"), "history", () => this.#source?.history?.());
     this.#historyBtn.hidden = true;
     // 插入連結、新增子頁面、放到左側圖示列、複製成 Markdown、刪除、保留離線：放在分頁的右鍵選單
     // （標頭只留常用的；「⋯」也不放，免得和視窗右上角的「⋯」選單搞混）。
@@ -304,7 +304,7 @@ export class IssueView {
       this.#historyBtn,
       iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.browse(this.#source.webUrl)),
       sep,
-      iconButton(t("在內容裡找字"), "search", () => this.openFind(), "Mod-f"),
+      iconButton(t("在內容中尋找"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
     );
     head.append(nav, heading, actions);
@@ -314,8 +314,8 @@ export class IssueView {
     this.#find.hidden = true;
     this.#findInput = document.createElement("input");
     this.#findInput.type = "search";
-    this.#findInput.placeholder = t("在內容裡找字");
-    this.#findInput.setAttribute("aria-label", t("在內容裡找字"));
+    this.#findInput.placeholder = t("在內容中尋找");
+    this.#findInput.setAttribute("aria-label", t("在內容中尋找"));
     this.#findInput.addEventListener("input", () => this.#search());
     this.#findCount = document.createElement("span");
     this.#findCount.className = "issue-find-count";
@@ -325,7 +325,7 @@ export class IssueView {
       this.#findCount,
       iconButton(t("上一個"), "arrow-up", () => this.#step(-1), "Shift-Enter"),
       iconButton(t("下一個"), "arrow-down", () => this.#step(1), "Enter"),
-      iconButton(t("關閉找字"), "x", () => this.#closeFind()),
+      iconButton(t("關閉尋找"), "x", () => this.#closeFind()),
     );
 
     this.#scroll = document.createElement("div");

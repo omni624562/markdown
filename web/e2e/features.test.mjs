@@ -58,7 +58,7 @@ test("分頁：新增、切換、關閉，內容各自保留", async () => {
   // 第二份從沒存過、內容不是空的：關閉前會詢問。
   await runCommand(page, "關閉分頁");
   const dialog = page.locator("dialog[open]");
-  if (await dialog.count()) await dialog.locator("button", { hasText: /不儲存|不要儲存|關閉/ }).first().click();
+  if (await dialog.count()) await dialog.locator("button", { hasText: /不存檔|關閉/ }).first().click();
   await page.waitForFunction(() => document.querySelectorAll(".tab").length === 1);
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent === "第一份");
   assert.deepEqual(errors, []);

@@ -128,7 +128,7 @@ export async function updateLinksAfterRename(from: string, to: string, docsBefor
   if (!changes.length) return;
   const choice = await choose(
     t("更新連結？"),
-    t("有 {n} 份文件連到「{from}」，要一起把連結改成「{to}」嗎？更新前的內容會記在版本記錄中。", {
+    t("有 {n} 份文件連到「{from}」，要一起把連結改成「{to}」嗎？更新前的內容會記在版本紀錄中。", {
       n: changes.length,
       from: basename(from),
       to: basename(to),

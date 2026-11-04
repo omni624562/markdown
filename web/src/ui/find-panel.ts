@@ -61,7 +61,7 @@ export function countLabel(c: MatchCount, valid = true): string {
 type Option = "caseSensitive" | "wholeWord" | "regexp";
 
 const OPTIONS: { key: Option; icon: string; label: string; code: string }[] = [
-  { key: "caseSensitive", icon: "case-sensitive", label: t("大小寫須相符"), code: "KeyC" },
+  { key: "caseSensitive", icon: "case-sensitive", label: t("區分大小寫"), code: "KeyC" },
   { key: "wholeWord", icon: "whole-word", label: t("全字拼寫須相符"), code: "KeyW" },
   { key: "regexp", icon: "regex", label: t("使用正規表示式"), code: "KeyR" },
 ];

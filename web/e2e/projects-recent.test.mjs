@@ -76,8 +76,8 @@ test("「⋯」：最近開啟的檔案在第一層、只列檔案（Ctrl+R）�
   assert.deepEqual(await sub.locator(":scope > button").allTextContents(), ["切換專案…Ctrl+Alt+P", "專案總覽", "開啟資料夾…", "下載儲存庫", "連線到遠端資料夾"]);
   await sub.locator(":scope > button", { hasText: "下載儲存庫" }).click();
   assert.deepEqual(await sub.locator(":scope > .submenu:popover-open > button").allTextContents(), [
-    "GitHub：下載或開啟儲存庫…",
-    "Azure DevOps／TFS：下載或開啟儲存庫、Wiki…",
+    "GitHub：下載儲存庫…",
+    "Azure DevOps：下載儲存庫…",
   ]);
   await sub.locator(":scope > button", { hasText: "連線到遠端資料夾" }).click();
   assert.deepEqual(await sub.locator(":scope > .submenu:popover-open > button").allTextContents(), [

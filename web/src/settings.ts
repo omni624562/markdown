@@ -12,7 +12,7 @@ import { cleanFolder } from "./daily-notes.ts";
 import { TEMPLATE_LIMITS, type Template } from "./templates.ts";
 import { sanitizeKindColors } from "./work-item-colors.ts";
 
-/** 選取段落後可以執行的 AI 快捷動作。 */
+/** 選取段落後可以執行的 AI 快速動作。 */
 export interface QuickAction {
   name: string;
   prompt: string;
@@ -96,7 +96,7 @@ export interface Settings {
   remoteEnabled: boolean;
   /** AI 協作總開關（桌面版）。預設關閉；關閉時下面的 AI 選項都不會生效。 */
   aiEnabled: boolean;
-  /** 快捷動作使用的命令列工具。 */
+  /** AI 快速動作使用的命令列工具。 */
   aiTool: AiTool;
   /** 讓終端機裡的 Claude Code／Codex 讀取目前的文件並提出修改（編輯器 MCP 伺服器）。 */
   mcpServer: boolean;
@@ -128,7 +128,7 @@ export interface Settings {
   keybindings: Record<string, string>;
 }
 
-/** 內建的快捷動作（第一次使用時存進設定；英文介面用英文的名稱與指示）。 */
+/** 內建的 AI 快速動作（第一次使用時存進設定；英文介面用英文的名稱與指示）。 */
 export const DEFAULT_QUICK_ACTIONS: readonly QuickAction[] = Object.freeze([
   { name: t("改寫得更精簡"), prompt: t("把這段文字改寫得更精簡、通順，保留原意與所有重要資訊。") },
   { name: t("修正錯字與語病"), prompt: t("修正這段文字的錯字、標點與語病，盡量不要改動原本的用字與語氣。") },
@@ -137,7 +137,7 @@ export const DEFAULT_QUICK_ACTIONS: readonly QuickAction[] = Object.freeze([
   { name: t("摘要重點"), prompt: t("用條列式整理這段文字的重點，最多五點。") },
 ]);
 
-/** 快捷動作的數量與長度上限。 */
+/** AI 快速動作的數量與長度上限。 */
 export const QUICK_ACTION_LIMITS = { count: 20, name: 40, prompt: 2000 } as const;
 
 export const DEFAULTS: Readonly<Settings> = Object.freeze({

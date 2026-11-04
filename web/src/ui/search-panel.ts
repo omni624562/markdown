@@ -114,7 +114,7 @@ export class SearchPanel {
     const replacement = this.#replaceInput.value;
     const ok = await choose(
       t("全部取代？"),
-      t("要把 {files}中的 {n} 處「{query}」取代為「{replacement}」嗎？取代前的內容會記在每個檔案的版本記錄中，可以還原；有未存檔變更的分頁會略過。", {
+      t("要把 {files}中的 {n} 處「{query}」取代為「{replacement}」嗎？取代前的內容會記在每個檔案的版本紀錄中，可以還原；有未存檔變更的分頁會略過。", {
         files: t("{n} 個檔案", { n: found.files.length }),
         n: found.total,
         query,

@@ -60,7 +60,7 @@ test("整份修正後的提示：說的設定名稱和設定頁上的一樣", as
   await runCommand(page, "修正兩國用語、錯字與標點");
   const toast = page.locator(".toast", { hasText: "依文意判斷" });
   await toast.waitFor();
-  const setting = (await toast.textContent()).match(/打開設定的「(.+?)」/)?.[1];
+  const setting = (await toast.textContent()).match(/在設定中開啟「(.+?)」/)?.[1];
   assert.equal(setting, "檢查兩國用語、錯字與標點");
   await page.keyboard.press("Control+,");
   const dialog = page.locator("dialog.settings[open]");

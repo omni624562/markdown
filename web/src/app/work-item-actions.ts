@@ -243,10 +243,10 @@ function showWorkItemHistory(item: AdoWorkItem): void {
     .show({
       key: `ado-history:${item.id}`,
       origin: { kind: "ado", icon: "history", text: t("Azure DevOps 工作項目") },
-      label: t("修改記錄"),
-      title: t("修改記錄：{label}", { label: `${item.kind} ${item.id}` }),
+      label: t("修改紀錄"),
+      title: t("修改紀錄：{label}", { label: `${item.kind} ${item.id}` }),
       webUrl: item.webUrl,
-      fileName: issueFileName(t("修改記錄 {label}", { label: `${item.kind} ${item.id}` }), item.title),
+      fileName: issueFileName(t("修改紀錄 {label}", { label: `${item.kind} ${item.id}` }), item.title),
       load: async () => historyMarkdown(item, await desktop!.adoWorkItemHistory(item.id)),
       insertLink: () => insertIssueLink(item),
       link: (href) => {

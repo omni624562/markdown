@@ -1,5 +1,5 @@
 /**
- * 文件範本：內建的週報、會議記錄、OKR 等，以及使用者自訂的範本（存在設定中）。
+ * 文件範本：內建的週報、會議紀錄、OKR 等，以及使用者自訂的範本（存在設定中）。
  * 範本裡的 {{日期}}、{{時間}}、{{年}}、{{月}}、{{日}}、{{星期}}、{{週次}} 會換成建立當下的值；
  * 也可以寫英文名稱 {{date}}、{{time}}、{{year}}、{{month}}、{{day}}、{{weekday}}（英文星期名稱）、{{week}}。
  * 每日筆記另外認得單獨一行的 {{工作項目}}（{{workitems}}），見 daily-notes.ts。
@@ -39,9 +39,9 @@ const ZH_TEMPLATES: readonly Template[] = Object.freeze([
 `,
   },
   {
-    name: t("會議記錄"),
+    name: t("會議紀錄"),
     // i18n-ignore
-    body: `# 會議記錄：
+    body: `# 會議紀錄：
 
 | 項目 | 內容 |
 | --- | --- |
@@ -49,7 +49,7 @@ const ZH_TEMPLATES: readonly Template[] = Object.freeze([
 | 地點 |  |
 | 主持人 |  |
 | 出席 |  |
-| 記錄 |  |
+| 紀錄 |  |
 
 ## 議程
 
@@ -152,7 +152,7 @@ const EN_TEMPLATES: readonly Template[] = Object.freeze([
 `,
   },
   {
-    name: t("會議記錄"),
+    name: t("會議紀錄"),
     body: `# Meeting Notes:
 
 | Item | Details |

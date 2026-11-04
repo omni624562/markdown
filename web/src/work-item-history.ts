@@ -81,8 +81,8 @@ function linkText(item: AdoWorkItem, l: AdoRevisionLink): string {
 
 export function historyMarkdown(item: AdoWorkItem, revisions: AdoWorkItemRevision[]): string {
   const label = t("{kind} {id}：{title}", { kind: item.kind, id: item.id, title: item.title });
-  const title = "# " + t("修改記錄：{label}", { label: inlineText(label) });
-  if (!revisions.length) return title + "\n\n" + t("還沒有修改記錄。") + "\n";
+  const title = "# " + t("修改紀錄：{label}", { label: inlineText(label) });
+  if (!revisions.length) return title + "\n\n" + t("還沒有修改紀錄。") + "\n";
   const blocks = revisions.map((r) => {
     const who = inlineText(r.author || t("（不明）"));
     const head = "### " + [who, dateTime(r.date)].filter(Boolean).join(t("・"));

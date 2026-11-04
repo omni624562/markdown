@@ -33,7 +33,7 @@ export const editing: Record<string, Translation> = {
   "月／日": "Month/Day",
   // templates.ts
   "週報": "Weekly Report",
-  "會議記錄": "Meeting Notes",
+  "會議紀錄": "Meeting Notes",
   "專案提案": "Project Proposal",
   // table-widget.ts
   "表格": "Table",

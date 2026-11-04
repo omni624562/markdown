@@ -27,7 +27,7 @@ test("AI 功能預設全部關閉", () => {
   assert.ok(DEFAULTS.quickActions.length > 0);
 });
 
-test("快捷動作會去掉無效項目並限制長度", () => {
+test("AI 快速動作會去掉無效項目並限制長度", () => {
   const { settings, problems } = sanitize({
     aiTool: "codex",
     quickActions: [

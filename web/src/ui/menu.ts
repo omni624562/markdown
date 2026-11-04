@@ -92,7 +92,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
       if (typeof entry === "string") {
         const cmd = commands?.get(entry);
         if (!cmd || !(cmd.when?.() ?? true)) return [];
-        // 單選的指令（例如主題的跟隨系統／淺色／深色）：目前選的那一項打勾。
+        // 單選的指令（例如明暗的跟隨系統／淺色／深色）：目前選的那一項打勾。
         const checked = cmd.checked?.();
         item.role = checked === undefined ? "menuitem" : "menuitemradio";
         if (checked !== undefined) item.setAttribute("aria-checked", String(checked));

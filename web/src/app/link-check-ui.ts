@@ -92,7 +92,7 @@ function shownWikiPage(): { path: string; text: string; jump(p: LinkProblem): vo
 function checkWikiLinks(page: { path: string; text: string; jump(p: LinkProblem): void }): void {
   const pages = flattenPages(wikiPanel?.pages ?? []);
   if (!pages.length) {
-    toast(t("還沒讀到 Wiki 的頁面清單，打開左側的 Wiki 面板後再試一次。"), { tone: "error" });
+    toast(t("還沒讀到 Wiki 的頁面清單，開啟左側的 Wiki 面板後再試一次。"), { tone: "error" });
     return;
   }
   const info = parseDoc(page.text, new Date().getFullYear()) as DocInfo;

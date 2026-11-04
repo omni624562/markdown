@@ -1,4 +1,4 @@
-# Welcome to oMarker
+# oMarker in 3 Minutes
 
 This is a sample document you can edit freely. Take three minutes to read it and you'll know your way around. To start writing, press "+" at the top for a new document, or just delete this text.
 
@@ -56,4 +56,4 @@ graph LR
   Write --> Preview --> Export
 ```
 
-[^1]: Footnotes appear at the bottom of the document. You can reopen this document later with "Help: Open Welcome Document" in the command palette.
+[^1]: Footnotes appear at the bottom of the document. You can reopen this document later with "Help: oMarker in 3 Minutes" in the command palette.

@@ -36,13 +36,13 @@ test("危險的動作不會預設聚焦，呼叫端指定也一樣", () => {
 });
 
 test("三個以上的選項：取消在最右邊、危險的動作緊貼在它左邊，預設聚焦不危險的主要選項", () => {
-  // 「要儲存變更嗎？」：預設是「儲存」，不會是「不儲存」。
+  // 「要存檔嗎？」：預設是「存檔」，不會是「不存檔」。
   const unsaved = choiceLayout([
-    { id: "save", label: "儲存", primary: true },
-    { id: "discard", label: "不儲存", danger: true },
+    { id: "save", label: "存檔", primary: true },
+    { id: "discard", label: "不存檔", danger: true },
     { id: "cancel", label: "取消" },
   ]);
-  // 和 Windows 的「要儲存嗎？」一樣：［儲存］［不儲存］［取消］。
+  // 和 Windows 的「要儲存嗎？」一樣：［存檔］［不存檔］［取消］。
   assert.deepEqual(ids(unsaved.order), ["save", "discard", "cancel"]);
   assert.equal(unsaved.focus, "save");
 
