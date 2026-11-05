@@ -42,12 +42,16 @@ export function initSideDrop(): void {
     "dragover",
     (e) => {
       if (!isTab(e)) return;
+      // 只管放得下的地方；其他地方（例如左側圖示列，拖過去是加捷徑）交給原本的處理。
+      const r = target();
+      if (!inside(r, e)) {
+        show(null);
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
-      const r = target();
-      const on = inside(r, e);
-      e.dataTransfer!.dropEffect = on ? "copy" : "none";
-      show(on ? r : null);
+      e.dataTransfer!.dropEffect = "copy";
+      show(r);
     },
     true,
   );
@@ -57,13 +61,12 @@ export function initSideDrop(): void {
   workspace.addEventListener(
     "drop",
     (e) => {
-      if (!isTab(e)) return;
+      if (!isTab(e) || !inside(target(), e)) return;
       e.preventDefault();
       e.stopPropagation();
-      const on = inside(target(), e);
       show(null);
       const doc = app.docs.find((d) => d.id === e.dataTransfer!.getData(TAB_DRAG_TYPE));
-      if (on && doc) app.openBeside(doc);
+      if (doc) app.openBeside(doc);
     },
     true,
   );
