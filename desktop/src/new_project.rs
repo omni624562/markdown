@@ -44,13 +44,68 @@ pub async fn pick_project_parent(
     Ok(Some(path_string(&path)))
 }
 
-/// 這台電腦有沒有安裝 COMET CLI（`comet` 指令在 PATH 裡）。新 COMET 專案建立後要在終端機執行 `comet setup`。
-/// 搜尋 PATH 可能很慢（例如 PATH 裡有斷線的網路磁碟），在背景執行緒進行。
+/// COMET CLI 在哪裡。
+#[derive(Debug, PartialEq)]
+enum Comet {
+    /// `comet` 指令在 PATH 裡。
+    OnPath,
+    /// 不在 PATH 裡，但裝在固定的位置（`%USERPROFILE%\Comet\bin`）。第一次執行 `comet setup`
+    /// 才會把這個資料夾加進 PATH，所以新電腦上要用完整路徑執行。
+    Installed(PathBuf),
+}
+
+/// COMET CLI 固定的安裝位置。
+fn comet_default_path(home: &Path) -> PathBuf {
+    let exe = if cfg!(windows) { "comet.exe" } else { "comet" };
+    home.join("Comet").join("bin").join(exe)
+}
+
+/// 找 COMET CLI：先找 PATH，再找固定的安裝位置。搜尋 PATH 可能很慢（例如 PATH 裡有斷線的網路磁碟），
+/// 要在背景執行緒呼叫。
+fn locate_comet(home: Option<PathBuf>) -> Option<Comet> {
+    if which::which("comet").is_ok() {
+        return Some(Comet::OnPath);
+    }
+    let path = comet_default_path(&home?);
+    path.is_file().then_some(Comet::Installed(path))
+}
+
+/// 用完整路徑執行程式的一行指令：Windows 的終端機是 PowerShell（`& '路徑' 參數`），
+/// 其他系統是 POSIX 殼層（`'路徑' 參數`）。路徑用單引號包起來，路徑裡的單引號照各自的規則跳脫。
+fn call_line(exe: &Path, args: &str) -> String {
+    let path = exe.to_string_lossy();
+    if cfg!(windows) {
+        format!("& '{}' {args}", path.replace('\'', "''"))
+    } else {
+        format!("'{}' {args}", path.replace('\'', "'\\''"))
+    }
+}
+
+/// 這台電腦有沒有安裝 COMET CLI（PATH 裡有 `comet` 指令，或裝在固定的位置）。
+/// 新 COMET 專案建立後要在終端機執行 `comet setup`。
 #[tauri::command]
-pub async fn comet_installed() -> bool {
-    tauri::async_runtime::spawn_blocking(|| which::which("comet").is_ok())
+pub async fn comet_installed(app: AppHandle) -> bool {
+    let home = app.path().home_dir().ok();
+    tauri::async_runtime::spawn_blocking(move || locate_comet(home).is_some())
         .await
         .unwrap_or(false)
+}
+
+/// 終端機要輸入的 `comet setup` 指令（只有終端機面板可以呼叫）：`comet` 在 PATH 裡就直接執行，
+/// 不在時用固定安裝位置的完整路徑執行。都找不到時照樣送 `comet setup`，讓殼層說找不到指令。
+///
+/// 不把安裝位置加進終端機的 PATH：`comet setup` 會檢查 PATH 裡有沒有它，加了就不會幫使用者設定，
+/// 離開 oMarker 後還是找不到 `comet`。
+#[tauri::command]
+pub async fn comet_setup_line(app: AppHandle, webview: tauri::Webview) -> Result<String, String> {
+    crate::ai::view::require_terminal(&webview)?;
+    let home = app.path().home_dir().ok();
+    tauri::async_runtime::spawn_blocking(move || match locate_comet(home) {
+        Some(Comet::Installed(exe)) => call_line(&exe, "setup"),
+        _ => "comet setup".to_string(),
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Windows 不能當檔名的名稱（不分大小寫，也不能加副檔名）。
@@ -171,6 +226,52 @@ pub async fn create_project(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comet_is_found_in_its_install_folder() {
+        let home = std::env::temp_dir().join(format!("omarker-comet-{}", std::process::id()));
+        let exe = comet_default_path(&home);
+        assert!(exe.ends_with(if cfg!(windows) {
+            r"Comet\bin\comet.exe"
+        } else {
+            "Comet/bin/comet"
+        }));
+        // 測試機的 PATH 裡沒有 comet 時，才看得出有沒有去固定的位置找。
+        if which::which("comet").is_err() {
+            assert_eq!(locate_comet(Some(home.clone())), None);
+            fs::create_dir_all(exe.parent().unwrap()).unwrap();
+            fs::write(&exe, "").unwrap();
+            assert_eq!(
+                locate_comet(Some(home.clone())),
+                Some(Comet::Installed(exe))
+            );
+            assert_eq!(locate_comet(None), None);
+        }
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn full_path_calls_are_quoted() {
+        if cfg!(windows) {
+            assert_eq!(
+                call_line(Path::new(r"C:\Users\me\Comet\bin\comet.exe"), "setup"),
+                r"& 'C:\Users\me\Comet\bin\comet.exe' setup"
+            );
+            assert_eq!(
+                call_line(Path::new(r"C:\Users\o'brien\comet.exe"), "setup"),
+                r"& 'C:\Users\o''brien\comet.exe' setup"
+            );
+        } else {
+            assert_eq!(
+                call_line(Path::new("/home/me/Comet/bin/comet"), "setup"),
+                "'/home/me/Comet/bin/comet' setup"
+            );
+            assert_eq!(
+                call_line(Path::new("/home/o'brien/comet"), "setup"),
+                r"'/home/o'\''brien/comet' setup"
+            );
+        }
+    }
 
     #[test]
     fn rejects_bad_names() {

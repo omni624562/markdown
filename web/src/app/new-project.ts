@@ -35,7 +35,7 @@ function joinPath(parent: string, name: string): string {
 }
 
 let dialog: HTMLDialogElement | null = null;
-/** 這台電腦有沒有 `comet` 指令（每次打開對話框時重新檢查：使用者可能剛裝好）。 */
+/** 這台電腦有沒有 COMET CLI（PATH 裡或固定的安裝位置；每次打開對話框時重新檢查：使用者可能剛裝好）。 */
 let cometFound: Promise<boolean> = Promise.resolve(false);
 
 /** 一開始放什麼。 */

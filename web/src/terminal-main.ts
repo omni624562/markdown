@@ -116,7 +116,11 @@ function request(panel: TerminalPanel, r: Request): void {
       void panel.runInShell("claude setup-token");
       break;
     case "cometSetup":
-      void panel.runInShell("comet setup");
+      // `comet` 還不在 PATH 裡（第一次執行 comet setup 才會加）時，原生端回傳固定安裝位置的完整路徑。
+      void core
+        .invoke<string>("comet_setup_line")
+        .catch(() => "comet setup")
+        .then((line) => panel.runInShell(line));
       break;
     case "available":
       panel.setAvailable({ claude: r.claude ? "claude" : null, codex: r.codex ? "codex" : null });
