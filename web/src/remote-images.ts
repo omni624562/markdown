@@ -54,14 +54,22 @@ function unescapeCss(css: string): string {
   });
 }
 
+/** 會下載東西的 CSS 函式與規則（寧可多擋：`image()`、`src()` 目前沒有瀏覽器支援，也算）。 */
+const LOADING_FUNCTIONS = /@import|(?:image-set|image|cross-fade|src)\(/;
+/**
+ * 瀏覽器實際會下載的寫法（`url(…)` 另外判斷）。流程圖的每一行分不出是 CSS 還是文字，只看這些，
+ * 免得循序圖的訊息「build image(s)」被改掉。
+ */
+const FETCHING_FUNCTIONS = /@import|image-set\(/;
+
 /**
  * 這段 CSS 會不會讓瀏覽器去下載東西：`url(…)`（文件內的 `#id` 與內嵌的 `data:` 除外）、`image-set()`、
  * `image()`、`cross-fade()`、`src()`、`@import`，跳脫字元寫成的也算。寧可多擋：不管寫在哪裡（字串、註解）都算。
  */
-export function cssLoadsRemote(css: string): boolean {
+export function cssLoadsRemote(css: string, functions = LOADING_FUNCTIONS): boolean {
   if (!/[\\(@]/.test(css)) return false;
   const text = unescapeCss(css).toLowerCase();
-  if (/@import|(?:image-set|image|cross-fade|src)\(/.test(text)) return true;
+  if (functions.test(text)) return true;
   for (const m of text.matchAll(/url\(\s*["']?\s*/g)) {
     if (!/^(?:#|data:)/.test(text.slice(m.index + m[0].length))) return true;
   }
@@ -177,13 +185,13 @@ function blockRemoteData(code: string): string {
  */
 function blockRemoteCssLines(code: string): string {
   return code.replace(/^([^\n:]*:)(.*)$/gm, (line, head: string, css: string) => {
-    if (!cssLoadsRemote(css)) return line;
+    if (!cssLoadsRemote(css, FETCHING_FUNCTIONS)) return line;
     const out = css
       .replace(/\\/g, "")
       .replace(/url\((?!\s*["']?\s*(?:#|data:))/gi, "none(")
       .replace(/(?:image-set|image|cross-fade|src)\(/gi, "none(")
       .replace(/@import/gi, "@none");
-    return head + (cssLoadsRemote(out) ? "" : out);
+    return head + (cssLoadsRemote(out, FETCHING_FUNCTIONS) ? "" : out);
   });
 }
 

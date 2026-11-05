@@ -149,6 +149,11 @@ test("流程圖的樣式（style、classDef）裡的 url() 失效，一般文字
   assert.equal(out[4], "  classDef d fill:url(#grad)");
 });
 
+test("循序圖訊息裡的 image(s)、src(x) 是文字，不改", () => {
+  const code = "sequenceDiagram\n  A->>B: build image(s)\n  B-->>A: call src(x) done";
+  assert.equal(blockRemoteInMermaid(code), code);
+});
+
 test("循序圖 properties 的 icon（JSON 跳脫寫法也算）", () => {
   const out = blockRemoteInMermaid('sequenceDiagram\n  participant A\n  properties A: {"icon": "\\u0068ttps://evil.example/i.png"}\n  A->>A: hi');
   assert.ok(!out.includes("evil.example"), out);
