@@ -39,6 +39,7 @@ pub static EN: &[(&str, &str)] = &[
     ("團隊", "Team"),
     ("指派給", "Assigned to"),
     ("Sprint 天數", "Sprint length (days)"),
+    ("Sprint 編號", "Sprint number"),
     ("只能在目前開啟的專案執行 COMET 設定", "COMET setup can only run in the project that is open."),
     ("找不到 COMET CLI（comet 指令）", "The COMET CLI (comet command) wasn't found."),
     (
