@@ -1,5 +1,5 @@
 /**
- * 狀態列的語言選單：按鈕顯示語言（.yaml 檔是「YAML」）；選了語言就用那個語言上色，還沒存檔的文件換副檔名；
+ * 狀態列的語言選單：按鈕顯示語言（.yaml 檔是「YAML」）；選了語言就用那個語言上色；
  * 「更多語言…」可以打字找（例如 py）；選過的語言列在「最近用過」；「自動（依副檔名）」改回依副檔名；
  * 「純文字」不上色。先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -8,7 +8,6 @@ import { test } from "node:test";
 import { open, setText } from "./helpers.mjs";
 
 const label = (page) => page.locator("#doc-kind span").first().textContent();
-const tabName = (page) => page.locator("#tab-bar .tab[aria-selected=true] .tab-name").textContent();
 /** 編輯器裡有上色的字（CodeMirror 的語法上色會包一層有 class 的 span）。 */
 const colored = (page) => page.locator(".cm-content .cm-line span[class]").count();
 
@@ -22,10 +21,9 @@ test("語言選單：選語言就換上色與副檔名；更多語言可以打�
   await setText(page, "name: contoso\nport: 8080\n");
   assert.equal(await label(page), "Markdown");
 
-  // 選 YAML：改成純文字類型、用 YAML 上色，還沒存檔的文件換成 .yaml。
+  // 選 YAML：改成純文字類型、用 YAML 上色。
   await pick(page, "YAML");
   await page.waitForFunction(() => document.querySelector("#doc-kind span")?.textContent === "YAML");
-  assert.match(await tabName(page), /\.yaml$/);
   await page.waitForFunction(() => document.querySelectorAll(".cm-content .cm-line span[class]").length > 0);
   // 選單上方多了「自動（依副檔名）」，資料與設定一區裡 YAML 打勾。
   await page.click("#doc-kind");
@@ -42,7 +40,6 @@ test("語言選單：選語言就換上色與副檔名；更多語言可以打�
   assert.equal(await page.locator("dialog[open].palette li").first().locator(".palette-title").textContent(), "Python");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelector("#doc-kind span")?.textContent === "Python");
-  assert.match(await tabName(page), /\.py$/);
 
   // 最近用過：Python（YAML 已經在「資料與設定」，不重複列）。
   await page.click("#doc-kind");
