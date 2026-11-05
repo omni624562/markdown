@@ -364,15 +364,20 @@ test("新專案：沒選「COMET 專案」時右邊的 COMET 設定變灰、不�
   assert.equal(await dialog.evaluate((d) => d.classList.contains("with-comet")), true);
   await section.locator(".nc-off-note").waitFor();
   assert.equal(await section.evaluate((el) => el.inert && el.classList.contains("off")), true);
+  const size = () => dialog.evaluate((d) => { const r = d.getBoundingClientRect(); return { top: r.top, width: r.width, height: r.height }; });
+  const blankSize = await size();
   // 選「COMET 專案」：可以填，按鈕變成「建立並設定」。
   await dialog.getByRole("radio", { name: /^COMET 專案/ }).check();
   assert.equal(await section.evaluate((el) => el.inert || el.classList.contains("off")), false);
   assert.equal(await section.locator(".nc-off-note").isHidden(), true);
-  assert.match(await dialog.locator(".pe-path").textContent(), /comet setup/);
+  // 換小卡時對話框的大小與位置都不變（變灰的說明不佔高度）。
+  assert.deepEqual(await size(), blankSize);
+  assert.equal((await dialog.locator("button[type=submit]").textContent()).trim(), "建立並設定");
   await section.locator("input[name=nc-assigned]").fill("王小明");
   // 換成「筆記本」再換回來：填好的值還在。
   await dialog.getByRole("radio", { name: /^筆記本/ }).check();
   assert.equal(await section.evaluate((el) => el.inert), true);
+  assert.deepEqual(await size(), blankSize);
   await dialog.getByRole("radio", { name: /^COMET 專案/ }).check();
   assert.equal(await section.locator("input[name=nc-assigned]").inputValue(), "王小明");
   // 用「筆記本」建立，下次打開預先選「筆記本」。

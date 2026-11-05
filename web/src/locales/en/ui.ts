@@ -185,8 +185,6 @@ export const ui: Record<string, Translation> = {
   "筆記本": "Notebook",
   "加上每日筆記、圖片資料夾": "Adds daily notes and an images folder",
   "建立後執行 comet setup": "Runs comet setup after creating",
-  "在電腦上建立一個新資料夾，接著用右邊的設定執行 comet setup，不用再回答問題。":
-    "Create a new folder on this computer, then run comet setup with the settings on the right. No questions to answer.",
   "同時建立 Git 儲存庫（之後可以推送到 GitHub、Azure DevOps）": "Also create a Git repository (you can push it to GitHub or Azure DevOps later)",
   "建立並開啟": "Create and Open",
   "會建立「{path}」": "Will create \"{path}\"",
@@ -200,7 +198,7 @@ export const ui: Record<string, Translation> = {
   "建立並設定": "Create and Set Up",
   // app/comet-setup.ts
   "COMET 設定": "COMET Settings",
-  "左邊選「COMET 專案」時才會用到這些設定。": "These settings are used only when \"COMET project\" is selected on the left.",
+  "選「COMET 專案」時才會用到": "Used only for COMET projects",
   "Azure DevOps 專案": "Azure DevOps project",
   "Sprint 天數": "Sprint length (days)",
   "Sprint 網址": "Sprint URL",

@@ -199,14 +199,11 @@ function showProgress(d: HTMLDialogElement): void {
 }
 
 /**
- * 選的小卡換了：說明跟著換；右邊的「② COMET 設定」只有選了「COMET 專案」時能填（其他時候變灰、不能操作，
- * 填好的值留著）。
+ * 選的小卡換了：右邊的「② COMET 設定」只有選了「COMET 專案」時能填（其他時候變灰、不能操作，填好的值留著）。
+ * 上面的說明不跟著換：換了長度就不同，可能多斷一行，對話框的大小就會跳動。
  */
 function syncKind(d: HTMLDialogElement): void {
   const isComet = kindOf(d) === "comet";
-  d.querySelector(".pe-path")!.textContent = isComet
-    ? t("在電腦上建立一個新資料夾，接著用右邊的設定執行 comet setup，不用再回答問題。")
-    : t("在電腦上建立一個新資料夾，當成專案開啟。");
   const section = d.querySelector<HTMLElement>(".np-comet")!;
   section.classList.toggle("off", !isComet);
   section.inert = !isComet;
