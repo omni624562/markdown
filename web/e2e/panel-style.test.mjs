@@ -95,13 +95,14 @@ test("預設圓角區塊；改成相連時側邊欄、內文、右側欄之間�
   const grip = () =>
     page.locator(".sidebar-resizer.left").evaluate((el) => {
       const g = getComputedStyle(el, "::before");
-      return { top: Number.parseFloat(g.top), height: Number.parseFloat(g.height), color: g.backgroundColor, box: el.getBoundingClientRect().height };
+      return { top: Number.parseFloat(g.top), height: Number.parseFloat(g.height), box: el.getBoundingClientRect().height };
     });
   await page.mouse.move(mid(b.leftResizer), b.leftResizer.top + 150);
+  // 滑鼠移上去時看得到（顏色有 0.12 秒的淡入，等它出來）。
+  await page.waitForFunction(() => getComputedStyle(document.querySelector(".sidebar-resizer.left"), "::before").backgroundColor !== "rgba(0, 0, 0, 0)");
   let g = await grip();
   assert.equal(g.height, 48, "膠囊 48px");
   assert.equal(g.top, 150, "跟著滑鼠的高度");
-  assert.notEqual(g.color, "rgba(0, 0, 0, 0)", "滑鼠移上去時看得到");
   await page.mouse.move(mid(b.leftResizer), b.leftResizer.bottom - 1);
   g = await grip();
   assert.ok(g.top + g.height / 2 <= g.box, `膠囊不超出把手：${JSON.stringify(g)}`);
