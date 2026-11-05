@@ -60,7 +60,7 @@ export function isSprintUrl(url: string): boolean {
 export function cometForm(host: HTMLElement, changed: () => void): CometForm {
   const tr = {
     heading: t("COMET 設定"),
-    offNote: t("左邊選「COMET 專案」時才會用到這些設定。"),
+    offNote: t("選「COMET 專案」時才會用到"),
     project: t("Azure DevOps 專案"),
     team: t("團隊"),
     sprint: t("Sprint"),
@@ -73,8 +73,7 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     local: t("設定本機 PATH 與 VSCode（第一次使用 COMET 需要）"),
   };
   host.innerHTML = `
-    <h3><span class="np-num" aria-hidden="true">2</span>${tr.heading}</h3>
-    <p class="nc-off-note">${tr.offNote}</p>
+    <h3><span class="np-num" aria-hidden="true">2</span>${tr.heading}<span class="nc-off-note">${tr.offNote}</span></h3>
     <div class="nc-grid nc-ado">
       <label>${tr.project}<select name="nc-project"></select></label>
       <label>${tr.team}<select name="nc-team"></select></label>

@@ -3283,12 +3283,23 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .np-tile:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
 .np-tile:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* ② COMET 設定（app/comet-setup.ts）：只有選了「COMET 專案」時能填；其他時候變灰（虛線框、淡淡的），填好的值留著。 */
-.nc-off-note { display: none; margin: -6px 0 10px; color: var(--muted); font-size: 12px; font-weight: 400; }
-.np-comet.off .nc-off-note { display: block; }
+/* 變灰時的說明在標題同一行的右邊：只切換看得見與否、不佔高度，切換小卡時對話框的大小不變。 */
+.nc-off-note {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  visibility: hidden;
+}
+.np-comet.off .nc-off-note { visibility: visible; }
 .new-project.with-comet .np-comet.off { border-style: dashed; background: color-mix(in srgb, var(--fg) 1%, var(--bg)); }
 .np-comet.off > h3 { color: var(--muted); }
 .np-comet.off > h3 .np-num { background: var(--border-strong); }
-.np-comet.off > :not(h3, .nc-off-note) { opacity: 0.45; }
+.np-comet.off > :not(h3) { opacity: 0.45; }
 /* minmax(0, 1fr)：選單裡有很長的團隊、Sprint 名稱時，欄位也不會撐出框外。 */
 .nc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; }
 .nc-grid > label { min-width: 0; }
