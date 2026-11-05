@@ -126,7 +126,9 @@ fn valid_host(host: &str) -> bool {
         !label.is_empty()
             && label.len() <= 63
             && !label.starts_with('-')
-            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            // `_` 不是正式主機名稱的字元，但內部網路很常見（`files_01`），OpenSSH 也接受；
+            // 它不是 known_hosts 的萬用字元，可以放行。
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
     })
 }
 
@@ -1839,6 +1841,7 @@ mod tests {
         for ok in [
             "files.example",
             "files-01.example",
+            "files_01.example",
             "localhost",
             "192.168.1.5",
             "fe80::1",
@@ -1865,7 +1868,6 @@ mod tests {
             "files..example",
             ".files.example",
             "files.example.",
-            "files_01.example",
             "檔案.example",
             "files.example\n",
             "fe80::zz",
