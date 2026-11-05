@@ -15,6 +15,8 @@ interface TauriCore {
   /** `args` 是位元組時當成請求本文直接傳送（大檔案不用轉成 base64），其他資料放在標頭。 */
   invoke<T>(cmd: string, args?: Record<string, unknown> | Uint8Array, options?: { headers: Record<string, string> }): Promise<T>;
   convertFileSrc(path: string, protocol?: string): string;
+  /** 原生端送資料給這個頁面的通道（Rust 的 `tauri::ipc::Channel`）：當作指令的參數傳過去，只有建立它的 webview 收得到。 */
+  Channel: new <T>() => { onmessage: (message: T) => void };
 }
 
 interface TauriEvent {
@@ -163,6 +165,8 @@ export interface ProjectChange {
 }
 
 export type AiTool = "claude" | "codex";
+/** 可以開啟專案的 AI 桌面版（`codex://`、`claude://` 網址）。 */
+export type AiApp = "codex" | "claude";
 export type TermProgram = "shell" | AiTool;
 
 /** 主畫面能送給終端機的要求（Rust 的 `view::Request`）。 */
@@ -729,13 +733,16 @@ export interface SshConnectRequest {
   username: string;
   /** 密碼或金鑰的密語；空白就只用金鑰登入。 */
   password: string;
+  /**
+   * 跳板主機的密碼：原生端回傳 `NEED_JUMP_PASSWORD` 之後另外詢問的（不會拿上面的密碼去試）。
+   * 空白就只用金鑰或 ssh-agent 登入跳板主機。
+   */
+  jumpPassword?: string;
   keyPath: string;
   /** 跳板主機（`帳號@主機:連接埠`），不需要時是空字串。 */
   jump: string;
   root: string;
   remember: boolean;
-  /** 使用者確認過的主機金鑰指紋。 */
-  trust?: string;
 }
 
 /** 最近一次儲存設定（AI 相關的指令要等它完成）。 */
@@ -825,13 +832,14 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 在背景用參數執行 `comet setup`；輸出與結果用 `onCometSetup` 收。 */
     cometSetupRun: (req: CometSetupRequest) => core.invoke<void>("comet_setup_run", { req }),
     onCometSetup: (fn: (e: CometSetupEvent) => void) => event.listen<CometSetupEvent>("comet-setup", (e) => fn(e.payload)),
-    /**
-     * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
-     * `trust` 是使用者確認過的 SSH 主機金鑰指紋。
-     */
     /** 關閉目前的專案（本機或遠端資料夾）。 */
     closeFolder: () => core.invoke<void>("close_folder"),
-    reopenFolder: (path: string, password?: string, remember?: boolean, trust?: string) =>
+    /**
+     * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
+     * `jumpPassword` 是 SSH 跳板主機的密碼（原生端回傳 `NEED_JUMP_PASSWORD` 時才詢問）。
+     * 第一次連線的 SSH 主機由原生端用系統的對話框確認主機金鑰。
+     */
+    reopenFolder: (path: string, password?: string, remember?: boolean, jumpPassword?: string) =>
       route(
         path,
         () => core.invoke<Folder>("reopen_folder", { path }),
@@ -839,8 +847,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
           core.invoke<Folder>("dav_reconnect", {
             id: remoteId(path),
             password,
+            jumpPassword,
             remember: remember ?? false,
-            trust,
           }),
       ),
     currentFolder: () => core.invoke<Folder | null>("current_folder"),
@@ -857,6 +865,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     projectDelete: (path: string, trashFolder: boolean) => core.invoke<boolean>("project_delete", { path, trashFolder }),
     /** 在 Codex 桌面版開啟專案（專案清單裡的本機資料夾）。 */
     projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),
+    /** 在 Claude 桌面版的 Claude Code 開啟專案（專案清單裡的本機資料夾）。 */
+    projectOpenClaude: (path: string) => core.invoke<void>("project_open_claude", { path }),
+    /** 這台電腦有沒有安裝 Codex、Claude 桌面版（系統有沒有登記開啟 codex://、claude:// 網址的程式）。 */
+    aiAppsInstalled: () => core.invoke<Record<AiApp, boolean> | null>("ai_apps_installed"),
     /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
     projectRelocate: (path: string) => core.invoke<Project | null>("project_relocate", { path }),
     projectReveal: (path: string) => core.invoke<void>("project_reveal", { path }),
@@ -976,7 +988,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
         .then(async (f) => (await davConnections().catch(() => []), f)),
     sshConnect: (req: SshConnectRequest) =>
       core
-        .invoke<Folder>("ssh_connect", { ...req, keyPath: req.keyPath || null, password: req.password || null, jump: req.jump || null })
+        .invoke<Folder>("ssh_connect", {
+          ...req,
+          keyPath: req.keyPath || null,
+          password: req.password || null,
+          jumpPassword: req.jumpPassword || null,
+          jump: req.jump || null,
+        })
         .then(async (f) => (await davConnections().catch(() => []), f)),
     davForget: (id: string) => core.invoke<void>("dav_forget", { id }),
     /** 遠端圖片（預覽用），回傳 data: 網址。 */

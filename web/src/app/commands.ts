@@ -16,6 +16,7 @@ import { Picker } from "../ui/picker.ts";
 import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { aiAppPresent } from "./ai-app-presence.ts";
 import { cometPresent } from "./comet-presence.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
 import { openDailyNote, openNeighborNote } from "./daily-notes.ts";
@@ -339,8 +340,18 @@ export function initCommands(): void {
       title: t("在 Codex 開啟這個專案"),
       group: t("資料夾與專案"),
       icon: "external-link",
-      when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path),
-      run: () => app.projectUi?.openInCodex(),
+      // 沒裝 Codex 桌面版的電腦不顯示（見 ai-app-presence.ts）。
+      when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path) && aiAppPresent("codex"),
+      run: () => app.projectUi?.openInApp("codex"),
+    },
+    {
+      id: "open-in-claude",
+      title: t("在 Claude Code 開啟這個專案"),
+      group: t("資料夾與專案"),
+      icon: "external-link",
+      // 沒裝 Claude 桌面版的電腦不顯示（見 ai-app-presence.ts）。
+      when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path) && aiAppPresent("claude"),
+      run: () => app.projectUi?.openInApp("claude"),
     },
     {
       id: "delete-project",

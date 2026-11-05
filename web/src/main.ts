@@ -45,6 +45,7 @@ import { type DocMeta, dropDraft, dropOrphanDrafts, loadDraft, loadSession, newI
 import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
+import { aiAppPresent } from "./app/ai-app-presence.ts";
 import { cometPresent } from "./app/comet-presence.ts";
 import { cometBadge } from "./ui/comet-badge.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
@@ -2181,6 +2182,7 @@ const projectUi = desktop
       openFolder: () => void commands.run("open-folder").catch(reportError),
       newProject: (comet) => void commands.run(comet ? "new-comet-project" : "new-project").catch(reportError),
       cometInstalled: cometPresent,
+      aiAppInstalled: aiAppPresent,
       close: () => void commands.run("close-folder").catch(reportError),
       closeAndWait: () => closeProject(),
       remotes: () => (features.remote ? desktop!.davConnections() : Promise.resolve([])),
@@ -3402,6 +3404,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
       "switch-project",
       "project-overview",
       "open-in-codex",
+      "open-in-claude",
       "-",
       "open-folder",
       { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },
@@ -3654,8 +3657,8 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
     let needPassword = false;
     const folder = last
       ? await d.reopenFolder(last).catch((e) => {
-          // 遠端連線沒有記住密碼：提示使用者輸入，不自動跳出對話框打斷。
-          if (isRemote(last) && String(e instanceof Error ? e.message : e) === "NEED_PASSWORD") {
+          // 遠端連線（或 SSH 的跳板主機）沒有記住密碼：提示使用者輸入，不自動跳出對話框打斷。
+          if (isRemote(last) && /^NEED_(JUMP_)?PASSWORD(\n|$)/.test(String(e instanceof Error ? e.message : e))) {
             needPassword = true;
             void suggestReconnect(last, (name) => t("要重新連線到「{name}」，需要輸入密碼。", { name }), t("輸入密碼"));
           }

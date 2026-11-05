@@ -14,6 +14,7 @@
 mod i18n;
 mod ado;
 mod ai;
+mod ai_apps;
 mod comet;
 mod confirm;
 mod dav;
@@ -33,6 +34,7 @@ mod history;
 mod image_protocol;
 mod images;
 mod io;
+mod lexical;
 mod locales;
 mod navigation;
 mod new_project;
@@ -427,6 +429,8 @@ fn main() {
             projects::project_forget,
             projects::project_delete,
             projects::project_open_codex,
+            projects::project_open_claude,
+            ai_apps::ai_apps_installed,
             projects::project_relocate,
             projects::project_reveal,
             workspace::list_dir,

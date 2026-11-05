@@ -233,11 +233,10 @@ pub(crate) fn open(dir: &Path) -> Result<Repository, String> {
     Ok(repo)
 }
 
-/// 網路位置（UNC 路徑，或 `//主機/…`）。
+/// 網路位置：UNC 路徑（`\\主機\…`、`//主機/…`、`\/主機/…`、`\\?\UNC\…`）、裝置路徑，
+/// 或 Windows 對應的網路磁碟機。只看字串，不碰檔案系統（見 [`crate::lexical::looks_remote`]）。
 fn looks_remote(path: &str) -> bool {
-    path.starts_with("\\\\")
-        || path.starts_with("//")
-        || crate::io::is_network_path(Path::new(path))
+    crate::lexical::looks_remote(path) || crate::io::is_network_path(Path::new(path))
 }
 
 pub(crate) fn workdir(repo: &Repository) -> Result<PathBuf, String> {
