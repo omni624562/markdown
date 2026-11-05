@@ -45,6 +45,7 @@ import { type DocMeta, dropDraft, dropOrphanDrafts, loadDraft, loadSession, newI
 import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
+import { cometBadge } from "./ui/comet-badge.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
@@ -2199,8 +2200,11 @@ async function renderProjectName(): Promise<void> {
   const color = project?.color ?? null;
   const keys = commands.get("switch-project")?.keys;
   const hint = keys ? t("切換專案（{keys}）", { keys: formatKeys(keys) }) : t("切換專案");
+  const comet = !!project?.comet;
   $("#folder-name").textContent = label;
   const switcher = $(".project-switch");
+  switcher.querySelector(".comet-badge")?.remove();
+  if (comet) $("#folder-name").after(cometBadge());
   switcher.title = workspaceRoot ? `${displayPath(workspaceRoot.path)}\n${hint}` : hint;
   const dot = switcher.querySelector<HTMLElement>(".project-dot")!;
   dot.hidden = !workspaceRoot;
@@ -2210,7 +2214,10 @@ async function renderProjectName(): Promise<void> {
   const button = $("#activity-project");
   button.hidden = !projectUi;
   const name = workspaceRoot ? label : t("開啟資料夾或切換專案");
-  button.title = workspaceRoot ? `${label}\n${displayPath(workspaceRoot.path)}\n${hint}` : `${name}\n${hint}`;
+  const cometLabel = t("COMET 專案");
+  const kind = comet ? `\n${cometLabel}` : "";
+  button.title = workspaceRoot ? `${label}${kind}\n${displayPath(workspaceRoot.path)}\n${hint}` : `${name}\n${hint}`;
+  button.classList.toggle("comet", comet);
   button.setAttribute("aria-label", name);
   const avatar = button.querySelector<HTMLElement>(".project-avatar")!;
   if (workspaceRoot) avatar.textContent = projectInitials(label);

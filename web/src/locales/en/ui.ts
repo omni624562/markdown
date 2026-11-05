@@ -188,6 +188,7 @@ export const ui: Record<string, Translation> = {
   "已建立專案「{name}」": "Created project \"{name}\"",
   "新 COMET 專案…": "New COMET Project…",
   "新 COMET 專案": "New COMET Project",
+  "COMET 專案": "COMET project",
   "COMET 專案：README.md，再用下面的設定執行 comet setup": "COMET project: README.md, then run comet setup with the settings below",
   "建立並設定": "Create and Set Up",
   "在電腦上建立一個新資料夾，接著用下面的設定執行 comet setup，不用再回答問題。":

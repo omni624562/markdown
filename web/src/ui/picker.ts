@@ -12,6 +12,8 @@ export interface PickerItem {
   section?: string;
   /** 名稱前面的顏色圓點（專案的顏色）。 */
   color?: string | null;
+  /** 名稱後面的小標籤（例如 COMET 專案）。 */
+  badge?: HTMLElement;
 }
 
 export interface PickerOptions<T> {
@@ -117,14 +119,16 @@ export class Picker<T> {
         const title = document.createElement("span");
         title.className = "palette-title";
         title.textContent = view.title;
+        const named = view.badge ? Object.assign(document.createElement("span"), { className: "palette-named" }) : null;
+        if (named) named.append(title, view.badge!);
         // 說明太長時截掉（完整的在滑鼠提示裡），名稱不會被擠成一字一行。
         const detail = view.detail ? Object.assign(document.createElement("span"), { className: "palette-group", textContent: view.detail, title: view.detail }) : null;
         if (this.#opts.stacked) {
           const text = document.createElement("span");
           text.className = "palette-text";
-          text.append(title, ...(detail ? [detail] : []));
+          text.append(named ?? title, ...(detail ? [detail] : []));
           li.append(text);
-        } else li.append(title, ...(detail ? [detail] : []));
+        } else li.append(named ?? title, ...(detail ? [detail] : []));
         const kbd = view.keys ? Object.assign(document.createElement("kbd"), { textContent: view.keys }) : null;
         if (this.#opts.columns) {
           // 沒有快速鍵的項目也留一格空白，左邊的分類文字才會上下切齊。
