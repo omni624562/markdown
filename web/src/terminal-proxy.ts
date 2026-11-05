@@ -4,6 +4,10 @@
  * 終端機本身在獨立的 webview（`terminal.html`），疊在這個元素的位置上；這裡只負責留出位置、
  * 調整高度，並透過 Rust 送幾種固定的要求（`term_forward`）。主畫面不能寫入終端機：
  * 開啟的文件萬一夾帶了程式碼，也不能拿終端機執行指令。
+ *
+ * 終端機的 webview 疊在主畫面上面，主畫面的選單、對話框打開時會被它蓋住（例如「☰」選單往下長到終端機的位置）。
+ * 所以選單或對話框蓋到終端機的位置時，先把終端機藏起來，關掉後再顯示（終端機照常執行，只是暫時看不到）。
+ * 通知不算：通知常常出現，每次都藏起終端機會一直閃。
  */
 import type { Desktop, TermNotice, TermProgram } from "./desktop.ts";
 import { t } from "./i18n.ts";
@@ -22,6 +26,9 @@ export class TerminalProxy {
   #laidOut: Promise<void> = Promise.resolve();
   /** Linux：終端機排在主畫面下方（不能疊上去），這個元素只留調整高度的把手。 */
   #stacked = false;
+  /** 主畫面的選單或對話框蓋到終端機的位置：終端機暫時藏起來。 */
+  #covered = false;
+  #coverFrame = 0;
 
   /**
    * @param onLayout 面板顯示、隱藏或改變高度後（編輯區要重新量尺寸）
@@ -44,6 +51,14 @@ export class TerminalProxy {
     this.#setupResize(handle);
     new ResizeObserver(() => this.relayout()).observe(el);
     window.addEventListener("resize", () => this.relayout());
+    // 選單（popover）打開、關閉時有 toggle 事件（不會往上傳，所以在 capture 階段收）；對話框看 open 屬性。
+    // 選單在 toggle 之後才定位，等下一個畫面再量。
+    const check = () => {
+      cancelAnimationFrame(this.#coverFrame);
+      this.#coverFrame = requestAnimationFrame(() => this.#checkCovered());
+    };
+    document.addEventListener("toggle", check, true);
+    new MutationObserver(check).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["open"] });
     void d.onTermNotice((n: TermNotice) => {
       if (n.kind === "show") this.#reveal();
       else if (n.kind === "hide") this.hide();
@@ -119,13 +134,33 @@ export class TerminalProxy {
     this.#forward({ kind: "focus" });
   }
 
-  /** 重新告訴原生端面板的位置（版面或介面縮放改變後）。 */
+  /** 有沒有打開的選單或對話框蓋到終端機的位置（通知不算）。 */
+  #overlaysCover(): boolean {
+    if (this.#el.hidden || this.#stacked) return false;
+    const term = this.#el.getBoundingClientRect();
+    for (const el of document.querySelectorAll<HTMLElement>(":popover-open, dialog[open]")) {
+      if (el.classList.contains("toasts")) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && r.left < term.right && r.right > term.left && r.top < term.bottom && r.bottom > term.top) return true;
+    }
+    return false;
+  }
+
+  #checkCovered(): void {
+    const covered = this.#overlaysCover();
+    if (covered === this.#covered) return;
+    this.#covered = covered;
+    this.relayout();
+  }
+
+  /** 重新告訴原生端面板的位置（版面或介面縮放改變後）；被選單或對話框蓋到時先藏起來。 */
   relayout(): void {
     cancelAnimationFrame(this.#layoutFrame);
     let done = () => {};
     this.#laidOut = new Promise((resolve) => (done = resolve));
     this.#layoutFrame = requestAnimationFrame(() => {
-      if (this.#el.hidden) {
+      this.#covered = this.#overlaysCover();
+      if (this.#el.hidden || this.#covered) {
         void this.#d.termLayout(null).catch(() => {}).finally(done);
         return;
       }
