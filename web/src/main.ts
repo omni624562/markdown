@@ -3478,6 +3478,8 @@ initFileFormat();
 
 /** 預覽窗格現在看得到嗎（分割或只顯示預覽）。 */
 function previewVisible(): boolean {
+  // 工作項目並排時右半邊被佔住，「分割」當成即時預覽，只有「預覽」看得到預覽（在左半邊）。
+  if (workspace.classList.contains("issue-side")) return view === "preview";
   return view === "preview" || (view === "split" && !narrowQuery.matches);
 }
 
@@ -3496,12 +3498,15 @@ function applyLayout(): void {
     // 分頁列上標成目前分頁的換了（並排時是文件，蓋住編輯區時是工作項目等）。
     renderTabs();
   }
+  // 工作項目並排時右半邊被佔住：「分割」當成即時預覽，「預覽」換到左半邊（編輯區的位置）顯示。
+  const shown: ViewMode = side && effective === "split" ? "live" : effective;
+  workspace.classList.toggle("side-preview", side && shown === "preview");
   // 即時預覽的版面和只顯示編輯區相同，差別在編輯區裡直接顯示排版。
-  const layout = side || docSide ? "split" : effective === "live" ? "editor" : effective;
+  const layout = side || docSide ? "split" : shown === "live" ? "editor" : shown;
   workspace.dataset.view = layout;
-  workspace.classList.toggle("live", effective === "live");
-  if (liveApplied !== (effective === "live")) {
-    liveApplied = effective === "live";
+  workspace.classList.toggle("live", shown === "live");
+  if (liveApplied !== (shown === "live")) {
+    liveApplied = shown === "live";
     for (const ed of allEditors()) ed.configure({ livePreview: liveApplied });
   }
   workspace.classList.toggle("outline-hidden", !outlineShown);
