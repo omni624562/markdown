@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn comet_projects_have_comet_json() {
-        let dir = std::env::temp_dir().join(format!("omarker-comet-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omarker-comet-badge-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let info = |dir: &Path| {
             ProjectInfo::from(ProjectMeta {
