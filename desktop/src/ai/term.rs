@@ -1,5 +1,5 @@
 //! 內嵌終端機：用虛擬終端（Windows 上是 ConPTY）執行殼層或 Claude Code、Codex，
-//! 輸出以事件傳給前端的 xterm.js。
+//! 輸出經過終端機頁面的通道（見 `view::send`）傳給前端的 xterm.js。
 //!
 //! 終端機顯示在獨立的 webview（見 `view`），這裡的指令只接受那個 webview 呼叫：
 //! 主畫面萬一被注入程式碼，也不能開殼層或寫入終端機。
@@ -106,7 +106,7 @@ impl Terminals {
         all
     }
 
-    /// 在虛擬終端中啟動程式，輸出以事件傳給前端，並記錄在紀錄中。
+    /// 在虛擬終端中啟動程式，輸出傳給終端機頁面，並記錄在紀錄中。
     pub fn spawn(
         &self,
         app: &AppHandle,
@@ -173,7 +173,7 @@ impl Terminals {
         );
 
         // 讀取與送出分成兩個執行緒：大量輸出時（例如建置記錄），送出前把已經讀到的合併成一次，
-        // 不用每讀一次就送一個事件給前端。打字時的少量輸出仍然立刻送出。
+        // 不用每讀一次就送一次給前端。打字時的少量輸出仍然立刻送出。
         let (tx, rx) = std::sync::mpsc::channel::<Chunk>();
         std::thread::spawn(move || {
             let mut buf = [0u8; 16 * 1024];

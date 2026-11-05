@@ -74,7 +74,8 @@ web/src/      網頁介面（桌面版也用同一份）
   Git 與遠端    git-ui.ts、git-graph.ts、github-ui.ts、ado-ui.ts、workitem-*.ts（工作項目）、wiki-*.ts（Wiki）、
                 issue-doc.ts、repo-links.ts、remote-links.ts、offline.ts、auth-errors.ts
   終端機        terminal-proxy.ts（主畫面這一端）、terminal-main.ts（終端機 webview 的進入點，terminal.html）：
-                主畫面只能透過 Rust 送固定的要求，不能寫入終端機
+                主畫面只能透過 Rust 送固定的要求，不能寫入終端機；終端機的輸出與 AI 要執行的指令只經過終端機
+                自己交給 Rust 的 Channel，主畫面收不到（兩個 webview 的權限分開，見 desktop/capabilities/）
   AI 與更新     ai.ts（AI 協作：MCP 狀態同步、提議、執行指令的同意流程、AI 快速動作）、ci-workflow.ts、updater.ts、
                 release-notes.ts
   ui/           分頁列、檔案樹、搜尋、待辦總覽、標籤、Issues、Wiki、簡報、圖片放大、匯出 PDF 選項、終端機（xterm.js）、

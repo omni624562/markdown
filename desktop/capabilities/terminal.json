@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "terminal",
+  "description": "終端機的 webview（label terminal）。不需要 Tauri 內建的權限，也不能收聽或送出事件：資料只從它交給 term_ready 的 Channel 送來；它用的 term_*、mcp_respond 等是本程式自訂的指令，由原生端檢查呼叫的 webview（見 src/ai/view.rs）。",
+  "webviews": ["terminal"],
+  "permissions": []
+}

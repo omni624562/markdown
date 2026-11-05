@@ -15,6 +15,8 @@ interface TauriCore {
   /** `args` 是位元組時當成請求本文直接傳送（大檔案不用轉成 base64），其他資料放在標頭。 */
   invoke<T>(cmd: string, args?: Record<string, unknown> | Uint8Array, options?: { headers: Record<string, string> }): Promise<T>;
   convertFileSrc(path: string, protocol?: string): string;
+  /** 原生端送資料給這個頁面的通道（Rust 的 `tauri::ipc::Channel`）：當作指令的參數傳過去，只有建立它的 webview 收得到。 */
+  Channel: new <T>() => { onmessage: (message: T) => void };
 }
 
 interface TauriEvent {

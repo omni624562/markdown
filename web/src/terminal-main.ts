@@ -2,7 +2,9 @@
  * 終端機 webview 的進入點（桌面版，`terminal.html`）。
  *
  * 這個頁面只顯示終端機，不顯示任何文件內容；只有這裡能呼叫 `term_*` 指令。
- * 主畫面的要求（顯示、開新分頁、貼到 AI 的輸入列等）經過 Rust 檢查後以 `term-request` 事件送來。
+ * 原生端送來的資料（輸出、AI 要執行的指令、主畫面的要求）只經過這個頁面交給 `term_ready` 的通道（Channel），
+ * 不走 Tauri 的全域事件：主畫面收不到，也不能假冒。主畫面的要求（顯示、開新分頁、貼到 AI 的輸入列等）
+ * 經過 Rust 檢查後以 `term-request` 送來。
  */
 // 主題的 color-scheme（data-theme）寫在 document.css，和主畫面一樣先載入。
 import "../../crates/md-core/src/document.css";
@@ -26,9 +28,15 @@ type Request =
 
 type Notice = { kind: "show" } | { kind: "hide" } | { kind: "command"; id: string } | { kind: "focus" };
 
+/** 原生端從通道送來的一則訊息（Rust 的 `view::Message`）。 */
+interface TermMessage {
+  event: string;
+  payload: unknown;
+}
+
 const tauri = window.__TAURI__;
 if (!tauri) throw new Error("terminal.html only runs in the desktop app");
-const { core, event } = tauri;
+const { core } = tauri;
 const notify = (notice: Notice) => void core.invoke("term_notify", { notice }).catch(() => {});
 
 void start();
@@ -82,11 +90,11 @@ async function start(): Promise<void> {
   // AI 要求執行指令時的同意提示：只在這個 webview 顯示，回覆也只接受這裡送出的。
   const consent = new CommandConsent(
     el,
-    (id, ok, message) => core.invoke<boolean>("mcp_respond", { id, decision: { ok, message } }),
+    (id, ok, message, always) => core.invoke<boolean>("mcp_respond", { id, decision: { ok, message, always } }),
     () => notify({ kind: "focus" }),
   );
 
-  const handle = (name: string, payload: unknown): void => {
+  const handle = ({ event: name, payload }: TermMessage): void => {
     if (name === "term-output") panel.output(payload as { id: number; data: string });
     else if (name === "term-attached") panel.attached(payload as { id: number; label: string });
     else if (name === "term-exit") panel.exited(payload as { id: number; code: number | null });
@@ -94,11 +102,10 @@ async function start(): Promise<void> {
     else if (name === "ai-command") void consent.ask(payload as AiCommand);
     else if (name === "ai-command-expired") consent.expired(payload as number);
   };
-  for (const name of ["term-output", "term-attached", "term-exit", "term-request", "ai-command", "ai-command-expired"]) {
-    await event.listen(name, (e) => handle(name, e.payload));
-  }
-  // 先註冊好事件再取走排隊中的事件；中間到的輸出由面板先暫存，分頁建立後再補上。
-  for (const [name, payload] of await core.invoke<[string, unknown][]>("term_ready")) handle(name, payload);
+  // 原生端先補送排隊中的訊息，再依序送之後的；輸出比分頁先到時由面板先暫存，分頁建立後再補上。
+  const channel = new core.Channel<TermMessage>();
+  channel.onmessage = handle;
+  await core.invoke("term_ready", { channel });
 }
 
 function request(panel: TerminalPanel, r: Request): void {

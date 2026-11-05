@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "主畫面的 webview（不含同一個視窗裡的終端機）。檔案讀寫透過本程式自訂的指令，不開放一般檔案系統存取。core:default 去掉送出事件（allow-emit、allow-emit-to），只留收聽：主畫面送不出事件給終端機；終端機的資料只經過它自己的 Channel，主畫面也收不到（見 src/ai/view.rs）。",
+  "webviews": ["main"],
+  "permissions": [
+    "core:app:default",
+    "core:image:default",
+    "core:menu:default",
+    "core:path:default",
+    "core:resources:default",
+    "core:tray:default",
+    "core:webview:default",
+    "core:window:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}
