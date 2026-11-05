@@ -1,11 +1,23 @@
 //! 選取段落快捷動作：在背景執行 `claude -p` 或 `codex exec`，串流回傳結果。
 //!
-//! 不給 AI 任何工具（不能讀寫檔案、不能執行命令），只處理傳進去的文字；
-//! 文字從標準輸入傳入，不放在命令列上。結果由前端以差異檢視讓使用者決定是否套用。
+//! 選取的文字可能來自 Wiki、工作項目等別人寫的內容（可能夾帶要 AI 做別的事的指示），
+//! 所以 AI 只能處理傳進去的文字，不能執行命令、不能讀寫檔案：
+//! - Claude Code：`--tools ""` 不給任何內建工具，`--strict-mcp-config` 不載入 MCP 伺服器。
+//! - Codex：`--disable shell_tool` 拿掉執行命令的工具（沒有它就不能列目錄、讀檔案），
+//!   `--sandbox read-only` 擋住寫入。`--disable` 遇到不認得的功能名稱會直接失敗，
+//!   不會在沒有保護的情況下執行；另外先檢查版本（見 [`CODEX_MIN_VERSION`]）。
+//!   還有兩處做不到和 Claude Code 一樣：讀取圖片檔的 `view_image` 要 0.147.0 起才能關掉
+//!   （舊版的 AI 仍可能讀取猜得到路徑的圖片）；使用者自己在 Codex 設定檔加的 MCP 伺服器
+//!   仍然會載入（`--ignore-user-config` 會連模型等設定一起忽略，所以不用）。
+//!
+//! 兩者都在一個空的資料夾執行，文字從標準輸入傳入，不放在命令列上。
+//! 結果由前端以差異檢視讓使用者決定是否套用。
 
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -122,35 +134,111 @@ fn parse_codex(line: &str) -> Option<Parsed> {
     }
 }
 
-fn command(app: &AppHandle, tool: Tool) -> Result<tokio::process::Command, String> {
-    let (prog, pre) = program_for(&tool.locate()?);
-    let mut cmd = tokio::process::Command::new(prog);
-    cmd.args(pre);
+/// 快捷動作傳給各工具的參數（提示從標準輸入傳入）。
+fn args(tool: Tool) -> &'static [&'static str] {
     match tool {
-        Tool::Claude => {
-            cmd.args([
-                "-p",
-                "--output-format",
-                "stream-json",
-                "--verbose",
-                "--include-partial-messages",
-                "--no-session-persistence",
-                "--strict-mcp-config",
-                "--tools",
-                "",
-            ]);
-        }
-        Tool::Codex => {
-            cmd.args([
-                "exec",
-                "--json",
-                "--skip-git-repo-check",
-                "--sandbox",
-                "read-only",
-                "-",
-            ]);
-        }
+        Tool::Claude => &[
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-partial-messages",
+            "--no-session-persistence",
+            "--strict-mcp-config",
+            "--tools",
+            "",
+        ],
+        Tool::Codex => &[
+            // 拿掉執行命令的工具（shell、exec_command 等）。Codex 0.51.0 起，
+            // 不認得的功能名稱會讓整個命令失敗，不會默默忽略。
+            "--disable",
+            "shell_tool",
+            // 讀取圖片檔的工具（0.147.0 起才有這個開關；舊版不認得只會忽略）。
+            "-c",
+            "features.view_image=false",
+            "exec",
+            "--json",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "-",
+        ],
     }
+}
+
+/// 快捷動作要求的最低 Codex 版本：`shell_tool` 這個功能開關從 0.59.0 開始才有。
+/// 更舊的版本會因為不認得 `--disable` 或 `shell_tool` 而失敗，但 0.50.0 會默默忽略，
+/// 所以先問版本，太舊時直接說明要更新。
+const CODEX_MIN_VERSION: (u64, u64, u64) = (0, 59, 0);
+
+/// 從 `codex --version` 的輸出（例如 `codex-cli 0.59.0`）找出第一個「數字.數字.數字」。
+fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
+    s.split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .find_map(|word| {
+            let mut parts = word.split('.');
+            let major = parts.next()?.parse().ok()?;
+            let minor = parts.next()?.parse().ok()?;
+            let patch = parts.next()?.parse().ok()?;
+            Some((major, minor, patch))
+        })
+}
+
+fn version_text((major, minor, patch): (u64, u64, u64)) -> String {
+    format!("{major}.{minor}.{patch}")
+}
+
+/// 確認 Codex 夠新，能關掉執行命令的工具。確認過的路徑記起來，之後不再重問。
+async fn check_codex_version(exe: &Path) -> Result<(), String> {
+    static CHECKED: Mutex<Option<PathBuf>> = Mutex::new(None);
+    if CHECKED.lock().as_deref() == Some(exe) {
+        return Ok(());
+    }
+    let (prog, pre) = program_for(exe);
+    let mut cmd = tokio::process::Command::new(prog);
+    cmd.args(pre)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    let output = match tokio::time::timeout(Duration::from_secs(30), cmd.output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
+            return Err(tr!(
+                "無法執行 {tool}：{e}",
+                tool = Tool::Codex.label(),
+                e = e
+            ))
+        }
+        Err(_) => return Err(codex_version_unknown()),
+    };
+    match parse_version(&String::from_utf8_lossy(&output.stdout)) {
+        Some(found) if found >= CODEX_MIN_VERSION => {
+            *CHECKED.lock() = Some(exe.to_path_buf());
+            Ok(())
+        }
+        Some(found) => Err(tr!(
+            "AI 快速動作需要 Codex {min} 以上的版本（目前是 {version}），舊版無法禁止 AI 執行命令。請先更新 Codex，或改用 Claude Code。",
+            min = version_text(CODEX_MIN_VERSION),
+            version = version_text(found)
+        )),
+        None => Err(codex_version_unknown()),
+    }
+}
+
+fn codex_version_unknown() -> String {
+    tr!(
+        "無法確認 Codex 的版本。AI 快速動作需要 Codex {min} 以上的版本，請先更新 Codex，或改用 Claude Code。",
+        min = version_text(CODEX_MIN_VERSION)
+    )
+}
+
+fn command(app: &AppHandle, tool: Tool, exe: &Path) -> Result<tokio::process::Command, String> {
+    let (prog, pre) = program_for(exe);
+    let mut cmd = tokio::process::Command::new(prog);
+    cmd.args(pre).args(args(tool));
     // 在一個中性的資料夾執行，不會讀到任何專案的設定或檔案。
     let dir = app
         .path()
@@ -178,7 +266,11 @@ pub async fn ai_run(
     runs: State<'_, Runs>,
 ) -> Result<(), String> {
     crate::settings::require_ai(&app)?;
-    let mut child = command(&app, tool)?
+    let exe = tool.locate()?;
+    if tool == Tool::Codex {
+        check_codex_version(&exe).await?;
+    }
+    let mut child = command(&app, tool, &exe)?
         .spawn()
         .map_err(|e| tr!("無法執行 {tool}：{e}", tool = tool.label(), e = e))?;
     let mut stdin = child.stdin.take().ok_or_else(|| tr!("無法傳送內容"))?;
@@ -340,5 +432,70 @@ mod tests {
         );
         let failed = r#"{"type":"turn.failed","error":{"message":"未登入"}}"#;
         assert_eq!(parse_codex(failed), Some(Parsed::Error("未登入".into())));
+        // 設定警告（例如舊版不認得 features.view_image）以 error 項目回報，不能當成失敗。
+        let warning = r#"{"type":"item.completed","item":{"id":"item_0","type":"error","message":"unknown configuration field `features.view_image`"}}"#;
+        assert_eq!(parse_codex(warning), None);
+    }
+
+    #[test]
+    fn codex_cannot_run_commands() {
+        let a = args(Tool::Codex);
+        let exec = a.iter().position(|&s| s == "exec").unwrap();
+        // 功能開關放在 exec 之前（主程式的參數），每一版都會處理。
+        let disable = a.windows(2).position(|w| w == ["--disable", "shell_tool"]);
+        assert!(disable.is_some_and(|i| i < exec), "{a:?}");
+        let image = a
+            .windows(2)
+            .position(|w| w == ["-c", "features.view_image=false"]);
+        assert!(image.is_some_and(|i| i < exec), "{a:?}");
+        assert!(
+            a.windows(2).any(|w| w == ["--sandbox", "read-only"]),
+            "{a:?}"
+        );
+        // 不能有放寬限制的參數。
+        for loose in [
+            "--full-auto",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--yolo",
+            "--enable",
+            "workspace-write",
+            "danger-full-access",
+        ] {
+            assert!(!a.contains(&loose), "{loose}");
+        }
+        // 提示從標準輸入傳入，最後一個參數是「-」。
+        assert_eq!(a.last(), Some(&"-"));
+    }
+
+    #[test]
+    fn claude_has_no_tools() {
+        let a = args(Tool::Claude);
+        assert!(a.windows(2).any(|w| w == ["--tools", ""]), "{a:?}");
+        assert!(a.contains(&"--strict-mcp-config"));
+        assert!(a.contains(&"-p"));
+    }
+
+    #[test]
+    fn parses_codex_version() {
+        assert_eq!(parse_version("codex-cli 0.59.0\n"), Some((0, 59, 0)));
+        assert_eq!(parse_version("codex-cli 0.166.1"), Some((0, 166, 1)));
+        assert_eq!(parse_version("codex-cli 0.60.0-alpha.3"), Some((0, 60, 0)));
+        assert_eq!(parse_version("codex 1.2.3 (abc)"), Some((1, 2, 3)));
+        assert_eq!(parse_version("codex-cli"), None);
+        assert_eq!(parse_version(""), None);
+        assert_eq!(parse_version("版本 12"), None);
+    }
+
+    #[test]
+    fn requires_codex_with_shell_tool_switch() {
+        let ok = |s: &str| parse_version(s).is_some_and(|v| v >= CODEX_MIN_VERSION);
+        assert!(ok("codex-cli 0.59.0"));
+        assert!(ok("codex-cli 0.166.0"));
+        assert!(ok("codex-cli 1.0.0"));
+        // 0.50.0 有 --disable 但會默默忽略不認得的名稱；0.58 以前沒有 shell_tool。
+        assert!(!ok("codex-cli 0.50.0"));
+        assert!(!ok("codex-cli 0.58.9"));
+        assert!(!ok("codex-cli 0.0.0"));
+        assert_eq!(version_text(CODEX_MIN_VERSION), "0.59.0");
     }
 }

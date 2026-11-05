@@ -107,6 +107,7 @@ import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
 import { renderStartRecent } from "./app/recent-files.ts";
 import { initErrorHandling } from "./app/error-handling.ts";
+import { refreshRepoNotes, repoSources } from "./app/repo-sources.ts";
 
 export type ViewMode = "editor" | "live" | "split" | "preview";
 type ThemePref = "system" | "light" | "dark";
@@ -2189,10 +2190,7 @@ const projectUi = desktop
       changed: () => void renderProjectName().then(renderFilesEmpty),
       unsaved: (path) =>
         (peekSession(path)?.docs ?? []).some((m) => m.baseline !== null && draftState(m).dirty),
-      repoSources: () => [
-        ...(github ? [{ id: "github", title: t("GitHub：下載儲存庫…"), icon: "github", run: () => void github.openRepo() }] : []),
-        ...(ado ? [{ id: "ado", title: t("Azure DevOps：下載儲存庫…"), icon: "briefcase-business", run: () => void ado?.openRepo() }] : []),
-      ],
+      repoSources,
     })
   : null;
 
@@ -2259,6 +2257,7 @@ const github = desktop && features.git
         void renderIssuesTab();
         settingsDialog.refresh();
         renderEmptyState(editor.text);
+        refreshRepoNotes();
       },
     })
   : null;
@@ -2278,6 +2277,7 @@ const ado = desktop && features.ado
         settingsDialog.refresh();
         void gitPanel?.refresh();
         renderEmptyState(editor.text);
+        refreshRepoNotes();
       },
       openSettings: () => settingsDialog.open("Azure DevOps"),
     })
@@ -2286,6 +2286,7 @@ const ado = desktop && features.ado
 void Promise.all([ado?.ready(), github?.ready()]).then(() => {
   accountsReady = true;
   renderEmptyState(editor.text);
+  refreshRepoNotes();
 });
 
 let wikiListCache: Promise<AdoWiki[]> | null = null;

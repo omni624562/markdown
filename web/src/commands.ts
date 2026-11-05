@@ -17,6 +17,8 @@ export interface Command {
   when?: () => boolean;
   /** 單選的其中一項（例如「主題：深色」）：選單裡打勾標出目前選的那一項。 */
   checked?: () => boolean;
+  /** 選單與指令面板裡名稱右邊的淡色小字（例如「還沒登入」）；沒有時回傳 undefined。 */
+  note?: () => string | undefined;
   run(): void | Promise<void>;
 }
 

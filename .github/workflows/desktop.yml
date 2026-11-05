@@ -4,12 +4,13 @@ name: Desktop
 # - 每次 PR、每次合併到 main 都會建置並產生 Artifact（需登入 GitHub 才能下載），方便測試；合併不會升版。
 # - 發佈：在 Actions → Desktop 按「Run workflow」（main），依累積的 changes/ 片段升一個版本，
 #   更新公開的「最新版」Release（不用登入就能下載），程式的自動更新才會看到新版。
-# - 推送 v* 標籤時，另外建立該版本的 Release。
+#   版本號的 Release（v1.2.3）也由發佈時建立；推送 v* 標籤不會觸發建置或發佈。
 # - 建置流水號（run_number）會編進執行檔；「最新版」附上 version.json，讓程式自動更新。
+# - 發佈用的建置不還原快取，wasm-pack、wasm-bindgen 從原始碼重新編譯，wasm-opt 固定版本並核對檢查碼；
+#   簽章只在 release 環境（Settings → Environments）裡進行。
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -31,10 +32,11 @@ jobs:
     outputs:
       sha: ${{ steps.release.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      # 這個工作要把升版的提交推回 main，所以保留 checkout 的登入資訊（不加 persist-credentials: false）。
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: 依片段升版
@@ -57,15 +59,20 @@ jobs:
 
   windows:
     needs: version
-    # PR 與標籤不跑 version（被略過），照常建置。
+    # PR、推送到 main 不跑 version（被略過），照常建置。
     if: ${{ !failure() && !cancelled() }}
     runs-on: windows-latest
     env:
       WASM_PACK: "0.15.0"
+      # wasm-opt（縮小 wasm）用的 binaryen：和 wasm-pack 0.15.0 自己會下載的版本相同，
+      # 檢查碼是 binaryen 官方 Release 附的 SHA-256（binaryen-version_117-x86_64-windows.tar.gz.sha256）。
+      BINARYEN: version_117
+      BINARYEN_SHA256: b09f260176483bd30194303ccb15ac81c2247e4e566894f9d931e4313cb36d58
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.version.outputs.sha || github.sha }}
+          persist-credentials: false
       # 不用第三方 action（改用 rustup、actions/cache），減少建置流程被竄改的機會。
       - name: 安裝 Rust
         shell: bash
@@ -78,8 +85,11 @@ jobs:
         run: |
           hash=$(for f in Cargo.lock desktop/Cargo.lock; do sed '/^name = "md-/{n;d}' "$f"; done | sha256sum | cut -c1-16)
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@v4
+      # 發佈（手動執行）時不還原快取：快取的內容（編譯好的 target、解開的套件原始碼、wasm-pack.exe）
+      # 不會再檢查一次，被動過手腳的話會直接進到簽章的版本裡。發佈時全部重新下載、重新編譯。
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         id: cache
+        if: github.event_name != 'workflow_dispatch'
         with:
           path: |
             ~/.cargo/registry
@@ -90,12 +100,38 @@ jobs:
           key: desktop-${{ runner.os }}-${{ env.WASM_PACK }}-${{ steps.deps.outputs.hash }}
           restore-keys: desktop-${{ runner.os }}-${{ env.WASM_PACK }}-
       - name: 安裝 wasm-pack
+        if: github.event_name != 'workflow_dispatch'
         shell: bash
         run: command -v wasm-pack || cargo install wasm-pack --version "$WASM_PACK" --locked
-      - uses: actions/setup-node@v4
+      # 發佈時 wasm-pack 與 wasm-bindgen 都從 crates.io 重新編譯（套件有檢查碼）。wasm-bindgen 用 Cargo.lock 裡的版本，
+      # wasm-pack 在 PATH 上找到版本相符的就直接用，不會再從 GitHub Releases 下載沒有核對檢查碼的執行檔。
+      - name: 安裝 wasm-pack 與 wasm-bindgen（發佈）
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          cargo install wasm-pack --version "$WASM_PACK" --locked --force
+          bindgen="$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;}' Cargo.lock)"
+          if [ -z "$bindgen" ]; then echo "::error::在 Cargo.lock 找不到 wasm-bindgen 的版本"; exit 1; fi
+          cargo install wasm-bindgen-cli --version "$bindgen" --locked --force
+          wasm-bindgen --version
+          # wasm-pack 要下載工具時會放到這裡；建置完確認它是空的。
+          echo "WASM_PACK_CACHE=$RUNNER_TEMP\\wasm-pack-cache" >> "$GITHUB_ENV"
+      - name: 安裝 wasm-opt（發佈：固定 binaryen 版本並核對檢查碼）
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          tmp="$(cygpath -u "$RUNNER_TEMP")"
+          file="binaryen-${BINARYEN}-x86_64-windows.tar.gz"
+          curl -fsSL --retry 3 -o "$tmp/$file" "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN}/${file}"
+          echo "${BINARYEN_SHA256}  $tmp/$file" | sha256sum -c -
+          tar -xzf "$tmp/$file" -C "$tmp"
+          "$tmp/binaryen-${BINARYEN}/bin/wasm-opt.exe" --version
+          cygpath -w "$tmp/binaryen-${BINARYEN}/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-          cache: npm
+          # 發佈時也不用 npm 的快取（npm ci 照 package-lock.json 的檢查碼重新下載）。
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}
           cache-dependency-path: web/package-lock.json
 
       - name: 建置前端
@@ -104,6 +140,16 @@ jobs:
           npm ci --ignore-scripts
           npm run wasm
           npm run build
+
+      - name: 確認 wasm-pack 沒有自己下載工具（發佈）
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          dir="$(cygpath -u "${WASM_PACK_CACHE:?}")"
+          if [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
+            echo "::error::wasm-pack 自己下載了工具（應該用事先安裝好的 wasm-bindgen、wasm-opt）：$(ls "$dir")"
+            exit 1
+          fi
 
       - name: 測試
         working-directory: desktop
@@ -128,15 +174,16 @@ jobs:
         working-directory: desktop/target/release
         run: Copy-Item md-editor.exe omarker.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: omarker-windows-x64
           path: desktop/target/release/omarker.exe
           if-no-files-found: error
 
-      # 只在 main 上、相依套件變了（快取沒對上）時才存：PR 的快取別的分支用不到，存一次要好幾分鐘。
-      - uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+      # 只在推送到 main、相依套件變了（快取沒對上）時才存：PR 的快取別的分支用不到，存一次要好幾分鐘。
+      # 發佈時沒有還原快取（cache-hit 是空的），也不在發佈時花時間存。
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch' && steps.cache.outputs.cache-hit != 'true'
         with:
           path: |
             ~/.cargo/registry
@@ -153,6 +200,9 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     needs: [version, windows]
     runs-on: ubuntu-latest
+    # 簽章私鑰（UPDATE_SIGNING_KEY）放在 release 環境：只有這個工作拿得到，
+    # 環境可以限定只有 main 能用、要有人核准才開始（Settings → Environments → release）。
+    environment: release
     permissions:
       contents: write
     concurrency:
@@ -162,10 +212,11 @@ jobs:
       # 發佈的是升版後的提交（不是觸發這次執行的合併提交）。
       RELEASE_SHA: ${{ needs.version.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.version.outputs.sha }}
-      - uses: actions/download-artifact@v4
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: omarker-windows-x64
       - name: 產生更新資訊（version.json）
@@ -214,6 +265,7 @@ jobs:
       - name: 更新「最新版」Release，並保留這個版本號的 Release
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD: ${{ github.run_number }}
         run: |
           version="$(node scripts/version.mjs)"
           changes="$(node scripts/version.mjs notes "$version" || true)"
@@ -230,7 +282,7 @@ jobs:
 
           ${howto}"
           fi
-          notes="版本 ${version}（main 分支 ${short}，第 ${{ github.run_number }} 版，${today}）
+          notes="版本 ${version}（main 分支 ${short}，第 ${BUILD} 版，${today}）
 
           ${changes}
 
@@ -245,20 +297,3 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/prune-releases.mjs --keep 3
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: windows
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: omarker-windows-x64
-      - name: 建立 Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "$GITHUB_REF_NAME" omarker.exe
-          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

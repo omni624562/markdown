@@ -31,6 +31,7 @@ import { wikiPanel, workItemsPanel, issuesPanel, renderIssuesTab } from "./work-
 import type { Doc, SidePanel } from "../main.ts";
 import { app } from "./context.ts";
 import { boardPanelShown } from "./taskboard.ts";
+import { repoNoteEl } from "./repo-sources.ts";
 import { docName } from "./doc-names.ts";
 import { renameFileShortcuts } from "./file-shortcuts.ts";
 import { setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
@@ -399,7 +400,10 @@ export async function renderFilesEmpty(): Promise<void> {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "btn";
-    b.append(icon(source.icon), source.title.replace(/…$/, ""));
+    // 側邊欄窄：狀態（還沒登入、帳號）放在名稱下面一行，名稱才不會被擠成兩行。
+    const label = Object.assign(document.createElement("span"), { className: "repo-label" });
+    label.append(Object.assign(document.createElement("span"), { textContent: source.title.replace(/…$/, "") }), repoNoteEl(source));
+    b.append(icon(source.icon), label);
     b.addEventListener("click", () => source.run());
     actions.append(b);
   }

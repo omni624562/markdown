@@ -69,8 +69,8 @@ export class Palette {
         const keys = c.keys ?? c.shownKeys;
         return {
           title: c.title,
-          // 分區顯示時標題已經說明分類；搜尋結果才在右邊註明。
-          detail: section ? undefined : c.group,
+          // 分區顯示時標題已經說明分類；搜尋結果才在右邊註明。狀態（例如還沒登入）放在分類前面。
+          detail: [c.note?.(), section ? undefined : c.group].filter(Boolean).join(" · ") || undefined,
           section,
           icon: c.icon ?? "command",
           keys: keys && formatKeys(keys),

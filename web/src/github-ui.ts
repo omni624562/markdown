@@ -23,6 +23,7 @@ export class GitHub {
   #hooks: GitHubHooks;
   #account: GitHubAccount | null = null;
   #loaded: Promise<void>;
+  #ready = false;
 
   constructor(d: Desktop, hooks: GitHubHooks) {
     this.#d = d;
@@ -30,7 +31,8 @@ export class GitHub {
     this.#loaded = d
       .githubAccount()
       .then((a) => void (this.#account = a))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => (this.#ready = true));
   }
 
   get account(): GitHubAccount | null {
@@ -39,6 +41,11 @@ export class GitHub {
 
   ready(): Promise<void> {
     return this.#loaded;
+  }
+
+  /** 帳號讀到了沒（讀到之前還不知道有沒有登入）。 */
+  get loaded(): boolean {
+    return this.#ready;
   }
 
   /** 裝置碼登入：顯示代碼，等使用者在瀏覽器授權。成功回傳帳號，取消或失敗回傳 null。 */

@@ -27,6 +27,7 @@ export class Ado {
   #hooks: AdoHooks;
   #account: AdoAccount | null = null;
   #loaded: Promise<void>;
+  #ready = false;
 
   constructor(d: Desktop, hooks: AdoHooks) {
     this.#d = d;
@@ -34,7 +35,8 @@ export class Ado {
     this.#loaded = d
       .adoAccount()
       .then((a) => void (this.#account = a))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => (this.#ready = true));
   }
 
   get account(): AdoAccount | null {
@@ -43,6 +45,11 @@ export class Ado {
 
   ready(): Promise<void> {
     return this.#loaded;
+  }
+
+  /** 帳號讀到了沒（讀到之前還不知道有沒有連線）。 */
+  get loaded(): boolean {
+    return this.#ready;
   }
 
   /** 用網址與個人存取權杖連線。成功回傳 true。 */
