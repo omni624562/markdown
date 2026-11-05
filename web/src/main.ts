@@ -201,6 +201,10 @@ const app = {
   skipStartPage(id: string) {
     startDismissed.add(id);
   },
+  /** 按「新增文件」開的（不是一開始或關掉所有文件後補上的空白文件）：空白時分頁也照常顯示。 */
+  startSkipped(id: string) {
+    return startDismissed.has(id);
+  },
   get ado() {
     return ado;
   },
@@ -1554,6 +1558,7 @@ function renderEmptyState(text: string): void {
           run: () => {
             startDismissed.add(active.id);
             renderEmptyState(editor.text);
+            renderSaveState(); // 分頁列跟著出現（見 onlyBlankDoc）
             editor.view.focus();
           },
         },

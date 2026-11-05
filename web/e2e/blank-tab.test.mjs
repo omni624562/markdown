@@ -87,3 +87,26 @@ test("文件都關掉後再按新增文件：只會有一個「未命名」", as
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("一開始的空白文件不顯示分頁；按「新增文件」（Ctrl+N 或起始頁的按鈕）後就看得到「未命名」分頁", async () => {
+  const { page, context, errors } = await open({ desktop: {} });
+  await page.waitForSelector(".cm-content");
+  assert.deepEqual(await tabs(page), []);
+  await page.keyboard.press("Control+N");
+  await page.waitForFunction(() => [...document.querySelectorAll("#tab-bar .tab")].some((t) => getComputedStyle(t).visibility !== "hidden"));
+  assert.deepEqual(await tabs(page), ["未命名"]);
+  // 還沒打字就再按一次：多一份「未命名 2」，第一份還在。
+  await page.keyboard.press("Control+N");
+  await page.waitForFunction(() => document.querySelectorAll("#tab-bar .tab").length === 2);
+  assert.deepEqual(await tabs(page), ["未命名", "未命名 2"]);
+  await context.close();
+
+  // 起始頁的「新增文件」按鈕：同一份空白文件收起起始頁，分頁也跟著出現。
+  const second = await open({ desktop: {} });
+  await second.page.locator(".empty-state button", { hasText: "新增文件" }).click();
+  await second.page.waitForFunction(() => [...document.querySelectorAll("#tab-bar .tab")].some((t) => getComputedStyle(t).visibility !== "hidden"));
+  assert.deepEqual(await tabs(second.page), ["未命名"]);
+  assert.deepEqual(second.errors, []);
+  assert.deepEqual(errors, []);
+  await second.context.close();
+});
