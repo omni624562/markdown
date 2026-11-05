@@ -8,18 +8,32 @@ type Mermaid = typeof import("mermaid").default;
 
 let mermaidPromise: Promise<Mermaid> | null = null;
 let initializedTheme = "";
+let initializedBlock = false;
 
+/** 設定裡會原封不動放進 CSS 的項目（`themeCSS`、各種 `fontFamily`）：可以寫 `url(…)` 去下載遠端圖片。 */
+function cssConfigKeys(config: object, keys = new Set(["themeCSS", "fontFamily", "altFontFamily"])): Set<string> {
+  for (const [key, value] of Object.entries(config)) {
+    if (/themecss|fontfamily/i.test(key)) keys.add(key);
+    if (value && typeof value === "object" && !Array.isArray(value)) cssConfigKeys(value, keys);
+  }
+  return keys;
+}
 
 /** 第一次遇到流程圖時才下載 Mermaid（檔案很大）。 */
-async function loadMermaid(): Promise<Mermaid> {
+async function loadMermaid(block: boolean): Promise<Mermaid> {
   mermaidPromise ??= import("mermaid").then((m) => m.default);
   const mermaid = await mermaidPromise;
   const theme = mermaidTheme();
-  if (initializedTheme !== theme) {
+  if (initializedTheme !== theme || initializedBlock !== block) {
+    // 封鎖遠端圖片時，圖裡的 `%%{init}%%` 與開頭的 `config:` 不能改 `themeCSS`、`fontFamily`
+    // （Mermaid 的 secure 清單：解析完設定才拿掉，跳脫字元等寫法也擋得住）。
+    const defaults = mermaid.mermaidAPI.defaultConfig;
+    const secure = block ? { secure: [...(defaults.secure ?? []), ...cssConfigKeys(defaults)] } : {};
     // Mermaid 12 預設用 ELK 排版（要另外下載約 1.4 MB）；改用輕量的 dagre，
     // 圖裡寫了 `layout: elk` 時才會載入 ELK。
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme, fontFamily: "inherit", layout: "dagre" });
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme, fontFamily: "inherit", layout: "dagre", ...secure });
     initializedTheme = theme;
+    initializedBlock = block;
   }
   return mermaid;
 }
@@ -35,15 +49,18 @@ export function mermaidTheme(): "dark" | "default" {
 /** 目前是否封鎖遠端圖片（設定「封鎖遠端圖片」，由主程式提供）。 */
 let blockRemote: () => boolean = () => false;
 
-/** 封鎖遠端圖片時，流程圖裡的遠端圖片與 CSS 網址也要拿掉（`%%{init: {"themeCSS": …}}%%` 可以寫 `url(…)`）。 */
+/**
+ * 封鎖遠端圖片時，流程圖裡的遠端圖片與 CSS 網址也要拿掉：繪圖前改掉原始碼、鎖住 `themeCSS` 等設定，
+ * 畫好的 SVG 放進畫面前再過濾一次（見 remote-images.ts）。
+ */
 export function setMermaidBlockRemote(fn: () => boolean): void {
   blockRemote = fn;
 }
 
 /** 把 Mermaid 原始碼畫成 SVG（同樣的原始碼與主題只畫一次）。語法錯誤時丟出例外。 */
 export async function renderMermaid(code: string): Promise<string> {
-  const mermaid = await loadMermaid();
   const block = blockRemote();
+  const mermaid = await loadMermaid(block);
   const key = `${initializedTheme}\u0000${block ? 1 : 0}\u0000${code}`;
   let svg = cache.get(key);
   if (svg === undefined) {

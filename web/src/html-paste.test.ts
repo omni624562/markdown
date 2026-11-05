@@ -33,6 +33,17 @@ test("腳本、樣式、表單與危險連結一律移除", () => {
   assert.match(md, /!\[圖\]\(https:\/\/example\.com\/a\.png\)/);
 });
 
+test("網路圖片少了 // 的寫法存成標準網址；不是網路圖片的只留替代文字", () => {
+  const md = htmlToMarkdown(
+    '<p>圖</p><img src="https:evil.example/p.png" alt="甲"><img src="HTTPS://evil.example/q.png" alt="乙"><img src="//evil.example/r.png" alt="丙"><img src="\\\\evil.example\\s.png" alt="丁">',
+  );
+  assert.match(md, /!\[甲\]\(https:\/\/evil\.example\/p\.png\)/);
+  assert.match(md, /!\[乙\]\(https:\/\/evil\.example\/q\.png\)/i);
+  assert.ok(!md.includes("r.png") && !md.includes("s.png"), md);
+  assert.match(md, /丙/);
+  assert.match(md, /丁/);
+});
+
 test("Word 清單：拿掉寫死的項目符號", () => {
   const html =
     "<p class=MsoListParagraphCxSpFirst><span style='mso-list:Ignore'>·<span>&nbsp;&nbsp;</span></span>甲</p><p class=MsoListParagraphCxSpLast><span style='mso-list:Ignore'>·<span>&nbsp;</span></span>乙</p>";
