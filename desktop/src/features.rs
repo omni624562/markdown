@@ -148,6 +148,8 @@ mod tests {
         "project_forget",
         "project_delete",
         "project_open_codex",
+        "project_open_claude",
+        "ai_apps_installed",
         "project_relocate",
         "project_reveal",
         "list_dir",
