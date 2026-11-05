@@ -640,7 +640,8 @@ kbd {
 }
 /*
  * Wiki 放在右側欄：圖示的「右邊」一條線（左邊的面板是左邊一條），一眼看得出 Wiki 在右邊。
- * 右側欄正顯示著 Wiki 時和面板開著一樣：強調色的線、圖示與底色；右側欄收起來或 Wiki 那一區收合時，只留一條淡灰色的線。
+ * 右側欄正顯示著 Wiki 時：強調色的線與圖示，外面一圈強調色的框、裡面淡淡的斜線（和左邊開著的面板的淡底分得開）；
+ * 右側欄收起來或 Wiki 那一區收合時，只留一條淡灰色的線。
  */
 .activity-tabs #side-tab-wiki.placed-right::after {
   content: "";
@@ -651,8 +652,17 @@ kbd {
   background: color-mix(in srgb, var(--chrome-icon) 55%, transparent);
 }
 .workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right {
-  background: var(--accent-soft);
+  isolation: isolate;
   color: var(--accent);
+}
+.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 40%, transparent) 0 1.5px, transparent 1.5px 5px);
 }
 .workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right::after { background: var(--accent); }
 .activity-tabs button:focus-visible, .activity-btn:focus-visible { outline-offset: -2px; }
