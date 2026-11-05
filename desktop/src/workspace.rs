@@ -854,7 +854,7 @@ pub struct ReplaceResult {
     replacements: usize,
     /// 有未存檔變更而略過的檔案。
     skipped: Vec<String>,
-    /// 無法處理的檔案（不是 UTF-8、寫入失敗等）與原因。
+    /// 無法處理的檔案（編碼無法辨識、寫入失敗等）與原因。
     failed: Vec<String>,
 }
 
@@ -907,15 +907,18 @@ pub fn replace_dir(
         if crate::files::not_text_reason(&bytes).is_some() {
             continue;
         }
-        let Ok(text) = std::str::from_utf8(&bytes) else {
-            if re.is_match(&String::from_utf8_lossy(&bytes)) {
+        // 和搜尋一樣照檔案的編碼解讀（Big5、UTF-16…），取代後用原本的編碼與換行寫回。
+        let (text, format, encoding) = crate::files::decode(&bytes);
+        if encoding == "unknown" {
+            if re.is_match(&text) {
                 result.failed.push(tr!(
-                    "{name}：不是 UTF-8 編碼，請先開啟並存檔",
+                    "{name}：編碼無法辨識，已略過",
                     name = display_name(path)
                 ));
             }
             continue;
-        };
+        }
+        let text = text.as_str();
         let count = re.find_iter(text).count();
         if count == 0 {
             continue;
@@ -929,8 +932,20 @@ pub fn replace_dir(
         } else {
             re.replace_all(text, regex::NoExpand(replacement))
         };
+        let out = match crate::files::encode(&next, format) {
+            Ok(out) => out,
+            Err(u) => {
+                result.failed.push(tr!(
+                    "{name}：是 {encoding} 編碼，寫不進「{chars}」",
+                    name = display_name(path),
+                    encoding = format.encoding.label(),
+                    chars = u.chars
+                ));
+                continue;
+            }
+        };
         on_write(path, &bytes, &next);
-        match crate::files::write_atomic(path, next.as_bytes()) {
+        match crate::files::write_atomic(path, &out) {
             Ok(()) => {
                 result.files += 1;
                 result.replacements += count;

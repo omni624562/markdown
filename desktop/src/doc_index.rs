@@ -167,9 +167,10 @@ pub fn update(path: &Path, expected: &str, text: &str) -> Result<Vec<u8>, String
         crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(path)))
     })?;
     let (disk, format, encoding) = decode(&before);
-    if encoding != "utf-8" {
+    // 編碼認不出來（解讀時有亂碼）：寫回去會把原檔換成亂碼，不改。Big5、UTF-16 等照原本的編碼寫回。
+    if encoding == "unknown" {
         return Err(tr!(
-            "「{name}」不是 UTF-8 編碼，請先開啟並存檔",
+            "「{name}」的編碼無法辨識，請先開啟確認內容",
             name = display_name(path)
         ));
     }
@@ -179,7 +180,15 @@ pub fn update(path: &Path, expected: &str, text: &str) -> Result<Vec<u8>, String
             name = display_name(path)
         ));
     }
-    write_atomic(path, &encode(text, format)).map_err(|e| {
+    let bytes = encode(text, format).map_err(|u| {
+        tr!(
+            "「{name}」是 {encoding} 編碼，寫不進「{chars}」",
+            name = display_name(path),
+            encoding = format.encoding.label(),
+            chars = u.chars
+        )
+    })?;
+    write_atomic(path, &bytes).map_err(|e| {
         crate::io::describe(&e, &tr!("無法寫入「{name}」", name = display_name(path)))
     })?;
     Ok(before)
@@ -207,7 +216,9 @@ pub async fn update_doc(
         let known = app.state::<KnownFiles>();
         let mut known = known.0.lock();
         if let Some(state) = known.get_mut(&path) {
-            state.hash = Some(hash_bytes(&encode(&text, state.format)));
+            if let Ok(bytes) = encode(&text, state.format) {
+                state.hash = Some(hash_bytes(&bytes));
+            }
         }
         Ok(())
     })

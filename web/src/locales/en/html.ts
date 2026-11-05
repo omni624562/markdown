@@ -21,4 +21,8 @@ export const html: Record<string, Translation> = {
   "工作項目（Azure DevOps）": "Work Items (Azure DevOps)",
   "Wiki（Azure DevOps）": "Wiki (Azure DevOps)",
   "右側欄": "Right Sidebar",
+  "編碼": "Encoding",
+  "檔案的編碼：按一下可以用其他編碼重新讀取，或換存檔時用的編碼": "File encoding: click to reopen with another encoding or change the encoding used when saving",
+  "換行": "Line Endings",
+  "換行的格式：Windows 是 CRLF，macOS、Linux 是 LF": "Line endings: CRLF on Windows, LF on macOS and Linux",
 };

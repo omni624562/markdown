@@ -6,6 +6,7 @@ import { t } from "../i18n.ts";
 import { subtreeEnd, moveSection, sectionRange, swapSection } from "../sections.ts";
 import { app } from "./context.ts";
 import { docName, refreshDocName } from "./doc-names.ts";
+import { renderFileFormat } from "./file-format.ts";
 
 
 let draggingSection: number | null = null;
@@ -135,6 +136,7 @@ export function renderSaveState(): void {
   app.status.save.hidden = !dirty;
   app.status.save.title = dirty ? app.withKeys(t("按一下存檔"), app.commands.get("save")?.keys) : "";
   (app.status.save as HTMLButtonElement).disabled = !dirty;
+  renderFileFormat();
 }
 
 export function initOutline(): void {

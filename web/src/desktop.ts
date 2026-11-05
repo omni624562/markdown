@@ -31,8 +31,17 @@ export interface DesktopFile {
   path: string;
   name: string;
   text: string;
-  /** 檔案不是 UTF-8、改用 Big5 解讀時為 "big5"。 */
-  encoding: "utf-8" | "big5";
+  /**
+   * 檔案的編碼（"utf-8"、"utf-16le"、"big5"…，見 app/file-format.ts）；解讀不乾淨（會有亂碼）時為 "unknown"。
+   */
+  encoding: string;
+}
+
+/** 檔案存檔時用的格式（狀態列的編碼與換行）。 */
+export interface FileFormatInfo {
+  encoding: string;
+  crlf: boolean;
+  bom: boolean;
 }
 
 export interface SaveRequest {
@@ -48,6 +57,8 @@ export interface SaveRequest {
 export type DesktopSaveOutcome =
   | { status: "saved"; path: string; name: string }
   | { status: "conflict"; path: string; name: string; diskText: string }
+  /** 檔案的編碼（例如 Big5）寫不進某些字（`chars`），沒有寫入。 */
+  | { status: "unencodable"; path: string; name: string; encoding: string; chars: string }
   | { status: "cancelled" };
 
 export interface Folder {
@@ -739,6 +750,16 @@ function bridge(core: TauriCore, event: TauriEvent) {
      * 原生端只接受目前就能開啟的檔案，前端不能藉此開啟任意路徑。
      */
     setFileShortcuts: (paths: string[]) => core.invoke<void>("set_file_shortcuts", { paths }),
+    /** 本機檔案存檔時用的編碼、換行；不是開過的本機檔案時是 null。 */
+    fileFormat: (path: string) => core.invoke<FileFormatInfo | null>("file_format", { path }),
+    /**
+     * 換存檔時用的編碼、換行或 BOM（下次存檔生效）。給了 `text` 時先檢查新的編碼寫得進這些內容，
+     * 寫不進時丟出錯誤、不換。
+     */
+    setFileFormat: (path: string, change: { encoding?: string; crlf?: boolean; bom?: boolean; text?: string }) =>
+      core.invoke<FileFormatInfo>("set_file_format", { path, ...change }),
+    /** 用指定的編碼重新讀取開過的本機檔案（畫面上是亂碼時）。 */
+    reopenWithEncoding: (path: string, encoding: string) => core.invoke<DesktopFile>("reopen_with_encoding", { path, encoding }),
     saveFile: (req: SaveRequest) =>
       route(
         req.path,

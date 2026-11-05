@@ -16,7 +16,7 @@ import { formatKeys, fuzzyScore } from "./commands.ts";
 import { Editor, type EditorHandlers, type EditorOptions, cursorInfo } from "./editor.ts";
 import { type FileCommit, type FileItem, type Folder, desktop, displayPath, isRemote } from "./desktop.ts";
 import type { EditorState, Text } from "@codemirror/state";
-import { type FileHandle, type OpenedFile, desktopHandle, fromDesktop, replaceExtension, saveFile } from "./files.ts";
+import { type FileHandle, type OpenedFile, type SaveOutcome, desktopHandle, fromDesktop, replaceExtension, saveFile } from "./files.ts";
 import { autoSymbols } from "./auto-symbols.ts";
 import { refreshLivePreview } from "./live-preview.ts";
 import { proofread } from "./proofread.ts";
@@ -49,6 +49,7 @@ import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
 import { KindPicker } from "./ui/kind-picker.ts";
+import { askUtf8, encodingLabel, initFileFormat } from "./app/file-format.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
@@ -1935,12 +1936,13 @@ async function autoSaveNow(): Promise<void> {
   try {
     const out = await saveFile(text, cur.fileName, cur.kind, handle, { saveAs: false, force: false });
     if (!out) return;
-    if (out.status === "conflict") {
+    if (out.status !== "saved") {
       diskSaveBlocked = path;
-      toast(t("「{name}」被{who}改過，已暫停自動存檔。按 Ctrl+S 比較差異後再存。", { name: out.name, who: otherWriter(path) }), {
-        tone: "error",
-        duration: 12000,
-      });
+      const message =
+        out.status === "conflict"
+          ? t("「{name}」被{who}改過，已暫停自動存檔。按 Ctrl+S 比較差異後再存。", { name: out.name, who: otherWriter(path) })
+          : t("「{name}」是 {encoding} 編碼，存不了「{chars}」，已暫停自動存檔。按 Ctrl+S 存檔時可以改存成 UTF-8。", { name: out.name, encoding: encodingLabel(out.encoding), chars: out.chars });
+      toast(message, { tone: "error", duration: 12000 });
       return;
     }
     // 自動存檔：只更新這個檔案的 Git 狀態，不重新掃描整個資料夾。
@@ -3144,8 +3146,9 @@ function openOpenedFile(file: OpenedFile): void {
       tone: "error",
       duration: 12000,
     });
-  } else if (file.encoding === "big5") {
-    toast(t("這個檔案是 Big5 編碼，已轉換後顯示；存檔時會改存成 UTF-8。"), { duration: 8000 });
+  } else if (file.encoding && file.encoding !== "utf-8" && isRemote(file.handle?.path)) {
+    // 本機檔案存檔時照原本的編碼寫回（見 app/file-format.ts）；遠端資料夾的檔案一律存成 UTF-8。
+    toast(t("這個檔案是 {encoding} 編碼，已轉換後顯示；遠端的檔案存檔時會改存成 UTF-8。", { encoding: encodingLabel(file.encoding) }), { duration: 8000 });
   }
 }
 
@@ -3170,18 +3173,20 @@ async function save(saveAs: boolean, force = false): Promise<void> {
   // 自動存檔正在寫：等它寫完再存，兩次存檔不會同時寫同一個檔案。
   while (saving) await new Promise((r) => setTimeout(r, 50));
   saving = true;
-  let conflict: { name: string; diskText: string } | void;
+  let conflict: Awaited<ReturnType<typeof saveNow>>;
   try {
     conflict = await saveNow(saveAs, force);
   } finally {
     saving = false;
   }
+  // 檔案的編碼（例如 Big5）寫不進某些字：問要不要改存成 UTF-8，要的話再存一次。
+  if (conflict && "chars" in conflict) return void ((await askUtf8(conflict)) && (await save(saveAs)));
   // 衝突處理可能再存一次（覆蓋、另存），要在這次存檔結束之後。
   if (conflict) await resolveConflict(conflict.name, conflict.diskText);
 }
 
 /** 實際存檔；遇到衝突時回傳伺服器（磁碟）上的版本，交給呼叫端處理。 */
-async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string; diskText: string } | void> {
+async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string; diskText: string } | Extract<SaveOutcome, { status: "unencodable" }> | void> {
   if (review.active) review.finish();
   refreshToc();
   clearTimeout(diskSaveTimer);
@@ -3207,6 +3212,7 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   }
   if (!out) return;
   if (out.status === "conflict") return { name: out.name, diskText: out.diskText };
+  if (out.status === "unencodable") return out;
   cur.fileHandle = out.handle;
   // 另存成本機檔案之後，這個分頁就是那個檔案，不再對應 Wiki 頁面。
   if (out.handle) active.wiki = undefined;
@@ -3411,6 +3417,7 @@ for (const [tab, id] of [
 
 initActivityBar();
 initNewWorkItem();
+initFileFormat();
 
 // ---- 版面 ---------------------------------------------------------------
 
