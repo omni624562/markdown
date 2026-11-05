@@ -7,6 +7,8 @@ pub static EN: &[(&str, &str)] = &[
     ("無法傳送內容", "Couldn't send the content."),
     ("無法傳送內容給 {tool}：{e}", "Couldn't send the content to {tool}: {e}"),
     ("{tool} 沒有回傳結果（結束代碼 {status}）", "{tool} returned no result (exit code {status})"),
+    ("AI 快速動作需要 Codex {min} 以上的版本（目前是 {version}），舊版無法禁止 AI 執行命令。請先更新 Codex，或改用 Claude Code。", "AI Quick Actions require Codex {min} or later (you have {version}). Older versions can't stop the AI from running commands. Update Codex first, or use Claude Code instead."),
+    ("無法確認 Codex 的版本。AI 快速動作需要 Codex {min} 以上的版本，請先更新 Codex，或改用 Claude Code。", "Couldn't check the Codex version. AI Quick Actions require Codex {min} or later. Update Codex first, or use Claude Code instead."),
     ("無法建立終端機：{e}", "Couldn't create the terminal: {e}"),
     ("無法啟動程式：{e}", "Couldn't start the program: {e}"),
     ("AI：{command}", "AI: {command}"),
