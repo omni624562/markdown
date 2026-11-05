@@ -528,7 +528,11 @@ export function initWikiEdit(): void {
       else wikiPanel?.select(null);
       markBarShortcuts();
     },
-    dismiss: hideItem,
+    // Esc 回到文件：游標放回編輯器。
+    dismiss: () => {
+      hideItem();
+      app.editor.view.focus();
+    },
     closed() {
       app.issueKey = null;
       markBarShortcuts();

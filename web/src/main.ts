@@ -2060,7 +2060,11 @@ function setBaseline(text: string, backed: boolean): void {
 // ---- 分頁 ---------------------------------------------------------------
 
 const tabBar = new TabBar($("#tab-bar"), {
-  select: (id) => selectTab(id),
+  select: (id, via) => {
+    selectTab(id);
+    // 用滑鼠點文件的分頁：游標放回編輯器，可以直接打字（方向鍵切換時焦點留在分頁上）。
+    if (via === "pointer" && docs.some((d) => d.id === id)) editor.view.focus();
+  },
   close: (id) => {
     if (findItemTab(id)) closeItem(id);
     else void closeTab(id).catch(reportError);
@@ -2413,6 +2417,7 @@ function renderStatusView(): void {
   back.addEventListener("click", () => {
     hideItem();
     historyView?.close();
+    editor.view.focus();
   });
   const facts = document.createElement("span");
   facts.className = "status-facts";
@@ -2878,6 +2883,9 @@ function closeSide(): void {
   applyLayout();
   renderTabs();
   renderPaneHeads();
+  // 焦點在藏起來的右邊編輯器或按掉的按鈕上：放回左邊的編輯器，不要掉到 body。
+  const at = document.activeElement as HTMLElement | null;
+  if (!at || at === document.body || !at.checkVisibility()) editor.view.focus();
 }
 
 /**
