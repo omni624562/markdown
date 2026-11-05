@@ -849,6 +849,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     projects: () => core.invoke<Project[]>("projects_list"),
     projectUpdate: (path: string, change: ProjectChange) => core.invoke<Project>("project_update", { path, change }),
     projectForget: (path: string) => core.invoke<void>("project_forget", { path }),
+    /** 刪除專案：從清單移除；`trashFolder` 時把資料夾移到資源回收筒。 */
+    projectDelete: (path: string, trashFolder: boolean) => core.invoke<void>("project_delete", { path, trashFolder }),
     /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
     projectRelocate: (path: string) => core.invoke<Project | null>("project_relocate", { path }),
     projectReveal: (path: string) => core.invoke<void>("project_reveal", { path }),

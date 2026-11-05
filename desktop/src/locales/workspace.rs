@@ -32,6 +32,12 @@ pub static EN: &[(&str, &str)] = &[
     ("「{name}」不是資料夾中的文件，不能修改", "\"{name}\" isn't a document in the folder, so it can't be changed."),
     // new_project.rs
     ("選擇新專案要放在哪個資料夾", "Choose where to put the new project"),
+    ("請先關閉這個專案再刪除", "Close this project before deleting it."),
+    (
+        "「{name}」是系統或使用者資料夾，不能移到資源回收筒；可以只從清單移除",
+        "\"{name}\" is a system or user folder and can't be moved to the Recycle Bin. You can still remove it from the list.",
+    ),
+    ("無法把資料夾移到資源回收筒：{e}", "Couldn't move the folder to the Recycle Bin: {e}"),
     ("COMET 設定的「{what}」不正確", "The COMET setting \"{what}\" is not valid."),
     ("Sprint 網址", "Sprint URL"),
     ("集合網址", "Collection URL"),

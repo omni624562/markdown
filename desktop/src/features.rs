@@ -146,6 +146,7 @@ mod tests {
         "projects_list",
         "project_update",
         "project_forget",
+        "project_delete",
         "project_relocate",
         "project_reveal",
         "list_dir",
