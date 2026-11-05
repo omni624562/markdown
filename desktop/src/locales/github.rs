@@ -35,6 +35,8 @@ pub static EN: &[(&str, &str)] = &[
     ("「{folder}」資料夾原本的遠端 origin 是「{origin}」。要改成 GitHub 帳號「{login}」新的私人儲存庫「{name}」，並上傳所有的檔案和版本紀錄嗎？", "The origin remote of the \"{folder}\" folder is currently \"{origin}\". Change it to the new private repository \"{name}\" in the GitHub account \"{login}\" and upload all files and the full history?"),
     ("發佈成網站（GitHub Pages）", "Publish as Website (GitHub Pages)"),
     ("要用 GitHub 帳號「{login}」開啟 GitHub Pages，把儲存庫「{repo}」預設分支的內容發佈成公開的網站嗎？就算儲存庫是私人的，所有人也都看得到這個網站。", "Turn on GitHub Pages with the GitHub account \"{login}\" and publish the default branch of \"{repo}\" as a public website? Everyone can see the website, even if the repository is private."),
+    ("登入 GitHub", "Sign In to GitHub"),
+    ("要用 GitHub 帳號「{login}」登入 oMarker 嗎？之後上傳、分享成 Gist 都會用這個帳號。只有在你自己剛剛在瀏覽器授權時才選「是」。", "Sign in to oMarker with the GitHub account \"{login}\"? Uploads and gists will use this account. Choose Yes only if you just authorized it in your browser yourself."),
     ("公開分享成 Gist", "Share as a Public Gist"),
     ("要用 GitHub 帳號「{login}」把「{name}」公開分享成 Gist 嗎？所有人都找得到、看得到內容。", "Share \"{name}\" as a public gist with the GitHub account \"{login}\"? Anyone can find it and see its contents."),
 ];

@@ -210,7 +210,7 @@ pub async fn github_login_start(app: AppHandle) -> Result<DeviceCode, String> {
 /// 等使用者在瀏覽器授權（依 GitHub 指定的間隔詢問），成功後記住權杖與帳號。
 /// 代碼用 `github_login_start` 記在原生端的那一組，網頁不能指定。
 #[tauri::command]
-pub async fn github_login_wait(app: AppHandle) -> Result<Account, String> {
+pub async fn github_login_wait(app: AppHandle, window: Window) -> Result<Account, String> {
     let id = CLIENT_ID;
     let Pending {
         device_code,
@@ -264,6 +264,9 @@ pub async fn github_login_wait(app: AppHandle) -> Result<Account, String> {
     .await?;
     let account: Account =
         serde_json::from_str(&text).map_err(|e| tr!("讀取帳號失敗：{e}", e = e))?;
+    if !crate::confirm::confirm(&window, Some(login_question(&account.login))).await {
+        return Err(tr!("已取消登入"));
+    }
     let path = account_file(&app).ok_or_else(|| tr!("找不到設定資料夾"))?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
@@ -274,6 +277,18 @@ pub async fn github_login_wait(app: AppHandle) -> Result<Account, String> {
     crate::secrets::set(SERVICE, "token", &token);
     *TOKEN.lock() = Some(token);
     Ok(account)
+}
+
+/// 登入完成、記住權杖前要問的話。網頁看得到要輸入的代碼：被注入的網頁可以把代碼交給別人，
+/// 讓對方用自己的帳號授權，之後上傳、分享就會送到那個帳號。所以由使用者確認帳號名稱。
+fn login_question(login: &str) -> Question {
+    Question::new(
+        tr!("登入 GitHub"),
+        tr!(
+            "要用 GitHub 帳號「{login}」登入 oMarker 嗎？之後上傳、分享成 Gist 都會用這個帳號。只有在你自己剛剛在瀏覽器授權時才選「是」。",
+            login = login
+        ),
+    )
 }
 
 #[tauri::command]
@@ -1106,6 +1121,7 @@ mod tests {
 
     #[test]
     fn only_public_gists_and_pages_are_confirmed() {
+        assert!(login_question("wang").message.contains("「wang」"));
         assert_eq!(gist_question("wang", "會議.md", false), None);
         let q = gist_question("wang", "會議.md", true).unwrap();
         assert!(q.message.contains("「wang」") && q.message.contains("「會議.md」"));
