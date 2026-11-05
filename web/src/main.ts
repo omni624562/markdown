@@ -100,7 +100,7 @@ import { NOT_CONNECTED, canRenameFile, closeProject, davDialog, openPath, openRe
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
-import { docName, docTooltip, saveFileName } from "./app/doc-names.ts";
+import { docName, docTooltip, renumber, saveFileName } from "./app/doc-names.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
@@ -3006,10 +3006,16 @@ function activate(doc: Doc): void {
 /** 新增一個分頁並切換過去（不會寫入內容，呼叫端負責）。 */
 /** 新增分頁：放在目前分頁的右邊；給了 `after` 時放在那個文件後面（null 是一般分頁的最前面）。都不插進固定的分頁之間。 */
 function addTab(doc: Doc, after?: string | null): void {
+  // 只剩一份沒顯示的空白文件（一開始、或關掉所有文件後補上的）：開好新分頁後收掉它，不多留一個「未命名」。
+  const placeholder = onlyBlankDoc() ? active : null;
   const lastPinned = docs.reduce((n, d, i) => (d.pinned ? i + 1 : n), 0);
   const left = after === undefined ? docs.indexOf(active) : after === null ? -1 : docs.findIndex((d) => d.id === after);
   docs.splice(Math.max(left + 1, lastPinned), 0, doc);
   activate(doc);
+  if (placeholder) {
+    renumber(doc); // 新文件不必是「未命名 2」
+    void closeTab(placeholder.id).then(renderSaveState); // 收掉之後重算名稱與視窗標題
+  }
 }
 
 async function closeTab(id: string): Promise<void> {
