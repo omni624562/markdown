@@ -3653,8 +3653,8 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
     let needPassword = false;
     const folder = last
       ? await d.reopenFolder(last).catch((e) => {
-          // 遠端連線沒有記住密碼：提示使用者輸入，不自動跳出對話框打斷。
-          if (isRemote(last) && String(e instanceof Error ? e.message : e) === "NEED_PASSWORD") {
+          // 遠端連線（或 SSH 的跳板主機）沒有記住密碼：提示使用者輸入，不自動跳出對話框打斷。
+          if (isRemote(last) && /^NEED_(JUMP_)?PASSWORD(\n|$)/.test(String(e instanceof Error ? e.message : e))) {
             needPassword = true;
             void suggestReconnect(last, (name) => t("要重新連線到「{name}」，需要輸入密碼。", { name }), t("輸入密碼"));
           }

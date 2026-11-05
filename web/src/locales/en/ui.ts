@@ -392,10 +392,10 @@ export const ui: Record<string, Translation> = {
   "關閉尋找": "Close Find",
   "工作項目內容": "Work Item Content",
   // SSH 連線對話框
-  "第一次連線到這台主機": "First Connection to This Host",
-  "無法確認「{host}」的身分。請核對下面的主機金鑰指紋和伺服器上的一致（在伺服器上執行 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 可以看到）。信任之後會記在 ~/.ssh/known_hosts，下次不再詢問。":
-    "The identity of \"{host}\" can't be verified. Check that the host key fingerprint below matches the one on the server (run ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on the server to see it). Once trusted, it's saved in ~/.ssh/known_hosts and you won't be asked again.",
-  "信任並連線": "Trust and Connect",
+  "跳板主機 {host} 的密碼": "Password for jump host {host}",
+  "跳板主機「{host}」需要密碼。請輸入跳板主機的密碼（不會使用目標主機的密碼）。":
+    "The jump host \"{host}\" needs a password. Enter the jump host's password (the target host's password isn't used).",
+  "沒有信任這台主機的金鑰，已取消連線。": "The host key wasn't trusted, so the connection was canceled.",
   "直接開啟 Linux 主機（伺服器、NAS、樹莓派等）上的資料夾。密碼留空時，會用 ssh-agent 或 ~/.ssh 裡的金鑰登入。":
     "Open a folder on a Linux host (server, NAS, Raspberry Pi…) directly. If you leave the password blank, ssh-agent or the keys in ~/.ssh are used to sign in.",
   "主機": "Host",
@@ -522,7 +522,8 @@ export const ui: Record<string, Translation> = {
   "，": ", ",
   "跳板主機（ProxyJump）": "Jump host (ProxyJump)",
   "帳號@跳板主機:連接埠（不需要就留空）": "user@jump-host:port (leave empty if not needed)",
-  "要先連到一台跳板主機才能連到目標主機時填寫。跳板主機用金鑰或 ssh-agent 登入；需要密碼時用上面的密碼。": "Fill this in when you must go through a jump host to reach the target. The jump host signs in with a key or ssh-agent; if it needs a password, the password above is used.",
+  "要先連到一台跳板主機才能連到目標主機時填寫。跳板主機用金鑰或 ssh-agent 登入；需要密碼時會另外詢問跳板主機的密碼，不會送出上面的密碼。":
+    "Fill this in when you must go through a jump host to reach the target. The jump host signs in with a key or ssh-agent; if it needs a password, you'll be asked for the jump host's password separately, and the password above is never sent to it.",
   "從電腦上傳檔案…": "Upload Files from Computer…",
   "下載到電腦…": "Download to Computer…",
   "顯示「{name}」": "Show \"{name}\"",
