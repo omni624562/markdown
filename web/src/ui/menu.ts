@@ -138,6 +138,8 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
         if (checked !== undefined) item.setAttribute("aria-checked", String(checked));
         if (cmd.icon) item.append(leadIcon(cmd.icon));
         item.append(Object.assign(document.createElement("span"), { textContent: menuTitle(cmd.title, parent) }));
+        const note = cmd.note?.();
+        if (note) item.append(Object.assign(document.createElement("small"), { className: "menu-note", textContent: note }));
         const keys = cmd.keys ?? cmd.shownKeys;
         if (keys) item.append(Object.assign(document.createElement("kbd"), { textContent: formatKeys(keys) }));
         if (checked) item.append(icon("check"));

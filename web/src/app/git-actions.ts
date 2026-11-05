@@ -16,6 +16,7 @@ import { recentFilesPicker } from "./recent-files.ts";
 import { openWikiHistory, openWikiRecent } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
+import { adoNote, githubNote } from "./repo-sources.ts";
 import { gitPanel, showAdo } from "./work-item-updates.ts";
 import { issuesRepo, wikiPanel } from "./work-items-panel.ts";
 import { selectAll, indentMore, indentLess } from "@codemirror/commands";
@@ -285,6 +286,7 @@ export function initGitActions(): void {
         group: "Git",
         icon: iconName,
         when: () => !!app.github && when(),
+        note: id === "github-open" ? githubNote : undefined,
         run: () => void run(),
       }),
     ),
@@ -306,7 +308,15 @@ export function initGitActions(): void {
         ],
       ] as const
     ).map(
-      ([id, title, iconName, run, when]): Command => ({ id, title, group: "Azure DevOps", icon: iconName, when, run: () => void run() }),
+      ([id, title, iconName, run, when]): Command => ({
+        id,
+        title,
+        group: "Azure DevOps",
+        icon: iconName,
+        when,
+        note: id === "ado-open" ? adoNote : undefined,
+        run: () => void run(),
+      }),
     ),
     {
       id: "open-recent",
