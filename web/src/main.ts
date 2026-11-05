@@ -3021,13 +3021,6 @@ function addTab(doc: Doc, after?: string | null): void {
 async function closeTab(id: string): Promise<void> {
   const doc = docs.find((d) => d.id === id);
   if (!doc) return;
-  // 關掉並排中的文件：先關閉並排（另一份文件留在左邊）。
-  if (paneDocs.side === doc) closeSide();
-  else if (paneDocs.side && paneDocs.main === doc) {
-    const keep = paneDocs.side;
-    closeSide();
-    activate(keep);
-  }
   if (doc === active) stash();
   if (doc.dirty) {
     const choice = await choose(t("要存檔嗎？"), t("「{name}」有尚未存檔的變更。", { name: docName(doc) }), [
@@ -3042,6 +3035,13 @@ async function closeTab(id: string): Promise<void> {
     } else if (choice !== "discard") {
       return;
     }
+  }
+  // 確定要關閉了才處理並排（問存檔時按「取消」就什麼都不變）：關掉並排中的文件時先關閉並排，另一份文件留在左邊。
+  if (paneDocs.side === doc) closeSide();
+  else if (paneDocs.side && paneDocs.main === doc) {
+    const keep = paneDocs.side;
+    closeSide();
+    activate(keep);
   }
   if (pendingDraft?.id === doc.id) pendingDraft = null;
   rememberClosed(doc);
@@ -3155,7 +3155,8 @@ function openDocument(
   }
   // 目前分頁是空白、未存成檔案的新文件時直接沿用，否則開新分頁。
   // 沒動過的範例文件也直接換掉，免得每次開檔都多一個「未命名」分頁。
-  const untouched = !cur.fileBacked && (editor.text === "" || (editor.text === sample && !active.dirty));
+  // 編輯中的 Wiki 頁面（空白的也一樣）不沿用：沿用了會帶著 Wiki 的資訊，Ctrl+S 把檔案的內容存回 Wiki。
+  const untouched = !cur.fileBacked && !active.wiki && (editor.text === "" || (editor.text === sample && !active.dirty));
   if (!untouched) addTab(makeDoc({ name, kind: docKind ?? kindFromFileName(name) }));
   if (review.active) review.finish();
   cur.fileHandle = handle;
