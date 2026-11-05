@@ -6,6 +6,7 @@ on:
   pull_request:
 
 # 只需要讀取程式碼。第三方 action 一律不用（改用 rustup、actions/cache 等），減少供應鏈風險。
+# 用到的官方 action 也固定在提交的 SHA（後面註明版本），由 Dependabot（.github/dependabot.yml）提醒更新。
 permissions:
   contents: read
 
@@ -13,9 +14,11 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -25,8 +28,8 @@ jobs:
           restore-keys: rust-${{ runner.os }}-
       - run: cargo fmt --all --check
       - run: cargo fmt --manifest-path desktop/Cargo.toml --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
 
   web:
     runs-on: ubuntu-latest
@@ -36,9 +39,11 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -48,7 +53,7 @@ jobs:
           key: wasm-${{ runner.os }}-${{ env.WASM_PACK }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: wasm-${{ runner.os }}-${{ env.WASM_PACK }}-
       - run: command -v wasm-pack || cargo install wasm-pack --version "$WASM_PACK" --locked
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -68,9 +73,11 @@ jobs:
   remote:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -142,21 +149,28 @@ jobs:
   version:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - run: node --test scripts/version.test.mjs scripts/sign-update.test.mjs scripts/branch-check.test.mjs scripts/prune-releases.test.mjs
       # 分支規則（CLAUDE.md）：PR 合併到 main，而且不能把其他還沒合併的分支疊進來。
+      # 事件裡的值（分支名稱等）一律經由環境變數傳進指令，不直接寫進 run:，避免被當成指令執行。
       - name: 檢查分支
         if: github.event_name == 'pull_request'
-        run: node scripts/branch-check.mjs "${{ github.base_ref }}" "${{ github.event.pull_request.head.sha }}"
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/branch-check.mjs "$BASE" "$HEAD_SHA"
       - name: 檢查版本號
+        env:
+          BASE: ${{ github.base_ref }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            node scripts/version.mjs check "origin/${{ github.base_ref }}"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            node scripts/version.mjs check "origin/$BASE"
           else
             node scripts/version.mjs
           fi
