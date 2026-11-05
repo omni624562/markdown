@@ -5,11 +5,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
-use tauri::State;
+use tauri::{AppHandle, Manager};
 
 use crate::files::KnownFiles;
 
-const ALLOWED: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"];
+pub(crate) const ALLOWED: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"];
 /// 單張圖片上限，避免誤貼巨大檔案。
 const MAX_BYTES: usize = 30 * 1024 * 1024;
 
@@ -43,19 +43,21 @@ pub fn decode_image(data_base64: &str, ext: &str) -> Result<Vec<u8>, String> {
 /// 把圖片存到 `doc_path` 旁的 `assets/`，回傳相對路徑（以 `/` 分隔，可直接放進 Markdown）。
 #[tauri::command]
 pub async fn save_image(
+    app: AppHandle,
     doc_path: String,
     data_base64: String,
     ext: String,
-    known: State<'_, KnownFiles>,
 ) -> Result<String, String> {
     let doc = PathBuf::from(&doc_path);
     // 只允許存在已開啟的文件旁邊。
-    if !known.contains(&doc) {
+    if !app.state::<KnownFiles>().contains(&doc) {
         return Err(tr!("請先存檔，圖片會存在文件旁的 assets 資料夾"));
     }
     let bytes = decode_image(&data_base64, &ext)?;
     let ext = ext.trim_start_matches('.').to_ascii_lowercase();
     crate::io::blocking(move || {
+        // 文件所在資料夾的實際位置和開啟時不同（中途被換成指向別處的連結）時不存。
+        app.state::<KnownFiles>().check_moved(&doc)?;
         let doc_dir = doc.parent().ok_or_else(|| tr!("路徑無效"))?;
         let dir = assets_dir(doc_dir)?;
         let stem = doc
