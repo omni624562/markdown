@@ -274,7 +274,12 @@ impl FolderInfo {
     }
 }
 
-fn activate(app: &AppHandle, root: PathBuf, workspace: &Workspace, trust: &Trust) -> FolderInfo {
+pub(crate) fn activate(
+    app: &AppHandle,
+    root: PathBuf,
+    workspace: &Workspace,
+    trust: &Trust,
+) -> FolderInfo {
     *workspace.0.lock() = Some(root.clone());
     app.state::<crate::dav::Dav>().disconnect();
     trust.add_folder(app, &root);

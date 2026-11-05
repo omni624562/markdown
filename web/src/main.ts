@@ -1551,7 +1551,10 @@ function renderEmptyState(text: string): void {
         },
     { icon: "file-text", label: t("開啟檔案…"), keys: keysOf("open"), run: run("open") },
   ];
-  if (desktop) actions.push({ icon: "folder-open", label: t("開啟資料夾…"), run: run("open-folder") });
+  if (desktop) {
+    actions.push({ icon: "folder-open", label: t("開啟資料夾…"), run: run("open-folder") });
+    actions.push({ icon: "folder-plus", label: t("新專案…"), run: run("new-project") });
+  }
   // 範本一律開成新的 Markdown 分頁，和目前空白分頁是什麼類型無關。
   actions.push({ icon: "layout-template", label: t("從範本新增…"), run: run("new-from-template") });
   const page = buildStartPage({
@@ -2165,6 +2168,7 @@ const projectUi = desktop
       current: () => workspaceRoot?.path ?? null,
       open: (path) => openRecentFolder(path),
       openFolder: () => void commands.run("open-folder").catch(reportError),
+      newProject: () => void commands.run("new-project").catch(reportError),
       close: () => void commands.run("close-folder").catch(reportError),
       remotes: () => (features.remote ? desktop!.davConnections() : Promise.resolve([])),
       openRemote: (c) => void openRemote(c).catch(reportError),
@@ -3372,6 +3376,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     label: t("專案"),
     icon: "folder-kanban",
     items: [
+      "new-project",
       "switch-project",
       "project-overview",
       "-",

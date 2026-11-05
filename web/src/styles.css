@@ -3139,6 +3139,21 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .project-edit .choice-actions { align-items: center; }
 .pe-spacer { flex: 1; }
 
+/* ---- 新專案（app/new-project.ts） ---- */
+.choice.new-project { width: min(500px, calc(100vw - 32px)); }
+.np-where { display: flex; gap: 6px; }
+.np-where input { flex: 1; min-width: 0; color: var(--muted) !important; }
+.np-where .btn { border-color: var(--border-strong); font-weight: 400; }
+/* 會建立的路徑與名稱的錯誤共用一行：高度固定，打字時下面的選項不會跳動。 */
+.np-status { min-height: 1.7em; margin: -6px 0 8px; }
+.choice .np-preview { margin: 0; overflow-wrap: anywhere; font-size: 12.5px; }
+.np-preview:empty { display: none; }
+.project-edit .np-status .dav-error { margin: 0 !important; }
+.new-project .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.np-content { margin: 0 0 4px; padding: 0; border: 0; }
+.np-content legend { margin-bottom: 6px; padding: 0; font-size: 13px; font-weight: 600; }
+.project-edit .np-content .pe-check { margin-bottom: 6px; }
+
 /* ---- 編輯器的尋找與取代列（加上 .cm-editor，蓋過 CodeMirror 內建搜尋列的樣式） ---- */
 .cm-editor .cm-panels .find-panel { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; font: 13px var(--font-ui); }
 .cm-editor .cm-panels .find-row { display: flex; gap: 2px; align-items: center; min-width: 0; }

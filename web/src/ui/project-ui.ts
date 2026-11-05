@@ -17,6 +17,8 @@ export interface ProjectHooks {
   open(path: string): Promise<void>;
   /** 開啟其他資料夾（選擇資料夾的對話框）。 */
   openFolder(): void;
+  /** 建立新專案（新資料夾）。 */
+  newProject(): void;
   /** 關閉目前的專案。 */
   close(): void;
   remotes(): Promise<DavConnection[]>;
@@ -39,7 +41,7 @@ export interface RepoSource {
 type SwitchItem =
   | { kind: "project"; project: Project; section: string }
   | { kind: "remote"; remote: DavConnection }
-  | { kind: "action"; id: "open-folder" | "overview" | "edit" | "close"; title: string; icon: string }
+  | { kind: "action"; id: "new-project" | "open-folder" | "overview" | "edit" | "close"; title: string; icon: string }
   | { kind: "repo"; source: RepoSource };
 
 function message(e: unknown): string {
@@ -106,6 +108,7 @@ export class ProjectUi {
         if (item.kind === "project") void this.#open(item.project);
         else if (item.kind === "remote") this.#h.openRemote(item.remote);
         else if (item.kind === "repo") item.source.run();
+        else if (item.id === "new-project") this.#h.newProject();
         else if (item.id === "open-folder") this.#h.openFolder();
         else if (item.id === "overview") void this.openOverview();
         else if (item.id === "close") this.#h.close();
@@ -150,6 +153,7 @@ export class ProjectUi {
       if (!q || `${remote.name} ${remote.url}`.toLowerCase().includes(q)) items.push({ kind: "remote", remote });
     }
     const actions: SwitchItem[] = [
+      { kind: "action", id: "new-project", title: t("新專案…"), icon: "folder-plus" },
       { kind: "action", id: "open-folder", title: t("開啟資料夾…"), icon: "folder-open" },
       { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-dashboard" },
     ];
@@ -192,6 +196,11 @@ export class ProjectUi {
       </div>
       <div class="po-body"></div>`;
     const head = dialog.querySelector(".po-head")!;
+    const create = button(t("新專案…"), "folder-plus", () => {
+      dialog.close();
+      this.#h.newProject();
+    }, "btn");
+    create.append(t("新專案…"));
     const open = button(t("開啟資料夾…"), "folder-open", () => {
       dialog.close();
       this.#h.openFolder();
@@ -199,7 +208,7 @@ export class ProjectUi {
     open.append(t("開啟資料夾…"));
     const clone = button(t("下載儲存庫…"), "download", () => void this.#pickSource(dialog), "btn");
     clone.append(t("下載儲存庫…"));
-    head.append(open, clone, button(t("關閉"), "x", () => dialog.close()));
+    head.append(create, open, clone, button(t("關閉"), "x", () => dialog.close()));
     const search = dialog.querySelector<HTMLInputElement>(".po-search")!;
     search.addEventListener("input", () => {
       this.#query = search.value;
