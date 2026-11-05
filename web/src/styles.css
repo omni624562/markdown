@@ -57,6 +57,15 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/*
+ * 整個畫面固定在視窗大小，各區自己捲動，整頁不會捲。Windows 縮放 125%、175% 時視窗的大小不是整數像素，
+ * WebView2 可能差不到 1px 就在整個視窗的右邊和下面各出現一條捲軸，所以整頁不捲動、不顯示捲軸；
+ * body 用 clip（不是 hidden），不會變成另一個可以捲動的區域。列印另外處理。
+ */
+@media screen {
+  html { overflow: hidden; }
+  body { overflow: clip; }
+}
 
 body {
   display: grid;
