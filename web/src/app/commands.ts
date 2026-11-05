@@ -304,6 +304,14 @@ export function initCommands(): void {
       run: () => newProject(),
     },
     {
+      id: "new-comet-project",
+      title: t("新 COMET 專案…"),
+      group: t("資料夾與專案"),
+      icon: "square-terminal",
+      when: () => !!desktop,
+      run: () => newProject("comet"),
+    },
+    {
       id: "open-folder",
       title: t("開啟資料夾…"),
       group: t("資料夾與專案"),

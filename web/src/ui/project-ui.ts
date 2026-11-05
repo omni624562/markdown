@@ -17,8 +17,8 @@ export interface ProjectHooks {
   open(path: string): Promise<void>;
   /** 開啟其他資料夾（選擇資料夾的對話框）。 */
   openFolder(): void;
-  /** 建立新專案（新資料夾）。 */
-  newProject(): void;
+  /** 建立新專案（新資料夾）；`comet`：新 COMET 專案（建立後在終端機執行 comet setup）。 */
+  newProject(comet?: boolean): void;
   /** 關閉目前的專案。 */
   close(): void;
   remotes(): Promise<DavConnection[]>;
@@ -41,7 +41,7 @@ export interface RepoSource {
 type SwitchItem =
   | { kind: "project"; project: Project; section: string }
   | { kind: "remote"; remote: DavConnection }
-  | { kind: "action"; id: "new-project" | "open-folder" | "overview" | "edit" | "close"; title: string; icon: string }
+  | { kind: "action"; id: "new-project" | "new-comet-project" | "open-folder" | "overview" | "edit" | "close"; title: string; icon: string }
   | { kind: "repo"; source: RepoSource };
 
 function message(e: unknown): string {
@@ -109,6 +109,7 @@ export class ProjectUi {
         else if (item.kind === "remote") this.#h.openRemote(item.remote);
         else if (item.kind === "repo") item.source.run();
         else if (item.id === "new-project") this.#h.newProject();
+        else if (item.id === "new-comet-project") this.#h.newProject(true);
         else if (item.id === "open-folder") this.#h.openFolder();
         else if (item.id === "overview") void this.openOverview();
         else if (item.id === "close") this.#h.close();
@@ -154,6 +155,7 @@ export class ProjectUi {
     }
     const actions: SwitchItem[] = [
       { kind: "action", id: "new-project", title: t("新專案…"), icon: "folder-plus" },
+      { kind: "action", id: "new-comet-project", title: t("新 COMET 專案…"), icon: "square-terminal" },
       { kind: "action", id: "open-folder", title: t("開啟資料夾…"), icon: "folder-open" },
       { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-dashboard" },
     ];

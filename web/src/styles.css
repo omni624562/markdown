@@ -3174,6 +3174,8 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .np-content { margin: 0 0 4px; padding: 0; border: 0; }
 .np-content legend { margin-bottom: 6px; padding: 0; font-size: 13px; font-weight: 600; }
 .project-edit .np-content .pe-check { margin-bottom: 6px; }
+/* 選了 COMET 專案、這台電腦找不到 comet 指令時的提醒（縮排對齊選項的文字）。 */
+.choice .np-warn { margin: -2px 0 8px 22px; color: light-dark(#b45309, #fbbf24); font-size: 12.5px; line-height: 1.6; }
 
 /* ---- 編輯器的尋找與取代列（加上 .cm-editor，蓋過 CodeMirror 內建搜尋列的樣式） ---- */
 .cm-editor .cm-panels .find-panel { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; font: 13px var(--font-ui); }

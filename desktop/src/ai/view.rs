@@ -104,6 +104,8 @@ pub enum Request {
     },
     /// 開一個殼層執行 `claude setup-token`（GitHub Actions 的權杖）。
     SetupToken,
+    /// 開一個殼層執行 `comet setup`（新 COMET 專案的環境設定，使用者照畫面的指示輸入）。
+    CometSetup,
     /// 要顯示哪些 AI 工具的按鈕。
     Available {
         claude: bool,
@@ -369,6 +371,8 @@ mod tests {
 
     #[test]
     fn requests_parse_from_the_frontend() {
+        let r: Request = serde_json::from_str(r#"{"kind":"cometSetup"}"#).unwrap();
+        assert_eq!(r, Request::CometSetup);
         let r: Request =
             serde_json::from_str(r#"{"kind":"sendToAi","text":"hi","preferred":"codex"}"#).unwrap();
         assert_eq!(r, send_to_ai("hi", Program::Codex));

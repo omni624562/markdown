@@ -62,7 +62,7 @@ test("檔案面板（沒開資料夾）：標題是「專案」，和起始頁�
   await context.close();
 });
 
-test("「⋯」：最近開啟的檔案在第一層、只列檔案（Ctrl+R）；「專案」只留新專案、切換、總覽、開啟資料夾、下載儲存庫、連線到遠端資料夾", async () => {
+test("「⋯」：最近開啟的檔案在第一層、只列檔案（Ctrl+R）；「專案」只留新專案、新 COMET 專案、切換、總覽、開啟資料夾、下載儲存庫、連線到遠端資料夾", async () => {
   const { page, context, errors } = await open({ desktop: DESKTOP });
   await page.click("#main-menu");
   const menu = page.locator("#main-menu-popover");
@@ -73,7 +73,7 @@ test("「⋯」：最近開啟的檔案在第一層、只列檔案（Ctrl+R）�
   await menu.locator(":scope > button", { hasText: "專案" }).click();
   const sub = menu.locator(":scope > .submenu:popover-open");
   await sub.waitFor();
-  assert.deepEqual(await sub.locator(":scope > button").allTextContents(), ["新專案…", "切換專案…Ctrl+Alt+P", "專案總覽", "開啟資料夾…", "下載儲存庫", "連線到遠端資料夾"]);
+  assert.deepEqual(await sub.locator(":scope > button").allTextContents(), ["新專案…", "新 COMET 專案…", "切換專案…Ctrl+Alt+P", "專案總覽", "開啟資料夾…", "下載儲存庫", "連線到遠端資料夾"]);
   await sub.locator(":scope > button", { hasText: "下載儲存庫" }).click();
   assert.deepEqual(await sub.locator(":scope > .submenu:popover-open > button").allTextContents(), [
     "GitHub：下載儲存庫…",

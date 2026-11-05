@@ -169,6 +169,7 @@ export type TermRequest =
   | { kind: "start"; program: TermProgram }
   | { kind: "sendToAi"; text: string; preferred: TermProgram }
   | { kind: "setupToken" }
+  | { kind: "cometSetup" }
   | { kind: "available"; claude: boolean; codex: boolean }
   | { kind: "style"; theme: string | null; fontSize: number; palette: string | null; accent: string | null }
   | { kind: "focus" };
@@ -795,6 +796,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 建立新專案的資料夾並開啟（加進專案清單）。 */
     createProject: (req: { parent: string; name: string; notebook: boolean; git: boolean; dailyFolder?: string }) =>
       core.invoke<Folder>("create_project", req),
+    /** 這台電腦有沒有安裝 COMET CLI（`comet` 指令）。 */
+    cometInstalled: () => core.invoke<boolean>("comet_installed"),
     /**
      * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
      * `trust` 是使用者確認過的 SSH 主機金鑰指紋。

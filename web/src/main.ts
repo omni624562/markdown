@@ -2176,7 +2176,7 @@ const projectUi = desktop
       current: () => workspaceRoot?.path ?? null,
       open: (path) => openRecentFolder(path),
       openFolder: () => void commands.run("open-folder").catch(reportError),
-      newProject: () => void commands.run("new-project").catch(reportError),
+      newProject: (comet) => void commands.run(comet ? "new-comet-project" : "new-project").catch(reportError),
       close: () => void commands.run("close-folder").catch(reportError),
       remotes: () => (features.remote ? desktop!.davConnections() : Promise.resolve([])),
       openRemote: (c) => void openRemote(c).catch(reportError),
@@ -3387,6 +3387,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     icon: "folder-kanban",
     items: [
       "new-project",
+      "new-comet-project",
       "switch-project",
       "project-overview",
       "-",

@@ -92,6 +92,12 @@ export class TerminalProxy {
     this.#forward({ kind: "setupToken" });
   }
 
+  /** 開一個殼層執行 `comet setup`（新 COMET 專案的環境設定），使用者照畫面的指示輸入。 */
+  runCometSetup(): void {
+    this.#reveal();
+    this.#forward({ kind: "cometSetup" });
+  }
+
   /** 只顯示已安裝的 AI 工具按鈕。 */
   setAvailable(found: { claude: string | null; codex: string | null }): void {
     this.#forward({ kind: "available", claude: !!found.claude, codex: !!found.codex });
