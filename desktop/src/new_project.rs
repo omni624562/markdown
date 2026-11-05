@@ -49,25 +49,38 @@ pub async fn pick_project_parent(
 enum Comet {
     /// `comet` 指令在 PATH 裡。
     OnPath,
-    /// 不在 PATH 裡，但裝在固定的位置（`%USERPROFILE%\Comet\bin`）。第一次執行 `comet setup`
-    /// 才會把這個資料夾加進 PATH，所以新電腦上要用完整路徑執行。
+    /// 不在 PATH 裡，但在安裝位置找得到（`%COMET_HOME%\bin` 或 `%USERPROFILE%\Comet\bin`）。
+    /// 第一次執行 `comet setup` 才會把 bin 資料夾加進 PATH，所以新電腦上要用完整路徑執行。
     Installed(PathBuf),
 }
 
-/// COMET CLI 固定的安裝位置。
-fn comet_default_path(home: &Path) -> PathBuf {
+/// COMET 安裝資料夾（`COMET_HOME`）裡的執行檔。
+fn comet_exe_in(comet_home: &Path) -> PathBuf {
     let exe = if cfg!(windows) { "comet.exe" } else { "comet" };
-    home.join("Comet").join("bin").join(exe)
+    comet_home.join("bin").join(exe)
 }
 
-/// 找 COMET CLI：先找 PATH，再找固定的安裝位置。搜尋 PATH 可能很慢（例如 PATH 裡有斷線的網路磁碟），
-/// 要在背景執行緒呼叫。
-fn locate_comet(home: Option<PathBuf>) -> Option<Comet> {
+/// 找 COMET CLI：先找 PATH，再找 `COMET_HOME`（安裝時設定的環境變數）裡的 bin，最後找預設的安裝位置
+/// `%USERPROFILE%\Comet`。搜尋 PATH 可能很慢（例如 PATH 裡有斷線的網路磁碟），要在背景執行緒呼叫。
+fn locate_comet(comet_home: Option<PathBuf>, home: Option<PathBuf>) -> Option<Comet> {
     if which::which("comet").is_ok() {
         return Some(Comet::OnPath);
     }
-    let path = comet_default_path(&home?);
-    path.is_file().then_some(Comet::Installed(path))
+    comet_home
+        .filter(|h| !h.as_os_str().is_empty())
+        .into_iter()
+        .chain(home.map(|h| h.join("Comet")))
+        .map(|dir| comet_exe_in(&dir))
+        .find(|exe| exe.is_file())
+        .map(Comet::Installed)
+}
+
+/// 目前的 `COMET_HOME` 與使用者資料夾（給 [`locate_comet`]）。
+fn comet_roots(app: &AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
+    (
+        std::env::var_os("COMET_HOME").map(PathBuf::from),
+        app.path().home_dir().ok(),
+    )
 }
 
 /// 用完整路徑執行程式的一行指令：Windows 的終端機是 PowerShell（`& '路徑' 參數`），
@@ -81,26 +94,26 @@ fn call_line(exe: &Path, args: &str) -> String {
     }
 }
 
-/// 這台電腦有沒有安裝 COMET CLI（PATH 裡有 `comet` 指令，或裝在固定的位置）。
+/// 這台電腦有沒有安裝 COMET CLI（PATH 裡有 `comet` 指令，或在安裝位置找得到）。
 /// 新 COMET 專案建立後要在終端機執行 `comet setup`。
 #[tauri::command]
 pub async fn comet_installed(app: AppHandle) -> bool {
-    let home = app.path().home_dir().ok();
-    tauri::async_runtime::spawn_blocking(move || locate_comet(home).is_some())
+    let (comet_home, home) = comet_roots(&app);
+    tauri::async_runtime::spawn_blocking(move || locate_comet(comet_home, home).is_some())
         .await
         .unwrap_or(false)
 }
 
 /// 終端機要輸入的 `comet setup` 指令（只有終端機面板可以呼叫）：`comet` 在 PATH 裡就直接執行，
-/// 不在時用固定安裝位置的完整路徑執行。都找不到時照樣送 `comet setup`，讓殼層說找不到指令。
+/// 不在時用安裝位置的完整路徑執行。都找不到時照樣送 `comet setup`，讓殼層說找不到指令。
 ///
 /// 不把安裝位置加進終端機的 PATH：`comet setup` 會檢查 PATH 裡有沒有它，加了就不會幫使用者設定，
 /// 離開 oMarker 後還是找不到 `comet`。
 #[tauri::command]
 pub async fn comet_setup_line(app: AppHandle, webview: tauri::Webview) -> Result<String, String> {
     crate::ai::view::require_terminal(&webview)?;
-    let home = app.path().home_dir().ok();
-    tauri::async_runtime::spawn_blocking(move || match locate_comet(home) {
+    let (comet_home, home) = comet_roots(&app);
+    tauri::async_runtime::spawn_blocking(move || match locate_comet(comet_home, home) {
         Some(Comet::Installed(exe)) => call_line(&exe, "setup"),
         _ => "comet setup".to_string(),
     })
@@ -228,26 +241,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn comet_is_found_in_its_install_folder() {
-        let home = std::env::temp_dir().join(format!("omarker-comet-{}", std::process::id()));
-        let exe = comet_default_path(&home);
-        assert!(exe.ends_with(if cfg!(windows) {
+    fn comet_is_found_in_its_install_folders() {
+        let root = std::env::temp_dir().join(format!("omarker-comet-{}", std::process::id()));
+        let home = root.join("home");
+        let custom = root.join("tools").join("Comet");
+        let in_home = comet_exe_in(&home.join("Comet"));
+        assert!(in_home.ends_with(if cfg!(windows) {
             r"Comet\bin\comet.exe"
         } else {
             "Comet/bin/comet"
         }));
-        // 測試機的 PATH 裡沒有 comet 時，才看得出有沒有去固定的位置找。
+        // 測試機的 PATH 裡沒有 comet 時，才看得出有沒有去安裝位置找。
         if which::which("comet").is_err() {
-            assert_eq!(locate_comet(Some(home.clone())), None);
-            fs::create_dir_all(exe.parent().unwrap()).unwrap();
-            fs::write(&exe, "").unwrap();
+            let found = |comet_home: Option<&Path>, home: Option<&Path>| {
+                locate_comet(
+                    comet_home.map(Path::to_path_buf),
+                    home.map(Path::to_path_buf),
+                )
+            };
+            assert_eq!(found(Some(&custom), Some(&home)), None);
+            // 預設位置：%USERPROFILE%\Comet\bin。
+            fs::create_dir_all(in_home.parent().unwrap()).unwrap();
+            fs::write(&in_home, "").unwrap();
             assert_eq!(
-                locate_comet(Some(home.clone())),
-                Some(Comet::Installed(exe))
+                found(None, Some(&home)),
+                Some(Comet::Installed(in_home.clone()))
             );
-            assert_eq!(locate_comet(None), None);
+            // COMET_HOME 設到別的地方時先找那裡；那裡沒有才找預設位置。
+            assert_eq!(
+                found(Some(&custom), Some(&home)),
+                Some(Comet::Installed(in_home.clone()))
+            );
+            let in_custom = comet_exe_in(&custom);
+            fs::create_dir_all(in_custom.parent().unwrap()).unwrap();
+            fs::write(&in_custom, "").unwrap();
+            assert_eq!(
+                found(Some(&custom), Some(&home)),
+                Some(Comet::Installed(in_custom.clone()))
+            );
+            assert_eq!(
+                found(Some(&custom), None),
+                Some(Comet::Installed(in_custom))
+            );
+            // 空的 COMET_HOME 不算。
+            assert_eq!(
+                found(Some(Path::new("")), Some(&home)),
+                Some(Comet::Installed(in_home))
+            );
+            assert_eq!(found(None, None), None);
         }
-        let _ = fs::remove_dir_all(&home);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
