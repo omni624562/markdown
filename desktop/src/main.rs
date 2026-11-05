@@ -39,6 +39,7 @@ mod pdf;
 mod projects;
 mod secrets;
 mod settings;
+mod text_encoding;
 mod trust;
 mod update;
 mod watch;
@@ -302,6 +303,9 @@ fn main() {
             window_control,
             files::open_file,
             files::reopen_file,
+            files::reopen_with_encoding,
+            files::file_format,
+            files::set_file_format,
             files::set_file_shortcuts,
             files::save_file,
             files::export_binary,

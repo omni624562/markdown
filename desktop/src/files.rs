@@ -12,12 +12,8 @@ use tauri::{AppHandle, Manager, State, Window};
 
 use crate::trust::Trust;
 
-/// 開啟檔案時記下的格式，存檔時照原樣寫回，避免 Windows 的 CRLF 或 BOM 被悄悄改掉。
-#[derive(Clone, Copy, Default)]
-pub struct FileFormat {
-    crlf: bool,
-    bom: bool,
-}
+pub use crate::text_encoding::{decode, encode, FileFormat};
+use crate::text_encoding::{decode_as, TextEncoding, Unencodable};
 
 /// 已知檔案的狀態：原本的格式，以及最後一次和編輯器同步時內容的雜湊。
 #[derive(Clone, Copy, Default)]
@@ -62,7 +58,8 @@ pub struct OpenedFile {
     pub path: String,
     pub name: String,
     pub text: String,
-    /// 檔案不是 UTF-8、改用 Big5 解讀時為 `"big5"`；Big5 也解讀不了（會有亂碼）時為 `"unknown"`。
+    /// 檔案的編碼（`"utf-8"`、`"utf-16le"`、`"big5"`…，見 `text_encoding::CHOICES`）；
+    /// 解讀不乾淨（會有亂碼）時為 `"unknown"`。
     pub encoding: &'static str,
 }
 
@@ -106,6 +103,13 @@ pub enum SaveOutcome {
         name: String,
         disk_text: String,
     },
+    /// 檔案的編碼（例如 Big5）寫不進某些字：沒有寫入，前端問使用者要不要改存成 UTF-8。
+    Unencodable {
+        path: String,
+        name: String,
+        encoding: &'static str,
+        chars: String,
+    },
     Cancelled,
 }
 
@@ -125,37 +129,11 @@ pub fn path_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// 解讀檔案內容：優先當 UTF-8（可含 BOM），失敗時改用台灣常見的 Big5。
-pub fn decode(bytes: &[u8]) -> (String, FileFormat, &'static str) {
-    let (body, bom) = match bytes.strip_prefix(b"\xEF\xBB\xBF") {
-        Some(rest) => (rest, true),
-        None => (bytes, false),
-    };
-    let (text, encoding) = match std::str::from_utf8(body) {
-        Ok(s) => (s.to_owned(), "utf-8"),
-        Err(_) => {
-            // Big5 也解不乾淨（例如 Shift-JIS、GBK 或混了壞位元組）：標成 `unknown`，
-            // 前端不自動存檔，存檔前先問使用者，免得把原檔換成亂碼。
-            let (s, _, had_errors) = encoding_rs::BIG5.decode(body);
-            (s.into_owned(), if had_errors { "unknown" } else { "big5" })
-        }
-    };
-    let crlf = text.contains("\r\n");
-    // 編輯器內部一律使用 \n，存檔時再依原格式轉回。
-    let text = if crlf {
-        text.replace("\r\n", "\n")
-    } else {
-        text
-    };
-    (text, FileFormat { crlf, bom }, encoding)
-}
-
 /// 內容看起來不是能編輯的文字時回傳原因（接在檔名後面顯示）；是文字時回傳 `None`。
 pub fn not_text_reason(bytes: &[u8]) -> Option<String> {
+    // 有 BOM 的 UTF-16 是文字（裡面一定有 NUL 位元組，不能用下面的判斷）。
     if bytes.starts_with(b"\xFF\xFE") || bytes.starts_with(b"\xFE\xFF") {
-        return Some(
-            tr!("是 UTF-16 編碼，目前只能開啟 UTF-8 或 Big5 的文字檔。可以用記事本「另存新檔」，編碼選 UTF-8 後再開啟"),
-        );
+        return None;
     }
     // 和 Git 一樣：開頭一段裡有 NUL 字元就當成二進位檔。
     let head = &bytes[..bytes.len().min(8192)];
@@ -165,19 +143,6 @@ pub fn not_text_reason(bytes: &[u8]) -> Option<String> {
         ));
     }
     None
-}
-
-pub fn encode(text: &str, format: FileFormat) -> Vec<u8> {
-    let mut out = Vec::with_capacity(text.len() + 3);
-    if format.bom {
-        out.extend_from_slice(b"\xEF\xBB\xBF");
-    }
-    if format.crlf {
-        out.extend_from_slice(text.replace("\r\n", "\n").replace('\n', "\r\n").as_bytes());
-    } else {
-        out.extend_from_slice(text.as_bytes());
-    }
-    out
 }
 
 /// 編輯器最多開啟多大的檔案。更大的通常不是筆記，整個讀進來只會讓介面卡住。
@@ -347,12 +312,21 @@ fn overwrite_in_place(path: &Path, bytes: &[u8], private: bool) -> std::io::Resu
 }
 
 /// 寫入檔案，回傳寫入內容的雜湊。
-fn write_file(path: &Path, text: &str, format: FileFormat) -> Result<u64, String> {
-    let bytes = encode(text, format);
-    write_atomic(path, &bytes).map_err(|e| {
+fn write_file(path: &Path, bytes: &[u8]) -> Result<u64, String> {
+    write_atomic(path, bytes).map_err(|e| {
         crate::io::describe(&e, &tr!("無法寫入「{name}」", name = display_name(path)))
     })?;
-    Ok(hash_bytes(&bytes))
+    Ok(hash_bytes(bytes))
+}
+
+/// 檔案的編碼寫不進某些字時的存檔結果（沒有寫入）。
+fn unencodable(path: &Path, format: FileFormat, u: Unencodable) -> SaveOutcome {
+    SaveOutcome::Unencodable {
+        path: path_string(path),
+        name: display_name(path),
+        encoding: format.encoding.id(),
+        chars: u.chars,
+    }
 }
 
 /// 磁碟上的檔案和最後一次讀寫時是否不同。檔案不存在時不算衝突（直接重新建立）。
@@ -420,6 +394,126 @@ pub async fn reopen_file(
     .await?;
     trust.add_file(&app, &path);
     Ok(opened)
+}
+
+/// 狀態列顯示的檔案格式：存檔時用的編碼、換行與 BOM。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatInfo {
+    encoding: &'static str,
+    crlf: bool,
+    bom: bool,
+}
+
+impl From<FileFormat> for FormatInfo {
+    fn from(f: FileFormat) -> Self {
+        FormatInfo {
+            encoding: f.encoding.id(),
+            crlf: f.crlf,
+            bom: f.bom,
+        }
+    }
+}
+
+/// 檔案存檔時用的格式；不是開過的本機檔案時回傳 `None`（狀態列不顯示編碼與換行）。
+#[tauri::command]
+pub fn file_format(known: State<'_, KnownFiles>, path: String) -> Option<FormatInfo> {
+    known
+        .0
+        .lock()
+        .get(Path::new(&path))
+        .map(|s| s.format.into())
+}
+
+/// 換存檔時用的編碼、換行或 BOM（狀態列的選單），下次存檔生效。
+/// UTF-16 一律加 BOM（沒有 BOM 下次開啟時認不出來）；Big5 等編碼沒有 BOM。
+/// 給了 `text`（目前的內容）時，先確認新的編碼寫得進去。
+#[tauri::command]
+pub fn set_file_format(
+    known: State<'_, KnownFiles>,
+    path: String,
+    encoding: Option<String>,
+    crlf: Option<bool>,
+    bom: Option<bool>,
+    text: Option<String>,
+) -> Result<FormatInfo, String> {
+    let mut map = known.0.lock();
+    let state = map
+        .get_mut(Path::new(&path))
+        .ok_or_else(|| tr!("這份文件還沒存成檔案"))?;
+    let mut next = state.format;
+    let format = &mut next;
+    if let Some(id) = encoding {
+        format.encoding =
+            TextEncoding::from_id(&id).ok_or_else(|| tr!("不支援的編碼：{id}", id = id))?;
+    }
+    if let Some(crlf) = crlf {
+        format.crlf = crlf;
+    }
+    format.bom = match format.encoding {
+        TextEncoding::Utf8 => bom.unwrap_or(format.bom),
+        TextEncoding::Utf16Le | TextEncoding::Utf16Be => true,
+        TextEncoding::Other(_) => false,
+    };
+    // 新的編碼寫不進目前的內容（例如換成 Big5 但有表情符號）：不換，告訴使用者是哪些字。
+    if let Some(text) = text {
+        if let Err(u) = encode(&text, next) {
+            return Err(tr!(
+                "{encoding} 存不了這幾個字：{chars}",
+                encoding = next.encoding.label(),
+                chars = u.chars
+            ));
+        }
+    }
+    state.format = next;
+    Ok(next.into())
+}
+
+/// 用指定的編碼重新讀取開過的檔案（畫面上是亂碼時，在狀態列選另一種編碼）。
+/// 之後存檔也用這個編碼。
+#[tauri::command]
+pub async fn reopen_with_encoding(
+    app: AppHandle,
+    path: String,
+    encoding: String,
+) -> Result<OpenedFile, String> {
+    let enc =
+        TextEncoding::from_id(&encoding).ok_or_else(|| tr!("不支援的編碼：{id}", id = encoding))?;
+    let path = PathBuf::from(path);
+    crate::io::blocking(move || {
+        let known = app.state::<KnownFiles>();
+        if !known.contains(&path) {
+            return Err(tr!(
+                "這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。"
+            ));
+        }
+        let bytes = read_capped(&path, MAX_OPEN_BYTES)
+            .map_err(|e| {
+                crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(&path)))
+            })?
+            .ok_or_else(|| {
+                tr!(
+                    "「{name}」超過 {mb} MB，無法開啟",
+                    name = display_name(&path),
+                    mb = MAX_OPEN_BYTES / 1024 / 1024
+                )
+            })?;
+        let (text, format, lossy) = decode_as(&bytes, enc);
+        known.0.lock().insert(
+            path.clone(),
+            FileState {
+                format,
+                hash: Some(hash_bytes(&bytes)),
+            },
+        );
+        Ok(OpenedFile {
+            name: display_name(&path),
+            path: path_string(&path),
+            text,
+            encoding: if lossy { "unknown" } else { enc.id() },
+        })
+    })
+    .await
 }
 
 /// 左側圖示列上的檔案捷徑（前端的清單改變時送整份）：記在信任清單，之後就算很久沒開、
@@ -665,11 +759,15 @@ pub async fn save_file(
         .get(&path)
         .map(|s| s.format)
         .unwrap_or_default();
+    let bytes = match encode(&text, format) {
+        Ok(bytes) => bytes,
+        Err(u) => return Ok(unencodable(&path, format, u)),
+    };
     let app2 = app.clone();
     let p = path.clone();
     crate::io::blocking(move || {
         let disk = fs::read(&p).ok();
-        let hash = write_file(&p, &text, format)?;
+        let hash = write_file(&p, &bytes)?;
         crate::history::on_save(&app2, &p, disk.as_deref(), &text);
         app2.state::<KnownFiles>().0.lock().insert(
             p.clone(),
@@ -712,7 +810,11 @@ fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<Sa
             disk_text,
         });
     }
-    let hash = write_file(path, text, state.format)?;
+    let bytes = match encode(text, state.format) {
+        Ok(bytes) => bytes,
+        Err(u) => return Ok(unencodable(path, state.format, u)),
+    };
+    let hash = write_file(path, &bytes)?;
     crate::history::on_save(app, path, disk.as_deref(), text);
     known.0.lock().insert(
         path.to_path_buf(),
@@ -729,39 +831,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn keeps_crlf_and_bom_round_trip() {
-        let original = b"\xEF\xBB\xBF# \xE6\xA8\x99\xE9\xA1\x8C\r\n\r\nabc\r\n";
-        let (text, format, enc) = decode(original);
-        assert_eq!(text, "# 標題\n\nabc\n");
-        assert_eq!(enc, "utf-8");
-        assert_eq!(encode(&text, format), original);
-    }
-
-    #[test]
-    fn lf_files_stay_lf() {
-        let (text, format, _) = decode(b"a\nb\n");
-        assert_eq!(encode(&text, format), b"a\nb\n");
-    }
-
-    #[test]
-    fn rejects_binary_and_utf16() {
+    fn rejects_binary_but_not_utf16() {
         assert!(not_text_reason(b"# \xE6\xA8\x99\xE9\xA1\x8C\nabc").is_none());
         assert!(not_text_reason(b"\xA4\xA4\xA4\xE5").is_none());
         assert!(not_text_reason(b"").is_none());
         assert!(not_text_reason(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").is_some());
         assert!(not_text_reason(b"%PDF-1.7\n").is_some());
-        assert!(not_text_reason(b"\xFF\xFEa\0b\0").is_some_and(|why| why.contains("UTF-16")));
-    }
-
-    #[test]
-    fn falls_back_to_big5() {
-        // 「中文」的 Big5 編碼
-        let (text, _, enc) = decode(b"\xA4\xA4\xA4\xE5");
-        assert_eq!(text, "中文");
-        assert_eq!(enc, "big5");
-        // Big5 也解不乾淨：標成 unknown，前端不會自動存檔蓋掉原檔。
-        let (_, _, enc) = decode(b"abc\xA4");
-        assert_eq!(enc, "unknown");
+        assert!(not_text_reason(b"\xFF\xFEa\0b\0").is_none());
+        assert!(not_text_reason(b"a\0b\0").is_some());
     }
 
     #[test]
