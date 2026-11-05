@@ -21,6 +21,8 @@ export interface CometForm {
   load(): Promise<void>;
   /** 欄位都填好時回傳 `comet setup` 的參數（不含資料夾）；還沒填好時回傳 null。 */
   request(): Omit<CometSetupRequest, "dir"> | null;
+  /** 填好的設定，給設定中、完成時的「COMET 設定」摘要。 */
+  summary(): CometSummaryRow[];
 }
 
 const DEFAULT_CADENCE = 14;
@@ -34,6 +36,17 @@ export function cadenceOf(sprints: AdoTeamIteration[], index: number): number | 
     if (Number.isFinite(days) && days >= 1 && days <= 90) return days;
   }
   return null;
+}
+
+/** Sprint 的日期範圍，例如「11/2 – 11/13」（沒有日期時回傳空字串）。日期是 Azure DevOps 的 UTC 午夜。 */
+export function sprintRange(sprint: { start: string | null; finish: string | null }): string {
+  if (!sprint.start || !sprint.finish) return "";
+  const md = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "" : `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+  };
+  const [a, b] = [md(sprint.start), md(sprint.finish)];
+  return a && b ? `${a} – ${b}` : "";
 }
 
 /** Sprint 的編號（名稱或路徑最後的數字，例如「Sprint 102」→ 102）；沒有數字時回傳 null。 */
@@ -197,22 +210,57 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
       if (number === null) return { ...common, sprintUrl: sprintBoardUrl(account.url, project.value, tm.name, it.path) };
       return { ...common, collectionUrl: account.url, project: project.value, team: tm.name, iterationPath: it.path, sprintNumber: number };
     },
+    summary() {
+      const days = t("{n} 天", { n: cadence.value.trim() });
+      const who = { label: tr.assigned, value: assigned.value.trim() };
+      if (adoBox.hidden) return [{ label: tr.url, value: url.value.trim() }, { label: tr.cadence, value: days }, who];
+      const it = sprints.find((s) => s.id === sprint.value);
+      const range = it ? sprintRange(it) : "";
+      return [
+        { label: tr.project, value: project.value },
+        { label: tr.team, value: teams.find((x) => x.id === team.value)?.name ?? "" },
+        { label: tr.sprint, value: it?.name ?? "", note: range ? `${range}・${days}` : days },
+        who,
+      ];
+    },
   };
 }
 
 // ---- 設定中、完成 --------------------------------------------------------------
 
+/** 「COMET 設定」摘要的一行（設定中、完成時右邊的卡片）。 */
+export interface CometSummaryRow {
+  label: string;
+  value: string;
+  /** 值後面的淡色說明（例如 Sprint 的日期與天數）。 */
+  note?: string;
+}
+
+/** `comet setup` 建立的檔案或資料夾（相對於專案資料夾）。 */
+export interface CreatedFile {
+  /** 資料夾以 `/` 結尾。 */
+  path: string;
+  /** 後面附的說明（例如「新增 9 份基線文件」）。 */
+  note: string;
+}
+
 /** `comet setup` 輸出裡建立的檔案（「已建立 / 更新：路徑」「已產生 …：路徑」），換成相對於專案資料夾的路徑。 */
-export function createdFiles(lines: string[], dir: string): string[] {
-  const out: string[] = [];
+export function createdFiles(lines: string[], dir: string): CreatedFile[] {
+  const out: CreatedFile[] = [];
   const root = dir.replace(/[\\/]+$/, "");
   for (const line of lines) {
-    const m = /^\s*已(?:建立 \/ 更新|產生[^：:]*|建立 SDD workspace)[：:]\s*(.+?)\s*$/.exec(line); // i18n-ignore：比對 comet 的輸出
+    const m = /^\s*已(建立 \/ 更新|產生[^：:]*|建立 SDD workspace)[：:]\s*(.+?)\s*$/.exec(line); // i18n-ignore：比對 comet 的輸出
     if (!m) continue;
-    let path = m[1];
+    let path = m[2];
+    let note = "";
+    // 路徑後面的括號是說明：「…\docs\spec\（新增 9 份基線文件）」。
+    const n = /^(.+?)(?:\s+|(?<=[\\/]))[（(]\s*([^（）()]+?)\s*[)）]$/.exec(path);
+    if (n) [path, note] = [n[1], n[2]];
     if (path.toLowerCase().startsWith(root.toLowerCase())) path = path.slice(root.length).replace(/^[\\/]+/, "");
     path = path.replace(/\\/g, "/");
-    if (path && !out.includes(path)) out.push(path);
+    // SDD workspace 是資料夾。
+    if (m[1].includes("SDD") && path && !path.endsWith("/")) path += "/";
+    if (path && !out.some((f) => f.path === path)) out.push({ path, note });
   }
   return out;
 }
@@ -227,14 +275,16 @@ export function cometSetupRunning(): boolean {
 }
 
 /**
- * 在對話框 `d` 的 `view` 裡顯示進度，執行 `comet setup`，等它結束（成功回傳 true）。
- * `close` 關掉對話框（「完成」「在背景繼續」）。
+ * 在對話框 `d` 的 `view` 裡顯示進度，等 `ready`（切換到新專案）之後執行 `comet setup`，等它結束（成功回傳 true）。
+ * 版面：上面是狀態與說明；左邊「做了什麼」（每一步）、右邊「COMET 設定」（`info.summary`）；
+ * 下面同一個位置在設定中是即時輸出，完成後是建立的檔案（可以切換成完整輸出）。設定中與完成時對話框一樣大。
  */
 export function runCometSetup(
   d: HTMLDialogElement,
   view: HTMLElement,
   req: CometSetupRequest,
-  info: { name: string; git: boolean },
+  info: { name: string; git: boolean; summary: CometSummaryRow[] },
+  ready: Promise<unknown> = Promise.resolve(),
 ): Promise<boolean> {
   const steps: Step[] = [
     { label: t("建立資料夾與 README.md"), state: "done" },
@@ -244,27 +294,44 @@ export function runCometSetup(
   ];
   const setupStep = steps[info.git ? 2 : 1];
   const smokeStep = req.connectionTest ? steps[steps.length - 1] : null;
-  const title = t("新專案");
+  const tr = { steps: t("做了什麼"), settings: t("COMET 設定"), files: t("建立的檔案") };
   view.innerHTML = `
-    <h2 id="nc-title">${title}</h2>
-    <p class="pe-path nc-hint"></p>
-    <ul class="nc-steps"></ul>
-    <div class="nc-result" hidden></div>
-    <div class="nc-files" hidden></div>
-    <button type="button" class="nc-toggle" hidden></button>
-    <pre class="nc-log" tabindex="0"></pre>
-    <div class="choice-actions"></div>`;
+    <div class="nc-head">
+      <span class="nc-badge" aria-hidden="true"></span>
+      <div><h2 id="nc-title"></h2><p class="nc-hint"></p></div>
+    </div>
+    <div class="nc-cols">
+      <section class="np-card"><h3>${tr.steps}</h3><ul class="nc-steps"></ul></section>
+      <section class="np-card"><h3>${tr.settings}</h3><dl class="nc-summary"></dl></section>
+    </div>
+    <div class="nc-bottom">
+      <section class="np-card nc-files" hidden><h3>${tr.files}<span class="nc-count"></span></h3><ul></ul></section>
+      <pre class="nc-log" tabindex="0"></pre>
+    </div>
+    <div class="nc-foot"><button type="button" class="nc-toggle" hidden></button><div class="choice-actions"></div></div>`;
   const q = <T extends HTMLElement>(sel: string) => view.querySelector<T>(sel)!;
+  const badge = q(".nc-badge");
+  const title = q("#nc-title");
   const hint = q(".nc-hint");
   const list = q(".nc-steps");
   const log = q(".nc-log");
-  const result = q(".nc-result");
   const files = q(".nc-files");
   const toggle = q<HTMLButtonElement>(".nc-toggle");
   const actions = q(".choice-actions");
-  hint.textContent = t("正在設定「{name}」，大約需要半分鐘，不必回答任何問題。", { name: info.name });
   const lines: string[] = [];
 
+  const head = (state: "run" | "ok" | "fail", heading: string, text: string) => {
+    badge.dataset.state = state;
+    badge.replaceChildren(...(state === "ok" ? [icon("check")] : state === "fail" ? [icon("x")] : []));
+    title.textContent = heading;
+    hint.textContent = text;
+  };
+  const span = (cls: string, text: string) => {
+    const el = document.createElement("span");
+    el.className = cls;
+    el.textContent = text;
+    return el;
+  };
   const renderSteps = () => {
     list.replaceChildren(
       ...steps.map((s) => {
@@ -279,6 +346,13 @@ export function runCometSetup(
       }),
     );
   };
+  /** 下面那一格顯示建立的檔案（true）或完整輸出（false）。 */
+  const showFiles = (on: boolean) => {
+    files.hidden = !on;
+    log.hidden = on;
+    toggle.textContent = on ? t("顯示完整輸出") : t("顯示建立的檔案");
+    if (!on) log.scrollTop = log.scrollHeight;
+  };
   const button = (label: string, run: () => void, primary = false) => {
     const b = document.createElement("button");
     b.type = "button";
@@ -289,6 +363,17 @@ export function runCometSetup(
   };
   const close = () => d.close();
   d.setAttribute("aria-labelledby", "nc-title");
+  head("run", t("正在設定「{name}」…", { name: info.name }), t("大約需要半分鐘，不必回答任何問題；可以按「在背景繼續」先做別的事。"));
+  q(".nc-summary").replaceChildren(
+    ...info.summary.flatMap((row) => {
+      const dt = document.createElement("dt");
+      dt.textContent = row.label;
+      const dd = document.createElement("dd");
+      dd.textContent = row.value;
+      if (row.note) dd.append(span("nc-sub", row.note));
+      return [dt, dd];
+    }),
+  );
   renderSteps();
   actions.replaceChildren(button(t("在背景繼續"), close));
 
@@ -300,42 +385,39 @@ export function runCometSetup(
       setupStep.state = e.ok ? "done" : "fail";
       if (smokeStep) smokeStep.state = e.ok ? "done" : smokeStep.state === "run" ? "fail" : "wait";
       renderSteps();
-      hint.textContent = "";
-      result.hidden = false;
-      result.className = e.ok ? "nc-result ok" : "nc-result fail";
       if (e.ok) {
-        result.textContent = req.connectionTest
-          ? t("「{name}」設定完成，已切換到這個專案；也查詢了你的工作，確認連得上 Azure DevOps。", { name: info.name })
-          : t("「{name}」設定完成，已切換到這個專案。", { name: info.name });
+        head(
+          "ok",
+          t("「{name}」建立好了", { name: info.name }),
+          req.connectionTest ? t("已切換到這個專案，也查詢了你的工作，確認連得上 Azure DevOps。") : t("已切換到這個專案。"),
+        );
         const made = createdFiles(lines, req.dir);
         if (made.length) {
-          files.hidden = false;
-          const title = document.createElement("p");
-          title.textContent = t("建立了這些檔案：");
-          const pre = document.createElement("pre");
-          pre.textContent = made.join("\n");
-          files.replaceChildren(title, pre);
+          q(".nc-count").textContent = String(made.length);
+          files.querySelector("ul")!.replaceChildren(
+            ...made.map((f) => {
+              const li = document.createElement("li");
+              const code = document.createElement("code");
+              code.textContent = f.path;
+              code.title = f.path;
+              li.append(icon(f.path.endsWith("/") ? "folder" : "file"), code);
+              if (f.note) li.append(span("nc-sub", f.note));
+              return li;
+            }),
+          );
+          // 成功時下面那一格換成建立的檔案，想看輸出再切換。
+          showFiles(true);
+          toggle.hidden = false;
         }
-        // 成功時把輸出收起來，想看再展開。
-        log.hidden = true;
-        toggle.hidden = false;
-        toggle.textContent = t("顯示完整輸出");
-        const agents = made.find((f) => f.toLowerCase() === "agents.md");
-        actions.replaceChildren(
-          ...(agents
-            ? [
-                button(t("開啟 AGENTS.md"), () => {
-                  close();
-                  void app.openPath(`${req.dir.replace(/[\\/]+$/, "")}${req.dir.includes("\\") ? "\\" : "/"}AGENTS.md`).catch(app.reportError);
-                }),
-              ]
-            : []),
-          button(t("完成"), close, true),
-        );
+        actions.replaceChildren(button(t("完成"), close, true));
       } else {
-        result.textContent = e.error
-          ? t("comet setup 沒有完成：{error}", { error: e.error })
-          : t("comet setup 沒有完成（結束代碼 {code}）。", { code: String(e.code ?? "?") });
+        head(
+          "fail",
+          t("「{name}」的 COMET 設定沒有完成", { name: info.name }),
+          e.error
+            ? t("comet setup 沒有完成：{error}", { error: e.error })
+            : t("comet setup 沒有完成（結束代碼 {code}）。", { code: String(e.code ?? "?") }),
+        );
         actions.replaceChildren(
           button(t("在終端機重試"), () => {
             close();
@@ -360,34 +442,33 @@ export function runCometSetup(
       }
       resolve(e.ok);
     };
-    void desktop!
-      .onCometSetup((e) => {
-        if (e.kind === "done") {
-          finish(e);
-          return;
-        }
-        lines.push(e.text);
-        if (lines.length > 4000) lines.splice(0, lines.length - 4000);
-        log.append(`${e.text}\n`);
-        if (log.childNodes.length > 4000) log.firstChild?.remove();
-        log.scrollTop = log.scrollHeight;
-        // my-tasks 開始查詢時，「查詢我的工作」這一步亮起來（看輸出判斷，看不出來也沒關係，結束時一起打勾）。
-        if (smokeStep?.state === "wait" && /my-tasks|查詢中/.test(e.text)) { // i18n-ignore：比對 comet 的輸出
-          setupStep.state = "done";
-          smokeStep.state = "run";
-          renderSteps();
-        }
-      })
+    void ready
+      .then(() =>
+        desktop!.onCometSetup((e) => {
+          if (e.kind === "done") {
+            finish(e);
+            return;
+          }
+          lines.push(e.text);
+          if (lines.length > 4000) lines.splice(0, lines.length - 4000);
+          log.append(`${e.text}\n`);
+          if (log.childNodes.length > 4000) log.firstChild?.remove();
+          log.scrollTop = log.scrollHeight;
+          // my-tasks 開始查詢時，「查詢我的工作」這一步亮起來（看輸出判斷，看不出來也沒關係，結束時一起打勾）。
+          if (smokeStep?.state === "wait" && /my-tasks|查詢中/.test(e.text)) { // i18n-ignore：比對 comet 的輸出
+            setupStep.state = "done";
+            smokeStep.state = "run";
+            renderSteps();
+          }
+        }),
+      )
       .then((stop) => {
         unlisten = stop;
         return desktop!.cometSetupRun(req);
       })
       .catch((err) => finish({ kind: "done", ok: false, code: null, error: err instanceof Error ? err.message : String(err) }));
   });
-  toggle.addEventListener("click", () => {
-    log.hidden = !log.hidden;
-    toggle.textContent = log.hidden ? t("顯示完整輸出") : t("隱藏完整輸出");
-  });
+  toggle.addEventListener("click", () => showFiles(files.hidden));
   running = { done };
   return done;
 }
