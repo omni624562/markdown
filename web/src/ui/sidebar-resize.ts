@@ -5,6 +5,9 @@
 import { t } from "../i18n.ts";
 export const SIDEBAR_WIDTH = { min: 180, max: 560, default: 248 } as const;
 
+/** 「圓角區塊」樣式的把手（膠囊）的長度，和 styles.css 一致。 */
+const GRIP = 48;
+
 export function clampSidebarWidth(px: number): number {
   return Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, px)));
 }
@@ -51,6 +54,16 @@ export function setupSidebarResize(
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up, { once: true });
     handle.addEventListener("pointercancel", up, { once: true });
+  });
+  // 「圓角區塊」樣式的把手是跟著滑鼠高度的一小段膠囊（styles.css 的 --grip-y）：記下滑鼠在把手上的高度，
+  // 膠囊不超出把手的上下兩端。拖曳時把手抓著滑鼠，也會一直更新。
+  handle.addEventListener("pointermove", (e) => {
+    const r = handle.getBoundingClientRect();
+    const half = GRIP / 2 + 4;
+    handle.style.setProperty("--grip-y", `${Math.round(Math.min(Math.max(e.clientY - r.top, half), r.height - half))}px`);
+  });
+  handle.addEventListener("pointerleave", () => {
+    if (!document.body.classList.contains("resizing")) handle.style.removeProperty("--grip-y");
   });
   handle.addEventListener("dblclick", () => apply(SIDEBAR_WIDTH.default));
   handle.addEventListener("keydown", (e) => {
