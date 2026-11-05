@@ -732,13 +732,16 @@ export interface SshConnectRequest {
   username: string;
   /** 密碼或金鑰的密語；空白就只用金鑰登入。 */
   password: string;
+  /**
+   * 跳板主機的密碼：原生端回傳 `NEED_JUMP_PASSWORD` 之後另外詢問的（不會拿上面的密碼去試）。
+   * 空白就只用金鑰或 ssh-agent 登入跳板主機。
+   */
+  jumpPassword?: string;
   keyPath: string;
   /** 跳板主機（`帳號@主機:連接埠`），不需要時是空字串。 */
   jump: string;
   root: string;
   remember: boolean;
-  /** 使用者確認過的主機金鑰指紋。 */
-  trust?: string;
 }
 
 /** 最近一次儲存設定（AI 相關的指令要等它完成）。 */
@@ -828,13 +831,14 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 在背景用參數執行 `comet setup`；輸出與結果用 `onCometSetup` 收。 */
     cometSetupRun: (req: CometSetupRequest) => core.invoke<void>("comet_setup_run", { req }),
     onCometSetup: (fn: (e: CometSetupEvent) => void) => event.listen<CometSetupEvent>("comet-setup", (e) => fn(e.payload)),
-    /**
-     * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
-     * `trust` 是使用者確認過的 SSH 主機金鑰指紋。
-     */
     /** 關閉目前的專案（本機或遠端資料夾）。 */
     closeFolder: () => core.invoke<void>("close_folder"),
-    reopenFolder: (path: string, password?: string, remember?: boolean, trust?: string) =>
+    /**
+     * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
+     * `jumpPassword` 是 SSH 跳板主機的密碼（原生端回傳 `NEED_JUMP_PASSWORD` 時才詢問）。
+     * 第一次連線的 SSH 主機由原生端用系統的對話框確認主機金鑰。
+     */
+    reopenFolder: (path: string, password?: string, remember?: boolean, jumpPassword?: string) =>
       route(
         path,
         () => core.invoke<Folder>("reopen_folder", { path }),
@@ -842,8 +846,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
           core.invoke<Folder>("dav_reconnect", {
             id: remoteId(path),
             password,
+            jumpPassword,
             remember: remember ?? false,
-            trust,
           }),
       ),
     currentFolder: () => core.invoke<Folder | null>("current_folder"),
@@ -976,7 +980,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
         .then(async (f) => (await davConnections().catch(() => []), f)),
     sshConnect: (req: SshConnectRequest) =>
       core
-        .invoke<Folder>("ssh_connect", { ...req, keyPath: req.keyPath || null, password: req.password || null, jump: req.jump || null })
+        .invoke<Folder>("ssh_connect", {
+          ...req,
+          keyPath: req.keyPath || null,
+          password: req.password || null,
+          jumpPassword: req.jumpPassword || null,
+          jump: req.jump || null,
+        })
         .then(async (f) => (await davConnections().catch(() => []), f)),
     davForget: (id: string) => core.invoke<void>("dav_forget", { id }),
     /** 遠端圖片（預覽用），回傳 data: 網址。 */
