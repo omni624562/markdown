@@ -41,6 +41,8 @@ export interface RepoSource {
   id: string;
   title: string;
   icon: string;
+  /** 名稱右邊的狀態（還沒登入、還沒連線，或登入的帳號）。 */
+  note?: string;
   run(): void;
 }
 
@@ -53,6 +55,12 @@ type SwitchItem =
 /** 路徑最後一層的資料夾名稱。 */
 export function folderName(path: string): string {
   return path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? path;
+}
+
+/** 按鈕上的來源名稱（不要「…」），後面括號註明狀態。 */
+function repoLabel(s: RepoSource): string {
+  const title = s.title.replace(/…$/, "");
+  return s.note ? t("{title}（{note}）", { title, note: s.note }) : title;
 }
 
 function message(e: unknown): string {
@@ -113,7 +121,7 @@ export class ProjectUi {
           const ssh = item.remote.kind === "ssh";
           return { title: item.remote.name, detail: item.remote.url, icon: ssh ? "server" : "cloud", section: ssh ? "SSH" : "WebDAV" };
         }
-        if (item.kind === "repo") return { title: item.source.title, icon: item.source.icon, section: t("下載儲存庫") };
+        if (item.kind === "repo") return { title: item.source.title, detail: item.source.note, icon: item.source.icon, section: t("下載儲存庫") };
         return { title: item.title, icon: item.icon, section: t("動作") };
       },
       pick: (item) => {
@@ -251,7 +259,7 @@ export class ProjectUi {
         : await choose(
             t("下載儲存庫"),
             t("從哪裡下載？選好儲存庫後再選要放在電腦的哪個資料夾；之前已經下載過的會直接開啟。"),
-            [...sources.map((s) => ({ id: s.id, label: s.title.replace(/…$/, "") })), { id: "cancel", label: t("取消") }],
+            [...sources.map((s) => ({ id: s.id, label: repoLabel(s) })), { id: "cancel", label: t("取消") }],
           );
     const source = sources.find((s) => s.id === id);
     if (!source) return;

@@ -429,6 +429,9 @@ export const main: Record<string, Translation> = {
   "Azure DevOps：下載儲存庫…": "Azure DevOps: Download Repository…",
   "Azure DevOps：工作項目": "Azure DevOps: Work Items",
   "Azure DevOps：連線設定…": "Azure DevOps: Connection Settings…",
+  // 下載儲存庫名稱右邊的狀態（app/repo-sources.ts）
+  "還沒登入": "Not signed in",
+  "還沒連線": "Not connected",
   "重新登入 GitHub": "Sign In to GitHub Again",
   "重新登入": "Sign In Again",
   "關閉專案": "Close Project",

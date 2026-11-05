@@ -135,6 +135,7 @@ export const ui: Record<string, Translation> = {
   "搜尋專案": "Search projects",
   "還沒有專案。開啟一個資料夾，它就會出現在這裡。": "No projects yet. Open a folder and it will show up here.",
   "{title}（{n}）": "{title} ({n})",
+  "{title}（{note}）": "{title} ({note})",
   "開啟「{name}」": "Open \"{name}\"",
   "目前": "Current",
   "{time}開啟": "Opened {time}",

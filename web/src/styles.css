@@ -1136,6 +1136,8 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 /* 展開子選單的那一項：淡淡的底色，看得出子選單從哪裡出來。 */
 .menu button.has-submenu.open:not(:hover):not(:focus-visible) { background: var(--menu-open); }
 .menu kbd { flex: none; margin-left: 12px; }
+/* 名稱右邊的狀態（例如下載儲存庫的「還沒登入」，見 app/repo-sources.ts）。 */
+.menu-note { flex: none; margin-left: 12px; color: var(--muted); font-size: 12px; }
 
 /* ---- 指令面板 ---- */
 .palette {
@@ -2123,6 +2125,9 @@ button.git-info:disabled { cursor: default; }
 #sidebar .side-buttons .btn { justify-content: flex-start; gap: 10px; width: 100%; height: auto; min-height: 32px; padding: 6px 10px; border: 0; background: none; color: var(--accent); white-space: normal; text-align: start; }
 #sidebar .side-buttons .btn:hover, #sidebar .side-buttons .btn:focus-visible { background: var(--active-line); }
 .side-buttons .btn .icon { flex: none; width: 16px; height: 16px; }
+/* 下載儲存庫的狀態（還沒登入、還沒連線，或登入的帳號）：名稱下面一行的淡色小字（見 app/repo-sources.ts）。 */
+.side-buttons .repo-label { display: flex; flex-direction: column; min-width: 0; }
+.side-buttons .repo-note { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 #sidebar .side-buttons .btn:first-child { margin-bottom: 4px; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
 #sidebar .side-buttons .btn:first-child:hover, #sidebar .side-buttons .btn:first-child:focus-visible { background: color-mix(in srgb, var(--accent) 88%, #000); }
 .recent-list li { display: flex; align-items: center; }
