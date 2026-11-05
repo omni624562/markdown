@@ -1,6 +1,7 @@
 /**
  * 並排時的分頁：
- * - 兩份文件並排時，兩個分頁合成一個「左｜右」的分頁：游標所在的那一半是目前的分頁，點另一半就換過去；
+ * - 兩份文件並排時，兩個分頁合成一張「左｜右」的分頁（中間一條細線，游標所在的那一半下面一條強調色的線）：
+ *   游標所在的那一半是目前的分頁，點另一半就換過去；
  *   最右邊的 × 取消並排（兩份文件留在分頁裡）。
  * - 拖曳分頁到編輯區的右半邊：出現「放開：在右邊並排開啟」的虛線框，放開就把那份文件開在右邊。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
@@ -38,10 +39,27 @@ test("並排：兩個分頁合成一個「左｜右」的分頁；點半邊換�
   assert.match(await selected(page), /需求說明/, "游標在右邊：右半是目前的分頁");
   assert.equal(list.length, 1, "沒有另外重複的分頁");
 
+  // 看起來是一張分頁：中間一條細線（沒有並排圖示）；整組是一張和內文同色的卡片；
+  // 游標所在的那一半下緣一條強調色的線，另一半沒有。
+  const look = () =>
+    page.evaluate(() => {
+      const pair = document.querySelector("#tab-bar .tab-pair");
+      const underline = (el) => getComputedStyle(el, "::after").display !== "none" && getComputedStyle(el, "::after").height === "2px";
+      return {
+        icon: !!pair.querySelector(".tab-pair-icon"),
+        sep: !!pair.querySelector(":scope > .tab-pair-sep"),
+        // 整組的底色和內文一樣（不是淡淡的強調色）。
+        card: getComputedStyle(pair).backgroundColor === getComputedStyle(document.querySelector(".editor-pane")).backgroundColor,
+        lines: [...pair.querySelectorAll(":scope > .tab")].map(underline),
+      };
+    });
+  assert.deepEqual(await look(), { icon: false, sep: true, card: true, lines: [false, true] });
+
   // 點左半：游標換到左邊。
   await page.locator("#tab-bar .tab-pair .tab").first().click();
   await page.waitForFunction(() => document.querySelector("#main-pane-head")?.classList.contains("focused"));
   assert.match(await selected(page), /週報/);
+  assert.deepEqual((await look()).lines, [true, false], "線移到左半");
 
   // × 取消並排：兩份文件留在分頁裡。
   await page.locator("#tab-bar .tab-pair-close").click();

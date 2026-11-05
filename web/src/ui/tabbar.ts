@@ -250,8 +250,10 @@ export class TabBar {
     group.role = "presentation";
     const name = (el: HTMLElement) => el.querySelector(".tab-name")?.textContent ?? "";
     group.title = t("並排中：左邊「{left}」、右邊「{right}」", { left: name(main), right: name(side) });
-    const mark = icon("columns-2");
-    mark.classList.add("tab-pair-icon");
+    // 兩半中間一條細線（不用並排圖示，名稱比較好讀）。
+    const sep = document.createElement("span");
+    sep.className = "tab-pair-sep";
+    sep.setAttribute("aria-hidden", "true");
     const close = document.createElement("button");
     close.type = "button";
     close.className = "tab-pair-close";
@@ -265,7 +267,7 @@ export class TabBar {
     });
     els.splice(els.indexOf(main), 1, group);
     els.splice(els.indexOf(side), 1);
-    group.append(main, mark, side, close);
+    group.append(main, sep, side, close);
   }
 
   #updateOverflow(): void {
