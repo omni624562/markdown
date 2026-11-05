@@ -21,6 +21,21 @@ test("並排編輯：把目前的文件移到右邊，再關掉", async () => {
   const contents = await page.$$eval(".cm-content", (els) => els.map((e) => e.textContent ?? ""));
   assert.ok(contents.some((c) => c.includes("左邊的文件") && !c.includes("右邊的文件")), contents.join(" | "));
   assert.ok(contents.some((c) => c.includes("右邊的文件") && !c.includes("左邊的文件")), contents.join(" | "));
+  // 用滑鼠拖中間的分隔線調整兩邊的寬度（預覽藏起來時，原本一拖左邊就被壓到最窄）。
+  const box = async (sel) => page.locator(sel).boundingBox();
+  const left = (await box(".editor-pane")).x;
+  const right = await box("#side-pane");
+  const total = right.x + right.width - left;
+  const share = async () => (await box(".editor-pane")).width / ((await box("#side-pane")).x + (await box("#side-pane")).width - left);
+  for (const target of [0.7, 0.35]) {
+    const splitter = await box("#splitter");
+    await page.mouse.move(splitter.x + splitter.width / 2, splitter.y + splitter.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(left + total * target, splitter.y + splitter.height / 2, { steps: 5 });
+    await page.mouse.up();
+    const now = await share();
+    assert.ok(Math.abs(now - target) < 0.03, `拖到 ${target}：左邊佔 ${now.toFixed(3)}`);
+  }
   await runCommand(page, "關閉右邊的文件");
   await page.waitForSelector("#side-pane-head", { state: "hidden" });
   assert.deepEqual(errors, []);
