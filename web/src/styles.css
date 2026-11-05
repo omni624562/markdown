@@ -1639,6 +1639,21 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .tab[data-wi-kind] .tab-icon { color: var(--kind); opacity: 1; }
 /* 並排顯示在文件右邊的那一個：底下一條線（目前的分頁是左邊的文件）。 */
 .tab.side-shown { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+/* 並排中的兩份文件：兩個分頁合成一個「左｜右」的分頁（ui/tabbar.ts 的 #pair）。淡淡的強調色底、下面一條線把兩半連在一起，
+   游標所在的那一半是目前的分頁（亮起來）；中間是並排的圖示，最右邊的 × 取消並排。兩半各自的關閉鈕藏起來。 */
+.tab-pair { position: relative; display: flex; flex: 0 1 auto; align-items: stretch; min-width: 0; height: 100%; border-right: 1px solid var(--border-soft); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tab-pair::after { content: ""; position: absolute; right: 6px; bottom: 3px; left: 6px; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--accent) 35%, transparent); pointer-events: none; }
+.tab-pair > .tab { min-width: 72px; max-width: 200px; padding-right: 12px; border-right: 0; }
+.tab-pair > .tab .tab-close { display: none; }
+.tab-pair > .tab.tab-beside::after { display: none; }
+.tab-pair-icon { flex: none; align-self: center; width: 15px; height: 15px; color: var(--accent); }
+.tab-pair-close { display: grid; flex: none; place-items: center; align-self: center; width: 22px; height: 22px; margin: 0 6px 0 2px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; }
+.tab-pair-close:hover { background: var(--active-line); color: var(--fg); }
+.tab-pair-close .icon { width: 14px; height: 14px; }
+/* 拖曳分頁到編輯區的右半邊並排開啟（app/side-drop.ts）：放得下的地方畫虛線框。 */
+.side-drop { position: fixed; z-index: 50; display: flex; gap: 8px; align-items: center; justify-content: center; box-sizing: border-box; border: 2px dashed var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font: 600 14px var(--font-ui); pointer-events: none; }
+.side-drop[hidden] { display: none; }
+.side-drop .icon { width: 22px; height: 22px; }
 @media (pointer: coarse) {
   .tab-close { width: 32px; height: 32px; }
 }

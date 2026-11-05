@@ -167,6 +167,10 @@ export const ui: Record<string, Translation> = {
   // tabbar.ts
   "已開啟的文件": "Open Documents",
   "所有分頁": "All Tabs",
+  "並排中：左邊「{left}」、右邊「{right}」": "Side by side: \"{left}\" on the left, \"{right}\" on the right",
+  "取消並排（兩份文件留在分頁裡）": "Stop side by side (both documents stay open in tabs)",
+  // app/side-drop.ts
+  "放開：在右邊並排開啟": "Drop to open on the right, side by side",
   "已釘選（有未存檔的變更）；按一下取消釘選": "Pinned (unsaved changes). Click to unpin.",
   "已釘選；按一下取消釘選": "Pinned. Click to unpin.",
   "取消釘選「{name}」": "Unpin \"{name}\"",
