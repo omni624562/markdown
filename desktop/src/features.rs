@@ -2,10 +2,14 @@
 //!
 //! 在設定裡關掉後，這些功能的原生指令一律拒絕（等於沒有註冊），網頁那一端就算被注入程式碼
 //! 也叫不動它們。開關記在設定檔；啟動時讀一次，之後每次存設定時更新。
+//! 從關閉改回開啟時，存設定的原生指令會用系統的對話框再確認一次（見 `settings::save_settings`），
+//! 網頁不能自己把使用者關掉的功能打開。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{AppHandle, Manager, Runtime};
+
+use crate::confirm::Question;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Feature {
@@ -80,6 +84,14 @@ impl Features {
         !self.off[i].load(Ordering::Relaxed)
     }
 
+    /// 目前關掉的功能。
+    pub fn off(&self) -> Vec<Feature> {
+        Feature::ALL
+            .into_iter()
+            .filter(|&f| !self.enabled(f))
+            .collect()
+    }
+
     /// 原生指令被關掉時回傳錯誤訊息。
     pub fn check(&self, command: &str) -> Result<(), String> {
         match Feature::of(command) {
@@ -89,6 +101,36 @@ impl Features {
             )),
             _ => Ok(()),
         }
+    }
+}
+
+/// 存設定時，原本關掉、這次會打開的功能（設定裡沒有這一項，或不是 `false`，都算打開）。
+pub fn turned_on(off: &[Feature], settings: &serde_json::Value) -> Vec<Feature> {
+    off.iter()
+        .copied()
+        .filter(|f| settings[f.key()] != false)
+        .collect()
+}
+
+/// 重新開啟關掉的功能前要問的話，列出會開啟哪些；沒有要開啟的功能時不用問。
+pub fn enable_question(list: &[Feature]) -> Option<Question> {
+    if list.is_empty() {
+        return None;
+    }
+    let names: Vec<String> = list.iter().map(|f| format!("• {}", f.name())).collect();
+    Some(Question::new(
+        tr!("開啟整合功能"),
+        tr!(
+            "要開啟下面這些在設定裡關掉的功能嗎？\n\n{names}\n\n只有在你自己剛剛打開這些開關時才選「是」。",
+            names = names.join("\n")
+        ),
+    ))
+}
+
+/// 使用者拒絕時，把這些功能在設定裡改回關閉（`settings` 是物件）。
+pub fn keep_off(settings: &mut serde_json::Value, list: &[Feature]) {
+    for f in list {
+        settings[f.key()] = serde_json::Value::Bool(false);
     }
 }
 
@@ -236,6 +278,49 @@ mod tests {
         assert!(Feature::ALL.iter().all(|&x| f.enabled(x)));
         let f = Features::load(Some(&serde_json::json!({ "gitEnabled": true })));
         assert!(Feature::ALL.iter().all(|&x| f.enabled(x)));
+    }
+
+    #[test]
+    fn asks_only_when_a_turned_off_feature_comes_back_on() {
+        let f = Features::load(Some(
+            &serde_json::json!({ "gitEnabled": false, "adoEnabled": false }),
+        ));
+        assert_eq!(f.off(), [Feature::Git, Feature::Ado]);
+        // 還是關著、或本來就開著的功能不用問。
+        let same =
+            serde_json::json!({ "gitEnabled": false, "adoEnabled": false, "remoteEnabled": true });
+        assert!(turned_on(&f.off(), &same).is_empty());
+        assert_eq!(enable_question(&turned_on(&f.off(), &same)), None);
+        // 網頁把關掉的功能打開：設成 true、拿掉這一項、或寫成不是 false 的值，都要問。
+        let on = serde_json::json!({ "gitEnabled": true, "adoEnabled": "false" });
+        let list = turned_on(&f.off(), &on);
+        assert_eq!(list, [Feature::Git, Feature::Ado]);
+        let q = enable_question(&list).unwrap();
+        assert!(q.message.contains("Git 與 GitHub"), "{}", q.message);
+        assert!(q.message.contains("Azure DevOps"), "{}", q.message);
+        assert!(!q.message.contains("WebDAV"), "{}", q.message);
+        let removed = serde_json::json!({ "theme": "dark" });
+        assert_eq!(turned_on(&f.off(), &removed), [Feature::Git, Feature::Ado]);
+        // 全部開著時，怎麼存都不用問。
+        let all_on = Features::load(None);
+        assert!(turned_on(&all_on.off(), &on).is_empty());
+    }
+
+    #[test]
+    fn refused_features_stay_off() {
+        let f = Features::load(Some(&serde_json::json!({ "remoteEnabled": false })));
+        let mut settings =
+            serde_json::json!({ "remoteEnabled": true, "gitEnabled": true, "theme": "dark" });
+        let list = turned_on(&f.off(), &settings);
+        assert_eq!(list, [Feature::Remote]);
+        keep_off(&mut settings, &list);
+        assert_eq!(
+            settings,
+            serde_json::json!({ "remoteEnabled": false, "gitEnabled": true, "theme": "dark" })
+        );
+        f.update(Some(&settings));
+        assert!(f.check("dav_read").is_err());
+        assert!(f.check("git_status").is_ok());
     }
 
     #[test]

@@ -51,6 +51,26 @@ test("專案總覽：刪除要輸入資料夾名稱；勾選後資料夾移到�
   await context.close();
 });
 
+test("移到資源回收筒前原生端再問一次；選「否」時關掉提示窗，不顯示已刪除", async () => {
+  // 假的原生端回傳 false：使用者在系統的確認對話框選了「否」。
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, project_delete: false } });
+  const overview = await openOverview(page);
+  await overview.locator(".po-card", { hasText: "notes" }).locator(".po-delete").click();
+  const dialog = page.locator("dialog.project-delete[open]");
+  await dialog.getByLabel(/同時把資料夾移到資源回收筒/).check();
+  await dialog.locator("input[name=confirm]").fill("notes");
+  await dialog.getByRole("button", { name: "刪除" }).click();
+  await dialog.waitFor({ state: "detached" });
+  // 提示窗是在原生端回答之後才關的；那時如果要顯示「已刪除」，也已經顯示了。
+  assert.deepEqual((await calls(page)).filter((c) => c.cmd === "project_delete").map((c) => c.args), [
+    { path: "C:\\work\\notes", trashFolder: true },
+  ]);
+  assert.equal(await page.locator(".toast", { hasText: /已刪除專案|從專案清單移除/ }).count(), 0);
+  assert.equal(await page.locator(".toast-error").count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("刪除失敗（例如沒有資源回收筒）時留在提示窗說原因", async () => {
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, project_delete: { $error: "無法把資料夾移到資源回收筒：找不到回收筒" } } });
   const overview = await openOverview(page);

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager, Window};
 
+use crate::confirm::Question;
 use crate::git::{AdoCred, Identity};
 
 mod access;
@@ -393,13 +394,63 @@ fn connect_error(tries: &[String], errors: Vec<String>) -> String {
     )
 }
 
+/// 記住上次連線的伺服器：中斷連線時不刪，之後改連別台伺服器時才知道要先確認
+/// （網頁不能先中斷連線，再當成第一次設定連到別台伺服器）。
+fn last_server_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("ado-last-server.txt"))
+}
+
+fn last_server(app: &AppHandle) -> Option<String> {
+    fs::read_to_string(last_server_file(app)?)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// 顯示用的伺服器：`https://主機[:連接埠]`（不顯示網址裡的帳號密碼）。
+fn server_name(url: &str) -> String {
+    let url = url.trim();
+    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = host.rsplit('@').next().unwrap_or(host);
+    format!(
+        "{}://{}",
+        scheme.to_ascii_lowercase(),
+        host.to_ascii_lowercase()
+    )
+}
+
+/// 換成另一台伺服器前要問的話。之前沒有連過（第一次設定），或是同一台伺服器（只換集合或權杖）時不用問。
+/// 換了伺服器，個人存取權杖和推送、下載時的 Windows 登入（見 git.rs）就會送到新的伺服器。
+fn server_change_question(previous: Option<&str>, next: &str) -> Option<Question> {
+    let previous = previous.filter(|p| !same_server(next, p))?;
+    Some(Question::new(
+        tr!("更換 Azure DevOps 伺服器"),
+        tr!(
+            "要把 Azure DevOps 伺服器從「{from}」換成「{to}」嗎？換了之後，個人存取權杖和下載、推送時的 Windows 登入資訊都會送到新的伺服器。只有在你自己要換伺服器時才選「是」。",
+            from = server_name(previous),
+            to = server_name(next)
+        ),
+    ))
+}
+
 /// 用網址與個人存取權杖連線：確認可以登入後記住（權杖存在 Windows 認證管理員）。
+/// 換成和之前不同的伺服器時，先用系統的對話框確認；使用者選「否」時保留原本的連線，回傳 `None`。
 #[tauri::command]
-pub async fn ado_connect(app: AppHandle, url: String, pat: String) -> Result<Account, String> {
+pub async fn ado_connect(
+    app: AppHandle,
+    window: Window,
+    url: String,
+    pat: String,
+) -> Result<Option<Account>, String> {
     let pat = pat.trim().to_string();
     if pat.is_empty() {
         return Err(tr!("請輸入個人存取權杖"));
     }
+    let previous = account(&app).map(|a| a.url).or_else(|| last_server(&app));
     let tries = candidates(&url)?;
     let token = pat.clone();
     let account = crate::io::blocking_for(TIMEOUT, move || {
@@ -413,18 +464,26 @@ pub async fn ado_connect(app: AppHandle, url: String, pat: String) -> Result<Acc
         Err(connect_error(&tries, errors))
     })
     .await?;
+    let question = server_change_question(previous.as_deref(), &account.url);
+    if !crate::confirm::confirm(&window, question).await {
+        return Ok(None);
+    }
     let path = account_file(&app).ok_or_else(|| tr!("找不到設定資料夾"))?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
     }
     let json = serde_json::to_string_pretty(&account).unwrap_or_default();
     crate::files::write_atomic(&path, json.as_bytes()).map_err(|e| tr!("無法儲存：{e}", e = e))?;
+    if let Some(last) = last_server_file(&app) {
+        let _ = crate::files::write_atomic(&last, account.url.as_bytes());
+    }
     ACCOUNT.set(Some(account.clone()));
     crate::secrets::set(SERVICE, "pat", &pat);
     *TOKEN.lock() = Some(pat);
-    Ok(account)
+    Ok(Some(account))
 }
 
+/// 中斷連線：刪掉權杖與帳號（上次連線的伺服器留著，見 `last_server_file`）。
 #[tauri::command]
 pub fn ado_disconnect(app: AppHandle) {
     crate::secrets::forget(SERVICE, "pat");

@@ -135,6 +135,47 @@ fn finds_project_and_repo_in_remote() {
 }
 
 #[test]
+fn changing_the_server_is_confirmed() {
+    // 第一次設定（之前沒有連過）不用問。
+    assert_eq!(
+        server_change_question(None, "https://ado.test/tfs/DefaultCollection"),
+        None
+    );
+    // 同一台伺服器只換集合（或重新輸入權杖）不用問。
+    assert_eq!(
+        server_change_question(
+            Some("https://ado.test/tfs/DefaultCollection"),
+            "https://ADO.test/tfs/Contoso"
+        ),
+        None
+    );
+    // 換到別台伺服器（含不同的連接埠、http 與 https）要問，並顯示前後兩台伺服器。
+    let q = server_change_question(
+        Some("https://ado.test/tfs/DefaultCollection"),
+        "https://user:secret@tfs.evil.test:8443/tfs/DefaultCollection",
+    )
+    .unwrap();
+    assert_eq!(q.title, "更換 Azure DevOps 伺服器");
+    assert!(q.message.contains("「https://ado.test」"), "{}", q.message);
+    assert!(
+        q.message.contains("「https://tfs.evil.test:8443」"),
+        "{}",
+        q.message
+    );
+    assert!(!q.message.contains("secret"), "{}", q.message);
+    assert!(server_change_question(
+        Some("https://ado.test/tfs/DefaultCollection"),
+        "http://ado.test/tfs/DefaultCollection"
+    )
+    .is_some());
+    assert!(server_change_question(
+        Some("https://ado.test/tfs/DefaultCollection"),
+        "https://ado.test.evil.test/tfs/DefaultCollection"
+    )
+    .is_some());
+}
+
+#[test]
 fn same_server_compares_scheme_host_and_port() {
     let base = "https://tfs.corp.com/tfs/DC";
     assert!(same_server("https://TFS.corp.com/tfs/Other/_git/r", base));
