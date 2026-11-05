@@ -12,6 +12,7 @@ import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { PROJECT_COLORS } from "../projects.ts";
 import { toast } from "../ui/toast.ts";
+import { checkComet, cometPresent } from "./comet-presence.ts";
 import { type CometForm, cometForm, cometSetupRunning, runCometSetup } from "./comet-setup.ts";
 import { app } from "./context.ts";
 
@@ -231,10 +232,20 @@ export async function newProject(kind: ProjectKind = "blank"): Promise<void> {
   // 「新 COMET 專案…」：只做 COMET 專案，不列「一開始放什麼」。
   if (kind === "comet") d.dataset.mode = "comet";
   else delete d.dataset.mode;
+  // 沒裝 COMET 的電腦不列「COMET 專案」（先用上次檢查的結果，查完再更新）。
+  const cometChoice = d.querySelector<HTMLElement>("label:has(> input[name=content][value=comet])")!;
+  cometChoice.hidden = kind !== "comet" && !cometPresent();
   cometOk = false;
-  cometFound = desktop.cometInstalled().catch(() => false);
+  cometFound = checkComet(true);
   void cometFound.then((found) => {
     cometOk = found;
+    if (kind !== "comet") {
+      cometChoice.hidden = !found;
+      if (!found && kindOf(d) === "comet") {
+        d.querySelector<HTMLInputElement>("input[name=content][value=blank]")!.checked = true;
+        void syncKind(d);
+      }
+    }
     refresh();
   });
   cometLoaded = false;
