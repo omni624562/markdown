@@ -15,6 +15,18 @@ pub static EN: &[(&str, &str)] = &[
     ("無法建立 .github/workflows 資料夾", "Couldn't create the .github/workflows folder"),
     ("不能重新命名專案資料夾本身", "You can't rename the project folder itself."),
     ("不能刪除專案資料夾本身", "You can't delete the project folder itself."),
+    (
+        "「.git」是 Git 的資料夾，不能在 oMarker 裡建立、改名或刪除",
+        "\".git\" is Git's own folder, so it can't be created, renamed or deleted in oMarker.",
+    ),
+    (
+        "只有文件和圖片可以在 oMarker 裡重新命名，「{name}」不是",
+        "Only documents and images can be renamed in oMarker, and \"{name}\" isn't one.",
+    ),
+    (
+        "檔案只能改成文件或圖片的名稱（例如 .md、.txt、.png），不能改成「{name}」",
+        "Files can only be renamed to a document or image name (such as .md, .txt or .png), not \"{name}\".",
+    ),
     ("無法移到資源回收筒：{e}", "Couldn't move to the Recycle Bin: {e}"),
     ("無法開啟檔案總管：{e}", "Couldn't open File Explorer: {e}"),
     ("請輸入要取代的文字", "Enter the text to replace."),

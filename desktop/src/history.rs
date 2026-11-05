@@ -322,9 +322,13 @@ pub fn maintain(app: &AppHandle) {
     };
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(60));
+        // 只檢查本機磁碟上的路徑（網路路徑光是檢查存不存在就會連過去）。
         let gone = |p: &Path| {
             let s = p.to_string_lossy();
-            !crate::dav::is_remote_path(&s) && !crate::io::is_network_path(p) && !p.exists()
+            !crate::dav::is_remote_path(&s)
+                && crate::lexical::is_local_absolute(&s)
+                && !crate::io::is_network_path(p)
+                && !p.exists()
         };
         maintain_at(&root, now_ms(), QUOTA_BYTES, &gone);
     });
