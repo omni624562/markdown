@@ -197,9 +197,13 @@ const app = {
   get addTab() {
     return addTab;
   },
-  /** 這份文件不顯示起始頁（按「新增文件」開的：已經要開始寫了，只留編輯區的灰色提示）。 */
+  /**
+   * 這份文件不顯示起始頁（按「新增文件」開的：已經要開始寫了，只留編輯區的灰色提示）。
+   * 「預覽」檢視時編輯器是藏起來的，換成可以打字的檢視（和起始頁的「開始寫作」一樣），不然畫面一片空白。
+   */
   skipStartPage(id: string) {
     startDismissed.add(id);
+    if (view === "preview") setView(cur.kind === "markdown" ? "live" : "editor");
   },
   /** 按「新增文件」開的（不是一開始或關掉所有文件後補上的空白文件）：空白時分頁也照常顯示。 */
   startSkipped(id: string) {
