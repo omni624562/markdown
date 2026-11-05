@@ -12,6 +12,7 @@ import { t } from "../i18n.ts";
 import { compressImage } from "../image-compress.ts";
 import { encodeLinkPath } from "../link-complete.ts";
 import { basename, dirname, localImagePath } from "../paths.ts";
+import { isRemoteUrl } from "../remote-images.ts";
 import { richHtml, fileUrl as localFileUrl } from "../rich-copy.ts";
 import { saveDraft } from "../session.ts";
 import { type Settings, ACTIVITY_LIMIT } from "../settings.ts";
@@ -590,6 +591,7 @@ export async function importDocxData(name: string, data: ArrayBuffer, mdPath: st
 
 /**
  * 匯出 Word：圖片從本機、遠端資料夾或網址讀取，讀不到的改成文字說明。
+ * 封鎖遠端圖片時不下載網路上的圖片（和預覽一樣）。
  * 桌面版在後端產生 .docx（Rust）；網頁版用 docx 套件。
  */
 export async function exportDocx(): Promise<void> {
@@ -598,11 +600,10 @@ export async function exportDocx(): Promise<void> {
   const { loadImage } = await import("../docx-image.ts");
   const image = async (src: string) => {
     let url: string | null = null;
-    if (/^(https?:|data:image\/)/i.test(src)) url = src;
-    else if (desktop && docDir) {
-      const path = localImagePath(src, docDir);
-      if (path) url = isRemote(path) ? await desktop.davImage(path) : desktop.fileUrl(path);
-    }
+    const path = desktop && docDir ? localImagePath(src, docDir) : null;
+    if (/^data:image\//i.test(src)) url = src;
+    else if (path) url = isRemote(path) ? await desktop!.davImage(path) : desktop!.fileUrl(path);
+    else if (isRemoteUrl(src)) url = app.blockRemote() ? null : src;
     return url ? loadImage(url) : null;
   };
   const title = stem(app.cur.fileName);

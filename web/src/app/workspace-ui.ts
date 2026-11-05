@@ -16,7 +16,7 @@ import { choose } from "../ui/choice.ts";
 import type { TreeAction } from "../ui/filetree.ts";
 import { cometBadge } from "../ui/comet-badge.ts";
 import { icon } from "../ui/icons.ts";
-import { SshDialog, confirmHostKey } from "../ui/ssh-dialog.ts";
+import { HOSTKEY_DECLINED, SshDialog, jumpPasswordHost } from "../ui/ssh-dialog.ts";
 import { TagsPanel } from "../ui/tags-panel.ts";
 import { TasksPanel } from "../ui/tasks-panel.ts";
 import { toast } from "../ui/toast.ts";
@@ -486,27 +486,20 @@ export async function suggestReconnect(path: string, message: (name: string) => 
 export async function openRemote(c: Pick<DavConnection, "id" | "kind" | "name" | "url" | "username">): Promise<void> {
   if (!desktop || !davDialog || !sshDialog) return;
   const root = remoteRoot(c);
-  let folder: Folder | null = null;
-  let trust: string | undefined;
-  for (;;) {
-    try {
-      folder = await desktop.reopenFolder(root, undefined, undefined, trust);
-    } catch (e) {
-      const message = String(e instanceof Error ? e.message : e);
-      if (message.startsWith("HOSTKEY_UNKNOWN") && !trust) {
-        // 主機金鑰不在 known_hosts 裡（例如被刪掉了）：再確認一次。
-        const fp = await confirmHostKey(message, c.url);
-        if (!fp) return;
-        trust = fp;
-        continue;
-      }
-      if (message !== "NEED_PASSWORD") throw e;
-      folder =
-        c.kind === "ssh"
-          ? await sshDialog.open({ passwordOnly: true, host: c.url, username: c.username, root, name: c.name })
-          : await davDialog.open({ passwordOnly: true, url: c.url, username: c.username, id: c.id });
-    }
-    break;
+  let folder: Folder | null;
+  try {
+    // SSH 主機金鑰不在 known_hosts 裡（例如被刪掉了）時，原生端用系統的對話框再確認一次。
+    folder = await desktop.reopenFolder(root);
+  } catch (e) {
+    const message = String(e instanceof Error ? e.message : e);
+    // 使用者在系統的對話框沒有信任主機金鑰。
+    if (message === HOSTKEY_DECLINED) return;
+    const jump = jumpPasswordHost(message);
+    if (message !== "NEED_PASSWORD" && jump === null) throw e;
+    folder =
+      c.kind === "ssh"
+        ? await sshDialog.open({ passwordOnly: true, host: c.url, username: c.username, root, name: c.name, jump: jump ?? undefined })
+        : await davDialog.open({ passwordOnly: true, url: c.url, username: c.username, id: c.id });
   }
   if (!folder) return;
   await setWorkspace(folder);

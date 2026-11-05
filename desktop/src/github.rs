@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Window};
 
+use crate::confirm::Question;
 use crate::git::{Auth, Identity};
 use crate::workspace::Workspace;
 
@@ -136,14 +137,48 @@ fn form(url: &str, body: &str, what: &str) -> Result<serde_json::Value, String> 
 
 // ---- 登入 -------------------------------------------------------------------
 
-#[derive(Serialize)]
+/// 給網頁顯示的登入代碼。換權杖用的 `device_code` 不交給網頁，只記在原生端（`PENDING`）：
+/// 網頁萬一被注入程式碼，也不能拿別人（例如攻擊者自己帳號）授權過的代碼來登入。
+#[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceCode {
-    device_code: String,
     user_code: String,
     verification_uri: String,
     interval: u64,
     expires_in: u64,
+}
+
+/// 這次登入要等的代碼：`github_login_start` 向 GitHub 要到的，`github_login_wait` 取出來換權杖。
+#[derive(Debug, PartialEq)]
+struct Pending {
+    device_code: String,
+    interval: u64,
+    expires_in: u64,
+}
+
+static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
+
+const DEVICE_PAGE: &str = "https://github.com/login/device";
+
+/// 讀出 GitHub 回傳的代碼。輸入代碼的網頁只接受 `https://github.com/…`，其他網址改用預設的網頁。
+fn device_code_of(v: &serde_json::Value) -> Result<(Pending, DeviceCode), String> {
+    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
+    let n = |k: &str, d: u64| v.get(k).and_then(|x| x.as_u64()).unwrap_or(d);
+    let missing = || tr!("登入失敗：GitHub 沒有回傳代碼");
+    let pending = Pending {
+        device_code: s("device_code").ok_or_else(missing)?,
+        interval: n("interval", 5),
+        expires_in: n("expires_in", 900),
+    };
+    let code = DeviceCode {
+        user_code: s("user_code").ok_or_else(missing)?,
+        verification_uri: s("verification_uri")
+            .filter(|u| u.starts_with("https://github.com/"))
+            .unwrap_or_else(|| DEVICE_PAGE.into()),
+        interval: pending.interval,
+        expires_in: pending.expires_in,
+    };
+    Ok((pending, code))
 }
 
 #[tauri::command]
@@ -165,32 +200,26 @@ pub async fn github_login_start(app: AppHandle) -> Result<DeviceCode, String> {
         )
     })
     .await?;
-    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
-    let n = |k: &str, d: u64| v.get(k).and_then(|x| x.as_u64()).unwrap_or(d);
-    let code = DeviceCode {
-        device_code: s("device_code").ok_or_else(|| tr!("登入失敗：GitHub 沒有回傳代碼"))?,
-        user_code: s("user_code").ok_or_else(|| tr!("登入失敗：GitHub 沒有回傳代碼"))?,
-        verification_uri: s("verification_uri")
-            .unwrap_or_else(|| "https://github.com/login/device".into()),
-        interval: n("interval", 5),
-        expires_in: n("expires_in", 900),
-    };
+    let (pending, code) = device_code_of(&v)?;
+    *PENDING.lock() = Some(pending);
     use tauri_plugin_opener::OpenerExt;
-    if code.verification_uri.starts_with("https://github.com/") {
-        let _ = app.opener().open_url(&code.verification_uri, None::<&str>);
-    }
+    let _ = app.opener().open_url(&code.verification_uri, None::<&str>);
     Ok(code)
 }
 
 /// 等使用者在瀏覽器授權（依 GitHub 指定的間隔詢問），成功後記住權杖與帳號。
+/// 代碼用 `github_login_start` 記在原生端的那一組，網頁不能指定。
 #[tauri::command]
-pub async fn github_login_wait(
-    app: AppHandle,
-    device_code: String,
-    interval: u64,
-    expires_in: u64,
-) -> Result<Account, String> {
+pub async fn github_login_wait(app: AppHandle, window: Window) -> Result<Account, String> {
     let id = CLIENT_ID;
+    let Pending {
+        device_code,
+        interval,
+        expires_in,
+    } = PENDING
+        .lock()
+        .take()
+        .ok_or_else(|| tr!("代碼已過期，請重新登入"))?;
     CANCEL.store(false, Ordering::SeqCst);
     let limit = Duration::from_secs(expires_in.clamp(60, 1800));
     let token = crate::io::blocking_for(limit + Duration::from_secs(30), move || {
@@ -235,6 +264,9 @@ pub async fn github_login_wait(
     .await?;
     let account: Account =
         serde_json::from_str(&text).map_err(|e| tr!("讀取帳號失敗：{e}", e = e))?;
+    if !crate::confirm::confirm(&window, Some(login_question(&account.login))).await {
+        return Err(tr!("已取消登入"));
+    }
     let path = account_file(&app).ok_or_else(|| tr!("找不到設定資料夾"))?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
@@ -245,6 +277,18 @@ pub async fn github_login_wait(
     crate::secrets::set(SERVICE, "token", &token);
     *TOKEN.lock() = Some(token);
     Ok(account)
+}
+
+/// 登入完成、記住權杖前要問的話。網頁看得到要輸入的代碼：被注入的網頁可以把代碼交給別人，
+/// 讓對方用自己的帳號授權，之後上傳、分享就會送到那個帳號。所以由使用者確認帳號名稱。
+fn login_question(login: &str) -> Question {
+    Question::new(
+        tr!("登入 GitHub"),
+        tr!(
+            "要用 GitHub 帳號「{login}」登入 oMarker 嗎？之後上傳、分享成 Gist 都會用這個帳號。只有在你自己剛剛在瀏覽器授權時才選「是」。",
+            login = login
+        ),
+    )
 }
 
 #[tauri::command]
@@ -342,20 +386,85 @@ struct Created {
     html_url: String,
 }
 
+/// 目前登入的帳號名稱（確認對話框裡顯示用）。
+fn login_name(app: &AppHandle) -> String {
+    account(app).map(|a| a.login).unwrap_or_default()
+}
+
+/// 上傳成新的儲存庫前要問的話：公開的儲存庫一定要問；私人的只有在會換掉資料夾原本的遠端 origin 時才問
+/// （原本的 origin 已經是同一個 GitHub 儲存庫時不算換掉）。
+fn publish_question(
+    login: &str,
+    name: &str,
+    folder: &str,
+    private: bool,
+    origin: Option<&str>,
+) -> Option<Question> {
+    let replaced = origin
+        .filter(|o| {
+            crate::git_files::github_repo(o).is_none_or(|(owner, repo)| {
+                !owner.eq_ignore_ascii_case(login) || !repo.eq_ignore_ascii_case(name)
+            })
+        })
+        .map(crate::git_files::display_remote);
+    if !private {
+        let mut message = tr!(
+            "要在 GitHub 帳號「{login}」建立公開的儲存庫「{name}」，並上傳「{folder}」資料夾裡所有的檔案和版本紀錄嗎？所有人都看得到。",
+            login = login,
+            name = name,
+            folder = folder
+        );
+        if let Some(origin) = replaced {
+            message.push_str("\n\n");
+            message.push_str(&tr!(
+                "這個資料夾原本的遠端 origin「{origin}」會改成新的儲存庫。",
+                origin = origin
+            ));
+        }
+        return Some(Question::new(tr!("公開到 GitHub"), message));
+    }
+    let origin = replaced?;
+    Some(Question::new(
+        tr!("上傳到 GitHub"),
+        tr!(
+            "「{folder}」資料夾原本的遠端 origin 是「{origin}」。要改成 GitHub 帳號「{login}」新的私人儲存庫「{name}」，並上傳所有的檔案和版本紀錄嗎？",
+            folder = folder,
+            origin = origin,
+            login = login,
+            name = name
+        ),
+    ))
+}
+
 /// 把目前開啟的資料夾上傳成新的 GitHub 儲存庫，回傳儲存庫的網頁網址。
+/// 建立公開的儲存庫、或會換掉資料夾原本的遠端 origin 時，先用系統的對話框確認；
+/// 使用者選「否」時什麼都不做，回傳 `None`。
 #[tauri::command]
 pub async fn github_publish(
     app: AppHandle,
+    window: Window,
     workspace: State<'_, Workspace>,
     name: String,
     private: bool,
-) -> Result<String, String> {
+) -> Result<Option<String>, String> {
     let token = require_token(&app)?;
     let dir = workspace.root().ok_or_else(|| tr!("還沒有開啟資料夾"))?;
     let who = identity(&app);
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err(tr!("請輸入儲存庫名稱"));
+    }
+    let d = dir.clone();
+    let origin = crate::io::blocking(move || Ok(crate::git::origin_at(&d))).await?;
+    let question = publish_question(
+        &login_name(&app),
+        &name,
+        &crate::files::display_name(&dir),
+        private,
+        origin.as_deref(),
+    );
+    if !crate::confirm::confirm(&window, question).await {
+        return Ok(None);
     }
     crate::io::blocking_for(crate::git::NETWORK_TIMEOUT, move || {
         let body = serde_json::json!({ "name": name, "private": private }).to_string();
@@ -375,7 +484,7 @@ pub async fn github_publish(
             ..Auth::default()
         };
         crate::git::publish_at(&dir, &created.clone_url, &auth, who.as_ref())?;
-        Ok(created.html_url)
+        Ok(Some(created.html_url))
     })
     .await
 }
@@ -522,11 +631,28 @@ pub(crate) fn create_pull(
     ))
 }
 
+/// 開啟 GitHub Pages 前要問的話（網站一定是公開的）。
+fn pages_question(login: &str, owner: &str, name: &str) -> Question {
+    Question::new(
+        tr!("發佈成網站（GitHub Pages）"),
+        tr!(
+            "要用 GitHub 帳號「{login}」開啟 GitHub Pages，把儲存庫「{repo}」預設分支的內容發佈成公開的網站嗎？就算儲存庫是私人的，所有人也都看得到這個網站。",
+            login = login,
+            repo = format!("{owner}/{name}")
+        ),
+    )
+}
+
 /// 用 GitHub Pages 把儲存庫發佈成網站（從預設分支的根目錄），回傳網站網址。
+/// 網站是公開的，先用系統的對話框確認；使用者選「否」時回傳 `None`。
 #[tauri::command]
-pub async fn github_pages(app: AppHandle) -> Result<String, String> {
+pub async fn github_pages(app: AppHandle, window: Window) -> Result<Option<String>, String> {
     let token = require_token(&app)?;
     let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
+    let question = pages_question(&login_name(&app), &owner, &name);
+    if !crate::confirm::confirm(&window, Some(question)).await {
+        return Ok(None);
+    }
     crate::io::blocking_for(Duration::from_secs(60), move || {
         let what = &tr!("發佈網站");
         let branch = default_branch(&token, &owner, &name)?;
@@ -570,20 +696,38 @@ pub async fn github_pages(app: AppHandle) -> Result<String, String> {
                 ))
             }
         };
-        Ok(url.unwrap_or_else(|| format!("https://{owner}.github.io/{name}/")))
+        Ok(Some(url.unwrap_or_else(|| {
+            format!("https://{owner}.github.io/{name}/")
+        })))
     })
     .await
 }
 
+/// 分享成 Gist 前要問的話：只有公開的 Gist 要問（秘密 Gist 要知道網址才看得到）。
+fn gist_question(login: &str, file_name: &str, public: bool) -> Option<Question> {
+    public.then(|| {
+        Question::new(
+            tr!("公開分享成 Gist"),
+            tr!(
+                "要用 GitHub 帳號「{login}」把「{name}」公開分享成 Gist 嗎？所有人都找得到、看得到內容。",
+                login = login,
+                name = file_name
+            ),
+        )
+    })
+}
+
 /// 把文字分享成 Gist，回傳網址。`public` 為 false 時是秘密 Gist（知道網址的人才看得到）。
+/// 公開的 Gist 先用系統的對話框確認；使用者選「否」時回傳 `None`。
 #[tauri::command]
 pub async fn github_gist(
     app: AppHandle,
+    window: Window,
     file_name: String,
     content: String,
     description: String,
     public: bool,
-) -> Result<String, String> {
+) -> Result<Option<String>, String> {
     let token = require_token(&app)?;
     if content.trim().is_empty() {
         return Err(tr!("沒有內容可以分享"));
@@ -599,6 +743,10 @@ pub async fn github_gist(
     } else {
         file_name
     };
+    let question = gist_question(&login_name(&app), &file_name, public);
+    if !crate::confirm::confirm(&window, question).await {
+        return Ok(None);
+    }
     crate::io::blocking_for(Duration::from_secs(60), move || {
         let what = &tr!("分享成 Gist");
         let (code, v) = api_send(
@@ -616,7 +764,7 @@ pub async fn github_gist(
             201 => v
                 .get("html_url")
                 .and_then(|x| x.as_str())
-                .map(str::to_string)
+                .map(|u| Some(u.to_string()))
                 .ok_or_else(|| tr!("{what}失敗：GitHub 的回應不正確", what = what)),
             // 1.8.0 以前登入的權杖沒有 gist 權限。
             403 | 404 => Err(tr!(
@@ -867,6 +1015,119 @@ mod tests {
             ..a
         };
         assert_eq!(identity_of(&b).unwrap().name, "小明");
+    }
+
+    #[test]
+    fn device_code_stays_on_the_native_side() {
+        let v = serde_json::json!({
+            "device_code": "secret-device",
+            "user_code": "ABCD-1234",
+            "verification_uri": "https://github.com/login/device",
+            "interval": 7,
+            "expires_in": 600
+        });
+        let (pending, code) = device_code_of(&v).unwrap();
+        assert_eq!(pending.device_code, "secret-device");
+        assert_eq!((pending.interval, pending.expires_in), (7, 600));
+        // 給網頁的內容沒有 device_code。
+        let page = serde_json::to_value(&code).unwrap();
+        assert_eq!(
+            page,
+            serde_json::json!({
+                "userCode": "ABCD-1234",
+                "verificationUri": "https://github.com/login/device",
+                "interval": 7,
+                "expiresIn": 600
+            })
+        );
+        assert!(!page.to_string().contains("secret-device"));
+    }
+
+    #[test]
+    fn device_page_must_be_on_github() {
+        for bad in [
+            "http://github.com/login/device",
+            "https://github.com.evil.test/login/device",
+            "https://evil.test/https://github.com/",
+            "javascript:alert(1)",
+        ] {
+            let v = serde_json::json!({ "device_code": "d", "user_code": "u", "verification_uri": bad });
+            assert_eq!(
+                device_code_of(&v).unwrap().1.verification_uri,
+                DEVICE_PAGE,
+                "{bad}"
+            );
+        }
+        let v = serde_json::json!({ "user_code": "u" });
+        assert!(device_code_of(&v).is_err());
+    }
+
+    #[test]
+    fn public_repositories_are_confirmed() {
+        let q = publish_question("wang", "產品筆記", "筆記", false, None).unwrap();
+        assert_eq!(q.title, "公開到 GitHub");
+        assert!(q.message.contains("「wang」"), "{}", q.message);
+        assert!(q.message.contains("「產品筆記」"), "{}", q.message);
+        assert!(q.message.contains("公開"), "{}", q.message);
+        assert!(!q.message.contains("origin"), "{}", q.message);
+        // 會換掉原本的 origin 時一起說明（不顯示網址裡的帳號密碼）。
+        let q = publish_question(
+            "wang",
+            "notes",
+            "筆記",
+            false,
+            Some("https://user:secret@ado.test/tfs/C/_git/notes"),
+        )
+        .unwrap();
+        assert!(
+            q.message.contains("https://ado.test/tfs/C/_git/notes"),
+            "{}",
+            q.message
+        );
+        assert!(!q.message.contains("secret"), "{}", q.message);
+    }
+
+    #[test]
+    fn private_repositories_are_confirmed_only_when_origin_changes() {
+        assert_eq!(publish_question("wang", "notes", "筆記", true, None), None);
+        // 原本的 origin 已經是同一個儲存庫：不算換掉。
+        assert_eq!(
+            publish_question(
+                "wang",
+                "notes",
+                "筆記",
+                true,
+                Some("https://github.com/Wang/Notes.git")
+            ),
+            None
+        );
+        let q = publish_question(
+            "wang",
+            "notes",
+            "筆記",
+            true,
+            Some("https://github.com/lee/notes.git"),
+        )
+        .unwrap();
+        assert_eq!(q.title, "上傳到 GitHub");
+        assert!(
+            q.message.contains("https://github.com/lee/notes"),
+            "{}",
+            q.message
+        );
+        assert!(q.message.contains("「wang」"), "{}", q.message);
+        assert!(q.message.contains("私人"), "{}", q.message);
+    }
+
+    #[test]
+    fn only_public_gists_and_pages_are_confirmed() {
+        assert!(login_question("wang").message.contains("「wang」"));
+        assert_eq!(gist_question("wang", "會議.md", false), None);
+        let q = gist_question("wang", "會議.md", true).unwrap();
+        assert!(q.message.contains("「wang」") && q.message.contains("「會議.md」"));
+        let q = pages_question("wang", "contoso", "產品筆記");
+        assert!(q.message.contains("「wang」"), "{}", q.message);
+        assert!(q.message.contains("「contoso/產品筆記」"), "{}", q.message);
     }
 
     #[test]

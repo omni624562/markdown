@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{AppHandle, State, Window};
 
+use crate::confirm::Question;
 use crate::files::{display_name, path_string};
 use crate::trust::{ProjectMeta, Trust};
 
@@ -141,45 +142,86 @@ fn protected_folder(dir: &Path, system: &[PathBuf]) -> bool {
     dir.parent().is_none() || system.iter().any(|s| s == dir || s.starts_with(dir))
 }
 
+/// 刪除專案要做的事。
+#[derive(Debug, PartialEq)]
+enum Removal {
+    /// 只從專案清單移除（沒有勾選移到資源回收筒，或資料夾已經不在了）。
+    ListOnly,
+    /// 先用系統的對話框問這個問題，答應了才把資料夾移到資源回收筒。
+    Trash(Question),
+}
+
+/// 決定刪除專案要做的事。系統或使用者資料夾不能移到資源回收筒（回傳錯誤）；
+/// 要移到資源回收筒時，確認的問題顯示完整路徑。
+fn removal(
+    dir: &Path,
+    trash_folder: bool,
+    exists: bool,
+    system: &[PathBuf],
+) -> Result<Removal, String> {
+    if !trash_folder || !exists {
+        return Ok(Removal::ListOnly);
+    }
+    if protected_folder(dir, system) {
+        return Err(tr!(
+            "「{name}」是系統或使用者資料夾，不能移到資源回收筒；可以只從清單移除",
+            name = display_name(dir)
+        ));
+    }
+    Ok(Removal::Trash(Question::new(
+        tr!("刪除專案"),
+        tr!(
+            "要把「{path}」整個資料夾移到資源回收筒嗎？可以從資源回收筒還原。",
+            path = path_string(dir)
+        ),
+    )))
+}
+
 /// 刪除專案：從專案清單移除；`trash_folder` 時把整個資料夾移到資源回收筒（可以從回收筒還原）。
 /// 只能刪專案清單上的資料夾；目前開著的專案要先關閉。沒有資源回收筒（例如網路磁碟）時回報錯誤，
 /// 不會改成直接刪除。
+///
+/// 移到資源回收筒前，除了網頁的對話框（輸入資料夾名稱），原生端再用系統的對話框確認一次；
+/// 使用者選「否」時什麼都不做（也不從清單移除），回傳 `false`。
 #[tauri::command]
 pub async fn project_delete(
     app: AppHandle,
+    window: Window,
     path: String,
     trash_folder: bool,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     use tauri::Manager;
     let dir = PathBuf::from(&path);
+    let is_open = |app: &AppHandle| {
+        app.state::<crate::workspace::Workspace>()
+            .root()
+            .is_some_and(|root| root == dir)
+    };
     if app.state::<Trust>().project(&dir).is_none() {
         return Err(tr!("這個資料夾不在專案清單中"));
     }
-    if app
-        .state::<crate::workspace::Workspace>()
-        .root()
-        .is_some_and(|root| root == dir)
-    {
+    if is_open(&app) {
         return Err(tr!("請先關閉這個專案再刪除"));
     }
-    if trash_folder && dir.exists() {
-        let p = app.path();
-        let system: Vec<PathBuf> = [
-            p.home_dir(),
-            p.document_dir(),
-            p.desktop_dir(),
-            p.download_dir(),
-            p.picture_dir(),
-            p.app_data_dir(),
-        ]
-        .into_iter()
-        .filter_map(Result::ok)
-        .collect();
-        if protected_folder(&dir, &system) {
-            return Err(tr!(
-                "「{name}」是系統或使用者資料夾，不能移到資源回收筒；可以只從清單移除",
-                name = display_name(&dir)
-            ));
+    let p = app.path();
+    let system: Vec<PathBuf> = [
+        p.home_dir(),
+        p.document_dir(),
+        p.desktop_dir(),
+        p.download_dir(),
+        p.picture_dir(),
+        p.app_data_dir(),
+    ]
+    .into_iter()
+    .filter_map(Result::ok)
+    .collect();
+    if let Removal::Trash(question) = removal(&dir, trash_folder, dir.exists(), &system)? {
+        if !crate::confirm::confirm(&window, Some(question)).await {
+            return Ok(false);
+        }
+        // 對話框開著的時候又開啟了這個專案：不移動。
+        if is_open(&app) {
+            return Err(tr!("請先關閉這個專案再刪除"));
         }
         let d = dir.clone();
         // 很大的資料夾移到回收筒要一點時間。
@@ -189,7 +231,7 @@ pub async fn project_delete(
         .await?;
     }
     app.state::<Trust>().forget_folder(&app, &dir);
-    Ok(())
+    Ok(true)
 }
 
 /// 資料夾搬走後重新指定位置：保留名稱、顏色、群組。使用者取消時回傳 None。
@@ -234,10 +276,9 @@ pub async fn project_reveal(trust: State<'_, Trust>, path: String) -> Result<(),
     .await
 }
 
-/// 在 Codex 桌面版開啟的網址：`codex://threads/new?path=<路徑>`，Codex 會開一個新對話，工作區就是這個資料夾。
-/// 路徑只留英數字與 `-_.~`，其他字元（含中文、`\`、`:`、空白）都用 UTF-8 的 %XX 編碼。
-fn codex_url(path: &str) -> String {
-    let mut out = String::from("codex://threads/new?path=");
+/// 網址參數裡的路徑：只留英數字與 `-_.~`，其他字元（含中文、`\`、`:`、空白）都用 UTF-8 的 %XX 編碼。
+fn encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
     for b in path.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
             out.push(b as char);
@@ -248,30 +289,90 @@ fn codex_url(path: &str) -> String {
     out
 }
 
-/// 在 Codex 桌面版開啟專案。只接受專案清單裡的本機資料夾（遠端資料夾 Codex 打不開）；
-/// 交給系統開啟 `codex://` 網址，沒有安裝 Codex 桌面版時由系統提示要用哪個程式開啟。
+/// 在 Codex 桌面版開啟的網址：`codex://threads/new?path=<路徑>`，Codex 會開一個新對話，工作區就是這個資料夾。
+fn codex_url(path: &str) -> String {
+    format!("codex://threads/new?path={}", encode_path(path))
+}
+
+/// 在 Claude 桌面版的 Claude Code 開啟的網址：`claude://code/new?folder=<路徑>`
+/// （Claude 說明中心的「Open Claude Desktop with a link」）。從連結帶來的資料夾，Claude 一律先跳出確認對話框才使用。
+/// 說明沒有寫 Windows 路徑的格式，所以和 Codex 一樣整段編碼。
+fn claude_url(path: &str) -> String {
+    format!("claude://code/new?folder={}", encode_path(path))
+}
+
+/// 在 AI 桌面版（`name`）開啟專案。只接受專案清單裡的本機資料夾（遠端資料夾桌面版打不開）；
+/// 交給系統開啟 `url(資料夾)`，沒有安裝桌面版時由系統提示要用哪個程式開啟。
+fn open_in_app(
+    app: &AppHandle,
+    trust: &Trust,
+    path: &str,
+    name: &str,
+    url: fn(&str) -> String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = PathBuf::from(path);
+    if trust.project(&dir).is_none() {
+        return Err(tr!("這個資料夾不在專案清單中"));
+    }
+    if crate::dav::is_remote_path(path) || !dir.is_absolute() {
+        return Err(tr!("遠端資料夾不能在 {app} 開啟", app = name));
+    }
+    app.opener()
+        .open_url(url(&path_string(&dir)), None::<&str>)
+        .map_err(|e| {
+            tr!(
+                "無法開啟 {app} 桌面版（請確認已經安裝）：{e}",
+                app = name,
+                e = e
+            )
+        })
+}
+
+/// 在 Codex 桌面版開啟專案（`codex://`）。
 #[tauri::command]
 pub fn project_open_codex(
     app: AppHandle,
     trust: State<'_, Trust>,
     path: String,
 ) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-    let dir = PathBuf::from(&path);
-    if trust.project(&dir).is_none() {
-        return Err(tr!("這個資料夾不在專案清單中"));
-    }
-    if crate::dav::is_remote_path(&path) || !dir.is_absolute() {
-        return Err(tr!("遠端資料夾不能在 Codex 開啟"));
-    }
-    app.opener()
-        .open_url(codex_url(&path_string(&dir)), None::<&str>)
-        .map_err(|e| tr!("無法開啟 Codex 桌面版（請確認已經安裝）：{e}", e = e))
+    open_in_app(&app, &trust, &path, "Codex", codex_url)
+}
+
+/// 在 Claude 桌面版的 Claude Code 開啟專案（`claude://`）。
+#[tauri::command]
+pub fn project_open_claude(
+    app: AppHandle,
+    trust: State<'_, Trust>,
+    path: String,
+) -> Result<(), String> {
+    open_in_app(&app, &trust, &path, "Claude", claude_url)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_moving_to_the_recycle_bin_is_confirmed() {
+        let system = [PathBuf::from("/home/me")];
+        let dir = Path::new("/home/me/Documents/產品筆記");
+        assert_eq!(removal(dir, false, true, &system), Ok(Removal::ListOnly));
+        // 資料夾已經不在了：沒有東西要移，只從清單移除。
+        assert_eq!(removal(dir, true, false, &system), Ok(Removal::ListOnly));
+        let Ok(Removal::Trash(q)) = removal(dir, true, true, &system) else {
+            panic!("要移到資源回收筒時應該先確認");
+        };
+        assert_eq!(q.title, "刪除專案");
+        assert!(q.message.contains(&path_string(dir)), "{}", q.message);
+        assert!(q.message.contains("資源回收筒"), "{}", q.message);
+        // 系統資料夾直接拒絕，不必問。
+        assert!(removal(Path::new("/home"), true, true, &system).is_err());
+        assert_eq!(
+            removal(Path::new("/home"), false, true, &system),
+            Ok(Removal::ListOnly)
+        );
+    }
 
     #[test]
     fn system_folders_are_protected() {
@@ -365,6 +466,23 @@ mod tests {
         assert_eq!(
             codex_url("v1.2_x-y~z"),
             "codex://threads/new?path=v1.2_x-y~z"
+        );
+    }
+
+    #[test]
+    fn claude_url_encodes_the_folder() {
+        assert_eq!(
+            claude_url(r"C:\Users\me\產品 筆記"),
+            "claude://code/new?folder=C%3A%5CUsers%5Cme%5C%E7%94%A2%E5%93%81%20%E7%AD%86%E8%A8%98"
+        );
+        // 說明中心的範例：/Users/me/repo → %2FUsers%2Fme%2Frepo
+        assert_eq!(
+            claude_url("/Users/me/repo"),
+            "claude://code/new?folder=%2FUsers%2Fme%2Frepo"
+        );
+        assert_eq!(
+            claude_url("/home/me/a&b?c#d+e=f"),
+            "claude://code/new?folder=%2Fhome%2Fme%2Fa%26b%3Fc%23d%2Be%3Df"
         );
     }
 }

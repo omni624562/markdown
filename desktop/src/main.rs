@@ -14,7 +14,9 @@
 mod i18n;
 mod ado;
 mod ai;
+mod ai_apps;
 mod comet;
+mod confirm;
 mod dav;
 // SSH 遠端資料夾放在 dav/ 底下（和 WebDAV 共用連線、輪詢與指令），保留 crate::ssh 的路徑。
 use dav::ssh;
@@ -427,6 +429,8 @@ fn main() {
             projects::project_forget,
             projects::project_delete,
             projects::project_open_codex,
+            projects::project_open_claude,
+            ai_apps::ai_apps_installed,
             projects::project_relocate,
             projects::project_reveal,
             workspace::list_dir,

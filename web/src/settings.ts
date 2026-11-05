@@ -421,6 +421,9 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
 
 type Listener = (settings: Settings, changed: (keyof Settings)[]) => void;
 
+/** 從關閉改成開啟時，原生端會用系統的對話框再確認一次的開關（使用者拒絕時存成關閉）。 */
+const CONFIRMED_SWITCHES = ["aiEnabled", "gitEnabled", "adoEnabled", "remoteEnabled"] as const;
+
 export class SettingsStore {
   #value: Settings;
   #listeners = new Set<Listener>();
@@ -479,11 +482,21 @@ export class SettingsStore {
   #persist(): void {
     const json = JSON.stringify(this.#value, null, 2);
     if (desktop) {
-      this.#saving = desktop
+      const d = desktop;
+      this.#saving = d
         .saveSettings(json)
-        .then((accepted) => {
-          // 使用者在系統的確認對話框拒絕啟用 AI 協作：開關改回關閉。
-          if (accepted === false && this.#value.aiEnabled) this.update({ aiEnabled: false });
+        .then(async (accepted) => {
+          if (accepted !== false) return;
+          // 使用者在系統的確認對話框拒絕啟用 AI 協作或重新開啟整合功能：原生端存成關閉，開關跟著改回去。
+          let stored: Record<string, unknown> = { aiEnabled: false };
+          try {
+            stored = JSON.parse((await d.loadSettings()) ?? "{}") as Record<string, unknown>;
+          } catch {
+            // 讀不到時至少把 AI 協作改回關閉（和原生端一樣）。
+          }
+          const patch: Partial<Settings> = {};
+          for (const key of CONFIRMED_SWITCHES) if (this.#value[key] && stored[key] === false) patch[key] = false;
+          this.update(patch);
         })
         .catch((e) => console.error("儲存設定失敗", e)); // i18n-ignore（開發者主控台）
     }

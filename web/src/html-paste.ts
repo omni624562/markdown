@@ -38,7 +38,19 @@ export function hasStructure(html: string): boolean {
 }
 
 const SAFE_LINK = /^(https?:|mailto:|#|\.{0,2}\/|[^:/?#]+(?:[/?#]|$))/i;
-const SAFE_IMAGE = /^https?:/i;
+
+/**
+ * 網路圖片的完整網址：照瀏覽器的解析換成標準寫法（`https:主機/…` 這種少了 `//` 的寫法一樣會連到網路，
+ * 存成 `https://主機/…`）；不是 http(s) 的完整網址時回傳 null。
+ */
+function webImageUrl(src: string): string | null {
+  try {
+    const url = new URL(src);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 
 function style(node: TurndownService.Node): string {
   return ((node as El).getAttribute?.("style") ?? "").toLowerCase().replace(/\s+/g, "");
@@ -146,12 +158,16 @@ function createService(keepImages = false): TurndownService {
     replacement: (content) => content,
   });
   // data:、file: 等圖片（例如 Word 的本機暫存圖）沒辦法帶過來，只留替代文字。
+  // 網路圖片少了 `//` 這類寫法時換成標準寫法，再交給 turndown 原本的圖片規則。
   td.addRule("unsafe-image", {
     filter: (node) => {
       if (node.nodeName !== "IMG") return false;
-      const src = ((node as El).getAttribute("src") ?? "").trim();
+      const img = node as El;
+      const src = (img.getAttribute("src") ?? "").trim();
       if (keepImages && (/^data:image\/(png|jpe?g|gif|webp|bmp);base64,/i.test(src) || /^(?![a-z][a-z0-9+.-]*:)[^/\\]/i.test(src))) return false;
-      return !SAFE_IMAGE.test(src);
+      const url = webImageUrl(src);
+      if (url && !/^https?:\/\//i.test(src)) img.setAttribute("src", url);
+      return !url;
     },
     replacement: (_content, node) => (node as El).getAttribute?.("alt") ?? "",
   });

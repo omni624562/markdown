@@ -60,7 +60,7 @@ export class GitHub {
     const dialog = codeDialog(code.userCode, code.verificationUri, (url) => void this.#d.openExternal(url));
     dialog.cancelled.then(() => void this.#d.githubLoginCancel());
     try {
-      const account = await this.#d.githubLoginWait(code);
+      const account = await this.#d.githubLoginWait();
       this.#account = account;
       dialog.close();
       toast(t("已登入 GitHub：{login}", { login: account.login }), { tone: "success" });
@@ -167,6 +167,8 @@ export class GitHub {
     try {
       const url = await this.#d.githubPublish(name, visibility === "private");
       wait.dismiss();
+      // 在系統的確認對話框選了「否」：什麼都沒做。
+      if (!url) return;
       toast(t("已上傳到 GitHub：{url}", { url: url.replace(/^https:\/\//, "") }), {
         tone: "success",
         duration: 12000,

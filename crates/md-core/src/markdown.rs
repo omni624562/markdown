@@ -37,6 +37,7 @@ pub(crate) fn render(markdown: &str, opts: &RenderOptions) -> Rendered {
     let options = comrak_options(opts);
     let arena = Arena::new();
     let root = parse_document(&arena, markdown, &options);
+    single_tilde_is_text(&arena, root, markdown);
     allow_formatting_tags(&arena, root);
 
     let headings = collect_headings(root);
@@ -69,6 +70,7 @@ pub fn with_document<R>(markdown: &str, f: impl for<'a> FnOnce(Node<'a>) -> R) -
     let options = comrak_options(&RenderOptions::default());
     let arena = Arena::new();
     let root = parse_document(&arena, markdown, &options);
+    single_tilde_is_text(&arena, root, markdown);
     allow_formatting_tags(&arena, root);
     f(root)
 }
@@ -119,6 +121,7 @@ fn render_fragment(markdown: &str, options: &Options) -> String {
     options.render.sourcepos = false;
     let arena = Arena::new();
     let root = parse_document(&arena, markdown, &options);
+    single_tilde_is_text(&arena, root, markdown);
     allow_formatting_tags(&arena, root);
     let mut html = String::new();
     let _ = comrak::html::format_document_with_formatter(
@@ -297,6 +300,49 @@ fn parse_tag(literal: &str) -> Option<(bool, String)> {
 /// `<sup>`（上標）、`<sub>`（下標）、`<ins>`，以及 `<br>`。
 /// 做法是把它們換成 comrak 本身的格式節點，所以仍然不輸出任何原始 HTML，危險連結的過濾也照舊。
 /// 只配對同一層裡成對的標籤：沒有結尾的開頭標籤不會讓後面整份文件都變成底線。
+/// 只有兩個波浪號 `~~文字~~` 才是刪除線；單一個 `~文字~`（GFM 也算刪除線）還原成文字。
+/// 中文常用 `~` 寫區間（`3/15~4/9`、`10~20 人`），同一段裡出現兩次就會被誤當成刪除線；
+/// 編輯器的語法標示、工具列的「刪除線」、Azure DevOps Wiki 也都只認 `~~`。
+/// 用節點在原文的位置判斷開頭是一個還是兩個波浪號。
+fn single_tilde_is_text<'a>(arena: &'a Arena<'a>, root: Node<'a>, markdown: &str) {
+    let lines: Vec<&str> = markdown.split('\n').collect();
+    let single: Vec<Node<'a>> = root
+        .descendants()
+        .filter(|n| matches!(n.data().value, NodeValue::Strikethrough))
+        .filter(|n| {
+            let start = n.data().sourcepos.start;
+            let line = lines
+                .get(start.line.saturating_sub(1))
+                .copied()
+                .unwrap_or("");
+            let rest = line
+                .as_bytes()
+                .get(start.column.saturating_sub(1)..)
+                .unwrap_or(&[]);
+            // 位置對不上（不該發生）時當成 `~~`，維持原本的刪除線。
+            rest.first() == Some(&b'~') && rest.get(1) != Some(&b'~')
+        })
+        .collect();
+    for node in single {
+        let (start, end) = {
+            let pos = node.data().sourcepos;
+            (pos.start, pos.end)
+        };
+        let tilde = |at| -> Node<'a> {
+            arena.alloc(AstNode::from(comrak::nodes::Ast::new(
+                NodeValue::Text("~".into()),
+                at,
+            )))
+        };
+        node.insert_before(tilde(start));
+        while let Some(child) = node.first_child() {
+            node.insert_before(child);
+        }
+        node.insert_before(tilde(end));
+        node.detach();
+    }
+}
+
 fn allow_formatting_tags<'a>(arena: &'a Arena<'a>, root: Node<'a>) {
     let parents: Vec<Node<'a>> = root
         .descendants()

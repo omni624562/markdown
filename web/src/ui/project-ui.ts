@@ -1,7 +1,7 @@
 /**
  * 專案（開過的資料夾）：切換器、專案總覽、專案設定（名稱、顏色、群組、釘選）。桌面版才有。
  */
-import { type DavConnection, type Desktop, displayPath, isRemote, type Project, type ProjectChange } from "../desktop.ts";
+import { type AiApp, type DavConnection, type Desktop, displayPath, isRemote, type Project, type ProjectChange } from "../desktop.ts";
 import { timeAgo } from "../history-label.ts";
 import { forgetProjectSession } from "../session.ts";
 import { PROJECT_COLORS, projectGroups, projectSections, samePath } from "../projects.ts";
@@ -23,6 +23,8 @@ export interface ProjectHooks {
   newProject(comet?: boolean): void;
   /** 這台電腦有沒有 COMET CLI（沒有時不列「新 COMET 專案…」）。 */
   cometInstalled(): boolean;
+  /** 這台電腦有沒有 Codex／Claude 桌面版（沒有時不列「在 Codex／Claude Code 開啟這個專案」）。 */
+  aiAppInstalled(app: AiApp): boolean;
   /** 關閉目前的專案。 */
   close(): void;
   /** 關閉目前的專案，等關好（刪除目前的專案前）。 */
@@ -49,12 +51,19 @@ export interface RepoSource {
 type SwitchItem =
   | { kind: "project"; project: Project; section: string }
   | { kind: "remote"; remote: DavConnection }
-  | { kind: "action"; id: "new-project" | "new-comet-project" | "open-folder" | "overview" | "edit" | "codex" | "close"; title: string; icon: string }
+  | { kind: "action"; id: "new-project" | "new-comet-project" | "open-folder" | "overview" | "edit" | AiApp | "close"; title: string; icon: string }
   | { kind: "repo"; source: RepoSource };
 
 /** 路徑最後一層的資料夾名稱。 */
 export function folderName(path: string): string {
   return path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? path;
+}
+
+/** 可以開啟專案的 AI 桌面版（切換器的「動作」依這個順序列出）。 */
+const AI_APPS: readonly AiApp[] = ["codex", "claude"];
+
+function openInTitle(app: AiApp): string {
+  return app === "codex" ? t("在 Codex 開啟這個專案") : t("在 Claude Code 開啟這個專案");
 }
 
 /** 按鈕上的來源名稱（不要「…」），後面括號註明狀態。 */
@@ -133,7 +142,7 @@ export class ProjectUi {
         else if (item.id === "open-folder") this.#h.openFolder();
         else if (item.id === "overview") void this.openOverview();
         else if (item.id === "close") this.#h.close();
-        else if (item.id === "codex") void this.openInCodex();
+        else if (item.id === "codex" || item.id === "claude") void this.openInApp(item.id);
         else {
           const p = this.current;
           if (p) void this.edit(p);
@@ -181,7 +190,9 @@ export class ProjectUi {
       { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-dashboard" },
     ];
     if (this.current) actions.push({ kind: "action", id: "edit", title: t("目前專案的設定…"), icon: "pencil" });
-    if (this.current && !isRemote(this.current.path)) actions.push({ kind: "action", id: "codex", title: t("在 Codex 開啟這個專案"), icon: "external-link" });
+    if (this.current && !isRemote(this.current.path)) {
+      for (const app of AI_APPS) if (this.#h.aiAppInstalled(app)) actions.push({ kind: "action", id: app, title: openInTitle(app), icon: "external-link" });
+    }
     if (this.#h.current()) actions.push({ kind: "action", id: "close", title: t("關閉專案"), icon: "folder-x" });
     for (const a of actions) if (a.kind === "action" && (!q || a.title.toLowerCase().includes(q))) items.push(a);
     for (const source of this.#h.repoSources()) {
@@ -356,10 +367,11 @@ export class ProjectUi {
   }
 
   /**
-   * 在 Codex 桌面版開啟目前的專案：Codex 開一個新對話，工作區就是專案的資料夾
-   * （原生端交給系統開啟 `codex://threads/new?path=…`）。
+   * 在 AI 桌面版開啟目前的專案，工作區就是專案的資料夾（原生端交給系統開啟網址）：
+   * - Codex：開一個新對話（`codex://threads/new?path=…`）；
+   * - Claude：在 Claude Code 開新的工作階段（`claude://code/new?folder=…`），Claude 會先請使用者確認資料夾。
    */
-  async openInCodex(): Promise<void> {
+  async openInApp(app: AiApp): Promise<void> {
     await this.refresh();
     const p = this.current;
     if (!p) {
@@ -367,8 +379,13 @@ export class ProjectUi {
       return;
     }
     try {
-      await this.#d.projectOpenCodex(p.path);
-      toast(t("正在用 Codex 開啟「{name}」", { name: p.label }));
+      if (app === "codex") {
+        await this.#d.projectOpenCodex(p.path);
+        toast(t("正在用 Codex 開啟「{name}」", { name: p.label }));
+      } else {
+        await this.#d.projectOpenClaude(p.path);
+        toast(t("正在用 Claude 開啟「{name}」", { name: p.label }));
+      }
     } catch (e) {
       toast(message(e), { tone: "error", duration: 10000 });
     }
@@ -449,15 +466,18 @@ export class ProjectUi {
       void (async () => {
         try {
           if (here) await this.#h.closeAndWait();
-          await this.#d.projectDelete(p.path, trash.checked);
-          if (trash.checked) forgetProjectSession(p.path);
+          // 移到資源回收筒前原生端會用系統的對話框再問一次；選「否」時什麼都沒做，關掉提示窗就好。
+          const done = await this.#d.projectDelete(p.path, trash.checked);
           dialog.close();
-          toast(
-            trash.checked
-              ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label })
-              : t("已把「{name}」從專案清單移除", { name: p.label }),
-            { tone: "success" },
-          );
+          if (done !== false) {
+            if (trash.checked) forgetProjectSession(p.path);
+            toast(
+              trash.checked
+                ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label })
+                : t("已把「{name}」從專案清單移除", { name: p.label }),
+              { tone: "success" },
+            );
+          }
         } catch (err) {
           error.textContent = message(err);
           error.hidden = false;

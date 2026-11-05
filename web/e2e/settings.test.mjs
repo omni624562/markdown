@@ -123,3 +123,41 @@ test("設定（桌面版）：在設定連上 Azure DevOps 後，才出現工作
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("設定（桌面版）：換 Azure DevOps 伺服器時在系統的確認對話框選「否」，不顯示錯誤，欄位留著", async () => {
+  // 假的原生端回傳 null：使用者選了「否」，原本的連線不變。
+  const { page, context, errors } = await open({ desktop: { ado_connect: null } });
+  await desktopCommand(page, "設定");
+  await page.click("dialog[open] [role=tab]:has-text('Azure DevOps')");
+  await page.fill("#setting-ado-url", "https://ado.test/c");
+  await page.fill("#setting-ado-pat", "token");
+  await page.click("#setting-ado-connect");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_connect"));
+  await page.waitForFunction(() => !document.querySelector("#setting-ado-connect").disabled);
+  assert.equal(await page.locator(".toast-error").count(), 0);
+  assert.equal(await page.locator(".toast", { hasText: "已連線到 Azure DevOps" }).count(), 0);
+  assert.equal(await page.inputValue("#setting-ado-pat"), "token");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("設定（桌面版）：在系統的確認對話框拒絕開啟 AI 協作，開關跟著原生端存下的值改回關閉", async () => {
+  // 假的原生端：存設定回傳 false（使用者選了「否」），之後讀到的設定是原生端存下的關閉。
+  const { page, context, errors } = await open({
+    desktop: { save_settings: false, load_settings: [null, JSON.stringify({ aiEnabled: false })] },
+  });
+  await desktopCommand(page, "設定");
+  await page.click("dialog[open] [role=tab]:has-text('AI 協作')");
+  await page.locator("dialog[open] input[data-key=aiEnabled]").click();
+  await page.waitForFunction(() =>
+    window.__fake.calls.some((c) => c.cmd === "save_settings" && JSON.parse(c.args.json).aiEnabled === true),
+  );
+  await page.waitForFunction(() => !document.querySelector("dialog[open] input[data-key=aiEnabled]").checked);
+  // 改回關閉後又存一次（原生端已經是關閉，不會再問）。
+  await page.waitForFunction(() => {
+    const saves = window.__fake.calls.filter((c) => c.cmd === "save_settings");
+    return saves.length >= 2 && JSON.parse(saves.at(-1).args.json).aiEnabled === false;
+  });
+  assert.deepEqual(errors, []);
+  await context.close();
+});

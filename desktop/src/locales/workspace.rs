@@ -47,8 +47,9 @@ pub static EN: &[(&str, &str)] = &[
     // new_project.rs
     ("選擇新專案要放在哪個資料夾", "Choose where to put the new project"),
     ("請先關閉這個專案再刪除", "Close this project before deleting it."),
-    ("遠端資料夾不能在 Codex 開啟", "Remote folders can't be opened in Codex."),
-    ("無法開啟 Codex 桌面版（請確認已經安裝）：{e}", "Couldn't open the Codex desktop app (make sure it's installed): {e}"),
+    // projects.rs：在 Codex／Claude 桌面版開啟專案（{app} 是 Codex 或 Claude）
+    ("遠端資料夾不能在 {app} 開啟", "Remote folders can't be opened in {app}."),
+    ("無法開啟 {app} 桌面版（請確認已經安裝）：{e}", "Couldn't open the {app} desktop app (make sure it's installed): {e}"),
     (
         "「{name}」是系統或使用者資料夾，不能移到資源回收筒；可以只從清單移除",
         "\"{name}\" is a system or user folder and can't be moved to the Recycle Bin. You can still remove it from the list.",
@@ -85,4 +86,6 @@ pub static EN: &[(&str, &str)] = &[
     ("每日筆記", "Daily Notes"),
     ("「{path}」已經存在，換一個名稱或位置", "\"{path}\" already exists. Choose another name or location."),
     ("無法建立資料夾「{name}」", "Couldn't create the folder \"{name}\""),
+    ("刪除專案", "Delete Project"),
+    ("要把「{path}」整個資料夾移到資源回收筒嗎？可以從資源回收筒還原。", "Move the entire folder \"{path}\" to the Recycle Bin? You can restore it from the Recycle Bin."),
 ];

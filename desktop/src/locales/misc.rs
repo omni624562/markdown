@@ -59,4 +59,7 @@ pub static EN: &[(&str, &str)] = &[
     ("啟用 AI 協作", "Enable AI Collaboration"),
     ("啟用後，oMarker 可以執行 Claude Code、Codex 等 AI 工具，並讓它們讀取目前的文件。要啟用嗎？", "Once enabled, oMarker can run AI tools such as Claude Code and Codex and let them read the current document. Enable it?"),
     ("保留離線的副本已經達到 {mb} MB 的上限，請先取消保留一些頁面", "Pages kept offline have reached the {mb} MB limit. Stop keeping some pages offline first."),
+    ("開啟整合功能", "Turn On Integrations"),
+    ("要開啟下面這些在設定裡關掉的功能嗎？\n\n{names}\n\n只有在你自己剛剛打開這些開關時才選「是」。", "Turn on these features that were turned off in Settings?\n\n{names}\n\nChoose Yes only if you just turned these switches on yourself."),
+    ("無法儲存設定：格式不正確", "Couldn't save the settings: The format is invalid."),
 ];
