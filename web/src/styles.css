@@ -1080,6 +1080,8 @@ button.start-tip:hover, button.start-tip:focus-visible { background: var(--activ
 .view-switch-icons .view-switch .label { display: none; }
 /* 工作項目、Wiki 頁面、Git 歷史蓋住編輯區時，檢視切換用不到（按了反而會關掉那個畫面）：拿掉，位置讓給內容的摘要。並排顯示時編輯區還在，照常顯示。 */
 body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-switch { display: none; }
+/* 起始頁不是文件：檢視切換、游標位置、字數、存檔狀態都用不到，開始打字後才出現（文件類型留著，可以先選要寫哪一種）。 */
+body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-cursor, #status-stats, #status-save) { display: none; }
 @media (pointer: coarse) {
   .view-switch button { min-height: 30px; padding: 0 10px; }
 }

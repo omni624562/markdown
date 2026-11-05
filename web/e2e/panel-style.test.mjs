@@ -41,9 +41,11 @@ const boxes = (page) =>
     };
   });
 
-/** 等側邊欄出來（打開資料夾後），切到分割檢視（左邊原始碼、右邊預覽）。 */
+/** 等側邊欄出來（打開資料夾後），寫一點內容（起始頁上沒有檢視切換），切到分割檢視（左邊原始碼、右邊預覽）。 */
 async function ready(page) {
   await page.locator("#files-head").waitFor();
+  await page.locator(".cm-content").focus(); // 起始頁蓋在編輯區上，直接打字
+  await page.keyboard.insertText("# 筆記");
   await page.click('.statusbar [data-view="split"]');
   await page.locator(".preview-pane").waitFor();
 }
