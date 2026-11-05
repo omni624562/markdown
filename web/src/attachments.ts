@@ -2,24 +2,45 @@
  * 工作項目的附件：網址、大小的顯示，以及點一下要怎麼開（不碰畫面，方便測試）。
  * - 文字檔：在 oMarker 開成唯讀分頁。
  * - 圖片：在 oMarker 裡放大檢視。
- * - 其他檔案：下載後用 Windows 預設的程式開啟；會自己執行的檔案只能另存新檔。
+ * - PDF、Office 文件、ZIP 等允許清單裡的類型：下載後用 Windows 預設的程式開啟。
+ * - 其他檔案：為了安全只能另存新檔。
  */
 import { isReadableFileName } from "./repo-links.ts";
 import { underServer } from "./server-url.ts";
 
-export type AttachmentKind = "text" | "image" | "runnable" | "other";
+/** `open`：下載後用預設的程式開啟；`save`：不直接開啟，只能另存新檔。 */
+export type AttachmentKind = "text" | "image" | "open" | "save";
 
 const IMAGE = /\.(png|jpe?g|gif|webp|bmp)$/i;
-/** 和原生端 `RUNNABLE` 一樣：下載後會自己執行（或安裝、捷徑）的檔案。 */
-const RUNNABLE =
-  /\.(exe|com|bat|cmd|ps1|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|msi|msp|mst|scr|pif|lnk|url|hta|cpl|jar|reg|dll|sys|inf|scf|appx|appxbundle|msix|msixbundle|application|appref-ms|gadget|iso|img|vhd|vhdx|chm|settingcontent-ms|sh|command|app)[. ]*$/i;
+/**
+ * 和原生端 `OPENABLE` 一樣：可以下載後直接用預設的程式開啟的副檔名（允許清單；其他的只能另存新檔）。
+ * 這裡只用來決定畫面上怎麼做，真正把關的是原生端。
+ */
+const OPENABLE = new Set(["pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp", "txt", "md", "csv", "log", "json", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "zip"]);
+
+/**
+ * 和原生端 `attachment_ext` 一樣，照 Windows 的方式看副檔名（小寫）：去掉結尾的點和空白，看最後一個點之後；
+ * 檔名含 `:`（替代資料流）、路徑分隔符號或控制字元，或是沒有副檔名時回傳 null。
+ */
+export function attachmentExt(name: string): string | null {
+  if (/[:/\\\u0000-\u001f\u007f-\u009f]/.test(name)) return null;
+  const trimmed = name.replace(/[. ]+$/, "");
+  const dot = trimmed.lastIndexOf(".");
+  // 只把 A–Z 換成小寫，和原生端一樣（toLowerCase 會把 U+212A 這類符號也換成英文字母）。
+  return dot < 0 ? null : trimmed.slice(dot + 1).replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+
+/** 下載後可以直接用預設的程式開啟嗎（副檔名在允許清單裡）。 */
+export function opensDirectly(name: string): boolean {
+  const ext = attachmentExt(name);
+  return ext !== null && OPENABLE.has(ext);
+}
 
 export function attachmentKind(name: string): AttachmentKind {
   if (IMAGE.test(name)) return "image";
   // 文字檔優先：.js、.ps1 這類程式碼在 oMarker 裡當文字看，不會執行。
   if (isReadableFileName(name)) return "text";
-  if (RUNNABLE.test(name)) return "runnable";
-  return "other";
+  return opensDirectly(name) ? "open" : "save";
 }
 
 /** 附件網址加上 `fileName`（TFS 網頁下載時用這個檔名；oMarker 也靠它知道檔案類型）。 */

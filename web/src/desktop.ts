@@ -1175,7 +1175,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
       }),
     /** 工作項目的附件（文字檔）。 */
     adoAttachmentText: (url: string) => core.invoke<string>("ado_attachment_text", { url }),
-    /** 附件下載到暫存資料夾，用預設的程式開啟（會自己執行的檔案不開）。 */
+    /** 附件下載到暫存資料夾，標上「從網際網路下載」，用預設的程式開啟（只開允許清單裡的類型）。 */
     adoAttachmentOpen: (url: string, name: string) => core.invoke<void>("ado_attachment_open", { url, name }),
     /** 附件另存新檔；按取消時回傳 null。 */
     adoAttachmentSave: (url: string, name: string) => core.invoke<string | null>("ado_attachment_save", { url, name }),

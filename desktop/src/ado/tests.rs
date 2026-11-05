@@ -954,7 +954,7 @@ fn reads_work_item_attachments_newest_first() {
 }
 
 #[test]
-fn attachment_names_are_safe_and_runnable_files_are_flagged() {
+fn attachment_names_are_safe() {
     assert_eq!(safe_file_name("..\\..\\evil.md"), ".._.._evil.md");
     assert_eq!(safe_file_name("a/b:c?.txt"), "a_b_c_.txt");
     assert_eq!(safe_file_name("報告.md. "), "報告.md");
@@ -963,12 +963,87 @@ fn attachment_names_are_safe_and_runnable_files_are_flagged() {
     assert_eq!(safe_file_name("company.txt"), "company.txt");
     assert_eq!(safe_file_name("   "), tr!("附件"));
     assert!(safe_file_name(&"字".repeat(300)).chars().count() <= 150);
-    assert!(is_runnable("setup.EXE"));
-    assert!(is_runnable("run.bat. "));
-    assert!(is_runnable("x.ps1"));
-    assert!(!is_runnable("報表.xlsx"));
-    assert!(!is_runnable("說明.md"));
-    assert!(!is_runnable("noext"));
+}
+
+#[test]
+fn only_allowed_attachment_types_open_directly() {
+    for name in [
+        "規格書.pdf",
+        "截圖.PNG",
+        "照片.jpeg",
+        "說明.md",
+        "紀錄.log",
+        "報表.xlsx",
+        "簡報.pptx",
+        "舊版.doc",
+        "舊版.XLS",
+        "原始檔.zip",
+        "x.pdf.",
+        "x.pdf. . ",
+        "x.exe.pdf",
+    ] {
+        assert!(opens_directly(name), "{name} 應該可以直接開啟");
+    }
+    for name in [
+        // 會自己執行、安裝或交給其他程式解讀的類型（原本的封鎖清單漏掉的也一樣）。
+        "setup.EXE",
+        "run.bat. ",
+        "x.ps1",
+        "x.js",
+        "x.rdp",
+        "x.RDP",
+        "x.rdp.",
+        "x.rdp . .",
+        "x.msc",
+        "x.library-ms",
+        "x.searchConnector-ms",
+        "x.xll",
+        "x.diagcab",
+        "x.py",
+        "x.pyw",
+        "x.docm",
+        "x.xlsm",
+        "x.pptm",
+        "x.appinstaller",
+        "x.wsc",
+        "x.sct",
+        "x.ocx",
+        "x.theme",
+        "x.website",
+        "x.mde",
+        "x.html",
+        "x.svg",
+        // 最後一個副檔名才算。
+        "a.pdf.exe",
+        "x.pdf .exe",
+        // 替代資料流、路徑、控制字元：存成檔案後不一定是看到的樣子。
+        "x.pdf:evil.exe",
+        "x.pdf::$DATA",
+        "x.exe:y.pdf",
+        "x.exe::$DATA.pdf",
+        "..\\x.pdf",
+        "a/x.pdf",
+        "x\npdf.pdf",
+        "x.pd\u{0}f",
+        // 沒有副檔名、副檔名不是剛好那幾個字。
+        "noext",
+        "README",
+        "",
+        "...",
+        "x. pdf",
+        "x.ｐｄｆ",
+    ] {
+        assert!(!opens_directly(name), "{name:?} 不應該直接開啟");
+    }
+    assert_eq!(attachment_ext("規格書.PDF").as_deref(), Some("pdf"));
+    assert_eq!(attachment_ext("x.rdp. ").as_deref(), Some("rdp"));
+    assert_eq!(attachment_ext("x.pdf:evil.exe"), None);
+    assert_eq!(attachment_ext("noext"), None);
+    // 實際存檔的檔名和檢查的檔名副檔名一樣（結尾的點和空白、保留名稱都處理掉了）。
+    for name in ["規格書.pdf. ", "CON.pdf", "a<b>.docx"] {
+        assert!(opens_directly(name) && opens_directly(&safe_file_name(name)));
+        assert_eq!(attachment_ext(name), attachment_ext(&safe_file_name(name)));
+    }
 }
 
 #[test]

@@ -1,15 +1,33 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachmentKind, attachmentLink, extLabel, fileSize, pastedName, withFileName } from "./attachments.ts";
+import { attachmentExt, attachmentKind, attachmentLink, extLabel, fileSize, opensDirectly, pastedName, withFileName } from "./attachments.ts";
 
-test("附件的類型：文字檔在 oMarker 看、圖片放大檢視、會自己執行的不直接開", () => {
+test("附件的類型：文字檔在 oMarker 看、圖片放大檢視、允許清單裡的才直接開，其他只能另存", () => {
   assert.equal(attachmentKind("20261005-task-1911359.md"), "text");
   assert.equal(attachmentKind("deploy.ps1"), "text");
   assert.equal(attachmentKind("截圖.PNG"), "image");
-  assert.equal(attachmentKind("setup.exe"), "runnable");
-  assert.equal(attachmentKind("install.msi"), "runnable");
-  assert.equal(attachmentKind("報表.xlsx"), "other");
-  assert.equal(attachmentKind("規格.pdf"), "other");
+  assert.equal(attachmentKind("報表.xlsx"), "open");
+  assert.equal(attachmentKind("規格.pdf"), "open");
+  assert.equal(attachmentKind("舊版.DOC"), "open");
+  assert.equal(attachmentKind("原始檔.zip"), "open");
+  assert.equal(attachmentKind("setup.exe"), "save");
+  assert.equal(attachmentKind("install.msi"), "save");
+  // 原本的封鎖清單漏掉的類型、沒有副檔名的檔案：一律只能另存。
+  for (const name of ["遠端.rdp", "x.RDP", "x.msc", "x.library-ms", "x.searchConnector-ms", "x.xll", "x.diagcab", "x.pyw", "x.docm", "x.xlsm", "x.pptm", "x.appinstaller", "x.wsc", "x.sct", "x.ocx", "x.theme", "x.website", "x.mde", "noext"]) {
+    assert.equal(attachmentKind(name), "save", name);
+  }
+});
+
+test("附件的副檔名照 Windows 的方式看：去掉結尾的點和空白、看最後一個，替代資料流不算", () => {
+  assert.equal(attachmentExt("規格書.PDF"), "pdf");
+  assert.equal(attachmentExt("x.rdp. "), "rdp");
+  assert.equal(attachmentExt("noext"), null);
+  assert.equal(attachmentExt("x.pdf:evil.exe"), null);
+  assert.equal(attachmentExt("x.\u212Aey"), "\u212Aey", "只把 A–Z 換成小寫");
+  for (const name of ["規格書.pdf", "x.pdf.", "x.pdf . ", "x.exe.pdf"]) assert.ok(opensDirectly(name), name);
+  for (const name of ["x.rdp.", "x.rdp . .", "a.pdf.exe", "x.pdf .exe", "x.pdf:evil.exe", "x.pdf::$DATA", "x.exe:y.pdf", "..\\x.pdf", "a/x.pdf", "x\npdf.pdf", "x. pdf", "x.ｐｄｆ", "", "..."]) {
+    assert.ok(!opensDirectly(name), JSON.stringify(name));
+  }
 });
 
 test("附件網址：只認連線中那台伺服器，檔名用 fileName", () => {
