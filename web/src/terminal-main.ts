@@ -19,6 +19,7 @@ type Request =
   | { kind: "start"; program: TermProgram }
   | { kind: "sendToAi"; text: string; preferred: TermProgram }
   | { kind: "setupToken" }
+  | { kind: "cometSetup" }
   | { kind: "available"; claude: boolean; codex: boolean }
   | { kind: "style"; theme: string | null; fontSize: number; palette?: string | null; accent?: string | null }
   | { kind: "focus" };
@@ -113,6 +114,9 @@ function request(panel: TerminalPanel, r: Request): void {
       break;
     case "setupToken":
       void panel.runInShell("claude setup-token");
+      break;
+    case "cometSetup":
+      void panel.runInShell("comet setup");
       break;
     case "available":
       panel.setAvailable({ claude: r.claude ? "claude" : null, codex: r.codex ? "codex" : null });

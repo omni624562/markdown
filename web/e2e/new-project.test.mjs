@@ -112,7 +112,8 @@ test("新專案的其他入口：起始頁、專案切換器、專案總覽", as
   await dialog.getByRole("button", { name: "取消" }).click();
   await page.keyboard.press("Control+Alt+P");
   const switcher = page.locator("dialog[open]");
-  await switcher.locator("[role=option]", { hasText: "新專案…" }).click();
+  await switcher.locator("[role=option]", { hasText: "新 COMET 專案…" }).waitFor();
+  await switcher.locator("[role=option]", { hasText: /^新專案…/ }).click();
   await dialog.waitFor();
   await dialog.getByRole("button", { name: "取消" }).click();
   await page.click("#main-menu");
@@ -127,12 +128,70 @@ test("新專案的其他入口：起始頁、專案切換器、專案總覽", as
   await context.close();
 });
 
+/** 從「☰」→「專案」開「新 COMET 專案…」。 */
+async function openComet(page) {
+  await page.click("#main-menu");
+  const menu = page.locator("#main-menu-popover");
+  await menu.locator(":scope > button", { hasText: "專案" }).click();
+  const sub = menu.locator(":scope > .submenu:popover-open");
+  await sub.waitFor();
+  assert.deepEqual((await sub.locator(":scope > button").allTextContents()).slice(0, 2), ["新專案…", "新 COMET 專案…"]);
+  await sub.locator(":scope > button", { hasText: "新 COMET 專案…" }).click();
+  const dialog = page.locator("dialog.new-project[open]");
+  await dialog.waitFor();
+  return dialog;
+}
+
+const cometSetups = async (page) =>
+  (await calls(page)).filter((c) => c.cmd === "term_forward" && c.args.request.kind === "cometSetup").length;
+
+test("新 COMET 專案：建立後在終端機執行 comet setup", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: true } });
+  const dialog = await openComet(page);
+  assert.equal(await dialog.locator("h2").textContent(), "新 COMET 專案");
+  assert.equal(await dialog.getByLabel(/COMET 專案：/).isChecked(), true);
+  assert.equal(await dialog.locator(".np-warn").isHidden(), true);
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await dialog.getByRole("button", { name: "建立並開啟" }).click();
+  await page.locator(".toast", { hasText: "請在下方的終端機照畫面的指示完成 comet setup" }).waitFor();
+  const all = await calls(page);
+  const created = all.find((c) => c.cmd === "create_project").args;
+  assert.equal(created.notebook, false);
+  assert.equal(created.git, true);
+  // 先切換到新專案（終端機的工作目錄）、開 README.md，最後才執行 comet setup。
+  const order = all.map((c) => c.cmd);
+  assert.ok(order.lastIndexOf("reopen_file") < order.lastIndexOf("term_forward"));
+  assert.equal(await cometSetups(page), 1);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("新 COMET 專案：找不到 comet 指令時先提醒，專案照樣建立、不執行 comet setup", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: false } });
+  const dialog = await openComet(page);
+  await dialog.locator(".np-warn", { hasText: "這台電腦找不到 comet 指令" }).waitFor();
+  // 換成空白就不提醒、標題換回「新專案」。
+  await dialog.getByLabel("空白：只有一份 README.md").check();
+  assert.equal(await dialog.locator("h2").textContent(), "新專案");
+  assert.equal(await dialog.locator(".np-warn").isHidden(), true);
+  await dialog.getByLabel(/COMET 專案：/).check();
+  await dialog.locator(".np-warn").waitFor();
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await dialog.getByRole("button", { name: "建立並開啟" }).click();
+  await page.locator(".toast", { hasText: "裝好 COMET CLI 之後，在終端機執行 comet setup" }).waitFor();
+  assert.ok((await calls(page)).some((c) => c.cmd === "create_project"));
+  assert.equal(await cometSetups(page), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("網頁版沒有新專案", async () => {
   const { page, context, errors } = await open();
   await page.click("#main-menu");
   const menu = page.locator("#main-menu-popover");
   await menu.waitFor();
   assert.equal(await menu.getByText("新專案…").count(), 0);
+  assert.equal(await menu.getByText("新 COMET 專案…").count(), 0);
   assert.equal(await page.locator(".empty-state").getByRole("button", { name: "新專案…" }).count(), 0);
   assert.deepEqual(errors, []);
   await context.close();

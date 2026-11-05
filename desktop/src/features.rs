@@ -117,6 +117,7 @@ mod tests {
         "project_default_parent",
         "pick_project_parent",
         "create_project",
+        "comet_installed",
         "reopen_with_encoding",
         "file_format",
         "set_file_format",

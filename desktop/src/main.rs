@@ -308,6 +308,7 @@ fn main() {
             new_project::project_default_parent,
             new_project::pick_project_parent,
             new_project::create_project,
+            new_project::comet_installed,
             files::reopen_with_encoding,
             files::file_format,
             files::set_file_format,

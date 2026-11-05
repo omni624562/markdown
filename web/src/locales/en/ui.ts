@@ -173,6 +173,16 @@ export const ui: Record<string, Translation> = {
   "專案名稱不能用「.」結尾": "Project names can't end with \".\".",
   "「{name}」是 Windows 保留的名稱，請換一個": "\"{name}\" is a reserved name on Windows. Choose another name.",
   "已建立專案「{name}」": "Created project \"{name}\"",
+  "新 COMET 專案…": "New COMET Project…",
+  "新 COMET 專案": "New COMET Project",
+  "COMET 專案：README.md，建立後在終端機執行 comet setup": "COMET project: README.md, then run comet setup in the terminal",
+  "這台電腦找不到 comet 指令。專案照樣會建立，裝好 COMET CLI 之後，在終端機執行 comet setup 就好。":
+    "The comet command isn't installed on this computer. The project is still created; after installing the COMET CLI, run comet setup in the terminal.",
+  "在電腦上建立一個新資料夾，接著在終端機執行 comet setup，照畫面的指示輸入資料。":
+    "Create a new folder on this computer, then run comet setup in the terminal and follow the prompts.",
+  "已建立專案「{name}」，請在下方的終端機照畫面的指示完成 comet setup。": "Created project \"{name}\". Follow the prompts in the terminal below to finish comet setup.",
+  "已建立專案「{name}」。這台電腦找不到 comet 指令，裝好 COMET CLI 之後，在終端機執行 comet setup。":
+    "Created project \"{name}\". The comet command isn't installed on this computer; after installing the COMET CLI, run comet setup in the terminal.",
   // find-panel.ts
   "格式錯誤": "Invalid pattern",
   "沒有結果": "No results",
