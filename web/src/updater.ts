@@ -160,7 +160,7 @@ export class Updater {
     this.#notify();
     let slow: { dismiss(): void } | null = null;
     const timer = setTimeout(() => {
-      slow = toast(t("正在連線到 GitHub…公司網路可能要等比較久"), { duration: 60000 });
+      slow = toast(t("正在檢查有沒有新版本…"), { duration: 60000 });
     }, SLOW_CHECK);
     const done = () => {
       clearTimeout(timer);
