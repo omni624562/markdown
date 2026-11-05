@@ -82,6 +82,8 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     urlNote: t("oMarker 還沒連線 Azure DevOps：貼上 Sprint 工作板的網址（瀏覽器開啟工作板時網址列上的網址）。到設定連線 Azure DevOps 後，這裡就能直接選。"),
     assigned: t("指派給"),
     assignedNote: t("姓名、完整帳號或員工編號；預設是 oMarker 目前登入的帳號。AreaPath 由團隊設定自動帶入。"),
+    assignedAuto: t("oMarker 登入的帳號"),
+    change: t("換人"),
     smoke: t("完成後查詢我的工作，確認連得上 Azure DevOps"),
     local: t("設定本機 PATH 與 VSCode（第一次使用 COMET 需要）"),
   };
@@ -97,7 +99,11 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
       <div class="nc-grid"><label class="nc-wide">${tr.url}<input name="nc-url" spellcheck="false" autocomplete="off" placeholder="https://…/_sprints/taskboard/…" /></label></div>
     </div>
     <label class="nc-cadence">${tr.cadence}<input name="nc-cadence" type="number" min="1" max="365" value="${DEFAULT_CADENCE}" /></label>
-    <label>${tr.assigned}<input name="nc-assigned" spellcheck="false" autocomplete="off" /><span class="nc-note">${tr.assignedNote}</span></label>
+    <div class="nc-who" hidden>
+      <span class="nc-who-label">${tr.assigned}</span><span class="nc-who-name"></span><span class="nc-who-note">${tr.assignedAuto}</span>
+      <button type="button" class="nc-who-change">${tr.change}</button>
+    </div>
+    <label class="nc-who-input">${tr.assigned}<input name="nc-assigned" spellcheck="false" autocomplete="off" /><span class="nc-note">${tr.assignedNote}</span></label>
     <label class="pe-check"><input type="checkbox" name="nc-smoke" checked /> ${tr.smoke}</label>
     <label class="pe-check"><input type="checkbox" name="nc-local" checked /> ${tr.local}</label>`;
   const q = <T extends HTMLElement>(sel: string) => host.querySelector<T>(sel)!;
@@ -107,6 +113,8 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
   const url = q<HTMLInputElement>("input[name=nc-url]");
   const cadence = q<HTMLInputElement>("input[name=nc-cadence]");
   const assigned = q<HTMLInputElement>("input[name=nc-assigned]");
+  const who = q(".nc-who");
+  const whoInput = q(".nc-who-input");
   const adoBox = q(".nc-ado");
   const urlBox = q(".nc-url");
   const cadenceLabel = q(".nc-cadence");
@@ -166,6 +174,16 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     changed();
   });
   for (const el of [url, assigned]) el.addEventListener("input", changed);
+  /** 已經登入 Azure DevOps：「指派給」直接用登入的帳號，只顯示一行（按「換人」才出現輸入框）。 */
+  const autoAssign = (on: boolean) => {
+    who.hidden = !on;
+    whoInput.hidden = on;
+  };
+  q(".nc-who-change").addEventListener("click", () => {
+    autoAssign(false);
+    assigned.select();
+    assigned.focus();
+  });
 
   return {
     async load() {
@@ -174,7 +192,12 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
       cadence.value = String(DEFAULT_CADENCE);
       account = await desktop!.adoAccount().catch(() => null);
       if (n !== seq) return;
+      // 指派給：登入的帳號（「網域\帳號」或 Email；沒有時用顯示名稱），已登入時不用填。
       assigned.value = account?.account || account?.name || "";
+      const name = account?.name.trim() ?? "";
+      const login = account?.account?.trim() ?? "";
+      q(".nc-who-name").textContent = name && login && name !== login ? t("{name}（{account}）", { name, account: login }) : name || login;
+      autoAssign(assigned.value !== "");
       const projects = account ? await desktop!.adoWorkItemFilters().then((f) => f.projects).catch(() => [] as string[]) : [];
       if (n !== seq) return;
       useAdo(projects.length > 0);

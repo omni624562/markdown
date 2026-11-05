@@ -206,6 +206,9 @@ export const ui: Record<string, Translation> = {
     "oMarker isn't connected to Azure DevOps: paste the URL of the Sprint taskboard (the address bar when the taskboard is open in the browser). After connecting Azure DevOps in Settings, you can pick from lists here.",
   "姓名、完整帳號或員工編號；預設是 oMarker 目前登入的帳號。AreaPath 由團隊設定自動帶入。":
     "Name, full account or employee ID; defaults to the account oMarker is signed in with. The AreaPath comes from the team settings.",
+  "oMarker 登入的帳號": "Signed-in account",
+  "換人": "Change",
+  "{name}（{account}）": "{name} ({account})",
   "完成後查詢我的工作，確認連得上 Azure DevOps": "Afterwards, query my work items to check the Azure DevOps connection",
   "設定本機 PATH 與 VSCode（第一次使用 COMET 需要）": "Set up PATH and VS Code on this computer (needed the first time you use COMET)",
   "建立資料夾與 README.md": "Create the folder and README.md",
