@@ -424,6 +424,7 @@ fn main() {
             projects::projects_list,
             projects::project_update,
             projects::project_forget,
+            projects::project_delete,
             projects::project_relocate,
             projects::project_reveal,
             workspace::list_dir,

@@ -194,6 +194,13 @@ export function dropOrphanDrafts(): number {
 /** 分頁附帶的資料：Wiki 開始編輯時的內容、載入最新版前保留的自己的修改。 */
 const WIKI_PREFIXES = ["wiki-base:", "wiki-mine:"];
 
+/** 忘掉專案記住的分頁（含還沒存的草稿）與檔案樹展開狀態（專案的資料夾刪掉時）。 */
+export function forgetProjectSession(scope: string): void {
+  for (const d of peekSession(scope)?.docs ?? []) dropDraft(d.id);
+  storage.remove(sessionKey(scope));
+  storage.remove(`view@${scope}`);
+}
+
 export function dropDraft(id: string): void {
   draftVersions.set(id, draftVersion(id) + 1);
   storage.remove(`draft:${id}`);

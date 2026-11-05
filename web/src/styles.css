@@ -3135,6 +3135,18 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .po-path, .po-meta { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .po-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: 0.35; transition: opacity 0.15s; }
 .po-card:hover .po-actions, .po-actions:focus-within { opacity: 1; }
+/* 刪除專案：卡片右下角的文字按鈕，一直看得到（淡色），滑鼠移上去變紅。 */
+.po-delete { position: absolute; right: 6px; bottom: 6px; gap: 4px; min-height: 24px; padding: 0 8px; color: var(--muted); font-size: 12px; }
+.po-delete .icon { width: 13px; height: 13px; }
+.po-delete:hover, .po-delete:focus-visible { border-color: color-mix(in srgb, var(--danger) 40%, transparent); background: var(--danger-soft, transparent); color: var(--danger); }
+.po-meta { padding-right: 64px; }
+/* 刪除專案的提示窗：輸入資料夾名稱才能按「刪除」。 */
+.project-delete .pd-lead { margin: 0 0 4px; color: var(--fg); }
+.choice.project-delete .pd-note { margin: 0 0 12px; font-size: 12.5px; }
+.choice.project-delete .pd-note.warn { color: var(--danger); }
+.project-delete .pd-type span { font-weight: 400; }
+.project-delete .btn-danger:not(:disabled) { border-color: var(--danger); background: var(--danger); color: #fff; }
+.project-delete .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .po-actions .btn { width: 26px; height: 26px; }
 .po-actions .icon { width: 14px; height: 14px; }
 

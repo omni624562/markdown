@@ -2178,6 +2178,7 @@ const projectUi = desktop
       openFolder: () => void commands.run("open-folder").catch(reportError),
       newProject: (comet) => void commands.run(comet ? "new-comet-project" : "new-project").catch(reportError),
       close: () => void commands.run("close-folder").catch(reportError),
+      closeAndWait: () => closeProject(),
       remotes: () => (features.remote ? desktop!.davConnections() : Promise.resolve([])),
       openRemote: (c) => void openRemote(c).catch(reportError),
       changed: () => void renderProjectName().then(renderFilesEmpty),
@@ -3394,6 +3395,8 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
       "open-folder",
       { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },
       { label: t("連線到遠端資料夾"), icon: "cloud", items: ["connect-webdav", "connect-ssh"] },
+      "-",
+      "delete-project",
     ],
   },
   {

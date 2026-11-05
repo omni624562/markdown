@@ -126,6 +126,62 @@ pub fn project_forget(app: AppHandle, trust: State<'_, Trust>, path: String) {
     trust.forget_folder(&app, Path::new(&path));
 }
 
+/// 不能移到資源回收筒的資料夾：磁碟的根目錄、使用者資料夾（或它的上層）、文件、桌面、下載等系統資料夾。
+fn protected_folder(dir: &Path, system: &[PathBuf]) -> bool {
+    dir.parent().is_none() || system.iter().any(|s| s == dir || s.starts_with(dir))
+}
+
+/// 刪除專案：從專案清單移除；`trash_folder` 時把整個資料夾移到資源回收筒（可以從回收筒還原）。
+/// 只能刪專案清單上的資料夾；目前開著的專案要先關閉。沒有資源回收筒（例如網路磁碟）時回報錯誤，
+/// 不會改成直接刪除。
+#[tauri::command]
+pub async fn project_delete(
+    app: AppHandle,
+    path: String,
+    trash_folder: bool,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let dir = PathBuf::from(&path);
+    if app.state::<Trust>().project(&dir).is_none() {
+        return Err(tr!("這個資料夾不在專案清單中"));
+    }
+    if app
+        .state::<crate::workspace::Workspace>()
+        .root()
+        .is_some_and(|root| root == dir)
+    {
+        return Err(tr!("請先關閉這個專案再刪除"));
+    }
+    if trash_folder && dir.exists() {
+        let p = app.path();
+        let system: Vec<PathBuf> = [
+            p.home_dir(),
+            p.document_dir(),
+            p.desktop_dir(),
+            p.download_dir(),
+            p.picture_dir(),
+            p.app_data_dir(),
+        ]
+        .into_iter()
+        .filter_map(Result::ok)
+        .collect();
+        if protected_folder(&dir, &system) {
+            return Err(tr!(
+                "「{name}」是系統或使用者資料夾，不能移到資源回收筒；可以只從清單移除",
+                name = display_name(&dir)
+            ));
+        }
+        let d = dir.clone();
+        // 很大的資料夾移到回收筒要一點時間。
+        crate::io::blocking_for(std::time::Duration::from_secs(300), move || {
+            trash::delete(&d).map_err(|e| tr!("無法把資料夾移到資源回收筒：{e}", e = e))
+        })
+        .await?;
+    }
+    app.state::<Trust>().forget_folder(&app, &dir);
+    Ok(())
+}
+
 /// 資料夾搬走後重新指定位置：保留名稱、顏色、群組。使用者取消時回傳 None。
 #[tauri::command]
 pub async fn project_relocate(
@@ -171,6 +227,19 @@ pub async fn project_reveal(trust: State<'_, Trust>, path: String) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_folders_are_protected() {
+        let home = PathBuf::from("/home/me");
+        let docs = PathBuf::from("/home/me/Documents");
+        let system = [home.clone(), docs.clone()];
+        assert!(protected_folder(Path::new("/"), &system));
+        assert!(protected_folder(&home, &system));
+        assert!(protected_folder(Path::new("/home"), &system));
+        assert!(protected_folder(&docs, &system));
+        assert!(!protected_folder(&docs.join("產品筆記"), &system));
+        assert!(!protected_folder(Path::new("/data/產品"), &system));
+    }
 
     fn change(name: &str, color: &str, group: &str, pinned: bool) -> ProjectChange {
         ProjectChange {
