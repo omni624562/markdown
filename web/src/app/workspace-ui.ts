@@ -256,7 +256,8 @@ function placeWiki(right: HTMLElement): void {
   if (onRight && panel.parentElement !== right) {
     right.append(panel);
     panel.hidden = false;
-    // 圖示列的 Wiki 圖示留著（按一下顯示或隱藏右側欄）；標出它在右側（不用 hidden：連線狀態也用它）。
+    // 標出 Wiki 在右側（不用 hidden：連線狀態也用它）：右側欄開著時圖示列不顯示 Wiki 的圖示，
+    // 右側欄收起來時才顯示，按一下打開右側欄（見 styles.css 的 `.placed-right`）。
     tab.classList.add("placed-right");
     if (app.sidePanel === "wiki") showPanel("workitems", false);
     if (app.rightOutlineShown) wikiPanel?.shown();
@@ -815,7 +816,8 @@ export function initWorkspaceUi(): void {
   app.$(".activity-tabs").addEventListener("keydown", (e) => {
     // 依畫面上的順序（使用者可以調整），略過隱藏的圖示。
     const tabs = [...app.$(".activity-tabs").querySelectorAll<HTMLButtonElement>("[role=tab]")].filter(
-      (t) => !t.hidden && !t.classList.contains("user-hidden"),
+      // 畫面上看不到的也略過（Wiki 在右側欄、右側欄開著時，Wiki 的圖示不顯示）。
+      (t) => !t.hidden && !t.classList.contains("user-hidden") && t.getClientRects().length > 0,
     );
     const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
     if (i < 0 || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;

@@ -94,9 +94,11 @@ test("Wiki：上方的選單與搜尋收合成 Wiki 名稱一行；從圖示列�
   assert.equal(await visible(page, '#wiki-host .wiki-page[data-path="/首頁"]'), true, "頁面樹照樣顯示");
 
   // Wiki 放到右側、右側欄收著：從圖示列打開時，游標要放進搜尋框，所以先展開。
+  // （右側欄開著時圖示列不顯示 Wiki；左邊先換回檔案，啟動時才不會為了還原 Wiki 而打開右側欄。）
   await page.evaluate(() => {
     localStorage.setItem("md-editor:wiki-right", "1");
     localStorage.setItem("md-editor:outline-right", "hidden");
+    localStorage.setItem("md-editor:side-panel", "files");
   });
   await page.reload();
   await page.locator("#side-tab-wiki").click();

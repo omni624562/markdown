@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { open } from "./helpers.mjs";
+import { open, runCommand } from "./helpers.mjs";
 
 const ROOT = { kind: "folder", path: "/notes", name: "notes" };
 const COBALT = "/notes/COBALT Release Channel.md";
@@ -69,8 +69,8 @@ async function openFile(page, name) {
 }
 
 /** 大綱放在右邊（設定），Wiki 也移到右側（`wikiRight`），開著連到「COBALT Release Channel」的文件。 */
-async function setup({ outlineRight = true, wikiRight = true } = {}) {
-  const opened = await open({ desktop: desktop({ outlineRight }) });
+async function setup({ outlineRight = true, wikiRight = true, panelStyle } = {}) {
+  const opened = await open({ desktop: desktop({ outlineRight, ...(panelStyle ? { panelStyle } : {}) }) });
   const { page } = opened;
   await page.evaluate((on) => localStorage.setItem("md-editor:wiki-right", on ? "1" : ""), wikiRight);
   await page.reload();
@@ -170,18 +170,62 @@ test("大綱、反向連結、Wiki 各有標題列：收合後只剩標題列、
   await context.close();
 });
 
-test("Wiki 收合時按圖示列的 Wiki：展開 Wiki（不是收起整個右側欄）", async () => {
+test("Wiki 在右側欄：圖示列不顯示 Wiki；Wiki 收合時用「Azure DevOps：Wiki」指令展開（不是收起整個右側欄）", async () => {
   const { page, context, errors } = await setup();
+  assert.equal(await page.locator("#side-tab-wiki").isVisible(), false, "右側欄開著：圖示列沒有 Wiki");
   await toggle(page, "wiki").click();
-  await page.click("#side-tab-wiki");
+  assert.equal(await page.locator("#side-tab-wiki").isVisible(), false, "Wiki 收合時也沒有（標題列還在右側欄）");
+  await runCommand(page, "Azure DevOps：Wiki");
   assert.equal(await expanded(page, "wiki"), true);
   assert.equal(await page.locator("#outline-right").isVisible(), true);
-  // 已經展開：再按一下不收起右側欄，游標放進 Wiki 的搜尋框。
-  await page.click("#side-tab-wiki");
-  assert.equal(await page.locator("#outline-right").isVisible(), true);
-  assert.equal(await page.evaluate(() => document.activeElement?.matches("#panel-wiki input[type=search]")), true);
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+test("圓角區塊樣式：大綱與 Wiki 分成兩個區塊，中間留間隔（就是分隔線）；相連樣式維持一條線", async () => {
+  const { page, context, errors } = await setup();
+  const layout = () =>
+    page.evaluate(() => {
+      const box = (sel) => document.querySelector(sel).getBoundingClientRect();
+      const style = (sel) => getComputedStyle(document.querySelector(sel));
+      return {
+        gap: box("#panel-wiki").top - box("#panel-outline").bottom,
+        columnBorder: style("#outline-right").borderLeftWidth,
+        outlineBorder: style("#panel-outline").borderLeftWidth,
+        outlineRadius: style("#panel-outline").borderBottomLeftRadius,
+        wikiRadius: style("#panel-wiki").borderTopLeftRadius,
+        handle: getComputedStyle(document.querySelector(".rs-splitter"), "::before").opacity,
+      };
+    });
+  const both = await layout();
+  assert.equal(both.columnBorder, "0px", "右側欄本身沒有框線");
+  assert.equal(both.outlineBorder, "1px", "大綱自己一個區塊");
+  assert.equal(both.outlineRadius, "8px");
+  assert.equal(both.wikiRadius, "8px", "Wiki 自己一個圓角區塊");
+  assert.ok(both.gap >= 3 && both.gap <= 6, `中間留間隔（${both.gap}）`);
+  assert.equal(both.handle, "0", "平常看不到把手");
+  // 滑鼠移到間隔上：出現把手。
+  const s = await page.locator("#outline-right .rs-splitter").boundingBox();
+  await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2);
+  await page.waitForFunction(() => getComputedStyle(document.querySelector(".rs-splitter"), "::before").opacity === "1");
+  await page.mouse.move(5, 5);
+  // Wiki 收合：標題列自己一塊，一樣留間隔。
+  await toggle(page, "wiki").click();
+  const collapsedWiki = await layout();
+  assert.ok(collapsedWiki.gap >= 3 && collapsedWiki.gap <= 6, `Wiki 收合時也留間隔（${collapsedWiki.gap}）`);
+  assert.deepEqual(errors, []);
+  await context.close();
+
+  // 相連樣式：同一個區塊，中間一條線（沒有間隔）。
+  const joined = await setup({ panelStyle: "joined" });
+  const j = await joined.page.evaluate(() => ({
+    gap: document.querySelector("#panel-wiki").getBoundingClientRect().top - document.querySelector("#panel-outline").getBoundingClientRect().bottom,
+    wikiRadius: getComputedStyle(document.querySelector("#panel-wiki")).borderTopLeftRadius,
+  }));
+  assert.equal(j.wikiRadius, "0px");
+  assert.ok(j.gap >= 6 && j.gap <= 8, `相連樣式：分隔線（${j.gap}）`);
+  assert.deepEqual(joined.errors, []);
+  await joined.context.close();
 });
 
 test("分隔線：拖曳調整大綱與 Wiki 的高度，重新載入後還記得；方向鍵調整、雙擊恢復", async () => {
