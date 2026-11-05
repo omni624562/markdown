@@ -106,7 +106,9 @@ export function onlyBlankDoc(): boolean {
     !app.cur.fileBacked &&
     !app.cur.fileHandle &&
     app.editor.view.state.doc.length === 0 &&
-    !app.startSkipped(app.active.id)
+    !app.startSkipped(app.active.id) &&
+    // 編輯中的 Wiki 頁面（空白的也一樣）是使用者開的分頁，不是補上的空白文件。
+    !app.active.wiki
   );
 }
 
