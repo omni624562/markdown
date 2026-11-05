@@ -146,7 +146,12 @@ export function initOfflineCopies(): void {
             void desktop!.offlinePut(key, img.src, true).catch(() => {});
           }
           saveKept(keep(keptPages, { key: source.key, title: source.title, label: source.label, ref, images, savedAt: Date.now() }));
-          void desktop!.offlinePut(`page:${source.key}`, pageCopy(markdown), true).catch(app.reportError);
+          void desktop!.offlinePut(`page:${source.key}`, pageCopy(markdown), true).catch((e: unknown) => {
+            // 保留不了（例如保留的副本已經滿了）：取消這一頁的保留，圖片也放回自動存的區域。
+            saveKept(keptPages.filter((p) => p.key !== source.key));
+            for (const key of images) void desktop!.offlineRelease(key).catch(() => {});
+            app.reportError(e);
+          });
           toast(t("已保留離線：沒有網路時也能開啟（指令面板的「{command}」）", { command: app.commands.title("ado-offline") }));
         },
       }

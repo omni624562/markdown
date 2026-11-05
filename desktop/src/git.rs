@@ -515,6 +515,8 @@ impl<'a> Session<'a> {
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(self.callbacks());
         fo.proxy_options(proxy(url));
+        // 不跟著轉址到其他網站：轉址後 libgit2 給認證回呼的還是原本的網址，會把權杖送到轉址後的網站。
+        fo.follow_redirects(git2::RemoteRedirect::None);
         fo
     }
 
@@ -782,6 +784,7 @@ pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
     let mut po = PushOptions::new();
     po.remote_callbacks(cb);
     po.proxy_options(proxy(&url));
+    po.follow_redirects(git2::RemoteRedirect::None); // 理由見 Session::fetch_options
     let behind = tr!("遠端有你還沒拉取的提交，請先拉取再推送");
     repo.find_remote(&remote_name)
         .map_err(err)?

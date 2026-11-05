@@ -2,7 +2,9 @@
 //! `comet-setup` 事件送給前端（新專案對話框裡的進度，見 web/src/app/comet-setup.ts）。
 //!
 //! 安全：
-//! - 只在目前開啟的資料夾（剛建立的新專案）執行，同一時間只跑一個。
+//! - 只在「新專案」剛建立、目前開啟的那個資料夾執行，而且只能執行一次（`create_project` 記下資料夾，
+//!   見 [`CometRun::remember_new_project`]）：網頁端萬一被注入程式碼，也不能在其他資料夾帶著 PAT 執行 comet。
+//!   同一時間只跑一個。
 //! - 不經過殼層；參數一律用 `--名稱=值` 傳，值（例如專案名稱）不會被當成其他選項。
 //!   Windows 上只直接執行 `.exe`：`.cmd`／`.bat` 要透過 cmd.exe，參數可能被解讀，這時請使用者改在終端機設定。
 //! - oMarker 存的 Azure DevOps PAT 只在 Sprint 網址或集合網址就在 oMarker 連線的那一台底下時，
@@ -10,17 +12,47 @@
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
 use crate::workspace::Workspace;
 
-/// 正在執行 `comet setup`（同一時間只跑一個）。
+/// 正在執行 `comet setup`（同一時間只跑一個），以及剛建立、還沒執行過設定的新專案資料夾。
 #[derive(Default)]
-pub struct CometRun(Mutex<bool>);
+pub struct CometRun {
+    busy: Mutex<bool>,
+    fresh: Mutex<Option<(PathBuf, Instant)>>,
+}
+
+/// 新專案建立後多久內可以執行 `comet setup`（前端在建立、開啟資料夾後馬上執行）。
+const FRESH_FOR: Duration = Duration::from_secs(10 * 60);
+
+impl CometRun {
+    /// 記住「新專案」剛建立的資料夾：接下來可以在這裡執行一次 `comet setup`。
+    pub fn remember_new_project(&self, dir: &Path) {
+        *self.fresh.lock() = Some((dir.to_path_buf(), Instant::now()));
+    }
+
+    /// `dir` 是剛建立（`FRESH_FOR` 之內）的新專案資料夾時用掉這次機會，回傳 true；其他資料夾一律 false。
+    fn take_fresh(&self, dir: &Path, now: Instant) -> bool {
+        let mut fresh = self.fresh.lock();
+        let Some((made, at)) = fresh.as_ref() else {
+            return false;
+        };
+        if now.saturating_duration_since(*at) > FRESH_FOR {
+            *fresh = None;
+            return false;
+        }
+        if made != dir {
+            return false;
+        }
+        *fresh = None;
+        true
+    }
+}
 
 /// 前端送來的設定（和 web/src/desktop.ts 的 `CometSetupRequest` 一樣）。
 #[derive(Deserialize, Debug, Default)]
@@ -186,8 +218,8 @@ async fn pump<R: AsyncRead + Unpin>(stream: R, tx: tokio::sync::mpsc::UnboundedS
     }
 }
 
-/// 在目前開啟的專案資料夾用參數執行 `comet setup`。呼叫本身在開始執行後就返回；輸出與結果用
-/// `comet-setup` 事件送出。
+/// 在剛建立、目前開啟的新專案資料夾用參數執行 `comet setup`（每個新專案只能執行一次）。
+/// 呼叫本身在開始執行後就返回；輸出與結果用 `comet-setup` 事件送出。
 #[tauri::command]
 pub async fn comet_setup_run(
     app: AppHandle,
@@ -202,6 +234,11 @@ pub async fn comet_setup_run(
         return Err(tr!("只能在目前開啟的專案執行 COMET 設定"));
     }
     let args = setup_args(&req)?;
+    if !run.take_fresh(&root, Instant::now()) {
+        return Err(tr!(
+            "只能在剛用「新專案」建立的資料夾執行 COMET 設定；其他專案請在終端機執行 comet setup。"
+        ));
+    }
     let (comet_home, home) = crate::new_project::comet_roots(&app);
     let exe = tauri::async_runtime::spawn_blocking(move || {
         crate::new_project::comet_program(comet_home, home)
@@ -219,7 +256,7 @@ pub async fn comet_setup_run(
     }
     let pat = pat_for(&app, &req);
     {
-        let mut busy = run.0.lock();
+        let mut busy = run.busy.lock();
         if *busy {
             return Err(tr!("COMET 設定正在執行，請等它完成"));
         }
@@ -241,7 +278,7 @@ pub async fn comet_setup_run(
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => {
-            *run.0.lock() = false;
+            *run.busy.lock() = false;
             return Err(tr!("無法執行 comet：{e}", e = e));
         }
     };
@@ -293,7 +330,7 @@ pub async fn comet_setup_run(
             },
         };
         emit(done);
-        *app.state::<CometRun>().0.lock() = false;
+        *app.state::<CometRun>().busy.lock() = false;
     });
     Ok(())
 }
@@ -427,6 +464,26 @@ mod tests {
             base
         ));
         assert!(!same_server("https://ado.test/tfs/DefaultCollection", ""));
+    }
+
+    #[test]
+    fn runs_once_only_in_the_new_project() {
+        let run = CometRun::default();
+        let dir = Path::new(r"C:\Users\me\Documents\產品交付");
+        let other = Path::new(r"C:\Users\me\Documents\其他專案");
+        let now = Instant::now();
+        // 還沒建立新專案：哪裡都不行。
+        assert!(!run.take_fresh(dir, now));
+        run.remember_new_project(dir);
+        // 其他資料夾不行，也不會用掉新專案的那一次。
+        assert!(!run.take_fresh(other, now));
+        assert!(run.take_fresh(dir, now));
+        // 只能一次。
+        assert!(!run.take_fresh(dir, now));
+        // 太久以前建立的不算。
+        run.remember_new_project(dir);
+        assert!(!run.take_fresh(dir, Instant::now() + FRESH_FOR + Duration::from_secs(1)));
+        assert!(!run.take_fresh(dir, Instant::now()));
     }
 
     #[test]

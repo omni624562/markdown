@@ -830,7 +830,8 @@ pub async fn save_file(
     let app2 = app.clone();
     let p = path.clone();
     crate::io::blocking(move || {
-        let disk = fs::read(&p).ok();
+        // 只給版本記錄用：太大的舊檔不讀進記憶體（版本記錄本來就不存）。
+        let disk = read_capped(&p, MAX_OPEN_BYTES).ok().flatten();
         let hash = write_file(&p, &bytes)?;
         crate::history::on_save(&app2, &p, disk.as_deref(), &text);
         let dir = dir_id(&p);
@@ -861,6 +862,26 @@ fn save_lock(path: &Path) -> std::sync::Arc<Mutex<()>> {
     locks.entry(path.to_path_buf()).or_default().clone()
 }
 
+/// 覆寫前磁碟上目前的內容（比對有沒有被改過、記到版本記錄），讀不到時是 None。最多讀 `limit`：
+/// 更大的不整個讀進記憶體。這時無法比對內容，開啟時記過內容（`stored`）又還沒確認要覆蓋（`force`）的
+/// 就不存檔，免得蓋掉其他程式剛寫進去的大檔案。
+fn disk_before(
+    path: &Path,
+    limit: u64,
+    stored: Option<u64>,
+    force: bool,
+) -> Result<Option<Vec<u8>>, String> {
+    match read_capped(path, limit) {
+        Ok(Some(bytes)) => Ok(Some(bytes)),
+        Ok(None) if stored.is_some() && !force => Err(tr!(
+            "「{name}」在磁碟上已經超過 {mb} MB，可能被其他程式改過；為了不蓋掉它，沒有存檔。請用「另存新檔」存到其他位置。",
+            name = display_name(path),
+            mb = limit / 1024 / 1024
+        )),
+        _ => Ok(None),
+    }
+}
+
 /// 覆寫已開啟過的檔案。磁碟上的內容在開啟後被改過時回傳 `Conflict`（除非 `force`）。
 /// 檔案所在資料夾的實際位置和開啟時不同時（見 [`KnownFiles::moved`]）不讀也不寫。
 fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<SaveOutcome, String> {
@@ -869,7 +890,7 @@ fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<Sa
     let known = app.state::<KnownFiles>();
     known.check_moved(path)?;
     let state = known.0.lock().get(path).copied().unwrap_or_default();
-    let disk = fs::read(path).ok();
+    let disk = disk_before(path, MAX_OPEN_BYTES, state.hash, force)?;
     if !force && changed_on_disk(state.hash, disk.as_deref()) {
         let (disk_text, _, _) = decode(disk.as_deref().unwrap_or_default());
         return Ok(SaveOutcome::Conflict {
@@ -960,6 +981,26 @@ mod tests {
         fs::write(&file, b"0123456789").unwrap();
         assert_eq!(read_capped(&file, 10).unwrap().unwrap(), b"0123456789");
         assert_eq!(read_capped(&file, 9).unwrap(), None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn saving_never_reads_huge_files() {
+        let dir = std::env::temp_dir().join(format!("md-disk-before-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("紀錄.log");
+        fs::write(&file, b"0123456789").unwrap();
+        let hash = Some(hash_bytes(b"0123"));
+        assert_eq!(
+            disk_before(&file, 10, hash, false).unwrap().unwrap(),
+            b"0123456789"
+        );
+        // 比上限大：不讀進記憶體；開啟時記過內容又還沒確認覆蓋的，不存檔。
+        assert!(disk_before(&file, 9, hash, false).is_err());
+        assert_eq!(disk_before(&file, 9, hash, true), Ok(None));
+        assert_eq!(disk_before(&file, 9, None, false), Ok(None));
+        // 檔案不在了：照常存檔。
+        assert_eq!(disk_before(&dir.join("沒有.md"), 9, hash, false), Ok(None));
         fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -58,4 +58,5 @@ pub static EN: &[(&str, &str)] = &[
     ("「{name}」已在設定關閉，要使用請先到設定開啟。", "\"{name}\" is turned off in Settings. Turn it on there to use it."),
     ("啟用 AI 協作", "Enable AI Collaboration"),
     ("啟用後，oMarker 可以執行 Claude Code、Codex 等 AI 工具，並讓它們讀取目前的文件。要啟用嗎？", "Once enabled, oMarker can run AI tools such as Claude Code and Codex and let them read the current document. Enable it?"),
+    ("保留離線的副本已經達到 {mb} MB 的上限，請先取消保留一些頁面", "Pages kept offline have reached the {mb} MB limit. Stop keeping some pages offline first."),
 ];

@@ -34,6 +34,14 @@ pub static EN: &[(&str, &str)] = &[
         "「{name}」超過 {mb} MB，無法開啟",
         "\"{name}\" is larger than {mb} MB and can't be opened.",
     ),
+    (
+        "「{name}」在磁碟上已經超過 {mb} MB，可能被其他程式改過；為了不蓋掉它，沒有存檔。請用「另存新檔」存到其他位置。",
+        "\"{name}\" is now larger than {mb} MB on disk and may have been changed by another program. It wasn't saved, so that it isn't overwritten. Use Save As to save to another location.",
+    ),
+    (
+        "「{name}」超過 {mb} MB，不能在這裡修改",
+        "\"{name}\" is larger than {mb} MB and can't be changed here.",
+    ),
     ("無法建立暫存檔", "Couldn't create a temporary file."),
     (
         "這個檔案是符號連結，不直接覆寫",
