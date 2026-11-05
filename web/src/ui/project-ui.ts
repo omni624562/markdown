@@ -21,6 +21,8 @@ export interface ProjectHooks {
   openFolder(): void;
   /** 建立新專案（新資料夾）；`comet`：新 COMET 專案（建立後在終端機執行 comet setup）。 */
   newProject(comet?: boolean): void;
+  /** 這台電腦有沒有 COMET CLI（沒有時不列「新 COMET 專案…」）。 */
+  cometInstalled(): boolean;
   /** 關閉目前的專案。 */
   close(): void;
   /** 關閉目前的專案，等關好（刪除目前的專案前）。 */
@@ -166,7 +168,7 @@ export class ProjectUi {
     }
     const actions: SwitchItem[] = [
       { kind: "action", id: "new-project", title: t("新專案…"), icon: "folder-plus" },
-      { kind: "action", id: "new-comet-project", title: t("新 COMET 專案…"), icon: "square-terminal" },
+      ...(this.#h.cometInstalled() ? [{ kind: "action", id: "new-comet-project", title: t("新 COMET 專案…"), icon: "square-terminal" } as const] : []),
       { kind: "action", id: "open-folder", title: t("開啟資料夾…"), icon: "folder-open" },
       { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-dashboard" },
     ];

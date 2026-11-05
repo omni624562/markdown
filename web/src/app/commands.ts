@@ -16,6 +16,7 @@ import { Picker } from "../ui/picker.ts";
 import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { cometPresent } from "./comet-presence.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
 import { openDailyNote, openNeighborNote } from "./daily-notes.ts";
 import { showDocStats, statsShown } from "./doc-stats.ts";
@@ -308,7 +309,8 @@ export function initCommands(): void {
       title: t("新 COMET 專案…"),
       group: t("資料夾與專案"),
       icon: "square-terminal",
-      when: () => !!desktop,
+      // 沒裝 COMET 的電腦不顯示（見 comet-presence.ts）。
+      when: () => !!desktop && cometPresent(),
       run: () => newProject("comet"),
     },
     {

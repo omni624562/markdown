@@ -21,6 +21,7 @@ const DESKTOP = {
   // 陣列是依序回應的清單，所以專案清單要再包一層。
   projects_list: [PROJECTS],
   recent: { files: FILES, folders: PROJECTS.map((p) => p.path) },
+  comet_installed: true,
 };
 
 test("起始頁的「專案」：自訂名稱與顏色、最近開啟的 4 個，「全部專案…」開啟專案總覽", async () => {

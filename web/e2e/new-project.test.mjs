@@ -18,6 +18,8 @@ const DESKTOP = {
   project_update: { path: ROOT, name: "產品筆記", label: "產品筆記", color: "blue", group: null, pinned: false, lastOpened: 0 },
   list_dir: [[{ name: "README.md", path: README, isDir: false }]],
   reopen_file: { path: README, name: "README.md", text: "# 產品筆記\n", encoding: "utf-8" },
+  // 這台電腦裝了 COMET（沒裝時不顯示「新 COMET 專案」，見最後面的測試）。
+  comet_installed: true,
 };
 
 async function openFromMenu(page) {
@@ -339,26 +341,47 @@ test("新 COMET 專案：oMarker 沒有連線 Azure DevOps 時貼上 Sprint 網�
   await context.close();
 });
 
-test("新 COMET 專案：找不到 comet 指令時先提醒，專案照樣建立、不執行 comet setup", async () => {
-  const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO, comet_installed: false } });
-  // 從一般的「新專案…」選 COMET 專案。
+test("沒裝 COMET 的電腦不顯示「新 COMET 專案」；開著 oMarker 時裝好，再打開就會出現", async () => {
+  // 第一次（啟動時）找不到，之後找得到（使用者在 oMarker 開著的時候裝好 COMET）。
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: [false, true] } });
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_installed"));
+  // 「☰」→「專案」沒有。
+  await page.click("#main-menu");
+  const menu = page.locator("#main-menu-popover");
+  await menu.locator(":scope > button", { hasText: "專案" }).click();
+  const sub = menu.locator(":scope > .submenu:popover-open");
+  await sub.waitFor();
+  assert.equal(await sub.locator(":scope > button", { hasText: "新 COMET 專案…" }).count(), 0);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  // 專案切換器的「動作」沒有。
+  await page.keyboard.press("Control+Alt+P");
+  const switcher = page.locator("dialog[open]");
+  await switcher.locator("[role=option]", { hasText: /^新專案…/ }).waitFor();
+  assert.equal(await switcher.locator("[role=option]", { hasText: "新 COMET 專案…" }).count(), 0);
+  // 從切換器開「新專案…」：先照上次的結果不列「COMET 專案」，重新檢查後找到了就列出來。
+  await switcher.locator("[role=option]", { hasText: /^新專案…/ }).click();
+  const dialog = page.locator("dialog.new-project[open]");
+  await dialog.waitFor();
+  const cometChoice = dialog.getByLabel(/COMET 專案：/);
+  await cometChoice.waitFor({ state: "visible" });
+  await dialog.getByRole("button", { name: "取消" }).click();
+  // 這時「☰」→「專案」也有了。
+  await page.click("#main-menu");
+  await menu.locator(":scope > button", { hasText: "專案" }).click();
+  await sub.waitFor();
+  await sub.locator(":scope > button", { hasText: "新 COMET 專案…" }).waitFor();
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("新專案對話框：沒裝 COMET 時不列「COMET 專案」", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: false } });
   const dialog = await openFromMenu(page);
-  await dialog.getByLabel(/COMET 專案：/).check();
-  await dialog.locator(".np-warn", { hasText: "這台電腦找不到 comet 指令" }).waitFor();
-  assert.equal(await dialog.locator(".np-comet").isHidden(), true);
-  assert.equal(await dialog.locator("h2").textContent(), "新 COMET 專案");
-  // 換成空白就不提醒、標題換回「新專案」。
-  await dialog.getByLabel("空白：只有一份 README.md").check();
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "comet_installed").length >= 2);
+  assert.equal(await dialog.getByLabel(/COMET 專案：/).isHidden(), true);
+  assert.equal(await dialog.getByLabel("空白：只有一份 README.md").isChecked(), true);
   assert.equal(await dialog.locator("h2").textContent(), "新專案");
-  assert.equal(await dialog.locator(".np-warn").isHidden(), true);
-  await dialog.getByLabel(/COMET 專案：/).check();
-  await dialog.locator(".np-warn").waitFor();
-  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
-  await dialog.getByRole("button", { name: "建立並開啟" }).click();
-  await page.locator(".toast", { hasText: "裝好 COMET CLI 之後，在終端機執行 comet setup" }).waitFor();
-  assert.ok((await calls(page)).some((c) => c.cmd === "create_project"));
-  assert.deepEqual(await setupRuns(page), []);
-  assert.equal(await cometSetups(page), 0);
   assert.deepEqual(errors, []);
   await context.close();
 });
