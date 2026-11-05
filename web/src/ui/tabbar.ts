@@ -40,6 +40,8 @@ export interface TabBarHandlers {
   unpin(id: string): void;
   /** 拖曳分頁時帶的資料（例如拖到左側圖示列變成捷徑）；null 表示這個分頁不能拖。 */
   dragData?(id: string): Record<string, string> | null;
+  /** 並排中的分頁（合成一個「左｜右」的分頁）右邊的 ×：取消並排。 */
+  unpair?(): void;
 }
 
 /**
@@ -133,17 +135,33 @@ export class TabBar {
     });
   }
 
-  /** 建立之後再加上的功能（各自的模組加上去，例如左側圖示列的檔案捷徑）。 */
+  /**
+   * 建立之後再加上的功能（各自的模組加上去，例如左側圖示列的檔案捷徑、拖到編輯區並排）。
+   * 好幾個模組都提供拖曳資料時合在一起。
+   */
   extend(more: Pick<TabBarHandlers, "dragData">): void {
-    this.#handlers = { ...this.#handlers, ...more };
+    const prev = this.#handlers.dragData;
+    const next = more.dragData;
+    const dragData =
+      prev && next
+        ? (id: string) => {
+            const a = prev(id);
+            const b = next(id);
+            return a || b ? { ...a, ...b } : null;
+          }
+        : (next ?? prev);
+    this.#handlers = { ...this.#handlers, ...more, dragData };
   }
 
-  render(tabs: TabInfo[], activeId: string): void {
+  /**
+   * `pair`：並排中的兩份文件（左邊、右邊）。兩個分頁合成一個「左｜右」的分頁，放在左邊那份文件的位置：
+   * 游標所在的那一半是目前的分頁（亮起來），點另一半就換過去；最右邊的 × 取消並排。
+   */
+  render(tabs: TabInfo[], activeId: string, pair?: { main: string; side: string }): void {
     this.#el.hidden = false;
     this.#tabs = tabs;
     this.#activeId = activeId;
-    this.#list.replaceChildren(
-      ...tabs.map((info) => {
+    const els = tabs.map((info) => {
         const tab = document.createElement("div");
         tab.className = "tab";
         tab.role = "tab";
@@ -215,10 +233,39 @@ export class TabBar {
           }
         });
         return tab;
-      }),
-    );
+      });
+    if (pair) this.#pair(els, pair);
+    this.#list.replaceChildren(...els);
     this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
     this.#updateOverflow();
+  }
+
+  /** 把並排中的兩個分頁包成一個「左｜右」的分頁（見 render）。 */
+  #pair(els: HTMLElement[], pair: { main: string; side: string }): void {
+    const main = els.find((el) => el.dataset.id === pair.main);
+    const side = els.find((el) => el.dataset.id === pair.side);
+    if (!main || !side) return;
+    const group = document.createElement("div");
+    group.className = "tab-pair";
+    group.role = "presentation";
+    const name = (el: HTMLElement) => el.querySelector(".tab-name")?.textContent ?? "";
+    group.title = t("並排中：左邊「{left}」、右邊「{right}」", { left: name(main), right: name(side) });
+    const mark = icon("columns-2");
+    mark.classList.add("tab-pair-icon");
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "tab-pair-close";
+    close.tabIndex = -1;
+    close.title = t("取消並排（兩份文件留在分頁裡）");
+    close.setAttribute("aria-label", close.title);
+    close.append(icon("x"));
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.#handlers.unpair?.();
+    });
+    els.splice(els.indexOf(main), 1, group);
+    els.splice(els.indexOf(side), 1);
+    group.append(main, mark, side, close);
   }
 
   #updateOverflow(): void {
