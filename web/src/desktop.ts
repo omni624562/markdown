@@ -180,7 +180,7 @@ export type TermRequest =
   | { kind: "style"; theme: string | null; fontSize: number; palette: string | null; accent: string | null }
   | { kind: "focus" };
 
-/** 用參數執行 `comet setup`（新 COMET 專案）。Sprint 網址與「集合網址＋專案＋團隊＋Sprint」二選一。 */
+/** 用參數執行 `comet setup`（COMET 專案）。Sprint 網址與「集合網址＋專案＋團隊＋Sprint」二選一。 */
 export interface CometSetupRequest {
   /** 專案資料夾（必須是目前開啟的資料夾）。 */
   dir: string;

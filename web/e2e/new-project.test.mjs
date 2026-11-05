@@ -18,7 +18,7 @@ const DESKTOP = {
   project_update: { path: ROOT, name: "產品筆記", label: "產品筆記", color: "blue", group: null, pinned: false, lastOpened: 0 },
   list_dir: [[{ name: "README.md", path: README, isDir: false }]],
   reopen_file: { path: README, name: "README.md", text: "# 產品筆記\n", encoding: "utf-8" },
-  // 這台電腦裝了 COMET（沒裝時不顯示「新 COMET 專案」，見最後面的測試）。
+  // 這台電腦裝了 COMET（沒裝時對話框不列「COMET 專案」，見最後面的測試）。
   comet_installed: true,
 };
 
@@ -52,7 +52,7 @@ test("專案 → 新專案…：名稱不能用的字元馬上提示；建立後
   await name.fill("產品筆記");
   assert.equal(await dialog.locator(".dav-error").isHidden(), true);
   assert.equal(await dialog.locator(".np-preview").textContent(), `會建立「${ROOT}」`);
-  await dialog.getByLabel("筆記本：README.md、每日筆記、assets（圖片）資料夾").check();
+  await dialog.getByRole("radio", { name: /^筆記本/ }).check();
   assert.equal(await dialog.getByLabel(/同時建立 Git 儲存庫/).isChecked(), true);
   await dialog.getByRole("radio", { name: "藍" }).check({ force: true });
   await create.click();
@@ -114,7 +114,9 @@ test("新專案的其他入口：起始頁、專案切換器、專案總覽", as
   await dialog.getByRole("button", { name: "取消" }).click();
   await page.keyboard.press("Control+Alt+P");
   const switcher = page.locator("dialog[open]");
-  await switcher.locator("[role=option]", { hasText: "新 COMET 專案…" }).waitFor();
+  await switcher.locator("[role=option]", { hasText: /^新專案…/ }).waitFor();
+  // 只有「新專案…」（COMET 專案在對話框裡選）。
+  assert.equal(await switcher.locator("[role=option]", { hasText: "COMET" }).count(), 0);
   await switcher.locator("[role=option]", { hasText: /^新專案…/ }).click();
   await dialog.waitFor();
   await dialog.getByRole("button", { name: "取消" }).click();
@@ -130,17 +132,11 @@ test("新專案的其他入口：起始頁、專案切換器、專案總覽", as
   await context.close();
 });
 
-/** 從「☰」→「專案」開「新 COMET 專案…」。 */
+/** 從「☰」→「專案」開「新專案…」，選「COMET 專案」（選單裡沒有另外的「新 COMET 專案…」）。 */
 async function openComet(page) {
-  await page.click("#main-menu");
-  const menu = page.locator("#main-menu-popover");
-  await menu.locator(":scope > button", { hasText: "專案" }).click();
-  const sub = menu.locator(":scope > .submenu:popover-open");
-  await sub.waitFor();
-  assert.deepEqual((await sub.locator(":scope > button").allTextContents()).slice(0, 2), ["新專案…", "新 COMET 專案…"]);
-  await sub.locator(":scope > button", { hasText: "新 COMET 專案…" }).click();
-  const dialog = page.locator("dialog.new-project[open]");
-  await dialog.waitFor();
+  const dialog = await openFromMenu(page);
+  assert.equal(await page.locator("#main-menu-popover .submenu button", { hasText: "COMET" }).count(), 0);
+  await dialog.getByRole("radio", { name: /^COMET 專案/ }).check();
   return dialog;
 }
 
@@ -165,14 +161,14 @@ const ADO = {
   comet_installed: true,
 };
 
-test("新 COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet setup，完成後列出建立的檔案", async () => {
+test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet setup，完成後列出建立的檔案", async () => {
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
   const dialog = await openComet(page);
-  assert.equal(await dialog.locator("h2").textContent(), "新 COMET 專案");
-  // 專門的「新 COMET 專案」不列「一開始放什麼」。
-  assert.equal(await dialog.locator(".np-content").isHidden(), true);
+  assert.equal(await dialog.locator("h2").textContent(), "新專案");
   const section = dialog.locator(".np-comet");
   await section.waitFor();
+  // 選了「COMET 專案」：右邊的「② COMET 設定」可以填。
+  assert.equal(await section.evaluate((el) => el.inert || el.classList.contains("off")), false);
   await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
   assert.equal(await section.locator("select[name=nc-project]").inputValue(), "產品");
   assert.equal(await section.locator("select[name=nc-team]").inputValue(), "t1");
@@ -232,7 +228,7 @@ test("新 COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 c
   await context.close();
 });
 
-test("新 COMET 專案：對話框改成橫的；名稱很長的團隊也不會撐出框外；Sprint 名稱沒有編號時改傳工作板網址", async () => {
+test("COMET 專案：對話框改成橫的；名稱很長的團隊也不會撐出框外；Sprint 名稱沒有編號時改傳工作板網址", async () => {
   const longTeam = "產品團隊（很長很長的團隊名稱，用來確認選單不會撐出框外）";
   const { page, context, errors } = await open({
     desktop: {
@@ -266,7 +262,7 @@ test("新 COMET 專案：對話框改成橫的；名稱很長的團隊也不會�
   await context.close();
 });
 
-test("新 COMET 專案：comet setup 失敗時說原因，可以改在終端機一問一答", async () => {
+test("COMET 專案：comet setup 失敗時說原因，可以改在終端機一問一答", async () => {
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
   const dialog = await openComet(page);
   await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
@@ -290,7 +286,7 @@ test("新 COMET 專案：comet setup 失敗時說原因，可以改在終端機�
   await context.close();
 });
 
-test("新 COMET 專案：在背景繼續，完成時用通知告訴使用者；再打開看得到結果", async () => {
+test("COMET 專案：在背景繼續，完成時用通知告訴使用者；再打開看得到結果", async () => {
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
   const dialog = await openComet(page);
   await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
@@ -308,7 +304,7 @@ test("新 COMET 專案：在背景繼續，完成時用通知告訴使用者；�
   await context.close();
 });
 
-test("新 COMET 專案：oMarker 沒有連線 Azure DevOps 時貼上 Sprint 網址", async () => {
+test("COMET 專案：oMarker 沒有連線 Azure DevOps 時貼上 Sprint 網址", async () => {
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: true } });
   const dialog = await openComet(page);
   const section = dialog.locator(".np-comet");
@@ -341,36 +337,52 @@ test("新 COMET 專案：oMarker 沒有連線 Azure DevOps 時貼上 Sprint 網�
   await context.close();
 });
 
-test("沒裝 COMET 的電腦不顯示「新 COMET 專案」；開著 oMarker 時裝好，再打開就會出現", async () => {
+test("沒裝 COMET 的電腦：對話框只有左邊一張、不列「COMET 專案」；開著 oMarker 時裝好，再打開就會出現", async () => {
   // 第一次（啟動時）找不到，之後找得到（使用者在 oMarker 開著的時候裝好 COMET）。
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: [false, true] } });
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_installed"));
-  // 「☰」→「專案」沒有。
-  await page.click("#main-menu");
-  const menu = page.locator("#main-menu-popover");
-  await menu.locator(":scope > button", { hasText: "專案" }).click();
-  const sub = menu.locator(":scope > .submenu:popover-open");
-  await sub.waitFor();
-  assert.equal(await sub.locator(":scope > button", { hasText: "新 COMET 專案…" }).count(), 0);
-  await page.keyboard.press("Escape");
-  await page.keyboard.press("Escape");
-  // 專案切換器的「動作」沒有。
+  // 從切換器開「新專案…」：先照上次的結果只有左邊一張，重新檢查後找到了就變成左右兩張。
   await page.keyboard.press("Control+Alt+P");
   const switcher = page.locator("dialog[open]");
-  await switcher.locator("[role=option]", { hasText: /^新專案…/ }).waitFor();
-  assert.equal(await switcher.locator("[role=option]", { hasText: "新 COMET 專案…" }).count(), 0);
-  // 從切換器開「新專案…」：先照上次的結果不列「COMET 專案」，重新檢查後找到了就列出來。
   await switcher.locator("[role=option]", { hasText: /^新專案…/ }).click();
   const dialog = page.locator("dialog.new-project[open]");
   await dialog.waitFor();
-  const cometChoice = dialog.getByLabel(/COMET 專案：/);
-  await cometChoice.waitFor({ state: "visible" });
-  await dialog.getByRole("button", { name: "取消" }).click();
-  // 這時「☰」→「專案」也有了。
-  await page.click("#main-menu");
-  await menu.locator(":scope > button", { hasText: "專案" }).click();
-  await sub.waitFor();
-  await sub.locator(":scope > button", { hasText: "新 COMET 專案…" }).waitFor();
+  await dialog.getByRole("radio", { name: /^COMET 專案/ }).waitFor({ state: "visible" });
+  await dialog.locator(".np-comet").waitFor({ state: "visible" });
+  assert.equal(await dialog.evaluate((d) => d.classList.contains("with-comet")), true);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("新專案：沒選「COMET 專案」時右邊的 COMET 設定變灰、不能填，換回來時填好的值還在；下次打開預先選上次選的", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
+  const dialog = await openFromMenu(page);
+  const section = dialog.locator(".np-comet");
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  // 預設「空白」：一樣是左右兩張，右邊變灰並說明為什麼，不能操作。
+  assert.equal(await dialog.getByRole("radio", { name: /^空白/ }).isChecked(), true);
+  assert.equal(await dialog.evaluate((d) => d.classList.contains("with-comet")), true);
+  await section.locator(".nc-off-note").waitFor();
+  assert.equal(await section.evaluate((el) => el.inert && el.classList.contains("off")), true);
+  // 選「COMET 專案」：可以填，按鈕變成「建立並設定」。
+  await dialog.getByRole("radio", { name: /^COMET 專案/ }).check();
+  assert.equal(await section.evaluate((el) => el.inert || el.classList.contains("off")), false);
+  assert.equal(await section.locator(".nc-off-note").isHidden(), true);
+  assert.match(await dialog.locator(".pe-path").textContent(), /comet setup/);
+  await section.locator("input[name=nc-assigned]").fill("王小明");
+  // 換成「筆記本」再換回來：填好的值還在。
+  await dialog.getByRole("radio", { name: /^筆記本/ }).check();
+  assert.equal(await section.evaluate((el) => el.inert), true);
+  await dialog.getByRole("radio", { name: /^COMET 專案/ }).check();
+  assert.equal(await section.locator("input[name=nc-assigned]").inputValue(), "王小明");
+  // 用「筆記本」建立，下次打開預先選「筆記本」。
+  await dialog.getByRole("radio", { name: /^筆記本/ }).check();
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await dialog.getByRole("button", { name: "建立並開啟" }).click();
+  await page.locator(".toast", { hasText: "已建立專案「產品筆記」" }).waitFor();
+  const again = await openFromMenu(page);
+  assert.equal(await again.getByRole("radio", { name: /^筆記本/ }).isChecked(), true);
+  assert.equal(await again.locator(".np-comet").evaluate((el) => el.inert), true);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -379,8 +391,11 @@ test("新專案對話框：沒裝 COMET 時不列「COMET 專案」", async () =
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: false } });
   const dialog = await openFromMenu(page);
   await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "comet_installed").length >= 2);
-  assert.equal(await dialog.getByLabel(/COMET 專案：/).isHidden(), true);
-  assert.equal(await dialog.getByLabel("空白：只有一份 README.md").isChecked(), true);
+  // 不列「COMET 專案」，也沒有右邊那一張（窄的對話框）。
+  assert.equal(await dialog.locator(".np-tile:has(input[value=comet])").isHidden(), true);
+  assert.equal(await dialog.locator(".np-comet").isHidden(), true);
+  assert.equal(await dialog.evaluate((d) => d.classList.contains("with-comet")), false);
+  assert.equal(await dialog.getByRole("radio", { name: /^空白/ }).isChecked(), true);
   assert.equal(await dialog.locator("h2").textContent(), "新專案");
   assert.deepEqual(errors, []);
   await context.close();

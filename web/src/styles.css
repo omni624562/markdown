@@ -3230,36 +3230,86 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .np-preview:empty { display: none; }
 .project-edit .np-status .dav-error { margin: 0 !important; }
 .new-project .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.np-content { margin: 0 0 4px; padding: 0; border: 0; }
+/*
+ * 左右兩張卡片：「① 專案」與「② COMET 設定」，同樣的框、底色與高度（這台電腦有 COMET 時，見 .with-comet）。
+ * 沒裝 COMET 時只有左邊一張，不畫框、不顯示編號（窄的對話框）。
+ */
+.np-card { display: flex; flex-direction: column; min-width: 0; margin: 0 0 14px; }
+.np-card > h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 12px; color: var(--fg); font-size: 13.5px; }
+.np-num {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  font-size: 11.5px;
+}
+.new-project:not(.with-comet) .np-main > h3 { display: none; }
+.new-project.with-comet .np-card {
+  padding: 14px 16px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 2.5%, var(--bg));
+}
+.np-main .pe-colors { margin-top: auto; }
+/* 一開始放什麼：三張小卡（沒裝 COMET 時兩張），選到的那張是強調色。 */
+.np-content { display: flex; gap: 8px; margin: 0 0 12px; padding: 0; border: 0; }
 .np-content legend { margin-bottom: 6px; padding: 0; font-size: 13px; font-weight: 600; }
-.project-edit .np-content .pe-check { margin-bottom: 6px; }
-/* 新 COMET 專案（app/comet-setup.ts）：「COMET 設定」一段、設定中的進度與結果。 */
-.new-project[data-mode="comet"] .np-content { display: none; }
-.np-comet { margin: 0 0 10px; padding: 10px 12px 2px; border: 1px solid var(--border); border-radius: 8px; }
-.np-comet h3 { margin: 0 0 8px; color: var(--accent); font-size: 13px; }
+/* .project-edit：蓋過對話框裡 label 的粗體與下方間距。 */
+.project-edit .np-tile {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px 10px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  font-weight: 400;
+  cursor: pointer;
+}
+.np-tile[hidden] { display: none; }
+.np-tile input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.np-tile b { font-size: 13px; }
+.np-tile small { color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.np-tile:hover { border-color: var(--accent); }
+.np-tile:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.np-tile:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ② COMET 設定（app/comet-setup.ts）：只有選了「COMET 專案」時能填；其他時候變灰（虛線框、淡淡的），填好的值留著。 */
+.nc-off-note { display: none; margin: -6px 0 10px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.np-comet.off .nc-off-note { display: block; }
+.new-project.with-comet .np-comet.off { border-style: dashed; background: color-mix(in srgb, var(--fg) 1%, var(--bg)); }
+.np-comet.off > h3 { color: var(--muted); }
+.np-comet.off > h3 .np-num { background: var(--border-strong); }
+.np-comet.off > :not(h3, .nc-off-note) { opacity: 0.45; }
 /* minmax(0, 1fr)：選單裡有很長的團隊、Sprint 名稱時，欄位也不會撐出框外。 */
 .nc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; }
 .nc-grid > label { min-width: 0; }
+/* Azure DevOps 專案與團隊各占一整行（名稱很長也看得完整），Sprint 與 Sprint 天數同一行（天數只要幾位數）。 */
+.np-comet .nc-ado { grid-template-columns: minmax(0, 1fr) 104px; }
+.np-comet .nc-ado > label:nth-child(-n + 2) { grid-column: 1 / -1; }
 .project-edit .np-comet select, .project-edit .np-comet input:not([type="checkbox"]) { width: 100%; min-width: 0; box-sizing: border-box; }
-/* 有「COMET 設定」時對話框改成橫的：左邊是專案本身的欄位，右邊是 COMET 設定，不用捲動。視窗太窄時照舊上下排。 */
+/* 有 COMET 時對話框是橫的：左右兩張卡片等寬、等高，不用捲動。視窗太窄時上下排。 */
+.choice.new-project.with-comet { width: min(940px, calc(100vw - 32px)); }
 @media (min-width: 760px) {
-  .choice.new-project.with-comet { width: min(880px, calc(100vw - 32px)); }
   .new-project.with-comet form {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "title title" "hint hint" "name comet" "where comet" "status comet" "content comet" "git comet" "colors comet" "actions actions";
-    grid-template-rows: auto auto auto auto auto auto auto 1fr auto;
-    column-gap: 20px;
+    grid-template-areas: "title title" "hint hint" "main comet" "actions actions";
+    grid-template-rows: auto auto 1fr auto;
+    column-gap: 14px;
   }
   .new-project.with-comet #np-title { grid-area: title; }
   .new-project.with-comet .pe-path { grid-area: hint; }
-  .new-project.with-comet .np-f-name { grid-area: name; }
-  .new-project.with-comet .np-f-where { grid-area: where; }
-  .new-project.with-comet .np-status { grid-area: status; }
-  .new-project.with-comet .np-content { grid-area: content; }
-  .new-project.with-comet .np-comet { grid-area: comet; align-self: start; }
-  .new-project.with-comet .np-f-git { grid-area: git; }
-  .new-project.with-comet .pe-colors { grid-area: colors; align-self: start; }
+  .new-project.with-comet .np-main { grid-area: main; }
+  .new-project.with-comet .np-comet { grid-area: comet; }
   .new-project.with-comet .choice-actions { grid-area: actions; }
 }
 .nc-grid .nc-wide { grid-column: 1 / -1; }
@@ -3313,8 +3363,6 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .nc-toggle { margin: 0 0 8px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer; }
 .nc-toggle:hover { text-decoration: underline; }
 
-/* 選了 COMET 專案、這台電腦找不到 comet 指令時的提醒（縮排對齊選項的文字）。 */
-.choice .np-warn { margin: -2px 0 8px 22px; color: light-dark(#b45309, #fbbf24); font-size: 12.5px; line-height: 1.6; }
 
 /* ---- 編輯器的尋找與取代列（加上 .cm-editor，蓋過 CodeMirror 內建搜尋列的樣式） ---- */
 .cm-editor .cm-panels .find-panel { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; font: 13px var(--font-ui); }

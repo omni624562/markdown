@@ -46,7 +46,6 @@ import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
 import { aiAppPresent } from "./app/ai-app-presence.ts";
-import { cometPresent } from "./app/comet-presence.ts";
 import { cometBadge } from "./ui/comet-badge.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage } from "./ui/start-page.ts";
@@ -2180,8 +2179,7 @@ const projectUi = desktop
       current: () => workspaceRoot?.path ?? null,
       open: (path) => openRecentFolder(path),
       openFolder: () => void commands.run("open-folder").catch(reportError),
-      newProject: (comet) => void commands.run(comet ? "new-comet-project" : "new-project").catch(reportError),
-      cometInstalled: cometPresent,
+      newProject: () => void commands.run("new-project").catch(reportError),
       aiAppInstalled: aiAppPresent,
       close: () => void commands.run("close-folder").catch(reportError),
       closeAndWait: () => closeProject(),
@@ -3400,7 +3398,6 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     icon: "folder-kanban",
     items: [
       "new-project",
-      "new-comet-project",
       "switch-project",
       "project-overview",
       "open-in-codex",

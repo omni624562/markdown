@@ -1,5 +1,5 @@
 /**
- * 新 COMET 專案的設定（新專案對話框裡的「COMET 設定」一段，見 app/new-project.ts）。
+ * COMET 專案的設定（新專案對話框右邊的「② COMET 設定」，見 app/new-project.ts）。
  *
  * - 填寫：oMarker 已經連線 Azure DevOps 時，從清單選專案、團隊、Sprint（預設目前的 Sprint），Sprint 天數從
  *   Sprint 的日期算；指派給預設是 oMarker 目前登入的帳號。沒有連線時改成貼上 Sprint 工作板的網址。
@@ -60,6 +60,7 @@ export function isSprintUrl(url: string): boolean {
 export function cometForm(host: HTMLElement, changed: () => void): CometForm {
   const tr = {
     heading: t("COMET 設定"),
+    offNote: t("左邊選「COMET 專案」時才會用到這些設定。"),
     project: t("Azure DevOps 專案"),
     team: t("團隊"),
     sprint: t("Sprint"),
@@ -72,7 +73,8 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     local: t("設定本機 PATH 與 VSCode（第一次使用 COMET 需要）"),
   };
   host.innerHTML = `
-    <h3>${tr.heading}</h3>
+    <h3><span class="np-num" aria-hidden="true">2</span>${tr.heading}</h3>
+    <p class="nc-off-note">${tr.offNote}</p>
     <div class="nc-grid nc-ado">
       <label>${tr.project}<select name="nc-project"></select></label>
       <label>${tr.team}<select name="nc-team"></select></label>
@@ -243,7 +245,7 @@ export function runCometSetup(
   ];
   const setupStep = steps[info.git ? 2 : 1];
   const smokeStep = req.connectionTest ? steps[steps.length - 1] : null;
-  const title = t("新 COMET 專案");
+  const title = t("新專案");
   view.innerHTML = `
     <h2 id="nc-title">${title}</h2>
     <p class="pe-path nc-hint"></p>
