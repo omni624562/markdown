@@ -1,6 +1,7 @@
 /**
  * 工作項目的附件：「加入附件…」選檔案、把檔案拖到工作項目上，都會上傳後掛到工作項目；
- * 在留言框貼上圖片會上傳成附件並插入圖片。用假的原生端（見 helpers.mjs）。
+ * 在留言框貼上圖片會上傳成附件並插入圖片；點附件時只有允許清單裡的類型直接開啟，其他只能另存新檔。
+ * 用假的原生端（見 helpers.mjs）。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -100,6 +101,51 @@ test("附件：在留言框貼上圖片，上傳後插入圖片，送出的留�
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_update"));
   const [change] = await updates(page);
   assert.match(change.comment, /<img [^>]*src="https:\/\/ado\.test\/c\/_apis\/wit\/attachments\/img1\?fileName=image\.png"/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("附件：PDF 直接開啟；.rdp 這類不在允許清單裡的類型（連結的檔名結尾多一個點也一樣）只能另存新檔", async () => {
+  const pdf = "https://ado.test/c/_apis/wit/attachments/p1";
+  const rdp = "https://ado.test/c/_apis/wit/attachments/r1";
+  const created = "2026-10-29T03:00:00Z";
+  const detail = {
+    ...DETAIL,
+    description: `<p>請看 <a href="${rdp}?fileName=${encodeURIComponent("遠端.rdp.")}">遠端連線</a></p>`,
+    attachments: [
+      { name: "規格書.pdf", url: pdf, size: 2048, created, comment: null },
+      { name: "遠端.rdp", url: rdp, size: 512, created, comment: null },
+    ],
+  };
+  const { page, context, errors } = await open({
+    desktop: { ...desktop, ado_work_item: detail, ado_attachment_save: "C:\\Users\\me\\Downloads\\遠端.rdp" },
+  });
+  await openItem(page);
+  const names = async (cmd) => (await calls(page)).filter((c) => c.cmd === cmd).map((c) => c.args.name);
+  const count = (cmd, n) => page.waitForFunction(([cmd, n]) => window.__fake.calls.filter((c) => c.cmd === cmd).length === n, [cmd, n]);
+  const tiles = page.locator(".ado-att");
+
+  // PDF：點小方塊就下載後用預設的程式開啟。
+  await tiles.filter({ hasText: "規格書.pdf" }).click();
+  await count("ado_attachment_open", 1);
+  assert.deepEqual(await names("ado_attachment_open"), ["規格書.pdf"]);
+
+  // .rdp：小方塊寫明只能另存，點了是另存新檔。
+  const rdpTile = tiles.filter({ hasText: "遠端.rdp" });
+  assert.match(await rdpTile.getAttribute("title"), /另存新檔（為了安全不直接開啟）/);
+  await rdpTile.click();
+  await count("ado_attachment_save", 1);
+  assert.deepEqual(await names("ado_attachment_save"), ["遠端.rdp"]);
+
+  // 說明裡連到 .rdp 附件的連結：不開啟，提示改用另存新檔。
+  await page.locator(".issue-body a", { hasText: "遠端連線" }).click();
+  const tip = page.locator(".toast", { hasText: "為了安全不直接開啟" });
+  await tip.waitFor();
+  assert.match(await tip.textContent(), /直接開啟的只有 PDF/);
+  await tip.locator("button", { hasText: "另存新檔" }).click();
+  await count("ado_attachment_save", 2);
+  assert.deepEqual(await names("ado_attachment_save"), ["遠端.rdp", "遠端.rdp."]);
+  assert.deepEqual(await names("ado_attachment_open"), ["規格書.pdf"], "只有 PDF 直接開啟");
   assert.deepEqual(errors, []);
   await context.close();
 });

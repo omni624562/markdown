@@ -128,7 +128,7 @@ export const common: Record<string, Translation> = {
   "按一下開啟": "Click to open",
   "另存「{name}」": "Save \"{name}\" As",
   "已存到 {path}": "Saved to {path}",
-  "「{name}」是會自己執行的檔案，為了安全不直接開啟；需要的話請用「另存新檔」，確認來源可信再開啟。": "\"{name}\" is a file that runs by itself, so it isn't opened directly for safety. Use \"Save As\" if you need it, and open it only if you trust the source.",
+  "「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP 與 Word、Excel、PowerPoint 文件。需要的話請用「另存新檔」，確認來源可信再開啟。": "\"{name}\" isn't opened directly for safety. Only PDFs, images, text files, ZIP files, and Word, Excel, and PowerPoint documents open directly. Use \"Save As\" if you need it, and open it only if you trust the source.",
   "最新的在上面": "Newest first",
   "最舊的在上面": "Oldest first",
   "切換留言的排列順序": "Change the order of comments",

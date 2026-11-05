@@ -52,7 +52,7 @@ export const repoImagesPlugin: PreviewPlugin = {
 
 /**
  * 工作項目的附件（連到連線中伺服器上的附件時回傳 true）：文字檔開成唯讀分頁，圖片放大檢視，
- * 其他檔案下載後用預設的程式開啟；會自己執行的檔案改成另存新檔。
+ * PDF、Office 文件、ZIP 等允許清單裡的類型下載後用預設的程式開啟；其他檔案為了安全只能另存新檔。
  */
 export function openAttachment(href: string): boolean {
   const base = app.ado?.account?.url;
@@ -66,8 +66,8 @@ export function openAttachment(href: string): boolean {
       .adoImage(link.url)
       .then((src) => openLightbox(src, link.name))
       .catch(reportError);
-  } else if (kind === "runnable") {
-    toast(t("「{name}」是會自己執行的檔案，為了安全不直接開啟；需要的話請用「另存新檔」，確認來源可信再開啟。", { name: link.name }), {
+  } else if (kind === "save") {
+    toast(t("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP 與 Word、Excel、PowerPoint 文件。需要的話請用「另存新檔」，確認來源可信再開啟。", { name: link.name }), {
       tone: "error",
       action: { label: t("另存新檔"), run: () => saveAttachment(href) },
     });

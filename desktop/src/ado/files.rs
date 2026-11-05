@@ -1,6 +1,7 @@
 //! 儲存庫裡的文字檔與工作項目的附件。
 
 use super::*;
+use std::path::Path;
 
 /// 文字檔最多讀幾個位元組。
 pub(super) const TEXT_LIMIT: u64 = 5 * 1024 * 1024;
@@ -110,59 +111,53 @@ pub async fn ado_attachment_text(app: AppHandle, url: String) -> Result<String, 
 /// 附件最大多大（直接開啟、另存新檔都一樣）。
 const ATTACHMENT_LIMIT: u64 = 200 * 1024 * 1024;
 
-/// 下載後會自己執行（或安裝、捷徑）的檔案：不直接開啟，只能另存新檔。
-const RUNNABLE: &[&str] = &[
-    "exe",
-    "com",
-    "bat",
-    "cmd",
-    "ps1",
-    "psm1",
-    "psd1",
-    "vbs",
-    "vbe",
-    "js",
-    "jse",
-    "wsf",
-    "wsh",
-    "msi",
-    "msp",
-    "mst",
-    "scr",
-    "pif",
-    "lnk",
-    "url",
-    "hta",
-    "cpl",
-    "jar",
-    "reg",
-    "dll",
-    "sys",
-    "inf",
-    "scf",
-    "appx",
-    "appxbundle",
-    "msix",
-    "msixbundle",
-    "application",
-    "appref-ms",
-    "gadget",
-    "iso",
-    "img",
-    "vhd",
-    "vhdx",
-    "chm",
-    "settingcontent-ms",
-    "sh",
-    "command",
-    "app",
+/// 下載後可以直接用預設的程式開啟的附件（副檔名，小寫）；其他的只能另存新檔。
+/// 用允許清單而不是封鎖清單：Windows 上會自己執行、或交給其他程式解讀而能執行指令的副檔名太多
+/// （.rdp、.msc、.library-ms、有巨集的 Office 檔…），列不完。
+/// .doc、.xls、.ppt 可以有巨集，但檔案會標上「從網際網路下載」（見 [`mark_downloaded`]），
+/// Office 會先用受保護的檢視開啟。前端 `web/src/attachments.ts` 的 `OPENABLE` 要一起改。
+const OPENABLE: &[&str] = &[
+    "pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp", "txt", "md", "csv", "log", "json", "docx",
+    "xlsx", "pptx", "doc", "xls", "ppt", "zip",
 ];
 
-/// 附件檔名的副檔名是不是會自己執行的檔案（不分大小寫；結尾的點和空白不算）。
-pub(super) fn is_runnable(name: &str) -> bool {
-    let name = name.trim_end_matches(['.', ' ']);
-    name.rsplit_once('.')
-        .is_some_and(|(_, ext)| RUNNABLE.contains(&ext.to_ascii_lowercase().as_str()))
+/// 附件檔名照 Windows 的方式看到的副檔名（小寫）：結尾的點和空白會被去掉（`a.exe.` 就是 `a.exe`），
+/// 副檔名是最後一個點之後（`a.pdf.exe` 是 exe）。檔名含 `:`（NTFS 的替代資料流，`a.pdf:b.exe`）、
+/// 路徑分隔符號或控制字元時，存成檔案後不一定是看到的樣子，回傳 None；沒有副檔名也回傳 None。
+pub(super) fn attachment_ext(name: &str) -> Option<String> {
+    if name
+        .chars()
+        .any(|c| c.is_control() || matches!(c, ':' | '/' | '\\'))
+    {
+        return None;
+    }
+    let (_, ext) = name.trim_end_matches(['.', ' ']).rsplit_once('.')?;
+    Some(ext.to_ascii_lowercase())
+}
+
+/// 附件可以下載後直接用預設的程式開啟嗎（副檔名在允許清單裡）。
+pub(super) fn opens_directly(name: &str) -> bool {
+    attachment_ext(name).is_some_and(|ext| OPENABLE.contains(&ext.as_str()))
+}
+
+/// `Zone.Identifier` 資料流的內容：網際網路區域（ZoneId=3）。不寫伺服器的網址。
+#[cfg(windows)]
+const ZONE_IDENTIFIER: &str = "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=about:internet\r\n";
+
+/// 把下載的附件標上「從網際網路下載」（Mark of the Web）：寫入檔案的 `Zone.Identifier` 資料流，
+/// Windows 的 SmartScreen、Office 的受保護的檢視才會把它當成外來的檔案。
+/// 寫不進去（例如 FAT32 隨身碟、不支援資料流的網路磁碟）時略過，不影響開啟或存檔。其他平台不做事。
+fn mark_downloaded(path: &Path) {
+    #[cfg(windows)]
+    {
+        let mut stream = path.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        if let Err(e) = fs::write(&stream, ZONE_IDENTIFIER) {
+            eprintln!("Zone.Identifier: {}: {e}", path.display());
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = path;
 }
 
 /// 附件存到磁碟用的檔名：拿掉路徑與 Windows 不能用的字元，太長時截短；空的時候用「附件」。
@@ -242,8 +237,8 @@ fn download_attachment(url: &str, pat: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))
 }
 
-/// 直接開啟附件：下載到暫存資料夾（每次一個亂數命名的資料夾），再用 Windows 預設的程式開啟。
-/// 會自己執行的檔案不直接開啟。
+/// 直接開啟附件：下載到暫存資料夾（每次一個亂數命名的資料夾），標上「從網際網路下載」，
+/// 再用 Windows 預設的程式開啟。只開允許清單裡的檔案類型（[`OPENABLE`]），其他的只能另存新檔。
 #[tauri::command]
 pub async fn ado_attachment_open(app: AppHandle, url: String, name: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
@@ -252,8 +247,9 @@ pub async fn ado_attachment_open(app: AppHandle, url: String, name: String) -> R
         return Err(tr!("只能讀取 Azure DevOps 伺服器上的附件"));
     }
     let file = safe_file_name(&name);
-    if is_runnable(&file) {
-        return Err(tr!("「{name}」是會自己執行的檔案，為了安全不直接開啟；需要的話請用「另存新檔」，確認來源可信再開啟。", name = file));
+    // 原本的檔名與實際存檔的檔名都要是允許的類型。
+    if !opens_directly(&name) || !opens_directly(&file) {
+        return Err(tr!("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP 與 Word、Excel、PowerPoint 文件。需要的話請用「另存新檔」，確認來源可信再開啟。", name = file));
     }
     let path = crate::io::blocking_for(Duration::from_secs(300), move || {
         let bytes = download_attachment(&url, &pat)?;
@@ -266,6 +262,7 @@ pub async fn ado_attachment_open(app: AppHandle, url: String, name: String) -> R
             .map_err(|e| crate::io::describe(&e, &tr!("無法建立暫存資料夾")))?;
         let path = dir.join(&file);
         fs::write(&path, bytes).map_err(|e| crate::io::describe(&e, &tr!("無法寫入檔案")))?;
+        mark_downloaded(&path);
         Ok(path)
     })
     .await?;
@@ -274,7 +271,7 @@ pub async fn ado_attachment_open(app: AppHandle, url: String, name: String) -> R
         .map_err(|e| tr!("無法開啟附件：{e}", e = e))
 }
 
-/// 附件另存新檔：跳出存檔對話框，存到使用者選的位置；按取消時回傳 null。
+/// 附件另存新檔：跳出存檔對話框，存到使用者選的位置並標上「從網際網路下載」；按取消時回傳 null。
 #[tauri::command]
 pub async fn ado_attachment_save(
     app: AppHandle,
@@ -300,7 +297,9 @@ pub async fn ado_attachment_save(
     crate::io::blocking_for(Duration::from_secs(300), move || {
         let bytes = download_attachment(&url, &pat)?;
         crate::files::write_atomic(&p, &bytes)
-            .map_err(|e| crate::io::describe(&e, &tr!("無法寫入檔案")))
+            .map_err(|e| crate::io::describe(&e, &tr!("無法寫入檔案")))?;
+        mark_downloaded(&p);
+        Ok(())
     })
     .await?;
     Ok(Some(path.to_string_lossy().into_owned()))
