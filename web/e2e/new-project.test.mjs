@@ -184,6 +184,21 @@ test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet
   const progress = dialog.locator(".np-progress");
   await progress.locator(".nc-steps li[data-state=run]", { hasText: "執行 comet setup" }).waitFor();
   assert.equal(await dialog.locator("form").isHidden(), true);
+  // 設定中：上面是狀態，右邊是填好的設定（Sprint 附上日期與天數，最後是資料夾）。
+  assert.equal(await progress.locator("#nc-title").textContent(), "正在設定「產品筆記」…");
+  assert.equal(await progress.locator(".nc-badge").getAttribute("data-state"), "run");
+  assert.deepEqual(
+    await progress.locator(".nc-summary dd").evaluateAll((dd) => dd.map((x) => [x.previousElementSibling.textContent, x.firstChild.textContent, x.querySelector(".nc-sub")?.textContent ?? ""])),
+    [
+      ["Azure DevOps 專案", "產品", ""],
+      ["團隊", "Contoso", ""],
+      ["Sprint", "Sprint 12", "11/2 – 11/13・14 天"],
+      ["指派給", "CONTOSO\\wang", ""],
+      ["資料夾", ROOT, ""],
+    ],
+  );
+  const size = () => dialog.evaluate((d) => { const r = d.getBoundingClientRect(); return { width: r.width, height: r.height }; });
+  const runSize = await size();
   assert.deepEqual(await setupRuns(page), [
     {
       dir: ROOT,
@@ -205,6 +220,7 @@ test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet
     { kind: "line", text: "COMET setup" },
     { kind: "line", text: `已建立 / 更新：${ROOT}\\.comet.json` },
     { kind: "line", text: `已建立 / 更新：${ROOT}\\.comet\\contexts\\sprint-context.json` },
+    { kind: "line", text: `已建立 SDD workspace：${ROOT}\\docs\\spec\\（新增 9 份基線文件）` },
     { kind: "line", text: "查詢中：Sprint=產品\\Sprint 12" },
   ]);
   await progress.locator(".nc-steps li[data-state=run]", { hasText: "查詢我的工作" }).waitFor();
@@ -213,14 +229,33 @@ test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet
     { kind: "line", text: `已產生 AGENTS.md（COMET bootstrap）：${ROOT}\\AGENTS.md` },
     { kind: "done", ok: true, code: 0, error: null },
   ]);
-  await progress.locator(".nc-result.ok", { hasText: "「產品筆記」設定完成" }).waitFor();
+  await progress.locator(".nc-badge[data-state=ok]").waitFor();
+  assert.equal(await progress.locator("#nc-title").textContent(), "「產品筆記」建立好了");
+  assert.equal(await progress.locator(".nc-hint").textContent(), "已切換到這個專案，也查詢了你的工作，確認連得上 Azure DevOps。");
   assert.deepEqual(await progress.locator(".nc-steps li").evaluateAll((li) => li.map((x) => x.dataset.state)), ["done", "done", "done", "done"]);
-  assert.equal(await progress.locator(".nc-files pre").textContent(), ".comet.json\n.comet/contexts/sprint-context.json\nAGENTS.md");
-  // 成功時輸出收起來，按一下才展開。
+  // 建立的檔案：資料夾以 / 結尾，括號裡的說明分開顯示。
+  assert.equal(await progress.locator(".nc-count").textContent(), "4");
+  assert.deepEqual(
+    await progress.locator(".nc-files li").evaluateAll((li) => li.map((x) => [x.querySelector("code").textContent, x.querySelector(".nc-sub")?.textContent ?? ""])),
+    [
+      [".comet.json", ""],
+      [".comet/contexts/sprint-context.json", ""],
+      ["docs/spec/", "新增 9 份基線文件"],
+      ["AGENTS.md", ""],
+    ],
+  );
+  // 設定中與完成時對話框一樣大。
+  assert.deepEqual(await size(), runSize);
+  // 成功時輸出收起來，在同一格切換；對話框大小不變。
   assert.equal(await progress.locator(".nc-log").isHidden(), true);
   await progress.getByRole("button", { name: "顯示完整輸出" }).click();
   assert.equal(await progress.locator(".nc-log").isVisible(), true);
-  assert.equal(await progress.getByRole("button", { name: "開啟 AGENTS.md" }).count(), 1);
+  assert.equal(await progress.locator(".nc-files").isHidden(), true);
+  assert.deepEqual(await size(), runSize);
+  await progress.getByRole("button", { name: "顯示建立的檔案" }).click();
+  assert.equal(await progress.locator(".nc-files").isVisible(), true);
+  // 只有「完成」一個按鈕（不另外開 AGENTS.md）。
+  assert.deepEqual(await progress.locator(".choice-actions button").allTextContents(), ["完成"]);
   await progress.getByRole("button", { name: "完成" }).click();
   assert.equal(await page.locator("dialog.new-project[open]").count(), 0);
   assert.equal(await cometSetups(page), 0);
@@ -275,7 +310,9 @@ test("COMET 專案：comet setup 失敗時說原因，可以改在終端機一�
     { kind: "line", text: "找不到使用者 CONTOSO\\wang" },
     { kind: "done", ok: false, code: 1, error: null },
   ]);
-  await progress.locator(".nc-result.fail", { hasText: "comet setup 沒有完成（結束代碼 1）" }).waitFor();
+  await progress.locator(".nc-badge[data-state=fail]").waitFor();
+  assert.equal(await progress.locator("#nc-title").textContent(), "「產品筆記」的 COMET 設定沒有完成");
+  assert.equal(await progress.locator(".nc-hint").textContent(), "comet setup 沒有完成（結束代碼 1）。");
   // 失敗時輸出留著，看得到原因。
   assert.equal(await progress.locator(".nc-log").isVisible(), true);
   assert.equal(await progress.locator(".nc-steps li[data-state=fail]").textContent(), "執行 comet setup");
@@ -299,7 +336,7 @@ test("COMET 專案：在背景繼續，完成時用通知告訴使用者；再�
   const toastEl = page.locator(".toast", { hasText: "「產品筆記」的 COMET 設定完成" });
   await toastEl.waitFor();
   await toastEl.getByRole("button", { name: "查看" }).click();
-  await page.locator("dialog.new-project[open] .nc-result.ok").waitFor();
+  await page.locator("dialog.new-project[open] .nc-badge[data-state=ok]").waitFor();
   assert.deepEqual(errors, []);
   await context.close();
 });

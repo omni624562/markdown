@@ -3336,7 +3336,42 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 }
 .choice .nc-note { margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.6; }
 .project-edit .np-comet .pe-check { margin-bottom: 6px; }
-.nc-steps { margin: 4px 0 12px; padding: 0; list-style: none; }
+/*
+ * 設定中、完成（app/comet-setup.ts）：和表單一樣寬。上面是狀態，左邊「做了什麼」、右邊「COMET 設定」，
+ * 下面那一格高度固定（設定中是即時輸出，完成後是建立的檔案），設定中與完成時對話框一樣大。
+ */
+.nc-head { display: flex; gap: 12px; align-items: center; margin: 0 0 16px; }
+.np-progress .nc-head h2 { margin: 0 0 2px; font-size: 17px; }
+.nc-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.nc-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-fg, #fff);
+}
+.nc-badge .icon { width: 22px; height: 22px; stroke-width: 2.6; }
+.nc-badge[data-state="ok"] { background: var(--accent); }
+.nc-badge[data-state="fail"] { background: var(--danger); }
+.nc-badge[data-state="run"]::before {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid var(--accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: nc-spin 0.8s linear infinite;
+}
+.nc-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; }
+@media (max-width: 759px) {
+  .nc-cols { grid-template-columns: minmax(0, 1fr); }
+}
+.np-progress .np-card > h3 { margin-bottom: 10px; }
+.nc-steps { margin: 0 0 4px; padding: 0; list-style: none; }
 .nc-steps li { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 13px; }
 .nc-steps li[data-state="wait"] { color: var(--muted); }
 .nc-mark { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 16px; height: 16px; }
@@ -3354,9 +3389,31 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
   animation: nc-spin 0.8s linear infinite;
 }
 @keyframes nc-spin { to { transform: rotate(360deg); } }
+.nc-summary { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0 0 6px; font-size: 13px; }
+.nc-summary dt { color: var(--muted); }
+.nc-summary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.nc-sub { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.nc-bottom { display: flex; flex-direction: column; height: 132px; margin: 0 0 14px; }
+.np-progress .nc-bottom > * { flex: 1; min-height: 0; margin: 0; }
+.np-progress .nc-bottom > [hidden] { display: none; }
+.nc-count { padding: 0 7px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; line-height: 18px; }
+.nc-files ul {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px 18px;
+  align-content: start;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.nc-files li { display: flex; gap: 7px; align-items: center; min-width: 0; font-size: 12.5px; }
+.nc-files li .icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
+.nc-files code { overflow: hidden; font: 12px/1.6 var(--font-mono, ui-monospace, Consolas, monospace); text-overflow: ellipsis; white-space: nowrap; }
+.nc-files .nc-sub { flex: none; margin-left: 2px; }
 .nc-log {
-  max-height: 220px;
-  margin: 0 0 12px;
   padding: 8px 10px;
   overflow: auto;
   border-radius: 8px;
@@ -3366,12 +3423,9 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.nc-result { margin: 0 0 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.7; }
-.nc-result.ok { background: var(--accent-soft); color: var(--accent); }
-.nc-result.fail { background: var(--danger-soft, #fdecea); color: var(--danger); }
-.nc-files p { margin: 0 0 2px; font-size: 12.5px; }
-.nc-files pre { margin: 0 0 8px; font: 12px/1.7 var(--font-mono, ui-monospace, Consolas, monospace); }
-.nc-toggle { margin: 0 0 8px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer; }
+.nc-foot { display: flex; gap: 8px; align-items: center; }
+.nc-foot .choice-actions { margin: 0 0 0 auto; }
+.nc-toggle { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer; }
 .nc-toggle:hover { text-decoration: underline; }
 
 

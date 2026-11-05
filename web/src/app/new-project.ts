@@ -151,6 +151,7 @@ function build(): HTMLDialogElement {
     const color = d.querySelector<HTMLInputElement>("input[name=color]:checked")?.value || null;
     const isComet = kindOf(d) === "comet";
     const setup = isComet && cometOk ? comet.request() : null;
+    const summary = setup ? comet.summary() : [];
     const git = q<HTMLInputElement>("input[name=git]").checked;
     void desktop!
       .createProject({
@@ -162,17 +163,23 @@ function build(): HTMLDialogElement {
       })
       .then(async (folder) => {
         storage.save(KIND_KEY, kindOf(d));
-        // COMET 專案：對話框留著，換成設定的進度。
-        if (setup) showProgress(d);
-        else d.close();
-        // 先存顏色再切換：側邊欄與狀態列的專案名稱一出現就是選的顏色。
-        if (color) await desktop!.projectUpdate(folder.path, { name: null, color, group: null, pinned: false }).catch(() => {});
-        await app.setWorkspace(folder);
-        app.showPanel("files");
-        await app.openPath(joinPath(folder.path, "README.md"));
+        const switched = (async () => {
+          // 先存顏色再切換：側邊欄與狀態列的專案名稱一出現就是選的顏色。
+          if (color) await desktop!.projectUpdate(folder.path, { name: null, color, group: null, pinned: false }).catch(() => {});
+          await app.setWorkspace(folder);
+          app.showPanel("files");
+          await app.openPath(joinPath(folder.path, "README.md"));
+        })();
         if (setup) {
-          await runCometSetup(d, q(".np-progress"), { ...setup, dir: folder.path }, { name: projectName, git });
-        } else if (!isComet) {
+          // COMET 專案：對話框留著，馬上換成設定的進度（不會有空白的一下）；切換到新專案、開好 README.md 才執行 comet setup。
+          showProgress(d);
+          const rows = [...summary, { label: t("資料夾"), value: folder.path }];
+          await runCometSetup(d, q(".np-progress"), { ...setup, dir: folder.path }, { name: projectName, git, summary: rows }, switched);
+          return;
+        }
+        d.close();
+        await switched;
+        if (!isComet) {
           toast(t("已建立專案「{name}」", { name: projectName }), { tone: "success" });
         } else {
           toast(t("已建立專案「{name}」。這台電腦找不到 comet 指令，裝好 COMET CLI 之後，在終端機執行 comet setup。", { name: projectName }), {
