@@ -3015,13 +3015,6 @@ function addTab(doc: Doc, after?: string | null): void {
 async function closeTab(id: string): Promise<void> {
   const doc = docs.find((d) => d.id === id);
   if (!doc) return;
-  // 關掉並排中的文件：先關閉並排（另一份文件留在左邊）。
-  if (paneDocs.side === doc) closeSide();
-  else if (paneDocs.side && paneDocs.main === doc) {
-    const keep = paneDocs.side;
-    closeSide();
-    activate(keep);
-  }
   if (doc === active) stash();
   if (doc.dirty) {
     const choice = await choose(t("要存檔嗎？"), t("「{name}」有尚未存檔的變更。", { name: docName(doc) }), [
@@ -3036,6 +3029,13 @@ async function closeTab(id: string): Promise<void> {
     } else if (choice !== "discard") {
       return;
     }
+  }
+  // 確定要關閉了才處理並排（問存檔時按「取消」就什麼都不變）：關掉並排中的文件時先關閉並排，另一份文件留在左邊。
+  if (paneDocs.side === doc) closeSide();
+  else if (paneDocs.side && paneDocs.main === doc) {
+    const keep = paneDocs.side;
+    closeSide();
+    activate(keep);
   }
   if (pendingDraft?.id === doc.id) pendingDraft = null;
   rememberClosed(doc);
