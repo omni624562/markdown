@@ -6,6 +6,7 @@ import { t } from "../i18n.ts";
 import { subtreeEnd, moveSection, sectionRange, swapSection } from "../sections.ts";
 import { app } from "./context.ts";
 import { docName, refreshDocName } from "./doc-names.ts";
+import { renderDocLanguage } from "./doc-language.ts";
 import { renderFileFormat } from "./file-format.ts";
 
 
@@ -118,6 +119,7 @@ export function renderSaveState(): void {
   app.$("#tab-bar").classList.toggle("blank", blank);
   markBlankTab();
   app.editor.setFileName(app.cur.fileName);
+  renderDocLanguage();
   const title = blank ? "oMarker" : `${dirty ? "● " : ""}${docName(app.active)} - oMarker`;
   if (document.title !== title) {
     document.title = title;

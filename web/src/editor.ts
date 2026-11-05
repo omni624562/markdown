@@ -162,6 +162,12 @@ export class Editor {
   #fileName = "";
   /** 依檔名載入好的語法（`null` 表示這個檔名沒有對應的語法）。 */
   #syntax: LanguageSupport | null = null;
+  /** 使用者選的語言（見 setLanguage）；`null` 是依副檔名。 */
+  #languageOverride: string | null = null;
+  /** 目前上色用的語言名稱。 */
+  #syntaxName: string | null = null;
+  /** 每次換語言加一，比較晚載入完成的舊語言不套用。 */
+  #syntaxSeq = 0;
 
   /**
    * `share`：和另一個編輯器共用擴充（並排編輯的兩個編輯器）。同一份文件的狀態（內容、游標、復原紀錄）
@@ -309,15 +315,40 @@ export class Editor {
   setFileName(name: string): void {
     if (name === this.#fileName) return;
     this.#fileName = name;
+    if (this.#languageOverride === null) this.#loadSyntax();
+  }
+
+  /**
+   * 使用者在狀態列選的語言（app/doc-language.ts）：`null` 是依副檔名，`""` 是純文字（不上色），
+   * 其他是 @codemirror/language-data 的語言名稱（例如 "YAML"、"Python"）。
+   */
+  setLanguage(name: string | null): void {
+    if (name === this.#languageOverride) return;
+    this.#languageOverride = name;
+    this.#loadSyntax();
+  }
+
+  /** 純文字目前用哪個語言上色（依副檔名或使用者選的）；不上色時是 `null`。 */
+  get languageName(): string | null {
+    return this.#syntaxName;
+  }
+
+  #loadSyntax(): void {
+    const name = this.#languageOverride;
+    const description =
+      name === null ? LanguageDescription.matchFilename(languages, this.#fileName) : name ? LanguageDescription.matchLanguageName(languages, name, false) : null;
+    this.#syntaxName = description?.name ?? null;
     const had = this.#syntax !== null;
     this.#syntax = null;
     // 這個方法可能在編輯器更新的過程中被呼叫，所以稍後再套用。
     if (had) queueMicrotask(() => this.#applySyntax());
-    LanguageDescription.matchFilename(languages, name)
-      ?.load()
+    if (!description) return;
+    const token = ++this.#syntaxSeq;
+    description
+      .load()
       .then((support) => {
-        // 載入期間可能已經換了檔案。
-        if (this.#fileName !== name) return;
+        // 載入期間可能已經換了檔案或語言。
+        if (token !== this.#syntaxSeq) return;
         this.#syntax = support;
         this.#applySyntax();
       })
