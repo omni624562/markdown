@@ -576,6 +576,7 @@ kbd {
   [data-panel-style="spaced"] .workspace[data-view="split"] > .editor-pane { border-right: 0; border-bottom-right-radius: 0; }
   [data-panel-style="spaced"] .workspace[data-view="split"] > :is(.preview-pane, .side-editor-pane),
   [data-panel-style="spaced"] .workspace.issue-side > .issue-pane:not(.history-pane) { border-left: 0; border-bottom-left-radius: 0; }
+  [data-panel-style="spaced"] .workspace.side-preview > .preview-pane { border-right: 0; border-left: 1px solid var(--panel-line); border-radius: 0 0 0 var(--panel-radius); }
   [data-panel-style="spaced"] .workspace[data-view="split"] > .splitter { border-bottom: 1px solid var(--panel-line); background: var(--bg); }
   [data-panel-style="spaced"] .splitter::before { inset: 0 calc(50% - 0.5px); }
   [data-panel-style="spaced"] .splitter:is(:hover, :focus-visible)::before,
@@ -3528,6 +3529,9 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .workspace.issue-open.issue-side > .editor-pane { display: flex; }
 .workspace.issue-open.issue-side > .splitter { display: block; }
 .workspace.issue-side > .issue-pane:not(.history-pane) { grid-column: preview-start / preview-end; }
+/* 並排時按「預覽」：預覽換到左半邊（編輯區的位置）。 */
+.workspace.issue-open.issue-side.side-preview > .editor-pane { display: none; }
+.workspace.issue-open.issue-side.side-preview > .preview-pane { display: block; grid-area: editor; }
 .issue-head {
   display: flex;
   flex: none;
