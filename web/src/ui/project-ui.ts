@@ -5,6 +5,7 @@ import { type DavConnection, type Desktop, displayPath, type Project, type Proje
 import { timeAgo } from "../history-label.ts";
 import { PROJECT_COLORS, projectGroups, projectSections, samePath } from "../projects.ts";
 import { choose } from "./choice.ts";
+import { cometBadge } from "./comet-badge.ts";
 import { icon } from "./icons.ts";
 import { Picker } from "./picker.ts";
 import { t } from "../i18n.ts";
@@ -95,6 +96,7 @@ export class ProjectUi {
             detail: here ? t("目前的專案") : dirty + displayPath(p.path),
             color: p.color,
             section: item.section,
+            badge: p.comet ? cometBadge() : undefined,
           };
         }
         if (item.kind === "remote") {
@@ -291,6 +293,8 @@ export class ProjectUi {
     meta.push(p.lastOpened ? t("{time}開啟", { time: timeAgo(p.lastOpened) }) : t("很久以前開啟"));
     if (!here && this.#h.unsaved(p.path)) meta.push(t("● 有沒存檔的分頁"));
     const info = Object.assign(document.createElement("span"), { className: "po-meta", textContent: meta.join(" · ") });
+    // 名稱那一行右邊是按鈕，標籤放在下面這行，名稱才不會被擠掉。
+    if (p.comet) info.prepend(cometBadge());
     main.append(name, path, info);
     main.addEventListener("click", () => void this.#open(p).catch((e) => toast(message(e), { tone: "error", duration: 10000 })));
     const actions = document.createElement("div");

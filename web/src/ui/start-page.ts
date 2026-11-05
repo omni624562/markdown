@@ -4,6 +4,7 @@
  */
 import { t } from "../i18n.ts";
 import type { Project } from "../desktop.ts";
+import { cometBadge } from "./comet-badge.ts";
 import { projectLabel, recentLabel } from "../start-page.ts";
 import { icon } from "./icons.ts";
 
@@ -31,7 +32,7 @@ export interface StartPageOptions {
 
 export interface StartRecent {
   /** 最近開啟的專案（自訂的名稱與顏色），最近開啟的在前。 */
-  projects: Pick<Project, "path" | "label" | "color">[];
+  projects: Pick<Project, "path" | "label" | "color" | "comet">[];
   files: string[];
   /** 完整路徑的顯示方式（滑鼠提示）。 */
   display(path: string): string;
@@ -128,11 +129,12 @@ function projectDot(color: string | null): HTMLElement {
 export function fillStartRecent(page: HTMLElement, r: StartRecent): void {
   const box = page.querySelector<HTMLElement>(".start-recent");
   if (!box) return;
-  const row = (mark: Element, { name, where }: { name: string; where: string }, path: string, open: () => void) => {
+  const row = (mark: Element, { name, where }: { name: string; where: string }, path: string, open: () => void, comet = false) => {
     const b = button(
       "start-recent-item",
       mark,
       Object.assign(document.createElement("span"), { className: "start-recent-name", textContent: name }),
+      ...(comet ? [cometBadge()] : []),
       Object.assign(document.createElement("span"), { className: "start-recent-where", textContent: where }),
     );
     b.title = r.display(path);
@@ -145,7 +147,7 @@ export function fillStartRecent(page: HTMLElement, r: StartRecent): void {
     all.addEventListener("click", () => r.allProjects());
     parts.push(
       heading(t("專案")),
-      ...r.projects.map((p) => row(projectDot(p.color), projectLabel(p.path, p.label), p.path, () => r.openProject(p.path))),
+      ...r.projects.map((p) => row(projectDot(p.color), projectLabel(p.path, p.label), p.path, () => r.openProject(p.path), p.comet)),
       all,
     );
   }

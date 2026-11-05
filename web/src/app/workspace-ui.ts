@@ -14,6 +14,7 @@ import { draftVersion, loadDraft, loadProjectView, dropDraft, loadSession } from
 import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import type { TreeAction } from "../ui/filetree.ts";
+import { cometBadge } from "../ui/comet-badge.ts";
 import { icon } from "../ui/icons.ts";
 import { SshDialog, confirmHostKey } from "../ui/ssh-dialog.ts";
 import { TagsPanel } from "../ui/tags-panel.ts";
@@ -414,11 +415,11 @@ export async function renderFilesEmpty(): Promise<void> {
   h.textContent = t("專案");
   const list = document.createElement("ul");
   list.className = "recent-list";
-  const add = (mark: Element, label: string, title: string, run: () => void, forget?: () => void) => {
+  const add = (mark: Element, label: string, title: string, run: () => void, forget?: () => void, comet = false) => {
     const b = document.createElement("button");
     b.type = "button";
     b.title = title;
-    b.append(mark, Object.assign(document.createElement("span"), { textContent: label }));
+    b.append(mark, Object.assign(document.createElement("span"), { textContent: label }), ...(comet ? [cometBadge()] : []));
     b.addEventListener("click", run);
     const li = document.createElement("li");
     li.append(b);
@@ -437,7 +438,7 @@ export async function renderFilesEmpty(): Promise<void> {
   for (const p of folders) {
     const dot = Object.assign(document.createElement("span"), { className: "project-dot" });
     if (p.color) dot.dataset.color = p.color;
-    add(dot, p.label, displayPath(p.path), () => void openRecentFolder(p.path));
+    add(dot, p.label, displayPath(p.path), () => void openRecentFolder(p.path), undefined, p.comet);
   }
   for (const c of conns) {
     const where = c.kind === "ssh" ? c.url : t("{url}（{user}）", { url: c.url, user: c.username });

@@ -439,6 +439,7 @@ kbd {
   [data-panel-style="spaced"] .topbar > ::after { display: none; }
   [data-panel-style="spaced"] .nav-menu { border-right: 0; background: transparent; }
   [data-panel-style="spaced"] .activity-bar { border-right: 0; background: transparent; }
+  [data-panel-style="spaced"] .activity-project.comet .project-avatar::after { border-color: var(--backdrop); }
   [data-panel-style="spaced"] .statusbar { border-top: 0; background: var(--backdrop); }
   [data-panel-style="spaced"] .workspace { padding: 0 var(--panel-gap) var(--panel-gap) 0; }
 
@@ -4295,3 +4296,38 @@ body.ado-offline .taskboard .tb-edit, body.ado-offline .taskboard .tb-add { disp
 .tb-backlog-main:hover .tb-title { color: var(--accent); }
 .tb-backlog .tb-move { flex: none; }
 body.ado-offline .tb-backlog .tb-move { display: none; }
+
+/* COMET 專案（資料夾裡有 .comet.json）：名稱後面的小標籤，圖示列的專案方塊右下角加綠點。 */
+.comet-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: 600 10.5px/1 var(--font-ui);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: visible !important;
+}
+.palette-named { display: flex; flex: 1 1 auto; gap: 6px; align-items: center; min-width: 0; }
+.palette-named .palette-title { flex: 0 1 auto; }
+.start-recent-item .comet-badge { align-self: center; }
+/* 側邊欄上方的專案名稱很窄：標籤小一點，名稱少被截掉。 */
+.project-switch .comet-badge { height: 16px; margin-left: -2px; padding: 0 4px; font-size: 9.5px; letter-spacing: 0; }
+.po-meta .comet-badge { height: 16px; margin-right: 6px; padding: 0 6px; vertical-align: 1px; }
+.activity-project.comet .project-avatar { position: relative; }
+.activity-project.comet .project-avatar::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 9px;
+  height: 9px;
+  /* 外圈用圖示列的底色，和方塊隔開。 */
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: light-dark(#2e9e5b, #3fb26f);
+}

@@ -151,6 +151,8 @@ export interface Project {
   pinned: boolean;
   /** 上次開啟的時間（Unix 毫秒）；0 代表不知道。 */
   lastOpened: number;
+  /** 資料夾裡有 `.comet.json`（COMET 專案）。 */
+  comet?: boolean;
 }
 
 export interface ProjectChange {

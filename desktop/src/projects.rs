@@ -30,11 +30,21 @@ pub struct ProjectInfo {
     group: Option<String>,
     pinned: bool,
     last_opened: u64,
+    /// 資料夾裡有 `.comet.json`（做過 comet setup 的 COMET 專案）。
+    comet: bool,
+}
+
+/// 專案根目錄有 `.comet.json` 就是 COMET 專案。遠端與網路磁碟不檢查（每次讀清單都會查，不能慢）。
+fn is_comet(path: &Path) -> bool {
+    !crate::dav::is_remote_path(&path.to_string_lossy())
+        && !crate::io::is_network_path(path)
+        && path.join(".comet.json").is_file()
 }
 
 impl From<ProjectMeta> for ProjectInfo {
     fn from(m: ProjectMeta) -> Self {
         ProjectInfo {
+            comet: is_comet(&m.path),
             label: m.name.clone().unwrap_or_else(|| display_name(&m.path)),
             path: path_string(&m.path),
             name: m.name,
@@ -214,5 +224,26 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(info.label, "工作");
+    }
+
+    #[test]
+    fn comet_projects_have_comet_json() {
+        let dir = std::env::temp_dir().join(format!("omarker-comet-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let info = |dir: &Path| {
+            ProjectInfo::from(ProjectMeta {
+                path: dir.to_path_buf(),
+                ..Default::default()
+            })
+        };
+        assert!(!info(&dir).comet);
+        std::fs::write(dir.join(".comet.json"), "{}").unwrap();
+        assert!(info(&dir).comet);
+        // 同名的資料夾不算。
+        std::fs::remove_file(dir.join(".comet.json")).unwrap();
+        std::fs::create_dir(dir.join(".comet.json")).unwrap();
+        assert!(!info(&dir).comet);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(!info(Path::new("ssh://host/專案")).comet);
     }
 }
