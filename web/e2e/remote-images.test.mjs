@@ -30,8 +30,8 @@ const evil = (external) => external.filter((url) => url.includes("evil.example")
 
 test("封鎖遠端圖片：特殊寫法的網址、流程圖裡的圖片與樣式都不會連到外部", async () => {
   const { page, context, errors, external } = await open();
-  await page.click('button[data-view="split"]');
   await setText(page, DOC);
+  await page.click('button[data-view="split"]');
   await page.waitForFunction(() => document.querySelectorAll("#preview figure.mermaid-diagram > svg").length === 5, null, { timeout: 30000 });
   assert.equal(await page.locator("#preview img.remote-blocked").count(), 2);
   // 即時預覽的表格與流程圖也一樣。
@@ -47,8 +47,8 @@ test("封鎖遠端圖片：特殊寫法的網址、流程圖裡的圖片與樣�
 
 test("載入這份文件的遠端圖片之後照常連線", async () => {
   const { page, context, errors, external } = await open();
-  await page.click('button[data-view="split"]');
   await setText(page, ["![甲](https:evil.example/allowed.png)", "", "![乙](//evil.example/allowed2.png)", "", ...fence("graph TD", `  A["<img src='https://evil.example/allowed3.png'>"]`)].join("\n"));
+  await page.click('button[data-view="split"]');
   await page.waitForSelector("#preview figure.mermaid-diagram > svg");
   assert.equal(await page.locator("#preview img.remote-blocked").count(), 2);
   assert.deepEqual(evil(external), []);

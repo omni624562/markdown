@@ -69,8 +69,8 @@ test("預覽的待辦：不變淡、沒勾的框線和底色對比至少 3:1（�
 
 test("即時預覽的程式碼區塊：游標不在裡面時只留語言名稱、結尾的 ``` 藏起來；進出區塊版面不跳", async () => {
   const { page, context, errors } = await open();
-  await page.click('button[data-view="live"]');
   await setText(page, "前文\n\n```js\nconst a = 1;\n```\n\n後文");
+  await page.click('button[data-view="live"]');
   await page.keyboard.press("Control+End");
   const look = () =>
     page.evaluate(() => {
