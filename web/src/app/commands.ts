@@ -32,8 +32,7 @@ import { issueView, issueSide } from "./wiki-edit.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
-import { onlyBlankDoc } from "./outline.ts";
-import { docName, renumber } from "./doc-names.ts";
+import { docName } from "./doc-names.ts";
 import type { Doc } from "../main.ts";
 import { app } from "./context.ts";
 
@@ -101,16 +100,11 @@ export function initCommands(): void {
       // 桌面版用一般的 Ctrl+N；網頁版的 Ctrl+N 會被瀏覽器拿去開新視窗。
       keys: desktop ? "Mod-n" : "Mod-Alt-n",
       run() {
-        // 只剩一份沒顯示的空白文件（關掉所有文件後留下的）：開好新文件後收掉它，不要多一個「未命名」。
-        const placeholder = onlyBlankDoc() ? app.docs[0] : null;
+        // 只剩一份沒顯示的空白文件（一開始、關掉所有文件後留下的）時，addTab 會收掉它。
         const doc = app.makeDoc({ name: t("未命名{ext}", { ext: KINDS[app.cur.kind].ext }), kind: app.cur.kind });
         saveDraft(doc.id, "");
         app.skipStartPage(doc.id);
         app.addTab(doc);
-        if (placeholder) {
-          renumber(doc);
-          void app.closeTab(placeholder.id);
-        }
         app.editor.view.focus();
       },
     },

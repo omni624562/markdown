@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { open } from "./helpers.mjs";
+import { open, setText } from "./helpers.mjs";
 
 const ITEM = {
   id: 42,
@@ -109,4 +109,41 @@ test("一開始的空白文件不顯示分頁；按「新增文件」（Ctrl+N �
   assert.deepEqual(second.errors, []);
   assert.deepEqual(errors, []);
   await second.context.close();
+});
+
+/** 全部的文件分頁（包括沒顯示的空白文件）。 */
+const allTabs = (page) => page.$$eval("#tab-bar .tab", (list) => list.map((t) => t.textContent.trim()));
+
+test("一開始用其他方式開新分頁（3 分鐘認識 oMarker、重新開啟關閉的分頁）：收掉沒顯示的空白文件，不多一個「未命名」", async () => {
+  const { page, context, errors } = await open({ desktop: {} });
+  await page.locator(".empty-state button", { hasText: "3 分鐘認識 oMarker" }).click();
+  await page.waitForFunction(() => document.querySelectorAll("#tab-bar .tab").length === 1 && !/未命名/.test(document.querySelector("#tab-bar .tab").textContent));
+  assert.equal((await allTabs(page)).length, 1);
+  await context.close();
+
+  // 網頁版：關掉唯一的文件（留下沒顯示的空白文件），再重新開啟。
+  const web = await open();
+  await setText(web.page, "# 週報");
+  await web.page.waitForFunction(() => [...document.querySelectorAll("#tab-bar .tab-name")].some((n) => n.textContent === "週報"));
+  await web.page.keyboard.press("Control+Alt+W");
+  const dialog = web.page.locator("dialog[open]", { hasText: "要存檔嗎？" });
+  await dialog.getByRole("button", { name: "不存檔" }).click();
+  await web.page.waitForFunction(() => ![...document.querySelectorAll("#tab-bar .tab-name")].some((n) => n.textContent === "週報"));
+  await web.page.keyboard.press("Control+Alt+Shift+T");
+  await web.page.waitForFunction(() => [...document.querySelectorAll("#tab-bar .tab-name")].some((n) => n.textContent === "週報"));
+  await web.page.waitForFunction(() => document.querySelectorAll("#tab-bar .tab").length === 1);
+  assert.deepEqual(await allTabs(web.page), ["週報"]);
+  assert.deepEqual(web.errors, []);
+  assert.deepEqual(errors, []);
+  await web.context.close();
+});
+
+test("一開始按 Ctrl+N：分頁和視窗標題都是「未命名」（不是「未命名 2」）", async () => {
+  const { page, context, errors } = await open({ desktop: {} });
+  await page.waitForSelector(".cm-content");
+  await page.keyboard.press("Control+N");
+  await page.waitForFunction(() => document.querySelectorAll("#tab-bar .tab").length === 1 && document.title === "未命名 - oMarker");
+  assert.deepEqual(await allTabs(page), ["未命名"]);
+  assert.deepEqual(errors, []);
+  await context.close();
 });
