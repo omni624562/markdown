@@ -15,6 +15,7 @@ import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import type { TreeAction } from "../ui/filetree.ts";
 import { cometBadge } from "../ui/comet-badge.ts";
+import { projectLabel } from "../start-page.ts";
 import { icon } from "../ui/icons.ts";
 import { HOSTKEY_DECLINED, SshDialog, jumpPasswordHost } from "../ui/ssh-dialog.ts";
 import { TagsPanel } from "../ui/tags-panel.ts";
@@ -361,17 +362,40 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
 /** 沒開資料夾時，檔案面板列出幾個專案（側邊欄比起始頁有空間，列得比較多）。 */
 const FILES_PANEL_PROJECTS = 10;
 
+/** 遠端連線的位置：主機與路徑（例如 `ssh.test › home › me`）；網址看不懂時照原樣。 */
+function remoteWhere(url: string): string {
+  try {
+    const u = new URL(url);
+    return [u.host, ...decodeURIComponent(u.pathname).split("/").filter(Boolean)].join(" › ");
+  } catch {
+    return url;
+  }
+}
+
+/** 檔案面板的一列：左邊的標示、名稱（後面可以接小標籤），下面一行淡色的位置。 */
+function filesRow(mark: Element, name: string, where: string, title: string, run: () => void, badges: Element[] = []): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.title = title;
+  const line = Object.assign(document.createElement("span"), { className: "files-row-name" });
+  line.append(Object.assign(document.createElement("span"), { textContent: name }), ...badges);
+  b.append(mark, line, Object.assign(document.createElement("small"), { className: "files-row-where", textContent: where }));
+  b.addEventListener("click", run);
+  return b;
+}
+
 /**
- * 沒有開啟資料夾時，檔案面板顯示說明、開啟按鈕與「專案」：和起始頁同一份清單、同樣的順序（最近開啟的在前），
- * 用自訂的名稱與顏色；後面是記住的遠端連線與「全部專案…」。
+ * 沒有開啟資料夾時的檔案面板：最上面是最近的專案（和起始頁同一份清單、同樣的順序，用自訂的名稱與顏色，
+ * 下面一行是位置；記住的遠端連線也列在這裡），接著是「開啟資料夾…」「新專案…」，最後是其他方式
+ * （下載儲存庫、連線到遠端資料夾）。還沒有專案時，最上面改成一句說明。
  */
 export async function renderFilesEmpty(): Promise<void> {
   const box = app.$("#files-empty");
   app.$("#files-head").hidden = !app.workspaceRoot;
   box.hidden = !!app.workspaceRoot;
   if (app.workspaceRoot) return;
-  const p = document.createElement("p");
   if (!desktop) {
+    const p = document.createElement("p");
     p.textContent = t("開啟資料夾、管理檔案與搜尋整個資料夾需要桌面版（Windows，免安裝）。");
     const a = Object.assign(document.createElement("a"), {
       className: "btn",
@@ -381,88 +405,103 @@ export async function renderFilesEmpty(): Promise<void> {
     box.replaceChildren(p, a);
     return;
   }
-  p.textContent = t("開啟一個資料夾，就能在這裡瀏覽、新增、重新命名檔案，也能搜尋整個資料夾的內容。");
-  const open = document.createElement("button");
-  open.type = "button";
-  open.className = "btn";
-  open.append(icon("folder-open"), t("開啟資料夾"));
-  open.addEventListener("click", () => void commands.run("open-folder").catch(reportError));
-  const remote = document.createElement("button");
-  remote.type = "button";
-  remote.className = "btn";
-  remote.append(icon("cloud"), t("連線到 WebDAV"));
-  remote.addEventListener("click", () => void commands.run("connect-webdav").catch(reportError));
-  const ssh = document.createElement("button");
-  ssh.type = "button";
-  ssh.className = "btn";
-  ssh.append(icon("server"), t("用 SSH 連線"));
-  ssh.addEventListener("click", () => void commands.run("connect-ssh").catch(reportError));
-  const actions = document.createElement("div");
-  actions.className = "side-buttons";
-  actions.append(open);
+  const command = (id: string) => () => void commands.run(id).catch(reportError);
+  const button = (iconName: string, label: string, id: string, primary = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = primary ? "btn btn-primary" : "btn";
+    b.append(icon(iconName), label);
+    b.addEventListener("click", command(id));
+    return b;
+  };
+  // 專案清單讀到之前先空著（讀得很快），免得說明一閃而過。
+  const top = Object.assign(document.createElement("div"), { className: "files-projects" });
+  const main = document.createElement("div");
+  main.className = "files-main";
+  main.append(button("folder-open", t("開啟資料夾…"), "open-folder", true), button("folder-plus", t("新專案…"), "new-project"));
+  const other = document.createElement("ul");
+  other.className = "files-other";
   for (const source of app.projectUi!.repoSources()) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "btn";
-    // 側邊欄窄：狀態（還沒登入、帳號）放在名稱下面一行，名稱才不會被擠成兩行。
+    // 狀態（還沒登入、帳號）放在名稱下面一行，和上面的專案一樣。
     const label = Object.assign(document.createElement("span"), { className: "repo-label" });
     label.append(Object.assign(document.createElement("span"), { textContent: source.title.replace(/…$/, "") }), repoNoteEl(source));
     b.append(icon(source.icon), label);
     b.addEventListener("click", () => source.run());
-    actions.append(b);
+    const li = document.createElement("li");
+    li.append(b);
+    other.append(li);
   }
-  if (app.features.remote) actions.append(remote, ssh);
-  box.replaceChildren(p, actions);
+  if (app.features.remote) {
+    for (const [iconName, label, id] of [
+      ["cloud", t("連線到 WebDAV"), "connect-webdav"],
+      ["server", t("用 SSH 連線"), "connect-ssh"],
+    ] as const) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.append(icon(iconName), label);
+      b.addEventListener("click", command(id));
+      const li = document.createElement("li");
+      li.append(b);
+      other.append(li);
+    }
+  }
+  const otherHead = document.createElement("h3");
+  otherHead.textContent = t("其他方式");
+  box.replaceChildren(top, main, ...(other.children.length ? [otherHead, other] : []));
+
   const [projects, conns] = await Promise.all([
     app.projectUi!.refresh(),
     app.features.remote ? desktop.davConnections().catch(() => []) : [],
   ]);
+  if (app.workspaceRoot || !top.isConnected) return;
   const folders = projects.slice(0, FILES_PANEL_PROJECTS);
-  if ((!folders.length && !conns.length) || app.workspaceRoot) return;
+  if (!folders.length && !conns.length) {
+    const p = document.createElement("p");
+    p.textContent = t("開啟一個資料夾，就能在這裡瀏覽、新增、重新命名檔案，也能搜尋整個資料夾的內容。");
+    top.replaceChildren(p);
+    return;
+  }
+  const head = document.createElement("div");
+  head.className = "files-projects-head";
   const h = document.createElement("h3");
-  h.textContent = t("專案");
-  const list = document.createElement("ul");
-  list.className = "recent-list";
-  const add = (mark: Element, label: string, title: string, run: () => void, forget?: () => void, comet = false) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.title = title;
-    b.append(mark, Object.assign(document.createElement("span"), { textContent: label }), ...(comet ? [cometBadge()] : []));
-    b.addEventListener("click", run);
-    const li = document.createElement("li");
-    li.append(b);
-    if (forget) {
-      const x = document.createElement("button");
-      x.type = "button";
-      x.className = "recent-forget";
-      x.title = t("從清單移除（也會刪除記住的密碼）");
-      x.setAttribute("aria-label", t("移除「{name}」", { name: label }));
-      x.append(icon("x"));
-      x.addEventListener("click", forget);
-      li.append(x);
-    }
-    list.append(li);
-  };
-  for (const p of folders) {
-    const dot = Object.assign(document.createElement("span"), { className: "project-dot" });
-    if (p.color) dot.dataset.color = p.color;
-    add(dot, p.label, displayPath(p.path), () => void openRecentFolder(p.path), undefined, p.comet);
-  }
-  for (const c of conns) {
-    const where = c.kind === "ssh" ? c.url : t("{url}（{user}）", { url: c.url, user: c.username });
-    add(icon(c.kind === "ssh" ? "server" : "cloud"), c.name, where, () => void openRemote(c), () =>
-      void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError),
-    );
-  }
-  box.append(h, list);
+  h.textContent = t("最近的專案");
+  head.append(h);
   if (projects.length) {
     const more = document.createElement("button");
     more.type = "button";
-    more.className = "btn";
-    more.append(icon("layout-dashboard"), t("全部專案…"));
-    more.addEventListener("click", () => void commands.run("project-overview").catch(reportError));
-    box.append(more);
+    more.className = "files-all-projects";
+    more.append(t("全部專案"), icon("chevron-right"));
+    more.title = t("全部專案…");
+    more.addEventListener("click", command("project-overview"));
+    head.append(more);
   }
+  const list = document.createElement("ul");
+  list.className = "recent-list files-project-list";
+  for (const p of folders) {
+    const dot = Object.assign(document.createElement("span"), { className: "project-dot" });
+    if (p.color) dot.dataset.color = p.color;
+    const { name, where } = projectLabel(p.path, p.label);
+    const li = document.createElement("li");
+    li.append(filesRow(dot, name, where, displayPath(p.path), () => void openRecentFolder(p.path), p.comet ? [cometBadge()] : []));
+    list.append(li);
+  }
+  for (const c of conns) {
+    const title = c.kind === "ssh" ? c.url : t("{url}（{user}）", { url: c.url, user: c.username });
+    const badge = Object.assign(document.createElement("span"), { className: "files-kind-badge", textContent: c.kind === "ssh" ? "SSH" : "WebDAV" });
+    const li = document.createElement("li");
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "recent-forget";
+    x.title = t("從清單移除（也會刪除記住的密碼）");
+    x.setAttribute("aria-label", t("移除「{name}」", { name: c.name }));
+    x.append(icon("x"));
+    x.addEventListener("click", () => void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError));
+    li.append(filesRow(icon(c.kind === "ssh" ? "server" : "cloud"), c.name, remoteWhere(c.url), title, () => void openRemote(c), [badge]), x);
+    list.append(li);
+  }
+  top.replaceChildren(head, list);
 }
 
 export const davDialog = desktop ? new WebDavDialog(desktop) : null;
