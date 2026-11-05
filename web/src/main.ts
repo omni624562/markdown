@@ -3398,6 +3398,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
       "new-comet-project",
       "switch-project",
       "project-overview",
+      "open-in-codex",
       "-",
       "open-folder",
       { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },
