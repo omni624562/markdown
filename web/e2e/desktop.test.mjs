@@ -23,8 +23,7 @@ test("整合功能關掉時，不會呼叫那些功能的原生指令", async ()
   await off.page.waitForTimeout(500);
   const offUsed = (await calls(off.page)).map((c) => c.cmd);
   for (const cmd of offUsed) assert.doesNotMatch(cmd, /^(git_|github_|ado_|dav_|ssh_)/);
-  // 指令面板裡也找不到。
-  await off.page.click(".cm-content");
+  // 指令面板裡也找不到（Ctrl+Shift+P 在起始頁上也能用，不必先點編輯區）。
   await off.page.keyboard.press("Control+Shift+P");
   await off.page.locator("dialog[open] input").first().fill("WebDAV");
   assert.equal(await off.page.locator("dialog[open] [role=option]").count(), 0);

@@ -30,4 +30,16 @@ pub static EN: &[(&str, &str)] = &[
     ("群組名稱", "The group name"),
     ("不支援這個顏色", "This color isn't supported."),
     ("「{name}」不是資料夾中的文件，不能修改", "\"{name}\" isn't a document in the folder, so it can't be changed."),
+    // new_project.rs
+    ("選擇新專案要放在哪個資料夾", "Choose where to put the new project"),
+    ("請輸入專案名稱", "Enter a project name."),
+    ("專案名稱太長了", "The project name is too long."),
+    ("專案名稱不能有這些字元：\\ / : * ? \" < > |", "Project names can't contain these characters: \\ / : * ? \" < > |"),
+    ("專案名稱不能用「.」結尾", "Project names can't end with \".\"."),
+    ("「{name}」是 Windows 保留的名稱，請換一個", "\"{name}\" is a reserved name on Windows. Choose another name."),
+    ("\n- 每日筆記：`{daily}/`\n- 圖片：`assets/`\n", "\n- Daily notes: `{daily}/`\n- Images: `assets/`\n"),
+    ("請用「瀏覽…」選擇新專案要放在哪裡", "Use \"Browse…\" to choose where to put the new project."),
+    ("每日筆記", "Daily Notes"),
+    ("「{path}」已經存在，換一個名稱或位置", "\"{path}\" already exists. Choose another name or location."),
+    ("無法建立資料夾「{name}」", "Couldn't create the folder \"{name}\""),
 ];

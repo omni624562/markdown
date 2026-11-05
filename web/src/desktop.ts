@@ -788,6 +788,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
     saveSettings: (json: string) => (settingsSaved = core.invoke<boolean>("save_settings", { json })),
 
     openFolder: () => core.invoke<Folder | null>("open_folder"),
+    /** 新專案預設放在哪裡（「文件」資料夾）。 */
+    projectDefaultParent: () => core.invoke<string | null>("project_default_parent"),
+    /** 「瀏覽…」：選新專案要放在哪個資料夾；取消時是 null。 */
+    pickProjectParent: () => core.invoke<string | null>("pick_project_parent"),
+    /** 建立新專案的資料夾並開啟（加進專案清單）。 */
+    createProject: (req: { parent: string; name: string; notebook: boolean; git: boolean; dailyFolder?: string }) =>
+      core.invoke<Folder>("create_project", req),
     /**
      * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
      * `trust` 是使用者確認過的 SSH 主機金鑰指紋。

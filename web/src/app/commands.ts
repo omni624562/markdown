@@ -22,6 +22,7 @@ import { showDocStats, statsShown } from "./doc-stats.ts";
 import { checkLinks } from "./link-check-ui.ts";
 import { searchPanel } from "./git-history.ts";
 import { closeItem, itemTabs, setItemPinned, tabOrder } from "./item-tabs.ts";
+import { newProject } from "./new-project.ts";
 import { imageInput } from "./new-work-item.ts";
 import { runTableEdit } from "./offline-drive.ts";
 import { exportPdf } from "./pdf-export.ts";
@@ -293,6 +294,14 @@ export function initCommands(): void {
         const file = await openFile(app.fileInput);
         if (file) app.openOpenedFile(file);
       },
+    },
+    {
+      id: "new-project",
+      title: t("新專案…"),
+      group: t("資料夾與專案"),
+      icon: "folder-plus",
+      when: () => !!desktop,
+      run: () => newProject(),
     },
     {
       id: "open-folder",

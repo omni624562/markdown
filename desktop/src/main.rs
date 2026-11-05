@@ -33,6 +33,7 @@ mod images;
 mod io;
 mod locales;
 mod navigation;
+mod new_project;
 mod notify;
 mod offline;
 mod pdf;
@@ -262,6 +263,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(KnownFiles::default())
         .manage(Workspace::default())
+        .manage(new_project::ProjectParents::default())
         .manage(Watcher::default())
         .manage(ai::term::Terminals::default())
         .manage(ai::view::TermView::default())
@@ -303,6 +305,9 @@ fn main() {
             window_control,
             files::open_file,
             files::reopen_file,
+            new_project::project_default_parent,
+            new_project::pick_project_parent,
+            new_project::create_project,
             files::reopen_with_encoding,
             files::file_format,
             files::set_file_format,
