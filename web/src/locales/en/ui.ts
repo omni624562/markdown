@@ -186,6 +186,10 @@ export const ui: Record<string, Translation> = {
   // tabbar.ts
   "已開啟的文件": "Open Documents",
   "所有分頁": "All Tabs",
+  "並排中：左邊「{left}」、右邊「{right}」": "Side by side: \"{left}\" on the left, \"{right}\" on the right",
+  "取消並排（兩份文件留在分頁裡）": "Stop side by side (both documents stay open in tabs)",
+  // app/side-drop.ts
+  "放開：在右邊並排開啟": "Drop to open on the right, side by side",
   "已釘選（有未存檔的變更）；按一下取消釘選": "Pinned (unsaved changes). Click to unpin.",
   "已釘選；按一下取消釘選": "Pinned. Click to unpin.",
   "取消釘選「{name}」": "Unpin \"{name}\"",
@@ -940,4 +944,14 @@ export const ui: Record<string, Translation> = {
   "展開篩選條件": "Expand filters",
   "收合 Wiki 選單與搜尋": "Collapse wiki picker and search",
   "展開 Wiki 選單與搜尋": "Expand wiki picker and search",
+  // kind-picker.ts
+  "INI／Properties": "INI / Properties",
+  "自動（依副檔名）": "Auto (from file extension)",
+  "文件": "Documents",
+  "資料與設定": "Data & Config",
+  "最近用過": "Recently Used",
+  "更多語言…": "More Languages…",
+  "選擇語言": "Select Language",
+  "選擇語言：輸入名稱或副檔名（例如 py、sql）": "Select a language: type a name or extension (e.g. py, sql)",
+  "找不到符合的語言": "No matching language",
 };

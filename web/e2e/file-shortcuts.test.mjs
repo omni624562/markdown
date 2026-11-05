@@ -149,7 +149,7 @@ test("檔案搬走或刪除：提示「找不到這個檔案」，通知上可�
   await context.close();
 });
 
-test("遠端資料夾（SSH）的檔案不能放到圖示列：選單沒有這一項、拖不起來；網頁版也沒有", async () => {
+test("遠端資料夾（SSH）的檔案不能放到圖示列：選單沒有這一項、拖的資料裡沒有捷徑；網頁版也沒有", async () => {
   const REMOTE = "ssh://cd34/筆記/週報.md";
   const remote = {
     startup_target: { kind: "folder", path: "ssh://cd34/筆記", name: "筆記" },
@@ -163,7 +163,14 @@ test("遠端資料夾（SSH）的檔案不能放到圖示列：選單沒有這�
   await row.click();
   await page.waitForFunction(() => document.querySelector("#tab-bar .tab[aria-selected=true] .tab-name")?.textContent === "週報.md");
   assert.equal(await row.getAttribute("draggable"), "false");
-  assert.equal(await page.locator("#tab-bar .tab[aria-selected=true]").getAttribute("draggable"), "false");
+  // 分頁拖得起來（可以拖到編輯區並排），但拖的資料裡沒有捷徑，放到圖示列不會變成捷徑。
+  const dragTypes = await page.locator("#tab-bar .tab[aria-selected=true]").evaluate((tab) => {
+    const dt = new DataTransfer();
+    tab.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: dt }));
+    return [...dt.types];
+  });
+  assert.ok(!dragTypes.includes("application/x-omarker-shortcut"), dragTypes.join());
+  assert.ok(dragTypes.includes("application/x-omarker-tab"), dragTypes.join());
   const menu = await tabMenu(page, "週報.md");
   assert.equal(await menu.locator("button", { hasText: "左側圖示列" }).count(), 0);
   await page.keyboard.press("Escape");
@@ -184,13 +191,18 @@ test("遠端資料夾（SSH）的檔案不能放到圖示列：選單沒有這�
   assert.deepEqual(errors, []);
   await context.close();
 
-  // 網頁版：沒有原生端，檔案捷徑不顯示，分頁也拖不起來。
+  // 網頁版：沒有原生端，檔案捷徑不顯示；分頁拖得起來（拖到編輯區並排），但拖的資料裡沒有捷徑。
   const web = await open();
   await web.page.evaluate((path) => localStorage.setItem("md-editor:wiki-shortcuts", JSON.stringify([{ file: path }])), MENO);
   await web.page.reload();
   await web.page.waitForSelector(".cm-editor .cm-content");
   assert.equal(await web.page.locator(".activity-wiki").isHidden(), true);
-  assert.equal(await web.page.locator("#tab-bar .tab").first().getAttribute("draggable"), "false");
+  const webTypes = await web.page.locator("#tab-bar .tab").first().evaluate((tab) => {
+    const dt = new DataTransfer();
+    tab.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: dt }));
+    return [...dt.types];
+  });
+  assert.ok(!webTypes.includes("application/x-omarker-shortcut"), webTypes.join());
   assert.deepEqual(web.errors, []);
   await web.context.close();
 });

@@ -49,6 +49,7 @@ import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
 import { KindPicker } from "./ui/kind-picker.ts";
+import { initDocLanguage } from "./app/doc-language.ts";
 import { askUtf8, encodingLabel, initFileFormat } from "./app/file-format.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
@@ -63,6 +64,7 @@ import { docLinksPlugin, wikiTarget } from "./plugins/doc-links.ts";
 import { resolveWiki } from "./links.ts";
 import { setBounded } from "./bounded.ts";
 import { type TabInfo, TabBar } from "./ui/tabbar.ts";
+import { initSideDrop } from "./app/side-drop.ts";
 import { TerminalProxy } from "./terminal-proxy.ts";
 import { Updater } from "./updater.ts";
 import { sizeLabel, versionTitle } from "./history-label.ts";
@@ -601,6 +603,9 @@ const app = {
   },
   get setKind() {
     return setKind;
+  },
+  get setFileName() {
+    return setFileName;
   },
   get setOutline() {
     return setOutline;
@@ -2062,12 +2067,15 @@ const tabBar = new TabBar($("#tab-bar"), {
     menuTabId = id;
     tabMenu.open(at);
   },
+  unpair: () => closeSide(),
   unpin: (id) => {
     if (findItemTab(id)) return setItemPinned(id, false);
     const doc = docs.find((d) => d.id === id);
     if (doc) setPinned(doc, false);
   },
 });
+// 拖曳分頁到編輯區的右半邊並排開啟。
+initSideDrop();
 // ---- 分頁選單：關閉其他、關閉右側、固定分頁…… ---------------------------------
 
 /** 按右鍵的分頁；從指令面板執行時是目前的分頁。 */
@@ -2705,11 +2713,13 @@ function renderTabs(): void {
     ...itemTabs.map((tab): [string, TabInfo] => [tab.id, itemTabInfo(tab)]),
   ]);
   // 工作項目、Wiki 頁面等和文件排在一起；蓋住編輯區顯示時，標成目前的分頁。
+  // 並排中的兩份文件合成一個「左｜右」的分頁（見 TabBar.render）。
   tabBar.render(
     tabOrder().map((id) => infos.get(id)!),
     selectedItemId() ?? active.id,
+    paneDocs.side ? { main: paneDocs.main.id, side: paneDocs.side.id } : undefined,
   );
-  // 並排時另一邊的文件：分頁下面一條線。
+  // 並排時另一邊的文件。
   const besideId = ((p) => (p ? paneDocs[p]?.id : undefined))(otherPane());
   document.querySelectorAll<HTMLElement>("#tab-bar .tab").forEach((tab) => tab.classList.toggle("tab-beside", tab.dataset.id === besideId));
   refreshOtherPane();
@@ -3422,6 +3432,7 @@ for (const [tab, id] of [
 
 initActivityBar();
 initNewWorkItem();
+initDocLanguage();
 initFileFormat();
 
 // ---- 版面 ---------------------------------------------------------------
