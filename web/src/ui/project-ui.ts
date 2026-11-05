@@ -449,15 +449,18 @@ export class ProjectUi {
       void (async () => {
         try {
           if (here) await this.#h.closeAndWait();
-          await this.#d.projectDelete(p.path, trash.checked);
-          if (trash.checked) forgetProjectSession(p.path);
+          // 移到資源回收筒前原生端會用系統的對話框再問一次；選「否」時什麼都沒做，關掉提示窗就好。
+          const done = await this.#d.projectDelete(p.path, trash.checked);
           dialog.close();
-          toast(
-            trash.checked
-              ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label })
-              : t("已把「{name}」從專案清單移除", { name: p.label }),
-            { tone: "success" },
-          );
+          if (done !== false) {
+            if (trash.checked) forgetProjectSession(p.path);
+            toast(
+              trash.checked
+                ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label })
+                : t("已把「{name}」從專案清單移除", { name: p.label }),
+              { tone: "success" },
+            );
+          }
         } catch (err) {
           error.textContent = message(err);
           error.hidden = false;

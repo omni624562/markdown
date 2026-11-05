@@ -5,6 +5,9 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
+use crate::confirm::Question;
+use crate::features::{Feature, Features};
+
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_config_dir()
@@ -51,8 +54,45 @@ pub fn require_ai(app: &AppHandle) -> Result<(), String> {
     }
 }
 
-/// 儲存設定。從關閉改成「啟用 AI 協作」時，用系統的對話框再確認一次；
-/// 使用者拒絕時存成關閉，並回傳 `false`（前端會把開關改回去）。
+/// 從關閉改成「啟用 AI 協作」前要問的話。
+fn ai_question() -> Question {
+    Question::new(
+        tr!("啟用 AI 協作"),
+        tr!("啟用後，oMarker 可以執行 Claude Code、Codex 等 AI 工具，並讓它們讀取目前的文件。要啟用嗎？"),
+    )
+}
+
+/// 檢查這次要存的設定：從關閉改成開啟的「啟用 AI 協作」與整合功能（`off` 是目前關掉的），
+/// 用 `ask` 問使用者。拒絕的項目在 `value` 裡改回關閉；有任何一項被拒絕時回傳 `false`。
+/// `ask` 在指令裡是系統的對話框，測試時換成固定的回答。
+async fn review<F, Fut>(
+    value: &mut serde_json::Value,
+    ai_on: bool,
+    off: &[Feature],
+    mut ask: F,
+) -> bool
+where
+    F: FnMut(Question) -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let mut accepted = true;
+    if value["aiEnabled"] == true && !ai_on && !ask(ai_question()).await {
+        value["aiEnabled"] = serde_json::Value::Bool(false);
+        accepted = false;
+    }
+    let turned_on = crate::features::turned_on(off, value);
+    if let Some(q) = crate::features::enable_question(&turned_on) {
+        if !ask(q).await {
+            crate::features::keep_off(value, &turned_on);
+            accepted = false;
+        }
+    }
+    accepted
+}
+
+/// 儲存設定。從關閉改成「啟用 AI 協作」，或重新開啟關掉的整合功能（Git、Azure DevOps、遠端資料夾）時，
+/// 用系統的對話框再確認一次；使用者拒絕的項目存成關閉，並回傳 `false`（前端會把開關改回去）。
+/// 內容不是 JSON 物件時不存（壞掉的設定檔會讓關掉的功能全部變回開啟）。
 #[tauri::command]
 pub async fn save_settings(
     app: AppHandle,
@@ -63,35 +103,102 @@ pub async fn save_settings(
     static SAVING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _guard = SAVING.lock().await;
     let path = settings_path(&app)?;
-    let mut accepted = true;
-    let mut json = json;
-    if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&json) {
-        if value["aiEnabled"] == true && !ai_enabled(&app) {
-            let answer = rfd::AsyncMessageDialog::new()
-                .set_parent(&window)
-                .set_level(rfd::MessageLevel::Warning)
-                .set_title(tr!("啟用 AI 協作"))
-                .set_description(tr!(
-                    "啟用後，oMarker 可以執行 Claude Code、Codex 等 AI 工具，並讓它們讀取目前的文件。要啟用嗎？"
-                ))
-                .set_buttons(rfd::MessageButtons::YesNo)
-                .show()
-                .await;
-            if answer != rfd::MessageDialogResult::Yes {
-                accepted = false;
-                value["aiEnabled"] = serde_json::Value::Bool(false);
-                json = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
-            }
-        }
-    }
+    let mut value = serde_json::from_str::<serde_json::Value>(&json)
+        .ok()
+        .filter(serde_json::Value::is_object)
+        .ok_or_else(|| tr!("無法儲存設定：格式不正確"))?;
+    let off = app
+        .try_state::<Features>()
+        .map(|f| f.off())
+        .unwrap_or_default();
+    let accepted = review(&mut value, ai_enabled(&app), &off, |q| {
+        crate::confirm::confirm(&window, Some(q))
+    })
+    .await;
+    let json = if accepted {
+        json
+    } else {
+        serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?
+    };
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| tr!("無法建立設定資料夾：{e}", e = e))?;
     }
     crate::files::write_atomic(&path, json.as_bytes())
         .map_err(|e| tr!("無法儲存設定：{e}", e = e))?;
     // 整合功能的開關立刻生效（關掉的功能，原生指令從現在起一律拒絕）。
-    if let Some(features) = app.try_state::<crate::features::Features>() {
-        features.update(serde_json::from_str(&json).ok().as_ref());
+    if let Some(features) = app.try_state::<Features>() {
+        features.update(Some(&value));
     }
     Ok(accepted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    /// 依序回答 `answers`，記下問了哪些標題。
+    async fn run(
+        value: &mut serde_json::Value,
+        ai_on: bool,
+        off: &[Feature],
+        answers: &[bool],
+    ) -> (bool, Vec<String>) {
+        let asked = RefCell::new(Vec::new());
+        let accepted = review(value, ai_on, off, |q| {
+            let mut asked = asked.borrow_mut();
+            let answer = answers[asked.len()];
+            asked.push(q.title);
+            async move { answer }
+        })
+        .await;
+        (accepted, asked.into_inner())
+    }
+
+    #[tokio::test]
+    async fn nothing_to_confirm_when_nothing_turns_on() {
+        let mut v = serde_json::json!({ "aiEnabled": true, "gitEnabled": false, "theme": "dark" });
+        let before = v.clone();
+        let (ok, asked) = run(&mut v, true, &[Feature::Git], &[]).await;
+        assert!(ok);
+        assert!(asked.is_empty());
+        assert_eq!(v, before);
+    }
+
+    #[tokio::test]
+    async fn refusing_turns_switches_back_off() {
+        let mut v =
+            serde_json::json!({ "aiEnabled": true, "gitEnabled": true, "adoEnabled": true });
+        let (ok, asked) = run(
+            &mut v,
+            false,
+            &[Feature::Git, Feature::Ado],
+            &[false, false],
+        )
+        .await;
+        assert!(!ok);
+        assert_eq!(asked, ["啟用 AI 協作", "開啟整合功能"]);
+        assert_eq!(
+            v,
+            serde_json::json!({ "aiEnabled": false, "gitEnabled": false, "adoEnabled": false })
+        );
+    }
+
+    #[tokio::test]
+    async fn agreeing_keeps_switches_on() {
+        let mut v = serde_json::json!({ "aiEnabled": true, "remoteEnabled": true });
+        let before = v.clone();
+        let (ok, asked) = run(&mut v, false, &[Feature::Remote], &[true, true]).await;
+        assert!(ok);
+        assert_eq!(asked.len(), 2);
+        assert_eq!(v, before);
+        // 只同意其中一項：另一項改回關閉。
+        let mut v = serde_json::json!({ "aiEnabled": true, "remoteEnabled": true });
+        let (ok, _) = run(&mut v, false, &[Feature::Remote], &[true, false]).await;
+        assert!(!ok);
+        assert_eq!(
+            v,
+            serde_json::json!({ "aiEnabled": true, "remoteEnabled": false })
+        );
+    }
 }

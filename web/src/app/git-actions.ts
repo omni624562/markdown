@@ -161,6 +161,8 @@ async function publishPages(): Promise<void> {
   try {
     const url = await desktop.githubPages();
     wait.dismiss();
+    // 在系統的確認對話框選了「否」。
+    if (!url) return;
     toast(t("網站網址：{url}（之後推送就會自動更新）", { url: url.replace(/^https:\/\//, "") }), {
       tone: "success",
       duration: 20000,
@@ -197,6 +199,8 @@ async function shareGist(): Promise<void> {
   try {
     const url = await desktop.githubGist(app.cur.fileName, content, stem(app.cur.fileName), visibility === "public");
     wait.dismiss();
+    // 在系統的確認對話框選了「否」。
+    if (!url) return;
     await navigator.clipboard.writeText(url).catch(() => {});
     toast(t("已分享成 Gist，網址已複製"), {
       tone: "success",

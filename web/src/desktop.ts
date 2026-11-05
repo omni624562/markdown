@@ -309,9 +309,8 @@ export interface GitHubAccount {
   name: string | null;
 }
 
-/** 裝置碼登入：在 GitHub 網頁輸入 `userCode`。 */
+/** 裝置碼登入：在 GitHub 網頁輸入 `userCode`（換權杖用的代碼只留在原生端）。 */
 export interface GitHubDeviceCode {
-  deviceCode: string;
   userCode: string;
   verificationUri: string;
   interval: number;
@@ -808,8 +807,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       ),
     loadSettings: () => core.invoke<string | null>("load_settings"),
     /**
-     * 儲存設定。從關閉改成「啟用 AI 協作」時原生端會再確認一次；使用者拒絕時回傳 false。
-     * 需要 AI 的指令會等最近一次存檔完成（原生端以設定檔為準）。
+     * 儲存設定。從關閉改成「啟用 AI 協作」，或重新開啟關掉的整合功能時，原生端會用系統的對話框再確認一次；
+     * 使用者拒絕時那些開關存成關閉，回傳 false。需要 AI 的指令會等最近一次存檔完成（原生端以設定檔為準）。
      */
     saveSettings: (json: string) => (settingsSaved = core.invoke<boolean>("save_settings", { json })),
 
@@ -851,8 +850,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     projects: () => core.invoke<Project[]>("projects_list"),
     projectUpdate: (path: string, change: ProjectChange) => core.invoke<Project>("project_update", { path, change }),
     projectForget: (path: string) => core.invoke<void>("project_forget", { path }),
-    /** 刪除專案：從清單移除；`trashFolder` 時把資料夾移到資源回收筒。 */
-    projectDelete: (path: string, trashFolder: boolean) => core.invoke<void>("project_delete", { path, trashFolder }),
+    /**
+     * 刪除專案：從清單移除；`trashFolder` 時把資料夾移到資源回收筒，原生端會先用系統的對話框再確認一次，
+     * 使用者選「否」時回傳 false（什麼都沒做）。
+     */
+    projectDelete: (path: string, trashFolder: boolean) => core.invoke<boolean>("project_delete", { path, trashFolder }),
     /** 在 Codex 桌面版開啟專案（專案清單裡的本機資料夾）。 */
     projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),
     /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
@@ -1011,16 +1013,20 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitStatus: () => core.invoke<GitStatus>("git_status"),
     githubAccount: () => core.invoke<GitHubAccount | null>("github_account"),
     githubLoginStart: () => core.invoke<GitHubDeviceCode>("github_login_start"),
-    githubLoginWait: (c: GitHubDeviceCode) =>
-      core.invoke<GitHubAccount>("github_login_wait", { deviceCode: c.deviceCode, interval: c.interval, expiresIn: c.expiresIn }),
+    /** 等使用者在瀏覽器輸入 `githubLoginStart` 的代碼並授權。 */
+    githubLoginWait: () => core.invoke<GitHubAccount>("github_login_wait"),
     githubLoginCancel: () => core.invoke<void>("github_login_cancel"),
     githubLogout: () => core.invoke<void>("github_logout"),
     githubRepos: () => core.invoke<GitHubRepo[]>("github_repos"),
     /** 選擇放在哪個資料夾後下載並開啟；取消時回傳 null。 */
     /** 下載儲存庫並開啟；選的位置已經是同一個儲存庫時直接開啟（`existing`）。取消時回傳 null。 */
     githubClone: (fullName: string) => core.invoke<Cloned | null>("github_clone", { fullName }),
-    /** 把開啟的資料夾上傳成新的儲存庫，回傳儲存庫網址。 */
-    githubPublish: (name: string, isPrivate: boolean) => core.invoke<string>("github_publish", { name, private: isPrivate }),
+    /**
+     * 把開啟的資料夾上傳成新的儲存庫，回傳儲存庫網址。公開的儲存庫（或會換掉原本的 origin）原生端會用系統的
+     * 對話框再確認一次；使用者選「否」時是 null。
+     */
+    githubPublish: (name: string, isPrivate: boolean) =>
+      core.invoke<string | null>("github_publish", { name, private: isPrivate }),
     gitFileHistory: (path: string) => core.invoke<FileCommit[]>("git_file_history", { path }),
     gitFileAt: (path: string, id: string) => core.invoke<string>("git_file_at", { path, id }),
     gitWebUrl: (path: string, from?: number, to?: number) => core.invoke<string>("git_web_url", { path, from, to }),
@@ -1056,9 +1062,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitMergeAbort: () => core.invoke<string>("git_merge_abort"),
     gitCreatePr: (title: string, body: string, newBranch: string | null) =>
       core.invoke<string>("git_create_pr", { title, body, newBranch }),
-    githubPages: () => core.invoke<string>("github_pages"),
+    /** 網站是公開的，原生端會用系統的對話框再確認一次；使用者選「否」時是 null。 */
+    githubPages: () => core.invoke<string | null>("github_pages"),
+    /** 公開的 Gist 原生端會用系統的對話框再確認一次；使用者選「否」時是 null。 */
     githubGist: (fileName: string, content: string, description: string, isPublic: boolean) =>
-      core.invoke<string>("github_gist", { fileName, content, description, public: isPublic }),
+      core.invoke<string | null>("github_gist", { fileName, content, description, public: isPublic }),
     adoAccount: () => core.invoke<AdoAccount | null>("ado_account"),
     /** 連線狀態（狀態列用）。 */
     adoPing: () =>
@@ -1068,7 +1076,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<{ id: string; label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>("ado_check"),
     /** 儲存診斷資料（先選檔案；常用請求的回應拿掉人名、信箱、標題與內容）；取消時是 null。 */
     adoDiagnosticsSave: () => core.invoke<string | null>("ado_diagnostics_save"),
-    adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
+    /** 換成另一台伺服器時原生端會用系統的對話框再確認一次；使用者選「否」時是 null（保留原本的連線）。 */
+    adoConnect: (url: string, pat: string) => core.invoke<AdoAccount | null>("ado_connect", { url, pat }),
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
     adoClone: (cloneUrl: string, name: string) => core.invoke<Cloned | null>("ado_clone", { cloneUrl, name }),

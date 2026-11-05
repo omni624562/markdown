@@ -334,6 +334,12 @@ fn origin_url(repo: &Repository) -> Option<String> {
         .map(str::to_string)
 }
 
+/// `dir` 所在儲存庫的遠端 origin（和 `publish_at` 找的是同一個儲存庫）；
+/// 不是儲存庫或沒有 origin 時是 None。
+pub fn origin_at(dir: &Path) -> Option<String> {
+    origin_url(&open(dir).ok()?)
+}
+
 pub fn status_at(dir: &Path) -> Status {
     let empty = |repo| Status {
         available: true,

@@ -71,9 +71,12 @@ export class Ado {
     }
     const wait = toast(t("正在連線到 Azure DevOps…"), { duration: 60000 });
     try {
-      this.#account = await this.#d.adoConnect(url, pat);
+      const account = await this.#d.adoConnect(url, pat);
       wait.dismiss();
-      toast(t("已連線到 Azure DevOps：{name}", { name: this.#account.name }), { tone: "success" });
+      // 換伺服器時在系統的確認對話框選了「否」：保留原本的連線。
+      if (!account) return false;
+      this.#account = account;
+      toast(t("已連線到 Azure DevOps：{name}", { name: account.name }), { tone: "success" });
       this.#hooks.changed();
       return true;
     } catch (e) {

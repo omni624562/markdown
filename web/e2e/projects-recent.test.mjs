@@ -103,7 +103,7 @@ const ACCOUNT = { login: "wang-xiaoming", id: 1, name: "王小明" };
 const ADO_ACCOUNT = { url: "https://ado.test/c", name: "王小明" };
 /** 還沒登入 GitHub：點「下載儲存庫」開始裝置碼登入，慢一點才登入好（看得到輸入代碼的視窗），這個帳號沒有儲存庫。 */
 const SIGN_IN = {
-  github_login_start: { deviceCode: "device", userCode: "ABCD-1234", verificationUri: "https://github.com/login/device", interval: 5, expiresIn: 900 },
+  github_login_start: { userCode: "ABCD-1234", verificationUri: "https://github.com/login/device", interval: 5, expiresIn: 900 },
   github_login_wait: { $delay: 300, value: ACCOUNT },
   github_repos: [[]],
 };
@@ -180,6 +180,8 @@ test("下載儲存庫：還沒登入 GitHub、還沒連線 Azure DevOps 時名�
   assert.equal(await login.locator(".github-code").textContent(), "ABCD-1234");
   await page.locator("dialog.palette[open] input[placeholder='你的 GitHub 帳號還沒有儲存庫']").waitFor();
   assert.equal((await calls(page)).filter((c) => c.cmd === "github_login_start").length, 1);
+  // 換權杖用的代碼只留在原生端：網頁等登入時不帶任何參數。
+  assert.deepEqual((await calls(page)).filter((c) => c.cmd === "github_login_wait").map((c) => c.args), [null]);
   await page.keyboard.press("Escape");
 
   // 登入後改成帳號名稱：檔案面板不必重畫就更新，切換器也一樣。

@@ -15,6 +15,7 @@ mod i18n;
 mod ado;
 mod ai;
 mod comet;
+mod confirm;
 mod dav;
 // SSH 遠端資料夾放在 dav/ 底下（和 WebDAV 共用連線、輪詢與指令），保留 crate::ssh 的路徑。
 use dav::ssh;

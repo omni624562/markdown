@@ -67,4 +67,6 @@ pub static EN: &[(&str, &str)] = &[
     ("每日筆記", "Daily Notes"),
     ("「{path}」已經存在，換一個名稱或位置", "\"{path}\" already exists. Choose another name or location."),
     ("無法建立資料夾「{name}」", "Couldn't create the folder \"{name}\""),
+    ("刪除專案", "Delete Project"),
+    ("要把「{path}」整個資料夾移到資源回收筒嗎？可以從資源回收筒還原。", "Move the entire folder \"{path}\" to the Recycle Bin? You can restore it from the Recycle Bin."),
 ];
