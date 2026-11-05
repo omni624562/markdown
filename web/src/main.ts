@@ -3457,10 +3457,10 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   "palette",
   "settings",
 ]);
-// 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。
+// 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。網頁版不能在資料夾中搜尋，Ctrl+Shift+F 沒有作用，不寫。
 for (const [tab, id] of [
   ["#side-tab-files", "show-files"],
-  ["#side-tab-search", "search-in-folder"],
+  ...(desktop ? ([["#side-tab-search", "search-in-folder"]] as const) : []),
   ["#side-tab-git", "show-git"],
 ] as const) {
   const el = $(tab);
