@@ -80,8 +80,8 @@ function build(): HTMLDialogElement {
     <form method="dialog">
       <h2 id="np-title">${tr.title}</h2>
       <p class="pe-path">${tr.hint}</p>
-      <label>${tr.name}<input name="name" maxlength="120" spellcheck="false" autocomplete="off" /></label>
-      <label>${tr.where}
+      <label class="np-f-name">${tr.name}<input name="name" maxlength="120" spellcheck="false" autocomplete="off" /></label>
+      <label class="np-f-where">${tr.where}
         <span class="np-where"><input name="parent" readonly /><button type="button" class="btn np-browse">${tr.browse}</button></span>
       </label>
       <div class="np-status"><p class="np-preview"></p><p class="dav-error" role="alert" hidden></p></div>
@@ -92,7 +92,7 @@ function build(): HTMLDialogElement {
         <p class="np-warn" hidden>${tr.cometMissing}</p>
       </fieldset>
       <section class="np-comet" hidden></section>
-      <label class="pe-check"><input type="checkbox" name="git" checked /> ${tr.git}</label>
+      <label class="pe-check np-f-git"><input type="checkbox" name="git" checked /> ${tr.git}</label>
       <fieldset class="pe-colors"><legend>${tr.color}</legend>${colors}</fieldset>
       <div class="choice-actions">
         <button type="button" class="btn" value="cancel">${tr.cancel}</button>
@@ -199,12 +199,14 @@ async function syncKind(d: HTMLDialogElement): Promise<void> {
   const section = d.querySelector<HTMLElement>(".np-comet")!;
   warn.hidden = true;
   section.hidden = true;
+  d.classList.remove("with-comet");
   refresh();
   if (!isComet) return;
   const found = await cometFound;
   if (kindOf(d) !== "comet") return;
   section.hidden = !found;
   warn.hidden = found;
+  d.classList.toggle("with-comet", found);
   if (found && !cometLoaded) {
     cometLoaded = true;
     void comet.load();

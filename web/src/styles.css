@@ -3190,7 +3190,31 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .new-project[data-mode="comet"] .np-content { display: none; }
 .np-comet { margin: 0 0 10px; padding: 10px 12px 2px; border: 1px solid var(--border); border-radius: 8px; }
 .np-comet h3 { margin: 0 0 8px; color: var(--accent); font-size: 13px; }
-.nc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+/* minmax(0, 1fr)：選單裡有很長的團隊、Sprint 名稱時，欄位也不會撐出框外。 */
+.nc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; }
+.nc-grid > label { min-width: 0; }
+.project-edit .np-comet select, .project-edit .np-comet input:not([type="checkbox"]) { width: 100%; min-width: 0; box-sizing: border-box; }
+/* 有「COMET 設定」時對話框改成橫的：左邊是專案本身的欄位，右邊是 COMET 設定，不用捲動。視窗太窄時照舊上下排。 */
+@media (min-width: 760px) {
+  .choice.new-project.with-comet { width: min(880px, calc(100vw - 32px)); }
+  .new-project.with-comet form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "title title" "hint hint" "name comet" "where comet" "status comet" "content comet" "git comet" "colors comet" "actions actions";
+    grid-template-rows: auto auto auto auto auto auto auto 1fr auto;
+    column-gap: 20px;
+  }
+  .new-project.with-comet #np-title { grid-area: title; }
+  .new-project.with-comet .pe-path { grid-area: hint; }
+  .new-project.with-comet .np-f-name { grid-area: name; }
+  .new-project.with-comet .np-f-where { grid-area: where; }
+  .new-project.with-comet .np-status { grid-area: status; }
+  .new-project.with-comet .np-content { grid-area: content; }
+  .new-project.with-comet .np-comet { grid-area: comet; align-self: start; }
+  .new-project.with-comet .np-f-git { grid-area: git; }
+  .new-project.with-comet .pe-colors { grid-area: colors; align-self: start; }
+  .new-project.with-comet .choice-actions { grid-area: actions; }
+}
 .nc-grid .nc-wide { grid-column: 1 / -1; }
 /* 箭頭沿用 .choice select 的背景圖，這裡不要蓋掉 background。 */
 .project-edit .np-comet select {
