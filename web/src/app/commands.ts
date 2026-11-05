@@ -333,6 +333,14 @@ export function initCommands(): void {
       run: () => app.closeProject(),
     },
     {
+      id: "open-in-codex",
+      title: t("在 Codex 開啟這個專案"),
+      group: t("資料夾與專案"),
+      icon: "external-link",
+      when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path),
+      run: () => app.projectUi?.openInCodex(),
+    },
+    {
       id: "delete-project",
       title: t("刪除專案…"),
       group: t("資料夾與專案"),

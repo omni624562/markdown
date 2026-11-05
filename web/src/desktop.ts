@@ -853,6 +853,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     projectForget: (path: string) => core.invoke<void>("project_forget", { path }),
     /** 刪除專案：從清單移除；`trashFolder` 時把資料夾移到資源回收筒。 */
     projectDelete: (path: string, trashFolder: boolean) => core.invoke<void>("project_delete", { path, trashFolder }),
+    /** 在 Codex 桌面版開啟專案（專案清單裡的本機資料夾）。 */
+    projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),
     /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
     projectRelocate: (path: string) => core.invoke<Project | null>("project_relocate", { path }),
     projectReveal: (path: string) => core.invoke<void>("project_reveal", { path }),

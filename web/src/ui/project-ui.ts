@@ -1,7 +1,7 @@
 /**
  * 專案（開過的資料夾）：切換器、專案總覽、專案設定（名稱、顏色、群組、釘選）。桌面版才有。
  */
-import { type DavConnection, type Desktop, displayPath, type Project, type ProjectChange } from "../desktop.ts";
+import { type DavConnection, type Desktop, displayPath, isRemote, type Project, type ProjectChange } from "../desktop.ts";
 import { timeAgo } from "../history-label.ts";
 import { forgetProjectSession } from "../session.ts";
 import { PROJECT_COLORS, projectGroups, projectSections, samePath } from "../projects.ts";
@@ -45,7 +45,7 @@ export interface RepoSource {
 type SwitchItem =
   | { kind: "project"; project: Project; section: string }
   | { kind: "remote"; remote: DavConnection }
-  | { kind: "action"; id: "new-project" | "new-comet-project" | "open-folder" | "overview" | "edit" | "close"; title: string; icon: string }
+  | { kind: "action"; id: "new-project" | "new-comet-project" | "open-folder" | "overview" | "edit" | "codex" | "close"; title: string; icon: string }
   | { kind: "repo"; source: RepoSource };
 
 /** 路徑最後一層的資料夾名稱。 */
@@ -123,6 +123,7 @@ export class ProjectUi {
         else if (item.id === "open-folder") this.#h.openFolder();
         else if (item.id === "overview") void this.openOverview();
         else if (item.id === "close") this.#h.close();
+        else if (item.id === "codex") void this.openInCodex();
         else {
           const p = this.current;
           if (p) void this.edit(p);
@@ -170,6 +171,7 @@ export class ProjectUi {
       { kind: "action", id: "overview", title: t("專案總覽"), icon: "layout-dashboard" },
     ];
     if (this.current) actions.push({ kind: "action", id: "edit", title: t("目前專案的設定…"), icon: "pencil" });
+    if (this.current && !isRemote(this.current.path)) actions.push({ kind: "action", id: "codex", title: t("在 Codex 開啟這個專案"), icon: "external-link" });
     if (this.#h.current()) actions.push({ kind: "action", id: "close", title: t("關閉專案"), icon: "folder-x" });
     for (const a of actions) if (a.kind === "action" && (!q || a.title.toLowerCase().includes(q))) items.push(a);
     for (const source of this.#h.repoSources()) {
@@ -341,6 +343,25 @@ export class ProjectUi {
     this.#renderOverview();
     this.#h.changed();
     return true;
+  }
+
+  /**
+   * 在 Codex 桌面版開啟目前的專案：Codex 開一個新對話，工作區就是專案的資料夾
+   * （原生端交給系統開啟 `codex://threads/new?path=…`）。
+   */
+  async openInCodex(): Promise<void> {
+    await this.refresh();
+    const p = this.current;
+    if (!p) {
+      toast(t("目前開著的資料夾不在專案清單中"), { tone: "error" });
+      return;
+    }
+    try {
+      await this.#d.projectOpenCodex(p.path);
+      toast(t("正在用 Codex 開啟「{name}」", { name: p.label }));
+    } catch (e) {
+      toast(message(e), { tone: "error", duration: 10000 });
+    }
   }
 
   /** 刪除目前開著的專案（「☰」→「專案」→「刪除專案…」）。 */

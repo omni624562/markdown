@@ -234,6 +234,41 @@ pub async fn project_reveal(trust: State<'_, Trust>, path: String) -> Result<(),
     .await
 }
 
+/// 在 Codex 桌面版開啟的網址：`codex://threads/new?path=<路徑>`，Codex 會開一個新對話，工作區就是這個資料夾。
+/// 路徑只留英數字與 `-_.~`，其他字元（含中文、`\`、`:`、空白）都用 UTF-8 的 %XX 編碼。
+fn codex_url(path: &str) -> String {
+    let mut out = String::from("codex://threads/new?path=");
+    for b in path.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// 在 Codex 桌面版開啟專案。只接受專案清單裡的本機資料夾（遠端資料夾 Codex 打不開）；
+/// 交給系統開啟 `codex://` 網址，沒有安裝 Codex 桌面版時由系統提示要用哪個程式開啟。
+#[tauri::command]
+pub fn project_open_codex(
+    app: AppHandle,
+    trust: State<'_, Trust>,
+    path: String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = PathBuf::from(&path);
+    if trust.project(&dir).is_none() {
+        return Err(tr!("這個資料夾不在專案清單中"));
+    }
+    if crate::dav::is_remote_path(&path) || !dir.is_absolute() {
+        return Err(tr!("遠端資料夾不能在 Codex 開啟"));
+    }
+    app.opener()
+        .open_url(codex_url(&path_string(&dir)), None::<&str>)
+        .map_err(|e| tr!("無法開啟 Codex 桌面版（請確認已經安裝）：{e}", e = e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,5 +349,22 @@ mod tests {
         assert!(!info(&dir).comet);
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(!info(Path::new("ssh://host/專案")).comet);
+    }
+
+    #[test]
+    fn codex_url_encodes_the_path() {
+        // 和 PowerShell 的 [uri]::EscapeDataString 一樣。
+        assert_eq!(
+            codex_url(r"C:\Users\me\產品 筆記"),
+            "codex://threads/new?path=C%3A%5CUsers%5Cme%5C%E7%94%A2%E5%93%81%20%E7%AD%86%E8%A8%98"
+        );
+        assert_eq!(
+            codex_url("/home/me/a&b?c#d"),
+            "codex://threads/new?path=%2Fhome%2Fme%2Fa%26b%3Fc%23d"
+        );
+        assert_eq!(
+            codex_url("v1.2_x-y~z"),
+            "codex://threads/new?path=v1.2_x-y~z"
+        );
     }
 }

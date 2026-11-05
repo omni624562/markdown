@@ -155,6 +155,8 @@ export const ui: Record<string, Translation> = {
   "重新指定位置…": "Relocate…",
   "已把「{name}」改到 {path}": "Moved \"{name}\" to {path}.",
   "刪除專案…": "Delete Project…",
+  "在 Codex 開啟這個專案": "Open Project in Codex",
+  "正在用 Codex 開啟「{name}」": "Opening \"{name}\" in Codex",
   "目前開著的資料夾不在專案清單中": "The open folder isn't in the project list.",
   "刪除專案": "Delete Project",
   "「{name}」會從專案清單移除。": "\"{name}\" will be removed from the project list.",
