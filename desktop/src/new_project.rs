@@ -1,7 +1,8 @@
 //! 新專案：在使用者選的位置建立一個資料夾（放進 README.md；筆記本還有每日筆記與 assets 資料夾；
 //! 可以順便建立 Git 儲存庫），加進專案清單並開啟。
 //!
-//! 前端不能指定任意路徑：新專案只能建在「文件」資料夾，或使用者在「瀏覽…」對話框選過的資料夾裡。
+//! 前端不能指定任意路徑：新專案只能建在「文件」資料夾、使用者在「瀏覽…」對話框選過的資料夾，
+//! 或上次建立新專案的位置（建立成功時由原生端記下，下次打開對話框時預先帶入）。
 
 use parking_lot::Mutex;
 use std::collections::HashSet;
@@ -17,9 +18,34 @@ use crate::workspace::{FolderInfo, Workspace};
 #[derive(Default)]
 pub struct ProjectParents(Mutex<HashSet<PathBuf>>);
 
-/// 預設的位置：「文件」資料夾。
+/// 記住上次新專案位置的檔案。
+fn last_parent_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("new-project-parent.txt"))
+}
+
+/// 記下來的上次位置還能用：本機磁碟上的絕對路徑（不連網路位置），而且資料夾還在。
+fn usable_parent(saved: &str) -> Option<PathBuf> {
+    let saved = saved.trim();
+    (crate::lexical::is_local_absolute(saved) && Path::new(saved).is_dir())
+        .then(|| PathBuf::from(saved))
+}
+
+/// 預設的位置：上次建立新專案的位置（還在的話；這次也可以用），沒有的話是「文件」資料夾。
 #[tauri::command]
-pub fn project_default_parent(app: AppHandle) -> Option<String> {
+pub fn project_default_parent(
+    app: AppHandle,
+    parents: State<'_, ProjectParents>,
+) -> Option<String> {
+    let last = last_parent_file(&app)
+        .and_then(|f| fs::read_to_string(f).ok())
+        .and_then(|saved| usable_parent(&saved));
+    if let Some(last) = last {
+        parents.0.lock().insert(last.clone());
+        return Some(path_string(&last));
+    }
     app.path().document_dir().ok().map(|p| path_string(&p))
 }
 
@@ -254,7 +280,15 @@ pub async fn create_project(
         Ok(())
     })
     .await?;
-    // 新 COMET 專案接著要在這個資料夾執行一次 comet setup（見 comet.rs）。
+    // 記住這次的位置，下次打開新專案對話框時預先帶入（寫不進去也不影響建立）。
+    if let Some(file) = last_parent_file(&app) {
+        let _ = file
+            .parent()
+            .map(fs::create_dir_all)
+            .transpose()
+            .and_then(|_| crate::files::write_atomic(&file, path_string(&parent).as_bytes()));
+    }
+    // COMET 專案接著要在這個資料夾執行一次 comet setup（見 comet.rs）。
     app.state::<crate::comet::CometRun>()
         .remember_new_project(&dir);
     Ok(crate::workspace::activate(&app, dir, &workspace, &trust))
@@ -263,6 +297,24 @@ pub async fn create_project(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remembered_parent_must_be_an_existing_local_folder() {
+        let dir = std::env::temp_dir().join(format!("omarker-np-parent-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let text = path_string(&dir);
+        assert_eq!(usable_parent(&format!("{text}\n")), Some(dir.clone()));
+        // 已經刪掉的資料夾、相對路徑、網路位置都不用（改回「文件」）。
+        assert_eq!(
+            usable_parent(&path_string(&dir.join("沒有這個資料夾"))),
+            None
+        );
+        assert_eq!(usable_parent("專案"), None);
+        assert_eq!(usable_parent(r"\\ado.test\share\專案"), None);
+        assert_eq!(usable_parent("//ado.test/share"), None);
+        assert_eq!(usable_parent(""), None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn comet_is_found_in_its_install_folders() {

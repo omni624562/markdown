@@ -1,16 +1,18 @@
 /**
  * 新專案（只有桌面版）：在電腦上建立一個新資料夾當成專案開啟。
- * 對話框填名稱、位置（預設「文件」，「瀏覽…」可以換）、一開始放什麼（空白：README.md；筆記本：再加每日筆記、
- * assets 資料夾；COMET 專案：建立後在終端機執行 `comet setup`）、要不要建立 Git 儲存庫、顏色；
- * 建立後切換到新專案並開啟 README.md。
+ * 對話框左邊「① 專案」填名稱、位置（預設「文件」，「瀏覽…」可以換）、一開始放什麼（三張小卡：空白：README.md；
+ * 筆記本：再加每日筆記、assets 資料夾；COMET 專案：建立後執行 `comet setup`）、要不要建立 Git 儲存庫、顏色；
+ * 建立後切換到新專案並開啟 README.md。上次選的小卡下次打開時預先選好。
  *
- * 新 COMET 專案：對話框多一段「COMET 設定」（app/comet-setup.ts），建立資料夾後用這些設定執行 `comet setup`，
- * 不必回答問題；對話框接著顯示進度與結果。失敗時可以改在內嵌終端機一問一答（主畫面不能直接寫入終端機，
- * 只能送固定的要求，見 desktop/src/ai/view.rs 的 `Request::CometSetup`）。找不到 COMET CLI 時只建立專案。
+ * 右邊「② COMET 設定」（app/comet-setup.ts）只在選了「COMET 專案」時能填，其他時候變灰；建立資料夾後用這些設定
+ * 執行 `comet setup`，不必回答問題，對話框接著顯示進度與結果。失敗時可以改在內嵌終端機一問一答（主畫面不能直接
+ * 寫入終端機，只能送固定的要求，見 desktop/src/ai/view.rs 的 `Request::CometSetup`）。
+ * 沒裝 COMET 的電腦不列「COMET 專案」也沒有右邊那一張，對話框只有左邊一張（窄的）。
  */
 import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { PROJECT_COLORS } from "../projects.ts";
+import * as storage from "../storage.ts";
 import { toast } from "../ui/toast.ts";
 import { checkComet, cometPresent } from "./comet-presence.ts";
 import { type CometForm, cometForm, cometSetupRunning, runCometSetup } from "./comet-setup.ts";
@@ -38,11 +40,9 @@ function joinPath(parent: string, name: string): string {
 }
 
 let dialog: HTMLDialogElement | null = null;
-/** 這台電腦有沒有 COMET CLI（PATH 裡或安裝位置；每次打開對話框時重新檢查：使用者可能剛裝好）。 */
-let cometFound: Promise<boolean> = Promise.resolve(false);
-/** `cometFound` 的結果（還沒查完時是 false）。 */
+/** 這台電腦有沒有 COMET CLI（PATH 裡或安裝位置；每次打開對話框時重新檢查：使用者可能剛裝好。還沒查完時用上次的結果）。 */
 let cometOk = false;
-/** 這次打開對話框後已經讀過 Azure DevOps 的清單（選了 COMET 專案才讀）。 */
+/** 這次打開對話框後已經讀過 Azure DevOps 的清單（這台電腦有 COMET 時，打開對話框就讀，變灰時也看得到）。 */
 let cometLoaded = false;
 let comet: CometForm;
 /** 更新「建立」能不能按（COMET 設定的欄位改了、comet 查完時）。 */
@@ -50,6 +50,9 @@ let refresh = () => {};
 
 /** 一開始放什麼。 */
 export type ProjectKind = "blank" | "notebook" | "comet";
+const KINDS: readonly ProjectKind[] = ["blank", "notebook", "comet"];
+/** 記住上次選的「一開始放什麼」。 */
+const KIND_KEY = "new-project-kind";
 
 function build(): HTMLDialogElement {
   const d = document.createElement("dialog");
@@ -68,10 +71,13 @@ function build(): HTMLDialogElement {
     where: t("放在哪裡"),
     browse: t("瀏覽…"),
     content: t("一開始放什麼"),
-    blank: t("空白：只有一份 README.md"),
-    notebook: t("筆記本：README.md、每日筆記、assets（圖片）資料夾"),
-    comet: t("COMET 專案：README.md，再用下面的設定執行 comet setup"),
-    cometMissing: t("這台電腦找不到 comet 指令。專案照樣會建立，裝好 COMET CLI 之後，在終端機執行 comet setup 就好。"),
+    project: t("專案"),
+    blank: t("空白"),
+    blankNote: t("只有 README.md"),
+    notebook: t("筆記本"),
+    notebookNote: t("加上每日筆記、圖片資料夾"),
+    comet: t("COMET 專案"),
+    cometNote: t("建立後執行 comet setup"),
     git: t("同時建立 Git 儲存庫（之後可以推送到 GitHub、Azure DevOps）"),
     color: t("顏色"),
     cancel: t("取消"),
@@ -81,20 +87,23 @@ function build(): HTMLDialogElement {
     <form method="dialog">
       <h2 id="np-title">${tr.title}</h2>
       <p class="pe-path">${tr.hint}</p>
-      <label class="np-f-name">${tr.name}<input name="name" maxlength="120" spellcheck="false" autocomplete="off" /></label>
-      <label class="np-f-where">${tr.where}
-        <span class="np-where"><input name="parent" readonly /><button type="button" class="btn np-browse">${tr.browse}</button></span>
-      </label>
-      <div class="np-status"><p class="np-preview"></p><p class="dav-error" role="alert" hidden></p></div>
-      <fieldset class="np-content"><legend>${tr.content}</legend>
-        <label class="pe-check"><input type="radio" name="content" value="blank" checked /> ${tr.blank}</label>
-        <label class="pe-check"><input type="radio" name="content" value="notebook" /> ${tr.notebook}</label>
-        <label class="pe-check"><input type="radio" name="content" value="comet" /> ${tr.comet}</label>
-        <p class="np-warn" hidden>${tr.cometMissing}</p>
-      </fieldset>
-      <section class="np-comet" hidden></section>
-      <label class="pe-check np-f-git"><input type="checkbox" name="git" checked /> ${tr.git}</label>
-      <fieldset class="pe-colors"><legend>${tr.color}</legend>${colors}</fieldset>
+      <section class="np-card np-main">
+        <h3><span class="np-num" aria-hidden="true">1</span>${tr.project}</h3>
+        <label class="np-f-name">${tr.name}<input name="name" maxlength="120" spellcheck="false" autocomplete="off" /></label>
+        <label class="np-f-where">${tr.where}
+          <span class="np-where"><input name="parent" readonly /><button type="button" class="btn np-browse">${tr.browse}</button></span>
+        </label>
+        <div class="np-status"><p class="np-preview"></p><p class="dav-error" role="alert" hidden></p></div>
+        <fieldset class="np-content"><legend>${tr.content}</legend>
+          ${KINDS.map(
+            (k) =>
+              `<label class="np-tile"><input type="radio" name="content" value="${k}"${k === "blank" ? " checked" : ""} /><b>${tr[k]}</b><small>${tr[`${k}Note`]}</small></label>`,
+          ).join("")}
+        </fieldset>
+        <label class="pe-check np-f-git"><input type="checkbox" name="git" checked /> ${tr.git}</label>
+        <fieldset class="pe-colors"><legend>${tr.color}</legend>${colors}</fieldset>
+      </section>
+      <section class="np-card np-comet" hidden></section>
       <div class="choice-actions">
         <button type="button" class="btn" value="cancel">${tr.cancel}</button>
         <button type="submit" class="btn btn-primary">${tr.create}</button>
@@ -124,7 +133,7 @@ function build(): HTMLDialogElement {
   refresh = update;
   comet = cometForm(q(".np-comet"), update);
   name.addEventListener("input", update);
-  for (const r of d.querySelectorAll<HTMLInputElement>("input[name=content]")) r.addEventListener("change", () => void syncKind(d));
+  for (const r of d.querySelectorAll<HTMLInputElement>("input[name=content]")) r.addEventListener("change", () => syncKind(d));
   q(".np-browse").addEventListener("click", () => {
     void desktop!
       .pickProjectParent()
@@ -152,7 +161,8 @@ function build(): HTMLDialogElement {
         dailyFolder: app.settings.value.dailyFolder,
       })
       .then(async (folder) => {
-        // 新 COMET 專案：對話框留著，換成設定的進度。
+        storage.save(KIND_KEY, kindOf(d));
+        // COMET 專案：對話框留著，換成設定的進度。
         if (setup) showProgress(d);
         else d.close();
         // 先存顏色再切換：側邊欄與狀態列的專案名稱一出現就是選的顏色。
@@ -188,36 +198,39 @@ function showProgress(d: HTMLDialogElement): void {
   d.querySelector<HTMLElement>(".np-progress")!.hidden = false;
 }
 
-/** 選了 COMET 專案時，標題、說明跟著換，顯示「COMET 設定」；找不到 comet 指令時改成提醒（只建立專案）。 */
-async function syncKind(d: HTMLDialogElement): Promise<void> {
+/**
+ * 選的小卡換了：說明跟著換；右邊的「② COMET 設定」只有選了「COMET 專案」時能填（其他時候變灰、不能操作，
+ * 填好的值留著）。
+ */
+function syncKind(d: HTMLDialogElement): void {
   const isComet = kindOf(d) === "comet";
-  d.querySelector("#np-title")!.textContent = isComet ? t("新 COMET 專案") : t("新專案");
-  const hint = d.querySelector(".pe-path")!;
-  hint.textContent = isComet
-    ? t("在電腦上建立一個新資料夾，接著用下面的設定執行 comet setup，不用再回答問題。")
+  d.querySelector(".pe-path")!.textContent = isComet
+    ? t("在電腦上建立一個新資料夾，接著用右邊的設定執行 comet setup，不用再回答問題。")
     : t("在電腦上建立一個新資料夾，當成專案開啟。");
-  const warn = d.querySelector<HTMLElement>(".np-warn")!;
   const section = d.querySelector<HTMLElement>(".np-comet")!;
-  warn.hidden = true;
-  section.hidden = true;
-  d.classList.remove("with-comet");
+  section.classList.toggle("off", !isComet);
+  section.inert = !isComet;
   refresh();
-  if (!isComet) return;
-  const found = await cometFound;
-  if (kindOf(d) !== "comet") return;
-  section.hidden = !found;
-  warn.hidden = found;
+}
+
+/**
+ * 這台電腦有沒有 COMET：有的話對話框是左右兩張（右邊「② COMET 設定」），沒有的話不列「COMET 專案」、只有左邊一張。
+ * 選著「COMET 專案」卻發現沒裝時改選「空白」。
+ */
+function showComet(d: HTMLDialogElement, found: boolean): void {
+  d.querySelector<HTMLElement>(".np-tile:has(> input[value=comet])")!.hidden = !found;
+  d.querySelector<HTMLElement>(".np-comet")!.hidden = !found;
   d.classList.toggle("with-comet", found);
   if (found && !cometLoaded) {
     cometLoaded = true;
     void comet.load();
   }
-  if (!found) hint.textContent = t("在電腦上建立一個新資料夾，當成專案開啟。");
-  refresh();
+  if (!found && kindOf(d) === "comet") d.querySelector<HTMLInputElement>("input[name=content][value=blank]")!.checked = true;
+  syncKind(d);
 }
 
-/** 打開新專案的對話框（`kind` 是預先選好的「一開始放什麼」；「新 COMET 專案…」選 COMET 專案）。 */
-export async function newProject(kind: ProjectKind = "blank"): Promise<void> {
+/** 打開新專案的對話框（`kind` 是預先選好的「一開始放什麼」；沒指定時是上次選的）。 */
+export async function newProject(kind?: ProjectKind): Promise<void> {
   if (!desktop) return;
   dialog ??= build();
   const d = dialog;
@@ -229,32 +242,21 @@ export async function newProject(kind: ProjectKind = "blank"): Promise<void> {
   d.querySelector<HTMLElement>("form")!.hidden = false;
   d.querySelector<HTMLElement>(".np-progress")!.hidden = true;
   d.setAttribute("aria-labelledby", "np-title");
-  // 「新 COMET 專案…」：只做 COMET 專案，不列「一開始放什麼」。
-  if (kind === "comet") d.dataset.mode = "comet";
-  else delete d.dataset.mode;
-  // 沒裝 COMET 的電腦不列「COMET 專案」（先用上次檢查的結果，查完再更新）。
-  const cometChoice = d.querySelector<HTMLElement>("label:has(> input[name=content][value=comet])")!;
-  cometChoice.hidden = kind !== "comet" && !cometPresent();
-  cometOk = false;
-  cometFound = checkComet(true);
-  void cometFound.then((found) => {
-    cometOk = found;
-    if (kind !== "comet") {
-      cometChoice.hidden = !found;
-      if (!found && kindOf(d) === "comet") {
-        d.querySelector<HTMLInputElement>("input[name=content][value=blank]")!.checked = true;
-        void syncKind(d);
-      }
-    }
-    refresh();
-  });
-  cometLoaded = false;
   const q = <T extends HTMLElement>(sel: string) => d.querySelector<T>(sel)!;
+  const saved = storage.load(KIND_KEY) as ProjectKind | null;
+  q<HTMLInputElement>(`input[name=content][value=${kind ?? (saved && KINDS.includes(saved) ? saved : "blank")}]`).checked = true;
+  // 先用上次檢查的結果排版，查完再更新（使用者可能剛裝好或移除了 COMET）。
+  cometLoaded = false;
+  cometOk = cometPresent();
+  showComet(d, cometOk);
+  void checkComet(true).then((found) => {
+    cometOk = found;
+    // 還在填（不是在顯示設定的進度）時才重新排版；對話框可能還沒顯示（還在讀預設位置）。
+    if (!q("form").hidden) showComet(d, found);
+  });
   q<HTMLInputElement>("input[name=name]").value = "";
   const parent = q<HTMLInputElement>("input[name=parent]");
   if (!parent.value) parent.value = (await desktop.projectDefaultParent().catch(() => null)) ?? "";
-  q<HTMLInputElement>(`input[name=content][value=${kind}]`).checked = true;
-  void syncKind(d);
   q<HTMLInputElement>("input[name=git]").checked = true;
   q<HTMLInputElement>("input[name=color][value='']").checked = true;
   q<HTMLInputElement>("input[name=name]").dispatchEvent(new Event("input"));

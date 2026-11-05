@@ -180,8 +180,13 @@ export const ui: Record<string, Translation> = {
   "放在哪裡": "Location",
   "瀏覽…": "Browse…",
   "一開始放什麼": "Start with",
-  "空白：只有一份 README.md": "Blank: just a README.md",
-  "筆記本：README.md、每日筆記、assets（圖片）資料夾": "Notebook: README.md, a daily notes folder and an assets (images) folder",
+  "空白": "Blank",
+  "只有 README.md": "Just a README.md",
+  "筆記本": "Notebook",
+  "加上每日筆記、圖片資料夾": "Adds daily notes and an images folder",
+  "建立後執行 comet setup": "Runs comet setup after creating",
+  "在電腦上建立一個新資料夾，接著用右邊的設定執行 comet setup，不用再回答問題。":
+    "Create a new folder on this computer, then run comet setup with the settings on the right. No questions to answer.",
   "同時建立 Git 儲存庫（之後可以推送到 GitHub、Azure DevOps）": "Also create a Git repository (you can push it to GitHub or Azure DevOps later)",
   "建立並開啟": "Create and Open",
   "會建立「{path}」": "Will create \"{path}\"",
@@ -191,15 +196,11 @@ export const ui: Record<string, Translation> = {
   "專案名稱不能用「.」結尾": "Project names can't end with \".\".",
   "「{name}」是 Windows 保留的名稱，請換一個": "\"{name}\" is a reserved name on Windows. Choose another name.",
   "已建立專案「{name}」": "Created project \"{name}\"",
-  "新 COMET 專案…": "New COMET Project…",
-  "新 COMET 專案": "New COMET Project",
   "COMET 專案": "COMET project",
-  "COMET 專案：README.md，再用下面的設定執行 comet setup": "COMET project: README.md, then run comet setup with the settings below",
   "建立並設定": "Create and Set Up",
-  "在電腦上建立一個新資料夾，接著用下面的設定執行 comet setup，不用再回答問題。":
-    "Create a new folder on this computer, then run comet setup with the settings below. No questions to answer.",
   // app/comet-setup.ts
   "COMET 設定": "COMET Settings",
+  "左邊選「COMET 專案」時才會用到這些設定。": "These settings are used only when \"COMET project\" is selected on the left.",
   "Azure DevOps 專案": "Azure DevOps project",
   "Sprint 天數": "Sprint length (days)",
   "Sprint 網址": "Sprint URL",
@@ -228,11 +229,6 @@ export const ui: Record<string, Translation> = {
   "「{name}」的 COMET 設定完成": "COMET setup for \"{name}\" is done",
   "「{name}」的 COMET 設定沒有完成": "COMET setup for \"{name}\" didn't finish",
   "查看": "View",
-  "這台電腦找不到 comet 指令。專案照樣會建立，裝好 COMET CLI 之後，在終端機執行 comet setup 就好。":
-    "The comet command isn't installed on this computer. The project is still created; after installing the COMET CLI, run comet setup in the terminal.",
-  "在電腦上建立一個新資料夾，接著在終端機執行 comet setup，照畫面的指示輸入資料。":
-    "Create a new folder on this computer, then run comet setup in the terminal and follow the prompts.",
-  "已建立專案「{name}」，請在下方的終端機照畫面的指示完成 comet setup。": "Created project \"{name}\". Follow the prompts in the terminal below to finish comet setup.",
   "已建立專案「{name}」。這台電腦找不到 comet 指令，裝好 COMET CLI 之後，在終端機執行 comet setup。":
     "Created project \"{name}\". The comet command isn't installed on this computer; after installing the COMET CLI, run comet setup in the terminal.",
   // find-panel.ts
