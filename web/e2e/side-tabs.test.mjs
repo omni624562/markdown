@@ -98,3 +98,24 @@ test("拖曳分頁到編輯區的右半邊：出現虛線框，放開就在右�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("並排時關閉有未存檔變更的文件，按「取消」：並排和兩份文件都不變", async () => {
+  const { page, context, errors } = await open();
+  await twoDocs(page);
+  await runCommand(page, "把目前的文件移到右邊");
+  await page.waitForSelector("#side-pane-head:not([hidden])");
+  const before = await tabs(page);
+  for (const side of ["右邊", "左邊"]) {
+    // 游標在右邊（需求說明）或左邊（週報）時按關閉分頁。
+    if (side === "左邊") await page.locator("#tab-bar .tab-pair .tab").first().click();
+    await page.keyboard.press("Control+Alt+W");
+    const dialog = page.locator("dialog[open]", { hasText: "要存檔嗎？" });
+    await dialog.waitFor();
+    await dialog.getByRole("button", { name: "取消" }).click();
+    await dialog.waitFor({ state: "detached" }).catch(() => dialog.waitFor({ state: "hidden" }));
+    assert.equal(await page.locator("#side-pane-head").isVisible(), true, `${side}：並排還開著`);
+    assert.deepEqual(await tabs(page), before, `${side}：分頁不變`);
+  }
+  assert.deepEqual(errors, []);
+  await context.close();
+});
