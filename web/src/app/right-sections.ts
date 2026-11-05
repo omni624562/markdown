@@ -3,6 +3,9 @@
  * 收合的分區只剩標題列，其他展開的分區撐滿整欄（收起大綱時 Wiki 就是整欄的高度）。
  * 大綱與 Wiki 都在右側、而且都展開時，中間有一條分隔線，可以拖曳或用方向鍵調整上下的高度，雙擊恢復一半一半。
  * 收合狀態與分隔線的位置都記住。只改右側欄：面板移回左邊的側邊欄時恢復原本的樣子。
+ *
+ * 右側欄與面板連標籤名稱一起找（`aside#outline-right`）：預覽裡文件標題的 id 是從標題文字來的
+ * （`# Outline Right` 的 id 就是 `outline-right`），預覽又排在右側欄前面，只用 id 找會拿到標題。
  */
 import { t } from "../i18n.ts";
 import { type RightSection, SPLIT, clampSplit, formatCollapsed, parseCollapsed, parseSplit, stepSplit } from "../right-sections-model.ts";
@@ -59,7 +62,7 @@ function placeHead(id: RightSection, panel: HTMLElement, onRight: boolean): void
 
 /** 大綱在右側時，反向連結搬到大綱底下自己的一區；移回左邊時放回大綱的清單後面。 */
 function placeBacklinks(outline: HTMLElement, onRight: boolean): void {
-  const list = document.getElementById("backlinks");
+  const list = document.querySelector<HTMLElement>("section#backlinks");
   if (!list) return;
   if (onRight) {
     if (!backlinksBox) {
@@ -104,8 +107,8 @@ export function showBacklinksCount(n: number): void {
 
 /** 大綱與 Wiki 兩塊加起來的高度（分隔線不算）。 */
 function splitTotal(): number {
-  const outline = document.getElementById("panel-outline");
-  const wiki = document.getElementById("panel-wiki");
+  const outline = document.querySelector<HTMLElement>("section#panel-outline");
+  const wiki = document.querySelector<HTMLElement>("section#panel-wiki");
   return (outline?.getBoundingClientRect().height ?? 0) + (wiki?.getBoundingClientRect().height ?? 0);
 }
 
@@ -116,7 +119,7 @@ function setSplit(r: number): void {
 }
 
 function applySplit(): void {
-  const right = document.getElementById("outline-right");
+  const right = document.querySelector<HTMLElement>("aside#outline-right");
   right?.style.setProperty("--rs-top", String(ratio));
   right?.style.setProperty("--rs-bottom", String(Math.round((1 - ratio) * 1000) / 1000));
   splitter?.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
@@ -137,7 +140,7 @@ function createSplitter(): HTMLElement {
   handle.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    const top = app.$("#panel-outline").getBoundingClientRect().top;
+    const top = app.$("section#panel-outline").getBoundingClientRect().top;
     const total = splitTotal();
     // 按住的地方離分隔線上緣多遠：拖曳時分隔線跟著滑鼠，不會一按下就跳一下。
     const grab = e.clientY - handle.getBoundingClientRect().top;
@@ -173,9 +176,9 @@ function createSplitter(): HTMLElement {
  * 標題列、反向連結那一區、收合狀態，以及兩塊都在右側又都展開時的分隔線。
  */
 export function syncRightSections(): void {
-  const right = app.$("#outline-right");
-  const outline = app.$("#panel-outline");
-  const wiki = document.getElementById("panel-wiki");
+  const right = app.$("aside#outline-right");
+  const outline = app.$("section#panel-outline");
+  const wiki = document.querySelector<HTMLElement>("section#panel-wiki");
   const outlineRight = outline.parentElement === right;
   const wikiRight = !!wiki && wiki.parentElement === right;
   placeHead("outline", outline, outlineRight);

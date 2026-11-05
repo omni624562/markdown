@@ -2,6 +2,8 @@
 
 pub static EN: &[(&str, &str)] = &[
     ("無法存取這個位置", "Couldn't access this location"),
+    ("一次最多檢查 {n} 個路徑", "At most {n} paths can be checked at a time."),
+    ("正在檢查其他連結，請稍後再試", "Other links are still being checked. Try again later."),
     ("請輸入名稱", "Enter a name."),
     ("名稱不能包含「{c}」", "Names can't contain \"{c}\"."),
     ("名稱不能以「.」結尾", "Names can't end with \".\"."),
@@ -62,6 +64,10 @@ pub static EN: &[(&str, &str)] = &[
     ("Sprint 天數", "Sprint length (days)"),
     ("Sprint 編號", "Sprint number"),
     ("只能在目前開啟的專案執行 COMET 設定", "COMET setup can only run in the project that is open."),
+    (
+        "只能在剛用「新專案」建立的資料夾執行 COMET 設定；其他專案請在終端機執行 comet setup。",
+        "COMET setup can only run in a folder you just created with New Project. For other projects, run comet setup in the terminal.",
+    ),
     ("找不到 COMET CLI（comet 指令）", "The COMET CLI (comet command) wasn't found."),
     (
         "comet 不是 .exe 執行檔，無法在背景設定；請改在終端機執行 comet setup。",

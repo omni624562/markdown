@@ -2,7 +2,7 @@
 //!
 //! 放在 App 的本機資料夾 `offline/` 底下，檔名是鍵的 SHA-256。分兩區：
 //! - `cache/`：自動存的，總量超過上限時從最久沒用的刪起；
-//! - `kept/`：使用者按了「保留離線」的，不會自動刪掉。
+//! - `kept/`：使用者按了「保留離線」的，不會自動刪掉；總量有上限，滿了就不再保留新的。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,6 +14,8 @@ use tauri::{AppHandle, Manager};
 /// 自動存的副本總量上限，超過就刪到 `CACHE_TARGET` 以下。
 const CACHE_QUOTA: u64 = 200 * 1024 * 1024;
 const CACHE_TARGET: u64 = 150 * 1024 * 1024;
+/// 保留離線的副本總量上限：不會自動刪掉，滿了就不再保留新的（不然可能把磁碟塞滿）。
+const KEPT_QUOTA: u64 = 500 * 1024 * 1024;
 /// 單一副本的大小上限（圖片轉成 data: 網址後最多約 14 MB）。
 const ENTRY_LIMIT: usize = 16 * 1024 * 1024;
 
@@ -33,7 +35,18 @@ fn file_name(key: &str) -> String {
 }
 
 /// 存一份副本；`kept` 時放在不會自動刪掉的地方（另一區的同一份會移除）。
+/// 保留的副本加起來超過 [`KEPT_QUOTA`] 時不存，回傳錯誤。
 pub fn put_at(root: &Path, key: &str, value: &str, kept: bool) -> Result<(), String> {
+    put_with_quota(root, key, value, kept, KEPT_QUOTA)
+}
+
+fn put_with_quota(
+    root: &Path,
+    key: &str,
+    value: &str,
+    kept: bool,
+    kept_quota: u64,
+) -> Result<(), String> {
     if value.len() > ENTRY_LIMIT {
         return Ok(());
     }
@@ -44,6 +57,17 @@ pub fn put_at(root: &Path, key: &str, value: &str, kept: bool) -> Result<(), Str
         ("cache", "kept")
     };
     let dir = root.join(to);
+    if kept {
+        // 同一份換成新的內容時，舊的那份不算。
+        let old = fs::metadata(dir.join(&name)).map_or(0, |m| m.len());
+        let others = dir_size(&dir).saturating_sub(old);
+        if others + value.len() as u64 > kept_quota {
+            return Err(tr!(
+                "保留離線的副本已經達到 {mb} MB 的上限，請先取消保留一些頁面",
+                mb = kept_quota / 1024 / 1024
+            ));
+        }
+    }
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     crate::files::write_atomic(&dir.join(&name), value.as_bytes()).map_err(|e| e.to_string())?;
     let _ = fs::remove_file(root.join(other).join(&name));
@@ -78,6 +102,18 @@ pub fn release_at(root: &Path, key: &str) {
     if fs::create_dir_all(&dir).is_ok() && fs::rename(&from, dir.join(&name)).is_ok() {
         trim(&dir, CACHE_QUOTA, CACHE_TARGET);
     }
+}
+
+/// 資料夾裡的檔案加起來多大（資料夾還不存在時是 0）。
+fn dir_size(dir: &Path) -> u64 {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.metadata().ok())
+        .filter(fs::Metadata::is_file)
+        .map(|m| m.len())
+        .sum()
 }
 
 /// 資料夾總量超過 `quota` 時，從修改時間最舊的刪起，刪到 `target` 以下。
@@ -163,6 +199,30 @@ mod tests {
         assert_eq!(get_at(root, "wiki:1:/a").as_deref(), Some("A2"));
         assert_eq!(fs::read_dir(root.join("kept")).unwrap().count(), 0);
         assert_eq!(get_at(root, "nope"), None);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn kept_copies_have_a_total_limit() {
+        let dir = temp_dir("quota");
+        let root = dir.as_path();
+        put_with_quota(root, "page:1", &"a".repeat(40), true, 100).unwrap();
+        put_with_quota(root, "page:2", &"b".repeat(40), true, 100).unwrap();
+        // 超過上限：不存，也不會把別的保留副本刪掉。
+        let err = put_with_quota(root, "page:3", &"c".repeat(40), true, 100).unwrap_err();
+        assert!(err.contains("上限"), "{err}");
+        assert_eq!(get_at(root, "page:3"), None);
+        assert_eq!(get_at(root, "page:1").unwrap().len(), 40);
+        // 同一份換成新的內容時只算新的大小。
+        put_with_quota(root, "page:2", &"b".repeat(60), true, 100).unwrap();
+        assert_eq!(get_at(root, "page:2").unwrap().len(), 60);
+        // 自動存的副本不受保留的上限影響（另有自己的上限，會自動刪舊的）。
+        put_with_quota(root, "page:3", &"c".repeat(40), false, 100).unwrap();
+        assert_eq!(get_at(root, "page:3").unwrap().len(), 40);
+        // 取消保留後就有空間了。
+        release_at(root, "page:1");
+        put_with_quota(root, "page:4", &"d".repeat(30), true, 100).unwrap();
+        assert_eq!(dir_size(&root.join("kept")), 90);
         let _ = fs::remove_dir_all(root);
     }
 

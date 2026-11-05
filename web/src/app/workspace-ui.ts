@@ -103,7 +103,7 @@ export function openTag(tag: string): void {
 let backlinksSeq = 0;
 /** 大綱面板下方的反向連結：哪些文件連到目前的文件。 */
 async function renderBacklinks(): Promise<void> {
-  const el = app.$("#backlinks");
+  const el = app.$("section#backlinks");
   const path = app.cur.fileHandle?.path;
   const seq = ++backlinksSeq;
   if (!path || app.cur.kind !== "markdown" || indexScope() !== "folder") {
@@ -224,10 +224,13 @@ export function setRightOutline(shown: boolean): void {
   }
 }
 
-/** 依設定把大綱面板移到右邊或放回左邊的側邊欄。 */
+/**
+ * 依設定把大綱面板移到右邊或放回左邊的側邊欄。
+ * 面板連標籤名稱一起找：文件標題也有 id（`# Outline Right` 是 `outline-right`），只用 id 會找到預覽裡的標題。
+ */
 export function placeOutline(): void {
-  const panel = app.$("#panel-outline");
-  const right = app.$("#outline-right");
+  const panel = app.$("section#panel-outline");
+  const right = app.$("aside#outline-right");
   const onRight = outlinePlacedRight();
   const outlineTab = app.$<HTMLButtonElement>("#side-tab-outline");
   if (onRight && panel.parentElement !== right) {
@@ -250,7 +253,7 @@ export function placeOutline(): void {
 
 /** 依設定把 Wiki 面板移到右側欄或放回左邊的側邊欄。 */
 function placeWiki(right: HTMLElement): void {
-  const panel = app.$("#panel-wiki");
+  const panel = app.$("section#panel-wiki");
   const tab = app.$("#side-tab-wiki");
   const onRight = wikiPlacedRight();
   if (onRight && panel.parentElement !== right) {

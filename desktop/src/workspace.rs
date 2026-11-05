@@ -7,8 +7,8 @@ use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
+use std::time::{Duration, Instant};
 
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{sinks::UTF8, BinaryDetection, SearcherBuilder};
@@ -584,8 +584,44 @@ pub async fn list_files(workspace: State<'_, Workspace>) -> Result<Vec<FileItem>
     .await
 }
 
-/// 連結檢查一次最多查幾個路徑。
-const MAX_CHECK_PATHS: usize = 5_000;
+/// 連結檢查一次最多查幾個路徑（前端分批送，見 web/src/app/link-check-ui.ts）。
+const MAX_CHECK_PATHS: usize = 500;
+/// 一次檢查最多花多久：時間到了，後面的路徑就不查（回傳 None），斷線的網路磁碟不會讓背景執行緒一直卡著。
+const CHECK_TIME: Duration = Duration::from_secs(20);
+/// 同時在背景執行的連結檢查（逾時後還卡著的也算）：一直呼叫也不會占滿背景執行緒。
+static CHECKS: Slots = Slots::new(4);
+
+/// 同時執行的數量上限。
+struct Slots {
+    running: AtomicUsize,
+    max: usize,
+}
+
+/// 一個執行中的工作；丟掉時釋放名額。
+struct Slot<'a>(&'a AtomicUsize);
+
+impl Slots {
+    const fn new(max: usize) -> Self {
+        Slots {
+            running: AtomicUsize::new(0),
+            max,
+        }
+    }
+
+    /// 還有名額時占一個；滿了是 None。
+    fn take(&self) -> Option<Slot<'_>> {
+        let before = self.running.fetch_add(1, AtomicOrdering::SeqCst);
+        // 先占再看：滿了就丟掉剛占的名額（Slot 丟掉時會減回去）。
+        let slot = Slot(&self.running);
+        (before < self.max).then_some(slot)
+    }
+}
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, AtomicOrdering::SeqCst);
+    }
+}
 
 /// 連結指向的檔案存不存在。只查本機磁碟上的絕對路徑（見 [`crate::lexical::is_local_absolute`]）；
 /// 網路路徑（`\\server\…`、`\/server/…`，連線時可能送出 Windows 帳號）、裝置路徑、相對路徑與網址
@@ -594,16 +630,36 @@ pub(crate) fn path_exists(path: &str) -> Option<bool> {
     crate::lexical::is_local_absolute(path).then(|| Path::new(path).exists())
 }
 
+/// 依序檢查每個路徑；過了 `deadline` 之後的不再檢查（回傳 None）。
+fn check_paths(
+    paths: &[String],
+    deadline: Instant,
+    exists: impl Fn(&str) -> Option<bool>,
+) -> Vec<Option<bool>> {
+    paths
+        .iter()
+        .map(|p| (Instant::now() < deadline).then(|| exists(p)).flatten())
+        .collect()
+}
+
 /// 連結檢查：每個路徑存不存在（順序和傳入的相同；不檢查的是 null）。
+/// 一次最多 [`MAX_CHECK_PATHS`] 個，同時最多幾個檢查（見 [`CHECKS`]）。
 #[tauri::command]
 pub async fn paths_exist(paths: Vec<String>) -> Result<Vec<Option<bool>>, String> {
-    // 網路磁碟斷線時不要永遠等下去。
-    crate::io::blocking_for(Duration::from_secs(30), move || {
-        Ok(paths
-            .iter()
-            .take(MAX_CHECK_PATHS)
-            .map(|p| path_exists(p))
-            .collect())
+    if paths.len() > MAX_CHECK_PATHS {
+        return Err(tr!("一次最多檢查 {n} 個路徑", n = MAX_CHECK_PATHS));
+    }
+    let slot = CHECKS
+        .take()
+        .ok_or_else(|| tr!("正在檢查其他連結，請稍後再試"))?;
+    // 網路磁碟斷線時不要永遠等下去：時間到了就回傳查到的部分。
+    crate::io::blocking_for(CHECK_TIME + Duration::from_secs(10), move || {
+        let _slot = slot;
+        Ok(check_paths(
+            &paths,
+            Instant::now() + CHECK_TIME,
+            path_exists,
+        ))
     })
     .await
 }
@@ -769,7 +825,24 @@ fn reveal_now(app: &AppHandle, path: &str) -> Result<(), String> {
 /// 「在檔案總管中顯示」可以選取的位置：目前開啟的資料夾內的項目，或使用者開過的檔案
 /// （`opened`：這次開過的、最近開啟、左側圖示列的捷徑，見 `files::may_reopen`）。
 /// 單獨開啟、不在資料夾裡的檔案，分頁的「在檔案總管中顯示」也要能用；其他位置一樣不行。
+/// 項目要真的存在（`檔案/x` 這類寫法在 Linux 上會變成打開檔案本身），路徑也不能有 `"`
+/// （Windows 的檔名本來就不能有；交給 explorer.exe 的參數是自己組的，見 [`reveal_path`]）。
 fn reveal_target(
+    root: Option<&Path>,
+    path: &Path,
+    opened: impl Fn(&Path) -> bool,
+) -> Result<PathBuf, String> {
+    if has_quote(path) {
+        return Err(tr!("路徑無效"));
+    }
+    let target = reveal_allowed(root, path, opened)?;
+    if fs::symlink_metadata(&target).is_err() {
+        return Err(tr!("找不到這個檔案或資料夾（可能已被移動或刪除）"));
+    }
+    Ok(target)
+}
+
+fn reveal_allowed(
     root: Option<&Path>,
     path: &Path,
     opened: impl Fn(&Path) -> bool,
@@ -788,10 +861,18 @@ fn reveal_target(
     }
 }
 
+fn has_quote(path: &Path) -> bool {
+    path.to_string_lossy().contains('"')
+}
+
 /// 在檔案總管中選取 `path`（呼叫端要先確認可以讓使用者看這個位置）。
 pub(crate) fn reveal_path(path: &Path) -> Result<(), String> {
     // explorer 不接受整個被引號包住的 `"/select,路徑"`（Rust 遇到空白會自動加引號），
-    // 所以自己組參數，只把路徑放進引號。用完整路徑啟動，免得執行到放在本程式旁邊的同名程式。
+    // 所以自己組參數，只把路徑放進引號；路徑有 `"` 就會跳出引號，一律不接受。
+    // 用完整路徑啟動，免得執行到放在本程式旁邊的同名程式。
+    if has_quote(path) {
+        return Err(tr!("路徑無效"));
+    }
     #[cfg(target_os = "windows")]
     let result = {
         use std::os::windows::process::CommandExt;
@@ -1176,9 +1257,67 @@ mod tests {
         let sneaky = outside.join("x").join("..").join("備忘.txt");
         assert!(reveal_target(None, &sneaky, |_| true).is_err());
         assert!(reveal_target(None, Path::new("備忘.txt"), |_| true).is_err());
+        // 不存在的項目不行：包括把檔案當成資料夾的 `README.md/x`（Linux 上會打開檔案本身）。
+        let missing = tr!("找不到這個檔案或資料夾（可能已被移動或刪除）");
+        assert_eq!(
+            reveal_target(Some(&dir), &dir.join("沒有.md"), opened),
+            Err(missing.clone())
+        );
+        assert_eq!(
+            reveal_target(Some(&dir), &readme.join("x"), opened),
+            Err(missing.clone())
+        );
+        assert_eq!(
+            reveal_target(None, &outside.join("沒有.txt"), |_| true),
+            Err(missing)
+        );
+        // 有 `"` 的路徑會跳出交給 explorer.exe 的引號：不管存不存在都不行。
+        assert_eq!(
+            reveal_target(Some(&dir), &dir.join("a\",b.md"), opened),
+            Err(tr!("路徑無效"))
+        );
+        #[cfg(unix)]
+        {
+            let quoted = dir.join("引號\".md");
+            fs::write(&quoted, "").unwrap();
+            assert_eq!(
+                reveal_target(Some(&dir), &quoted, opened),
+                Err(tr!("路徑無效"))
+            );
+        }
 
         fs::remove_dir_all(&dir).unwrap();
         fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn link_checks_stop_at_the_deadline() {
+        let paths: Vec<String> = ["/a", "/b", "/c"].map(String::from).to_vec();
+        let all = check_paths(&paths, Instant::now() + Duration::from_secs(60), |_| {
+            Some(true)
+        });
+        assert_eq!(all, [Some(true), Some(true), Some(true)]);
+        // 時間到了之後的路徑不查（不碰檔案系統）。
+        let asked = std::cell::Cell::new(0);
+        let late = check_paths(&paths, Instant::now(), |_| {
+            asked.set(asked.get() + 1);
+            Some(true)
+        });
+        assert_eq!(late, [None, None, None]);
+        assert_eq!(asked.get(), 0);
+    }
+
+    #[test]
+    fn only_a_few_link_checks_run_at_once() {
+        let slots = Slots::new(2);
+        let a = slots.take().unwrap();
+        let b = slots.take().unwrap();
+        assert!(slots.take().is_none());
+        drop(a);
+        let c = slots.take().unwrap();
+        assert!(slots.take().is_none());
+        drop((b, c));
+        assert_eq!(slots.running.load(AtomicOrdering::SeqCst), 0);
     }
 
     #[test]
