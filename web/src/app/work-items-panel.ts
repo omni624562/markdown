@@ -30,6 +30,7 @@ import { moveWikiPage } from "./wiki-move.ts";
 import { bulkEditWorkItems } from "./work-item-bulk.ts";
 import { drawFileShortcut, fileShortcut, fileShortcutShown, initFileShortcuts, openFileShortcut, syncFileShortcuts } from "./file-shortcuts.ts";
 import { basename } from "../paths.ts";
+import { initFilterCollapse } from "./filter-collapse.ts";
 
 
 // 舊版記住的 Azure DevOps 已儲存查詢（已經拿掉這個功能）。
@@ -978,4 +979,5 @@ export function initWorkItemsPanel(): void {
       })
     : null;
   app.$("#issues-refresh").addEventListener("click", () => void issuesPanel?.refresh());
+  initFilterCollapse();
 }

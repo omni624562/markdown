@@ -2468,6 +2468,31 @@ button.git-info:disabled { cursor: default; }
 .workitems-child .workitem-meta:has(> .workitem-note), .workitems-group-card .workitem-meta:has(> .workitem-note) { flex-wrap: wrap; }
 .workitems-searchrow { display: flex; gap: 6px; align-items: flex-start; }
 .workitems-searchrow .workitems-search { flex: 1; min-width: 0; }
+/* 工作項目、Wiki 的篩選區可以收合（app/filter-collapse.ts）：收合時篩選區換成一行摘要，按一下展開。 */
+.side-panel.filters-collapsed > .side-body > :is(.workitems-filters, .workitems-searchrow) { display: none; }
+.filters-summary { display: none; }
+.side-panel.filters-collapsed .filters-summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 30px;
+  margin: 0 0 8px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 3%, var(--bg));
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+  text-align: start;
+  cursor: pointer;
+}
+.filters-summary:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
+.filters-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.filters-summary .icon { flex: none; width: 15px; height: 15px; color: var(--muted); }
+.filters-summary-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filters-summary-sep { margin: 0 5px; color: var(--muted); }
 .workitems-filter-toggle { display: inline-flex; flex: none; gap: 3px; align-items: center; justify-content: center; box-sizing: border-box; min-width: 30px; height: 30px; margin: 2px 0 6px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; }
 .workitems-filter-toggle:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
 .workitems-filter-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
