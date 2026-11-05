@@ -35,6 +35,13 @@ test("寬視窗：☰ 在最左上角、和圖示列同寬；側邊欄開關在�
   const at = await box(page, ".activity-toggle");
   const firstTab = await box(page, "#side-tab-files");
   assert.ok(at.bottom <= firstTab.top, `開關在面板圖示的上面 ${JSON.stringify({ at, firstTab })}`);
+  // ☰ 和 ◧ 靠近一點，看起來是同一組：兩個圖示的中心相距 31px（只移動圖示，按鈕與下面的面板圖示不動）。
+  const iconMiddle = (sel) => page.evaluate((s) => {
+    const r = document.querySelector(s).getBoundingClientRect();
+    return (r.top + r.bottom) / 2;
+  }, sel);
+  const gap = (await iconMiddle(".activity-toggle .icon")) - (await iconMiddle("#main-menu .icon"));
+  assert.ok(Math.abs(gap - 31) <= 1, `☰ 到 ◧ 是 ${gap}px`);
   assert.equal(await toggle.getAttribute("aria-pressed"), "true");
   await toggle.click();
   await page.waitForFunction(() => document.querySelector(".workspace").classList.contains("outline-hidden"));

@@ -160,6 +160,12 @@ kbd {
 .activity-toggle .icon { width: 20px; height: 20px; }
 .activity-toggle[aria-pressed="true"] { color: var(--fg); }
 .activity-sep { flex: none; width: 24px; height: 1px; margin: 3px 0 5px; background: var(--border); }
+/* 寬視窗：☰ 和 ◧ 靠近一點（圖示中心相距 31px），看起來是同一組（選單與側邊欄開關），和下面的面板圖示分開。
+   只移動圖示，按得到的範圍與下面的圖示位置都不變。窄視窗時 ☰ 移到右上角、沒有 ◧，不用調。 */
+@media (min-width: 721px) {
+  .topbar > .nav-menu .icon { translate: 0 5px; }
+  .activity-toggle .icon { translate: 0 -9px; }
+}
 .topbar-side { display: none; flex: none; width: var(--outline-width); }
 /* ---- Windows 桌面版的標題列按鈕 ---- */
 .window-controls { display: flex; flex: none; align-self: stretch; margin-left: 8px; }
