@@ -148,8 +148,8 @@ export const main: Record<string, Translation> = {
     "Reopened with the unsaved content it had when closed (press Ctrl+Z to go back to the file's content).",
   "找不到「{name}」，已用關閉時的內容開成新分頁。":
     "Couldn't find \"{name}\". Opened the content it had when closed in a new tab.",
-  "這個檔案是 Big5 編碼，已轉換後顯示；存檔時會改存成 UTF-8。":
-    "This file is Big5-encoded and was converted for display. It will be saved as UTF-8.",
+  "這個檔案是 {encoding} 編碼，已轉換後顯示；遠端的檔案存檔時會改存成 UTF-8。":
+    "This file is {encoding} encoded and was converted for display. Remote files are saved as UTF-8.",
 
   // 存檔、斷線、衝突
   "還沒有連線到「{name}」，重新連線後再存檔。": "Not connected to \"{name}\". Reconnect, then save again.",
@@ -804,4 +804,27 @@ export const main: Record<string, Translation> = {
   "「{name}」已經在左邊了。": "\"{name}\" is already on the left.",
   "要並排編輯，請先再開一份文件。": "Open another document first to edit side by side.",
   "關閉並排（文件留在分頁裡）": "Close side by side (the document stays open in its tab)",
+  // app/file-format.ts
+  "繁體中文": "Traditional Chinese",
+  "日文": "Japanese",
+  "簡體中文": "Simplified Chinese",
+  "韓文": "Korean",
+  "西歐語言": "Western European",
+  "{name}（{note}）": "{name} ({note})",
+  "編碼無法辨識": "Unknown Encoding",
+  "要用 {encoding} 重新讀取嗎？": "Reopen with {encoding}?",
+  "「{name}」有還沒存檔的修改，重新讀取會丟掉這些修改。": "\"{name}\" has unsaved changes. Reopening discards them.",
+  "重新讀取": "Reopen",
+  "用 {encoding} 讀取時有解讀不了的字（畫面上的 �），這個檔案可能不是這個編碼。": "Some bytes couldn't be decoded as {encoding} (shown as �). The file may use a different encoding.",
+  "要改存成 UTF-8 嗎？": "Save as UTF-8?",
+  "「{name}」是 {encoding} 編碼，存不了這幾個字：{chars}。改存成 UTF-8 就能保留這些字，但只認得 {encoding} 的舊程式開啟時可能會看到亂碼。":
+    "\"{name}\" is {encoding} encoded, which can't store these characters: {chars}. Saving as UTF-8 keeps them, but older programs that only read {encoding} may show garbled text.",
+  "改存成 UTF-8": "Save as UTF-8",
+  "用其他編碼重新讀取": "Reopen with Encoding",
+  "存檔時用的編碼": "Save with Encoding",
+  "UTF-8（含 BOM）": "UTF-8 with BOM",
+  "CRLF（Windows）": "CRLF (Windows)",
+  "LF（macOS、Linux）": "LF (macOS, Linux)",
+  "「{name}」是 {encoding} 編碼，存不了「{chars}」，已暫停自動存檔。按 Ctrl+S 存檔時可以改存成 UTF-8。":
+    "\"{name}\" is {encoding} encoded, which can't store \"{chars}\". Auto save is paused. Press Ctrl+S to save it as UTF-8.",
 };

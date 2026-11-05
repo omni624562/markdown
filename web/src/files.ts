@@ -31,7 +31,7 @@ export interface OpenedFile {
   name: string;
   text: string;
   handle: FileHandle | null;
-  /** 桌面版：檔案不是 UTF-8、改用 Big5 解讀時為 "big5"。 */
+  /** 桌面版：檔案的編碼（"utf-8"、"big5"…）；解讀不乾淨時為 "unknown"。 */
   encoding?: string;
 }
 
@@ -50,7 +50,9 @@ async function remember(handle: FileHandle): Promise<File> {
 /** 存檔結果；使用者取消時為 `null`。 */
 export type SaveOutcome =
   | { status: "saved"; name: string; handle: FileHandle | null }
-  | { status: "conflict"; name: string; diskText: string };
+  | { status: "conflict"; name: string; diskText: string }
+  /** 桌面版：檔案的編碼（例如 Big5）寫不進某些字，沒有寫入（見 app/file-format.ts 的 askUtf8）。 */
+  | { status: "unencodable"; path: string; name: string; encoding: string; chars: string };
 
 /** 桌面版的檔案控制代碼：讀寫都交給原生程式處理。 */
 export function desktopHandle(path: string, name: string): FileHandle {
@@ -135,6 +137,7 @@ export async function saveFile(
     });
     if (out.status === "cancelled") return null;
     if (out.status === "conflict") return { status: "conflict", name: out.name, diskText: out.diskText };
+    if (out.status === "unencodable") return out;
     return { status: "saved", name: out.name, handle: desktopHandle(out.path, out.name) };
   }
   try {

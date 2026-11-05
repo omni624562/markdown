@@ -9,7 +9,9 @@ export type MenuEntry =
   /** 一般動作（沒給 `checked`）或可勾選的項目；`when` 回傳 false 時不列出。 */
   | { label: string; icon?: string; checked?: () => boolean; when?: () => boolean; run(): void }
   /** 子選單：滑鼠移上去、點一下或按 → 展開。 */
-  | { label: string; icon?: string; items: MenuEntry[] };
+  | { label: string; icon?: string; items: MenuEntry[] }
+  /** 一區的小標題（不能點）。 */
+  | { heading: string };
 
 /** 把選單放在 `anchor` 旁邊，一律留在視窗內，太高時可以捲動。 */
 function position(menu: HTMLElement, anchor: DOMRect, side: "below" | "right"): void {
@@ -116,6 +118,13 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
         hr.className = "menu-sep";
         hr.role = "separator";
         return [hr];
+      }
+      if (typeof entry === "object" && "heading" in entry) {
+        const head = document.createElement("div");
+        head.className = "menu-head";
+        head.role = "presentation";
+        head.textContent = entry.heading;
+        return [head];
       }
       const item = document.createElement("button");
       item.type = "button";
