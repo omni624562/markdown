@@ -157,6 +157,8 @@ export const ui: Record<string, Translation> = {
   "刪除專案…": "Delete Project…",
   "在 Codex 開啟這個專案": "Open Project in Codex",
   "正在用 Codex 開啟「{name}」": "Opening \"{name}\" in Codex",
+  "在 Claude Code 開啟這個專案": "Open Project in Claude Code",
+  "正在用 Claude 開啟「{name}」": "Opening \"{name}\" in Claude",
   "目前開著的資料夾不在專案清單中": "The open folder isn't in the project list.",
   "刪除專案": "Delete Project",
   "「{name}」會從專案清單移除。": "\"{name}\" will be removed from the project list.",

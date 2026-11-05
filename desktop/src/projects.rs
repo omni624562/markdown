@@ -234,10 +234,9 @@ pub async fn project_reveal(trust: State<'_, Trust>, path: String) -> Result<(),
     .await
 }
 
-/// 在 Codex 桌面版開啟的網址：`codex://threads/new?path=<路徑>`，Codex 會開一個新對話，工作區就是這個資料夾。
-/// 路徑只留英數字與 `-_.~`，其他字元（含中文、`\`、`:`、空白）都用 UTF-8 的 %XX 編碼。
-fn codex_url(path: &str) -> String {
-    let mut out = String::from("codex://threads/new?path=");
+/// 網址參數裡的路徑：只留英數字與 `-_.~`，其他字元（含中文、`\`、`:`、空白）都用 UTF-8 的 %XX 編碼。
+fn encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
     for b in path.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
             out.push(b as char);
@@ -248,25 +247,64 @@ fn codex_url(path: &str) -> String {
     out
 }
 
-/// 在 Codex 桌面版開啟專案。只接受專案清單裡的本機資料夾（遠端資料夾 Codex 打不開）；
-/// 交給系統開啟 `codex://` 網址，沒有安裝 Codex 桌面版時由系統提示要用哪個程式開啟。
+/// 在 Codex 桌面版開啟的網址：`codex://threads/new?path=<路徑>`，Codex 會開一個新對話，工作區就是這個資料夾。
+fn codex_url(path: &str) -> String {
+    format!("codex://threads/new?path={}", encode_path(path))
+}
+
+/// 在 Claude 桌面版的 Claude Code 開啟的網址：`claude://code/new?folder=<路徑>`
+/// （Claude 說明中心的「Open Claude Desktop with a link」）。從連結帶來的資料夾，Claude 一律先跳出確認對話框才使用。
+/// 說明沒有寫 Windows 路徑的格式，所以和 Codex 一樣整段編碼。
+fn claude_url(path: &str) -> String {
+    format!("claude://code/new?folder={}", encode_path(path))
+}
+
+/// 在 AI 桌面版（`name`）開啟專案。只接受專案清單裡的本機資料夾（遠端資料夾桌面版打不開）；
+/// 交給系統開啟 `url(資料夾)`，沒有安裝桌面版時由系統提示要用哪個程式開啟。
+fn open_in_app(
+    app: &AppHandle,
+    trust: &Trust,
+    path: &str,
+    name: &str,
+    url: fn(&str) -> String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = PathBuf::from(path);
+    if trust.project(&dir).is_none() {
+        return Err(tr!("這個資料夾不在專案清單中"));
+    }
+    if crate::dav::is_remote_path(path) || !dir.is_absolute() {
+        return Err(tr!("遠端資料夾不能在 {app} 開啟", app = name));
+    }
+    app.opener()
+        .open_url(url(&path_string(&dir)), None::<&str>)
+        .map_err(|e| {
+            tr!(
+                "無法開啟 {app} 桌面版（請確認已經安裝）：{e}",
+                app = name,
+                e = e
+            )
+        })
+}
+
+/// 在 Codex 桌面版開啟專案（`codex://`）。
 #[tauri::command]
 pub fn project_open_codex(
     app: AppHandle,
     trust: State<'_, Trust>,
     path: String,
 ) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-    let dir = PathBuf::from(&path);
-    if trust.project(&dir).is_none() {
-        return Err(tr!("這個資料夾不在專案清單中"));
-    }
-    if crate::dav::is_remote_path(&path) || !dir.is_absolute() {
-        return Err(tr!("遠端資料夾不能在 Codex 開啟"));
-    }
-    app.opener()
-        .open_url(codex_url(&path_string(&dir)), None::<&str>)
-        .map_err(|e| tr!("無法開啟 Codex 桌面版（請確認已經安裝）：{e}", e = e))
+    open_in_app(&app, &trust, &path, "Codex", codex_url)
+}
+
+/// 在 Claude 桌面版的 Claude Code 開啟專案（`claude://`）。
+#[tauri::command]
+pub fn project_open_claude(
+    app: AppHandle,
+    trust: State<'_, Trust>,
+    path: String,
+) -> Result<(), String> {
+    open_in_app(&app, &trust, &path, "Claude", claude_url)
 }
 
 #[cfg(test)]
@@ -365,6 +403,23 @@ mod tests {
         assert_eq!(
             codex_url("v1.2_x-y~z"),
             "codex://threads/new?path=v1.2_x-y~z"
+        );
+    }
+
+    #[test]
+    fn claude_url_encodes_the_folder() {
+        assert_eq!(
+            claude_url(r"C:\Users\me\產品 筆記"),
+            "claude://code/new?folder=C%3A%5CUsers%5Cme%5C%E7%94%A2%E5%93%81%20%E7%AD%86%E8%A8%98"
+        );
+        // 說明中心的範例：/Users/me/repo → %2FUsers%2Fme%2Frepo
+        assert_eq!(
+            claude_url("/Users/me/repo"),
+            "claude://code/new?folder=%2FUsers%2Fme%2Frepo"
+        );
+        assert_eq!(
+            claude_url("/home/me/a&b?c#d+e=f"),
+            "claude://code/new?folder=%2Fhome%2Fme%2Fa%26b%3Fc%23d%2Be%3Df"
         );
     }
 }

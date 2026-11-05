@@ -45,6 +45,7 @@ import { type DocMeta, dropDraft, dropOrphanDrafts, loadDraft, loadSession, newI
 import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
+import { aiAppPresent } from "./app/ai-app-presence.ts";
 import { cometPresent } from "./app/comet-presence.ts";
 import { cometBadge } from "./ui/comet-badge.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
@@ -2180,6 +2181,7 @@ const projectUi = desktop
       openFolder: () => void commands.run("open-folder").catch(reportError),
       newProject: (comet) => void commands.run(comet ? "new-comet-project" : "new-project").catch(reportError),
       cometInstalled: cometPresent,
+      aiAppInstalled: aiAppPresent,
       close: () => void commands.run("close-folder").catch(reportError),
       closeAndWait: () => closeProject(),
       remotes: () => (features.remote ? desktop!.davConnections() : Promise.resolve([])),
@@ -3401,6 +3403,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
       "switch-project",
       "project-overview",
       "open-in-codex",
+      "open-in-claude",
       "-",
       "open-folder",
       { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },

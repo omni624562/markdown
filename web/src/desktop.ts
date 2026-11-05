@@ -163,6 +163,8 @@ export interface ProjectChange {
 }
 
 export type AiTool = "claude" | "codex";
+/** 可以開啟專案的 AI 桌面版（`codex://`、`claude://` 網址）。 */
+export type AiApp = "codex" | "claude";
 export type TermProgram = "shell" | AiTool;
 
 /** 主畫面能送給終端機的要求（Rust 的 `view::Request`）。 */
@@ -855,6 +857,10 @@ function bridge(core: TauriCore, event: TauriEvent) {
     projectDelete: (path: string, trashFolder: boolean) => core.invoke<void>("project_delete", { path, trashFolder }),
     /** 在 Codex 桌面版開啟專案（專案清單裡的本機資料夾）。 */
     projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),
+    /** 在 Claude 桌面版的 Claude Code 開啟專案（專案清單裡的本機資料夾）。 */
+    projectOpenClaude: (path: string) => core.invoke<void>("project_open_claude", { path }),
+    /** 這台電腦有沒有安裝 Codex、Claude 桌面版（系統有沒有登記開啟 codex://、claude:// 網址的程式）。 */
+    aiAppsInstalled: () => core.invoke<Record<AiApp, boolean> | null>("ai_apps_installed"),
     /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
     projectRelocate: (path: string) => core.invoke<Project | null>("project_relocate", { path }),
     projectReveal: (path: string) => core.invoke<void>("project_reveal", { path }),
