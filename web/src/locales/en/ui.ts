@@ -914,4 +914,11 @@ export const ui: Record<string, Translation> = {
   "側邊欄、編輯區、右側欄連在一起，或各自是圓角的區塊、中間留一點間隔（視窗很窄時一律相連）": "Whether the sidebar, editor and right sidebar are joined, or separate rounded panels with a small gap between them (always joined in a narrow window)",
   "相連": "Joined",
   "圓角區塊、留間隔（預設）": "Rounded, with gaps (default)",
+  // app/filter-collapse.ts
+  "搜尋「{q}」": "Search “{q}”",
+  "{action}：{filters}": "{action}: {filters}",
+  "收合篩選條件": "Collapse filters",
+  "展開篩選條件": "Expand filters",
+  "收合 Wiki 選單與搜尋": "Collapse wiki picker and search",
+  "展開 Wiki 選單與搜尋": "Expand wiki picker and search",
 };

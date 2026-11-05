@@ -33,6 +33,7 @@ import { boardPanelShown } from "./taskboard.ts";
 import { docName } from "./doc-names.ts";
 import { renameFileShortcuts } from "./file-shortcuts.ts";
 import { setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
+import { showFilters } from "./filter-collapse.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -317,7 +318,11 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
     if (!app.rightOutlineShown) setRightOutline(true);
     wikiPanel?.shown();
     // 從圖示列打開：和搜尋、標籤面板一樣，游標直接放進搜尋框。
-    if (focusInput) wikiPanel?.focusSearch();
+    if (focusInput) {
+      // 搜尋框收合著時先展開。
+      showFilters("wiki");
+      wikiPanel?.focusSearch();
+    }
     return;
   }
   app.sidePanel = panel;
