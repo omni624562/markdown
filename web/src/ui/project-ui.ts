@@ -3,6 +3,7 @@
  */
 import { type DavConnection, type Desktop, displayPath, type Project, type ProjectChange } from "../desktop.ts";
 import { timeAgo } from "../history-label.ts";
+import { forgetProjectSession } from "../session.ts";
 import { PROJECT_COLORS, projectGroups, projectSections, samePath } from "../projects.ts";
 import { choose } from "./choice.ts";
 import { icon } from "./icons.ts";
@@ -21,6 +22,8 @@ export interface ProjectHooks {
   newProject(comet?: boolean): void;
   /** 關閉目前的專案。 */
   close(): void;
+  /** 關閉目前的專案，等關好（刪除目前的專案前）。 */
+  closeAndWait(): Promise<void>;
   remotes(): Promise<DavConnection[]>;
   openRemote(c: DavConnection): void;
   /** 專案的名稱、顏色等改了（更新側邊欄與狀態列）。 */
@@ -43,6 +46,11 @@ type SwitchItem =
   | { kind: "remote"; remote: DavConnection }
   | { kind: "action"; id: "new-project" | "new-comet-project" | "open-folder" | "overview" | "edit" | "close"; title: string; icon: string }
   | { kind: "repo"; source: RepoSource };
+
+/** 路徑最後一層的資料夾名稱。 */
+export function folderName(path: string): string {
+  return path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? path;
+}
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -299,8 +307,9 @@ export class ProjectUi {
       button(p.pinned ? t("取消釘選") : t("釘選"), p.pinned ? "pin-off" : "pin", () => void this.#save(p, { ...this.#changeOf(p), pinned: !p.pinned })),
       button(t("專案設定…"), "pencil", () => void this.edit(p)),
       button(t("在檔案總管中顯示"), "folder-open", () => void this.#d.projectReveal(p.path).catch((e) => toast(message(e), { tone: "error" }))),
-      button(t("從清單移除"), "x", () => void this.#forget(p)),
     );
+    const del = button(t("刪除專案…"), "trash", () => void this.deleteProject(p), "btn po-delete");
+    del.append(t("刪除"));
     if (here) {
       actions.prepend(
         button(t("關閉專案"), "folder-x", () => {
@@ -309,7 +318,7 @@ export class ProjectUi {
         }),
       );
     }
-    li.append(main, actions);
+    li.append(main, actions, del);
     return li;
   }
 
@@ -330,23 +339,103 @@ export class ProjectUi {
     return true;
   }
 
-  async #forget(p: Project): Promise<void> {
-    const ok = await choose(
-      t("從清單移除"),
-      t(
-        "「{name}」會從專案清單移除（名稱、顏色、群組的設定也會一起清掉）。資料夾和裡面的檔案都不會動，之後再開啟這個資料夾就會重新加入。",
-        { name: p.label },
-      ),
-      [
-        { id: "cancel", label: t("取消") },
-        { id: "go", label: t("移除"), danger: true },
-      ],
-    );
-    if (ok !== "go") return;
-    await this.#d.projectForget(p.path).catch((e) => toast(message(e), { tone: "error" }));
+  /** 刪除目前開著的專案（「☰」→「專案」→「刪除專案…」）。 */
+  async deleteCurrent(): Promise<void> {
     await this.refresh();
-    this.#renderOverview();
-    this.#h.changed();
+    const p = this.current;
+    if (p) await this.deleteProject(p);
+    else toast(t("目前開著的資料夾不在專案清單中"), { tone: "error" });
+  }
+
+  /**
+   * 刪除專案：從清單移除；勾選時把資料夾移到資源回收筒。要在提示窗輸入專案的資料夾名稱才能刪除，
+   * 免得刪錯。目前開著的專案先關閉再刪。
+   */
+  async deleteProject(p: Project): Promise<void> {
+    const folder = folderName(p.path);
+    const here = this.#isCurrent(p);
+    const dialog = document.createElement("dialog");
+    dialog.className = "choice project-edit project-delete";
+    dialog.setAttribute("aria-labelledby", "pd-title");
+    const tr = {
+      title: t("刪除專案"),
+      lead: t("「{name}」會從專案清單移除。", { name: p.label }),
+      trash: t("同時把資料夾移到資源回收筒（可以從回收筒還原）"),
+      type: t("請輸入專案的資料夾名稱「{folder}」確認刪除", { folder }),
+      cancel: t("取消"),
+      del: t("刪除"),
+    };
+    dialog.innerHTML = `
+      <form method="dialog">
+        <h2 id="pd-title">${tr.title}</h2>
+        <p class="pd-lead"></p>
+        <p class="pe-path"></p>
+        <label class="pe-check"><input type="checkbox" name="trash" /> ${tr.trash}</label>
+        <p class="pd-note"></p>
+        <label class="pd-type"><span></span><input name="confirm" spellcheck="false" autocomplete="off" /></label>
+        <p class="dav-error" role="alert" hidden></p>
+        <div class="choice-actions">
+          <button type="button" class="btn" value="cancel">${tr.cancel}</button>
+          <button type="submit" class="btn btn-danger">${tr.del}</button>
+        </div>
+      </form>`;
+    const q = <T extends HTMLElement>(sel: string) => dialog.querySelector<T>(sel)!;
+    q(".pd-lead").textContent = tr.lead;
+    q(".pe-path").textContent = displayPath(p.path);
+    q(".pd-type span").textContent = tr.type;
+    const trash = q<HTMLInputElement>("input[name=trash]");
+    const confirm = q<HTMLInputElement>("input[name=confirm]");
+    const submit = q<HTMLButtonElement>("button[type=submit]");
+    const note = q(".pd-note");
+    const error = q(".dav-error");
+    const unsaved = !here && this.#h.unsaved(p.path);
+    const update = () => {
+      const lines = [
+        trash.checked
+          ? t("資料夾和裡面所有的檔案都會移到資源回收筒，這個專案記住的分頁也會一起清掉。")
+          : t("資料夾和裡面的檔案都不會動，之後再開啟這個資料夾就會重新加入。"),
+      ];
+      if (here) lines.push(t("這是目前開著的專案，會先關閉。"));
+      if (trash.checked && unsaved) lines.push(t("這個專案有還沒存檔的分頁，刪除後就找不到了。"));
+      note.textContent = lines.join("");
+      note.classList.toggle("warn", trash.checked);
+      // 輸入的名稱要和資料夾名稱一樣（不分大小寫、忽略前後空白）才能刪除。
+      submit.disabled = confirm.value.trim().toLowerCase() !== folder.toLowerCase();
+    };
+    trash.addEventListener("change", update);
+    confirm.addEventListener("input", update);
+    update();
+    q("[value=cancel]").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => dialog.remove());
+    q("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (submit.disabled) return;
+      submit.disabled = true;
+      void (async () => {
+        try {
+          if (here) await this.#h.closeAndWait();
+          await this.#d.projectDelete(p.path, trash.checked);
+          if (trash.checked) forgetProjectSession(p.path);
+          dialog.close();
+          toast(
+            trash.checked
+              ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label })
+              : t("已把「{name}」從專案清單移除", { name: p.label }),
+            { tone: "success" },
+          );
+        } catch (err) {
+          error.textContent = message(err);
+          error.hidden = false;
+          submit.disabled = false;
+        }
+        await this.refresh();
+        this.#renderOverview();
+        this.#h.changed();
+      })();
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    confirm.focus();
   }
 
   // ---- 專案設定 ------------------------------------------------------------

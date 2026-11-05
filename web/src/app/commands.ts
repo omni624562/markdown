@@ -333,6 +333,14 @@ export function initCommands(): void {
       run: () => app.closeProject(),
     },
     {
+      id: "delete-project",
+      title: t("刪除專案…"),
+      group: t("資料夾與專案"),
+      icon: "trash",
+      when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path),
+      run: () => app.projectUi?.deleteCurrent(),
+    },
+    {
       id: "switch-project",
       title: t("切換專案…"),
       group: t("資料夾與專案"),
