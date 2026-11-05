@@ -38,6 +38,34 @@ function section(title: string, body: string): string {
 
 const html = (s: string | null) => (s ? htmlToMarkdown(s, { keepImages: true }) : "");
 
+/**
+ * 內容裡的標題往下降 `by` 層（最多到 ######）。工作項目的說明、重現步驟、留言裡常有自己的標題（<h2> 等），
+ * 不降的話會和段落標題（##）同一層：卡片依 ## 切開，說明的內容就被拆到別的卡片去，大綱也亂掉。
+ * 程式碼區塊裡的 # 不動。只影響顯示，編輯時用的是欄位原本的 HTML。
+ */
+export function demoteHeadings(md: string, by: number): string {
+  let fence: string | null = null;
+  return md
+    .split("\n")
+    .map((line) => {
+      const f = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+      if (fence) {
+        if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+        return line;
+      }
+      if (f) {
+        fence = f[1];
+        return line;
+      }
+      const h = /^(\s{0,3})(#{1,6})(?=\s|$)/.exec(line);
+      return h ? h[1] + "#".repeat(Math.min(6, h[2].length + by)) + line.slice(h[0].length) : line;
+    })
+    .join("\n");
+}
+
+/** 欄位內容（HTML）轉成段落底下的 Markdown：標題從 ### 起。 */
+const field = (s: string | null) => demoteHeadings(html(s), 2);
+
 /** 「在瀏覽器開啟」的連結（網址放在角括號裡，有空白或括號也不會斷掉）。 */
 function webLink(url: string): string {
   const label = t("在瀏覽器開啟");
@@ -116,16 +144,17 @@ export function workItemMarkdown(d: AdoWorkItemDetail): string {
     [t("標籤"), d.tags.map(inlineText).join(t("、"))],
     [t("最後更新"), dateTime(d.changed)],
   ]);
-  const comments = d.comments.map((c) => `${commentHeading(c.author, c.created)}\n\n${html(c.text)}`);
+  // 留言在 ### 小標題底下：留言裡的標題從 #### 起。
+  const comments = d.comments.map((c) => `${commentHeading(c.author, c.created)}\n\n${demoteHeadings(html(c.text), 3)}`);
   const title = t("{label}：{title}", { label: inlineText(`${d.kind} ${d.id}`), title: inlineText(d.title) });
   return [
     `# ${title}`,
     fields,
     webLink(d.webUrl),
     // 「說明」在共用的翻譯是選單的「Help」；這裡是工作項目的 Description 欄位。
-    section(t("工作項目說明"), html(d.description)),
-    section(d.kind === "Bug" ? t("重現步驟") : t("驗收條件"), html(d.details)),
-    section(t("系統資訊"), html(d.systemInfo ?? null)),
+    section(t("工作項目說明"), field(d.description)),
+    section(d.kind === "Bug" ? t("重現步驟") : t("驗收條件"), field(d.details)),
+    section(t("系統資訊"), field(d.systemInfo ?? null)),
     section(t("相關工作項目（{n}）", { n: d.relations.length }), relationsMarkdown(d.relations)),
     section(t("留言（{n}）", { n: d.comments.length }), comments.join("\n\n")),
     // 附件是要用時才去找的，放最下面。
