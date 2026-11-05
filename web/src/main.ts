@@ -49,6 +49,7 @@ import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
 import { KindPicker } from "./ui/kind-picker.ts";
+import { initDocLanguage } from "./app/doc-language.ts";
 import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
@@ -600,6 +601,9 @@ const app = {
   },
   get setKind() {
     return setKind;
+  },
+  get setFileName() {
+    return setFileName;
   },
   get setOutline() {
     return setOutline;
@@ -3411,6 +3415,7 @@ for (const [tab, id] of [
 
 initActivityBar();
 initNewWorkItem();
+initDocLanguage();
 
 // ---- 版面 ---------------------------------------------------------------
 

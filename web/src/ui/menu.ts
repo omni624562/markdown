@@ -92,7 +92,8 @@ export function hideRepeatedIcons(items: readonly HTMLElement[]): void {
   }
 }
 
-export function setupMenu(button: HTMLButtonElement, commands: Commands | null, entries: MenuEntry[]): HTMLDivElement {
+/** `entries` 也可以是函式：每次打開選單時才產生（例如「最近用過」這種會變的項目）。 */
+export function setupMenu(button: HTMLButtonElement, commands: Commands | null, entries: MenuEntry[] | (() => MenuEntry[])): HTMLDivElement {
   const root = newMenu();
   root.id = `${button.id || "menu"}-popover`;
   document.body.append(root);
@@ -226,7 +227,7 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
     button.setAttribute("aria-expanded", String(opening));
     if (!opening) return;
     root.replaceChildren();
-    fill(root, entries);
+    fill(root, typeof entries === "function" ? entries() : entries);
     // 開啟後才量得到大小，定位好之前先不顯示。
     root.style.visibility = "hidden";
   });
