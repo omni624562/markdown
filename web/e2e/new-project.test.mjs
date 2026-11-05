@@ -197,6 +197,7 @@ test("新 COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 c
       project: "產品",
       team: "Contoso",
       iterationPath: "產品\\Sprint 12",
+      sprintNumber: 12,
     },
   ]);
   // 先切換到新專案、開 README.md，才執行 comet setup。
@@ -225,6 +226,40 @@ test("新 COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 c
   await progress.getByRole("button", { name: "完成" }).click();
   assert.equal(await page.locator("dialog.new-project[open]").count(), 0);
   assert.equal(await cometSetups(page), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("新 COMET 專案：對話框改成橫的；名稱很長的團隊也不會撐出框外；Sprint 名稱沒有編號時改傳工作板網址", async () => {
+  const longTeam = "產品團隊（很長很長的團隊名稱，用來確認選單不會撐出框外）";
+  const { page, context, errors } = await open({
+    desktop: {
+      ...DESKTOP,
+      ...ADO,
+      ado_teams: [[{ id: "t1", name: longTeam, default: true }]],
+      ado_team_iterations: [[{ id: "r1", name: "發佈衝刺", path: "產品\\Release\\發佈衝刺", start: null, finish: null, current: true }]],
+    },
+  });
+  const dialog = await openComet(page);
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "r1");
+  const box = await page.evaluate(() => {
+    const d = document.querySelector("dialog.new-project").getBoundingClientRect();
+    const section = document.querySelector(".np-comet").getBoundingClientRect();
+    const fields = [...document.querySelectorAll(".np-comet select, .np-comet input:not([type=checkbox])")].map((el) => el.getBoundingClientRect().right);
+    const name = document.querySelector("input[name=name]").getBoundingClientRect();
+    return { width: d.width, height: d.height, sectionRight: section.right, maxField: Math.max(...fields), sectionLeft: section.left, nameRight: name.right };
+  });
+  // 橫的：比高還寬，COMET 設定在右邊一欄，欄位都在框裡。
+  assert.ok(box.width > box.height, JSON.stringify(box));
+  assert.ok(box.sectionLeft > box.nameRight, JSON.stringify(box));
+  assert.ok(box.maxField <= box.sectionRight, JSON.stringify(box));
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await dialog.getByRole("button", { name: "建立並設定" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_setup_run"));
+  const [req] = await setupRuns(page);
+  assert.equal(req.sprintUrl, `https://ado.test/tfs/DefaultCollection/${encodeURIComponent("產品")}/_sprints/taskboard/${encodeURIComponent(longTeam)}/${["產品", "Release", "發佈衝刺"].map(encodeURIComponent).join("/")}`);
+  assert.equal(req.sprintNumber, undefined);
+  assert.equal(req.project, undefined);
   assert.deepEqual(errors, []);
   await context.close();
 });

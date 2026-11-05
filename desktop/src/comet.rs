@@ -37,6 +37,9 @@ pub struct SetupRequest {
     team: Option<String>,
     #[serde(default)]
     iteration_path: Option<String>,
+    /// Sprint 編號：`--assume-yes` 時沒有 Sprint 網址就一定要有。
+    #[serde(default)]
+    sprint_number: Option<u32>,
     assigned_to: String,
     #[serde(default)]
     cadence_days: Option<u32>,
@@ -111,6 +114,10 @@ fn setup_args(req: &SetupRequest) -> Result<Vec<String>, String> {
             "--iteration-path={}",
             clean(req.iteration_path.as_deref(), "Sprint")?
         ));
+        let number = req
+            .sprint_number
+            .ok_or_else(|| tr!("COMET 設定的「{what}」不正確", what = tr!("Sprint 編號")))?;
+        args.push(format!("--sprint-number={number}"));
     }
     args.push(format!(
         "--assigned-to={}",
@@ -302,6 +309,7 @@ mod tests {
             project: Some("產品".into()),
             team: Some("Contoso".into()),
             iteration_path: Some(r"產品\Sprint 12".into()),
+            sprint_number: Some(12),
             assigned_to: r"CONTOSO\wang".into(),
             cadence_days: Some(14),
             connection_test: true,
@@ -322,6 +330,7 @@ mod tests {
                 "--project=產品",
                 "--team=Contoso",
                 r"--iteration-path=產品\Sprint 12",
+                "--sprint-number=12",
                 r"--assigned-to=CONTOSO\wang",
                 "--sprint-cadence-days=14",
             ]
@@ -389,6 +398,10 @@ mod tests {
             },
             SetupRequest {
                 cadence_days: Some(0),
+                ..ado_request()
+            },
+            SetupRequest {
+                sprint_number: None,
                 ..ado_request()
             },
         ];

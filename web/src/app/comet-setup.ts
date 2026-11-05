@@ -36,6 +36,21 @@ export function cadenceOf(sprints: AdoTeamIteration[], index: number): number | 
   return null;
 }
 
+/** Sprint 的編號（名稱或路徑最後的數字，例如「Sprint 102」→ 102）；沒有數字時回傳 null。 */
+export function sprintNumberOf(sprint: { name: string; path: string }): number | null {
+  for (const text of [sprint.name, sprint.path.split("\\").pop() ?? ""]) {
+    const m = /(\d+)\s*$/.exec(text);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+/** Azure DevOps 網頁上這個 Sprint 工作板的網址（comet setup 從網址讀出專案、團隊與 Sprint）。 */
+export function sprintBoardUrl(collection: string, project: string, team: string, iterationPath: string): string {
+  const parts = iterationPath.split("\\").map(encodeURIComponent).join("/");
+  return `${collection.replace(/\/+$/, "")}/${encodeURIComponent(project)}/_sprints/taskboard/${encodeURIComponent(team)}/${parts}`;
+}
+
 /** Sprint 工作板網址的格式（`…/_sprints/taskboard/…`）。 */
 export function isSprintUrl(url: string): boolean {
   return /^https?:\/\/[^\s]+\/_sprints\/[^\s]+$/i.test(url.trim());
@@ -176,7 +191,10 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
       if (!account || !project.value || !tm || !it) return null;
       storage.save("comet-project", project.value);
       storage.save("comet-team", tm.id);
-      return { ...common, collectionUrl: account.url, project: project.value, team: tm.name, iterationPath: it.path };
+      // comet setup --assume-yes 一定要知道 Sprint 編號：從 Sprint 名稱取；名稱沒有編號時改傳工作板網址，由 comet 解析。
+      const number = sprintNumberOf(it);
+      if (number === null) return { ...common, sprintUrl: sprintBoardUrl(account.url, project.value, tm.name, it.path) };
+      return { ...common, collectionUrl: account.url, project: project.value, team: tm.name, iterationPath: it.path, sprintNumber: number };
     },
   };
 }

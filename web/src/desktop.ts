@@ -185,6 +185,8 @@ export interface CometSetupRequest {
   project?: string;
   team?: string;
   iterationPath?: string;
+  /** Sprint 編號（`comet setup --assume-yes` 沒有 Sprint 網址時一定要有）。 */
+  sprintNumber?: number;
   /** 指派給：姓名、完整帳號或員工編號。 */
   assignedTo: string;
   cadenceDays?: number;
