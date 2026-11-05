@@ -4,13 +4,15 @@
  * assets 資料夾；COMET 專案：建立後在終端機執行 `comet setup`）、要不要建立 Git 儲存庫、顏色；
  * 建立後切換到新專案並開啟 README.md。
  *
- * 新 COMET 專案：`comet setup` 是互動式的環境設定，在內嵌終端機（工作目錄就是新專案）執行，使用者照畫面的指示輸入。
- * 主畫面不能直接寫入終端機，只能送固定的要求（見 desktop/src/ai/view.rs 的 `Request::CometSetup`）。
+ * 新 COMET 專案：對話框多一段「COMET 設定」（app/comet-setup.ts），建立資料夾後用這些設定執行 `comet setup`，
+ * 不必回答問題；對話框接著顯示進度與結果。失敗時可以改在內嵌終端機一問一答（主畫面不能直接寫入終端機，
+ * 只能送固定的要求，見 desktop/src/ai/view.rs 的 `Request::CometSetup`）。找不到 COMET CLI 時只建立專案。
  */
 import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { PROJECT_COLORS } from "../projects.ts";
 import { toast } from "../ui/toast.ts";
+import { type CometForm, cometForm, cometSetupRunning, runCometSetup } from "./comet-setup.ts";
 import { app } from "./context.ts";
 
 /** Windows 不能當檔名的名稱（不分大小寫，也不能加副檔名）。 */
@@ -35,8 +37,15 @@ function joinPath(parent: string, name: string): string {
 }
 
 let dialog: HTMLDialogElement | null = null;
-/** 這台電腦有沒有 COMET CLI（PATH 裡或固定的安裝位置；每次打開對話框時重新檢查：使用者可能剛裝好）。 */
+/** 這台電腦有沒有 COMET CLI（PATH 裡或安裝位置；每次打開對話框時重新檢查：使用者可能剛裝好）。 */
 let cometFound: Promise<boolean> = Promise.resolve(false);
+/** `cometFound` 的結果（還沒查完時是 false）。 */
+let cometOk = false;
+/** 這次打開對話框後已經讀過 Azure DevOps 的清單（選了 COMET 專案才讀）。 */
+let cometLoaded = false;
+let comet: CometForm;
+/** 更新「建立」能不能按（COMET 設定的欄位改了、comet 查完時）。 */
+let refresh = () => {};
 
 /** 一開始放什麼。 */
 export type ProjectKind = "blank" | "notebook" | "comet";
@@ -60,7 +69,7 @@ function build(): HTMLDialogElement {
     content: t("一開始放什麼"),
     blank: t("空白：只有一份 README.md"),
     notebook: t("筆記本：README.md、每日筆記、assets（圖片）資料夾"),
-    comet: t("COMET 專案：README.md，建立後在終端機執行 comet setup"),
+    comet: t("COMET 專案：README.md，再用下面的設定執行 comet setup"),
     cometMissing: t("這台電腦找不到 comet 指令。專案照樣會建立，裝好 COMET CLI 之後，在終端機執行 comet setup 就好。"),
     git: t("同時建立 Git 儲存庫（之後可以推送到 GitHub、Azure DevOps）"),
     color: t("顏色"),
@@ -82,13 +91,15 @@ function build(): HTMLDialogElement {
         <label class="pe-check"><input type="radio" name="content" value="comet" /> ${tr.comet}</label>
         <p class="np-warn" hidden>${tr.cometMissing}</p>
       </fieldset>
+      <section class="np-comet" hidden></section>
       <label class="pe-check"><input type="checkbox" name="git" checked /> ${tr.git}</label>
       <fieldset class="pe-colors"><legend>${tr.color}</legend>${colors}</fieldset>
       <div class="choice-actions">
         <button type="button" class="btn" value="cancel">${tr.cancel}</button>
         <button type="submit" class="btn btn-primary">${tr.create}</button>
       </div>
-    </form>`;
+    </form>
+    <div class="np-progress" hidden></div>`;
   document.body.append(d);
   const q = <T extends HTMLElement>(sel: string) => d.querySelector<T>(sel)!;
   const name = q<HTMLInputElement>("input[name=name]");
@@ -105,8 +116,12 @@ function build(): HTMLDialogElement {
     const why = name.value ? invalidProjectName(name.value) : null;
     showError(why ?? "");
     preview.textContent = name.value.trim() && parent.value && !why ? t("會建立「{path}」", { path: joinPath(parent.value, name.value.trim()) }) : "";
-    submit.disabled = !name.value.trim() || !parent.value || !!why;
+    const setup = kindOf(d) === "comet" && cometOk;
+    submit.textContent = setup ? t("建立並設定") : tr.create;
+    submit.disabled = !name.value.trim() || !parent.value || !!why || (setup && !comet.request());
   };
+  refresh = update;
+  comet = cometForm(q(".np-comet"), update);
   name.addEventListener("input", update);
   for (const r of d.querySelectorAll<HTMLInputElement>("input[name=content]")) r.addEventListener("change", () => void syncKind(d));
   q(".np-browse").addEventListener("click", () => {
@@ -124,28 +139,30 @@ function build(): HTMLDialogElement {
     submit.disabled = true;
     const projectName = name.value.trim();
     const color = d.querySelector<HTMLInputElement>("input[name=color]:checked")?.value || null;
-    const comet = kindOf(d) === "comet";
+    const isComet = kindOf(d) === "comet";
+    const setup = isComet && cometOk ? comet.request() : null;
+    const git = q<HTMLInputElement>("input[name=git]").checked;
     void desktop!
       .createProject({
         parent: parent.value,
         name: projectName,
         notebook: q<HTMLInputElement>("input[value=notebook]").checked,
-        git: q<HTMLInputElement>("input[name=git]").checked,
+        git,
         dailyFolder: app.settings.value.dailyFolder,
       })
       .then(async (folder) => {
-        d.close();
+        // 新 COMET 專案：對話框留著，換成設定的進度。
+        if (setup) showProgress(d);
+        else d.close();
         // 先存顏色再切換：側邊欄與狀態列的專案名稱一出現就是選的顏色。
         if (color) await desktop!.projectUpdate(folder.path, { name: null, color, group: null, pinned: false }).catch(() => {});
         await app.setWorkspace(folder);
         app.showPanel("files");
         await app.openPath(joinPath(folder.path, "README.md"));
-        if (!comet) {
+        if (setup) {
+          await runCometSetup(d, q(".np-progress"), { ...setup, dir: folder.path }, { name: projectName, git });
+        } else if (!isComet) {
           toast(t("已建立專案「{name}」", { name: projectName }), { tone: "success" });
-        } else if (await cometFound) {
-          // 終端機的工作目錄是目前的專案（剛切換過去的新專案）。
-          app.terminal?.runCometSetup();
-          toast(t("已建立專案「{name}」，請在下方的終端機照畫面的指示完成 comet setup。", { name: projectName }), { tone: "success", duration: 10000 });
         } else {
           toast(t("已建立專案「{name}」。這台電腦找不到 comet 指令，裝好 COMET CLI 之後，在終端機執行 comet setup。", { name: projectName }), {
             duration: 15000,
@@ -164,24 +181,61 @@ function kindOf(d: HTMLDialogElement): ProjectKind {
   return (d.querySelector<HTMLInputElement>("input[name=content]:checked")?.value as ProjectKind | undefined) ?? "blank";
 }
 
-/** 選了 COMET 專案時，標題與說明跟著換；找不到 comet 指令時提醒。 */
+/** 對話框換成設定的進度（app/comet-setup.ts 畫進 `.np-progress`）。 */
+function showProgress(d: HTMLDialogElement): void {
+  d.querySelector<HTMLElement>("form")!.hidden = true;
+  d.querySelector<HTMLElement>(".np-progress")!.hidden = false;
+}
+
+/** 選了 COMET 專案時，標題、說明跟著換，顯示「COMET 設定」；找不到 comet 指令時改成提醒（只建立專案）。 */
 async function syncKind(d: HTMLDialogElement): Promise<void> {
-  const comet = kindOf(d) === "comet";
-  d.querySelector("#np-title")!.textContent = comet ? t("新 COMET 專案") : t("新專案");
-  d.querySelector(".pe-path")!.textContent = comet
-    ? t("在電腦上建立一個新資料夾，接著在終端機執行 comet setup，照畫面的指示輸入資料。")
+  const isComet = kindOf(d) === "comet";
+  d.querySelector("#np-title")!.textContent = isComet ? t("新 COMET 專案") : t("新專案");
+  const hint = d.querySelector(".pe-path")!;
+  hint.textContent = isComet
+    ? t("在電腦上建立一個新資料夾，接著用下面的設定執行 comet setup，不用再回答問題。")
     : t("在電腦上建立一個新資料夾，當成專案開啟。");
   const warn = d.querySelector<HTMLElement>(".np-warn")!;
+  const section = d.querySelector<HTMLElement>(".np-comet")!;
   warn.hidden = true;
-  if (comet && !(await cometFound) && kindOf(d) === "comet") warn.hidden = false;
+  section.hidden = true;
+  refresh();
+  if (!isComet) return;
+  const found = await cometFound;
+  if (kindOf(d) !== "comet") return;
+  section.hidden = !found;
+  warn.hidden = found;
+  if (found && !cometLoaded) {
+    cometLoaded = true;
+    void comet.load();
+  }
+  if (!found) hint.textContent = t("在電腦上建立一個新資料夾，當成專案開啟。");
+  refresh();
 }
 
 /** 打開新專案的對話框（`kind` 是預先選好的「一開始放什麼」；「新 COMET 專案…」選 COMET 專案）。 */
 export async function newProject(kind: ProjectKind = "blank"): Promise<void> {
   if (!desktop) return;
-  cometFound = desktop.cometInstalled().catch(() => false);
   dialog ??= build();
   const d = dialog;
+  // 上一個 COMET 專案還在設定（按了「在背景繼續」）：打開它的進度。
+  if (cometSetupRunning()) {
+    if (!d.open) d.showModal();
+    return;
+  }
+  d.querySelector<HTMLElement>("form")!.hidden = false;
+  d.querySelector<HTMLElement>(".np-progress")!.hidden = true;
+  d.setAttribute("aria-labelledby", "np-title");
+  // 「新 COMET 專案…」：只做 COMET 專案，不列「一開始放什麼」。
+  if (kind === "comet") d.dataset.mode = "comet";
+  else delete d.dataset.mode;
+  cometOk = false;
+  cometFound = desktop.cometInstalled().catch(() => false);
+  void cometFound.then((found) => {
+    cometOk = found;
+    refresh();
+  });
+  cometLoaded = false;
   const q = <T extends HTMLElement>(sel: string) => d.querySelector<T>(sel)!;
   q<HTMLInputElement>("input[name=name]").value = "";
   const parent = q<HTMLInputElement>("input[name=parent]");

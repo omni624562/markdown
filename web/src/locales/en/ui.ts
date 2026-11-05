@@ -175,7 +175,40 @@ export const ui: Record<string, Translation> = {
   "已建立專案「{name}」": "Created project \"{name}\"",
   "新 COMET 專案…": "New COMET Project…",
   "新 COMET 專案": "New COMET Project",
-  "COMET 專案：README.md，建立後在終端機執行 comet setup": "COMET project: README.md, then run comet setup in the terminal",
+  "COMET 專案：README.md，再用下面的設定執行 comet setup": "COMET project: README.md, then run comet setup with the settings below",
+  "建立並設定": "Create and Set Up",
+  "在電腦上建立一個新資料夾，接著用下面的設定執行 comet setup，不用再回答問題。":
+    "Create a new folder on this computer, then run comet setup with the settings below. No questions to answer.",
+  // app/comet-setup.ts
+  "COMET 設定": "COMET Settings",
+  "Azure DevOps 專案": "Azure DevOps project",
+  "Sprint 天數": "Sprint length (days)",
+  "Sprint 網址": "Sprint URL",
+  "oMarker 還沒連線 Azure DevOps：貼上 Sprint 工作板的網址（瀏覽器開啟工作板時網址列上的網址）。到設定連線 Azure DevOps 後，這裡就能直接選。":
+    "oMarker isn't connected to Azure DevOps: paste the URL of the Sprint taskboard (the address bar when the taskboard is open in the browser). After connecting Azure DevOps in Settings, you can pick from lists here.",
+  "姓名、完整帳號或員工編號；預設是 oMarker 目前登入的帳號。AreaPath 由團隊設定自動帶入。":
+    "Name, full account or employee ID; defaults to the account oMarker is signed in with. The AreaPath comes from the team settings.",
+  "完成後查詢我的工作，確認連得上 Azure DevOps": "Afterwards, query my work items to check the Azure DevOps connection",
+  "設定本機 PATH 與 VSCode（第一次使用 COMET 需要）": "Set up PATH and VS Code on this computer (needed the first time you use COMET)",
+  "建立資料夾與 README.md": "Create the folder and README.md",
+  "建立 Git 儲存庫": "Create a Git repository",
+  "執行 comet setup": "Run comet setup",
+  "查詢我的工作": "Query my work items",
+  "正在設定「{name}」，大約需要半分鐘，不必回答任何問題。": "Setting up \"{name}\". This takes about half a minute; no questions to answer.",
+  "在背景繼續": "Continue in Background",
+  "「{name}」設定完成，已切換到這個專案；也查詢了你的工作，確認連得上 Azure DevOps。":
+    "\"{name}\" is set up and open. Your work items were queried, so the Azure DevOps connection works.",
+  "「{name}」設定完成，已切換到這個專案。": "\"{name}\" is set up and open.",
+  "建立了這些檔案：": "Created these files:",
+  "顯示完整輸出": "Show Full Output",
+  "隱藏完整輸出": "Hide Full Output",
+  "開啟 AGENTS.md": "Open AGENTS.md",
+  "comet setup 沒有完成：{error}": "comet setup didn't finish: {error}",
+  "comet setup 沒有完成（結束代碼 {code}）。": "comet setup didn't finish (exit code {code}).",
+  "在終端機重試": "Retry in Terminal",
+  "「{name}」的 COMET 設定完成": "COMET setup for \"{name}\" is done",
+  "「{name}」的 COMET 設定沒有完成": "COMET setup for \"{name}\" didn't finish",
+  "查看": "View",
   "這台電腦找不到 comet 指令。專案照樣會建立，裝好 COMET CLI 之後，在終端機執行 comet setup 就好。":
     "The comet command isn't installed on this computer. The project is still created; after installing the COMET CLI, run comet setup in the terminal.",
   "在電腦上建立一個新資料夾，接著在終端機執行 comet setup，照畫面的指示輸入資料。":

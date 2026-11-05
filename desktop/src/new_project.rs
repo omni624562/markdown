@@ -75,8 +75,16 @@ fn locate_comet(comet_home: Option<PathBuf>, home: Option<PathBuf>) -> Option<Co
         .map(Comet::Installed)
 }
 
+/// COMET CLI 的執行檔：PATH 裡的 `comet`，或安裝位置的完整路徑。搜尋 PATH 可能很慢，要在背景執行緒呼叫。
+pub(crate) fn comet_program(comet_home: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBuf> {
+    match locate_comet(comet_home, home)? {
+        Comet::OnPath => which::which("comet").ok(),
+        Comet::Installed(exe) => Some(exe),
+    }
+}
+
 /// 目前的 `COMET_HOME` 與使用者資料夾（給 [`locate_comet`]）。
-fn comet_roots(app: &AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
+pub(crate) fn comet_roots(app: &AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
     (
         std::env::var_os("COMET_HOME").map(PathBuf::from),
         app.path().home_dir().ok(),

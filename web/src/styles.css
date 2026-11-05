@@ -3174,6 +3174,62 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .np-content { margin: 0 0 4px; padding: 0; border: 0; }
 .np-content legend { margin-bottom: 6px; padding: 0; font-size: 13px; font-weight: 600; }
 .project-edit .np-content .pe-check { margin-bottom: 6px; }
+/* 新 COMET 專案（app/comet-setup.ts）：「COMET 設定」一段、設定中的進度與結果。 */
+.new-project[data-mode="comet"] .np-content { display: none; }
+.np-comet { margin: 0 0 10px; padding: 10px 12px 2px; border: 1px solid var(--border); border-radius: 8px; }
+.np-comet h3 { margin: 0 0 8px; color: var(--accent); font-size: 13px; }
+.nc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.nc-grid .nc-wide { grid-column: 1 / -1; }
+/* 箭頭沿用 .choice select 的背景圖，這裡不要蓋掉 background。 */
+.project-edit .np-comet select {
+  min-width: 0;
+  padding: 6px 32px 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 400;
+}
+.choice .nc-note { margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.6; }
+.project-edit .np-comet .pe-check { margin-bottom: 6px; }
+.nc-steps { margin: 4px 0 12px; padding: 0; list-style: none; }
+.nc-steps li { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 13px; }
+.nc-steps li[data-state="wait"] { color: var(--muted); }
+.nc-mark { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 16px; height: 16px; }
+.nc-mark .icon { width: 15px; height: 15px; }
+.nc-steps li[data-state="done"] .nc-mark { color: var(--accent); }
+.nc-steps li[data-state="fail"] .nc-mark { color: var(--danger); }
+.nc-steps li[data-state="wait"] .nc-mark::before { width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: 50%; content: ""; }
+.nc-steps li[data-state="run"] .nc-mark::before {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: nc-spin 0.8s linear infinite;
+}
+@keyframes nc-spin { to { transform: rotate(360deg); } }
+.nc-log {
+  max-height: 220px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #1d2420;
+  color: #d6e2da;
+  font: 11.5px/1.55 var(--font-mono, ui-monospace, Consolas, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.nc-result { margin: 0 0 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.7; }
+.nc-result.ok { background: var(--accent-soft); color: var(--accent); }
+.nc-result.fail { background: var(--danger-soft, #fdecea); color: var(--danger); }
+.nc-files p { margin: 0 0 2px; font-size: 12.5px; }
+.nc-files pre { margin: 0 0 8px; font: 12px/1.7 var(--font-mono, ui-monospace, Consolas, monospace); }
+.nc-toggle { margin: 0 0 8px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer; }
+.nc-toggle:hover { text-decoration: underline; }
+
 /* 選了 COMET 專案、這台電腦找不到 comet 指令時的提醒（縮排對齊選項的文字）。 */
 .choice .np-warn { margin: -2px 0 8px 22px; color: light-dark(#b45309, #fbbf24); font-size: 12.5px; line-height: 1.6; }
 

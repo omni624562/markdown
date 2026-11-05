@@ -144,32 +144,174 @@ async function openComet(page) {
 
 const cometSetups = async (page) =>
   (await calls(page)).filter((c) => c.cmd === "term_forward" && c.args.request.kind === "cometSetup").length;
+const setupRuns = async (page) => (await calls(page)).filter((c) => c.cmd === "comet_setup_run").map((c) => c.args.req);
+/** 假的原生端送出 comet setup 的輸出與結果。 */
+const emitSetup = (page, events) => page.evaluate((list) => list.forEach((e) => window.__fake.emit("comet-setup", e)), events);
 
-test("新 COMET 專案：建立後在終端機執行 comet setup", async () => {
-  const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: true } });
+/** 已經連線 Azure DevOps：專案、團隊、Sprint（每兩週一個，目前是 Sprint 12）。 */
+const ADO = {
+  ado_account: { url: "https://ado.test/tfs/DefaultCollection", name: "王小明", account: "CONTOSO\\wang" },
+  ado_work_item_filters: { projects: ["產品", "Contoso"], kinds: [] },
+  ado_teams: [[{ id: "t1", name: "產品團隊", default: true }, { id: "t2", name: "Contoso", default: false }]],
+  ado_team_iterations: [
+    [
+      { id: "i11", name: "Sprint 11", path: "產品\\Sprint 11", start: "2026-10-19T00:00:00Z", finish: "2026-10-30T00:00:00Z", current: false },
+      { id: "i12", name: "Sprint 12", path: "產品\\Sprint 12", start: "2026-11-02T00:00:00Z", finish: "2026-11-13T00:00:00Z", current: true },
+      { id: "i13", name: "Sprint 13", path: "產品\\Sprint 13", start: "2026-11-16T00:00:00Z", finish: "2026-11-27T00:00:00Z", current: false },
+    ],
+  ],
+  comet_installed: true,
+};
+
+test("新 COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet setup，完成後列出建立的檔案", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
   const dialog = await openComet(page);
   assert.equal(await dialog.locator("h2").textContent(), "新 COMET 專案");
-  assert.equal(await dialog.getByLabel(/COMET 專案：/).isChecked(), true);
-  assert.equal(await dialog.locator(".np-warn").isHidden(), true);
+  // 專門的「新 COMET 專案」不列「一開始放什麼」。
+  assert.equal(await dialog.locator(".np-content").isHidden(), true);
+  const section = dialog.locator(".np-comet");
+  await section.waitFor();
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  assert.equal(await section.locator("select[name=nc-project]").inputValue(), "產品");
+  assert.equal(await section.locator("select[name=nc-team]").inputValue(), "t1");
+  assert.equal(await section.locator("select[name=nc-sprint] option:checked").textContent(), "Sprint 12（目前）");
+  // Sprint 天數：和下一個 Sprint 開始日相差 14 天。
+  assert.equal(await section.locator("input[name=nc-cadence]").inputValue(), "14");
+  assert.equal(await section.locator("input[name=nc-assigned]").inputValue(), "CONTOSO\\wang");
+  await section.locator("select[name=nc-team]").selectOption("t2");
   await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
-  await dialog.getByRole("button", { name: "建立並開啟" }).click();
-  await page.locator(".toast", { hasText: "請在下方的終端機照畫面的指示完成 comet setup" }).waitFor();
-  const all = await calls(page);
-  const created = all.find((c) => c.cmd === "create_project").args;
-  assert.equal(created.notebook, false);
-  assert.equal(created.git, true);
-  // 先切換到新專案（終端機的工作目錄）、開 README.md，最後才執行 comet setup。
-  const order = all.map((c) => c.cmd);
-  assert.ok(order.lastIndexOf("reopen_file") < order.lastIndexOf("term_forward"));
+  const create = dialog.getByRole("button", { name: "建立並設定" });
+  await page.waitForFunction(() => !document.querySelector("dialog.new-project button[type=submit]")?.disabled);
+  await create.click();
+  const progress = dialog.locator(".np-progress");
+  await progress.locator(".nc-steps li[data-state=run]", { hasText: "執行 comet setup" }).waitFor();
+  assert.equal(await dialog.locator("form").isHidden(), true);
+  assert.deepEqual(await setupRuns(page), [
+    {
+      dir: ROOT,
+      assignedTo: "CONTOSO\\wang",
+      cadenceDays: 14,
+      connectionTest: true,
+      localTools: true,
+      collectionUrl: "https://ado.test/tfs/DefaultCollection",
+      project: "產品",
+      team: "Contoso",
+      iterationPath: "產品\\Sprint 12",
+    },
+  ]);
+  // 先切換到新專案、開 README.md，才執行 comet setup。
+  const order = (await calls(page)).map((c) => c.cmd);
+  assert.ok(order.lastIndexOf("reopen_file") < order.indexOf("comet_setup_run"));
+  await emitSetup(page, [
+    { kind: "line", text: "COMET setup" },
+    { kind: "line", text: `已建立 / 更新：${ROOT}\\.comet.json` },
+    { kind: "line", text: `已建立 / 更新：${ROOT}\\.comet\\contexts\\sprint-context.json` },
+    { kind: "line", text: "查詢中：Sprint=產品\\Sprint 12" },
+  ]);
+  await progress.locator(".nc-steps li[data-state=run]", { hasText: "查詢我的工作" }).waitFor();
+  assert.match(await progress.locator(".nc-log").textContent(), /COMET setup\n已建立 \/ 更新/);
+  await emitSetup(page, [
+    { kind: "line", text: `已產生 AGENTS.md（COMET bootstrap）：${ROOT}\\AGENTS.md` },
+    { kind: "done", ok: true, code: 0, error: null },
+  ]);
+  await progress.locator(".nc-result.ok", { hasText: "「產品筆記」設定完成" }).waitFor();
+  assert.deepEqual(await progress.locator(".nc-steps li").evaluateAll((li) => li.map((x) => x.dataset.state)), ["done", "done", "done", "done"]);
+  assert.equal(await progress.locator(".nc-files pre").textContent(), ".comet.json\n.comet/contexts/sprint-context.json\nAGENTS.md");
+  // 成功時輸出收起來，按一下才展開。
+  assert.equal(await progress.locator(".nc-log").isHidden(), true);
+  await progress.getByRole("button", { name: "顯示完整輸出" }).click();
+  assert.equal(await progress.locator(".nc-log").isVisible(), true);
+  assert.equal(await progress.getByRole("button", { name: "開啟 AGENTS.md" }).count(), 1);
+  await progress.getByRole("button", { name: "完成" }).click();
+  assert.equal(await page.locator("dialog.new-project[open]").count(), 0);
+  assert.equal(await cometSetups(page), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("新 COMET 專案：comet setup 失敗時說原因，可以改在終端機一問一答", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
+  const dialog = await openComet(page);
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await dialog.getByRole("button", { name: "建立並設定" }).click();
+  const progress = dialog.locator(".np-progress");
+  await progress.locator(".nc-steps").waitFor();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_setup_run"));
+  await emitSetup(page, [
+    { kind: "line", text: "找不到使用者 CONTOSO\\wang" },
+    { kind: "done", ok: false, code: 1, error: null },
+  ]);
+  await progress.locator(".nc-result.fail", { hasText: "comet setup 沒有完成（結束代碼 1）" }).waitFor();
+  // 失敗時輸出留著，看得到原因。
+  assert.equal(await progress.locator(".nc-log").isVisible(), true);
+  assert.equal(await progress.locator(".nc-steps li[data-state=fail]").textContent(), "執行 comet setup");
+  await progress.getByRole("button", { name: "在終端機重試" }).click();
+  assert.equal(await page.locator("dialog.new-project[open]").count(), 0);
   assert.equal(await cometSetups(page), 1);
   assert.deepEqual(errors, []);
   await context.close();
 });
 
-test("新 COMET 專案：找不到 comet 指令時先提醒，專案照樣建立、不執行 comet setup", async () => {
-  const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: false } });
+test("新 COMET 專案：在背景繼續，完成時用通知告訴使用者；再打開看得到結果", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
   const dialog = await openComet(page);
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await dialog.getByRole("button", { name: "建立並設定" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_setup_run"));
+  await dialog.locator(".np-progress").getByRole("button", { name: "在背景繼續" }).click();
+  assert.equal(await page.locator("dialog.new-project[open]").count(), 0);
+  await emitSetup(page, [{ kind: "done", ok: true, code: 0, error: null }]);
+  const toastEl = page.locator(".toast", { hasText: "「產品筆記」的 COMET 設定完成" });
+  await toastEl.waitFor();
+  await toastEl.getByRole("button", { name: "查看" }).click();
+  await page.locator("dialog.new-project[open] .nc-result.ok").waitFor();
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("新 COMET 專案：oMarker 沒有連線 Azure DevOps 時貼上 Sprint 網址", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: true } });
+  const dialog = await openComet(page);
+  const section = dialog.locator(".np-comet");
+  await section.locator(".nc-url").waitFor();
+  assert.equal(await section.locator(".nc-ado").isHidden(), true);
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  const create = dialog.getByRole("button", { name: "建立並設定" });
+  // 網址與指派給都要填。
+  assert.equal(await create.isDisabled(), true);
+  await section.locator("input[name=nc-url]").fill("https://ado.test/tfs/DefaultCollection/產品/_sprints/taskboard/Contoso/產品/Sprint%2012");
+  assert.equal(await create.isDisabled(), true);
+  await section.locator("input[name=nc-assigned]").fill("王小明");
+  await section.locator("input[name=nc-smoke]").uncheck();
+  assert.equal(await create.isDisabled(), false);
+  await create.click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_setup_run"));
+  assert.deepEqual(await setupRuns(page), [
+    {
+      dir: ROOT,
+      assignedTo: "王小明",
+      cadenceDays: 14,
+      connectionTest: false,
+      localTools: true,
+      sprintUrl: "https://ado.test/tfs/DefaultCollection/產品/_sprints/taskboard/Contoso/產品/Sprint%2012",
+    },
+  ]);
+  // 沒勾「查詢我的工作」就沒有那一步。
+  assert.deepEqual(await dialog.locator(".nc-steps li").allTextContents(), ["建立資料夾與 README.md", "建立 Git 儲存庫", "執行 comet setup"]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("新 COMET 專案：找不到 comet 指令時先提醒，專案照樣建立、不執行 comet setup", async () => {
+  const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO, comet_installed: false } });
+  // 從一般的「新專案…」選 COMET 專案。
+  const dialog = await openFromMenu(page);
+  await dialog.getByLabel(/COMET 專案：/).check();
   await dialog.locator(".np-warn", { hasText: "這台電腦找不到 comet 指令" }).waitFor();
+  assert.equal(await dialog.locator(".np-comet").isHidden(), true);
+  assert.equal(await dialog.locator("h2").textContent(), "新 COMET 專案");
   // 換成空白就不提醒、標題換回「新專案」。
   await dialog.getByLabel("空白：只有一份 README.md").check();
   assert.equal(await dialog.locator("h2").textContent(), "新專案");
@@ -180,6 +322,7 @@ test("新 COMET 專案：找不到 comet 指令時先提醒，專案照樣建立
   await dialog.getByRole("button", { name: "建立並開啟" }).click();
   await page.locator(".toast", { hasText: "裝好 COMET CLI 之後，在終端機執行 comet setup" }).waitFor();
   assert.ok((await calls(page)).some((c) => c.cmd === "create_project"));
+  assert.deepEqual(await setupRuns(page), []);
   assert.equal(await cometSetups(page), 0);
   assert.deepEqual(errors, []);
   await context.close();
