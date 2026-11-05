@@ -2,6 +2,20 @@
  * 編輯器與預覽之間的分隔線：可拖曳、可用方向鍵調整，雙擊恢復一半一半。
  */
 import { t } from "../i18n.ts";
+
+/**
+ * 分隔線右邊那一塊的右緣：平常是預覽；兩份文件並排時是右邊的編輯器，工作項目等內容並排時是那份內容。
+ * 這些時候預覽藏起來（寬度是 0），不能拿預覽來算，不然拖曳的比例會變成負的、左邊被壓到最窄。
+ */
+function rightEdge(container: HTMLElement, handle: HTMLElement): number {
+  let right = handle.getBoundingClientRect().right;
+  for (const el of container.querySelectorAll<HTMLElement>(":scope > :is(.preview-pane, .side-editor-pane, .issue-pane)")) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0) right = Math.max(right, r.right);
+  }
+  return right;
+}
+
 export function setupSplitter(
   handle: HTMLElement,
   container: HTMLElement,
@@ -29,9 +43,8 @@ export function setupSplitter(
     handle.setPointerCapture(e.pointerId);
     document.body.classList.add("resizing");
     const editor = container.querySelector<HTMLElement>(".editor-pane")!;
-    const preview = container.querySelector<HTMLElement>(".preview-pane")!;
     const left = editor.getBoundingClientRect().left;
-    const width = preview.getBoundingClientRect().right - left;
+    const width = rightEdge(container, handle) - left;
     const move = (ev: PointerEvent) => set((ev.clientX - left) / width);
     const up = () => {
       handle.removeEventListener("pointermove", move);
