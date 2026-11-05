@@ -33,6 +33,7 @@ mod history;
 mod image_protocol;
 mod images;
 mod io;
+mod lexical;
 mod locales;
 mod navigation;
 mod new_project;

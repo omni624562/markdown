@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{AppHandle, Manager, UriSchemeResponder};
 
+use crate::lexical::{is_drive, lexically_inside, odd_segment};
 use crate::workspace::Workspace;
 
 pub const SCHEME: &str = "mdimg";
@@ -61,44 +62,6 @@ fn mime_type(ext: &str) -> Option<&'static str> {
     })
 }
 
-/// Windows 保留的裝置名稱（`con.png` 在舊版 Windows 上指的是主控台，不是檔案）。
-fn is_device_name(segment: &str) -> bool {
-    let stem = segment
-        .split('.')
-        .next()
-        .unwrap_or("")
-        .trim_end_matches(' ');
-    let stem = stem.to_ascii_lowercase();
-    matches!(
-        stem.as_str(),
-        "con" | "prn" | "aux" | "nul" | "conin$" | "conout$"
-    ) || ((stem.starts_with("com") || stem.starts_with("lpt"))
-        && stem.len() == 4
-        && stem.as_bytes()[3].is_ascii_digit())
-}
-
-/// 只用字串判斷 `path` 是否在 `root` 之內（不碰檔案系統）。
-/// `windows` 時不分大小寫，`/` 和 `\` 視為相同。
-fn lexically_inside(path: &str, root: &str, windows: bool) -> bool {
-    let sep = if windows { '\\' } else { '/' };
-    let norm = |s: &str| {
-        let mut s = if windows {
-            s.replace('/', "\\").to_lowercase()
-        } else {
-            s.to_string()
-        };
-        while s.chars().count() > 1 && s.ends_with(sep) && !s.ends_with(":\\") {
-            s.pop();
-        }
-        s
-    };
-    let (p, r) = (norm(path), norm(root));
-    !r.is_empty()
-        && p.len() > r.len()
-        && p.starts_with(&r)
-        && (r.ends_with(sep) || p[r.len()..].starts_with(sep))
-}
-
 /// 拒絕的原因（對應 HTTP 狀態碼）。
 #[derive(Debug, PartialEq)]
 enum Reject {
@@ -126,21 +89,11 @@ fn precheck<'a>(
         .and_then(|(_, ext)| mime_type(ext))
         .ok_or(Reject::Forbidden)?;
     for (i, seg) in segments.iter().enumerate() {
-        if *seg == "." || *seg == ".." {
+        // Windows 會去掉每一段結尾的點和空白（`.. ` 等於 `..`）；`:` 是替代資料流，
+        // 萬用字元和裝置名稱也不是一般的檔案。第一段可以是磁碟機代號（`C:`）。
+        let drive = windows && i == 0 && is_drive(seg);
+        if !drive && odd_segment(seg, windows) {
             return Err(Reject::Forbidden);
-        }
-        if windows {
-            // Windows 會去掉每一段結尾的點和空白（`.. ` 等於 `..`）；`:` 是替代資料流，
-            // 萬用字元和裝置名稱也不是一般的檔案。第一段可以是磁碟機代號（`C:`）。
-            let trimmed = seg.trim_end_matches(['.', ' ']);
-            let drive = i == 0 && seg.len() == 2 && seg.ends_with(':');
-            if (!seg.is_empty() && trimmed.is_empty())
-                || (seg.contains(':') && !drive)
-                || seg.contains(['*', '?', '<', '>', '|', '"'])
-                || is_device_name(seg)
-            {
-                return Err(Reject::Forbidden);
-            }
         }
     }
     let inside: Vec<&PathBuf> = roots
@@ -323,16 +276,6 @@ mod tests {
         assert!(precheck("/a.png", &roots[1..], false).is_ok());
         // Linux 上反斜線只是檔名的一部分。
         assert!(precheck(r"\\attacker\share\a.png", &roots, false).is_err());
-    }
-
-    #[test]
-    fn lexical_containment() {
-        assert!(lexically_inside(r"C:\a\b.png", r"C:\a\", true));
-        assert!(lexically_inside(r"C:\a\b.png", r"C:\", true));
-        assert!(!lexically_inside(r"C:\ab.png", r"C:\a", true));
-        assert!(!lexically_inside(r"C:\a", r"C:\a", true));
-        assert!(lexically_inside("/a/b.png", "/a/", false));
-        assert!(!lexically_inside("/A/b.png", "/a", false));
     }
 
     #[test]

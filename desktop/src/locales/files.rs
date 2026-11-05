@@ -2,6 +2,10 @@
 
 pub static EN: &[(&str, &str)] = &[
     (
+        "「{name}」所在的資料夾和開啟時不同（可能被改名、搬移，或換成了連結），為了安全沒有讀寫。請重新從「開啟檔案」選取。",
+        "The folder containing \"{name}\" has changed since the file was opened (it may have been renamed, moved or replaced with a link), so for safety it wasn't read or written. Select the file again with Open File.",
+    ),
+    (
         "「{name}」的編碼無法辨識，請先開啟確認內容",
         "Couldn't detect the encoding of \"{name}\". Open it and check its content first.",
     ),
