@@ -194,6 +194,32 @@ mod tests {
     }
 
     #[test]
+    fn only_double_tilde_is_strikethrough() {
+        // 中文常用 `~` 寫區間：同一段（或相鄰兩行）出現兩次也不是刪除線。
+        let out = r("QA 功能測試：3/15~4/9\nQA 壓力測試：4/12~5/7\n");
+        assert!(!out.html.contains("<del>"), "{}", out.html);
+        assert!(out.html.contains("3/15~4/9"), "{}", out.html);
+        assert!(out.html.contains("4/12~5/7"), "{}", out.html);
+        let out = r("名額 10~20 人、預算 3~5 萬\n");
+        assert!(!out.html.contains("<del>"), "{}", out.html);
+        assert!(out.html.contains("10~20 人、預算 3~5 萬"), "{}", out.html);
+        // 單一個波浪號包著的格式照樣保留，只是不加刪除線。
+        let out = r("~**粗體**~\n");
+        assert!(out.html.contains("~<strong>粗體</strong>~"), "{}", out.html);
+        // 兩個波浪號照樣是刪除線，也可以和單一個並存。
+        let out = r("~~取消~~，區間 1~2、3~4\n");
+        assert!(out.html.contains("<del>取消</del>"), "{}", out.html);
+        assert!(out.html.contains("1~2、3~4"), "{}", out.html);
+        // 清單、表格、引言裡也一樣。
+        let out = r("> 期間 1/2~1/5、2/1~2/3\n\n| 期間 |\n|---|\n| 1~2 與 3~4 |\n");
+        assert!(!out.html.contains("<del>"), "{}", out.html);
+        // 有 front matter 時行號照樣對得上。
+        let out = r("---\ntitle: 測試\n---\n\n區間 1~2、3~4，~~刪除~~\n");
+        assert!(out.html.contains("1~2、3~4"), "{}", out.html);
+        assert!(out.html.contains("<del>刪除</del>"), "{}", out.html);
+    }
+
+    #[test]
     fn cjk_friendly_emphasis() {
         let out = r("這是**粗體**文字");
         assert!(out.html.contains("<strong>粗體</strong>"), "{}", out.html);
