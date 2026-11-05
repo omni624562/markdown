@@ -4,10 +4,16 @@
 //! `term_*` 指令只接受終端機 webview 呼叫，終端機的輸出也只送給它。主畫面只能透過
 //! `term_forward` 送幾種固定的要求（顯示、開新分頁、把文字貼到 AI 的輸入列等），
 //! 不能直接寫入終端機，所以不能執行任何指令。
+//!
+//! 送給終端機的資料（輸出、AI 要執行的指令等）不走 Tauri 的全域事件：兩個 webview 在同一個視窗裡，
+//! 主畫面收聽事件時不分對象都收得到。改由終端機頁面建立的 `Channel` 傳送（見 `term_ready`），
+//! 只有建立它的 webview 收得到。權限也分開設定（`capabilities/`）：兩邊都不能送出事件，
+//! 終端機的 webview 也不能收聽事件。
 
 use parking_lot::Mutex;
 
 use serde::{Deserialize, Serialize};
+use tauri::ipc::Channel;
 use tauri::webview::NewWindowResponse;
 use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Webview, WebviewBuilder, WebviewUrl,
@@ -15,10 +21,10 @@ use tauri::{
 
 use super::term::Program;
 
-/// 終端機 webview 的標籤（也是事件的對象）。
+/// 終端機 webview 的標籤。
 pub const LABEL: &str = "terminal";
 const MAIN: &str = "main";
-/// 終端機頁面還沒載入完成時，最多先排隊幾個事件。
+/// 終端機頁面還沒載入完成時，最多先排隊幾則訊息。
 const QUEUE_LIMIT: usize = 20_000;
 /// 傳給 AI 輸入列的文字上限（字元）。
 const PASTE_LIMIT: usize = 200_000;
@@ -26,20 +32,48 @@ const PASTE_LIMIT: usize = 200_000;
 #[derive(Default)]
 pub struct TermView(Mutex<ViewState>);
 
+/// 送給終端機頁面的一則訊息：`event` 是種類（例如 `term-output`），`payload` 是內容。
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Message {
+    event: &'static str,
+    payload: serde_json::Value,
+}
+
 struct ViewState {
-    /// 終端機頁面已經載入，可以直接收事件。
-    ready: bool,
-    queue: Vec<(&'static str, serde_json::Value)>,
+    /// 終端機頁面載入後交給 `term_ready` 的通道；還沒有時訊息先排隊。
+    channel: Option<Channel<Message>>,
+    queue: Vec<Message>,
     zoom: f64,
 }
 
 impl Default for ViewState {
     fn default() -> Self {
         Self {
-            ready: false,
+            channel: None,
             queue: Vec::new(),
             zoom: 1.0,
         }
+    }
+}
+
+impl ViewState {
+    /// 有通道就直接送，否則先排隊（最多 `QUEUE_LIMIT` 則）。
+    fn deliver(&mut self, message: Message) {
+        match &self.channel {
+            Some(channel) => {
+                let _ = channel.send(message);
+            }
+            None if self.queue.len() < QUEUE_LIMIT => self.queue.push(message),
+            None => {}
+        }
+    }
+
+    /// 終端機頁面（重新）載入：先補送排隊中的訊息，再換成新的通道。
+    fn attach(&mut self, channel: Channel<Message>) {
+        for message in std::mem::take(&mut self.queue) {
+            let _ = channel.send(message);
+        }
+        self.channel = Some(channel);
     }
 }
 
@@ -60,18 +94,17 @@ fn require_main(webview: &Webview) -> Result<(), String> {
     }
 }
 
-/// 送事件給終端機頁面；還沒載入完成時先排隊，載入後由 `term_ready` 一次取走。
-pub fn send<S: Serialize + Clone>(app: &AppHandle, event: &'static str, payload: S) {
-    let view = app.state::<TermView>();
-    let mut state = view.0.lock();
-    if state.ready {
-        drop(state);
-        let _ = app.emit_to(LABEL, event, payload);
-    } else if state.queue.len() < QUEUE_LIMIT {
-        if let Ok(value) = serde_json::to_value(payload) {
-            state.queue.push((event, value));
-        }
-    }
+/// 送資料給終端機頁面：只經過它的通道，主畫面收不到。還沒載入完成時先排隊，
+/// 載入後由 `term_ready` 補送。
+pub fn send<S: Serialize>(app: &AppHandle, event: &'static str, payload: S) {
+    let Ok(payload) = serde_json::to_value(payload) else {
+        return;
+    };
+    // 拿著鎖送出：和 `term_ready` 補送排隊中的訊息不會交錯，順序不會亂。
+    app.state::<TermView>()
+        .0
+        .lock()
+        .deliver(Message { event, payload });
 }
 
 /// 請主畫面顯示終端機面板（例如 AI 執行的指令開了新的分頁）。
@@ -283,19 +316,17 @@ pub fn term_forward(app: AppHandle, webview: Webview, request: Request) -> Resul
     Ok(())
 }
 
-/// 終端機頁面載入完成：回傳排隊中的事件，之後的事件直接送。
+/// 終端機頁面載入完成，交來它建立的通道：先補送排隊中的訊息，之後的訊息都從這個通道送。
+/// 頁面重新載入時換成新的通道。
 #[tauri::command]
 pub fn term_ready(
     webview: Webview,
+    channel: Channel<Message>,
     view: tauri::State<'_, TermView>,
-) -> Result<Vec<(String, serde_json::Value)>, String> {
+) -> Result<(), String> {
     require_terminal(&webview)?;
-    let mut state = view.0.lock();
-    state.ready = true;
-    Ok(std::mem::take(&mut state.queue)
-        .into_iter()
-        .map(|(e, v)| (e.to_string(), v))
-        .collect())
+    view.0.lock().attach(channel);
+    Ok(())
 }
 
 /// 終端機送通知給主畫面。
@@ -392,6 +423,42 @@ mod tests {
         assert!(
             serde_json::from_str::<Request>(r#"{"kind":"write","id":1,"data":"ls\r"}"#).is_err()
         );
+    }
+
+    /// 終端機頁面還沒載入時先排隊；交來通道後依原來的順序補送，之後的訊息直接從通道送。
+    #[test]
+    fn messages_wait_for_the_terminal_page_and_keep_their_order() {
+        use std::sync::Arc;
+        use tauri::ipc::InvokeResponseBody;
+
+        let got = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        let sink = got.clone();
+        let channel = Channel::<Message>::new(move |body| {
+            if let InvokeResponseBody::Json(json) = body {
+                sink.lock().push(serde_json::from_str(&json).unwrap());
+            }
+            Ok(())
+        });
+        let output = |data: &str| Message {
+            event: "term-output",
+            payload: serde_json::json!({ "id": 1, "data": data }),
+        };
+        let mut state = ViewState::default();
+        state.deliver(output("一"));
+        state.deliver(output("二"));
+        assert!(got.lock().is_empty(), "頁面還沒載入，先排隊");
+        state.attach(channel);
+        state.deliver(output("三"));
+        assert!(state.queue.is_empty());
+        let got = got.lock();
+        let data: Vec<&str> = got
+            .iter()
+            .map(|m| {
+                assert_eq!(m["event"], "term-output");
+                m["payload"]["data"].as_str().unwrap()
+            })
+            .collect();
+        assert_eq!(data, ["一", "二", "三"]);
     }
 
     fn send_to_ai(text: &str, preferred: Program) -> Request {

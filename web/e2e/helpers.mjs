@@ -6,6 +6,8 @@
  * 原生指令的回應由 `desktop` 決定（也可以用 `{ $by: 參數名稱, values }` 依參數回應、`{ $delay: 毫秒, value }` 慢一點回應、
  * `{ $error: 訊息 }` 回應失敗），呼叫過的指令與參數記在 `window.__fake.calls`，
  * 測試可以用 `window.__fake.emit(事件, 內容)` 模擬原生端送來的事件。
+ * 終端機頁面（`open({ desktop, page: "terminal.html" })`）不收聽事件，原生端的資料只從它交給 `term_ready` 的
+ * Channel 送來：用 `window.__fake.channel(種類, 內容)` 模擬（送給最近一次當作參數傳給指令的 Channel）。
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -51,15 +53,32 @@ function fakeTauri(respond) {
   const calls = [];
   // 每個指令可以有一串回應（依序用掉，最後一個重複用）。
   const queues = new Map(Object.entries(respond).map(([k, v]) => [k, Array.isArray(v) ? [...v] : [v]]));
+  class Channel {
+    onmessage = null;
+    // 和 Tauri 一樣，傳給原生端時只送出編號。
+    toJSON() {
+      return "__CHANNEL__:fake";
+    }
+  }
+  /** 當作參數傳給指令的 Channel（最後一個是最新的）。 */
+  const channels = [];
   window.__fake = {
     calls,
     emit(event, payload) {
       for (const fn of listeners.get(event) ?? []) fn({ payload });
     },
+    /** 收聽過的事件名稱。 */
+    listened: () => [...listeners.keys()],
+    channel(event, payload) {
+      const ch = channels.at(-1);
+      if (!ch) throw new Error("還沒有 Channel 傳給原生端");
+      ch.onmessage?.({ event, payload });
+    },
   };
   window.__TAURI__ = {
     core: {
       async invoke(cmd, args) {
+        if (args && typeof args === "object") channels.push(...Object.values(args).filter((v) => v instanceof Channel));
         calls.push({ cmd, args: args ?? null });
         const queue = queues.get(cmd);
         if (!queue) return cmd in DEFAULTS ? DEFAULTS[cmd] : null;
@@ -77,9 +96,7 @@ function fakeTauri(respond) {
         return cmd in DEFAULTS ? DEFAULTS[cmd] : null;
       },
       convertFileSrc: (p) => p,
-      Channel: class {
-        onmessage = null;
-      },
+      Channel,
     },
     event: {
       async listen(event, fn) {
@@ -95,8 +112,9 @@ function fakeTauri(respond) {
 /**
  * 開一個新頁面；回傳頁面、頁面上的錯誤，以及被擋下的外部請求。
  * `desktop` 是假原生端的回應（指令名稱 → 回傳值，或依序回傳的陣列）；不給就是網頁版。
+ * `page: "terminal.html"` 開終端機的頁面（桌面版的終端機 webview），等 `ready` 選到的元素出現。
  */
-export async function open({ desktop } = {}) {
+export async function open({ desktop, page: path = "index.html", ready = ".cm-editor .cm-content" } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "zh-TW" });
   if (desktop) await context.addInitScript(fakeTauri, desktop);
   const page = await context.newPage();
@@ -116,8 +134,8 @@ export async function open({ desktop } = {}) {
     if (!existsSync(file) || url.pathname.endsWith("/")) return route.fulfill({ status: 404, body: "" });
     return route.fulfill({ status: 200, contentType: TYPES[extname(file)] ?? "application/octet-stream", body: readFileSync(file) });
   });
-  await page.goto(`${ORIGIN}/index.html`);
-  await page.waitForSelector(".cm-editor .cm-content");
+  await page.goto(`${ORIGIN}/${path}`);
+  await page.waitForSelector(ready);
   return { page, context, errors, external };
 }
 

@@ -1844,15 +1844,21 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
   background: var(--accent-soft);
 }
 .command-consent strong { grid-column: 1; font-size: 13px; }
+/*
+ * 指令要整個看得到：折行顯示，不往右延伸到要橫向捲動才看得到的地方（例如中間塞了一長串空白，後面藏著別的指令）。
+ * 很長的指令最多佔終端機的四成高，其餘上下捲動（同意的按鈕一直看得到）。
+ */
 .command-consent-code {
   grid-column: 1;
-  overflow-x: auto;
+  max-height: 40vh;
+  overflow-y: auto;
   padding: 4px 6px;
   border-radius: 4px;
   background: var(--bg);
   font-family: var(--font-term);
   font-size: 12.5px;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .command-consent-detail { grid-column: 1; color: var(--muted); font-size: 12px; }
 .command-consent-actions { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 2; grid-row: 1 / span 3; justify-content: flex-end; }
