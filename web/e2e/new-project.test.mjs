@@ -175,7 +175,10 @@ test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet
   assert.equal(await section.locator("select[name=nc-sprint] option:checked").textContent(), "Sprint 12（目前）");
   // Sprint 天數：和下一個 Sprint 開始日相差 14 天。
   assert.equal(await section.locator("input[name=nc-cadence]").inputValue(), "14");
+  // 指派給：已經登入 Azure DevOps，直接用登入的帳號，只顯示一行、不用填。
   assert.equal(await section.locator("input[name=nc-assigned]").inputValue(), "CONTOSO\\wang");
+  assert.equal(await section.locator(".nc-who-name").textContent(), "王小明（CONTOSO\\wang）");
+  assert.equal(await section.locator("input[name=nc-assigned]").isHidden(), true);
   await section.locator("select[name=nc-team]").selectOption("t2");
   await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
   const create = dialog.getByRole("button", { name: "建立並設定" });
@@ -410,6 +413,11 @@ test("新專案：沒選「COMET 專案」時右邊的 COMET 設定變灰、不�
   // 換小卡時對話框的大小與位置都不變（變灰的說明不佔高度）。
   assert.deepEqual(await size(), blankSize);
   assert.equal((await dialog.locator("button[type=submit]").textContent()).trim(), "建立並設定");
+  // 按「換人」才出現輸入框（預先填好登入的帳號）；對話框大小不變。
+  await section.getByRole("button", { name: "換人" }).click();
+  assert.equal(await section.locator(".nc-who").isHidden(), true);
+  assert.equal(await section.locator("input[name=nc-assigned]").evaluate((el) => document.activeElement === el && el.value), "CONTOSO\\wang");
+  assert.deepEqual(await size(), blankSize);
   await section.locator("input[name=nc-assigned]").fill("王小明");
   // 換成「筆記本」再換回來：填好的值還在。
   await dialog.getByRole("radio", { name: /^筆記本/ }).check();
