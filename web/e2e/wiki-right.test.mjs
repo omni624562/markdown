@@ -18,11 +18,18 @@ const WIKI = {
   version: "wikiMaster",
   webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki",
 };
-/** 圖示右邊的那條線（Wiki 在右側欄才有）與圖示的底色。 */
+/** 圖示右邊的那條線（Wiki 在右側欄才有）、圖示的底色，以及右側欄顯示著 Wiki 時的框與斜線。 */
 const rightBar = (page) =>
   page.locator("#side-tab-wiki").evaluate((el) => {
     const after = getComputedStyle(el, "::after");
-    return { content: after.content, right: after.right, color: after.backgroundColor, tab: getComputedStyle(el).backgroundColor };
+    const before = getComputedStyle(el, "::before");
+    return {
+      content: after.content,
+      right: after.right,
+      color: after.backgroundColor,
+      tab: getComputedStyle(el).backgroundColor,
+      frame: before.content !== "none" && before.borderTopWidth !== "0px" && before.backgroundImage.includes("repeating-linear-gradient"),
+    };
   });
 
 const desktop = {
@@ -48,12 +55,15 @@ test("Wiki 在右側、右側欄收起來：圖示列還有 Wiki，按一下打�
   assert.equal(hidden.content, '""', "Wiki 在右側：圖示右邊有一條線");
   assert.equal(hidden.right, "-4px", "線在圖示的右邊");
   assert.equal(hidden.tab, "rgba(0, 0, 0, 0)", "右側欄收著：圖示沒有底色");
+  assert.equal(hidden.frame, false, "右側欄收著：圖示沒有框與斜線");
   await tab.click();
   await page.locator('#outline-right .wiki-page[data-path="/首頁"]').waitFor();
   assert.equal(await right.isVisible(), true, "按一下打開右側欄，Wiki 在裡面");
   const shown = await rightBar(page);
   assert.notEqual(shown.color, hidden.color, "右側欄顯示著 Wiki：線換成強調色");
-  assert.notEqual(shown.tab, "rgba(0, 0, 0, 0)", "右側欄顯示著 Wiki：圖示有底色");
+  // 和左邊開著的面板（淡綠底）分得開：外面一圈強調色的框、裡面淡淡的斜線，沒有整塊的底色。
+  assert.equal(shown.frame, true, "右側欄顯示著 Wiki：圖示有框與斜線");
+  assert.equal(shown.tab, "rgba(0, 0, 0, 0)", "右側欄顯示著 Wiki：沒有整塊的底色");
   // Wiki 那一區收合：和右側欄收著一樣是淡灰色的線。
   await page.locator('#outline-right .rs-toggle[data-section="wiki"]').click();
   assert.equal((await rightBar(page)).color, hidden.color, "Wiki 收合：線變回淡灰色");
