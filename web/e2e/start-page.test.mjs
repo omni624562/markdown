@@ -67,8 +67,10 @@ test("清空文件回到起始頁：左上角不會留著空白行的「＋」�
 
 test("原始碼檢視（不是即時預覽）：起始頁上方不會有目前這一行的灰帶；打字後底色回來", async () => {
   const { page, context, errors } = await open({ desktop: {} });
+  // 起始頁上沒有檢視切換：用上次記住的檢視（原始碼）開啟。
+  await page.evaluate(() => localStorage.setItem("md-editor:view", "editor"));
+  await page.reload();
   await page.locator(".empty-state.in-editor .start-page").waitFor();
-  await page.locator(".statusbar button", { hasText: "原始碼" }).click();
   await page.waitForFunction(() => !document.querySelector(".editor-pane .cm-editor")?.classList.contains("cm-lp"));
   await page.locator(".empty-state.in-editor .start-page").waitFor();
   const lineBg = () =>

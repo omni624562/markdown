@@ -1505,6 +1505,8 @@ function renderError({ error }: RenderResult): void {
 let emptyStateKey = "";
 /** 按了「新增文件」的空白文件：不再顯示起始頁（直接開始寫）。 */
 const startDismissed = new Set<string>();
+/** 起始頁正顯示著（目前的分頁是還沒寫任何字的空白文件）。 */
+let startOpen = false;
 /** Azure DevOps、GitHub 的帳號讀到了沒（讀到之前不列「連線」，免得已連線的人看到一閃而過的連結）。 */
 let accountsReady = false;
 
@@ -1526,6 +1528,12 @@ function renderEmptyState(text: string): void {
   // 不用 trim()：大文件每次都會複製一份字串。
   const empty = !/\S/.test(text) && !startDismissed.has(active.id);
   emptyStateEl.hidden = !empty;
+  if (startOpen !== empty) {
+    startOpen = empty;
+    // 起始頁不是文件：不顯示檢視切換，也不分檢視一律佔滿（分割時開始打字才分成左右兩半）。
+    workspace.classList.toggle("start-open", empty);
+    if (view === "split") return applyLayout(); // 版面排好後會再回到這裡畫起始頁
+  }
   if (!empty) {
     emptyStateKey = "";
     return;
@@ -3484,7 +3492,8 @@ function previewVisible(): boolean {
 function applyLayout(): void {
   const narrow = narrowQuery.matches;
   // 手機寬度放不下並排，分割模式改為只顯示編輯區（可用分頁切換到預覽）。
-  const effective: ViewMode = narrow && view === "split" ? "editor" : view;
+  // 起始頁也一樣：佔滿整個區域，開始打字後才分成左右兩半。
+  const effective: ViewMode = (narrow || startOpen) && view === "split" ? "editor" : view;
   // 工作項目等內容和編輯區並排：版面當成分割，右半邊放內容（預覽藏起來）。
   const side = issueSide && !narrow && workspace.classList.contains("issue-open");
   // 兩份文件並排：右半邊放另一個編輯器。視窗太窄、工作項目要並排時關閉並排。

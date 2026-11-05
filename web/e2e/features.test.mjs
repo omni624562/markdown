@@ -82,8 +82,8 @@ test("分頁：新增、切換、關閉，內容各自保留", async () => {
 
 test("待辦：在即時預覽勾選待辦會改回原文", async () => {
   const { page, context, errors } = await open();
-  await page.click('button[data-view="live"]');
   await setText(page, "- [ ] 買牛奶\n- [ ] 寫週報\n\n結尾");
+  await page.click('button[data-view="live"]');
   // 游標移到最後一行，待辦那兩行才會顯示成核取方塊。
   await page.keyboard.press("Control+End");
   await page.waitForSelector(".cm-content .cm-lp-checkbox");
