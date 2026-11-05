@@ -1,0 +1,11 @@
+# 自動檢查 GitHub Actions 的更新：workflow 裡的 action 都固定在提交的 SHA（後面註明版本），
+# 有新版時 Dependabot 每週開一個 PR 一起更新 SHA 與版本註解。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
