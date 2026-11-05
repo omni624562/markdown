@@ -506,6 +506,33 @@ kbd {
     background: var(--backdrop);
   }
   [data-panel-style="spaced"] .outline-right .side-head { background: transparent; }
+  /*
+   * 大綱與 Wiki 都在右側欄：分成兩個圓角區塊，中間留和其他區塊一樣的間隔。上面的大綱接著右上角那一段，
+   * 下面的 Wiki 自己一塊。都展開時間隔就是分隔線（滑鼠移上去才出現把手，一樣可以拖曳調整高度）。
+   */
+  [data-panel-style="spaced"] .outline-right:has(> #panel-outline):has(> #panel-wiki) {
+    border: 0;
+    background: transparent;
+  }
+  [data-panel-style="spaced"] .outline-right:has(> #panel-wiki) > #panel-outline {
+    border: 1px solid var(--panel-line);
+    border-top: 0;
+    border-radius: 0 0 var(--panel-radius) var(--panel-radius);
+    background: var(--backdrop);
+    overflow: hidden;
+  }
+  [data-panel-style="spaced"] .outline-right:has(> #panel-outline) > #panel-wiki {
+    margin-top: var(--panel-gap);
+    border: 1px solid var(--panel-line);
+    border-radius: var(--panel-radius);
+    background: var(--backdrop);
+    overflow: hidden;
+  }
+  [data-panel-style="spaced"] .outline-right:has(> #panel-outline) > #panel-wiki > .side-head { border-top: 0; }
+  [data-panel-style="spaced"] .outline-right:has(> #panel-outline) > .rs-splitter:not([hidden]) + #panel-wiki { margin-top: 0; }
+  [data-panel-style="spaced"] .outline-right > .rs-splitter { height: var(--panel-gap); margin: 0; border-top: 0; }
+  [data-panel-style="spaced"] .outline-right > .rs-splitter::before { top: calc(50% - 1.5px); opacity: 0; }
+  [data-panel-style="spaced"] .outline-right > .rs-splitter:is(:hover, :focus-visible, .dragging)::before { opacity: 1; }
 
   /* 中間：分頁列在最上面（淡底，目前的分頁和內文同底色、接在一起），下面是內文。 */
   [data-panel-style="spaced"] .tab-bar {
@@ -667,10 +694,11 @@ kbd {
   background: var(--accent);
 }
 /*
- * Wiki 放在右側欄：圖示的「右邊」一條線（左邊的面板是左邊一條），一眼看得出 Wiki 在右邊。
- * 右側欄正顯示著 Wiki 時：強調色的線與圖示，外面一圈強調色的框、裡面淡淡的斜線（和左邊開著的面板的淡底分得開）；
- * 右側欄收起來或 Wiki 那一區收合時，只留一條淡灰色的線。
+ * Wiki 放在右側欄：右側欄開著時，圖示列不放 Wiki 的圖示（Wiki 就在右邊）。
+ * 右側欄收起來時才顯示（不然找不到 Wiki），按一下打開右側欄；圖示的「右邊」一條淡灰色的線
+ * （左邊的面板是左邊一條），看得出 Wiki 在右邊。
  */
+.workspace:has(> .outline-right:not([hidden])) .activity-tabs #side-tab-wiki.placed-right { display: none; }
 .activity-tabs #side-tab-wiki.placed-right::after {
   content: "";
   position: absolute;
@@ -679,20 +707,6 @@ kbd {
   border-radius: 2px 0 0 2px;
   background: color-mix(in srgb, var(--chrome-icon) 55%, transparent);
 }
-.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right {
-  isolation: isolate;
-  color: var(--accent);
-}
-.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius);
-  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 40%, transparent) 0 1.5px, transparent 1.5px 5px);
-}
-.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right::after { background: var(--accent); }
 .activity-tabs button:focus-visible, .activity-btn:focus-visible { outline-offset: -2px; }
 /* 第一次開啟：圖示旁邊短暫顯示名稱（不擋滑鼠，點任何地方就收起來）。 */
 .activity-labels { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
