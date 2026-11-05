@@ -14,6 +14,7 @@
 mod i18n;
 mod ado;
 mod ai;
+mod comet;
 mod dav;
 // SSH 遠端資料夾放在 dav/ 底下（和 WebDAV 共用連線、輪詢與指令），保留 crate::ssh 的路徑。
 use dav::ssh;
@@ -264,6 +265,7 @@ fn main() {
         .manage(KnownFiles::default())
         .manage(Workspace::default())
         .manage(new_project::ProjectParents::default())
+        .manage(comet::CometRun::default())
         .manage(Watcher::default())
         .manage(ai::term::Terminals::default())
         .manage(ai::view::TermView::default())
@@ -310,6 +312,7 @@ fn main() {
             new_project::create_project,
             new_project::comet_installed,
             new_project::comet_setup_line,
+            comet::comet_setup_run,
             files::reopen_with_encoding,
             files::file_format,
             files::set_file_format,

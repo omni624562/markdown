@@ -174,6 +174,27 @@ export type TermRequest =
   | { kind: "style"; theme: string | null; fontSize: number; palette: string | null; accent: string | null }
   | { kind: "focus" };
 
+/** 用參數執行 `comet setup`（新 COMET 專案）。Sprint 網址與「集合網址＋專案＋團隊＋Sprint」二選一。 */
+export interface CometSetupRequest {
+  /** 專案資料夾（必須是目前開啟的資料夾）。 */
+  dir: string;
+  sprintUrl?: string;
+  collectionUrl?: string;
+  project?: string;
+  team?: string;
+  iterationPath?: string;
+  /** 指派給：姓名、完整帳號或員工編號。 */
+  assignedTo: string;
+  cadenceDays?: number;
+  /** 完成後執行 my-tasks 確認連得上 Azure DevOps。 */
+  connectionTest: boolean;
+  /** 設定使用者的 PATH 與 VSCode settings（第一次使用 COMET 需要）。 */
+  localTools: boolean;
+}
+
+/** `comet setup` 的輸出（一行一個事件）與結束。 */
+export type CometSetupEvent = { kind: "line"; text: string } | { kind: "done"; ok: boolean; code: number | null; error: string | null };
+
 /** 終端機送給主畫面的通知（Rust 的 `view::Notice`）。 */
 export type TermNotice = { kind: "show" } | { kind: "hide" } | { kind: "command"; id: string };
 
@@ -798,6 +819,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<Folder>("create_project", req),
     /** 這台電腦有沒有安裝 COMET CLI（`comet` 指令）。 */
     cometInstalled: () => core.invoke<boolean>("comet_installed"),
+    /** 在背景用參數執行 `comet setup`；輸出與結果用 `onCometSetup` 收。 */
+    cometSetupRun: (req: CometSetupRequest) => core.invoke<void>("comet_setup_run", { req }),
+    onCometSetup: (fn: (e: CometSetupEvent) => void) => event.listen<CometSetupEvent>("comet-setup", (e) => fn(e.payload)),
     /**
      * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
      * `trust` 是使用者確認過的 SSH 主機金鑰指紋。

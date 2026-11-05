@@ -119,6 +119,7 @@ mod tests {
         "create_project",
         "comet_installed",
         "comet_setup_line",
+        "comet_setup_run",
         "reopen_with_encoding",
         "file_format",
         "set_file_format",
