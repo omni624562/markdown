@@ -29,7 +29,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::oneshot;
 
 use super::term::{strip_ansi, Terminals};
-use crate::workspace::{is_doc, resolve_inside, Workspace};
+use crate::workspace::{is_doc, is_editable_doc_in, resolve_inside, Workspace};
 
 /// Codex 從這個環境變數讀取權杖。
 pub const TOKEN_ENV: &str = "MD_EDITOR_MCP_TOKEN";
@@ -565,6 +565,21 @@ impl EditorTools {
     }
 }
 
+/// AI 可以讀寫的資料夾檔案：在資料夾內、是文字檔，而且不在 `.git` 裡
+/// （8.3 短檔名、指向 `.git` 的符號連結也認得出來，見 [`is_editable_doc_in`]）。
+fn folder_doc(root: &Path, p: &Path) -> Result<(), String> {
+    resolve_inside(root, p)?;
+    if !is_doc(p) {
+        // i18n-ignore
+        return Err("只能存取 Markdown、純文字、JSON、YAML、CSV、HTML、程式碼等文字檔".into());
+    }
+    if !is_editable_doc_in(root, p) {
+        // i18n-ignore
+        return Err("不能存取 .git 資料夾裡的檔案，也不能透過連結存取其他類型的檔案".into());
+    }
+    Ok(())
+}
+
 impl EditorTools {
     /// 只允許已開啟的分頁，或工作區內的文件。
     ///
@@ -586,11 +601,7 @@ impl EditorTools {
             .state::<Workspace>()
             .root()
             .ok_or("只能存取已開啟的分頁，或使用者開啟的資料夾中的文件")?; // i18n-ignore
-        resolve_inside(&root, &p)?;
-        if !is_doc(&p) {
-            // i18n-ignore
-            return Err("只能存取 Markdown、純文字、JSON、YAML、CSV、HTML、程式碼等文字檔".into());
-        }
+        folder_doc(&root, &p)?;
         Ok(p)
     }
 
@@ -892,6 +903,32 @@ pub fn mcp_respond(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_files_exclude_git() {
+        let root = std::env::temp_dir().join(format!("md-mcp-folder-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::create_dir_all(root.join("筆記")).unwrap();
+        std::fs::write(root.join("筆記").join("週報.md"), "內容").unwrap();
+        std::fs::write(root.join(".git").join("foo.md"), "內容").unwrap();
+        assert!(folder_doc(&root, &root.join("筆記").join("週報.md")).is_ok());
+        // 還不存在的文件（AI 提議新增）也可以。
+        assert!(folder_doc(&root, &root.join("新文件.md")).is_ok());
+        assert!(folder_doc(&root, &root.join(".git").join("foo.md")).is_err());
+        assert!(folder_doc(&root, &root.join(".git").join("config")).is_err());
+        assert!(folder_doc(&root, &root.join(".GIT.").join("foo.md")).is_err());
+        assert!(folder_doc(&root, &root.join("程式.exe")).is_err());
+        let outside = std::env::temp_dir().join("md-mcp-outside.md");
+        assert!(folder_doc(&root, &outside).is_err());
+        // 指向 .git 的符號連結也不行。
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join(".git"), root.join("連結")).unwrap();
+            assert!(folder_doc(&root, &root.join("連結").join("foo.md")).is_err());
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn keeps_the_end_of_long_output() {

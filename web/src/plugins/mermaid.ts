@@ -69,8 +69,8 @@ export async function renderMermaid(code: string): Promise<string> {
       ({ svg } = await mermaid.render(id, block ? blockRemoteInMermaid(code) : code));
       if (block) svg = blockRemoteInSvg(svg);
     } finally {
-      // 語法錯誤時 Mermaid 會把繪圖用的暫存元素留在 body 裡。
-      document.getElementById(`d${id}`)?.remove();
+      // 語法錯誤時 Mermaid 會把繪圖用的暫存元素留在 body 裡（連標籤名稱一起找，不會刪到同名 id 的標題）。
+      document.querySelector(`div#d${id}`)?.remove();
     }
     if (cache.size >= 100) cache.clear();
     cache.set(key, svg);

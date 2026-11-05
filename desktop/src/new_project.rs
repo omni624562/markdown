@@ -96,10 +96,23 @@ pub(crate) fn comet_roots(app: &AppHandle) -> (Option<PathBuf>, Option<PathBuf>)
 fn call_line(exe: &Path, args: &str) -> String {
     let path = exe.to_string_lossy();
     if cfg!(windows) {
-        format!("& '{}' {args}", path.replace('\'', "''"))
+        format!("& '{}' {args}", powershell_quoted(&path))
     } else {
         format!("'{}' {args}", path.replace('\'', "'\\''"))
     }
+}
+
+/// PowerShell 單引號字串裡的內容：單引號重複一次。PowerShell 把 `‘ ’ ‚ ‛`（U+2018～U+201B）
+/// 也當成單引號，一樣要重複，否則路徑裡的這些字元會提早結束字串，後面的文字變成指令。
+fn powershell_quoted(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// 這台電腦有沒有安裝 COMET CLI（PATH 裡有 `comet` 指令，或在安裝位置找得到）。
@@ -241,6 +254,9 @@ pub async fn create_project(
         Ok(())
     })
     .await?;
+    // 新 COMET 專案接著要在這個資料夾執行一次 comet setup（見 comet.rs）。
+    app.state::<crate::comet::CometRun>()
+        .remember_new_project(&dir);
     Ok(crate::workspace::activate(&app, dir, &workspace, &trust))
 }
 
@@ -322,6 +338,24 @@ mod tests {
                 r"'/home/o'\''brien/comet' setup"
             );
         }
+    }
+
+    #[test]
+    fn powershell_quotes_every_single_quote() {
+        assert_eq!(
+            powershell_quoted(r"C:\Users\me\comet.exe"),
+            r"C:\Users\me\comet.exe"
+        );
+        assert_eq!(powershell_quoted("o'brien"), "o''brien");
+        // PowerShell 也把這四個字元當成單引號。
+        for q in ['\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'] {
+            assert_eq!(
+                powershell_quoted(&format!(r"C:\Users\王{q}小明\comet.exe")),
+                format!(r"C:\Users\王{q}{q}小明\comet.exe")
+            );
+        }
+        // 雙引號在單引號字串裡沒有特別的意思。
+        assert_eq!(powershell_quoted("a\u{201C}b\"c"), "a\u{201C}b\"c");
     }
 
     #[test]

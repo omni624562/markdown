@@ -15,7 +15,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::files::{
-    decode, display_name, encode, hash_bytes, path_string, write_atomic, KnownFiles,
+    decode, display_name, encode, hash_bytes, path_string, read_capped, write_atomic, KnownFiles,
+    MAX_OPEN_BYTES,
 };
 use crate::workspace::{is_editable_doc_in, rel_path, resolve_inside, walker, Workspace};
 
@@ -40,6 +41,11 @@ fn is_markdown(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "markdown"))
+}
+
+/// 讀一份文件；讀不到或超過 `MAX_DOC_BYTES` 時是 None（不會整個讀進記憶體）。
+fn read_doc(path: &Path) -> Option<Vec<u8>> {
+    read_capped(path, MAX_DOC_BYTES).ok().flatten()
 }
 
 fn mtime_ms(meta: &fs::Metadata) -> u64 {
@@ -70,7 +76,7 @@ pub fn scan(root: &Path, known: &HashMap<String, u64>) -> Vec<DocText> {
             let info = if known.get(&path) == Some(&mtime) {
                 None
             } else {
-                Some(parse_doc(&decode(&fs::read(e.path()).ok()?).0, year))
+                Some(parse_doc(&decode(&read_doc(e.path())?).0, year))
             };
             Some(DocText {
                 rel: rel_path(root, e.path()),
@@ -106,12 +112,10 @@ pub async fn read_docs(
             .iter()
             .map(|p| {
                 let path = Path::new(p);
-                if !is_editable_doc_in(&root, path)
-                    || fs::metadata(path).ok()?.len() > MAX_DOC_BYTES
-                {
+                if !is_editable_doc_in(&root, path) {
                     return None;
                 }
-                Some(decode(&fs::read(path).ok()?).0)
+                Some(decode(&read_doc(path)?).0)
             })
             .collect())
     })
@@ -145,12 +149,10 @@ pub async fn link_updates(
             .filter_map(|old| {
                 let now = rebase(old, &from, &to).unwrap_or_else(|| old.clone());
                 let path = Path::new(&now);
-                if !is_editable_doc_in(&root, path)
-                    || fs::metadata(path).ok()?.len() > MAX_DOC_BYTES
-                {
+                if !is_editable_doc_in(&root, path) {
                     return None;
                 }
-                let before = decode(&fs::read(path).ok()?).0;
+                let before = decode(&read_doc(path)?).0;
                 let text = rename_links(&before, old, &files, |p| rebase(p, &from, &to))?;
                 Some(LinkUpdate {
                     path: now,
@@ -166,10 +168,23 @@ pub async fn link_updates(
 /// 改寫一份沒有開啟的文件（例如在待辦總覽勾選、檔案改名後更新連結）。
 /// 磁碟上的內容和 `expected` 不同時不寫入，避免蓋掉剛被其他程式改過的內容。
 /// 保留原本的換行與 BOM；改之前的內容記到版本記錄。
+/// 太大的檔案（超過 `MAX_OPEN_BYTES`，編輯器也開不了）不讀進記憶體，不改。
 pub fn update(path: &Path, expected: &str, text: &str) -> Result<Vec<u8>, String> {
-    let before = fs::read(path).map_err(|e| {
-        crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(path)))
-    })?;
+    update_capped(path, expected, text, MAX_OPEN_BYTES)
+}
+
+fn update_capped(path: &Path, expected: &str, text: &str, limit: u64) -> Result<Vec<u8>, String> {
+    let before = read_capped(path, limit)
+        .map_err(|e| {
+            crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(path)))
+        })?
+        .ok_or_else(|| {
+            tr!(
+                "「{name}」超過 {mb} MB，不能在這裡修改",
+                name = display_name(path),
+                mb = limit / 1024 / 1024
+            )
+        })?;
     let (disk, format, encoding) = decode(&before);
     // 編碼認不出來（解讀時有亂碼）：寫回去會把原檔換成亂碼，不改。Big5、UTF-16 等照原本的編碼寫回。
     if encoding == "unknown" {
@@ -278,6 +293,17 @@ mod tests {
         );
         let err = update(&path, "舊的內容", "新的內容").unwrap_err();
         assert!(err.contains("剛被修改過"), "{err}");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn huge_files_are_not_read_or_changed() {
+        let dir = temp_dir("huge");
+        let path = dir.join("紀錄.log");
+        fs::write(&path, "- [ ] 寫週報\n").unwrap();
+        let err = update_capped(&path, "- [ ] 寫週報\n", "- [x] 寫週報\n", 8).unwrap_err();
+        assert!(err.contains("不能在這裡修改"), "{err}");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "- [ ] 寫週報\n");
         fs::remove_dir_all(&dir).unwrap();
     }
 }

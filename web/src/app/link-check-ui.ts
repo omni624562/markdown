@@ -16,8 +16,8 @@ import type { IndexedDoc } from "../workspace-index.ts";
 import { indexedDocs, indexScope, openIndexed } from "./workspace-ui.ts";
 import { app } from "./context.ts";
 
-/** 後端一次最多查幾個路徑（和 `paths_exist` 的上限相同）。 */
-const BATCH = 5_000;
+/** 後端一次最多查幾個路徑（和 `paths_exist` 的上限相同，超過會被拒絕）。 */
+const BATCH = 500;
 
 interface Found {
   doc: IndexedDoc;

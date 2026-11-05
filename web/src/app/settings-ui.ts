@@ -312,7 +312,7 @@ export function initSettingsUi(): void {
   // 側邊欄與右邊大綱的寬度：拖曳面板邊緣調整，各自記住。
   for (const [panel, side, key, cssVar] of [
     [app.$("#sidebar"), "left", "sidebar-width", "--outline-width"],
-    [app.$("#outline-right"), "right", "outline-right-width", "--outline-right-width"],
+    [app.$("aside#outline-right"), "right", "outline-right-width", "--outline-right-width"],
   ] as const) {
     const saved = Number(storage.load(key));
     if (saved) document.documentElement.style.setProperty(cssVar, `${clampSidebarWidth(saved)}px`);
