@@ -100,7 +100,7 @@ import { NOT_CONNECTED, canRenameFile, closeProject, davDialog, openPath, openRe
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
-import { docName, docTooltip, saveFileName } from "./app/doc-names.ts";
+import { docName, docTooltip, renumber, saveFileName } from "./app/doc-names.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
@@ -3014,22 +3014,21 @@ function activate(doc: Doc): void {
 /** 新增一個分頁並切換過去（不會寫入內容，呼叫端負責）。 */
 /** 新增分頁：放在目前分頁的右邊；給了 `after` 時放在那個文件後面（null 是一般分頁的最前面）。都不插進固定的分頁之間。 */
 function addTab(doc: Doc, after?: string | null): void {
+  // 只剩一份沒顯示的空白文件（一開始、或關掉所有文件後補上的）：開好新分頁後收掉它，不多留一個「未命名」。
+  const placeholder = onlyBlankDoc() ? active : null;
   const lastPinned = docs.reduce((n, d, i) => (d.pinned ? i + 1 : n), 0);
   const left = after === undefined ? docs.indexOf(active) : after === null ? -1 : docs.findIndex((d) => d.id === after);
   docs.splice(Math.max(left + 1, lastPinned), 0, doc);
   activate(doc);
+  if (placeholder) {
+    renumber(doc); // 新文件不必是「未命名 2」
+    void closeTab(placeholder.id).then(renderSaveState); // 收掉之後重算名稱與視窗標題
+  }
 }
 
 async function closeTab(id: string): Promise<void> {
   const doc = docs.find((d) => d.id === id);
   if (!doc) return;
-  // 關掉並排中的文件：先關閉並排（另一份文件留在左邊）。
-  if (paneDocs.side === doc) closeSide();
-  else if (paneDocs.side && paneDocs.main === doc) {
-    const keep = paneDocs.side;
-    closeSide();
-    activate(keep);
-  }
   if (doc === active) stash();
   if (doc.dirty) {
     const choice = await choose(t("要存檔嗎？"), t("「{name}」有尚未存檔的變更。", { name: docName(doc) }), [
@@ -3044,6 +3043,13 @@ async function closeTab(id: string): Promise<void> {
     } else if (choice !== "discard") {
       return;
     }
+  }
+  // 確定要關閉了才處理並排（問存檔時按「取消」就什麼都不變）：關掉並排中的文件時先關閉並排，另一份文件留在左邊。
+  if (paneDocs.side === doc) closeSide();
+  else if (paneDocs.side && paneDocs.main === doc) {
+    const keep = paneDocs.side;
+    closeSide();
+    activate(keep);
   }
   if (pendingDraft?.id === doc.id) pendingDraft = null;
   rememberClosed(doc);
@@ -3157,7 +3163,8 @@ function openDocument(
   }
   // 目前分頁是空白、未存成檔案的新文件時直接沿用，否則開新分頁。
   // 沒動過的範例文件也直接換掉，免得每次開檔都多一個「未命名」分頁。
-  const untouched = !cur.fileBacked && (editor.text === "" || (editor.text === sample && !active.dirty));
+  // 編輯中的 Wiki 頁面（空白的也一樣）不沿用：沿用了會帶著 Wiki 的資訊，Ctrl+S 把檔案的內容存回 Wiki。
+  const untouched = !cur.fileBacked && !active.wiki && (editor.text === "" || (editor.text === sample && !active.dirty));
   if (!untouched) addTab(makeDoc({ name, kind: docKind ?? kindFromFileName(name) }));
   if (review.active) review.finish();
   cur.fileHandle = handle;
