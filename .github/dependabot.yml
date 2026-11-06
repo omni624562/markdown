@@ -1,11 +1,41 @@
-# 自動檢查 GitHub Actions 的更新：workflow 裡的 action 都固定在提交的 SHA（後面註明版本），
-# 有新版時 Dependabot 每週開一個 PR 一起更新 SHA 與版本註解。
+# 自動檢查相依套件的更新，每週一次：
+# - GitHub Actions：workflow 裡的 action 都固定在提交的 SHA（後面註明版本），有新版時一起更新 SHA 與版本註解。
+# - npm（web/）與 cargo（根目錄的 crates/、desktop/）：照鎖定檔更新。小版本與修正版合成一個 PR，大版本各自一個 PR。
+# 新版本發佈後先等 7 天才提出更新（cooldown）：被盜用的帳號發佈的惡意版本，通常幾天內就會被發現下架。
+# 有已知漏洞的套件由 Dependabot 安全性更新另外處理，不受這個等待限制。
+# Dependabot 只更新相依套件的 PR 不需要 changes/ 片段（見 scripts/version.mjs 的 appChanges）。
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: cargo
+    directories: ["/", "/desktop"]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { combine, compare, next, notesOf, parseFragment, summary } from "./version.mjs";
+import { appChanges, combine, compare, next, notesOf, parseFragment, summary } from "./version.mjs";
 
 test("下一個版本號", () => {
   assert.equal(next("1.4.2", "patch"), "1.4.3");
@@ -53,4 +53,21 @@ test("合併片段：升版取最大的，項目依分類排", () => {
   assert.equal(out.bump, "minor");
   assert.equal(out.notes, "### 新功能\n\n- 新功能 B\n\n### 調整\n\n- 調整 C\n\n### 修正\n\n- 修好 A\n- 修好 D");
   assert.equal(combine([parseFragment("bump: major\n\n- 拿掉 X"), parseFragment("bump: minor\n\n- Y")]).bump, "major");
+});
+
+test("哪些改動要有改動片段：Dependabot 只更新相依套件時不用", () => {
+  const npm = ["web/package.json", "web/package-lock.json"];
+  const cargo = ["desktop/Cargo.toml", "desktop/Cargo.lock"];
+  const crates = ["Cargo.lock", "crates/md-core/Cargo.toml"];
+  // 一般的分支：改到 package.json、Cargo.toml 就是改了程式。
+  assert.deepEqual(appChanges(npm, "claude/upgrade"), ["web/package.json"]);
+  assert.deepEqual(appChanges(cargo), ["desktop/Cargo.toml"]);
+  // Dependabot 只動相依套件的清單與鎖定檔：不用片段。
+  assert.deepEqual(appChanges(npm, "dependabot/npm_and_yarn/web/vite-7.1.0"), []);
+  assert.deepEqual(appChanges(cargo, "dependabot/cargo/desktop/tauri-2.9.0"), []);
+  assert.deepEqual(appChanges(crates, "dependabot/cargo/serde-1.0.230"), []);
+  // Dependabot 的分支也改了程式本身：照樣要片段。
+  assert.deepEqual(appChanges([...npm, "web/src/main.ts"], "dependabot/npm_and_yarn/x"), ["web/package.json", "web/src/main.ts"]);
+  // 只改說明、CI 設定：本來就不用。
+  assert.deepEqual(appChanges([".github/dependabot.yml", "README.md"]), []);
 });
