@@ -1393,10 +1393,13 @@ export class SettingsDialog {
     const render = () => {
       const s = this.#store.value;
       fill(project, [["", t("不指定（用上次選的）")], ...projects.map((p): [string, string] => [p, p])], s.adoDefaultProject);
+      // 專案的預設團隊只列一次：「不指定」那一項就是它（讀到團隊後顯示名稱），下面不再重複；
+      // 存的剛好是預設團隊的名稱時（例如以前選過），也顯示成這一項。
+      const main = teams.find((x) => x.default);
       fill(
         team,
-        [["", t("專案的預設團隊")], ...teams.map((x): [string, string] => [x.name, x.default ? t("{name}（預設）", { name: x.name }) : x.name])],
-        s.adoDefaultTeam,
+        [["", main ? t("{name}（預設）", { name: main.name }) : t("專案的預設團隊")], ...teams.filter((x) => x !== main).map((x): [string, string] => [x.name, x.name])],
+        main && s.adoDefaultTeam === main.name ? "" : s.adoDefaultTeam,
       );
       team.disabled = !s.adoDefaultProject;
     };
