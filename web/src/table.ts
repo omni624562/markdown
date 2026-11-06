@@ -4,6 +4,7 @@
  */
 import { syntaxTree } from "@codemirror/language";
 import { EditorSelection, type EditorState, type StateCommand } from "@codemirror/state";
+import { collator } from "./collator.ts";
 
 export type Formatter = (block: string) => string | undefined;
 
@@ -202,9 +203,46 @@ export function newRow(format: Formatter, composing: Composing): StateCommand {
   };
 }
 
-type TableEdit = "format" | "insert-row" | "insert-column" | "delete-row" | "delete-column";
+export type TableEdit =
+  | "format"
+  | "insert-row"
+  | "insert-row-above"
+  | "insert-column"
+  | "insert-column-left"
+  | "delete-row"
+  | "delete-column"
+  | "align-left"
+  | "align-center"
+  | "align-right"
+  | "sort-asc"
+  | "sort-desc";
 
-/** 指令面板用的表格操作。游標不在表格中時回傳 false。 */
+/** 分隔列的一格：依對齊方式加上冒號（`:---`、`:---:`、`---:`）。 */
+function alignMarker(align: "left" | "center" | "right"): string {
+  return align === "left" ? ":---" : align === "center" ? ":---:" : "---:";
+}
+
+/** 依某一欄排序資料列（標題列與分隔列不動）。兩格都是數字時比大小，否則依中文筆畫／注音的順序；空白的排在最後。 */
+export function sortRows(rows: string[][], col: number, desc: boolean): string[][] {
+  const num = (s: string) => (/^[-+]?\d[\d,]*(\.\d+)?%?$/.test(s) ? Number(s.replace(/[,%]/g, "")) : null);
+  const body = rows.slice(2).sort((a, b) => {
+    const x = (a[col] ?? "").trim();
+    const y = (b[col] ?? "").trim();
+    if (!x || !y) return x ? -1 : y ? 1 : 0;
+    const nx = num(x);
+    const ny = num(y);
+    const c = nx !== null && ny !== null ? nx - ny : collator.compare(x, y);
+    return desc ? -c : c;
+  });
+  return [...rows.slice(0, 2), ...body];
+}
+
+/** 是否在表格裡（右鍵選單的「表格」與指令面板用）。 */
+export function inTable(state: EditorState): boolean {
+  return tableAt(state, state.selection.main.head) !== null;
+}
+
+/** 指令面板與右鍵選單用的表格操作。游標不在表格中時回傳 false。 */
 export function editTable(kind: TableEdit, format: Formatter): StateCommand {
   return ({ state, dispatch }) => {
     const info = tableAt(state, state.selection.main.head);
@@ -212,8 +250,10 @@ export function editTable(kind: TableEdit, format: Formatter): StateCommand {
     const rows = rowsOf(info.lines);
     let { row, col } = info;
     switch (kind) {
-      case "insert-row": {
-        const at = row <= 1 ? 2 : row + 1;
+      case "insert-row":
+      case "insert-row-above": {
+        // 標題列上面不能再加：在標題列時都加在第一個資料列的位置。
+        const at = row <= 1 ? 2 : kind === "insert-row" ? row + 1 : row;
         rows.splice(at, 0, Array(Math.max(...rows.map((r) => r.length))).fill(""));
         row = at;
         col = 0;
@@ -223,6 +263,22 @@ export function editTable(kind: TableEdit, format: Formatter): StateCommand {
         rows.forEach((r, i) => r.splice(col + 1, 0, i === 1 ? "---" : ""));
         col++;
         break;
+      case "insert-column-left":
+        rows.forEach((r, i) => r.splice(col, 0, i === 1 ? "---" : ""));
+        break;
+      case "align-left":
+      case "align-center":
+      case "align-right":
+        if (rows[1]) rows[1][col] = alignMarker(kind.slice(6) as "left" | "center" | "right");
+        break;
+      case "sort-asc":
+      case "sort-desc": {
+        const sorted = sortRows(rows, col, kind === "sort-desc");
+        rows.splice(0, rows.length, ...sorted);
+        // 游標留在標題列的這一欄（排序後原本那一列換了位置）。
+        row = 0;
+        break;
+      }
       case "delete-row":
         if (row < 2) return false; // 標題列與分隔列不能刪
         rows.splice(row, 1);
