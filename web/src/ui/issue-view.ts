@@ -84,6 +84,8 @@ export interface IssueViewHooks {
   /** 「在瀏覽器開啟」：一定用瀏覽器開（`open` 會把這個項目自己的網址又開在 oMarker 裡）。 */
   browse(url: string): void;
   copyAsDocument(name: string, markdown: string): void;
+  /** 「傳給 ChatGPT」（設定打開時才有，見 app/chatgpt.ts）。 */
+  chatgpt?: { enabled(): boolean; send(markdown: string): void };
   /** 開啟（或上一頁／下一頁切換到）一個項目，內容讀取之前（例如更新側邊欄清單上的標示）。 */
   opened(source: IssueSource): void;
   /** 內容裡的連結（項目自己沒處理時）：例如儲存庫裡的 Markdown 檔，在這裡開啟；處理了就回傳 true。 */
@@ -272,6 +274,14 @@ export class IssueView {
         icon: "copy",
         run: () => {
           if (this.#source && this.#markdown) this.#h.copyAsDocument(this.#source.fileName, this.#markdown);
+        },
+      },
+      {
+        label: t("傳給 ChatGPT"),
+        icon: "message-square",
+        when: () => !!this.#markdown && !!this.#h.chatgpt?.enabled(),
+        run: () => {
+          if (this.#markdown) this.#h.chatgpt?.send(this.#markdown);
         },
       },
       {

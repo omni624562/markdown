@@ -277,7 +277,8 @@ pub async fn project_reveal(trust: State<'_, Trust>, path: String) -> Result<(),
 }
 
 /// 網址參數裡的路徑：只留英數字與 `-_.~`，其他字元（含中文、`\`、`:`、空白）都用 UTF-8 的 %XX 編碼。
-fn encode_path(path: &str) -> String {
+/// 「傳給 ChatGPT」帶的文字也用這個（見 `chatgpt.rs`）。
+pub(crate) fn encode_path(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
     for b in path.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {

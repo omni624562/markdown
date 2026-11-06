@@ -867,6 +867,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),
     /** 在 Claude 桌面版的 Claude Code 開啟專案（專案清單裡的本機資料夾）。 */
     projectOpenClaude: (path: string) => core.invoke<void>("project_open_claude", { path }),
+    /** 傳給 ChatGPT：把文字帶進 ChatGPT 的輸入框（網址由原生端組，見 desktop/src/chatgpt.rs）。原生端看存好的設定，所以等設定存好。 */
+    chatgptSend: (target: "desktop" | "web", text: string) =>
+      afterSettings(() => core.invoke<void>("chatgpt_send", { target, text })),
     /** 這台電腦有沒有安裝 Codex、Claude 桌面版（系統有沒有登記開啟 codex://、claude:// 網址的程式）。 */
     aiAppsInstalled: () => core.invoke<Record<AiApp, boolean> | null>("ai_apps_installed"),
     /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
