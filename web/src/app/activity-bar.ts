@@ -274,6 +274,7 @@ function openActivityMenu(at: DOMRect): void {
         : [];
     }),
     "activity-add",
+    "pin-manage",
     "activity-customize",
   ];
   floatingMenu("activity-menu-anchor", entries).open(at);

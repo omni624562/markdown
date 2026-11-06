@@ -1,4 +1,5 @@
 import { type Commands, formatKeys } from "../commands.ts";
+import { t } from "../i18n.ts";
 import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
@@ -51,10 +52,18 @@ function focusOnHover(item: HTMLElement): void {
   });
 }
 
-/** 選單裡指令項目的右鍵選單（釘到檔案面板上方、左側圖示列，見 app/pin-commands.ts）；沒設定時不處理。 */
-let commandContext: ((id: string, at: DOMRect) => void) | null = null;
-export function onCommandContextMenu(fn: (id: string, at: DOMRect) => void): void {
-  commandContext = fn;
+/** 選單裡的指令可以釘到看得到的地方（檔案面板上方、左側圖示列，見 app/pin-commands.ts）。 */
+export interface CommandPins {
+  /** 釘選的選項（已經釘了的是移除）。 */
+  entries(id: string): MenuEntry[];
+  /** 已經釘在某個地方。 */
+  pinned(id: string): boolean;
+  /** 在指令項目上按右鍵：在滑鼠的位置開釘選的選項。 */
+  context(id: string, at: DOMRect): void;
+}
+let commandPins: CommandPins | null = null;
+export function onCommandPins(pins: CommandPins): void {
+  commandPins = pins;
 }
 
 function newMenu(): HTMLDivElement {
@@ -153,17 +162,80 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
           root.hidePopover();
           void commands?.run(cmd.id);
         });
-        // 按右鍵：釘到看得到的地方（有圖示的指令才能釘）。
-        if (cmd.icon && commandContext) {
-          const pick = commandContext;
+        // 釘到看得到的地方（有圖示的指令才能釘）：滑鼠移到項目上時右邊出現圖釘，按圖釘（或按 →）展開釘選的子選單；
+        // 已經釘了的圖釘一直顯示。按右鍵也可以。單選的項目（例如明暗）右邊是打勾，不放圖釘（按右鍵或用「釘選常用指令…」）。
+        if (cmd.icon && commandPins) {
+          const pins = commandPins;
+          if (checked === undefined) {
+            const pin = document.createElement("span");
+            pin.className = "menu-pin";
+            pin.classList.toggle("pinned", pins.pinned(cmd.id));
+            pin.title = pins.pinned(cmd.id) ? t("已經釘了：按一下調整（也可以按 →）") : t("釘到檔案面板上方或左側圖示列（也可以按 →）");
+            pin.setAttribute("aria-hidden", "true");
+            pin.append(icon("pin"));
+            item.append(pin);
+            item.setAttribute("aria-keyshortcuts", "ArrowRight");
+            let sub: HTMLElement | null = null;
+            const openPins = (focusFirst: boolean) => {
+              clearTimeout(hoverTimer);
+              if (!sub) {
+                const s = newMenu();
+                s.classList.add("submenu", "pin-submenu");
+                s.addEventListener("toggle", (e) => {
+                  const opened = (e as ToggleEvent).newState === "open";
+                  pin.classList.toggle("open", opened);
+                  item.classList.toggle("open", opened);
+                  if (!opened && s.contains(document.activeElement)) item.focus();
+                });
+                s.addEventListener("keydown", (e) => {
+                  if (navigate(s, e)) e.preventDefault();
+                  else if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    s.hidePopover();
+                    item.focus();
+                  } else return;
+                  e.stopPropagation();
+                });
+                menu.append(s);
+                sub = s;
+              }
+              if (openSub !== sub) closeSub();
+              // 每次展開都重建：釘了或移除之後，選項跟著換。
+              if (!sub.matches(":popover-open")) {
+                sub.replaceChildren();
+                fill(sub, pins.entries(cmd.id));
+                sub.showPopover();
+                position(sub, item.getBoundingClientRect(), "right");
+              }
+              openSub = sub;
+              if (focusFirst) sub.querySelector<HTMLElement>(":scope > button")?.focus();
+            };
+            pin.addEventListener("click", (e) => {
+              // 不要執行指令本身。
+              e.preventDefault();
+              e.stopPropagation();
+              openPins(false);
+            });
+            pin.addEventListener("pointerenter", () => {
+              clearTimeout(hoverTimer);
+              hoverTimer = window.setTimeout(() => openPins(false), 200);
+            });
+            pin.addEventListener("pointerleave", () => clearTimeout(hoverTimer));
+            item.addEventListener("keydown", (e) => {
+              if (e.key !== "ArrowRight") return;
+              e.preventDefault();
+              e.stopPropagation();
+              openPins(true);
+            });
+          }
           item.addEventListener("contextmenu", (e) => {
             e.preventDefault();
             e.stopPropagation();
             root.hidePopover();
             const at = new DOMRect(e.clientX, e.clientY, 0, 0);
             // 右鍵還按著時（Linux 放開前就觸發）：放開後才開，否則放開那一下會把剛開的選單關掉。
-            if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => pick(cmd.id, at)), { once: true });
-            else pick(cmd.id, at);
+            if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => pins.context(cmd.id, at)), { once: true });
+            else pins.context(cmd.id, at);
           });
         }
       } else if ("items" in entry) {

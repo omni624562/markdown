@@ -1,6 +1,8 @@
 /**
- * 把常用的指令釘到看得到的地方：「☰」等選單裡的指令按右鍵，可以釘到「檔案」面板上方（專案名稱旁邊）
- * 或左側圖示列；已經釘了的換成移除。
+ * 把常用的指令釘到看得到的地方：「檔案」面板上方（專案名稱旁邊）或左側圖示列。
+ * - 「☰」等選單裡的指令：滑鼠移上去時右邊出現圖釘，按圖釘（或按 →）展開「釘到檔案面板上方」「釘到左側圖示列」，
+ *   已經釘了的換成移除，圖釘一直顯示；按右鍵也可以。
+ * - 「☰」→「釘選常用指令…」：所有能釘的指令列成一張表，直接勾選要放在哪裡（見 app/pin-manager.ts）。
  *
  * 檔案面板上方的按鈕跟著專案：那一列只在開著資料夾時顯示，沒開專案時按鈕也一起不見；
  * 指令用不到時（例如遠端資料夾不能在 Codex 開啟、這台電腦沒裝 Codex）也藏起來。
@@ -11,9 +13,10 @@ import { t } from "../i18n.ts";
 import { ACTIVITY_LIMIT, FILES_HEAD_LIMIT } from "../settings.ts";
 import { checkAiApps } from "./ai-app-presence.ts";
 import { icon } from "../ui/icons.ts";
-import { onCommandContextMenu, type MenuEntry } from "../ui/menu.ts";
+import { onCommandPins, type MenuEntry } from "../ui/menu.ts";
 import { toast } from "../ui/toast.ts";
 import { floatingMenu } from "./activity-bar.ts";
+import { openPinManager } from "./pin-manager.ts";
 import { reportError } from "./git-actions.ts";
 import { app } from "./context.ts";
 
@@ -50,16 +53,25 @@ function toggleActivity(id: string): void {
   toast(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: app.commands.get(id)?.title ?? id }), { tone: "success" });
 }
 
-/** 指令的右鍵選單：釘到檔案面板上方、左側圖示列（已經釘了的換成移除）。 */
-export function openPinMenu(id: string, at: DOMRect): void {
-  for (const el of ["pin-menu-anchor", "pin-menu-anchor-popover"]) document.getElementById(el)?.remove();
+/** 釘選的選項：釘到檔案面板上方、左側圖示列（已經釘了的換成移除）。 */
+function pinEntries(id: string): MenuEntry[] {
   const inHead = app.settings.value.filesHeadCommands.includes(id);
   const inBar = app.settings.value.activityCommands.includes(id);
-  const entries: MenuEntry[] = [
+  return [
     { label: inHead ? t("從檔案面板上方移除") : t("釘到檔案面板上方"), icon: inHead ? "pin-off" : "panel-top", run: () => toggleHead(id) },
     { label: inBar ? t("從左側圖示列移除") : t("釘到左側圖示列"), icon: inBar ? "pin-off" : "pin", run: () => toggleActivity(id) },
   ];
-  floatingMenu("pin-menu-anchor", entries).open(at);
+}
+
+/** 已經釘在檔案面板上方或左側圖示列。 */
+function isPinned(id: string): boolean {
+  return app.settings.value.filesHeadCommands.includes(id) || app.settings.value.activityCommands.includes(id);
+}
+
+/** 指令的右鍵選單：釘到檔案面板上方、左側圖示列（已經釘了的換成移除）。 */
+export function openPinMenu(id: string, at: DOMRect): void {
+  for (const el of ["pin-menu-anchor", "pin-menu-anchor-popover"]) document.getElementById(el)?.remove();
+  floatingMenu("pin-menu-anchor", pinEntries(id)).open(at);
 }
 
 /**
@@ -106,7 +118,14 @@ function refreshPins(): void {
 }
 
 export function initPinCommands(): void {
-  onCommandContextMenu(openPinMenu);
+  onCommandPins({ entries: pinEntries, pinned: isPinned, context: openPinMenu });
+  app.commands.register({
+    id: "pin-manage",
+    title: t("釘選常用指令…"),
+    group: t("檢視"),
+    icon: "pin",
+    run: () => openPinManager(),
+  });
   renderFilesHeadPins();
   app.settings.subscribe((_, changed) => {
     if (!changed || changed.includes("filesHeadCommands")) renderFilesHeadPins();
