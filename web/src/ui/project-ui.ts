@@ -379,7 +379,11 @@ export class ProjectUi {
     try {
       if (app === "codex") {
         await this.#d.projectOpenCodex(p.path);
-        toast(t("正在用 Codex 開啟「{name}」", { name: p.label }));
+        // 新版 ChatGPT 桌面版把 ChatGPT 和 Codex 放在同一個程式，停在 ChatGPT 時不一定會自己切到 Codex，
+        // 外面也沒有辦法切換（沒有公開的網址），只能提醒使用者手動切。
+        toast(t("正在用 Codex 開啟「{name}」。如果 ChatGPT 停在聊天畫面，請按左上角的「ChatGPT」切到「Codex」。", { name: p.label }), {
+          duration: 8000,
+        });
       } else {
         await this.#d.projectOpenClaude(p.path);
         toast(t("正在用 Claude 開啟「{name}」", { name: p.label }));

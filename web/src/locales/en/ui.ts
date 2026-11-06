@@ -157,7 +157,8 @@ export const ui: Record<string, Translation> = {
   "已把「{name}」改到 {path}": "Moved \"{name}\" to {path}.",
   "刪除專案…": "Delete Project…",
   "在 Codex 開啟這個專案": "Open Project in Codex",
-  "正在用 Codex 開啟「{name}」": "Opening \"{name}\" in Codex",
+  "正在用 Codex 開啟「{name}」。如果 ChatGPT 停在聊天畫面，請按左上角的「ChatGPT」切到「Codex」。":
+    "Opening \"{name}\" in Codex. If ChatGPT stays on the chat screen, click \"ChatGPT\" at the top left and switch to \"Codex\".",
   "在 Claude Code 開啟這個專案": "Open Project in Claude Code",
   "正在用 Claude 開啟「{name}」": "Opening \"{name}\" in Claude",
   "目前開著的資料夾不在專案清單中": "The open folder isn't in the project list.",
