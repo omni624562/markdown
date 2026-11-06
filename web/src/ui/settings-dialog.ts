@@ -138,8 +138,6 @@ export interface AboutHooks {
   shortcuts(): void;
   welcome(): void;
   changelog(): void;
-  /** 把版本資訊（版本、管道、建置、系統）複製到剪貼簿，回報問題時貼上。 */
-  copyInfo(): void;
   /** 開 GitHub 的新問題，內文先放好版本資訊。 */
   report(): void;
 }
@@ -723,24 +721,13 @@ export class SettingsDialog {
       checkBtn.type = "button";
       checkBtn.className = "btn";
       checkBtn.addEventListener("click", () => (update.pending() ? update.restart() : update.check()));
-      // 「複製版本資訊」在「檢查更新」旁邊：回報問題時貼上（版本、更新管道、建置、Windows 與 WebView2 的版本）。
-      const versionButtons = () => {
+      const versionRow = this.#row("version", t("版本"), t("讀取中…"), () => {
         const box = document.createElement("div");
         box.className = "settings-buttons";
-        if (about) {
-          const copy = document.createElement("button");
-          copy.type = "button";
-          copy.className = "btn";
-          copy.id = "setting-copy-version";
-          copy.append(icon("copy"), t("複製版本資訊"));
-          copy.addEventListener("click", () => about.copyInfo());
-          box.append(copy);
-        }
         checkBtn.id = "setting-check-update";
         box.append(checkBtn);
         return box;
-      };
-      const versionRow = this.#row("version", t("版本"), t("讀取中…"), versionButtons);
+      });
       const label = versionRow.querySelector("label")!;
       const hint = versionRow.querySelector("small")!;
       // 新版已經下載好時，版本列直接說明，按鈕改成「重新啟動並更新」。

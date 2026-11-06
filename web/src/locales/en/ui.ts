@@ -458,8 +458,6 @@ export const ui: Record<string, Translation> = {
   "意見回饋": "Feedback",
   "回報問題或建議": "Report a problem or suggestion",
   "在 GitHub 上留言（公開的頁面），會自動附上版本資訊": "Post on GitHub (a public page); version info is added automatically",
-  "複製版本資訊": "Copy version info",
-  "已複製版本資訊": "Version info copied",
   "oMarker {version}（{channel}）": "oMarker {version} ({channel})",
   "穩定版": "Stable",
   "網頁版": "Web",

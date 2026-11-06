@@ -18,7 +18,7 @@ import { toast } from "../ui/toast.ts";
 import { versionLabel, versionDetail, versionTooltip } from "../updater.ts";
 import { applyActivityLayout, openUrl, openWelcome, openChangelog, panelOrder, PANEL_LABELS, PANEL_ICONS, addActivityCommand } from "./activity-bar.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
-import { copyVersionInfo, reportIssue } from "./version-info.ts";
+import { reportIssue } from "./version-info.ts";
 import { reportError } from "./git-actions.ts";
 import { buildFormatBar } from "./new-work-item.ts";
 import { gitPanel } from "./work-item-updates.ts";
@@ -281,7 +281,6 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
       shortcuts: () => showShortcuts(),
       welcome: () => openWelcome(),
       changelog: () => void openChangelog().catch(reportError),
-      copyInfo: () => void copyVersionInfo().catch(reportError),
       report: () => reportIssue(),
     },
     {
