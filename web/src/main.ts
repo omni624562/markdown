@@ -77,6 +77,7 @@ import { insertHandle, selectionToolbar } from "./inline-tools.ts";
 import { toast } from "./ui/toast.ts";
 import { imageFiles, insertAtCursor, insertImages, wikiEditImage, wikiEditImagesPlugin } from "./app/image-paste.ts";
 import { initFileDrop } from "./app/file-drop.ts";
+import { pasteLink } from "./app/paste-link.ts";
 import { clearOffline, isOffline, offline, otherWriter, renderOffline, resolveConflict, showOffline, storeName, initOfflineDrive } from "./app/offline-drive.ts";
 import { initWikiHistory } from "./app/wiki-history.ts";
 import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
@@ -1375,6 +1376,10 @@ function editorOptions(): EditorOptions {
           plainPasteUntil = 0;
           // 從 VS Code 等編輯器複製的程式碼帶有上色用的 HTML，照原樣貼上純文字。
           if (plainOnly || !data || cur.kind !== "markdown" || !settings.value.smartPaste) return false;
+          if (pasteLink(v, data.getData("text/plain"))) {
+            e.preventDefault();
+            return true;
+          }
           if (data.types.includes("vscode-editor-data")) return false;
           const md = smartPasteText(v.state, data.getData("text/html"), data.getData("text/plain"));
           if (md === null) return false;
