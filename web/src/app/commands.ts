@@ -13,9 +13,8 @@ import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { PALETTES } from "../palette.ts";
 import { Palette } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
-import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
-import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { aiAppPresent } from "./ai-app-presence.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
 import { openDailyNote, openNeighborNote } from "./daily-notes.ts";
@@ -33,6 +32,7 @@ import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
 import { docName } from "./doc-names.ts";
+import { reportIssue } from "./version-info.ts";
 import type { Doc } from "../main.ts";
 import { app } from "./context.ts";
 
@@ -415,7 +415,7 @@ export function initCommands(): void {
       title: t("說明：回報問題或建議…"),
       group: t("說明"),
       icon: "bug",
-      run: () => openUrl(`${REPO_URL}/issues/new`),
+      run: () => reportIssue(),
     },
     {
       id: "about",
