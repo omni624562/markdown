@@ -3472,7 +3472,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     icon: "circle-help",
     items: ["show-shortcuts", "show-welcome", "show-changelog", "-", "check-update", "report-issue", "copy-error-log", "-", "about"],
   },
-  "palette",
+  "pin-manage", "palette",
   "settings",
 ]);
 // 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。網頁版不能在資料夾中搜尋，Ctrl+Shift+F 沒有作用，不寫。

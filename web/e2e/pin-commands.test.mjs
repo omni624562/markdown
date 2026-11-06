@@ -111,3 +111,90 @@ test("右鍵也能釘到左側圖示列；Codex、Claude Code 的圖示不一樣
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+/** 「☰」→「專案」子選單。 */
+async function projectMenu(page) {
+  await page.evaluate(() => document.querySelector("#main-menu").click());
+  const menu = page.locator("#main-menu-popover");
+  await menu.locator(":scope > button", { hasText: "專案" }).click();
+  const sub = menu.locator(":scope > .submenu:popover-open");
+  await sub.waitFor();
+  return sub;
+}
+
+test("選單項目右邊的圖釘：滑鼠移上去才出現，按了展開釘選的子選單（不會執行指令）；釘了之後圖釘一直顯示；鍵盤按 → 也可以", async () => {
+  const { page, context, errors } = await open({ desktop: DESKTOP });
+  await openProject(page);
+  let sub = await projectMenu(page);
+  const item = sub.locator(":scope > button", { hasText: "在 Codex 開啟這個專案" });
+  const pin = item.locator(".menu-pin");
+  // 滑鼠不在上面：看不到；移上去：出現。
+  await sub.locator(":scope > button", { hasText: "專案總覽" }).hover();
+  assert.equal(await pin.evaluate((el) => getComputedStyle(el).opacity), "0");
+  await item.hover();
+  await page.waitForFunction((el) => getComputedStyle(el).opacity === "1", await pin.elementHandle());
+  await pin.click();
+  const pins = sub.locator(":scope > .pin-submenu:popover-open");
+  await pins.waitFor();
+  assert.deepEqual(await pins.locator(":scope > button").allTextContents(), ["釘到檔案面板上方", "釘到左側圖示列"]);
+  // 主選單和「專案」子選單都還開著。
+  assert.equal(await sub.isVisible(), true);
+  await pins.getByRole("menuitem", { name: "釘到檔案面板上方" }).click();
+  await page.locator("#files-head .head-pin[data-command='open-in-codex']").waitFor();
+  assert.equal((await calls(page)).filter((c) => c.cmd === "project_open_codex").length, 0, "按圖釘不會執行指令");
+
+  // 已經釘了：圖釘一直顯示（強調色），子選單換成移除。
+  sub = await projectMenu(page);
+  const pinned = sub.locator(":scope > button", { hasText: "在 Codex 開啟這個專案" }).locator(".menu-pin.pinned");
+  await sub.locator(":scope > button", { hasText: "專案總覽" }).hover();
+  assert.equal(await pinned.evaluate((el) => getComputedStyle(el).opacity), "1");
+  // 鍵盤：焦點在項目上按 → 展開，焦點移到第一項；← 回去。
+  await sub.locator(":scope > button", { hasText: "在 Codex 開啟這個專案" }).focus();
+  await page.keyboard.press("ArrowRight");
+  const again = sub.locator(":scope > .pin-submenu:popover-open");
+  await again.waitFor();
+  assert.deepEqual(await again.locator(":scope > button").allTextContents(), ["從檔案面板上方移除", "釘到左側圖示列"]);
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), "從檔案面板上方移除");
+  await page.keyboard.press("ArrowLeft");
+  await again.waitFor({ state: "hidden" });
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent?.startsWith("在 Codex 開啟這個專案")), true);
+  await page.keyboard.press("Escape");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("「☰」→「釘選常用指令…」：勾選要放的位置；已經釘的排在最上面；檔案面板上方滿 3 個時其他的不能勾", async () => {
+  const { page, context, errors } = await open({ desktop: DESKTOP });
+  await openProject(page);
+  await page.evaluate(() => document.querySelector("#main-menu").click());
+  await page.locator("#main-menu-popover > button", { hasText: "釘選常用指令…" }).click();
+  const dialog = page.locator("dialog.pin-manager[open]");
+  await dialog.waitFor();
+  const row = (id) => dialog.locator(`tr[data-command='${id}']`).first();
+  const head = (id) => row(id).locator("input[data-focus^='filesHeadCommands:']");
+  const bar = (id) => row(id).locator("input[data-focus^='activityCommands:']");
+  assert.match(await dialog.locator(".pin-manager-head").textContent(), /檔案面板上方（0\/3）/);
+  await dialog.locator("input[type=search]").fill("Codex");
+  await head("open-in-codex").check();
+  await page.locator("#files-head .head-pin[data-command='open-in-codex']").waitFor();
+  await bar("open-in-codex").check();
+  await page.locator(".activity-cmd[data-command='open-in-codex']").waitFor();
+  // 清掉搜尋：已經釘的排在最上面。
+  await dialog.locator("input[type=search]").fill("");
+  assert.equal(await dialog.locator(".pin-manager-body h3").first().textContent(), "已經釘的");
+  assert.equal(await dialog.locator(".pin-manager-body table:not(.pin-manager-head)").first().locator("tr").first().getAttribute("data-command"), "open-in-codex");
+  // 再釘兩個就滿了：其他沒勾的那一欄變灰。
+  await head("open-in-claude").check();
+  await head("new-project").check();
+  assert.match(await dialog.locator(".pin-manager-head").textContent(), /檔案面板上方（3\/3）/);
+  assert.equal(await head("switch-project").isDisabled(), true);
+  assert.equal(await bar("switch-project").isDisabled(), false);
+  // 取消勾選：從檔案面板上方拿掉。
+  await head("open-in-codex").uncheck();
+  await page.waitForFunction(() => !document.querySelector("#files-head .head-pin[data-command='open-in-codex']"));
+  assert.equal(await head("switch-project").isDisabled(), false);
+  await dialog.getByRole("button", { name: "完成" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
