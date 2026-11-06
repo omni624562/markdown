@@ -4,6 +4,7 @@
  * 圖片、表格、公式、待辦勾選框直接畫出來。文件內容永遠是原始碼，只改變顯示方式。
  */
 import { syntaxTree } from "@codemirror/language";
+import { type SearchQuery, getSearchQuery, searchPanelOpen } from "@codemirror/search";
 import { type EditorState, type Extension, type Range, StateEffect, StateField, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
@@ -621,6 +622,7 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): Blocks {
   const mathOn = !!opts.renderMath && (opts.mathEnabled?.() ?? true);
   const mermaidOn = !!opts.renderMermaid && (opts.mermaidEnabled?.() ?? true);
   const theme = opts.mermaidTheme?.() ?? "";
+  const search = tableSearch(state);
   const decos: Range<Decoration>[] = [];
   const htmlLines: { number: number; text: string }[] = [];
   syntaxTree(state).iterate({
@@ -640,7 +642,7 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): Blocks {
           if (!rangeActive(from, to) && wholeLines(from, to)) {
             decos.push(
               Decoration.replace({
-                widget: new EditableTableWidget(doc.sliceString(from, to), opts.renderTable, opts.formatTable ?? (() => undefined)),
+                widget: new EditableTableWidget(doc.sliceString(from, to), opts.renderTable, opts.formatTable ?? (() => undefined), search),
                 block: true,
               }).range(from, to),
             );
@@ -1018,6 +1020,18 @@ function linkMark(href: string): Decoration {
 
 const rebuild = StateEffect.define<null>();
 
+/** 表格裡要標色的搜尋條件：搜尋列開著、而且輸入了有效的搜尋文字時才有。 */
+function tableSearch(state: EditorState): SearchQuery | null {
+  if (!searchPanelOpen(state)) return null;
+  const query = getSearchQuery(state);
+  return query.valid ? query : null;
+}
+
+/** 搜尋列打開、關閉或改了搜尋文字（表格要重新標色）。 */
+function searchChanged(tr: Transaction): boolean {
+  return searchPanelOpen(tr.startState) !== searchPanelOpen(tr.state) || getSearchQuery(tr.startState) !== getSearchQuery(tr.state);
+}
+
 /** 外部資料變了（例如資料夾的檔案清單）：重新計算即時預覽（`[[文件]]` 找不找得到檔案）。 */
 export function refreshLivePreview(view: EditorView): void {
   view.dispatch({ effects: rebuild.of(null) });
@@ -1028,7 +1042,7 @@ export function livePreview(opts: LivePreviewOptions): Extension {
     create: (state) => buildBlocks(state, opts),
     update(value, tr) {
       const treeChanged = syntaxTree(tr.state) !== syntaxTree(tr.startState);
-      const forced = tr.effects.some((e) => e.is(rebuild) || e.is(detailsToggle));
+      const forced = tr.effects.some((e) => e.is(rebuild) || e.is(detailsToggle)) || searchChanged(tr);
       if (!tr.docChanged && !treeChanged && !tr.reconfigured && !focusChanged(tr) && !forced) {
         // 只是移動游標，而且沒有跨進或跨出任何表格、公式、流程圖：沿用原本的結果。
         if (!tr.selection || !selectionTouchesBlock(value.blocks, tr.startState, tr.state)) return value;
