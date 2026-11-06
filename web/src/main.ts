@@ -37,7 +37,7 @@ import sampleEn from "./sample.en.md?raw";
 import sampleZh from "./sample.md?raw";
 import { type BlockRef, collectBlocks, offsetForLineLazy } from "./scroll-sync.ts";
 import { SPELL_IGNORE_LIMIT, TERM_IGNORE_LIMIT, SettingsStore } from "./settings.ts";
-import { pasteAsMarkdown } from "./html-paste.ts";
+import { smartPasteText } from "./app/table-paste.ts";
 import { hiddenByCollapse, subtreeEnd } from "./sections.ts";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import { type HeadingRef, type RemotePage, encodeLinkPath, linkCompletion } from "./link-complete.ts";
@@ -45,8 +45,9 @@ import { type DocMeta, dropDraft, dropOrphanDrafts, loadDraft, loadSession, newI
 import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
-import { cometPresent } from "./app/comet-presence.ts";
+import { aiAppPresent } from "./app/ai-app-presence.ts";
 import { cometBadge } from "./ui/comet-badge.ts";
+import { cometFileGuard, cometTreeMark } from "./app/comet-files.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
@@ -77,6 +78,7 @@ import { insertHandle, selectionToolbar } from "./inline-tools.ts";
 import { toast } from "./ui/toast.ts";
 import { imageFiles, insertAtCursor, insertImages, wikiEditImage, wikiEditImagesPlugin } from "./app/image-paste.ts";
 import { initFileDrop } from "./app/file-drop.ts";
+import { pasteLink } from "./app/paste-link.ts";
 import { clearOffline, isOffline, offline, otherWriter, renderOffline, resolveConflict, showOffline, storeName, initOfflineDrive } from "./app/offline-drive.ts";
 import { initWikiHistory } from "./app/wiki-history.ts";
 import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
@@ -100,7 +102,7 @@ import { NOT_CONNECTED, canRenameFile, closeProject, davDialog, openPath, openRe
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
-import { docName, docTooltip, saveFileName } from "./app/doc-names.ts";
+import { docName, docTooltip, renumber, saveFileName } from "./app/doc-names.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
@@ -197,9 +199,17 @@ const app = {
   get addTab() {
     return addTab;
   },
-  /** 這份文件不顯示起始頁（按「新增文件」開的：已經要開始寫了，只留編輯區的灰色提示）。 */
+  /**
+   * 這份文件不顯示起始頁（按「新增文件」開的：已經要開始寫了，只留編輯區的灰色提示）。
+   * 「預覽」檢視時編輯器是藏起來的，換成可以打字的檢視（和起始頁的「開始寫作」一樣），不然畫面一片空白。
+   */
   skipStartPage(id: string) {
     startDismissed.add(id);
+    if (view === "preview") setView(cur.kind === "markdown" ? "live" : "editor");
+  },
+  /** 按「新增文件」開的（不是一開始或關掉所有文件後補上的空白文件）：空白時分頁也照常顯示。 */
+  startSkipped(id: string) {
+    return startDismissed.has(id);
   },
   get ado() {
     return ado;
@@ -1285,7 +1295,7 @@ function editorOptions(): EditorOptions {
       }),
     ],
     extra: [
-      review.extension,
+      review.extension, cometFileGuard(), // COMET 的設定檔唯讀（app/comet-files.ts）
       EditorView.updateListener.of((u) => onSimplifiedPaste(u)),
       autoSymbols(() => cur.kind !== "json" && settings.value.autoSymbols),
       // 連到 Azure DevOps 工作項目、Wiki 頁面的連結：滑鼠移上去顯示摘要。
@@ -1367,8 +1377,12 @@ function editorOptions(): EditorOptions {
           plainPasteUntil = 0;
           // 從 VS Code 等編輯器複製的程式碼帶有上色用的 HTML，照原樣貼上純文字。
           if (plainOnly || !data || cur.kind !== "markdown" || !settings.value.smartPaste) return false;
+          if (pasteLink(v, data.getData("text/plain"))) {
+            e.preventDefault();
+            return true;
+          }
           if (data.types.includes("vscode-editor-data")) return false;
-          const md = pasteAsMarkdown(data.getData("text/html"), data.getData("text/plain"));
+          const md = smartPasteText(v.state, data.getData("text/html"), data.getData("text/plain"));
           if (md === null) return false;
           e.preventDefault();
           v.dispatch(v.state.replaceSelection(md), { scrollIntoView: true, userEvent: "input.paste" });
@@ -1383,7 +1397,9 @@ function editorOptions(): EditorOptions {
           e.preventDefault();
           // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
           const at = new DOMRect(e.clientX, e.clientY, 0, 0);
-          setTimeout(() => contextMenu.open(at));
+          const show = () => setTimeout(() => contextMenu.open(at));
+          if (e.buttons & 2) window.addEventListener("pointerup", show, { once: true });
+          else show();
           return true;
         },
         drop(e, v) {
@@ -1497,6 +1513,8 @@ function renderError({ error }: RenderResult): void {
 let emptyStateKey = "";
 /** 按了「新增文件」的空白文件：不再顯示起始頁（直接開始寫）。 */
 const startDismissed = new Set<string>();
+/** 起始頁正顯示著（目前的分頁是還沒寫任何字的空白文件）。 */
+let startOpen = false;
 /** Azure DevOps、GitHub 的帳號讀到了沒（讀到之前不列「連線」，免得已連線的人看到一閃而過的連結）。 */
 let accountsReady = false;
 
@@ -1518,6 +1536,12 @@ function renderEmptyState(text: string): void {
   // 不用 trim()：大文件每次都會複製一份字串。
   const empty = !/\S/.test(text) && !startDismissed.has(active.id);
   emptyStateEl.hidden = !empty;
+  if (startOpen !== empty) {
+    startOpen = empty;
+    // 起始頁不是文件：不顯示檢視切換，也不分檢視一律佔滿（分割時開始打字才分成左右兩半）。
+    workspace.classList.toggle("start-open", empty);
+    if (view === "split") return applyLayout(); // 版面排好後會再回到這裡畫起始頁
+  }
   if (!empty) {
     emptyStateKey = "";
     return;
@@ -1554,6 +1578,7 @@ function renderEmptyState(text: string): void {
           run: () => {
             startDismissed.add(active.id);
             renderEmptyState(editor.text);
+            renderSaveState(); // 分頁列跟著出現（見 onlyBlankDoc）
             editor.view.focus();
           },
         },
@@ -2055,7 +2080,11 @@ function setBaseline(text: string, backed: boolean): void {
 // ---- 分頁 ---------------------------------------------------------------
 
 const tabBar = new TabBar($("#tab-bar"), {
-  select: (id) => selectTab(id),
+  select: (id, via) => {
+    selectTab(id);
+    // 用滑鼠點文件的分頁：游標放回編輯器，可以直接打字（方向鍵切換時焦點留在分頁上）。
+    if (via === "pointer" && docs.some((d) => d.id === id)) editor.view.focus();
+  },
   close: (id) => {
     if (findItemTab(id)) closeItem(id);
     else void closeTab(id).catch(reportError);
@@ -2164,7 +2193,7 @@ const fileTree = desktop
   ? new FileTree($("#file-tree"), {
       list: (dir) => desktop!.listDir(dir),
       open: (path) => void openPath(path).catch(reportError),
-      action: (action, entry) => void treeAction(action, entry).catch(reportError),
+      action: (action, entry) => void treeAction(action, entry).catch(reportError), mark: cometTreeMark,
       remote: () => !!workspaceRoot && isRemote(workspaceRoot.path),
       dropFiles: (dir, files) => void uploadFiles(dir, files).catch(reportError),
       expandedChanged: () => {
@@ -2179,8 +2208,8 @@ const projectUi = desktop
       current: () => workspaceRoot?.path ?? null,
       open: (path) => openRecentFolder(path),
       openFolder: () => void commands.run("open-folder").catch(reportError),
-      newProject: (comet) => void commands.run(comet ? "new-comet-project" : "new-project").catch(reportError),
-      cometInstalled: cometPresent,
+      newProject: () => void commands.run("new-project").catch(reportError),
+      aiAppInstalled: aiAppPresent,
       close: () => void commands.run("close-folder").catch(reportError),
       closeAndWait: () => closeProject(),
       remotes: () => (features.remote ? desktop!.davConnections() : Promise.resolve([])),
@@ -2408,6 +2437,7 @@ function renderStatusView(): void {
   back.addEventListener("click", () => {
     hideItem();
     historyView?.close();
+    editor.view.focus();
   });
   const facts = document.createElement("span");
   facts.className = "status-facts";
@@ -2873,6 +2903,9 @@ function closeSide(): void {
   applyLayout();
   renderTabs();
   renderPaneHeads();
+  // 焦點在藏起來的右邊編輯器或按掉的按鈕上：放回左邊的編輯器，不要掉到 body。
+  const at = document.activeElement as HTMLElement | null;
+  if (!at || at === document.body || !at.checkVisibility()) editor.view.focus();
 }
 
 /**
@@ -3001,22 +3034,21 @@ function activate(doc: Doc): void {
 /** 新增一個分頁並切換過去（不會寫入內容，呼叫端負責）。 */
 /** 新增分頁：放在目前分頁的右邊；給了 `after` 時放在那個文件後面（null 是一般分頁的最前面）。都不插進固定的分頁之間。 */
 function addTab(doc: Doc, after?: string | null): void {
+  // 只剩一份沒顯示的空白文件（一開始、或關掉所有文件後補上的）：開好新分頁後收掉它，不多留一個「未命名」。
+  const placeholder = onlyBlankDoc() ? active : null;
   const lastPinned = docs.reduce((n, d, i) => (d.pinned ? i + 1 : n), 0);
   const left = after === undefined ? docs.indexOf(active) : after === null ? -1 : docs.findIndex((d) => d.id === after);
   docs.splice(Math.max(left + 1, lastPinned), 0, doc);
   activate(doc);
+  if (placeholder) {
+    renumber(doc); // 新文件不必是「未命名 2」
+    void closeTab(placeholder.id).then(renderSaveState); // 收掉之後重算名稱與視窗標題
+  }
 }
 
 async function closeTab(id: string): Promise<void> {
   const doc = docs.find((d) => d.id === id);
   if (!doc) return;
-  // 關掉並排中的文件：先關閉並排（另一份文件留在左邊）。
-  if (paneDocs.side === doc) closeSide();
-  else if (paneDocs.side && paneDocs.main === doc) {
-    const keep = paneDocs.side;
-    closeSide();
-    activate(keep);
-  }
   if (doc === active) stash();
   if (doc.dirty) {
     const choice = await choose(t("要存檔嗎？"), t("「{name}」有尚未存檔的變更。", { name: docName(doc) }), [
@@ -3031,6 +3063,13 @@ async function closeTab(id: string): Promise<void> {
     } else if (choice !== "discard") {
       return;
     }
+  }
+  // 確定要關閉了才處理並排（問存檔時按「取消」就什麼都不變）：關掉並排中的文件時先關閉並排，另一份文件留在左邊。
+  if (paneDocs.side === doc) closeSide();
+  else if (paneDocs.side && paneDocs.main === doc) {
+    const keep = paneDocs.side;
+    closeSide();
+    activate(keep);
   }
   if (pendingDraft?.id === doc.id) pendingDraft = null;
   rememberClosed(doc);
@@ -3144,7 +3183,8 @@ function openDocument(
   }
   // 目前分頁是空白、未存成檔案的新文件時直接沿用，否則開新分頁。
   // 沒動過的範例文件也直接換掉，免得每次開檔都多一個「未命名」分頁。
-  const untouched = !cur.fileBacked && (editor.text === "" || (editor.text === sample && !active.dirty));
+  // 編輯中的 Wiki 頁面（空白的也一樣）不沿用：沿用了會帶著 Wiki 的資訊，Ctrl+S 把檔案的內容存回 Wiki。
+  const untouched = !cur.fileBacked && !active.wiki && (editor.text === "" || (editor.text === sample && !active.dirty));
   if (!untouched) addTab(makeDoc({ name, kind: docKind ?? kindFromFileName(name) }));
   if (review.active) review.finish();
   cur.fileHandle = handle;
@@ -3398,10 +3438,12 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     icon: "folder-kanban",
     items: [
       "new-project",
-      "new-comet-project",
       "switch-project",
       "project-overview",
       "open-in-codex",
+      "open-in-claude",
+      "comet-setup-project",
+      "comet-resetup-project",
       "-",
       "open-folder",
       { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },
@@ -3413,7 +3455,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   {
     label: t("Git"),
     icon: "git-branch",
-    items: ["show-git", "git-history", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "-", "git-file-history", "git-open-web", "git-copy-link"],
+    items: ["show-git", "git-history", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "ado-publish", "-", "git-file-history", "git-open-web", "git-copy-link"],
   },
   "-",
   {
@@ -3430,13 +3472,13 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
     icon: "circle-help",
     items: ["show-shortcuts", "show-welcome", "show-changelog", "-", "check-update", "report-issue", "copy-error-log", "-", "about"],
   },
-  "palette",
+  "pin-manage", "palette",
   "settings",
 ]);
-// 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。
+// 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。網頁版不能在資料夾中搜尋，Ctrl+Shift+F 沒有作用，不寫。
 for (const [tab, id] of [
   ["#side-tab-files", "show-files"],
-  ["#side-tab-search", "search-in-folder"],
+  ...(desktop ? ([["#side-tab-search", "search-in-folder"]] as const) : []),
   ["#side-tab-git", "show-git"],
 ] as const) {
   const el = $(tab);
@@ -3454,13 +3496,16 @@ initFileFormat();
 
 /** 預覽窗格現在看得到嗎（分割或只顯示預覽）。 */
 function previewVisible(): boolean {
+  // 工作項目並排時右半邊被佔住，「分割」當成即時預覽，只有「預覽」看得到預覽（在左半邊）。
+  if (workspace.classList.contains("issue-side")) return view === "preview";
   return view === "preview" || (view === "split" && !narrowQuery.matches);
 }
 
 function applyLayout(): void {
   const narrow = narrowQuery.matches;
   // 手機寬度放不下並排，分割模式改為只顯示編輯區（可用分頁切換到預覽）。
-  const effective: ViewMode = narrow && view === "split" ? "editor" : view;
+  // 起始頁也一樣：佔滿整個區域，開始打字後才分成左右兩半。
+  const effective: ViewMode = (narrow || startOpen) && view === "split" ? "editor" : view;
   // 工作項目等內容和編輯區並排：版面當成分割，右半邊放內容（預覽藏起來）。
   const side = issueSide && !narrow && workspace.classList.contains("issue-open");
   // 兩份文件並排：右半邊放另一個編輯器。視窗太窄、工作項目要並排時關閉並排。
@@ -3472,12 +3517,15 @@ function applyLayout(): void {
     // 分頁列上標成目前分頁的換了（並排時是文件，蓋住編輯區時是工作項目等）。
     renderTabs();
   }
+  // 工作項目並排時右半邊被佔住：「分割」當成即時預覽，「預覽」換到左半邊（編輯區的位置）顯示。
+  const shown: ViewMode = side && effective === "split" ? "live" : effective;
+  workspace.classList.toggle("side-preview", side && shown === "preview");
   // 即時預覽的版面和只顯示編輯區相同，差別在編輯區裡直接顯示排版。
-  const layout = side || docSide ? "split" : effective === "live" ? "editor" : effective;
+  const layout = side || docSide ? "split" : shown === "live" ? "editor" : shown;
   workspace.dataset.view = layout;
-  workspace.classList.toggle("live", effective === "live");
-  if (liveApplied !== (effective === "live")) {
-    liveApplied = effective === "live";
+  workspace.classList.toggle("live", shown === "live");
+  if (liveApplied !== (shown === "live")) {
+    liveApplied = shown === "live";
     for (const ed of allEditors()) ed.configure({ livePreview: liveApplied });
   }
   workspace.classList.toggle("outline-hidden", !outlineShown);
@@ -3654,8 +3702,8 @@ async function startDesktop(d: NonNullable<typeof desktop>): Promise<void> {
     let needPassword = false;
     const folder = last
       ? await d.reopenFolder(last).catch((e) => {
-          // 遠端連線沒有記住密碼：提示使用者輸入，不自動跳出對話框打斷。
-          if (isRemote(last) && String(e instanceof Error ? e.message : e) === "NEED_PASSWORD") {
+          // 遠端連線（或 SSH 的跳板主機）沒有記住密碼：提示使用者輸入，不自動跳出對話框打斷。
+          if (isRemote(last) && /^NEED_(JUMP_)?PASSWORD(\n|$)/.test(String(e instanceof Error ? e.message : e))) {
             needPassword = true;
             void suggestReconnect(last, (name) => t("要重新連線到「{name}」，需要輸入密碼。", { name }), t("輸入密碼"));
           }
@@ -3803,10 +3851,10 @@ async function onExternalChange(path: string): Promise<void> {
       if (!showExternalChanges(original, file.text)) {
         // 改回原本的內容了：結束標示，直接顯示目前的版本。
         if (review.active) review.finish();
-        if (editor.text !== file.text) editor.replaceAll(file.text);
+        if (editor.text !== file.text) editor.replaceAll(file.text, { userEvent: "input.reload" });
       }
     } else if (file.text !== editor.text) {
-      editor.replaceAll(file.text);
+      editor.replaceAll(file.text, { userEvent: "input.reload" }); // 外部修改：COMET 設定檔鎖著也照常重新載入
       toast(t("「{name}」已被{who}更新，已重新載入。", { name: doc.name, who: otherWriter(path) }), {
         action: { label: t("復原"), run: () => void undo(editor.view) },
       });

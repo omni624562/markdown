@@ -18,6 +18,7 @@ import { toast } from "../ui/toast.ts";
 import { versionLabel, versionDetail, versionTooltip } from "../updater.ts";
 import { applyActivityLayout, openUrl, openWelcome, openChangelog, panelOrder, PANEL_LABELS, PANEL_ICONS, addActivityCommand } from "./activity-bar.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
+import { reportIssue } from "./version-info.ts";
 import { reportError } from "./git-actions.ts";
 import { buildFormatBar } from "./new-work-item.ts";
 import { gitPanel } from "./work-item-updates.ts";
@@ -25,6 +26,7 @@ import { renderAdoTab, renderIssuesTab } from "./work-items-panel.ts";
 import { kindColorCss } from "../work-item-colors.ts";
 import type { ViewUpdate } from "@codemirror/view";
 import type { ViewMode } from "../main.ts";
+import { chatgptDesktopFound } from "./chatgpt.ts";
 import { app } from "./context.ts";
 import { saveAdoDiagnostics } from "./ado-status.ts";
 
@@ -238,7 +240,9 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
       accent: () => app.accent,
       setAccent: app.setAccent,
     },
-    desktop && app.ai ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => app.ai!.copyRegistration(tool) } : null,
+    desktop && app.ai
+      ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => app.ai!.copyRegistration(tool), chatgptDesktop: chatgptDesktopFound }
+      : null,
     app.updater
       ? {
           async version() {
@@ -265,6 +269,8 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
           connect: (url, pat) => app.ado!.connect(url, pat),
           disconnect: () => void app.ado!.disconnect(),
           kinds: () => desktop!.adoWorkItemFilters().then((f) => f.kinds),
+          projects: () => desktop!.adoWorkItemFilters().then((f) => f.projects),
+          teams: (project) => desktop!.adoTeams(project),
           check: () => desktop!.adoCheck(),
           diagnostics: () => void saveAdoDiagnostics(),
         }
@@ -275,6 +281,7 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
       shortcuts: () => showShortcuts(),
       welcome: () => openWelcome(),
       changelog: () => void openChangelog().catch(reportError),
+      report: () => reportIssue(),
     },
     {
       panels: () =>
@@ -312,7 +319,7 @@ export function initSettingsUi(): void {
   // 側邊欄與右邊大綱的寬度：拖曳面板邊緣調整，各自記住。
   for (const [panel, side, key, cssVar] of [
     [app.$("#sidebar"), "left", "sidebar-width", "--outline-width"],
-    [app.$("#outline-right"), "right", "outline-right-width", "--outline-right-width"],
+    [app.$("aside#outline-right"), "right", "outline-right-width", "--outline-right-width"],
   ] as const) {
     const saved = Number(storage.load(key));
     if (saved) document.documentElement.style.setProperty(cssVar, `${clampSidebarWidth(saved)}px`);

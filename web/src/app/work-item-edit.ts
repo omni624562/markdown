@@ -75,8 +75,8 @@ function chipMenu(chip: HTMLElement, id: string, label: string, entries: () => M
   button.setAttribute("aria-label", t("修改{label}", { label }));
   button.append(...chip.childNodes, icon("chevron-down"));
   chip.replaceWith(button);
-  // 重畫時舊的選單還在：先拿掉。
-  document.getElementById(`${id}-popover`)?.remove();
+  // 重畫時舊的選單還在：先拿掉（連標籤名稱一起找，內文裡標題的 id 可能和它一樣）。
+  document.querySelector(`div#${id}-popover`)?.remove();
   const list: MenuEntry[] = [];
   const menu = setupMenu(button, null, list);
   // 點的時候（打開選單之前）產生項目。
@@ -141,7 +141,7 @@ export function enhanceWorkItem(body: HTMLElement, h: WorkItemEditHooks, cache: 
           ...(states.value ? [] : [loading()]),
         ];
       },
-      refreshWhenLoaded(states, () => document.getElementById("wi-edit-state")),
+      refreshWhenLoaded(states, () => document.querySelector<HTMLElement>("button#wi-edit-state")),
     );
   }
 
@@ -221,7 +221,7 @@ export function enhanceWorkItem(body: HTMLElement, h: WorkItemEditHooks, cache: 
         }
         return out;
       },
-      refreshWhenLoaded(its, () => document.getElementById("wi-edit-iteration")),
+      refreshWhenLoaded(its, () => document.querySelector<HTMLElement>("button#wi-edit-iteration")),
     );
   }
 

@@ -12,6 +12,7 @@ import { t } from "../i18n.ts";
 import { compressImage } from "../image-compress.ts";
 import { encodeLinkPath } from "../link-complete.ts";
 import { basename, dirname, localImagePath } from "../paths.ts";
+import { isRemoteUrl } from "../remote-images.ts";
 import { richHtml, fileUrl as localFileUrl } from "../rich-copy.ts";
 import { saveDraft } from "../session.ts";
 import { type Settings, ACTIVITY_LIMIT } from "../settings.ts";
@@ -42,6 +43,8 @@ import { barShortcuts, openShortcutFromBar, removeBarShortcut, shortcutBar, shor
 import { fileTabMenuEntries } from "./file-shortcuts.ts";
 import type { SidePanel } from "../main.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
+import { initPinCommands } from "./pin-commands.ts";
+import { initChatGpt } from "./chatgpt.ts";
 import { app } from "./context.ts";
 
 
@@ -271,6 +274,7 @@ function openActivityMenu(at: DOMRect): void {
         : [];
     }),
     "activity-add",
+    "pin-manage",
     "activity-customize",
   ];
   floatingMenu("activity-menu-anchor", entries).open(at);
@@ -590,6 +594,7 @@ export async function importDocxData(name: string, data: ArrayBuffer, mdPath: st
 
 /**
  * 匯出 Word：圖片從本機、遠端資料夾或網址讀取，讀不到的改成文字說明。
+ * 封鎖遠端圖片時不下載網路上的圖片（和預覽一樣）。
  * 桌面版在後端產生 .docx（Rust）；網頁版用 docx 套件。
  */
 export async function exportDocx(): Promise<void> {
@@ -598,11 +603,10 @@ export async function exportDocx(): Promise<void> {
   const { loadImage } = await import("../docx-image.ts");
   const image = async (src: string) => {
     let url: string | null = null;
-    if (/^(https?:|data:image\/)/i.test(src)) url = src;
-    else if (desktop && docDir) {
-      const path = localImagePath(src, docDir);
-      if (path) url = isRemote(path) ? await desktop.davImage(path) : desktop.fileUrl(path);
-    }
+    const path = desktop && docDir ? localImagePath(src, docDir) : null;
+    if (/^data:image\//i.test(src)) url = src;
+    else if (path) url = isRemote(path) ? await desktop!.davImage(path) : desktop!.fileUrl(path);
+    else if (isRemoteUrl(src)) url = app.blockRemote() ? null : src;
     return url ? loadImage(url) : null;
   };
   const title = stem(app.cur.fileName);
@@ -754,6 +758,8 @@ export async function copyDiagram(svg: string): Promise<void> {
 }
 
 export function initActivityBar(): void {
+  initPinCommands();
+  initChatGpt();
   headingMenu = formatMenuButton("fmt-heading", t("標題"), "heading", ["h1", "h2", "h3"]);
   insertMenu = formatMenuButton("fmt-insert", t("插入"), "plus", [
     "table",
@@ -790,10 +796,35 @@ export function initActivityBar(): void {
     "cut",
     "copy",
     "copy-rich",
+    "send-to-chatgpt",
     "paste",
     "paste-plain",
     "select-all",
     "-",
+    // 游標在表格裡時才有「表格」；選取 Tab 或逗號分隔的幾行時才有「轉成表格」。
+    {
+      label: t("表格"),
+      icon: "table",
+      items: [
+        "table-insert-row-above",
+        "table-insert-row",
+        "table-insert-column-left",
+        "table-insert-column",
+        "-",
+        "table-delete-row",
+        "table-delete-column",
+        "-",
+        "table-align-left",
+        "table-align-center",
+        "table-align-right",
+        "-",
+        "table-sort-asc",
+        "table-sort-desc",
+        "-",
+        "table-format",
+      ],
+    },
+    "table-from-text",
     // 常用的粗體、斜體留在第一層，其他格式與縮排收進「格式」子選單，選單才不會太長。
     "bold",
     "italic",

@@ -70,8 +70,14 @@ export function fieldMenu(el: TextField): MenuEntry[] {
   return entries;
 }
 
+/** 「複製」後面多加的項目（例如「傳給 ChatGPT」，見 app/chatgpt.ts）。 */
+let selectionExtras: (text: string) => MenuEntry[] = () => [];
+export function setSelectionExtras(fn: (text: string) => MenuEntry[]): void {
+  selectionExtras = fn;
+}
+
 /** 其他地方（預覽、比較檢視等）：選取了文字就可以複製。 */
 export function selectionMenu(): MenuEntry[] {
   const text = document.getSelection()?.toString() ?? "";
-  return text ? [item(t("複製"), "copy", () => void navigator.clipboard.writeText(text))] : [];
+  return text ? [item(t("複製"), "copy", () => void navigator.clipboard.writeText(text)), ...selectionExtras(text)] : [];
 }

@@ -155,7 +155,7 @@ export class TerminalPanel {
     new ResizeObserver(() => this.#scheduleFit()).observe(this.#body);
   }
 
-  /** 程式的輸出（Rust 的 `term-output` 事件）。 */
+  /** 程式的輸出（Rust 從終端機頁面的通道送來的 `term-output`）。 */
   output({ id, data }: { id: number; data: string }): void {
     const s = this.#sessions.find((x) => x.id === id);
     if (s) {
@@ -229,8 +229,12 @@ export class TerminalPanel {
   /**
    * 把文字送到終端機中的 Claude Code／Codex 輸入列（用括號貼上模式，不會被當成按鍵指令）。
    * 沒有正在執行的 AI 時，先啟動 `preferred`，等它準備好再送出。
+   *
+   * 文字來自主畫面，只能送進 AI 的分頁：`preferred` 不是 Claude Code／Codex 時（例如 `shell`）什麼都不做，
+   * 不會為了它開殼層，文字也不會送進殼層（原生端已經檢查過，這裡再擋一次）。
    */
   async sendToAi(text: string, preferred: TermProgram): Promise<boolean> {
+    if (preferred !== "claude" && preferred !== "codex") return false;
     const isAi = (s: Session) => (s.program === "claude" || s.program === "codex") && !s.exited;
     let target = this.#active && isAi(this.#active) ? this.#active : [...this.#sessions].reverse().find(isAi);
     if (!target) {

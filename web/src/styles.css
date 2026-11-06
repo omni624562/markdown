@@ -506,6 +506,33 @@ kbd {
     background: var(--backdrop);
   }
   [data-panel-style="spaced"] .outline-right .side-head { background: transparent; }
+  /*
+   * 大綱與 Wiki 都在右側欄：分成兩個圓角區塊，中間留和其他區塊一樣的間隔。上面的大綱接著右上角那一段，
+   * 下面的 Wiki 自己一塊。都展開時間隔就是分隔線（滑鼠移上去才出現把手，一樣可以拖曳調整高度）。
+   */
+  [data-panel-style="spaced"] .outline-right:has(> #panel-outline):has(> #panel-wiki) {
+    border: 0;
+    background: transparent;
+  }
+  [data-panel-style="spaced"] .outline-right:has(> #panel-wiki) > #panel-outline {
+    border: 1px solid var(--panel-line);
+    border-top: 0;
+    border-radius: 0 0 var(--panel-radius) var(--panel-radius);
+    background: var(--backdrop);
+    overflow: hidden;
+  }
+  [data-panel-style="spaced"] .outline-right:has(> #panel-outline) > #panel-wiki {
+    margin-top: var(--panel-gap);
+    border: 1px solid var(--panel-line);
+    border-radius: var(--panel-radius);
+    background: var(--backdrop);
+    overflow: hidden;
+  }
+  [data-panel-style="spaced"] .outline-right:has(> #panel-outline) > #panel-wiki > .side-head { border-top: 0; }
+  [data-panel-style="spaced"] .outline-right:has(> #panel-outline) > .rs-splitter:not([hidden]) + #panel-wiki { margin-top: 0; }
+  [data-panel-style="spaced"] .outline-right > .rs-splitter { height: var(--panel-gap); margin: 0; border-top: 0; }
+  [data-panel-style="spaced"] .outline-right > .rs-splitter::before { top: calc(50% - 1.5px); opacity: 0; }
+  [data-panel-style="spaced"] .outline-right > .rs-splitter:is(:hover, :focus-visible, .dragging)::before { opacity: 1; }
 
   /* 中間：分頁列在最上面（淡底，目前的分頁和內文同底色、接在一起），下面是內文。 */
   [data-panel-style="spaced"] .tab-bar {
@@ -549,6 +576,7 @@ kbd {
   [data-panel-style="spaced"] .workspace[data-view="split"] > .editor-pane { border-right: 0; border-bottom-right-radius: 0; }
   [data-panel-style="spaced"] .workspace[data-view="split"] > :is(.preview-pane, .side-editor-pane),
   [data-panel-style="spaced"] .workspace.issue-side > .issue-pane:not(.history-pane) { border-left: 0; border-bottom-left-radius: 0; }
+  [data-panel-style="spaced"] .workspace.side-preview > .preview-pane { border-right: 0; border-left: 1px solid var(--panel-line); border-radius: 0 0 0 var(--panel-radius); }
   [data-panel-style="spaced"] .workspace[data-view="split"] > .splitter { border-bottom: 1px solid var(--panel-line); background: var(--bg); }
   [data-panel-style="spaced"] .splitter::before { inset: 0 calc(50% - 0.5px); }
   [data-panel-style="spaced"] .splitter:is(:hover, :focus-visible)::before,
@@ -667,10 +695,11 @@ kbd {
   background: var(--accent);
 }
 /*
- * Wiki 放在右側欄：圖示的「右邊」一條線（左邊的面板是左邊一條），一眼看得出 Wiki 在右邊。
- * 右側欄正顯示著 Wiki 時：強調色的線與圖示，外面一圈強調色的框、裡面淡淡的斜線（和左邊開著的面板的淡底分得開）；
- * 右側欄收起來或 Wiki 那一區收合時，只留一條淡灰色的線。
+ * Wiki 放在右側欄：右側欄開著時，圖示列不放 Wiki 的圖示（Wiki 就在右邊）。
+ * 右側欄收起來時才顯示（不然找不到 Wiki），按一下打開右側欄；圖示的「右邊」一條淡灰色的線
+ * （左邊的面板是左邊一條），看得出 Wiki 在右邊。
  */
+.workspace:has(> .outline-right:not([hidden])) .activity-tabs #side-tab-wiki.placed-right { display: none; }
 .activity-tabs #side-tab-wiki.placed-right::after {
   content: "";
   position: absolute;
@@ -679,20 +708,6 @@ kbd {
   border-radius: 2px 0 0 2px;
   background: color-mix(in srgb, var(--chrome-icon) 55%, transparent);
 }
-.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right {
-  isolation: isolate;
-  color: var(--accent);
-}
-.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius);
-  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 40%, transparent) 0 1.5px, transparent 1.5px 5px);
-}
-.workspace:has(> .outline-right:not([hidden]).rs-wiki-open) .activity-tabs #side-tab-wiki.placed-right::after { background: var(--accent); }
 .activity-tabs button:focus-visible, .activity-btn:focus-visible { outline-offset: -2px; }
 /* 第一次開啟：圖示旁邊短暫顯示名稱（不擋滑鼠，點任何地方就收起來）。 */
 .activity-labels { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
@@ -760,6 +775,8 @@ kbd {
 .side-actions .btn { width: 26px; min-height: 26px; height: 26px; color: var(--muted); }
 .side-actions .btn:hover { color: var(--fg); border-color: transparent; }
 .side-actions .btn .icon { width: 16px; height: 16px; }
+/* 檔案面板上方釘上去的按鈕（app/pin-commands.ts）：在最右邊，和新增檔案等按鈕之間一條細線。 */
+.side-actions .head-pin-sep { flex: none; align-self: center; width: 1px; height: 16px; margin: 0 3px; background: var(--border); }
 .side-body { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; }
 .side-empty { margin: 4px 6px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .side-empty p { margin: 0 0 12px; }
@@ -1065,6 +1082,8 @@ button.start-tip:hover, button.start-tip:focus-visible { background: var(--activ
 .view-switch-icons .view-switch .label { display: none; }
 /* 工作項目、Wiki 頁面、Git 歷史蓋住編輯區時，檢視切換用不到（按了反而會關掉那個畫面）：拿掉，位置讓給內容的摘要。並排顯示時編輯區還在，照常顯示。 */
 body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-switch { display: none; }
+/* 起始頁不是文件：檢視切換、游標位置、字數、存檔狀態都用不到，開始打字後才出現（文件類型留著，可以先選要寫哪一種）。 */
+body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-cursor, #status-stats, #status-save) { display: none; }
 @media (pointer: coarse) {
   .view-switch button { min-height: 30px; padding: 0 10px; }
 }
@@ -1128,7 +1147,7 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .menu button .icon { color: var(--muted); }
 /* 和上一項同一個圖示時留空白（見 menu.ts 的 hideRepeatedIcons），文字照樣對齊。 */
 .menu button .menu-icon-blank { display: inline-block; flex: none; width: 18px; height: 18px; }
-.menu button[aria-checked="true"] .icon:last-child { color: var(--accent); }
+.menu button[aria-checked="true"] > .icon:last-child { color: var(--accent); }
 .menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .menu-head { padding: 6px 10px 2px; color: var(--muted); font-size: 11.5px; cursor: default; }
 .menu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1138,6 +1157,23 @@ body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-
 .menu kbd { flex: none; margin-left: 12px; }
 /* 名稱右邊的狀態（例如下載儲存庫的「還沒登入」，見 app/repo-sources.ts）。 */
 .menu-note { flex: none; margin-left: 12px; color: var(--muted); font-size: 12px; }
+/* 能釘的指令：滑鼠移上去（或焦點在上面）時右邊出現圖釘，按了展開釘選的子選單；已經釘了的一直顯示（見 menu.ts）。 */
+.menu button .menu-pin {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 -6px 0 2px;
+  border-radius: 5px;
+  color: var(--muted);
+  opacity: 0;
+}
+.menu button:hover .menu-pin, .menu button:focus-visible .menu-pin, .menu button .menu-pin.pinned, .menu button .menu-pin.open { opacity: 1; }
+.menu button .menu-pin .icon { width: 14px; height: 14px; color: inherit; }
+.menu button .menu-pin.pinned { color: var(--accent); }
+.menu button .menu-pin:hover, .menu button .menu-pin.open { background: var(--menu-open); color: var(--fg); }
 
 /* ---- 指令面板 ---- */
 .palette {
@@ -1844,15 +1880,21 @@ body.resizing-rows { cursor: row-resize; user-select: none; }
   background: var(--accent-soft);
 }
 .command-consent strong { grid-column: 1; font-size: 13px; }
+/*
+ * 指令要整個看得到：折行顯示，不往右延伸到要橫向捲動才看得到的地方（例如中間塞了一長串空白，後面藏著別的指令）。
+ * 很長的指令最多佔終端機的四成高，其餘上下捲動（同意的按鈕一直看得到）。
+ */
 .command-consent-code {
   grid-column: 1;
-  overflow-x: auto;
+  max-height: 40vh;
+  overflow-y: auto;
   padding: 4px 6px;
   border-radius: 4px;
   background: var(--bg);
   font-family: var(--font-term);
   font-size: 12.5px;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .command-consent-detail { grid-column: 1; color: var(--muted); font-size: 12px; }
 .command-consent-actions { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 2; grid-row: 1 / span 3; justify-content: flex-end; }
@@ -2119,17 +2161,34 @@ button.git-info:disabled { cursor: default; }
 .git-files [data-status="deleted"] b, .git-files [data-status="conflicted"] b { color: var(--danger); }
 
 /* ---- WebDAV ---- */
-/* 檔案面板沒開資料夾時的動作：一欄清單（和起始頁的「開始」一樣），第一個「開啟資料夾」是主要動作。 */
-.side-buttons { display: flex; flex-direction: column; gap: 2px; }
-/* #sidebar .btn 會把字置中，這裡的清單要靠左（權重要比它高）。 */
-#sidebar .side-buttons .btn { justify-content: flex-start; gap: 10px; width: 100%; height: auto; min-height: 32px; padding: 6px 10px; border: 0; background: none; color: var(--accent); white-space: normal; text-align: start; }
-#sidebar .side-buttons .btn:hover, #sidebar .side-buttons .btn:focus-visible { background: var(--active-line); }
-.side-buttons .btn .icon { flex: none; width: 16px; height: 16px; }
+/* 檔案面板沒開資料夾時（app/workspace-ui.ts 的 renderFilesEmpty）：最上面是最近的專案（名稱下面一行是位置），
+   接著是「開啟資料夾…」（主要動作）、「新專案…」，最後是其他方式（下載儲存庫、連線到遠端資料夾）。 */
+.files-projects-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; margin: 8px 0 4px; }
+.side-empty .files-projects-head h3 { margin: 0; }
+.files-all-projects { display: inline-flex; flex: none; gap: 1px; align-items: center; padding: 0 2px; border: 0; border-radius: 4px; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+.files-all-projects .icon { width: 13px; height: 13px; }
+.files-all-projects:hover { text-decoration: underline; }
+.files-project-list { margin-bottom: 14px; }
+.files-project-list li > button:first-child { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 8px; align-items: center; padding: 5px 6px; line-height: 1.45; }
+.files-project-list button .project-dot { justify-self: center; margin: 0; }
+.files-row-name { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.files-row-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-row-where { grid-column: 2; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.files-kind-badge { flex: none; padding: 0 6px; border-radius: 8px; background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--muted); font-size: 10.5px; font-weight: 600; line-height: 16px; }
+.files-main { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 16px; }
+/* #sidebar .btn 會把字置中，這裡要靠左（權重要比它高）。 */
+#sidebar .files-main .btn { justify-content: flex-start; gap: 8px; width: 100%; height: auto; min-height: 32px; padding: 6px 10px; }
+#sidebar .files-main .btn-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+#sidebar .files-main .btn-primary:hover, #sidebar .files-main .btn-primary:focus-visible { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.files-main .btn .icon { flex: none; width: 16px; height: 16px; }
+.side-empty .files-main + h3 { margin-top: 0; }
+.files-other { margin: 0; padding: 0; list-style: none; }
+.files-other button { display: flex; gap: 8px; align-items: center; width: 100%; min-height: 30px; padding: 5px 6px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: inherit; line-height: 1.45; text-align: start; cursor: pointer; }
+.files-other button:hover, .files-other button:focus-visible { background: var(--active-line); }
+.files-other .icon { flex: none; width: 16px; height: 16px; color: var(--muted); }
 /* 下載儲存庫的狀態（還沒登入、還沒連線，或登入的帳號）：名稱下面一行的淡色小字（見 app/repo-sources.ts）。 */
-.side-buttons .repo-label { display: flex; flex-direction: column; min-width: 0; }
-.side-buttons .repo-note { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-#sidebar .side-buttons .btn:first-child { margin-bottom: 4px; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
-#sidebar .side-buttons .btn:first-child:hover, #sidebar .side-buttons .btn:first-child:focus-visible { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.files-other .repo-label { display: flex; flex-direction: column; min-width: 0; }
+.files-other .repo-note { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .recent-list li { display: flex; align-items: center; }
 .recent-list li > button:first-child { flex: 1; min-width: 0; }
 .recent-list .recent-forget { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
@@ -3210,36 +3269,108 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .np-preview:empty { display: none; }
 .project-edit .np-status .dav-error { margin: 0 !important; }
 .new-project .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.np-content { margin: 0 0 4px; padding: 0; border: 0; }
+/*
+ * 左右兩張卡片：「① 專案」與「② COMET 設定」，同樣的框、底色與高度（這台電腦有 COMET 時，見 .with-comet）。
+ * 沒裝 COMET 時只有左邊一張，不畫框、不顯示編號（窄的對話框）。
+ */
+.np-card { display: flex; flex-direction: column; min-width: 0; margin: 0 0 14px; }
+.np-card > h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 12px; color: var(--fg); font-size: 13.5px; }
+.np-num {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  font-size: 11.5px;
+}
+.new-project:not(.with-comet) .np-main > h3 { display: none; }
+.new-project.with-comet .np-card {
+  padding: 14px 16px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 2.5%, var(--bg));
+}
+.np-main .pe-colors { margin-top: auto; }
+/* 一開始放什麼：三張小卡（沒裝 COMET 時兩張），選到的那張是強調色。 */
+.np-content { display: flex; gap: 8px; margin: 0 0 12px; padding: 0; border: 0; }
 .np-content legend { margin-bottom: 6px; padding: 0; font-size: 13px; font-weight: 600; }
-.project-edit .np-content .pe-check { margin-bottom: 6px; }
-/* 新 COMET 專案（app/comet-setup.ts）：「COMET 設定」一段、設定中的進度與結果。 */
-.new-project[data-mode="comet"] .np-content { display: none; }
-.np-comet { margin: 0 0 10px; padding: 10px 12px 2px; border: 1px solid var(--border); border-radius: 8px; }
-.np-comet h3 { margin: 0 0 8px; color: var(--accent); font-size: 13px; }
+/* .project-edit：蓋過對話框裡 label 的粗體與下方間距。 */
+.project-edit .np-tile {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px 10px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  font-weight: 400;
+  cursor: pointer;
+}
+.np-tile[hidden] { display: none; }
+.np-tile input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.np-tile b { font-size: 13px; }
+.np-tile small { color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.np-tile:hover { border-color: var(--accent); }
+.np-tile:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.np-tile:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ② COMET 設定（app/comet-setup.ts）：只有選了「COMET 專案」時能填；其他時候變灰（虛線框、淡淡的），填好的值留著。 */
+/* 變灰時的說明在標題同一行的右邊：只切換看得見與否、不佔高度，切換小卡時對話框的大小不變。 */
+.nc-off-note {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  visibility: hidden;
+}
+.np-comet.off .nc-off-note { visibility: visible; }
+.new-project.with-comet .np-comet.off { border-style: dashed; background: color-mix(in srgb, var(--fg) 1%, var(--bg)); }
+.np-comet.off > h3 { color: var(--muted); }
+.np-comet.off > h3 .np-num { background: var(--border-strong); }
+.np-comet.off > :not(h3) { opacity: 0.45; }
 /* minmax(0, 1fr)：選單裡有很長的團隊、Sprint 名稱時，欄位也不會撐出框外。 */
 .nc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; }
 .nc-grid > label { min-width: 0; }
+/* Azure DevOps 專案與團隊各占一整行（名稱很長也看得完整），Sprint 與 Sprint 天數同一行（天數只要幾位數）。 */
+.np-comet .nc-ado { grid-template-columns: minmax(0, 1fr) 104px; }
+.np-comet .nc-ado > label:nth-child(-n + 2) { grid-column: 1 / -1; }
 .project-edit .np-comet select, .project-edit .np-comet input:not([type="checkbox"]) { width: 100%; min-width: 0; box-sizing: border-box; }
-/* 有「COMET 設定」時對話框改成橫的：左邊是專案本身的欄位，右邊是 COMET 設定，不用捲動。視窗太窄時照舊上下排。 */
+/* 有 COMET 時對話框是橫的：左右兩張卡片等寬、等高，不用捲動。視窗太窄時上下排。 */
+.choice.new-project.with-comet { width: min(940px, calc(100vw - 32px)); }
+/* 已經有的專案設定成 COMET 專案（app/comet-project.ts）：只有「COMET 設定」一張；設定中、完成時和新專案一樣寬。 */
+.choice.new-project.comet-only { width: min(520px, calc(100vw - 32px)); }
+.choice.new-project.comet-only:has(> .np-progress:not([hidden])) { width: min(940px, calc(100vw - 32px)); }
+.new-project.comet-only .np-card {
+  padding: 14px 16px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 2.5%, var(--bg));
+}
+.new-project.comet-only .np-comet > h3 .np-num,
+.new-project.comet-only .np-comet .nc-off-note { display: none; }
 @media (min-width: 760px) {
-  .choice.new-project.with-comet { width: min(880px, calc(100vw - 32px)); }
   .new-project.with-comet form {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "title title" "hint hint" "name comet" "where comet" "status comet" "content comet" "git comet" "colors comet" "actions actions";
-    grid-template-rows: auto auto auto auto auto auto auto 1fr auto;
-    column-gap: 20px;
+    grid-template-areas: "title title" "hint hint" "main comet" "actions actions";
+    grid-template-rows: auto auto 1fr auto;
+    column-gap: 14px;
   }
   .new-project.with-comet #np-title { grid-area: title; }
   .new-project.with-comet .pe-path { grid-area: hint; }
-  .new-project.with-comet .np-f-name { grid-area: name; }
-  .new-project.with-comet .np-f-where { grid-area: where; }
-  .new-project.with-comet .np-status { grid-area: status; }
-  .new-project.with-comet .np-content { grid-area: content; }
-  .new-project.with-comet .np-comet { grid-area: comet; align-self: start; }
-  .new-project.with-comet .np-f-git { grid-area: git; }
-  .new-project.with-comet .pe-colors { grid-area: colors; align-self: start; }
+  .new-project.with-comet .np-main { grid-area: main; }
+  .new-project.with-comet .np-comet { grid-area: comet; }
   .new-project.with-comet .choice-actions { grid-area: actions; }
 }
 .nc-grid .nc-wide { grid-column: 1 / -1; }
@@ -3254,8 +3385,57 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
   font-weight: 400;
 }
 .choice .nc-note { margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.6; }
+/* 指派給：已經登入 Azure DevOps 時直接用登入的帳號，只顯示一行；按「換人」才換成輸入框。 */
+.nc-who { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 2px 0 12px; font-size: 13px; }
+.nc-who-label { font-weight: 600; }
+.nc-who-name { min-width: 0; overflow-wrap: anywhere; }
+.nc-who-note { color: var(--muted); font-size: 12px; }
+.nc-who-change { margin-left: auto; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer; }
+.nc-who-change:hover { text-decoration: underline; }
+/* 按了「換人」時右邊的卡片也不比左邊高：對話框大小不變。 */
+.np-comet .nc-who-input .nc-note { margin-bottom: 0; }
 .project-edit .np-comet .pe-check { margin-bottom: 6px; }
-.nc-steps { margin: 4px 0 12px; padding: 0; list-style: none; }
+/* 「設定本機 PATH」後面：comet 已經在 PATH 裡時註明「這台電腦已經設定過」。 */
+.nc-local-done { margin-left: 4px; color: var(--muted); font-size: 12px; }
+/* 已經設定過 PATH：整行變灰，不能勾。 */
+.project-edit .np-comet .pe-check:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
+.nc-local-done::before { content: "· "; }
+/*
+ * 設定中、完成（app/comet-setup.ts）：和表單一樣寬。上面是狀態，左邊「做了什麼」、右邊「COMET 設定」，
+ * 下面那一格高度固定（設定中是即時輸出，完成後是建立的檔案），設定中與完成時對話框一樣大。
+ */
+.nc-head { display: flex; gap: 12px; align-items: center; margin: 0 0 16px; }
+.np-progress .nc-head h2 { margin: 0 0 2px; font-size: 17px; }
+.nc-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.nc-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-fg, #fff);
+}
+.nc-badge .icon { width: 22px; height: 22px; stroke-width: 2.6; }
+.nc-badge[data-state="ok"] { background: var(--accent); }
+.nc-badge[data-state="fail"] { background: var(--danger); }
+.nc-badge[data-state="run"]::before {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid var(--accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: nc-spin 0.8s linear infinite;
+}
+.nc-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; }
+@media (max-width: 759px) {
+  .nc-cols { grid-template-columns: minmax(0, 1fr); }
+}
+.np-progress .np-card > h3 { margin-bottom: 10px; }
+.nc-steps { margin: 0 0 4px; padding: 0; list-style: none; }
 .nc-steps li { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 13px; }
 .nc-steps li[data-state="wait"] { color: var(--muted); }
 .nc-mark { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 16px; height: 16px; }
@@ -3273,9 +3453,31 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
   animation: nc-spin 0.8s linear infinite;
 }
 @keyframes nc-spin { to { transform: rotate(360deg); } }
+.nc-summary { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0 0 6px; font-size: 13px; }
+.nc-summary dt { color: var(--muted); }
+.nc-summary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.nc-sub { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.nc-bottom { display: flex; flex-direction: column; height: 132px; margin: 0 0 14px; }
+.np-progress .nc-bottom > * { flex: 1; min-height: 0; margin: 0; }
+.np-progress .nc-bottom > [hidden] { display: none; }
+.nc-count { padding: 0 7px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; line-height: 18px; }
+.nc-files ul {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px 18px;
+  align-content: start;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.nc-files li { display: flex; gap: 7px; align-items: center; min-width: 0; font-size: 12.5px; }
+.nc-files li .icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
+.nc-files code { overflow: hidden; font: 12px/1.6 var(--font-mono, ui-monospace, Consolas, monospace); text-overflow: ellipsis; white-space: nowrap; }
+.nc-files .nc-sub { flex: none; margin-left: 2px; }
 .nc-log {
-  max-height: 220px;
-  margin: 0 0 12px;
   padding: 8px 10px;
   overflow: auto;
   border-radius: 8px;
@@ -3285,16 +3487,11 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.nc-result { margin: 0 0 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.7; }
-.nc-result.ok { background: var(--accent-soft); color: var(--accent); }
-.nc-result.fail { background: var(--danger-soft, #fdecea); color: var(--danger); }
-.nc-files p { margin: 0 0 2px; font-size: 12.5px; }
-.nc-files pre { margin: 0 0 8px; font: 12px/1.7 var(--font-mono, ui-monospace, Consolas, monospace); }
-.nc-toggle { margin: 0 0 8px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer; }
+.nc-foot { display: flex; gap: 8px; align-items: center; }
+.nc-foot .choice-actions { margin: 0 0 0 auto; }
+.nc-toggle { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer; }
 .nc-toggle:hover { text-decoration: underline; }
 
-/* 選了 COMET 專案、這台電腦找不到 comet 指令時的提醒（縮排對齊選項的文字）。 */
-.choice .np-warn { margin: -2px 0 8px 22px; color: light-dark(#b45309, #fbbf24); font-size: 12.5px; line-height: 1.6; }
 
 /* ---- 編輯器的尋找與取代列（加上 .cm-editor，蓋過 CodeMirror 內建搜尋列的樣式） ---- */
 .cm-editor .cm-panels .find-panel { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; font: 13px var(--font-ui); }
@@ -3369,6 +3566,9 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .workspace.issue-open.issue-side > .editor-pane { display: flex; }
 .workspace.issue-open.issue-side > .splitter { display: block; }
 .workspace.issue-side > .issue-pane:not(.history-pane) { grid-column: preview-start / preview-end; }
+/* 並排時按「預覽」：預覽換到左半邊（編輯區的位置）。 */
+.workspace.issue-open.issue-side.side-preview > .editor-pane { display: none; }
+.workspace.issue-open.issue-side.side-preview > .preview-pane { display: block; grid-area: editor; }
 .issue-head {
   display: flex;
   flex: none;
@@ -3739,6 +3939,21 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .shortcuts-body .shortcut-conflict span { flex: 1 1 200px; }
 .shortcuts-actions { justify-content: space-between; }
 .shortcuts-actions .btn:only-child, .shortcuts-actions [hidden] + .btn { margin-left: auto; }
+
+/* 「☰」→「釘選常用指令…」（app/pin-manager.ts） */
+.pin-manager { width: min(600px, calc(100vw - 32px)); }
+.pin-manager-hint { margin: 0 0 6px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.pin-manager-body { max-height: min(58vh, 540px); overflow: auto; }
+.pin-manager-body h3 { margin: 14px 0 4px; color: var(--muted); font-size: 12.5px; }
+.pin-manager-body table { width: 100%; border-collapse: collapse; font-size: 13.5px; table-layout: fixed; }
+.pin-manager-body td { padding: 3px 0; border-bottom: 1px solid var(--border); }
+.pin-manager-body td:nth-child(2), .pin-manager-body td:nth-child(3) { width: 132px; text-align: center; white-space: nowrap; }
+.pin-manager-name { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.pin-manager-name .icon { flex: none; width: 16px; height: 16px; color: var(--muted); }
+.pin-manager-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pin-manager-head { position: sticky; top: 0; z-index: 1; background: var(--surface-raised); }
+.pin-manager-head td { padding: 6px 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.pin-manager-check input:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* 設定的「關於」頁 */
 .settings-about { display: flex; gap: 16px; align-items: center; margin: 4px 0 20px; }
@@ -4393,3 +4608,42 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
   border-radius: 50%;
   background: light-dark(#2e9e5b, #3fb26f);
 }
+
+/* COMET 管理的檔案（見 app/comet-files.ts）：檔案面板名稱後面的「C」、編輯器上方的說明、重新設定時的提醒。 */
+.tree-row > .tree-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 15px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: 600 9.5px/1 var(--font-ui);
+  text-decoration: none;
+  cursor: help;
+}
+.cm-editor .cm-panels .comet-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 7px 12px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font: 12.5px/1.5 var(--font-ui);
+}
+.cm-editor .cm-panels .comet-note > svg { flex: none; width: 15px; height: 15px; color: var(--accent); }
+.cm-editor .cm-panels .comet-note > span { flex: 1 1 240px; }
+.cm-editor .cm-panels .comet-note > .btn { min-height: 26px; padding: 0 10px; font-size: 12.5px; }
+.cm-editor .cm-panels .comet-note-close { display: inline-flex; padding: 3px; border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer; }
+.cm-editor .cm-panels .comet-note-close:hover { background: var(--active-line); color: var(--fg); }
+.cm-editor .cm-panels .comet-note-close .icon { width: 14px; height: 14px; }
+/* 唯讀時想打字：說明閃一下。 */
+.cm-editor .cm-panels .comet-note-nudge { animation: comet-nudge 0.6s ease; }
+@keyframes comet-nudge { 30% { background: color-mix(in srgb, var(--accent) 28%, var(--bg)); } }
+@media (prefers-reduced-motion: reduce) { .cm-editor .cm-panels .comet-note-nudge { animation: none; } }
+.cp-warn { display: flex; gap: 6px; align-items: flex-start; margin: 0 0 12px; color: light-dark(#b45309, #fbbf24); font-size: 12.5px; line-height: 1.5; }
+.cp-warn[hidden] { display: none; }
+.cp-warn > svg { flex: none; width: 15px; height: 15px; margin-top: 2px; }

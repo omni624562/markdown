@@ -368,6 +368,44 @@ fn forget_password(id: &str) {
     crate::secrets::forget(KEYRING_SERVICE, id);
 }
 
+/// SSH 連線的跳板主機密碼存在哪個名稱底下（和目標主機的密碼分開）。
+pub(crate) fn jump_account(id: &str) -> String {
+    format!("{id}:jump")
+}
+
+/// 刪掉這個連線存的密碼（目標主機與跳板主機），包括這次開啟期間記在記憶體裡的。
+pub(crate) fn forget_passwords(dav: &Dav, id: &str) {
+    for account in [id.to_string(), jump_account(id)] {
+        forget_password(&account);
+        dav.passwords.lock().remove(&account);
+    }
+}
+
+/// 先看這次開啟期間記在記憶體裡的密碼，再看認證管理員。
+fn recall_password(dav: &Dav, account: &str) -> Option<String> {
+    dav.passwords
+        .lock()
+        .get(account)
+        .cloned()
+        .or_else(|| saved_password(account))
+}
+
+/// 重新連線成功後記住用到的密碼：剛輸入而且選了「記住」時存進認證管理員；
+/// 這次開啟期間都記在記憶體裡（自動重新連線時不必再問）。
+fn keep_used_password(dav: &Dav, account: String, password: String, store: bool) {
+    if store {
+        remember_password(&account, &password);
+    }
+    dav.passwords.lock().insert(account, password);
+}
+
+/// 新連線的代號（8 個十六進位字元）。
+pub(crate) fn new_id() -> String {
+    let mut b = [0u8; 4];
+    let _ = getrandom::fill(&mut b);
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
 /// 遠端資料夾（WebDAV 或 SSH）的路徑。
 pub fn is_remote_path(path: &str) -> bool {
     path.starts_with(SCHEME) || path.starts_with(crate::ssh::SCHEME)
@@ -494,11 +532,7 @@ pub async fn dav_connect(
         .iter()
         .find(|c| c.url == base && c.username == username)
         .map(|c| c.id.clone())
-        .unwrap_or_else(|| {
-            let mut b = [0u8; 4];
-            let _ = getrandom::fill(&mut b);
-            b.iter().map(|x| format!("{x:02x}")).collect()
-        });
+        .unwrap_or_else(new_id);
     let name = {
         let path = decode_percent(url_path(&base));
         let last = path
@@ -530,36 +564,49 @@ pub async fn dav_connect(
 }
 
 /// 用存好的密碼重新連線（重新開啟 app、從最近清單開啟時）。沒有密碼時回傳 `NEED_PASSWORD`
-/// （SSH 會先試金鑰，都不行才要密碼）。`trust` 是使用者確認過的 SSH 主機金鑰指紋。
+/// （SSH 會先試金鑰，都不行才要密碼；跳板主機要密碼時回傳 `NEED_JUMP_PASSWORD`，
+/// 前端另外詢問、用 `jump_password` 傳來）。SSH 主機金鑰沒看過時，原生端用系統的對話框確認。
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn dav_reconnect(
     app: AppHandle,
+    window: tauri::Window,
     id: String,
     password: Option<String>,
+    jump_password: Option<String>,
     remember: Option<bool>,
-    trust: Option<String>,
     dav: State<'_, Dav>,
 ) -> Result<FolderInfo, String> {
-    let typed = password.is_some();
     let conn = load_conns(&app)
         .into_iter()
         .find(|c| c.id == id)
         .ok_or_else(|| tr!("找不到這個遠端連線，請重新設定"))?;
-    let password = password
-        .or_else(|| dav.passwords.lock().get(&id).cloned())
-        .or_else(|| saved_password(&id));
-    if conn.ssh.is_some() {
-        crate::ssh::reconnect(&app, &dav, conn.clone(), password.clone(), trust).await?;
+    // 剛輸入的密碼：照使用者的選擇記住（或不記住）。
+    let store = remember == Some(true);
+    let typed = password.is_some();
+    let password = password.or_else(|| recall_password(&dav, &id));
+    if let Some(target) = &conn.ssh {
+        // 跳板主機的密碼另外存，只用在這個連線設定的跳板主機。
+        let account = jump_account(&id);
+        let jump_typed = jump_password.is_some();
+        let jump_password = target
+            .jump
+            .as_ref()
+            .and(jump_password.or_else(|| recall_password(&dav, &account)));
+        let secrets = crate::ssh::Secrets {
+            password: password.clone(),
+            jump_password: jump_password.clone(),
+        };
+        crate::ssh::reconnect(&app, &window, &dav, conn.clone(), secrets).await?;
+        if let Some(p) = jump_password {
+            keep_used_password(&dav, account, p, jump_typed && store);
+        }
     } else {
         let password = password.clone().ok_or("NEED_PASSWORD")?;
         open_session(&app, &dav, conn.clone(), password).await?;
     }
-    if let Some(password) = password {
-        // 剛輸入的密碼：照使用者的選擇記住（或不記住）。
-        if typed && remember == Some(true) {
-            remember_password(&id, &password);
-        }
-        dav.passwords.lock().insert(id, password);
+    if let Some(p) = password {
+        keep_used_password(&dav, id, p, typed && store);
     }
     Ok(folder_info(&conn))
 }
@@ -608,8 +655,7 @@ pub fn dav_disconnect(dav: State<'_, Dav>) {
 
 #[tauri::command]
 pub fn dav_forget(app: AppHandle, id: String, dav: State<'_, Dav>) -> Result<(), String> {
-    forget_password(&id);
-    dav.passwords.lock().remove(&id);
+    forget_passwords(&dav, &id);
     let conns: Vec<Conn> = load_conns(&app)
         .into_iter()
         .filter(|c| c.id != id)

@@ -96,9 +96,20 @@ function sameLength(h: string | null, length: number): boolean {
  * 關掉最後一份文件後會補上一份空白的（編輯區一定要有文件），不能讓它看起來像「關不掉」。
  * 切回這份文件（新增文件、開始打字）時就出現。
  */
-/** 只有一份還沒存過的空白文件（剛開啟、或關掉所有文件後補上的）。 */
+/**
+ * 只有一份還沒存過的空白文件（剛開啟、或關掉所有文件後補上的）。
+ * 按「新增文件」開的不算：使用者要開始寫了，分頁與標題照常顯示。
+ */
 export function onlyBlankDoc(): boolean {
-  return app.docs.length === 1 && !app.cur.fileBacked && !app.cur.fileHandle && app.editor.view.state.doc.length === 0;
+  return (
+    app.docs.length === 1 &&
+    !app.cur.fileBacked &&
+    !app.cur.fileHandle &&
+    app.editor.view.state.doc.length === 0 &&
+    !app.startSkipped(app.active.id) &&
+    // 編輯中的 Wiki 頁面（空白的也一樣）是使用者開的分頁，不是補上的空白文件。
+    !app.active.wiki
+  );
 }
 
 export function markBlankTab(): void {

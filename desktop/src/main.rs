@@ -14,7 +14,10 @@
 mod i18n;
 mod ado;
 mod ai;
+mod ai_apps;
+mod chatgpt;
 mod comet;
+mod confirm;
 mod dav;
 // SSH 遠端資料夾放在 dav/ 底下（和 WebDAV 共用連線、輪詢與指令），保留 crate::ssh 的路徑。
 use dav::ssh;
@@ -32,6 +35,7 @@ mod history;
 mod image_protocol;
 mod images;
 mod io;
+mod lexical;
 mod locales;
 mod navigation;
 mod new_project;
@@ -311,6 +315,7 @@ fn main() {
             new_project::pick_project_parent,
             new_project::create_project,
             new_project::comet_installed,
+            new_project::comet_path_ready,
             new_project::comet_setup_line,
             comet::comet_setup_run,
             files::reopen_with_encoding,
@@ -361,6 +366,7 @@ fn main() {
             ado::ado_disconnect,
             ado::ado_repos,
             ado::ado_clone,
+            ado::ado_publish,
             ado::ado_work_items,
             ado::ado_work_item,
             ado::ado_image,
@@ -426,6 +432,9 @@ fn main() {
             projects::project_forget,
             projects::project_delete,
             projects::project_open_codex,
+            projects::project_open_claude,
+            chatgpt::chatgpt_send,
+            ai_apps::ai_apps_installed,
             projects::project_relocate,
             projects::project_reveal,
             workspace::list_dir,

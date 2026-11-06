@@ -45,26 +45,26 @@ test("起始頁的「專案」：自訂名稱與顏色、最近開啟的 4 個�
   await context.close();
 });
 
-test("檔案面板（沒開資料夾）：標題是「專案」，和起始頁同樣的名稱、顏色與順序；標題列沒有第二個「⋯」", async () => {
+test("檔案面板（沒開資料夾）：標題是「最近的專案」，和起始頁同樣的名稱、顏色與順序；標題列沒有第二個「⋯」", async () => {
   const { page, context, errors } = await open({ desktop: DESKTOP });
   assert.equal(await page.locator("#files-more").count(), 0);
   await page.keyboard.press("Control+Shift+E");
   const box = page.locator("#files-empty");
-  await box.locator("h3", { hasText: "專案" }).waitFor();
-  assert.deepEqual(await box.locator("h3").allTextContents(), ["專案"]);
-  const rows = box.locator(".recent-list li button:first-child");
+  await box.locator("h3", { hasText: "最近的專案" }).waitFor();
+  assert.deepEqual(await box.locator("h3").allTextContents(), ["最近的專案", "其他方式"]);
+  const rows = box.locator(".recent-list li button:first-child .files-row-name > span:first-child");
   assert.deepEqual(await rows.allTextContents(), ["鈷藍計畫", "notes", "釘選的專案", "有群組的", "很久沒開"]);
   assert.deepEqual(
     await box.locator(".recent-list .project-dot").evaluateAll((dots) => dots.map((d) => d.dataset.color ?? null)),
     ["blue", null, "red", "green", null],
   );
-  await box.getByRole("button", { name: "全部專案…" }).click();
+  await box.getByRole("button", { name: "全部專案" }).click();
   await page.locator("dialog.project-overview[open]").waitFor();
   assert.deepEqual(errors, []);
   await context.close();
 });
 
-test("「⋯」：最近開啟的檔案在第一層、只列檔案（Ctrl+R）；「專案」只留新專案、新 COMET 專案、切換、總覽、開啟資料夾、下載儲存庫、連線到遠端資料夾", async () => {
+test("「⋯」：最近開啟的檔案在第一層、只列檔案（Ctrl+R）；「專案」只留新專案、切換、總覽、開啟資料夾、下載儲存庫、連線到遠端資料夾", async () => {
   const { page, context, errors } = await open({ desktop: DESKTOP });
   await page.click("#main-menu");
   const menu = page.locator("#main-menu-popover");
@@ -75,7 +75,7 @@ test("「⋯」：最近開啟的檔案在第一層、只列檔案（Ctrl+R）�
   await menu.locator(":scope > button", { hasText: "專案" }).click();
   const sub = menu.locator(":scope > .submenu:popover-open");
   await sub.waitFor();
-  assert.deepEqual(await sub.locator(":scope > button").allTextContents(), ["新專案…", "新 COMET 專案…", "切換專案…Ctrl+Alt+P", "專案總覽", "開啟資料夾…", "下載儲存庫", "連線到遠端資料夾"]);
+  assert.deepEqual(await sub.locator(":scope > button").allTextContents(), ["新專案…", "切換專案…Ctrl+Alt+P", "專案總覽", "開啟資料夾…", "下載儲存庫", "連線到遠端資料夾"]);
   await sub.locator(":scope > button", { hasText: "下載儲存庫" }).click();
   // 還沒登入 GitHub、還沒連線 Azure DevOps：名稱右邊註明（不停用，點下去就是登入或連線設定）。
   assert.deepEqual(await sub.locator(":scope > .submenu:popover-open > button").allTextContents(), [
@@ -103,7 +103,7 @@ const ACCOUNT = { login: "wang-xiaoming", id: 1, name: "王小明" };
 const ADO_ACCOUNT = { url: "https://ado.test/c", name: "王小明" };
 /** 還沒登入 GitHub：點「下載儲存庫」開始裝置碼登入，慢一點才登入好（看得到輸入代碼的視窗），這個帳號沒有儲存庫。 */
 const SIGN_IN = {
-  github_login_start: { deviceCode: "device", userCode: "ABCD-1234", verificationUri: "https://github.com/login/device", interval: 5, expiresIn: 900 },
+  github_login_start: { userCode: "ABCD-1234", verificationUri: "https://github.com/login/device", interval: 5, expiresIn: 900 },
   github_login_wait: { $delay: 300, value: ACCOUNT },
   github_repos: [[]],
 };
@@ -124,9 +124,9 @@ const repoRows = (dialog) =>
       .map((el) => [el.querySelector(".palette-title").textContent, el.querySelector(".palette-group")?.textContent ?? null]),
   );
 
-/** 檔案面板（沒開資料夾）的下載儲存庫按鈕：名稱與右邊的狀態。 */
+/** 檔案面板（沒開資料夾）的下載儲存庫按鈕：名稱與下面一行的狀態。 */
 const filesRepos = (page) =>
-  page.locator("#files-empty .side-buttons button:has(.repo-note)").evaluateAll((els) =>
+  page.locator("#files-empty .files-other button:has(.repo-note)").evaluateAll((els) =>
     els.map((el) => {
       const note = el.querySelector(".repo-note");
       return [el.querySelector(".repo-label > span").textContent, note.hidden ? null : note.textContent];
@@ -180,6 +180,8 @@ test("下載儲存庫：還沒登入 GitHub、還沒連線 Azure DevOps 時名�
   assert.equal(await login.locator(".github-code").textContent(), "ABCD-1234");
   await page.locator("dialog.palette[open] input[placeholder='你的 GitHub 帳號還沒有儲存庫']").waitFor();
   assert.equal((await calls(page)).filter((c) => c.cmd === "github_login_start").length, 1);
+  // 換權杖用的代碼只留在原生端：網頁等登入時不帶任何參數。
+  assert.deepEqual((await calls(page)).filter((c) => c.cmd === "github_login_wait").map((c) => c.args), [null]);
   await page.keyboard.press("Escape");
 
   // 登入後改成帳號名稱：檔案面板不必重畫就更新，切換器也一樣。

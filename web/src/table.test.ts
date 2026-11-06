@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorSelection, EditorState, type StateCommand } from "@codemirror/state";
-import { cellIndexAt, editTable, newRow, nextCell, previousCell, splitCells, tableAt } from "./table.ts";
+import { cellIndexAt, editTable, newRow, nextCell, previousCell, sortRows, splitCells, tableAt } from "./table.ts";
 
 // 測試用的排版器：簡單地對齊欄寬（真正的程式使用 Rust 的 formatTable）。
 const format = (block: string) => {
@@ -87,4 +87,34 @@ test("插入欄、刪除列", () => {
   const del = run(editTable("delete-row", format), "| a | b |\n| --- | --- |\n| 1‸ | 2 |\n| 3 | 4 |")!;
   assert.ok(!del.text.includes("| 1"));
   assert.equal(run(editTable("delete-row", format), "| a‸ | b |\n| --- | --- |\n| 1 | 2 |"), null);
+});
+
+const rowsOfText = (text: string) => text.split("\n").map((l) => splitCells(l).map((c) => c.text));
+
+test("在上方插入列、在左側插入欄；在標題列時加在第一個資料列", () => {
+  const above = run(editTable("insert-row-above", format), "| 項目 | 負責人 |\n| --- | --- |\n| 報表‸ | 李大同 |")!;
+  assert.deepEqual(rowsOfText(above.text).map((r) => r[0]), ["項目", "---", "", "報表"]);
+  const onHeader = run(editTable("insert-row-above", format), "| 項目‸ | 負責人 |\n| --- | --- |\n| 報表 | 李大同 |")!;
+  assert.deepEqual(rowsOfText(onHeader.text).map((r) => r[0]), ["項目", "---", "", "報表"]);
+  const left = run(editTable("insert-column-left", format), "| 項目 | 負責人‸ |\n| --- | --- |\n| 報表 | 李大同 |")!;
+  assert.deepEqual(rowsOfText(left.text)[0], ["項目", "", "負責人"]);
+  assert.deepEqual(rowsOfText(left.text)[2], ["報表", "", "李大同"]);
+});
+
+test("對齊：分隔列加上冒號", () => {
+  const doc = "| 項目 | 工時‸ |\n| --- | --- |\n| 報表 | 3 |";
+  // 測試用的排版器不保留冒號，直接看沒排版的結果（真正的排版器 formatTable 會保留冒號）。
+  const raw = (b: string) => b;
+  assert.equal(run(editTable("align-right", raw), doc)!.text.split("\n")[1], "| --- | ---: |");
+  assert.equal(run(editTable("align-center", raw), doc)!.text.split("\n")[1], "| --- | :---: |");
+  assert.equal(run(editTable("align-left", raw), doc)!.text.split("\n")[1], "| --- | :--- |");
+});
+
+test("依這一欄排序：數字比大小、文字依中文順序、空白排最後；標題列不動", () => {
+  const rows = [["項目", "工時"], ["---", "---"], ["報表", "12"], ["登入頁", "3"], ["", ""], ["設定", "1,200"]];
+  assert.deepEqual(sortRows(rows, 1, false).map((r) => r[1]), ["工時", "---", "3", "12", "1,200", ""]);
+  assert.deepEqual(sortRows(rows, 1, true).map((r) => r[1]), ["工時", "---", "1,200", "12", "3", ""]);
+  const raw = (b: string) => b;
+  const sorted = run(editTable("sort-desc", raw), "| 項目 | 工時‸ |\n| --- | --- |\n| 報表 | 3 |\n| 登入頁 | 12 |")!;
+  assert.deepEqual(rowsOfText(sorted.text).map((r) => r[0]), ["項目", "---", "登入頁", "報表"]);
 });

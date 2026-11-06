@@ -75,6 +75,14 @@ test("左側圖示列：只接受合法的 id，去掉重複", () => {
   assert.deepEqual(sanitize({ activityCommands: "x" }).settings.activityCommands, DEFAULTS.activityCommands);
 });
 
+test("檔案面板上方釘的按鈕：預設沒有，只接受合法的 id", () => {
+  assert.deepEqual(sanitize({}).settings.filesHeadCommands, []);
+  const { settings, problems } = sanitize({ filesHeadCommands: ["open-in-codex", 3, "open-in-codex", "open-in-claude"] });
+  assert.deepEqual(settings.filesHeadCommands, ["open-in-codex", "open-in-claude"]);
+  assert.equal(problems, 1);
+  assert.deepEqual(sanitize({ filesHeadCommands: "x" }).settings.filesHeadCommands, []);
+});
+
 test("左側圖示列預設精簡：待辦總覽、標籤收起來；存過「全部顯示」的照舊", () => {
   assert.deepEqual(DEFAULTS.activityHidden, ["tasks", "tags"]);
   assert.deepEqual(sanitize({}).settings.activityHidden, ["tasks", "tags"]);
@@ -142,5 +150,15 @@ test("區塊樣式：預設是圓角區塊、留間隔；只接受圓角區塊�
   assert.equal(sanitize({ panelStyle: "joined" }).settings.panelStyle, "joined");
   const bad = sanitize({ panelStyle: "floating" });
   assert.equal(bad.settings.panelStyle, "spaced");
+  assert.equal(bad.problems, 1);
+});
+
+test("傳給 ChatGPT：預設關閉，只接受三種值", () => {
+  assert.equal(sanitize({}).settings.chatgptSend, "off");
+  assert.equal(sanitize({}).settings.chatgptAcknowledged, false);
+  assert.equal(sanitize({ chatgptSend: "desktop" }).settings.chatgptSend, "desktop");
+  assert.equal(sanitize({ chatgptSend: "web", chatgptAcknowledged: true }).settings.chatgptAcknowledged, true);
+  const bad = sanitize({ chatgptSend: "https://example.test/" });
+  assert.equal(bad.settings.chatgptSend, "off");
   assert.equal(bad.problems, 1);
 });

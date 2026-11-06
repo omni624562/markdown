@@ -107,7 +107,7 @@ export class TerminalProxy {
     this.#forward({ kind: "setupToken" });
   }
 
-  /** 開一個殼層執行 `comet setup`（新 COMET 專案的環境設定），使用者照畫面的指示輸入。 */
+  /** 開一個殼層執行 `comet setup`（COMET 專案的環境設定），使用者照畫面的指示輸入。 */
   runCometSetup(): void {
     this.#reveal();
     this.#forward({ kind: "cometSetup" });

@@ -15,6 +15,8 @@ interface TauriCore {
   /** `args` 是位元組時當成請求本文直接傳送（大檔案不用轉成 base64），其他資料放在標頭。 */
   invoke<T>(cmd: string, args?: Record<string, unknown> | Uint8Array, options?: { headers: Record<string, string> }): Promise<T>;
   convertFileSrc(path: string, protocol?: string): string;
+  /** 原生端送資料給這個頁面的通道（Rust 的 `tauri::ipc::Channel`）：當作指令的參數傳過去，只有建立它的 webview 收得到。 */
+  Channel: new <T>() => { onmessage: (message: T) => void };
 }
 
 interface TauriEvent {
@@ -163,6 +165,8 @@ export interface ProjectChange {
 }
 
 export type AiTool = "claude" | "codex";
+/** 可以開啟專案的 AI 桌面版（`codex://`、`claude://` 網址）。 */
+export type AiApp = "codex" | "claude";
 export type TermProgram = "shell" | AiTool;
 
 /** 主畫面能送給終端機的要求（Rust 的 `view::Request`）。 */
@@ -176,7 +180,7 @@ export type TermRequest =
   | { kind: "style"; theme: string | null; fontSize: number; palette: string | null; accent: string | null }
   | { kind: "focus" };
 
-/** 用參數執行 `comet setup`（新 COMET 專案）。Sprint 網址與「集合網址＋專案＋團隊＋Sprint」二選一。 */
+/** 用參數執行 `comet setup`（COMET 專案）。Sprint 網址與「集合網址＋專案＋團隊＋Sprint」二選一。 */
 export interface CometSetupRequest {
   /** 專案資料夾（必須是目前開啟的資料夾）。 */
   dir: string;
@@ -309,9 +313,8 @@ export interface GitHubAccount {
   name: string | null;
 }
 
-/** 裝置碼登入：在 GitHub 網頁輸入 `userCode`。 */
+/** 裝置碼登入：在 GitHub 網頁輸入 `userCode`（換權杖用的代碼只留在原生端）。 */
 export interface GitHubDeviceCode {
-  deviceCode: string;
   userCode: string;
   verificationUri: string;
   interval: number;
@@ -343,6 +346,8 @@ export interface AdoRepo {
   webUrl: string | null;
   /** 專案 Wiki。 */
   wiki: boolean;
+  /** 還沒有任何分支的空儲存庫（可以把本機資料夾上傳到這裡）。舊版原生端沒有這一項。 */
+  empty?: boolean;
 }
 
 export interface AdoWiki {
@@ -730,13 +735,16 @@ export interface SshConnectRequest {
   username: string;
   /** 密碼或金鑰的密語；空白就只用金鑰登入。 */
   password: string;
+  /**
+   * 跳板主機的密碼：原生端回傳 `NEED_JUMP_PASSWORD` 之後另外詢問的（不會拿上面的密碼去試）。
+   * 空白就只用金鑰或 ssh-agent 登入跳板主機。
+   */
+  jumpPassword?: string;
   keyPath: string;
   /** 跳板主機（`帳號@主機:連接埠`），不需要時是空字串。 */
   jump: string;
   root: string;
   remember: boolean;
-  /** 使用者確認過的主機金鑰指紋。 */
-  trust?: string;
 }
 
 /** 最近一次儲存設定（AI 相關的指令要等它完成）。 */
@@ -808,8 +816,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       ),
     loadSettings: () => core.invoke<string | null>("load_settings"),
     /**
-     * 儲存設定。從關閉改成「啟用 AI 協作」時原生端會再確認一次；使用者拒絕時回傳 false。
-     * 需要 AI 的指令會等最近一次存檔完成（原生端以設定檔為準）。
+     * 儲存設定。從關閉改成「啟用 AI 協作」，或重新開啟關掉的整合功能時，原生端會用系統的對話框再確認一次；
+     * 使用者拒絕時那些開關存成關閉，回傳 false。需要 AI 的指令會等最近一次存檔完成（原生端以設定檔為準）。
      */
     saveSettings: (json: string) => (settingsSaved = core.invoke<boolean>("save_settings", { json })),
 
@@ -823,16 +831,19 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<Folder>("create_project", req),
     /** 這台電腦有沒有安裝 COMET CLI（`comet` 指令）。 */
     cometInstalled: () => core.invoke<boolean>("comet_installed"),
+    /** `comet` 已經在 PATH 裡（做過 COMET 的本機設定）。 */
+    cometPathReady: () => core.invoke<boolean>("comet_path_ready"),
     /** 在背景用參數執行 `comet setup`；輸出與結果用 `onCometSetup` 收。 */
     cometSetupRun: (req: CometSetupRequest) => core.invoke<void>("comet_setup_run", { req }),
     onCometSetup: (fn: (e: CometSetupEvent) => void) => event.listen<CometSetupEvent>("comet-setup", (e) => fn(e.payload)),
-    /**
-     * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
-     * `trust` 是使用者確認過的 SSH 主機金鑰指紋。
-     */
     /** 關閉目前的專案（本機或遠端資料夾）。 */
     closeFolder: () => core.invoke<void>("close_folder"),
-    reopenFolder: (path: string, password?: string, remember?: boolean, trust?: string) =>
+    /**
+     * 遠端資料夾可以帶剛輸入的密碼，`remember` 決定要不要存進系統的認證管理員；
+     * `jumpPassword` 是 SSH 跳板主機的密碼（原生端回傳 `NEED_JUMP_PASSWORD` 時才詢問）。
+     * 第一次連線的 SSH 主機由原生端用系統的對話框確認主機金鑰。
+     */
+    reopenFolder: (path: string, password?: string, remember?: boolean, jumpPassword?: string) =>
       route(
         path,
         () => core.invoke<Folder>("reopen_folder", { path }),
@@ -840,8 +851,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
           core.invoke<Folder>("dav_reconnect", {
             id: remoteId(path),
             password,
+            jumpPassword,
             remember: remember ?? false,
-            trust,
           }),
       ),
     currentFolder: () => core.invoke<Folder | null>("current_folder"),
@@ -851,10 +862,20 @@ function bridge(core: TauriCore, event: TauriEvent) {
     projects: () => core.invoke<Project[]>("projects_list"),
     projectUpdate: (path: string, change: ProjectChange) => core.invoke<Project>("project_update", { path, change }),
     projectForget: (path: string) => core.invoke<void>("project_forget", { path }),
-    /** 刪除專案：從清單移除；`trashFolder` 時把資料夾移到資源回收筒。 */
-    projectDelete: (path: string, trashFolder: boolean) => core.invoke<void>("project_delete", { path, trashFolder }),
+    /**
+     * 刪除專案：從清單移除；`trashFolder` 時把資料夾移到資源回收筒，原生端會先用系統的對話框再確認一次，
+     * 使用者選「否」時回傳 false（什麼都沒做）。
+     */
+    projectDelete: (path: string, trashFolder: boolean) => core.invoke<boolean>("project_delete", { path, trashFolder }),
     /** 在 Codex 桌面版開啟專案（專案清單裡的本機資料夾）。 */
     projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),
+    /** 在 Claude 桌面版的 Claude Code 開啟專案（專案清單裡的本機資料夾）。 */
+    projectOpenClaude: (path: string) => core.invoke<void>("project_open_claude", { path }),
+    /** 傳給 ChatGPT：把文字帶進 ChatGPT 的輸入框（網址由原生端組，見 desktop/src/chatgpt.rs）。原生端看存好的設定，所以等設定存好。 */
+    chatgptSend: (target: "desktop" | "web", text: string) =>
+      afterSettings(() => core.invoke<void>("chatgpt_send", { target, text })),
+    /** 這台電腦有沒有安裝 Codex、Claude 桌面版（系統有沒有登記開啟 codex://、claude:// 網址的程式）。 */
+    aiAppsInstalled: () => core.invoke<Record<AiApp, boolean> | null>("ai_apps_installed"),
     /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
     projectRelocate: (path: string) => core.invoke<Project | null>("project_relocate", { path }),
     projectReveal: (path: string) => core.invoke<void>("project_reveal", { path }),
@@ -974,7 +995,13 @@ function bridge(core: TauriCore, event: TauriEvent) {
         .then(async (f) => (await davConnections().catch(() => []), f)),
     sshConnect: (req: SshConnectRequest) =>
       core
-        .invoke<Folder>("ssh_connect", { ...req, keyPath: req.keyPath || null, password: req.password || null, jump: req.jump || null })
+        .invoke<Folder>("ssh_connect", {
+          ...req,
+          keyPath: req.keyPath || null,
+          password: req.password || null,
+          jumpPassword: req.jumpPassword || null,
+          jump: req.jump || null,
+        })
         .then(async (f) => (await davConnections().catch(() => []), f)),
     davForget: (id: string) => core.invoke<void>("dav_forget", { id }),
     /** 遠端圖片（預覽用），回傳 data: 網址。 */
@@ -1011,16 +1038,20 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitStatus: () => core.invoke<GitStatus>("git_status"),
     githubAccount: () => core.invoke<GitHubAccount | null>("github_account"),
     githubLoginStart: () => core.invoke<GitHubDeviceCode>("github_login_start"),
-    githubLoginWait: (c: GitHubDeviceCode) =>
-      core.invoke<GitHubAccount>("github_login_wait", { deviceCode: c.deviceCode, interval: c.interval, expiresIn: c.expiresIn }),
+    /** 等使用者在瀏覽器輸入 `githubLoginStart` 的代碼並授權。 */
+    githubLoginWait: () => core.invoke<GitHubAccount>("github_login_wait"),
     githubLoginCancel: () => core.invoke<void>("github_login_cancel"),
     githubLogout: () => core.invoke<void>("github_logout"),
     githubRepos: () => core.invoke<GitHubRepo[]>("github_repos"),
     /** 選擇放在哪個資料夾後下載並開啟；取消時回傳 null。 */
     /** 下載儲存庫並開啟；選的位置已經是同一個儲存庫時直接開啟（`existing`）。取消時回傳 null。 */
     githubClone: (fullName: string) => core.invoke<Cloned | null>("github_clone", { fullName }),
-    /** 把開啟的資料夾上傳成新的儲存庫，回傳儲存庫網址。 */
-    githubPublish: (name: string, isPrivate: boolean) => core.invoke<string>("github_publish", { name, private: isPrivate }),
+    /**
+     * 把開啟的資料夾上傳成新的儲存庫，回傳儲存庫網址。公開的儲存庫（或會換掉原本的 origin）原生端會用系統的
+     * 對話框再確認一次；使用者選「否」時是 null。
+     */
+    githubPublish: (name: string, isPrivate: boolean) =>
+      core.invoke<string | null>("github_publish", { name, private: isPrivate }),
     gitFileHistory: (path: string) => core.invoke<FileCommit[]>("git_file_history", { path }),
     gitFileAt: (path: string, id: string) => core.invoke<string>("git_file_at", { path, id }),
     gitWebUrl: (path: string, from?: number, to?: number) => core.invoke<string>("git_web_url", { path, from, to }),
@@ -1056,9 +1087,11 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitMergeAbort: () => core.invoke<string>("git_merge_abort"),
     gitCreatePr: (title: string, body: string, newBranch: string | null) =>
       core.invoke<string>("git_create_pr", { title, body, newBranch }),
-    githubPages: () => core.invoke<string>("github_pages"),
+    /** 網站是公開的，原生端會用系統的對話框再確認一次；使用者選「否」時是 null。 */
+    githubPages: () => core.invoke<string | null>("github_pages"),
+    /** 公開的 Gist 原生端會用系統的對話框再確認一次；使用者選「否」時是 null。 */
     githubGist: (fileName: string, content: string, description: string, isPublic: boolean) =>
-      core.invoke<string>("github_gist", { fileName, content, description, public: isPublic }),
+      core.invoke<string | null>("github_gist", { fileName, content, description, public: isPublic }),
     adoAccount: () => core.invoke<AdoAccount | null>("ado_account"),
     /** 連線狀態（狀態列用）。 */
     adoPing: () =>
@@ -1068,10 +1101,14 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<{ id: string; label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>("ado_check"),
     /** 儲存診斷資料（先選檔案；常用請求的回應拿掉人名、信箱、標題與內容）；取消時是 null。 */
     adoDiagnosticsSave: () => core.invoke<string | null>("ado_diagnostics_save"),
-    adoConnect: (url: string, pat: string) => core.invoke<AdoAccount>("ado_connect", { url, pat }),
+    /** 換成另一台伺服器時原生端會用系統的對話框再確認一次；使用者選「否」時是 null（保留原本的連線）。 */
+    adoConnect: (url: string, pat: string) => core.invoke<AdoAccount | null>("ado_connect", { url, pat }),
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
     adoClone: (cloneUrl: string, name: string) => core.invoke<Cloned | null>("ado_clone", { cloneUrl, name }),
+    /** 把目前開啟的資料夾上傳到 Azure DevOps（`existing`：上傳到已經存在的空儲存庫），回傳網頁網址；使用者取消時是 null。 */
+    adoPublish: (project: string, name: string, existing: boolean) =>
+      core.invoke<string | null>("ado_publish", { project, name, existing }),
     adoWorkItems: (search: string, filter?: AdoWorkItemFilter) => core.invoke<AdoWorkItem[]>("ado_work_items", { search, filter }),
     adoWorkItemFilters: () =>
       core.invoke<{ projects: string[]; kinds: string[]; stateSets?: KindStates[] }>("ado_work_item_filters"),

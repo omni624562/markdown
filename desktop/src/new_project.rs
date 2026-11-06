@@ -1,7 +1,8 @@
 //! 新專案：在使用者選的位置建立一個資料夾（放進 README.md；筆記本還有每日筆記與 assets 資料夾；
 //! 可以順便建立 Git 儲存庫），加進專案清單並開啟。
 //!
-//! 前端不能指定任意路徑：新專案只能建在「文件」資料夾，或使用者在「瀏覽…」對話框選過的資料夾裡。
+//! 前端不能指定任意路徑：新專案只能建在「文件」資料夾、使用者在「瀏覽…」對話框選過的資料夾，
+//! 或上次建立新專案的位置（建立成功時由原生端記下，下次打開對話框時預先帶入）。
 
 use parking_lot::Mutex;
 use std::collections::HashSet;
@@ -17,9 +18,34 @@ use crate::workspace::{FolderInfo, Workspace};
 #[derive(Default)]
 pub struct ProjectParents(Mutex<HashSet<PathBuf>>);
 
-/// 預設的位置：「文件」資料夾。
+/// 記住上次新專案位置的檔案。
+fn last_parent_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("new-project-parent.txt"))
+}
+
+/// 記下來的上次位置還能用：本機磁碟上的絕對路徑（不連網路位置），而且資料夾還在。
+fn usable_parent(saved: &str) -> Option<PathBuf> {
+    let saved = saved.trim();
+    (crate::lexical::is_local_absolute(saved) && Path::new(saved).is_dir())
+        .then(|| PathBuf::from(saved))
+}
+
+/// 預設的位置：上次建立新專案的位置（還在的話；這次也可以用），沒有的話是「文件」資料夾。
 #[tauri::command]
-pub fn project_default_parent(app: AppHandle) -> Option<String> {
+pub fn project_default_parent(
+    app: AppHandle,
+    parents: State<'_, ProjectParents>,
+) -> Option<String> {
+    let last = last_parent_file(&app)
+        .and_then(|f| fs::read_to_string(f).ok())
+        .and_then(|saved| usable_parent(&saved));
+    if let Some(last) = last {
+        parents.0.lock().insert(last.clone());
+        return Some(path_string(&last));
+    }
     app.path().document_dir().ok().map(|p| path_string(&p))
 }
 
@@ -96,10 +122,23 @@ pub(crate) fn comet_roots(app: &AppHandle) -> (Option<PathBuf>, Option<PathBuf>)
 fn call_line(exe: &Path, args: &str) -> String {
     let path = exe.to_string_lossy();
     if cfg!(windows) {
-        format!("& '{}' {args}", path.replace('\'', "''"))
+        format!("& '{}' {args}", powershell_quoted(&path))
     } else {
         format!("'{}' {args}", path.replace('\'', "'\\''"))
     }
+}
+
+/// PowerShell 單引號字串裡的內容：單引號重複一次。PowerShell 把 `‘ ’ ‚ ‛`（U+2018～U+201B）
+/// 也當成單引號，一樣要重複，否則路徑裡的這些字元會提早結束字串，後面的文字變成指令。
+fn powershell_quoted(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// 這台電腦有沒有安裝 COMET CLI（PATH 裡有 `comet` 指令，或在安裝位置找得到）。
@@ -110,6 +149,104 @@ pub async fn comet_installed(app: AppHandle) -> bool {
     tauri::async_runtime::spawn_blocking(move || locate_comet(comet_home, home).is_some())
         .await
         .unwrap_or(false)
+}
+
+/// PATH 設定（`;` 分隔）裡的資料夾：去掉前後空白與引號，略過空的。
+fn path_dirs(value: &str) -> Vec<PathBuf> {
+    value
+        .split(';')
+        .map(|d| d.trim().trim_matches('"'))
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+        .collect()
+}
+
+/// 這些資料夾裡有沒有 COMET 的執行檔。
+fn comet_in(dirs: &[PathBuf]) -> bool {
+    let exe = if cfg!(windows) { "comet.exe" } else { "comet" };
+    dirs.iter().any(|d| d.join(exe).is_file())
+}
+
+/// Windows 記在登錄檔裡、現在的使用者與系統 PATH（展開 `%USERPROFILE%` 這類變數）。
+/// 執行過 `comet setup` 之後，新開的程式才會拿到新的 PATH；oMarker 已經開著時自己的 PATH 還是舊的，
+/// 所以另外讀登錄檔。
+#[cfg(windows)]
+fn registry_path() -> String {
+    use std::ptr::null_mut;
+    use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+    use windows_sys::Win32::System::Registry::{
+        RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_EXPAND_SZ,
+        RRF_RT_REG_SZ,
+    };
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(Some(0)).collect()
+    }
+    fn read(root: HKEY, key: &str) -> Option<String> {
+        let key = wide(key);
+        let name = wide("Path");
+        let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
+        let mut size: u32 = 0;
+        // SAFETY: 機碼與值的名稱是以 0 結尾的 UTF-16 字串；第一次只問大小（不給緩衝區），
+        // 第二次給剛好那麼大的緩衝區，系統寫入的位元組數不會超過 size。REG_EXPAND_SZ 由系統展開。
+        unsafe {
+            if RegGetValueW(
+                root,
+                key.as_ptr(),
+                name.as_ptr(),
+                flags,
+                null_mut(),
+                null_mut(),
+                &mut size,
+            ) != ERROR_SUCCESS
+                || size == 0
+            {
+                return None;
+            }
+            let mut buf = vec![0u16; (size as usize).div_ceil(2)];
+            if RegGetValueW(
+                root,
+                key.as_ptr(),
+                name.as_ptr(),
+                flags,
+                null_mut(),
+                buf.as_mut_ptr().cast(),
+                &mut size,
+            ) != ERROR_SUCCESS
+            {
+                return None;
+            }
+            let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            Some(String::from_utf16_lossy(&buf[..len]))
+        }
+    }
+    [
+        read(HKEY_CURRENT_USER, "Environment"),
+        read(
+            HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(";")
+}
+
+#[cfg(not(windows))]
+fn registry_path() -> String {
+    String::new()
+}
+
+/// `comet` 指令已經在 PATH 裡（做過 COMET 的本機設定，也就是 `comet setup` 沒加 `--skip-local-tools`）。
+/// 新專案的 COMET 設定預設不再勾「設定本機 PATH」。看 oMarker 自己的 PATH，也看登錄檔裡現在的設定。
+#[tauri::command]
+pub async fn comet_path_ready() -> bool {
+    tauri::async_runtime::spawn_blocking(|| {
+        which::which("comet").is_ok() || comet_in(&path_dirs(&registry_path()))
+    })
+    .await
+    .unwrap_or(false)
 }
 
 /// 終端機要輸入的 `comet setup` 指令（只有終端機面板可以呼叫）：`comet` 在 PATH 裡就直接執行，
@@ -241,12 +378,65 @@ pub async fn create_project(
         Ok(())
     })
     .await?;
+    // 記住這次的位置，下次打開新專案對話框時預先帶入（寫不進去也不影響建立）。
+    if let Some(file) = last_parent_file(&app) {
+        let _ = file
+            .parent()
+            .map(fs::create_dir_all)
+            .transpose()
+            .and_then(|_| crate::files::write_atomic(&file, path_string(&parent).as_bytes()));
+    }
+    // COMET 專案接著要在這個資料夾執行一次 comet setup（見 comet.rs）。
+    app.state::<crate::comet::CometRun>()
+        .remember_new_project(&dir);
     Ok(crate::workspace::activate(&app, dir, &workspace, &trust))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_dirs_skip_blanks_and_quotes() {
+        assert_eq!(
+            path_dirs(r#"C:\Tools; "C:\Users\me\Comet\bin" ;;"#),
+            vec![
+                PathBuf::from(r"C:\Tools"),
+                PathBuf::from(r"C:\Users\me\Comet\bin")
+            ]
+        );
+        assert!(path_dirs("").is_empty());
+    }
+
+    #[test]
+    fn comet_in_finds_the_executable() {
+        let dir = std::env::temp_dir().join(format!("omarker-comet-path-{}", std::process::id()));
+        let bin = dir.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        assert!(!comet_in(std::slice::from_ref(&bin)));
+        let exe = if cfg!(windows) { "comet.exe" } else { "comet" };
+        fs::write(bin.join(exe), b"").unwrap();
+        assert!(comet_in(&[dir.join("missing"), bin.clone()]));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn remembered_parent_must_be_an_existing_local_folder() {
+        let dir = std::env::temp_dir().join(format!("omarker-np-parent-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let text = path_string(&dir);
+        assert_eq!(usable_parent(&format!("{text}\n")), Some(dir.clone()));
+        // 已經刪掉的資料夾、相對路徑、網路位置都不用（改回「文件」）。
+        assert_eq!(
+            usable_parent(&path_string(&dir.join("沒有這個資料夾"))),
+            None
+        );
+        assert_eq!(usable_parent("專案"), None);
+        assert_eq!(usable_parent(r"\\ado.test\share\專案"), None);
+        assert_eq!(usable_parent("//ado.test/share"), None);
+        assert_eq!(usable_parent(""), None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn comet_is_found_in_its_install_folders() {
@@ -322,6 +512,24 @@ mod tests {
                 r"'/home/o'\''brien/comet' setup"
             );
         }
+    }
+
+    #[test]
+    fn powershell_quotes_every_single_quote() {
+        assert_eq!(
+            powershell_quoted(r"C:\Users\me\comet.exe"),
+            r"C:\Users\me\comet.exe"
+        );
+        assert_eq!(powershell_quoted("o'brien"), "o''brien");
+        // PowerShell 也把這四個字元當成單引號。
+        for q in ['\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'] {
+            assert_eq!(
+                powershell_quoted(&format!(r"C:\Users\王{q}小明\comet.exe")),
+                format!(r"C:\Users\王{q}{q}小明\comet.exe")
+            );
+        }
+        // 雙引號在單引號字串裡沒有特別的意思。
+        assert_eq!(powershell_quoted("a\u{201C}b\"c"), "a\u{201C}b\"c");
     }
 
     #[test]

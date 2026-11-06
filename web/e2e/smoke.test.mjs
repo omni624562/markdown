@@ -39,8 +39,8 @@ test("編輯後預覽跟著更新，四種檢視都能切換", async () => {
 
 test("即時預覽直接顯示表格與公式", async () => {
   const { page, context, errors } = await open();
-  await view(page, "live");
   await setText(page, "第一段\n\n| 名稱 | 數量 |\n|---|---|\n| 蘋果 | 3 |\n\n$$E=mc^2$$\n\n最後一段");
+  await view(page, "live");
   await page.keyboard.press("Control+Home");
   await page.waitForSelector(".cm-content table");
   assert.match(await page.textContent(".cm-content table"), /蘋果/);

@@ -21,6 +21,23 @@ pub struct FileState {
     pub format: FileFormat,
     /// 用來判斷檔案是否被別的程式改過。
     pub hash: Option<u64>,
+    /// 開啟（或存檔）時檔案所在資料夾的實際位置（見 [`dir_id`]）；讀不到時是 None。
+    pub dir: Option<u64>,
+}
+
+/// 檔案所在資料夾解析符號連結後的位置，取雜湊（Windows 不分大小寫）。資料夾讀不到時是 None。
+///
+/// 已知檔案是用路徑記的；同一個路徑中途的資料夾如果被換成指向別處的連結（例如工作區裡原本就有、
+/// 指向外面的連結被改名過來），之後的讀寫就會跑到別的地方。存檔前比對這個值，不一樣就不寫。
+pub fn dir_id(path: &Path) -> Option<u64> {
+    let dir = dunce::canonicalize(path.parent()?).ok()?;
+    let s = dir.to_string_lossy();
+    let s = if cfg!(windows) {
+        s.to_lowercase()
+    } else {
+        s.into_owned()
+    };
+    Some(hash_bytes(s.as_bytes()))
 }
 
 /// 前端可以寫入的檔案（使用者選過、從命令列帶入或在工作區中開啟的）及其狀態。
@@ -36,18 +53,51 @@ impl KnownFiles {
         self.0.lock().get(path).and_then(|s| s.hash)
     }
 
-    /// 檔案被改名或搬移時，沿用原本的狀態。
+    /// 開過的檔案所在的資料夾，實際位置和開啟時記下的不同（中途被換成指向別處的連結，或被搬走）。
+    /// 不是開過的檔案、或現在讀不到資料夾時回傳 false（讀不到時，之後的讀寫本來就會失敗）。
+    /// 會讀取磁碟，請在背景執行。
+    pub fn moved(&self, path: &Path) -> bool {
+        let Some(before) = self.0.lock().get(path).and_then(|s| s.dir) else {
+            return false;
+        };
+        dir_id(path).is_some_and(|now| now != before)
+    }
+
+    /// 見 [`KnownFiles::moved`]：位置變了就不讀寫，請使用者重新選取檔案。
+    pub fn check_moved(&self, path: &Path) -> Result<(), String> {
+        if self.moved(path) {
+            Err(tr!(
+                "「{name}」所在的資料夾和開啟時不同（可能被改名、搬移，或換成了連結），為了安全沒有讀寫。請重新從「開啟檔案」選取。",
+                name = display_name(path)
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// 檔案被改名或搬移時，沿用原本的狀態（資料夾的位置換成新的）。會讀取磁碟，請在背景執行。
     pub fn rename(&self, from: &Path, to: &Path) {
-        let mut map = self.0.lock();
-        let moved: Vec<(PathBuf, FileState)> = map
+        let moved: Vec<(PathBuf, PathBuf, FileState)> = self
+            .0
+            .lock()
             .iter()
             .filter(|(p, _)| p.starts_with(from))
-            .map(|(p, s)| (p.clone(), *s))
+            .map(|(p, s)| {
+                let suffix = p.strip_prefix(from).unwrap_or(Path::new(""));
+                (p.clone(), to.join(suffix), *s)
+            })
             .collect();
-        for (old, state) in moved {
+        let moved: Vec<_> = moved
+            .into_iter()
+            .map(|(old, new, state)| {
+                let dir = dir_id(&new);
+                (old, new, FileState { dir, ..state })
+            })
+            .collect();
+        let mut map = self.0.lock();
+        for (old, new, state) in moved {
             map.remove(&old);
-            let suffix = old.strip_prefix(from).unwrap_or(Path::new(""));
-            map.insert(to.join(suffix), state);
+            map.insert(new, state);
         }
     }
 }
@@ -184,6 +234,7 @@ pub fn read_file(app: &AppHandle, path: PathBuf, known: &KnownFiles) -> Result<O
         FileState {
             format,
             hash: Some(hash_bytes(&bytes)),
+            dir: dir_id(&path),
         },
     );
     crate::track_file(app, &path);
@@ -365,12 +416,16 @@ pub async fn open_file(
 }
 
 /// 前端可以用路徑開啟的檔案：這次開過的、信任清單（最近開啟、左側圖示列的捷徑）裡的，
-/// 或目前開啟的資料夾裡的文件。工作區的判斷要讀取磁碟（解析符號連結後的實際路徑），請在背景執行。
+/// 或目前開啟的資料夾裡的文件（解析符號連結後也是，見 `workspace::is_editable_doc_in`）。
+/// 這次開過、但所在資料夾的實際位置已經和開啟時不同的（見 [`KnownFiles::moved`]），
+/// 只有在資料夾裡的文件才行。要讀取磁碟，請在背景執行。
 pub(crate) fn may_reopen(app: &AppHandle, path: &Path) -> bool {
-    app.state::<KnownFiles>().contains(path)
-        || app.state::<Trust>().allows(path)
-        || (crate::workspace::is_editable_doc(path)
-            && app.state::<crate::workspace::Workspace>().contains(path))
+    let known = app.state::<KnownFiles>();
+    let opened = !known.moved(path) && (known.contains(path) || app.state::<Trust>().allows(path));
+    opened
+        || app
+            .state::<crate::workspace::Workspace>()
+            .has_editable_doc(path)
 }
 
 /// 重新開啟先前開過的檔案（還原分頁、最近開啟、左側圖示列的捷徑）。只允許信任清單裡的路徑。
@@ -487,6 +542,7 @@ pub async fn reopen_with_encoding(
                 "這個檔案不在最近開啟的清單中，請重新從「開啟檔案」選取。"
             ));
         }
+        known.check_moved(&path)?;
         let bytes = read_capped(&path, MAX_OPEN_BYTES)
             .map_err(|e| {
                 crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(&path)))
@@ -504,6 +560,7 @@ pub async fn reopen_with_encoding(
             FileState {
                 format,
                 hash: Some(hash_bytes(&bytes)),
+                dir: dir_id(&path),
             },
         );
         Ok(OpenedFile {
@@ -622,7 +679,7 @@ pub async fn import_docx(
     };
     let path = handle.path().to_path_buf();
     let p = path.clone();
-    let bytes = crate::io::blocking(move || {
+    let (bytes, dir) = crate::io::blocking(move || {
         let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
         if size > MAX_DOCX_BYTES {
             return Err(tr!(
@@ -630,13 +687,20 @@ pub async fn import_docx(
                 name = display_name(&p)
             ));
         }
-        fs::read(&p).map_err(|e| {
+        let bytes = fs::read(&p).map_err(|e| {
             crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(&p)))
-        })
+        })?;
+        Ok((bytes, dir_id(&p)))
     })
     .await?;
     let md = unique_md_path(&path);
-    known.0.lock().insert(md.clone(), FileState::default());
+    known.0.lock().insert(
+        md.clone(),
+        FileState {
+            dir,
+            ..FileState::default()
+        },
+    );
     trust.add_file(&app, &md);
     Ok(Some(DocxImport {
         name: display_name(&path),
@@ -766,14 +830,17 @@ pub async fn save_file(
     let app2 = app.clone();
     let p = path.clone();
     crate::io::blocking(move || {
-        let disk = fs::read(&p).ok();
+        // 只給版本記錄用：太大的舊檔不讀進記憶體（版本記錄本來就不存）。
+        let disk = read_capped(&p, MAX_OPEN_BYTES).ok().flatten();
         let hash = write_file(&p, &bytes)?;
         crate::history::on_save(&app2, &p, disk.as_deref(), &text);
+        let dir = dir_id(&p);
         app2.state::<KnownFiles>().0.lock().insert(
             p.clone(),
             FileState {
                 format,
                 hash: Some(hash),
+                dir,
             },
         );
         crate::track_file(&app2, &p);
@@ -795,13 +862,35 @@ fn save_lock(path: &Path) -> std::sync::Arc<Mutex<()>> {
     locks.entry(path.to_path_buf()).or_default().clone()
 }
 
+/// 覆寫前磁碟上目前的內容（比對有沒有被改過、記到版本記錄），讀不到時是 None。最多讀 `limit`：
+/// 更大的不整個讀進記憶體。這時無法比對內容，開啟時記過內容（`stored`）又還沒確認要覆蓋（`force`）的
+/// 就不存檔，免得蓋掉其他程式剛寫進去的大檔案。
+fn disk_before(
+    path: &Path,
+    limit: u64,
+    stored: Option<u64>,
+    force: bool,
+) -> Result<Option<Vec<u8>>, String> {
+    match read_capped(path, limit) {
+        Ok(Some(bytes)) => Ok(Some(bytes)),
+        Ok(None) if stored.is_some() && !force => Err(tr!(
+            "「{name}」在磁碟上已經超過 {mb} MB，可能被其他程式改過；為了不蓋掉它，沒有存檔。請用「另存新檔」存到其他位置。",
+            name = display_name(path),
+            mb = limit / 1024 / 1024
+        )),
+        _ => Ok(None),
+    }
+}
+
 /// 覆寫已開啟過的檔案。磁碟上的內容在開啟後被改過時回傳 `Conflict`（除非 `force`）。
+/// 檔案所在資料夾的實際位置和開啟時不同時（見 [`KnownFiles::moved`]）不讀也不寫。
 fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<SaveOutcome, String> {
     let lock = save_lock(path);
     let _guard = lock.lock();
     let known = app.state::<KnownFiles>();
+    known.check_moved(path)?;
     let state = known.0.lock().get(path).copied().unwrap_or_default();
-    let disk = fs::read(path).ok();
+    let disk = disk_before(path, MAX_OPEN_BYTES, state.hash, force)?;
     if !force && changed_on_disk(state.hash, disk.as_deref()) {
         let (disk_text, _, _) = decode(disk.as_deref().unwrap_or_default());
         return Ok(SaveOutcome::Conflict {
@@ -816,10 +905,13 @@ fn overwrite(app: &AppHandle, path: &Path, text: &str, force: bool) -> Result<Sa
     };
     let hash = write_file(path, &bytes)?;
     crate::history::on_save(app, path, disk.as_deref(), text);
+    // 開啟時讀不到資料夾的位置（例如網路磁碟斷線）：存檔成功後補記。
+    let dir = state.dir.or_else(|| dir_id(path));
     known.0.lock().insert(
         path.to_path_buf(),
         FileState {
             hash: Some(hash),
+            dir,
             ..state
         },
     );
@@ -892,6 +984,26 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
+    #[test]
+    fn saving_never_reads_huge_files() {
+        let dir = std::env::temp_dir().join(format!("md-disk-before-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("紀錄.log");
+        fs::write(&file, b"0123456789").unwrap();
+        let hash = Some(hash_bytes(b"0123"));
+        assert_eq!(
+            disk_before(&file, 10, hash, false).unwrap().unwrap(),
+            b"0123456789"
+        );
+        // 比上限大：不讀進記憶體；開啟時記過內容又還沒確認覆蓋的，不存檔。
+        assert!(disk_before(&file, 9, hash, false).is_err());
+        assert_eq!(disk_before(&file, 9, hash, true), Ok(None));
+        assert_eq!(disk_before(&file, 9, None, false), Ok(None));
+        // 檔案不在了：照常存檔。
+        assert_eq!(disk_before(&dir.join("沒有.md"), 9, hash, false), Ok(None));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[cfg(unix)]
     #[test]
     fn atomic_write_never_writes_through_symlinks() {
@@ -926,6 +1038,53 @@ mod tests {
         // 檔案被刪除，或是第一次存檔：不算衝突。
         assert!(!changed_on_disk(Some(h), None));
         assert!(!changed_on_disk(None, Some(b"anything")));
+    }
+
+    /// 開過的檔案所在的資料夾中途被換成指向別處的連結：不能再照開啟時的許可讀寫。
+    #[cfg(unix)]
+    #[test]
+    fn notices_folders_swapped_for_links() {
+        let dir = std::env::temp_dir().join(format!("md-moved-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("產品/第1章")).unwrap();
+        fs::create_dir_all(dir.join("產品/甲")).unwrap();
+        fs::create_dir_all(dir.join("外面")).unwrap();
+        let file = dir.join("產品/第1章/筆記.md");
+        fs::write(&file, "內容").unwrap();
+        fs::write(dir.join("外面/筆記.md"), "機密").unwrap();
+        let known = KnownFiles::default();
+        let open = |p: &Path| {
+            known.0.lock().insert(
+                p.to_path_buf(),
+                FileState {
+                    dir: dir_id(p),
+                    ..Default::default()
+                },
+            );
+        };
+        open(&file);
+        assert!(!known.moved(&file));
+        assert!(known.check_moved(&file).is_ok());
+        // 沒開過的檔案不在這裡判斷。
+        assert!(!known.moved(&dir.join("外面/筆記.md")));
+        // 資料夾被改名，原本的位置換成指向外面的連結。
+        fs::rename(dir.join("產品/第1章"), dir.join("產品/舊")).unwrap();
+        std::os::unix::fs::symlink(dir.join("外面"), dir.join("產品/第1章")).unwrap();
+        assert!(known.moved(&file));
+        assert!(known.check_moved(&file).is_err());
+        // 資料夾不見了（例如網路磁碟斷線）：交給之後的讀寫回報錯誤。
+        fs::remove_file(dir.join("產品/第1章")).unwrap();
+        assert!(!known.moved(&file));
+        // 在 oMarker 裡改名的資料夾：狀態跟著搬，資料夾的位置也換成新的。
+        let a = dir.join("產品/甲/a.md");
+        fs::write(&a, "a").unwrap();
+        open(&a);
+        fs::rename(dir.join("產品/甲"), dir.join("產品/乙")).unwrap();
+        known.rename(&dir.join("產品/甲"), &dir.join("產品/乙"));
+        let b = dir.join("產品/乙/a.md");
+        assert!(known.contains(&b));
+        assert!(!known.moved(&b));
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

@@ -263,6 +263,8 @@ export function closeItem(id: string): void {
       issueView.close();
       const doc = app.docs.find((d) => d.id === next);
       if (doc && doc !== app.active) app.activate(doc);
+      // 回到文件：游標放回編輯器（不然焦點留在關掉的工作項目上，掉到 body）。
+      app.editor.view.focus();
     }
   }
   changed();

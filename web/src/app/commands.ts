@@ -13,10 +13,9 @@ import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { PALETTES } from "../palette.ts";
 import { Palette } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
-import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
-import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
-import { cometPresent } from "./comet-presence.ts";
+import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { aiAppPresent } from "./ai-app-presence.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
 import { openDailyNote, openNeighborNote } from "./daily-notes.ts";
 import { showDocStats, statsShown } from "./doc-stats.ts";
@@ -26,16 +25,22 @@ import { closeItem, itemTabs, setItemPinned, tabOrder } from "./item-tabs.ts";
 import { newProject } from "./new-project.ts";
 import { imageInput } from "./new-work-item.ts";
 import { runTableEdit } from "./offline-drive.ts";
+import { canConvertToTable, convertSelectionToTable } from "./table-paste.ts";
+import { type TableEdit, inTable } from "../table.ts";
 import { exportPdf } from "./pdf-export.ts";
 import { settingsDialog, fixTerms, convertToTraditional, toggleSetting, changeFontSize } from "./settings-ui.ts";
 import { issueView, issueSide } from "./wiki-edit.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
-import { onlyBlankDoc } from "./outline.ts";
-import { docName, renumber } from "./doc-names.ts";
+import { docName } from "./doc-names.ts";
+import { reportIssue } from "./version-info.ts";
 import type { Doc } from "../main.ts";
+import { cometSetupAvailable, isCometProject, openCometProjectSetup } from "./comet-project.ts";
 import { app } from "./context.ts";
+
+/** 目前開著的專案的名稱（自訂的名稱，沒有就是資料夾名稱）。 */
+const projectName = () => app.projectUi?.current?.label ?? app.workspaceRoot?.name ?? "";
 
 
 export const commands = new Commands();
@@ -48,6 +53,11 @@ function insertPlaceholder(text: string, line: number): void {
 
 function fmt(id: string, title: string, iconName: string, run: () => void, keys?: string, group = t("格式")): Command {
   return { id, title, group, icon: iconName, keys, when: isMarkdown, run };
+}
+
+/** 表格操作：游標在表格裡時才出現。 */
+function tableCmd(id: string, title: string, iconName: string, kind: TableEdit): Command {
+  return { id, title, group: t("格式"), icon: iconName, when: () => isMarkdown() && inTable(app.editor.view.state), run: () => runTableEdit(kind) };
 }
 
 const palette = new Palette(commands);
@@ -101,16 +111,11 @@ export function initCommands(): void {
       // 桌面版用一般的 Ctrl+N；網頁版的 Ctrl+N 會被瀏覽器拿去開新視窗。
       keys: desktop ? "Mod-n" : "Mod-Alt-n",
       run() {
-        // 只剩一份沒顯示的空白文件（關掉所有文件後留下的）：開好新文件後收掉它，不要多一個「未命名」。
-        const placeholder = onlyBlankDoc() ? app.docs[0] : null;
+        // 只剩一份沒顯示的空白文件（一開始、關掉所有文件後留下的）時，addTab 會收掉它。
         const doc = app.makeDoc({ name: t("未命名{ext}", { ext: KINDS[app.cur.kind].ext }), kind: app.cur.kind });
         saveDraft(doc.id, "");
         app.skipStartPage(doc.id);
         app.addTab(doc);
-        if (placeholder) {
-          renumber(doc);
-          void app.closeTab(placeholder.id);
-        }
         app.editor.view.focus();
       },
     },
@@ -305,15 +310,6 @@ export function initCommands(): void {
       run: () => newProject(),
     },
     {
-      id: "new-comet-project",
-      title: t("新 COMET 專案…"),
-      group: t("資料夾與專案"),
-      icon: "square-terminal",
-      // 沒裝 COMET 的電腦不顯示（見 comet-presence.ts）。
-      when: () => !!desktop && cometPresent(),
-      run: () => newProject("comet"),
-    },
-    {
       id: "open-folder",
       title: t("開啟資料夾…"),
       group: t("資料夾與專案"),
@@ -338,9 +334,39 @@ export function initCommands(): void {
       id: "open-in-codex",
       title: t("在 Codex 開啟這個專案"),
       group: t("資料夾與專案"),
-      icon: "external-link",
-      when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path),
-      run: () => app.projectUi?.openInCodex(),
+      icon: "hexagon",
+      tip: () => t("在 Codex 開啟「{name}」", { name: projectName() }),
+      // 沒裝 Codex 桌面版的電腦不顯示（見 ai-app-presence.ts）。
+      when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path) && aiAppPresent("codex"),
+      run: () => app.projectUi?.openInApp("codex"),
+    },
+    {
+      id: "open-in-claude",
+      title: t("在 Claude Code 開啟這個專案"),
+      group: t("資料夾與專案"),
+      icon: "asterisk",
+      tip: () => t("在 Claude Code 開啟「{name}」", { name: projectName() }),
+      // 沒裝 Claude 桌面版的電腦不顯示（見 ai-app-presence.ts）。
+      when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path) && aiAppPresent("claude"),
+      run: () => app.projectUi?.openInApp("claude"),
+    },
+    {
+      id: "comet-setup-project",
+      title: t("設定成 COMET 專案…"),
+      group: t("資料夾與專案"),
+      icon: "wand-sparkles",
+      // 先建好的專案，之後才要用 COMET（這台電腦有 COMET、專案還不是 COMET 專案時）。
+      when: () => cometSetupAvailable() && !isCometProject(),
+      run: () => openCometProjectSetup(),
+    },
+    {
+      id: "comet-resetup-project",
+      title: t("重新設定 COMET…"),
+      group: t("資料夾與專案"),
+      icon: "rotate-ccw",
+      // 已經是 COMET 專案：用新的設定再執行一次 comet setup（例如換 Sprint 或指派對象）。
+      when: () => cometSetupAvailable() && isCometProject(),
+      run: () => openCometProjectSetup(),
     },
     {
       id: "delete-project",
@@ -415,7 +441,7 @@ export function initCommands(): void {
       title: t("說明：回報問題或建議…"),
       group: t("說明"),
       icon: "bug",
-      run: () => openUrl(`${REPO_URL}/issues/new`),
+      run: () => reportIssue(),
     },
     {
       id: "about",
@@ -719,6 +745,10 @@ export function initCommands(): void {
       keys: "Shift-Alt-f",
       when: () => app.cur.kind === "json",
       run() {
+        if (app.editor.view.state.readOnly) {
+          toast(t("這個檔案目前是唯讀的，不能重新排版。"));
+          return;
+        }
         try {
           const formatted = formatJson(app.editor.text);
           if (formatted !== app.editor.text) app.editor.replaceAll(formatted);
@@ -776,11 +806,27 @@ export function initCommands(): void {
       const at = app.editor.view.coordsAtPos(pos);
       if (at) openInsertMenu(new DOMRect(at.left, at.top, 0, at.bottom - at.top));
     }, "Mod-Shift-Enter", t("插入")),
-    fmt("table-format", t("表格：對齊目前的表格"), "table", () => runTableEdit("format")),
-    fmt("table-insert-row", t("表格：在下方插入一列"), "table", () => runTableEdit("insert-row")),
-    fmt("table-insert-column", t("表格：在右側插入一欄"), "table", () => runTableEdit("insert-column")),
-    fmt("table-delete-row", t("表格：刪除目前這一列"), "table", () => runTableEdit("delete-row")),
-    fmt("table-delete-column", t("表格：刪除目前這一欄"), "table", () => runTableEdit("delete-column")),
+    // 游標在表格裡時才出現（右鍵選單的「表格」子選單、指令面板）；原始碼、分割模式也能用。
+    tableCmd("table-insert-row-above", t("表格：在上方插入一列"), "arrow-up", "insert-row-above"),
+    tableCmd("table-insert-row", t("表格：在下方插入一列"), "arrow-down", "insert-row"),
+    tableCmd("table-insert-column-left", t("表格：在左側插入一欄"), "arrow-left", "insert-column-left"),
+    tableCmd("table-insert-column", t("表格：在右側插入一欄"), "arrow-right", "insert-column"),
+    tableCmd("table-delete-row", t("表格：刪除目前這一列"), "trash", "delete-row"),
+    tableCmd("table-delete-column", t("表格：刪除目前這一欄"), "trash", "delete-column"),
+    tableCmd("table-align-left", t("表格：這一欄靠左"), "align-left", "align-left"),
+    tableCmd("table-align-center", t("表格：這一欄置中"), "align-center", "align-center"),
+    tableCmd("table-align-right", t("表格：這一欄靠右"), "align-right", "align-right"),
+    tableCmd("table-sort-asc", t("表格：依這一欄排序（小到大）"), "arrow-down-a-z", "sort-asc"),
+    tableCmd("table-sort-desc", t("表格：依這一欄排序（大到小）"), "arrow-down-z-a", "sort-desc"),
+    tableCmd("table-format", t("表格：對齊目前的表格"), "table", "format"),
+    {
+      id: "table-from-text",
+      title: t("轉成表格"),
+      group: t("格式"),
+      icon: "table",
+      when: () => isMarkdown() && canConvertToTable(app.editor.view.state),
+      run: () => convertSelectionToTable(),
+    },
     {
       id: "format-tables",
       title: t("對齊文件中所有表格"),

@@ -2,6 +2,8 @@
 
 pub static EN: &[(&str, &str)] = &[
     ("無法存取這個位置", "Couldn't access this location"),
+    ("一次最多檢查 {n} 個路徑", "At most {n} paths can be checked at a time."),
+    ("正在檢查其他連結，請稍後再試", "Other links are still being checked. Try again later."),
     ("請輸入名稱", "Enter a name."),
     ("名稱不能包含「{c}」", "Names can't contain \"{c}\"."),
     ("名稱不能以「.」結尾", "Names can't end with \".\"."),
@@ -15,6 +17,18 @@ pub static EN: &[(&str, &str)] = &[
     ("無法建立 .github/workflows 資料夾", "Couldn't create the .github/workflows folder"),
     ("不能重新命名專案資料夾本身", "You can't rename the project folder itself."),
     ("不能刪除專案資料夾本身", "You can't delete the project folder itself."),
+    (
+        "「.git」是 Git 的資料夾，不能在 oMarker 裡建立、改名或刪除",
+        "\".git\" is Git's own folder, so it can't be created, renamed or deleted in oMarker.",
+    ),
+    (
+        "只有文件和圖片可以在 oMarker 裡重新命名，「{name}」不是",
+        "Only documents and images can be renamed in oMarker, and \"{name}\" isn't one.",
+    ),
+    (
+        "檔案只能改成文件或圖片的名稱（例如 .md、.txt、.png），不能改成「{name}」",
+        "Files can only be renamed to a document or image name (such as .md, .txt or .png), not \"{name}\".",
+    ),
     ("無法移到資源回收筒：{e}", "Couldn't move to the Recycle Bin: {e}"),
     ("無法開啟檔案總管：{e}", "Couldn't open File Explorer: {e}"),
     ("請輸入要取代的文字", "Enter the text to replace."),
@@ -33,13 +47,14 @@ pub static EN: &[(&str, &str)] = &[
     // new_project.rs
     ("選擇新專案要放在哪個資料夾", "Choose where to put the new project"),
     ("請先關閉這個專案再刪除", "Close this project before deleting it."),
-    ("遠端資料夾不能在 Codex 開啟", "Remote folders can't be opened in Codex."),
-    ("無法開啟 Codex 桌面版（請確認已經安裝）：{e}", "Couldn't open the Codex desktop app (make sure it's installed): {e}"),
+    // projects.rs：在 Codex／Claude 桌面版開啟專案（{app} 是 Codex 或 Claude）
+    ("遠端資料夾不能在 {app} 開啟", "Remote folders can't be opened in {app}."),
+    ("無法開啟 {app} 桌面版（請確認已經安裝）：{e}", "Couldn't open the {app} desktop app (make sure it's installed): {e}"),
     (
         "「{name}」是系統或使用者資料夾，不能移到資源回收筒；可以只從清單移除",
         "\"{name}\" is a system or user folder and can't be moved to the Recycle Bin. You can still remove it from the list.",
     ),
-    ("無法把資料夾移到資源回收筒：{e}", "Couldn't move the folder to the Recycle Bin: {e}"),
+    ("無法把資料夾移到資源回收筒，通常是資料夾或裡面的檔案還有程式在使用（例如檔案總管、VS Code、Codex 或命令提示字元）。請關閉這些程式後再試一次；也可以取消勾選「同時把資料夾移到資源回收筒」，只從清單移除。（{e}）", "Couldn't move the folder to the Recycle Bin. Usually another program is still using the folder or a file in it (for example File Explorer, VS Code, Codex or Command Prompt). Close those programs and try again, or clear \"Also move the folder to the Recycle Bin\" to only remove it from the list. ({e})"),
     ("COMET 設定的「{what}」不正確", "The COMET setting \"{what}\" is not valid."),
     ("Sprint 網址", "Sprint URL"),
     ("集合網址", "Collection URL"),
@@ -49,6 +64,10 @@ pub static EN: &[(&str, &str)] = &[
     ("Sprint 天數", "Sprint length (days)"),
     ("Sprint 編號", "Sprint number"),
     ("只能在目前開啟的專案執行 COMET 設定", "COMET setup can only run in the project that is open."),
+    (
+        "只能在剛用「新專案」建立的資料夾執行 COMET 設定；其他專案請在終端機執行 comet setup。",
+        "COMET setup can only run in a folder you just created with New Project. For other projects, run comet setup in the terminal.",
+    ),
     ("找不到 COMET CLI（comet 指令）", "The COMET CLI (comet command) wasn't found."),
     (
         "comet 不是 .exe 執行檔，無法在背景設定；請改在終端機執行 comet setup。",
@@ -67,4 +86,7 @@ pub static EN: &[(&str, &str)] = &[
     ("每日筆記", "Daily Notes"),
     ("「{path}」已經存在，換一個名稱或位置", "\"{path}\" already exists. Choose another name or location."),
     ("無法建立資料夾「{name}」", "Couldn't create the folder \"{name}\""),
+    ("刪除專案", "Delete Project"),
+    ("要把「{path}」整個資料夾移到資源回收筒嗎？可以從資源回收筒還原。", "Move the entire folder \"{path}\" to the Recycle Bin? You can restore it from the Recycle Bin."),
+    ("在這個資料夾開著的 {n} 個終端機會一起關閉。", "{n} terminal(s) open in this folder will be closed too."),
 ];

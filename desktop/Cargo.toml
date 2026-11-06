@@ -1,6 +1,6 @@
 [package]
 name = "md-desktop"
-version = "1.128.0"
+version = "1.131.2"
 edition = "2021"
 license = "MIT"
 description = "oMarker（Markdown 編輯器）桌面版（Tauri）"
@@ -69,7 +69,9 @@ windows-native-keyring-store = "1.1.0"
 webview2-com = "0.39.1"
 windows-core = "0.62.2"
 # 自動更新在公司網路上的備援：WinHTTP 會用系統的 Proxy 自動設定與 Windows 帳號驗證。
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Networking_WinHttp", "Win32_System_Registry"] }
+# 檢查有沒有安裝 Codex、Claude 桌面版：登錄檔與檔案關聯（AssocQueryStringW，要先初始化 COM）。
+# 重要操作的確認對話框（MessageBox，預設按鈕是「否」）。
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Networking_WinHttp", "Win32_System_Com", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 # 工作項目有新指派時的 Windows 通知（點一下打開那個工作項目）。
 tauri-winrt-notification = "0.8.1"
 

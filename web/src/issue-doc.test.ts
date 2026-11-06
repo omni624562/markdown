@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
-import { byRecent, githubIssueMarkdown, inlineText, issueFileName, stateTone, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
+import { byRecent, demoteHeadings, githubIssueMarkdown, inlineText, issueFileName, stateTone, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { findMatches } from "./ui/issue-view.ts";
 
 const item: AdoWorkItemDetail = {
@@ -156,4 +156,18 @@ test("狀態的顏色分類（比照 TFS 網頁）", () => {
     ["New", "Active", "In Progress", "Resolved", "Closed", "Done", "Removed", "已關閉", "自訂狀態"].map(stateTone),
     ["new", "active", "active", "resolved", "closed", "closed", "removed", "closed", "new"],
   );
+});
+
+test("說明、重現步驟、留言裡的標題往下降，不會和段落標題（##）同一層；程式碼區塊裡的 # 不動", () => {
+  assert.equal(demoteHeadings("## 背景\n\n文字\n\n# 大標\n\n###### 最小", 2), "#### 背景\n\n文字\n\n### 大標\n\n###### 最小");
+  assert.equal(demoteHeadings("```sh\n# 註解\n```\n## 標題", 2), "```sh\n# 註解\n```\n#### 標題");
+  assert.equal(demoteHeadings("#不是標題\n#\n", 2), "#不是標題\n###\n");
+  const md = workItemMarkdown({
+    ...item,
+    description: "<h2>背景</h2><p>說明</p><h2>做法</h2><p>步驟</p>",
+    comments: [{ id: null, author: "李大同", created: null, text: "<h1>結論</h1><p>可以</p>" }],
+  });
+  // 說明的內容都在「工作項目說明」底下，沒有別的 ## 段落插進來。
+  assert.match(md, /## 工作項目說明\n\n#### 背景\n\n說明\n\n#### 做法\n\n步驟\n\n## 重現步驟/);
+  assert.match(md, /### 李大同\n\n#### 結論\n\n可以/);
 });

@@ -29,7 +29,8 @@ export interface TabInfo {
 }
 
 export interface TabBarHandlers {
-  select(id: string): void;
+  /** `via`：用滑鼠點的（文件分頁要把游標放回編輯器）還是用方向鍵切換的（焦點留在分頁上）。 */
+  select(id: string, via?: "pointer" | "keyboard"): void;
   close(id: string): void;
   create(): void;
   /** 雙擊分頁改名；回傳 false 表示這個分頁不能直接改名。 */
@@ -131,7 +132,7 @@ export class TabBar {
       if (next < 0) return;
       e.preventDefault();
       tabs[next].focus();
-      handlers.select(tabs[next].dataset.id!);
+      handlers.select(tabs[next].dataset.id!, "keyboard");
     });
   }
 
@@ -211,7 +212,7 @@ export class TabBar {
           if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => this.#handlers.menu(info.id, at)), { once: true });
           else this.#handlers.menu(info.id, at);
         });
-        tab.addEventListener("click", () => this.#handlers.select(info.id));
+        tab.addEventListener("click", () => this.#handlers.select(info.id, "pointer"));
         tab.draggable = !!this.#handlers.dragData?.(info.id);
         tab.addEventListener("dragstart", (e) => {
           const data = e.dataTransfer && this.#handlers.dragData?.(info.id);
@@ -235,9 +236,17 @@ export class TabBar {
         return tab;
       });
     if (pair) this.#pair(els, pair);
+    // 重畫時整個換掉分頁元素：原本焦點在分頁上（例如用方向鍵切換）就放回同一個分頁，不要掉到 body。
+    const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("#tab-bar [role=tab]")?.dataset.id;
     this.#list.replaceChildren(...els);
+    if (focused) this.#focusTab(focused);
     this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
     this.#updateOverflow();
+  }
+
+  /** 讓目前畫面上這個 id 的分頁取得焦點（重畫後元素已經換掉，不能用舊的）。 */
+  #focusTab(id: string): void {
+    [...this.#list.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.dataset.id === id)?.focus({ preventScroll: true });
   }
 
   /** 把並排中的兩個分頁包成一個「左｜右」的分頁（見 render）。 */
@@ -328,7 +337,9 @@ export class TabBar {
       input.replaceWith(name);
       tab.draggable = draggable;
       if (commit && value && value !== name.textContent) this.#handlers.rename(id, value);
-      tab.focus();
+      // 改名後分頁列可能已經重畫：放回同一個分頁（新的元素）。
+      if (tab.isConnected) tab.focus();
+      else this.#focusTab(id);
     };
     input.addEventListener("keydown", (e) => {
       e.stopPropagation();

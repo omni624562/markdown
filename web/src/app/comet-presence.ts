@@ -1,7 +1,7 @@
 /**
  * 這台電腦有沒有 COMET CLI（PATH 裡的 `comet`、`%COMET_HOME%\bin`、`%USERPROFILE%\Comet\bin`，
- * 見 desktop/src/new_project.rs 的 locate_comet）。沒有時不顯示「新 COMET 專案」：「☰」→「專案」、指令面板、
- * 專案切換器、新專案對話框的「COMET 專案」選項。已經是 COMET 專案（有 .comet.json）的標籤不受影響。
+ * 見 desktop/src/new_project.rs 的 locate_comet）。沒有時新專案對話框不列「COMET 專案」，也沒有右邊的
+ * 「② COMET 設定」。已經是 COMET 專案（有 .comet.json）的標籤不受影響。
  *
  * 啟動時查一次；視窗重新拿到焦點時再查（最多 5 秒一次），在 oMarker 開著的時候裝好 COMET，切回來就會出現。
  */

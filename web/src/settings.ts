@@ -19,6 +19,8 @@ export interface QuickAction {
 }
 
 export type AiTool = "claude" | "codex";
+/** 傳給 ChatGPT：關閉、ChatGPT 桌面版、網頁版（見 app/chatgpt.ts）。 */
+export type ChatgptSend = "off" | "desktop" | "web";
 /** 自動更新跟哪個版本：穩定版（維護者選定的版本）或搶先版（每次修改後的最新建置）。 */
 export type UpdateChannel = "stable" | "early";
 
@@ -53,6 +55,10 @@ export interface Settings {
   adoNotify: boolean;
   /** 工作項目類型的自訂顏色（類型名稱 → `#rrggbb`）；沒列到的用預設顏色（見 work-item-colors.ts）。 */
   workItemColors: Record<string, string>;
+  /** 設定 COMET 時先選的 Azure DevOps 專案（空字串是不指定：用上次選的）。 */
+  adoDefaultProject: string;
+  /** 預設專案裡先選的團隊名稱（空字串是專案在 Azure DevOps 設定的預設團隊）。 */
+  adoDefaultTeam: string;
   /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
   autoSymbols: boolean;
   /** 標示中國用語與常見錯字（波浪底線），滑鼠移上去可以替換。 */
@@ -106,6 +112,10 @@ export interface Settings {
   aiTerminal: boolean;
   /** 檔案被外部程式修改時，逐段標示變更處，可以保留或還原。 */
   markExternalChanges: boolean;
+  /** 傳給 ChatGPT：把選取的文字等帶進 ChatGPT。預設關閉（內容會送到 OpenAI）。 */
+  chatgptSend: ChatgptSend;
+  /** 已經看過「內容會送到 OpenAI」的提醒（第一次使用時問一次）。 */
+  chatgptAcknowledged: boolean;
   quickActions: QuickAction[];
   /** 自訂的文件範本（內建範本不在這裡）。 */
   templates: Template[];
@@ -126,6 +136,8 @@ export interface Settings {
   activityHidden: string[];
   /** 左側圖示列：釘上去的指令按鈕（指令的 id），例如「Git：顯示歷史」。 */
   activityCommands: string[];
+  /** 「檔案」面板上方（專案名稱旁邊）釘上去的指令按鈕（指令的 id），例如「在 Codex 開啟這個專案」。 */
+  filesHeadCommands: string[];
   /** 自訂的快速鍵：指令 id → 快速鍵（`Mod-Shift-p`）；空字串是拿掉這個指令的快速鍵。沒列到的用內建的。 */
   keybindings: Record<string, string>;
 }
@@ -157,6 +169,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   autoSave: true,
   adoNotify: true,
   workItemColors: {},
+  adoDefaultProject: "",
+  adoDefaultTeam: "",
   termCheck: true,
   termIgnore: [],
   spellCheck: true,
@@ -179,6 +193,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   remoteEnabled: true,
   aiEnabled: false,
   aiTool: "claude",
+  chatgptSend: "off",
+  chatgptAcknowledged: false,
   mcpServer: true,
   aiTerminal: true,
   markExternalChanges: true,
@@ -195,11 +211,14 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   activityHidden: ["tasks", "tags"],
   // 預設不釘指令：Git 歷史在原始碼控制面板的標題列與「⋯」→ Git 選單都有，不用再多一個圖示。
   activityCommands: [],
+  filesHeadCommands: [],
   keybindings: {},
 });
 
 /** 圖示列最多釘幾個指令按鈕。 */
 export const ACTIVITY_LIMIT = 20;
+/** 「檔案」面板上方最多釘幾個按鈕（再多專案名稱就沒位置了）。 */
+export const FILES_HEAD_LIMIT = 3;
 
 /** 圖示列設定的 id（面板或指令）：只接受英數字與連字號。 */
 function idList(v: unknown, limit = ACTIVITY_LIMIT): string[] | null {
@@ -244,6 +263,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     activityOrder: [],
     activityHidden: [...DEFAULTS.activityHidden],
     activityCommands: [...DEFAULTS.activityCommands],
+    filesHeadCommands: [...DEFAULTS.filesHeadCommands],
     workItemColors: {},
     keybindings: {},
   };
@@ -281,6 +301,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("mcpServer");
   bool("aiTerminal");
   bool("markExternalChanges");
+  bool("chatgptAcknowledged");
   bool("autoUpdate");
   bool("gitAutoSync");
   if ("gitSyncMinutes" in input) {
@@ -294,6 +315,11 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   }
   if ("aiTool" in input) {
     if (input.aiTool === "claude" || input.aiTool === "codex") out.aiTool = input.aiTool;
+    else problems++;
+  }
+  if ("chatgptSend" in input) {
+    const v = input.chatgptSend;
+    if (v === "off" || v === "desktop" || v === "web") out.chatgptSend = v;
     else problems++;
   }
   if ("quickActions" in input) {
@@ -329,14 +355,20 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     if (v !== null && v.length <= 200) out.dailyFolder = v;
     else problems++;
   }
+  for (const key of ["adoDefaultProject", "adoDefaultTeam"] as const) {
+    if (!(key in input)) continue;
+    const v = input[key];
+    if (typeof v === "string" && v.length <= 256) out[key] = v.trim();
+    else problems++;
+  }
   if ("dailyTemplate" in input) {
     const v = input.dailyTemplate;
     if (typeof v === "string" && v.length <= TEMPLATE_LIMITS.name) out.dailyTemplate = v.trim();
     else problems++;
   }
-  for (const key of ["activityOrder", "activityHidden", "activityCommands"] as const) {
+  for (const key of ["activityOrder", "activityHidden", "activityCommands", "filesHeadCommands"] as const) {
     if (!(key in input)) continue;
-    const list = idList(input[key]);
+    const list = idList(input[key], key === "filesHeadCommands" ? FILES_HEAD_LIMIT : ACTIVITY_LIMIT);
     if (list) {
       out[key] = list;
       if (list.length !== (input[key] as unknown[]).length) problems++;
@@ -421,6 +453,9 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
 
 type Listener = (settings: Settings, changed: (keyof Settings)[]) => void;
 
+/** 從關閉改成開啟時，原生端會用系統的對話框再確認一次的開關（使用者拒絕時存成關閉）。 */
+const CONFIRMED_SWITCHES = ["aiEnabled", "gitEnabled", "adoEnabled", "remoteEnabled"] as const;
+
 export class SettingsStore {
   #value: Settings;
   #listeners = new Set<Listener>();
@@ -479,11 +514,21 @@ export class SettingsStore {
   #persist(): void {
     const json = JSON.stringify(this.#value, null, 2);
     if (desktop) {
-      this.#saving = desktop
+      const d = desktop;
+      this.#saving = d
         .saveSettings(json)
-        .then((accepted) => {
-          // 使用者在系統的確認對話框拒絕啟用 AI 協作：開關改回關閉。
-          if (accepted === false && this.#value.aiEnabled) this.update({ aiEnabled: false });
+        .then(async (accepted) => {
+          if (accepted !== false) return;
+          // 使用者在系統的確認對話框拒絕啟用 AI 協作或重新開啟整合功能：原生端存成關閉，開關跟著改回去。
+          let stored: Record<string, unknown> = { aiEnabled: false };
+          try {
+            stored = JSON.parse((await d.loadSettings()) ?? "{}") as Record<string, unknown>;
+          } catch {
+            // 讀不到時至少把 AI 協作改回關閉（和原生端一樣）。
+          }
+          const patch: Partial<Settings> = {};
+          for (const key of CONFIRMED_SWITCHES) if (this.#value[key] && stored[key] === false) patch[key] = false;
+          this.update(patch);
         })
         .catch((e) => console.error("儲存設定失敗", e)); // i18n-ignore（開發者主控台）
     }

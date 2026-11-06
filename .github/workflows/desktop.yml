@@ -200,7 +200,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     needs: [version, windows]
     runs-on: ubuntu-latest
-    # 簽章私鑰（UPDATE_SIGNING_KEY）放在 release 環境：只有這個工作拿得到，
+    # 簽章私鑰（新金鑰 UPDATE_SIGNING_KEY_2；換金鑰的過渡期間還有舊金鑰 UPDATE_SIGNING_KEY）放在 release 環境：只有這個工作拿得到，
     # 環境可以限定只有 main 能用、要有人核准才開始（Settings → Environments → release）。
     environment: release
     permissions:
@@ -255,8 +255,11 @@ jobs:
           mkdir -p tagged
           jq --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/v${version}/omarker.exe" '.url = $url' \
             version.json > tagged/version.json
+      # 新金鑰一定要有，而且要和程式內建的公鑰是一對（對不上時這一步失敗，不會發佈）；
+      # 舊金鑰還在時另外簽一次，讓還沒換金鑰的舊版本照常更新上來（見 scripts/sign-update.mjs）。
       - name: 簽章（程式只接受用正式私鑰簽過的更新）
         env:
+          UPDATE_SIGNING_KEY_2: ${{ secrets.UPDATE_SIGNING_KEY_2 }}
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           node scripts/sign-update.mjs version.json

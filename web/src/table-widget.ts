@@ -3,7 +3,10 @@
  * Tab／Shift+Tab 移到下一格或上一格（最後一格按 Tab 新增一列）、Enter 移到下一列、Esc 存好並離開表格。
  * 滑鼠移到表格上時，右上角出現新增／刪除列與欄、對齊、顯示原始碼的按鈕。
  * 每次修改都改寫整個表格的 Markdown，再交給核心依中文字寬對齊。
+ * 搜尋列開著時，儲存格裡符合的文字和編輯器其他地方一樣標色（表格是畫出來的，編輯器自己的標色碰不到）。
  */
+import type { SearchQuery } from "@codemirror/search";
+import { Text } from "@codemirror/state";
 import { type EditorView, WidgetType } from "@codemirror/view";
 import { t } from "./i18n.ts";
 import {
@@ -32,19 +35,24 @@ export class EditableTableWidget extends WidgetType {
   readonly markdown: string;
   readonly render: (markdown: string) => string;
   readonly format: (markdown: string) => string | undefined;
+  /** 搜尋列開著時要標色的搜尋條件（沒開或沒有輸入時是 null）。 */
+  readonly search: SearchQuery | null;
   constructor(
     markdown: string,
     render: (markdown: string) => string,
     format: (markdown: string) => string | undefined,
+    search: SearchQuery | null = null,
   ) {
     super();
     this.markdown = markdown;
     this.render = render;
     this.format = format;
+    this.search = search;
   }
 
   eq(other: EditableTableWidget): boolean {
-    return other.markdown === this.markdown;
+    const sameSearch = this.search && other.search ? this.search.eq(other.search) : this.search === other.search;
+    return other.markdown === this.markdown && sameSearch;
   }
 
   ignoreEvent(): boolean {
@@ -57,6 +65,7 @@ export class EditableTableWidget extends WidgetType {
     wrap.innerHTML = this.render(this.markdown);
     const table = wrap.querySelector("table");
     if (!table) return wrap;
+    if (this.search) markSearchMatches(table, this.search);
     const cells = [...table.rows].map((tr, row) =>
       [...tr.cells].map((td, col) => {
         td.dataset.row = String(row);
@@ -291,5 +300,32 @@ export class EditableTableWidget extends WidgetType {
       if (target) start(target);
     });
     return wrap;
+  }
+}
+
+/**
+ * 把表格裡符合搜尋條件的文字包成 `.cm-searchMatch`（和編輯器其他地方的標色同一個樣式）。
+ * 一段一段文字分開找，跨越格式（例如一半粗體）的符合文字不標色。
+ */
+export function markSearchMatches(root: HTMLElement, query: SearchQuery): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: globalThis.Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as globalThis.Text);
+  for (const node of nodes) {
+    if (!node.data.trim()) continue;
+    const ranges: [number, number][] = [];
+    const cursor = query.getCursor(Text.of(node.data.split("\n")));
+    for (let m = cursor.next(); !m.done; m = cursor.next()) {
+      if (m.value.to > m.value.from) ranges.push([m.value.from, m.value.to]);
+    }
+    // 從後面往前包，前面的位置才不會跑掉。
+    for (const [from, to] of ranges.reverse()) {
+      const match = node.splitText(from);
+      match.splitText(to - from);
+      const span = document.createElement("span");
+      span.className = "cm-searchMatch";
+      match.replaceWith(span);
+      span.append(match);
+    }
   }
 }

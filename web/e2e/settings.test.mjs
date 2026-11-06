@@ -101,6 +101,44 @@ test("設定（桌面版）：Git 與 GitHub 同一頁、Azure DevOps 一行排�
   await context.close();
 });
 
+test("設定（桌面版）：Azure DevOps 的預設專案與團隊（設定 COMET 時先選這個）", async () => {
+  const { page, context, errors } = await open({
+    desktop: {
+      ado_account: { url: "https://ado.test/c", name: "王小明", account: "CONTOSO\\wang" },
+      ado_work_item_filters: { projects: ["產品", "Contoso"], kinds: [] },
+      ado_teams: { $by: "project", values: { 產品: [{ id: "t1", name: "產品團隊", default: true }, { id: "t2", name: "平台組", default: false }], Contoso: [] } },
+    },
+  });
+  await desktopCommand(page, "設定");
+  await page.click("dialog[open] [role=tab]:has-text('Azure DevOps')");
+  const section = page.locator("dialog[open] section:not([hidden])");
+  await section.locator(".settings-group-title", { hasText: "COMET 設定" }).waitFor();
+  const project = page.locator("#setting-ado-default-project");
+  const team = page.locator("#setting-ado-default-team");
+  await page.waitForFunction(() => document.querySelectorAll("#setting-ado-default-project option").length === 3);
+  assert.deepEqual(await project.locator("option").allTextContents(), ["不指定（用上次選的）", "產品", "Contoso"]);
+  assert.equal(await project.inputValue(), "");
+  // 沒指定專案時不能選團隊。
+  assert.equal(await team.isDisabled(), true);
+  await project.selectOption("產品");
+  await page.waitForFunction(() => document.querySelectorAll("#setting-ado-default-team option").length === 3);
+  assert.deepEqual(await team.locator("option").allTextContents(), ["專案的預設團隊", "產品團隊（預設）", "平台組"]);
+  assert.equal(await team.isDisabled(), false);
+  await team.selectOption("平台組");
+  await page.waitForFunction(() =>
+    window.__fake.calls.some((c) => {
+      if (c.cmd !== "save_settings") return false;
+      const s = JSON.parse(c.args.json);
+      return s.adoDefaultProject === "產品" && s.adoDefaultTeam === "平台組";
+    }),
+  );
+  // 換專案：團隊回到「專案的預設團隊」。
+  await project.selectOption("Contoso");
+  await page.waitForFunction(() => document.querySelector("#setting-ado-default-team").value === "");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("設定（桌面版）：在設定連上 Azure DevOps 後，才出現工作項目的通知與類型顏色", async () => {
   const { page, context, errors } = await open({
     desktop: { ado_connect: { url: "https://ado.test/c", name: "王小明" } },
@@ -120,6 +158,44 @@ test("設定（桌面版）：在設定連上 Azure DevOps 後，才出現工作
   await page.fill("dialog[open] .settings-search", "權杖");
   await page.fill("dialog[open] .settings-search", "");
   assert.ok(!(await visibleLabels(page)).includes("伺服器網址"));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("設定（桌面版）：換 Azure DevOps 伺服器時在系統的確認對話框選「否」，不顯示錯誤，欄位留著", async () => {
+  // 假的原生端回傳 null：使用者選了「否」，原本的連線不變。
+  const { page, context, errors } = await open({ desktop: { ado_connect: null } });
+  await desktopCommand(page, "設定");
+  await page.click("dialog[open] [role=tab]:has-text('Azure DevOps')");
+  await page.fill("#setting-ado-url", "https://ado.test/c");
+  await page.fill("#setting-ado-pat", "token");
+  await page.click("#setting-ado-connect");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_connect"));
+  await page.waitForFunction(() => !document.querySelector("#setting-ado-connect").disabled);
+  assert.equal(await page.locator(".toast-error").count(), 0);
+  assert.equal(await page.locator(".toast", { hasText: "已連線到 Azure DevOps" }).count(), 0);
+  assert.equal(await page.inputValue("#setting-ado-pat"), "token");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("設定（桌面版）：在系統的確認對話框拒絕開啟 AI 協作，開關跟著原生端存下的值改回關閉", async () => {
+  // 假的原生端：存設定回傳 false（使用者選了「否」），之後讀到的設定是原生端存下的關閉。
+  const { page, context, errors } = await open({
+    desktop: { save_settings: false, load_settings: [null, JSON.stringify({ aiEnabled: false })] },
+  });
+  await desktopCommand(page, "設定");
+  await page.click("dialog[open] [role=tab]:has-text('AI 協作')");
+  await page.locator("dialog[open] input[data-key=aiEnabled]").click();
+  await page.waitForFunction(() =>
+    window.__fake.calls.some((c) => c.cmd === "save_settings" && JSON.parse(c.args.json).aiEnabled === true),
+  );
+  await page.waitForFunction(() => !document.querySelector("dialog[open] input[data-key=aiEnabled]").checked);
+  // 改回關閉後又存一次（原生端已經是關閉，不會再問）。
+  await page.waitForFunction(() => {
+    const saves = window.__fake.calls.filter((c) => c.cmd === "save_settings");
+    return saves.length >= 2 && JSON.parse(saves.at(-1).args.json).aiEnabled === false;
+  });
   assert.deepEqual(errors, []);
   await context.close();
 });

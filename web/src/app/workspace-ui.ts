@@ -15,8 +15,9 @@ import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import type { TreeAction } from "../ui/filetree.ts";
 import { cometBadge } from "../ui/comet-badge.ts";
+import { projectLabel } from "../start-page.ts";
 import { icon } from "../ui/icons.ts";
-import { SshDialog, confirmHostKey } from "../ui/ssh-dialog.ts";
+import { HOSTKEY_DECLINED, SshDialog, jumpPasswordHost } from "../ui/ssh-dialog.ts";
 import { TagsPanel } from "../ui/tags-panel.ts";
 import { TasksPanel } from "../ui/tasks-panel.ts";
 import { toast } from "../ui/toast.ts";
@@ -29,6 +30,7 @@ import { searchPanel } from "./git-history.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { wikiPanel, workItemsPanel, issuesPanel, renderIssuesTab } from "./work-items-panel.ts";
 import type { Doc, SidePanel } from "../main.ts";
+import { renderFilesHeadPins } from "./pin-commands.ts";
 import { app } from "./context.ts";
 import { boardPanelShown } from "./taskboard.ts";
 import { repoNoteEl } from "./repo-sources.ts";
@@ -36,6 +38,7 @@ import { docName } from "./doc-names.ts";
 import { renameFileShortcuts } from "./file-shortcuts.ts";
 import { setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
 import { showFilters } from "./filter-collapse.ts";
+import { cometChangeWarning, refreshCometGuards } from "./comet-files.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -103,7 +106,7 @@ export function openTag(tag: string): void {
 let backlinksSeq = 0;
 /** 大綱面板下方的反向連結：哪些文件連到目前的文件。 */
 async function renderBacklinks(): Promise<void> {
-  const el = app.$("#backlinks");
+  const el = app.$("section#backlinks");
   const path = app.cur.fileHandle?.path;
   const seq = ++backlinksSeq;
   if (!path || app.cur.kind !== "markdown" || indexScope() !== "folder") {
@@ -224,10 +227,13 @@ export function setRightOutline(shown: boolean): void {
   }
 }
 
-/** 依設定把大綱面板移到右邊或放回左邊的側邊欄。 */
+/**
+ * 依設定把大綱面板移到右邊或放回左邊的側邊欄。
+ * 面板連標籤名稱一起找：文件標題也有 id（`# Outline Right` 是 `outline-right`），只用 id 會找到預覽裡的標題。
+ */
 export function placeOutline(): void {
-  const panel = app.$("#panel-outline");
-  const right = app.$("#outline-right");
+  const panel = app.$("section#panel-outline");
+  const right = app.$("aside#outline-right");
   const onRight = outlinePlacedRight();
   const outlineTab = app.$<HTMLButtonElement>("#side-tab-outline");
   if (onRight && panel.parentElement !== right) {
@@ -250,13 +256,14 @@ export function placeOutline(): void {
 
 /** 依設定把 Wiki 面板移到右側欄或放回左邊的側邊欄。 */
 function placeWiki(right: HTMLElement): void {
-  const panel = app.$("#panel-wiki");
+  const panel = app.$("section#panel-wiki");
   const tab = app.$("#side-tab-wiki");
   const onRight = wikiPlacedRight();
   if (onRight && panel.parentElement !== right) {
     right.append(panel);
     panel.hidden = false;
-    // 圖示列的 Wiki 圖示留著（按一下顯示或隱藏右側欄）；標出它在右側（不用 hidden：連線狀態也用它）。
+    // 標出 Wiki 在右側（不用 hidden：連線狀態也用它）：右側欄開著時圖示列不顯示 Wiki 的圖示，
+    // 右側欄收起來時才顯示，按一下打開右側欄（見 styles.css 的 `.placed-right`）。
     tab.classList.add("placed-right");
     if (app.sidePanel === "wiki") showPanel("workitems", false);
     if (app.rightOutlineShown) wikiPanel?.shown();
@@ -357,17 +364,40 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
 /** 沒開資料夾時，檔案面板列出幾個專案（側邊欄比起始頁有空間，列得比較多）。 */
 const FILES_PANEL_PROJECTS = 10;
 
+/** 遠端連線的位置：主機與路徑（例如 `ssh.test › home › me`）；網址看不懂時照原樣。 */
+function remoteWhere(url: string): string {
+  try {
+    const u = new URL(url);
+    return [u.host, ...decodeURIComponent(u.pathname).split("/").filter(Boolean)].join(" › ");
+  } catch {
+    return url;
+  }
+}
+
+/** 檔案面板的一列：左邊的標示、名稱（後面可以接小標籤），下面一行淡色的位置。 */
+function filesRow(mark: Element, name: string, where: string, title: string, run: () => void, badges: Element[] = []): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.title = title;
+  const line = Object.assign(document.createElement("span"), { className: "files-row-name" });
+  line.append(Object.assign(document.createElement("span"), { textContent: name }), ...badges);
+  b.append(mark, line, Object.assign(document.createElement("small"), { className: "files-row-where", textContent: where }));
+  b.addEventListener("click", run);
+  return b;
+}
+
 /**
- * 沒有開啟資料夾時，檔案面板顯示說明、開啟按鈕與「專案」：和起始頁同一份清單、同樣的順序（最近開啟的在前），
- * 用自訂的名稱與顏色；後面是記住的遠端連線與「全部專案…」。
+ * 沒有開啟資料夾時的檔案面板：最上面是最近的專案（和起始頁同一份清單、同樣的順序，用自訂的名稱與顏色，
+ * 下面一行是位置；記住的遠端連線也列在這裡），接著是「開啟資料夾…」「新專案…」，最後是其他方式
+ * （下載儲存庫、連線到遠端資料夾）。還沒有專案時，最上面改成一句說明。
  */
 export async function renderFilesEmpty(): Promise<void> {
   const box = app.$("#files-empty");
   app.$("#files-head").hidden = !app.workspaceRoot;
   box.hidden = !!app.workspaceRoot;
   if (app.workspaceRoot) return;
-  const p = document.createElement("p");
   if (!desktop) {
+    const p = document.createElement("p");
     p.textContent = t("開啟資料夾、管理檔案與搜尋整個資料夾需要桌面版（Windows，免安裝）。");
     const a = Object.assign(document.createElement("a"), {
       className: "btn",
@@ -377,88 +407,103 @@ export async function renderFilesEmpty(): Promise<void> {
     box.replaceChildren(p, a);
     return;
   }
-  p.textContent = t("開啟一個資料夾，就能在這裡瀏覽、新增、重新命名檔案，也能搜尋整個資料夾的內容。");
-  const open = document.createElement("button");
-  open.type = "button";
-  open.className = "btn";
-  open.append(icon("folder-open"), t("開啟資料夾"));
-  open.addEventListener("click", () => void commands.run("open-folder").catch(reportError));
-  const remote = document.createElement("button");
-  remote.type = "button";
-  remote.className = "btn";
-  remote.append(icon("cloud"), t("連線到 WebDAV"));
-  remote.addEventListener("click", () => void commands.run("connect-webdav").catch(reportError));
-  const ssh = document.createElement("button");
-  ssh.type = "button";
-  ssh.className = "btn";
-  ssh.append(icon("server"), t("用 SSH 連線"));
-  ssh.addEventListener("click", () => void commands.run("connect-ssh").catch(reportError));
-  const actions = document.createElement("div");
-  actions.className = "side-buttons";
-  actions.append(open);
+  const command = (id: string) => () => void commands.run(id).catch(reportError);
+  const button = (iconName: string, label: string, id: string, primary = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = primary ? "btn btn-primary" : "btn";
+    b.append(icon(iconName), label);
+    b.addEventListener("click", command(id));
+    return b;
+  };
+  // 專案清單讀到之前先空著（讀得很快），免得說明一閃而過。
+  const top = Object.assign(document.createElement("div"), { className: "files-projects" });
+  const main = document.createElement("div");
+  main.className = "files-main";
+  main.append(button("folder-open", t("開啟資料夾…"), "open-folder", true), button("folder-plus", t("新專案…"), "new-project"));
+  const other = document.createElement("ul");
+  other.className = "files-other";
   for (const source of app.projectUi!.repoSources()) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "btn";
-    // 側邊欄窄：狀態（還沒登入、帳號）放在名稱下面一行，名稱才不會被擠成兩行。
+    // 狀態（還沒登入、帳號）放在名稱下面一行，和上面的專案一樣。
     const label = Object.assign(document.createElement("span"), { className: "repo-label" });
     label.append(Object.assign(document.createElement("span"), { textContent: source.title.replace(/…$/, "") }), repoNoteEl(source));
     b.append(icon(source.icon), label);
     b.addEventListener("click", () => source.run());
-    actions.append(b);
+    const li = document.createElement("li");
+    li.append(b);
+    other.append(li);
   }
-  if (app.features.remote) actions.append(remote, ssh);
-  box.replaceChildren(p, actions);
+  if (app.features.remote) {
+    for (const [iconName, label, id] of [
+      ["cloud", t("連線到 WebDAV"), "connect-webdav"],
+      ["server", t("用 SSH 連線"), "connect-ssh"],
+    ] as const) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.append(icon(iconName), label);
+      b.addEventListener("click", command(id));
+      const li = document.createElement("li");
+      li.append(b);
+      other.append(li);
+    }
+  }
+  const otherHead = document.createElement("h3");
+  otherHead.textContent = t("其他方式");
+  box.replaceChildren(top, main, ...(other.children.length ? [otherHead, other] : []));
+
   const [projects, conns] = await Promise.all([
     app.projectUi!.refresh(),
     app.features.remote ? desktop.davConnections().catch(() => []) : [],
   ]);
+  if (app.workspaceRoot || !top.isConnected) return;
   const folders = projects.slice(0, FILES_PANEL_PROJECTS);
-  if ((!folders.length && !conns.length) || app.workspaceRoot) return;
+  if (!folders.length && !conns.length) {
+    const p = document.createElement("p");
+    p.textContent = t("開啟一個資料夾，就能在這裡瀏覽、新增、重新命名檔案，也能搜尋整個資料夾的內容。");
+    top.replaceChildren(p);
+    return;
+  }
+  const head = document.createElement("div");
+  head.className = "files-projects-head";
   const h = document.createElement("h3");
-  h.textContent = t("專案");
-  const list = document.createElement("ul");
-  list.className = "recent-list";
-  const add = (mark: Element, label: string, title: string, run: () => void, forget?: () => void, comet = false) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.title = title;
-    b.append(mark, Object.assign(document.createElement("span"), { textContent: label }), ...(comet ? [cometBadge()] : []));
-    b.addEventListener("click", run);
-    const li = document.createElement("li");
-    li.append(b);
-    if (forget) {
-      const x = document.createElement("button");
-      x.type = "button";
-      x.className = "recent-forget";
-      x.title = t("從清單移除（也會刪除記住的密碼）");
-      x.setAttribute("aria-label", t("移除「{name}」", { name: label }));
-      x.append(icon("x"));
-      x.addEventListener("click", forget);
-      li.append(x);
-    }
-    list.append(li);
-  };
-  for (const p of folders) {
-    const dot = Object.assign(document.createElement("span"), { className: "project-dot" });
-    if (p.color) dot.dataset.color = p.color;
-    add(dot, p.label, displayPath(p.path), () => void openRecentFolder(p.path), undefined, p.comet);
-  }
-  for (const c of conns) {
-    const where = c.kind === "ssh" ? c.url : t("{url}（{user}）", { url: c.url, user: c.username });
-    add(icon(c.kind === "ssh" ? "server" : "cloud"), c.name, where, () => void openRemote(c), () =>
-      void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError),
-    );
-  }
-  box.append(h, list);
+  h.textContent = t("最近的專案");
+  head.append(h);
   if (projects.length) {
     const more = document.createElement("button");
     more.type = "button";
-    more.className = "btn";
-    more.append(icon("layout-dashboard"), t("全部專案…"));
-    more.addEventListener("click", () => void commands.run("project-overview").catch(reportError));
-    box.append(more);
+    more.className = "files-all-projects";
+    more.append(t("全部專案"), icon("chevron-right"));
+    more.title = t("全部專案…");
+    more.addEventListener("click", command("project-overview"));
+    head.append(more);
   }
+  const list = document.createElement("ul");
+  list.className = "recent-list files-project-list";
+  for (const p of folders) {
+    const dot = Object.assign(document.createElement("span"), { className: "project-dot" });
+    if (p.color) dot.dataset.color = p.color;
+    const { name, where } = projectLabel(p.path, p.label);
+    const li = document.createElement("li");
+    li.append(filesRow(dot, name, where, displayPath(p.path), () => void openRecentFolder(p.path), p.comet ? [cometBadge()] : []));
+    list.append(li);
+  }
+  for (const c of conns) {
+    const title = c.kind === "ssh" ? c.url : t("{url}（{user}）", { url: c.url, user: c.username });
+    const badge = Object.assign(document.createElement("span"), { className: "files-kind-badge", textContent: c.kind === "ssh" ? "SSH" : "WebDAV" });
+    const li = document.createElement("li");
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "recent-forget";
+    x.title = t("從清單移除（也會刪除記住的密碼）");
+    x.setAttribute("aria-label", t("移除「{name}」", { name: c.name }));
+    x.append(icon("x"));
+    x.addEventListener("click", () => void desktop!.davForget(c.id).then(renderFilesEmpty).catch(reportError));
+    li.append(filesRow(icon(c.kind === "ssh" ? "server" : "cloud"), c.name, remoteWhere(c.url), title, () => void openRemote(c), [badge]), x);
+    list.append(li);
+  }
+  top.replaceChildren(head, list);
 }
 
 export const davDialog = desktop ? new WebDavDialog(desktop) : null;
@@ -483,27 +528,20 @@ export async function suggestReconnect(path: string, message: (name: string) => 
 export async function openRemote(c: Pick<DavConnection, "id" | "kind" | "name" | "url" | "username">): Promise<void> {
   if (!desktop || !davDialog || !sshDialog) return;
   const root = remoteRoot(c);
-  let folder: Folder | null = null;
-  let trust: string | undefined;
-  for (;;) {
-    try {
-      folder = await desktop.reopenFolder(root, undefined, undefined, trust);
-    } catch (e) {
-      const message = String(e instanceof Error ? e.message : e);
-      if (message.startsWith("HOSTKEY_UNKNOWN") && !trust) {
-        // 主機金鑰不在 known_hosts 裡（例如被刪掉了）：再確認一次。
-        const fp = await confirmHostKey(message, c.url);
-        if (!fp) return;
-        trust = fp;
-        continue;
-      }
-      if (message !== "NEED_PASSWORD") throw e;
-      folder =
-        c.kind === "ssh"
-          ? await sshDialog.open({ passwordOnly: true, host: c.url, username: c.username, root, name: c.name })
-          : await davDialog.open({ passwordOnly: true, url: c.url, username: c.username, id: c.id });
-    }
-    break;
+  let folder: Folder | null;
+  try {
+    // SSH 主機金鑰不在 known_hosts 裡（例如被刪掉了）時，原生端用系統的對話框再確認一次。
+    folder = await desktop.reopenFolder(root);
+  } catch (e) {
+    const message = String(e instanceof Error ? e.message : e);
+    // 使用者在系統的對話框沒有信任主機金鑰。
+    if (message === HOSTKEY_DECLINED) return;
+    const jump = jumpPasswordHost(message);
+    if (message !== "NEED_PASSWORD" && jump === null) throw e;
+    folder =
+      c.kind === "ssh"
+        ? await sshDialog.open({ passwordOnly: true, host: c.url, username: c.username, root, name: c.name, jump: jump ?? undefined })
+        : await davDialog.open({ passwordOnly: true, url: c.url, username: c.username, id: c.id });
   }
   if (!folder) return;
   await setWorkspace(folder);
@@ -520,6 +558,8 @@ export async function setWorkspace(folder: Folder | null): Promise<void> {
   if (folder) storage.save("workspace", folder.path);
   else storage.remove("workspace");
   await app.renderProjectName();
+  refreshCometGuards(); // 讀到專案清單後才知道是不是 COMET 專案：開著的設定檔跟著鎖上
+  renderFilesHeadPins(); // 跟著專案：提示裡的專案名稱、能不能用（例如遠端資料夾不能在 Codex 開啟）
   await app.fileTree?.setRoot(folder?.path ?? null, folder?.name, folder ? loadProjectView(folder.path).expanded : []);
   app.treeActive = app.cur.fileHandle?.path ?? null;
   await app.fileTree?.setActive(app.treeActive);
@@ -646,6 +686,15 @@ function pickAndUpload(dir: string): void {
 export async function renameEntry(entry: Entry, name: string): Promise<void> {
   const d = desktop;
   if (!d) return;
+  // COMET 的檔案（例如 AGENTS.md、docs/spec）：改名前多問一次。
+  const comet = cometChangeWarning(entry.path, "rename");
+  if (comet) {
+    const choice = await choose(t("要改名 COMET 的檔案嗎？"), comet, [
+      { id: "rename", label: t("仍要改名"), danger: true },
+      { id: "cancel", label: t("取消"), primary: true },
+    ]);
+    if (choice !== "rename") return;
+  }
   const parent = dirname(entry.path);
   // 改名前記下各文件的連結，改名後才知道哪些要更新。
   const local = !isRemote(entry.path) && !!app.workspaceRoot;
@@ -665,6 +714,7 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
   ({ name: app.cur.fileName, handle: app.cur.fileHandle } = app.active);
   // 左側圖示列上的檔案捷徑也換到新路徑。
   renameFileShortcuts(entry.path, to);
+  refreshCometGuards();
   app.fileListCache = null;
   app.persistSession();
   app.renderSaveState();
@@ -721,15 +771,22 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
       const note = affected.some((doc) => doc.dirty) ? t("已開啟的分頁會保留內容，但有尚未存檔的變更。") : "";
       // 遠端資料夾沒有資源回收筒：講清楚是永久刪除。
       const remote = isRemote(entry.path);
+      // COMET 的檔案：說明會動到哪些，按鈕改成「仍要…」，預設是取消。
+      const comet = cometChangeWarning(entry.path, "trash");
       const choice = remote
         ? await choose(t("永久刪除？"), t("要刪除{what}嗎？遠端資料夾沒有資源回收筒，刪除後無法復原。{note}", { what, note }), [
             { id: "trash", label: t("永久刪除"), danger: true },
             { id: "cancel", label: t("取消"), primary: true },
           ])
-        : await choose(t("移到資源回收筒？"), t("要把{what}移到資源回收筒嗎？之後可以從資源回收筒還原。{note}", { what, note }), [
-            { id: "trash", label: t("移到資源回收筒"), danger: true },
-            { id: "cancel", label: t("取消") },
-          ]);
+        : comet
+          ? await choose(t("要刪除 COMET 的檔案嗎？"), comet + t("要把{what}移到資源回收筒嗎？之後可以從資源回收筒還原。{note}", { what, note }), [
+              { id: "trash", label: t("仍要移到資源回收筒"), danger: true },
+              { id: "cancel", label: t("取消"), primary: true },
+            ])
+          : await choose(t("移到資源回收筒？"), t("要把{what}移到資源回收筒嗎？之後可以從資源回收筒還原。{note}", { what, note }), [
+              { id: "trash", label: t("移到資源回收筒"), danger: true },
+              { id: "cancel", label: t("取消") },
+            ]);
       if (choice !== "trash") return;
       await d.trashEntry(entry.path);
       for (const doc of affected) doc.missing = true;
@@ -822,7 +879,8 @@ export function initWorkspaceUi(): void {
   app.$(".activity-tabs").addEventListener("keydown", (e) => {
     // 依畫面上的順序（使用者可以調整），略過隱藏的圖示。
     const tabs = [...app.$(".activity-tabs").querySelectorAll<HTMLButtonElement>("[role=tab]")].filter(
-      (t) => !t.hidden && !t.classList.contains("user-hidden"),
+      // 畫面上看不到的也略過（Wiki 在右側欄、右側欄開著時，Wiki 的圖示不顯示）。
+      (t) => !t.hidden && !t.classList.contains("user-hidden") && t.getClientRects().length > 0,
     );
     const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
     if (i < 0 || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;

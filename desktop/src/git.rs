@@ -233,11 +233,10 @@ pub(crate) fn open(dir: &Path) -> Result<Repository, String> {
     Ok(repo)
 }
 
-/// 網路位置（UNC 路徑，或 `//主機/…`）。
+/// 網路位置：UNC 路徑（`\\主機\…`、`//主機/…`、`\/主機/…`、`\\?\UNC\…`）、裝置路徑，
+/// 或 Windows 對應的網路磁碟機。只看字串，不碰檔案系統（見 [`crate::lexical::looks_remote`]）。
 fn looks_remote(path: &str) -> bool {
-    path.starts_with("\\\\")
-        || path.starts_with("//")
-        || crate::io::is_network_path(Path::new(path))
+    crate::lexical::looks_remote(path) || crate::io::is_network_path(Path::new(path))
 }
 
 pub(crate) fn workdir(repo: &Repository) -> Result<PathBuf, String> {
@@ -332,6 +331,12 @@ fn origin_url(repo: &Repository) -> Option<String> {
         .url()
         .ok()
         .map(str::to_string)
+}
+
+/// `dir` 所在儲存庫的遠端 origin（和 `publish_at` 找的是同一個儲存庫）；
+/// 不是儲存庫或沒有 origin 時是 None。
+pub fn origin_at(dir: &Path) -> Option<String> {
+    origin_url(&open(dir).ok()?)
 }
 
 pub fn status_at(dir: &Path) -> Status {
@@ -516,6 +521,8 @@ impl<'a> Session<'a> {
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(self.callbacks());
         fo.proxy_options(proxy(url));
+        // 不跟著轉址到其他網站：轉址後 libgit2 給認證回呼的還是原本的網址，會把權杖送到轉址後的網站。
+        fo.follow_redirects(git2::RemoteRedirect::None);
         fo
     }
 
@@ -783,6 +790,7 @@ pub fn push_at(dir: &Path, auth: &Auth) -> Result<String, String> {
     let mut po = PushOptions::new();
     po.remote_callbacks(cb);
     po.proxy_options(proxy(&url));
+    po.follow_redirects(git2::RemoteRedirect::None); // 理由見 Session::fetch_options
     let behind = tr!("遠端有你還沒拉取的提交，請先拉取再推送");
     repo.find_remote(&remote_name)
         .map_err(err)?

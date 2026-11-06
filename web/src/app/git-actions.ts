@@ -17,7 +17,7 @@ import { openWikiHistory, openWikiRecent } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
 import { adoNote, githubNote } from "./repo-sources.ts";
-import { gitPanel, showAdo } from "./work-item-updates.ts";
+import { gitPanel, publishToAdo, showAdo } from "./work-item-updates.ts";
 import { issuesRepo, wikiPanel } from "./work-items-panel.ts";
 import { selectAll, indentMore, indentLess } from "@codemirror/commands";
 import { app } from "./context.ts";
@@ -161,6 +161,8 @@ async function publishPages(): Promise<void> {
   try {
     const url = await desktop.githubPages();
     wait.dismiss();
+    // 在系統的確認對話框選了「否」。
+    if (!url) return;
     toast(t("網站網址：{url}（之後推送就會自動更新）", { url: url.replace(/^https:\/\//, "") }), {
       tone: "success",
       duration: 20000,
@@ -197,6 +199,8 @@ async function shareGist(): Promise<void> {
   try {
     const url = await desktop.githubGist(app.cur.fileName, content, stem(app.cur.fileName), visibility === "public");
     wait.dismiss();
+    // 在系統的確認對話框選了「否」。
+    if (!url) return;
     await navigator.clipboard.writeText(url).catch(() => {});
     toast(t("已分享成 Gist，網址已複製"), {
       tone: "success",
@@ -294,6 +298,14 @@ export function initGitActions(): void {
     ...(
       [
         ["ado-open", t("Azure DevOps：下載儲存庫…"), "briefcase-business", () => app.ado?.openRepo(), () => !!app.ado],
+        [
+          "ado-publish",
+          t("Azure DevOps：把這個資料夾上傳到 Azure DevOps…"),
+          "arrow-up-from-line",
+          () => publishToAdo(),
+          // 推送要用到 Git 整合（app.github 只在 Git 整合開著時建立）。
+          () => !!app.ado && !!app.github && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path),
+        ],
         ["ado-items", t("Azure DevOps：工作項目"), "square-kanban", () => showAdo("workitems"), () => !!app.ado?.account],
         ["ado-wiki", t("Azure DevOps：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!app.ado?.account],
         ["ado-offline", t("Azure DevOps：保留離線的頁面…"), "download", () => keptPicker.open(), () => !!desktop && keptPages.length > 0],
