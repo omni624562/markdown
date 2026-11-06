@@ -75,6 +75,14 @@ test("左側圖示列：只接受合法的 id，去掉重複", () => {
   assert.deepEqual(sanitize({ activityCommands: "x" }).settings.activityCommands, DEFAULTS.activityCommands);
 });
 
+test("檔案面板上方釘的按鈕：預設沒有，只接受合法的 id", () => {
+  assert.deepEqual(sanitize({}).settings.filesHeadCommands, []);
+  const { settings, problems } = sanitize({ filesHeadCommands: ["open-in-codex", 3, "open-in-codex", "open-in-claude"] });
+  assert.deepEqual(settings.filesHeadCommands, ["open-in-codex", "open-in-claude"]);
+  assert.equal(problems, 1);
+  assert.deepEqual(sanitize({ filesHeadCommands: "x" }).settings.filesHeadCommands, []);
+});
+
 test("左側圖示列預設精簡：待辦總覽、標籤收起來；存過「全部顯示」的照舊", () => {
   assert.deepEqual(DEFAULTS.activityHidden, ["tasks", "tags"]);
   assert.deepEqual(sanitize({}).settings.activityHidden, ["tasks", "tags"]);

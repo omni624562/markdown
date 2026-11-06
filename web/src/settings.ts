@@ -126,6 +126,8 @@ export interface Settings {
   activityHidden: string[];
   /** 左側圖示列：釘上去的指令按鈕（指令的 id），例如「Git：顯示歷史」。 */
   activityCommands: string[];
+  /** 「檔案」面板上方（專案名稱旁邊）釘上去的指令按鈕（指令的 id），例如「在 Codex 開啟這個專案」。 */
+  filesHeadCommands: string[];
   /** 自訂的快速鍵：指令 id → 快速鍵（`Mod-Shift-p`）；空字串是拿掉這個指令的快速鍵。沒列到的用內建的。 */
   keybindings: Record<string, string>;
 }
@@ -195,11 +197,14 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   activityHidden: ["tasks", "tags"],
   // 預設不釘指令：Git 歷史在原始碼控制面板的標題列與「⋯」→ Git 選單都有，不用再多一個圖示。
   activityCommands: [],
+  filesHeadCommands: [],
   keybindings: {},
 });
 
 /** 圖示列最多釘幾個指令按鈕。 */
 export const ACTIVITY_LIMIT = 20;
+/** 「檔案」面板上方最多釘幾個按鈕（再多專案名稱就沒位置了）。 */
+export const FILES_HEAD_LIMIT = 3;
 
 /** 圖示列設定的 id（面板或指令）：只接受英數字與連字號。 */
 function idList(v: unknown, limit = ACTIVITY_LIMIT): string[] | null {
@@ -244,6 +249,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     activityOrder: [],
     activityHidden: [...DEFAULTS.activityHidden],
     activityCommands: [...DEFAULTS.activityCommands],
+    filesHeadCommands: [...DEFAULTS.filesHeadCommands],
     workItemColors: {},
     keybindings: {},
   };
@@ -334,9 +340,9 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     if (typeof v === "string" && v.length <= TEMPLATE_LIMITS.name) out.dailyTemplate = v.trim();
     else problems++;
   }
-  for (const key of ["activityOrder", "activityHidden", "activityCommands"] as const) {
+  for (const key of ["activityOrder", "activityHidden", "activityCommands", "filesHeadCommands"] as const) {
     if (!(key in input)) continue;
-    const list = idList(input[key]);
+    const list = idList(input[key], key === "filesHeadCommands" ? FILES_HEAD_LIMIT : ACTIVITY_LIMIT);
     if (list) {
       out[key] = list;
       if (list.length !== (input[key] as unknown[]).length) problems++;

@@ -19,6 +19,8 @@ export interface Command {
   checked?: () => boolean;
   /** 選單與指令面板裡名稱右邊的淡色小字（例如「還沒登入」）；沒有時回傳 undefined。 */
   note?: () => string | undefined;
+  /** 釘上去的按鈕的滑鼠提示（例如「在 Codex 開啟『產品筆記』」）；沒有時用名稱。 */
+  tip?: () => string | undefined;
   run(): void | Promise<void>;
 }
 
