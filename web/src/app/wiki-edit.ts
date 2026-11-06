@@ -36,6 +36,7 @@ import { moveWikiPage } from "./wiki-move.ts";
 import { workItemOpened } from "./work-item-updates.ts";
 import { barShortcuts, toggleWikiShortcut, wikiPanel, workItemsPanel, issuesPanel, markBarShortcuts } from "./work-items-panel.ts";
 import type { Doc } from "../main.ts";
+import { chatgptButton, chatgptIssueHooks } from "./chatgpt.ts";
 import { app } from "./context.ts";
 
 
@@ -251,8 +252,13 @@ export function renderWikiMine(): void {
   );
   const tools = document.createElement("div");
   tools.className = "wiki-mine-tools";
+  const gpt = chatgptButton(
+    () => mine.text,
+    (label, run) => btn(label, "message-square", run),
+  );
   tools.append(
     btn(t("複製我的完整版本"), "copy", () => copy(mine.text)),
+    ...(gpt ? [gpt] : []),
     btn(t("在新分頁開啟"), "file-plus", () => {
       const copyDoc = app.makeDoc({ name: t("{name}（我的版本）.md", { name: pageName(doc.wiki!.path) }), kind: "markdown", baseline: app.hash("") });
       saveDraft(copyDoc.id, mine.text);
@@ -503,6 +509,7 @@ export function initWikiEdit(): void {
         .catch(reportError),
     browse: (url) => openUrl(url),
     follow: (href) => app.openRepoFileLink(href),
+    chatgpt: chatgptIssueHooks,
     copyAsDocument(name, markdown) {
       const doc = app.makeDoc({ name, kind: "markdown", baseline: app.hash("") });
       saveDraft(doc.id, markdown);

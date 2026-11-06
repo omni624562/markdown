@@ -15,6 +15,7 @@ mod i18n;
 mod ado;
 mod ai;
 mod ai_apps;
+mod chatgpt;
 mod comet;
 mod confirm;
 mod dav;
@@ -365,6 +366,7 @@ fn main() {
             ado::ado_disconnect,
             ado::ado_repos,
             ado::ado_clone,
+            ado::ado_publish,
             ado::ado_work_items,
             ado::ado_work_item,
             ado::ado_image,
@@ -431,6 +433,7 @@ fn main() {
             projects::project_delete,
             projects::project_open_codex,
             projects::project_open_claude,
+            chatgpt::chatgpt_send,
             ai_apps::ai_apps_installed,
             projects::project_relocate,
             projects::project_reveal,

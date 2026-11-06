@@ -34,6 +34,8 @@ export interface LookHooks {
 export interface AiHooks {
   available(): Promise<{ claude: string | null; codex: string | null }>;
   copyRegistration(tool: "claude" | "codex"): Promise<void>;
+  /** 這台電腦有沒有 ChatGPT 桌面版（「傳給 ChatGPT」的桌面版選項，見 app/chatgpt.ts）。 */
+  chatgptDesktop?(): boolean;
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
@@ -77,6 +79,11 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
   aiTool: [
     ["claude", "Claude Code"],
     ["codex", "Codex"],
+  ],
+  chatgptSend: [
+    ["off", t("關閉（預設）")],
+    ["desktop", t("ChatGPT 桌面版")],
+    ["web", t("網頁版（chatgpt.com）")],
   ],
   gitSyncMinutes: [
     ["5", t("每 {n} 分鐘", { n: 5 })],
@@ -530,11 +537,20 @@ export class SettingsDialog {
       "sparkles",
       t("使用你自己安裝並登入的 Claude Code 或 Codex。編輯器不會儲存帳號或金鑰；AI 提出的修改一律先標示差異，由你決定是否套用。"),
     );
+    // 傳給 ChatGPT：和上面的 AI 協作無關（不用開啟），網頁版也能用。
+    const chatgpt = this.#group(t("傳給 ChatGPT"), [
+      this.#row(
+        "chatgptSend",
+        t("傳給 ChatGPT"),
+        t("在「複製」旁邊多一項「傳給 ChatGPT」，把選取的文字、Wiki 頁面、工作項目等帶進 ChatGPT 的輸入框，由你按送出。內容會送到 OpenAI（公司以外的服務），公司資料請先確認規定允許。桌面版的方式還沒有官方保證，不能用時請改用網頁版。"),
+        () => this.#control("chatgptSend"),
+      ),
+    ]);
     if (!this.#ai) {
       const p = document.createElement("p");
       p.className = "settings-note";
       p.textContent = t("AI 協作（Claude Code／Codex）需要桌面版。");
-      section.append(p);
+      section.append(p, ...chatgpt);
       return section;
     }
     section.append(
@@ -606,7 +622,7 @@ export class SettingsDialog {
     const hint = document.createElement("p");
     hint.className = "settings-group-hint";
     hint.textContent = t("選取文字後按 Ctrl+J（或按右鍵）執行；提示詞會連同選取的文字一起送出。");
-    section.append(title, hint, this.#actions, add);
+    section.append(title, hint, this.#actions, add, ...chatgpt);
     return section;
   }
 
@@ -657,6 +673,14 @@ export class SettingsDialog {
 
   /** 標出沒有安裝的工具。 */
   async #refreshTools(): Promise<void> {
+    // 「傳給 ChatGPT」的桌面版：偵測到 ChatGPT 桌面版才能選（已經選了的照舊留著）。
+    const gpt = this.#dialog.querySelector<HTMLSelectElement>("select[data-key=chatgptSend]");
+    const desktopOpt = gpt && [...gpt.options].find((o) => o.value === "desktop");
+    if (desktopOpt) {
+      const found = !!this.#ai?.chatgptDesktop?.();
+      desktopOpt.disabled = !found && gpt.value !== "desktop";
+      desktopOpt.textContent = found ? t("ChatGPT 桌面版") : t("ChatGPT 桌面版（未偵測到）");
+    }
     if (!this.#ai) return;
     const sel = this.#dialog.querySelector<HTMLSelectElement>("select[data-key=aiTool]");
     try {

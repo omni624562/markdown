@@ -167,6 +167,13 @@ function retryRemoteLoads(force = false): void {
 export // 在 init 時建立。
 let gitPanel: GitPanel | null;
 
+/** 把目前開啟的本機資料夾上傳到 Azure DevOps，成功後更新原始碼控制面板。 */
+export async function publishToAdo(): Promise<void> {
+  const root = app.workspaceRoot;
+  if (!app.ado || !root) return;
+  if (await app.ado.publish(root.name)) await gitPanel?.refresh();
+}
+
 export function initWorkItemUpdates(): void {
   initOfflineBanner();
   app.commands.register({
@@ -228,6 +235,7 @@ export function initWorkItemUpdates(): void {
           createPr: () => void app.createPullRequest().catch(app.reportError),
           history: () => void openGitHistory().catch(app.reportError),
           openAdo: app.ado ? () => void app.ado!.openRepo() : null,
+          publishAdo: app.ado ? () => void publishToAdo() : null,
           changed: (status) => {
             // 提交、切換分支、拉取之後，開著的 Git 歷史跟著更新。
             const b = status?.branch;

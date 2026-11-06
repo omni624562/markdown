@@ -3434,6 +3434,8 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
       "project-overview",
       "open-in-codex",
       "open-in-claude",
+      "comet-setup-project",
+      "comet-resetup-project",
       "-",
       "open-folder",
       { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },
@@ -3445,7 +3447,7 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
   {
     label: t("Git"),
     icon: "git-branch",
-    items: ["show-git", "git-history", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "-", "git-file-history", "git-open-web", "git-copy-link"],
+    items: ["show-git", "git-history", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "ado-publish", "-", "git-file-history", "git-open-web", "git-copy-link"],
   },
   "-",
   {

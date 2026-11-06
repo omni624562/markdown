@@ -71,6 +71,8 @@ export interface GitPanelHooks {
   history(): void;
   /** 從 Azure DevOps 下載儲存庫（有這個功能時）。 */
   openAdo: (() => void) | null;
+  /** 把目前的資料夾上傳到 Azure DevOps（有這個功能時）。 */
+  publishAdo: (() => void) | null;
   /** 儲存庫狀態改變（更新活動列圖示的變更數）。沒有開啟資料夾時是 null。 */
   changed(status: GitStatus | null): void;
 }
@@ -409,7 +411,10 @@ export class GitPanel {
       text.textContent = t("上傳到 GitHub 之後，可以在其他電腦下載同一個資料夾，每次的修改都會留下紀錄，也可以自動同步。不需要安裝 Git。");
       const publish = this.#button(t("上傳到 GitHub"), "arrow-up-from-line", () => this.#github.publish());
       publish.classList.add("btn-primary");
-      actions.append(publish, open);
+      actions.append(publish);
+      const toAdo = this.#hooks.publishAdo;
+      if (toAdo) actions.append(this.#button(t("上傳到 Azure DevOps…"), "briefcase-business", async () => toAdo()));
+      actions.append(open);
     } else {
       title.textContent = t("用 GitHub 同步你的筆記");
       text.textContent = t("從 GitHub 下載儲存庫到電腦，編輯後一鍵同步；或先開啟資料夾，再上傳到 GitHub。不需要安裝 Git。");
@@ -446,10 +451,14 @@ export class GitPanel {
     if (!s.remote) {
       const box = document.createElement("div");
       box.className = "git-hint";
+      const toAdo = this.#hooks.publishAdo;
       box.append(
-        Object.assign(document.createElement("span"), { textContent: t("這個儲存庫還沒有連到 GitHub。") }),
+        Object.assign(document.createElement("span"), {
+          textContent: toAdo ? t("這個儲存庫還沒有連到 GitHub 或 Azure DevOps。") : t("這個儲存庫還沒有連到 GitHub。"),
+        }),
         this.#button(t("上傳到 GitHub"), "arrow-up-from-line", () => this.#github.publish()),
       );
+      if (toAdo) box.append(this.#button(t("上傳到 Azure DevOps…"), "briefcase-business", async () => toAdo()));
       return box;
     }
     if (this.#needsSignIn(s)) {
