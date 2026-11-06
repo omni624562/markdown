@@ -42,6 +42,11 @@ jobs:
             echo "::error::v${version} 沒有附上更新資訊（version.json），可能是這個功能加入之前發佈的版本"
             exit 1
           fi
+          # 換簽章金鑰之前的版本沒有新金鑰的簽章，換金鑰之後的程式不接受，不能設為穩定版。
+          if [ -z "$(jq -r '.signatureKey2 // empty' version.json)" ]; then
+            echo "::error::v${version} 是換簽章金鑰之前的版本，新版程式不接受它的更新資訊，請選之後的版本"
+            exit 1
+          fi
           # 確認更新資訊和執行檔對得上（網址指向這一版、檢查碼相同）。
           test "$(jq -r .url version.json)" = "https://github.com/$GITHUB_REPOSITORY/releases/download/v${version}/omarker.exe"
           test "$(jq -r .sha256 version.json)" = "$(sha256sum omarker.exe | cut -d' ' -f1)"

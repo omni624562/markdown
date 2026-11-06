@@ -6,8 +6,11 @@
 //!
 //! `version.json` 另外有 Ed25519 簽章（`scripts/sign-update.mjs`，私鑰只在 GitHub Secrets），
 //! 用內建的公鑰驗證。只有 SHA-256 時，能改 Release 檔案的人可以連檢查碼一起換掉；有簽章就做不到。
-//! 這一版起驗證 v2 簽章（連說明文字、發佈時間也簽了），並記住看過最新的流水號，
+//! 驗證的是 v2 簽章（連說明文字、發佈時間也簽了），並記住看過最新的流水號，
 //! 不接受比它舊的更新資訊（拿舊的、簽過的 version.json 讓程式以為沒有新版）。
+//!
+//! 1.131.1 之後換了簽章金鑰：只驗證新金鑰的簽章（`signatureKey2`），舊金鑰外洩也做不出這一版會接受的更新。
+//! 換金鑰的過渡期間，發佈時新舊金鑰各簽一次，還沒更新的舊版本照常用舊金鑰的簽章更新上來。
 //!
 //! 自己編譯的版本沒有流水號，不會檢查更新，避免把開發中的版本換掉。
 
@@ -28,8 +31,9 @@ const STABLE_MANIFEST_URL: &str =
 /// 只接受從這個網址開頭下載執行檔。
 const DOWNLOAD_PREFIX: &str = "https://github.com/omni624562/markdown/releases/download/";
 const MAX_SIZE: u64 = 200 * 1024 * 1024;
-/// 驗證更新簽章的公鑰（Ed25519，base64）。對應的私鑰是 GitHub Actions secret `UPDATE_SIGNING_KEY`。
-const UPDATE_PUBLIC_KEY: &str = "jrj/RFTEfLoSMPa3Bi+GMm6qhgOTyx7DbeGvNdsg08E=";
+/// 驗證更新簽章的公鑰（Ed25519，base64）。對應的私鑰是 GitHub `release` 環境的 secret `UPDATE_SIGNING_KEY_2`；
+/// `scripts/sign-update.mjs` 簽章前會確認私鑰和這裡的公鑰是一對。
+const UPDATE_PUBLIC_KEY: &str = "Mmp8Z/emJG/DNnrO83uvuzBb3TnCPex+bjtKg9WYotk=";
 
 /// 這個執行檔的建置流水號（CI 建置時才有）。
 fn build_number() -> Option<u64> {
@@ -85,13 +89,15 @@ pub struct Manifest {
     /// 簽章的時間（ISO 8601），在 v2 簽章範圍內。
     #[serde(default)]
     issued: String,
-    /// v1 的 Ed25519 簽章（base64，`scripts/sign-update.mjs` 的 `signedMessage`）。
-    /// 1.62.0 以前的版本驗證這個；這一版起只驗證 `signature_v2`。
+    /// 舊金鑰的 v1 簽章（base64，`scripts/sign-update.mjs` 的 `signedMessage`），1.62.0 以前的版本驗證這個。
     #[serde(default)]
     signature: String,
-    /// `signed_message_v2` 的 Ed25519 簽章（base64）。
+    /// 舊金鑰的 v2 簽章（`signed_message_v2`），1.62.0 到 1.131.1 的版本驗證這個。
     #[serde(default, rename = "signatureV2")]
     signature_v2: String,
+    /// 新金鑰（`UPDATE_PUBLIC_KEY`）的 v2 簽章，這一版起只驗證這個。
+    #[serde(default, rename = "signatureKey2")]
+    signature_key2: String,
 }
 
 impl Manifest {
@@ -118,7 +124,7 @@ impl Manifest {
         let b64 = base64::engine::general_purpose::STANDARD;
         let key = b64.decode(public_key).map_err(|e| e.to_string())?;
         let sig = b64
-            .decode(self.signature_v2.trim())
+            .decode(self.signature_key2.trim())
             .ok()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| tr!("更新資訊沒有正確的簽章，已取消更新"))?;
@@ -677,6 +683,7 @@ mod tests {
             issued: "2026-10-30T00:00:00.000Z".into(),
             signature: String::new(),
             signature_v2: String::new(),
+            signature_key2: String::new(),
         }
     }
 
@@ -800,6 +807,7 @@ mod tests {
             size: 4096,
             signature: TEST_SIGNATURE.into(),
             signature_v2: TEST_SIGNATURE_V2.into(),
+            signature_key2: TEST_SIGNATURE_V2.into(),
             ..manifest()
         }
     }
@@ -817,7 +825,7 @@ mod tests {
             |m: &mut Manifest| m.size += 1,
             |m: &mut Manifest| m.url.push('x'),
             |m: &mut Manifest| m.version = "9.9.9".into(),
-            |m: &mut Manifest| m.signature_v2.clear(),
+            |m: &mut Manifest| m.signature_key2.clear(),
             // v2 也簽了說明文字、發佈時間、提交與日期。
             |m: &mut Manifest| m.notes = "請改下載 evil.exe".into(),
             |m: &mut Manifest| m.changes = "其他說明".into(),
@@ -829,9 +837,14 @@ mod tests {
             tamper(&mut m);
             assert!(m.verify_signature(TEST_PUBLIC_KEY).is_err());
         }
-        // 只有 v1 簽章（舊版程式用的）不夠。
+        // 只有舊金鑰的簽章（v1、v2，舊版程式用的）不夠。
         let mut m = signed();
-        m.signature_v2.clear();
+        m.signature_key2.clear();
         assert!(m.verify_signature(TEST_PUBLIC_KEY).is_err());
+        // 舊金鑰的簽章不影響驗證。
+        let mut m = signed();
+        m.signature.clear();
+        m.signature_v2.clear();
+        assert_eq!(m.verify_signature(TEST_PUBLIC_KEY), Ok(()));
     }
 }
