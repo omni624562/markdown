@@ -1,0 +1,70 @@
+name: 相依套件稽核
+
+# 檢查相依套件有沒有已知的漏洞、是不是從正確的地方來的：
+# - npm（web/）：npm audit 查已知漏洞（high 以上就失敗）；npm audit signatures 核對每個套件確實由 npm 登錄處簽發，
+#   有出處證明（provenance）的也一併核對，被調包的套件會對不上。
+# - cargo（根目錄的 crates/ 與 desktop/）：cargo-deny 查 RustSec 公告的漏洞、沒人維護與已撤回的版本，
+#   並確認套件只來自 crates.io（設定與暫時接受的公告見 deny.toml）。
+# 相依套件或這些設定改了的 PR、推到 main 時檢查；另外每週一檢查一次，新公告的漏洞也查得到（失敗時 GitHub 會寄信通知）。
+# 只在這些情況跑，其他 PR 不會因為剛公告的漏洞突然變紅。
+on:
+  pull_request:
+    paths:
+      - web/package.json
+      - web/package-lock.json
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - deny.toml
+      - .github/workflows/audit.yml
+  push:
+    branches: [main]
+    paths:
+      - web/package.json
+      - web/package-lock.json
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - deny.toml
+      - .github/workflows/audit.yml
+  schedule:
+    - cron: "23 1 * * 1"
+  workflow_dispatch:
+
+# 只需要讀取程式碼。第三方 action 一律不用；cargo-deny 用 cargo install 照固定的版本編譯。
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
+      - run: npm audit signatures
+
+  cargo:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_DENY: "0.20.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-${{ runner.os }}-${{ env.CARGO_DENY }}
+      - run: command -v cargo-deny || cargo install cargo-deny --version "$CARGO_DENY" --locked
+      - name: 根目錄的 crates（網頁版、命令列工具）
+        run: cargo deny --config deny.toml check advisories sources
+      - name: 桌面版（只發佈 Windows）
+        run: cargo deny --manifest-path desktop/Cargo.toml --config deny.toml --target x86_64-pc-windows-msvc check advisories sources
