@@ -23,6 +23,8 @@ export interface FileTreeHandlers {
   menuItems?(entry: Entry): { label: string; when?: () => boolean; run(): void }[];
   /** 拖曳檔案或資料夾時帶的資料（例如拖到左側圖示列變成捷徑）；null 表示不能拖。 */
   dragData?(entry: Entry): Record<string, string> | null;
+  /** 名稱後面的小標記（例如 COMET 的檔案標「C」）；`title` 是滑鼠移上去的說明。 */
+  mark?(entry: Entry): { text: string; title: string } | null;
 }
 
 const MENU: { action: TreeAction; label: string; dirOnly?: boolean; fileOnly?: boolean; remote?: boolean; key?: string }[] = [
@@ -331,6 +333,15 @@ export class FileTree {
     const name = document.createElement("span");
     name.textContent = entry.name;
     row.append(name);
+    const mark = this.#handlers.mark?.(entry);
+    if (mark) {
+      const abbr = document.createElement("abbr");
+      abbr.className = "tree-mark";
+      abbr.textContent = mark.text;
+      abbr.title = mark.title;
+      row.append(abbr);
+      row.title += `\n${mark.title}`;
+    }
     this.#decorate(row);
     row.addEventListener("click", () => {
       this.#focus(row);

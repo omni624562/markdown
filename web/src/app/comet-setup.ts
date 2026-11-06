@@ -13,6 +13,7 @@ import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
+import { refreshCometGuards } from "./comet-files.ts";
 import { app } from "./context.ts";
 
 /** 「COMET 設定」那一段的欄位。 */
@@ -190,20 +191,22 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     assigned.focus();
   });
 
-  // 設定本機 PATH：comet 已經在 PATH 裡（這台電腦做過 COMET 的本機設定）就預設不勾，註明已經設定過。
-  // 查詢期間使用者自己改了勾選就照使用者的。
+  // 設定本機 PATH：這一步只是把 comet 加進 PATH，comet 已經在 PATH 裡（這台電腦做過 COMET 的本機設定）就沒有要做的事：
+  // 不勾、也不能勾（變灰），註明已經設定過。查詢期間使用者自己改了勾選就照使用者的。
   const local = q<HTMLInputElement>("input[name=nc-local]");
   let localTouched = false;
   local.addEventListener("change", () => (localTouched = true));
   const checkLocal = () => {
     localTouched = false;
     local.checked = true;
+    local.disabled = false;
     q(".nc-local-done").hidden = true;
     void desktop
       ?.cometPathReady()
       .then((ready) => {
         if (ready !== true || localTouched) return;
         local.checked = false;
+        local.disabled = true;
         q(".nc-local-done").hidden = false;
       })
       .catch(() => {});
@@ -437,6 +440,12 @@ export function runCometSetup(
       if (smokeStep) smokeStep.state = e.ok ? "done" : smokeStep.state === "run" ? "fail" : "wait";
       renderSteps();
       if (e.ok) {
+        // 剛變成 COMET 專案：檔案面板的「C」、設定檔唯讀跟著更新。
+        void app.projectUi
+          ?.refresh()
+          .then(() => app.fileTree?.refresh())
+          .then(refreshCometGuards)
+          .catch(console.error);
         if (info.existing) {
           head(
             "ok",
