@@ -429,6 +429,7 @@ export const main: Record<string, Translation> = {
   "GitHub：發佈成網站（GitHub Pages）…": "GitHub: Publish as Website (GitHub Pages)…",
   "GitHub：分享成 Gist…": "GitHub: Share as Gist…",
   "Azure DevOps：下載儲存庫…": "Azure DevOps: Download Repository…",
+  "Azure DevOps：把這個資料夾上傳到 Azure DevOps…": "Azure DevOps: Upload This Folder to Azure DevOps…",
   "Azure DevOps：工作項目": "Azure DevOps: Work Items",
   "Azure DevOps：連線設定…": "Azure DevOps: Connection Settings…",
   // 下載儲存庫名稱右邊的狀態（app/repo-sources.ts）
