@@ -163,69 +163,71 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
           void commands?.run(cmd.id);
         });
         // 釘到看得到的地方（有圖示的指令才能釘）：滑鼠移到項目上時右邊出現圖釘，按圖釘（或按 →）展開釘選的子選單；
-        // 已經釘了的圖釘一直顯示。按右鍵也可以。
+        // 已經釘了的圖釘一直顯示。按右鍵也可以。單選的項目（例如明暗）右邊是打勾，不放圖釘（按右鍵或用「釘選常用指令…」）。
         if (cmd.icon && commandPins) {
           const pins = commandPins;
-          const pin = document.createElement("span");
-          pin.className = "menu-pin";
-          pin.classList.toggle("pinned", pins.pinned(cmd.id));
-          pin.title = pins.pinned(cmd.id) ? t("已經釘了：按一下調整（也可以按 →）") : t("釘到檔案面板上方或左側圖示列（也可以按 →）");
-          pin.setAttribute("aria-hidden", "true");
-          pin.append(icon("pin"));
-          item.append(pin);
-          item.setAttribute("aria-keyshortcuts", "ArrowRight");
-          let sub: HTMLElement | null = null;
-          const openPins = (focusFirst: boolean) => {
-            clearTimeout(hoverTimer);
-            if (!sub) {
-              const s = newMenu();
-              s.classList.add("submenu", "pin-submenu");
-              s.addEventListener("toggle", (e) => {
-                const opened = (e as ToggleEvent).newState === "open";
-                pin.classList.toggle("open", opened);
-                item.classList.toggle("open", opened);
-                if (!opened && s.contains(document.activeElement)) item.focus();
-              });
-              s.addEventListener("keydown", (e) => {
-                if (navigate(s, e)) e.preventDefault();
-                else if (e.key === "ArrowLeft") {
-                  e.preventDefault();
-                  s.hidePopover();
-                  item.focus();
-                } else return;
-                e.stopPropagation();
-              });
-              menu.append(s);
-              sub = s;
-            }
-            if (openSub !== sub) closeSub();
-            // 每次展開都重建：釘了或移除之後，選項跟著換。
-            if (!sub.matches(":popover-open")) {
-              sub.replaceChildren();
-              fill(sub, pins.entries(cmd.id));
-              sub.showPopover();
-              position(sub, item.getBoundingClientRect(), "right");
-            }
-            openSub = sub;
-            if (focusFirst) sub.querySelector<HTMLElement>(":scope > button")?.focus();
-          };
-          pin.addEventListener("click", (e) => {
-            // 不要執行指令本身。
-            e.preventDefault();
-            e.stopPropagation();
-            openPins(false);
-          });
-          pin.addEventListener("pointerenter", () => {
-            clearTimeout(hoverTimer);
-            hoverTimer = window.setTimeout(() => openPins(false), 200);
-          });
-          pin.addEventListener("pointerleave", () => clearTimeout(hoverTimer));
-          item.addEventListener("keydown", (e) => {
-            if (e.key !== "ArrowRight") return;
-            e.preventDefault();
-            e.stopPropagation();
-            openPins(true);
-          });
+          if (checked === undefined) {
+            const pin = document.createElement("span");
+            pin.className = "menu-pin";
+            pin.classList.toggle("pinned", pins.pinned(cmd.id));
+            pin.title = pins.pinned(cmd.id) ? t("已經釘了：按一下調整（也可以按 →）") : t("釘到檔案面板上方或左側圖示列（也可以按 →）");
+            pin.setAttribute("aria-hidden", "true");
+            pin.append(icon("pin"));
+            item.append(pin);
+            item.setAttribute("aria-keyshortcuts", "ArrowRight");
+            let sub: HTMLElement | null = null;
+            const openPins = (focusFirst: boolean) => {
+              clearTimeout(hoverTimer);
+              if (!sub) {
+                const s = newMenu();
+                s.classList.add("submenu", "pin-submenu");
+                s.addEventListener("toggle", (e) => {
+                  const opened = (e as ToggleEvent).newState === "open";
+                  pin.classList.toggle("open", opened);
+                  item.classList.toggle("open", opened);
+                  if (!opened && s.contains(document.activeElement)) item.focus();
+                });
+                s.addEventListener("keydown", (e) => {
+                  if (navigate(s, e)) e.preventDefault();
+                  else if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    s.hidePopover();
+                    item.focus();
+                  } else return;
+                  e.stopPropagation();
+                });
+                menu.append(s);
+                sub = s;
+              }
+              if (openSub !== sub) closeSub();
+              // 每次展開都重建：釘了或移除之後，選項跟著換。
+              if (!sub.matches(":popover-open")) {
+                sub.replaceChildren();
+                fill(sub, pins.entries(cmd.id));
+                sub.showPopover();
+                position(sub, item.getBoundingClientRect(), "right");
+              }
+              openSub = sub;
+              if (focusFirst) sub.querySelector<HTMLElement>(":scope > button")?.focus();
+            };
+            pin.addEventListener("click", (e) => {
+              // 不要執行指令本身。
+              e.preventDefault();
+              e.stopPropagation();
+              openPins(false);
+            });
+            pin.addEventListener("pointerenter", () => {
+              clearTimeout(hoverTimer);
+              hoverTimer = window.setTimeout(() => openPins(false), 200);
+            });
+            pin.addEventListener("pointerleave", () => clearTimeout(hoverTimer));
+            item.addEventListener("keydown", (e) => {
+              if (e.key !== "ArrowRight") return;
+              e.preventDefault();
+              e.stopPropagation();
+              openPins(true);
+            });
+          }
           item.addEventListener("contextmenu", (e) => {
             e.preventDefault();
             e.stopPropagation();
