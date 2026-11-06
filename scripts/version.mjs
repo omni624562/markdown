@@ -44,6 +44,18 @@ const SOURCES = [
 /** 改到這些路徑才算改了程式（文件、測試腳本、CI 設定不用改版本號）。 */
 const APP_PATHS = /^(web\/(src|public|index\.html|package\.json)|desktop\/(src|icons|Cargo\.toml|tauri\.conf\.json|capabilities|build\.rs)|crates\/)/;
 
+/** 相依套件的清單與鎖定檔（npm 的 web/，cargo 的根目錄、crates/ 與 desktop/）。 */
+const DEPENDENCY_FILES = /^(web\/package(-lock)?\.json|(desktop\/)?Cargo\.(toml|lock)|crates\/[^/]+\/Cargo\.toml)$/;
+
+/**
+ * 這次改到的程式檔案（要有改動片段）。Dependabot 開的、只更新相依套件清單與鎖定檔的 PR 不算：
+ * 它沒辦法寫片段，更新相依套件也不是使用者看得到的改動。`headRef` 是 PR 的分支（CI 的 GITHUB_HEAD_REF）。
+ */
+export function appChanges(changed, headRef = "") {
+  if (headRef.startsWith("dependabot/") && changed.length && changed.every((f) => DEPENDENCY_FILES.test(f))) return [];
+  return changed.filter((f) => APP_PATHS.test(f));
+}
+
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
 
 export function parse(v) {
@@ -220,7 +232,7 @@ function check(base) {
   const changed = execFileSync("git", ["-c", "core.quotePath=false", "diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
     .filter(Boolean);
-  const app = changed.filter((f) => APP_PATHS.test(f));
+  const app = appChanges(changed, process.env.GITHUB_HEAD_REF ?? "");
   const fragments = changed.filter((f) => f.startsWith(`${CHANGES_DIR}/`) && f.endsWith(".md") && !/readme\.md$/i.test(f));
   const problems = [];
   // 每個片段都要看得懂（發佈時 release 才不會失敗）。
