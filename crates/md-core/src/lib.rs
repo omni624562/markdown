@@ -249,6 +249,17 @@ mod tests {
     }
 
     #[test]
+    fn wikilink_embeds_stay_as_text() {
+        let out = r("![[圖片.png]] 與 [[筆記]]");
+        assert!(out.html.contains("![[圖片.png]]"), "{}", out.html);
+        assert!(
+            out.html.contains("data-wikilink=\"true\">筆記</a>"),
+            "{}",
+            out.html
+        );
+    }
+
+    #[test]
     fn formatting_tags_are_allowed_without_raw_html() {
         let out =
             r("<u>底線</u>、<mark>重點</mark>、m<sup>2</sup>、H<sub>2</sub>O、第一行<br>第二行");
