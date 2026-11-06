@@ -1148,6 +1148,9 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 /* 和上一項同一個圖示時留空白（見 menu.ts 的 hideRepeatedIcons），文字照樣對齊。 */
 .menu button .menu-icon-blank { display: inline-block; flex: none; width: 18px; height: 18px; }
 .menu button[aria-checked="true"] > .icon:last-child { color: var(--accent); }
+/* 下拉選單（<select>）的清單：至少和下拉選單一樣寬，名稱很長時可以更寬（見 select-menu.ts）；目前選的打勾。 */
+.select-menu { max-width: calc(100vw - 16px); }
+.select-menu button[aria-selected="true"] > .icon:last-child { color: var(--accent); }
 .menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .menu-head { padding: 6px 10px 2px; color: var(--muted); font-size: 11.5px; cursor: default; }
 .menu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

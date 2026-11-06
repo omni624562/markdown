@@ -6,6 +6,7 @@ import { type Choice, SHOW_ALL, SHOW_FAVORITES, favoriteOptions } from "../favor
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
 import { MultiSelect } from "./multi-select.ts";
+import { openSelect } from "./select-menu.ts";
 
 export interface FavoriteSelectOptions {
   /** 選單的名稱（例如「Wiki」「專案」）。 */
@@ -39,11 +40,7 @@ export class FavoriteSelect {
         this.#showAll = v === SHOW_ALL;
         this.#render();
         // 換了清單之後直接打開，接著選。
-        try {
-          this.select.showPicker();
-        } catch {
-          // 不支援 showPicker 的環境：使用者再點一次就好。
-        }
+        openSelect(this.select);
         return;
       }
       this.#value = v;

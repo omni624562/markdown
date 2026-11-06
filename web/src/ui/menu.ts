@@ -3,6 +3,8 @@ import { t } from "../i18n.ts";
 import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
+// 所有 <select> 的清單也用 oMarker 的選單，一律留在視窗內（見 select-menu.ts）。
+import "./select-menu.ts";
 
 export type MenuEntry =
   | string
