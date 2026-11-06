@@ -59,6 +59,8 @@ export function folderName(path: string): string {
 
 /** 可以開啟專案的 AI 桌面版（切換器的「動作」依這個順序列出）。 */
 const AI_APPS: readonly AiApp[] = ["codex", "claude"];
+/** 兩個要分得出來（和「☰」→「專案」裡的指令一樣）。 */
+const AI_ICONS: Record<AiApp, string> = { codex: "hexagon", claude: "asterisk" };
 
 function openInTitle(app: AiApp): string {
   return app === "codex" ? t("在 Codex 開啟這個專案") : t("在 Claude Code 開啟這個專案");
@@ -187,7 +189,7 @@ export class ProjectUi {
     ];
     if (this.current) actions.push({ kind: "action", id: "edit", title: t("目前專案的設定…"), icon: "pencil" });
     if (this.current && !isRemote(this.current.path)) {
-      for (const app of AI_APPS) if (this.#h.aiAppInstalled(app)) actions.push({ kind: "action", id: app, title: openInTitle(app), icon: "external-link" });
+      for (const app of AI_APPS) if (this.#h.aiAppInstalled(app)) actions.push({ kind: "action", id: app, title: openInTitle(app), icon: AI_ICONS[app] });
     }
     if (this.#h.current()) actions.push({ kind: "action", id: "close", title: t("關閉專案"), icon: "folder-x" });
     for (const a of actions) if (a.kind === "action" && (!q || a.title.toLowerCase().includes(q))) items.push(a);

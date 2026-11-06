@@ -30,6 +30,7 @@ import { searchPanel } from "./git-history.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { wikiPanel, workItemsPanel, issuesPanel, renderIssuesTab } from "./work-items-panel.ts";
 import type { Doc, SidePanel } from "../main.ts";
+import { renderFilesHeadPins } from "./pin-commands.ts";
 import { app } from "./context.ts";
 import { boardPanelShown } from "./taskboard.ts";
 import { repoNoteEl } from "./repo-sources.ts";
@@ -556,6 +557,7 @@ export async function setWorkspace(folder: Folder | null): Promise<void> {
   if (folder) storage.save("workspace", folder.path);
   else storage.remove("workspace");
   await app.renderProjectName();
+  renderFilesHeadPins(); // 跟著專案：提示裡的專案名稱、能不能用（例如遠端資料夾不能在 Codex 開啟）
   await app.fileTree?.setRoot(folder?.path ?? null, folder?.name, folder ? loadProjectView(folder.path).expanded : []);
   app.treeActive = app.cur.fileHandle?.path ?? null;
   await app.fileTree?.setActive(app.treeActive);

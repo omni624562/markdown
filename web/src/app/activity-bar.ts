@@ -43,6 +43,7 @@ import { barShortcuts, openShortcutFromBar, removeBarShortcut, shortcutBar, shor
 import { fileTabMenuEntries } from "./file-shortcuts.ts";
 import type { SidePanel } from "../main.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
+import { initPinCommands } from "./pin-commands.ts";
 import { app } from "./context.ts";
 
 
@@ -755,6 +756,7 @@ export async function copyDiagram(svg: string): Promise<void> {
 }
 
 export function initActivityBar(): void {
+  initPinCommands();
   headingMenu = formatMenuButton("fmt-heading", t("標題"), "heading", ["h1", "h2", "h3"]);
   insertMenu = formatMenuButton("fmt-insert", t("插入"), "plus", [
     "table",

@@ -51,6 +51,12 @@ function focusOnHover(item: HTMLElement): void {
   });
 }
 
+/** 選單裡指令項目的右鍵選單（釘到檔案面板上方、左側圖示列，見 app/pin-commands.ts）；沒設定時不處理。 */
+let commandContext: ((id: string, at: DOMRect) => void) | null = null;
+export function onCommandContextMenu(fn: (id: string, at: DOMRect) => void): void {
+  commandContext = fn;
+}
+
 function newMenu(): HTMLDivElement {
   const menu = document.createElement("div");
   menu.className = "menu";
@@ -147,6 +153,19 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
           root.hidePopover();
           void commands?.run(cmd.id);
         });
+        // 按右鍵：釘到看得到的地方（有圖示的指令才能釘）。
+        if (cmd.icon && commandContext) {
+          const pick = commandContext;
+          item.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            root.hidePopover();
+            const at = new DOMRect(e.clientX, e.clientY, 0, 0);
+            // 右鍵還按著時（Linux 放開前就觸發）：放開後才開，否則放開那一下會把剛開的選單關掉。
+            if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(() => pick(cmd.id, at)), { once: true });
+            else pick(cmd.id, at);
+          });
+        }
       } else if ("items" in entry) {
         const sub = newMenu();
         sub.classList.add("submenu");

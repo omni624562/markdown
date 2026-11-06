@@ -36,6 +36,9 @@ import { docName } from "./doc-names.ts";
 import type { Doc } from "../main.ts";
 import { app } from "./context.ts";
 
+/** 目前開著的專案的名稱（自訂的名稱，沒有就是資料夾名稱）。 */
+const projectName = () => app.projectUi?.current?.label ?? app.workspaceRoot?.name ?? "";
+
 
 export const commands = new Commands();
 const isMarkdown = () => app.cur.kind === "markdown" && app.view !== "preview";
@@ -323,7 +326,8 @@ export function initCommands(): void {
       id: "open-in-codex",
       title: t("在 Codex 開啟這個專案"),
       group: t("資料夾與專案"),
-      icon: "external-link",
+      icon: "hexagon",
+      tip: () => t("在 Codex 開啟「{name}」", { name: projectName() }),
       // 沒裝 Codex 桌面版的電腦不顯示（見 ai-app-presence.ts）。
       when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path) && aiAppPresent("codex"),
       run: () => app.projectUi?.openInApp("codex"),
@@ -332,7 +336,8 @@ export function initCommands(): void {
       id: "open-in-claude",
       title: t("在 Claude Code 開啟這個專案"),
       group: t("資料夾與專案"),
-      icon: "external-link",
+      icon: "asterisk",
+      tip: () => t("在 Claude Code 開啟「{name}」", { name: projectName() }),
       // 沒裝 Claude 桌面版的電腦不顯示（見 ai-app-presence.ts）。
       when: () => !!desktop && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path) && aiAppPresent("claude"),
       run: () => app.projectUi?.openInApp("claude"),
