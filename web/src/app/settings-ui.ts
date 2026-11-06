@@ -269,6 +269,8 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
           connect: (url, pat) => app.ado!.connect(url, pat),
           disconnect: () => void app.ado!.disconnect(),
           kinds: () => desktop!.adoWorkItemFilters().then((f) => f.kinds),
+          projects: () => desktop!.adoWorkItemFilters().then((f) => f.projects),
+          teams: (project) => desktop!.adoTeams(project),
           check: () => desktop!.adoCheck(),
           diagnostics: () => void saveAdoDiagnostics(),
         }

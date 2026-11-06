@@ -3380,6 +3380,8 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .project-edit .np-comet .pe-check { margin-bottom: 6px; }
 /* 「設定本機 PATH」後面：comet 已經在 PATH 裡時註明「這台電腦已經設定過」。 */
 .nc-local-done { margin-left: 4px; color: var(--muted); font-size: 12px; }
+/* 已經設定過 PATH：整行變灰，不能勾。 */
+.project-edit .np-comet .pe-check:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
 .nc-local-done::before { content: "· "; }
 /*
  * 設定中、完成（app/comet-setup.ts）：和表單一樣寬。上面是狀態，左邊「做了什麼」、右邊「COMET 設定」，
@@ -4574,3 +4576,42 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
   border-radius: 50%;
   background: light-dark(#2e9e5b, #3fb26f);
 }
+
+/* COMET 管理的檔案（見 app/comet-files.ts）：檔案面板名稱後面的「C」、編輯器上方的說明、重新設定時的提醒。 */
+.tree-row > .tree-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 15px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: 600 9.5px/1 var(--font-ui);
+  text-decoration: none;
+  cursor: help;
+}
+.cm-editor .cm-panels .comet-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 7px 12px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font: 12.5px/1.5 var(--font-ui);
+}
+.cm-editor .cm-panels .comet-note > svg { flex: none; width: 15px; height: 15px; color: var(--accent); }
+.cm-editor .cm-panels .comet-note > span { flex: 1 1 240px; }
+.cm-editor .cm-panels .comet-note > .btn { min-height: 26px; padding: 0 10px; font-size: 12.5px; }
+.cm-editor .cm-panels .comet-note-close { display: inline-flex; padding: 3px; border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer; }
+.cm-editor .cm-panels .comet-note-close:hover { background: var(--active-line); color: var(--fg); }
+.cm-editor .cm-panels .comet-note-close .icon { width: 14px; height: 14px; }
+/* 唯讀時想打字：說明閃一下。 */
+.cm-editor .cm-panels .comet-note-nudge { animation: comet-nudge 0.6s ease; }
+@keyframes comet-nudge { 30% { background: color-mix(in srgb, var(--accent) 28%, var(--bg)); } }
+@media (prefers-reduced-motion: reduce) { .cm-editor .cm-panels .comet-note-nudge { animation: none; } }
+.cp-warn { display: flex; gap: 6px; align-items: flex-start; margin: 0 0 12px; color: light-dark(#b45309, #fbbf24); font-size: 12.5px; line-height: 1.5; }
+.cp-warn[hidden] { display: none; }
+.cp-warn > svg { flex: none; width: 15px; height: 15px; margin-top: 2px; }

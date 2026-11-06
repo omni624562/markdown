@@ -161,6 +161,32 @@ const ADO = {
   comet_installed: true,
 };
 
+test("COMET 專案：設定裡指定了預設專案與團隊時先選它們，對話框裡改了不會動到設定", async () => {
+  const { page, context, errors } = await open({
+    desktop: { ...DESKTOP, ...ADO, load_settings: JSON.stringify({ adoDefaultProject: "Contoso", adoDefaultTeam: "Contoso" }) },
+  });
+  let dialog = await openComet(page);
+  let section = dialog.locator(".np-comet");
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  assert.equal(await section.locator("select[name=nc-project]").inputValue(), "Contoso");
+  assert.equal(await section.locator("select[name=nc-team]").inputValue(), "t2");
+  // 在對話框裡換專案：團隊用那個專案的預設團隊。
+  await section.locator("select[name=nc-project]").selectOption("產品");
+  await page.waitForFunction(() => document.querySelector("select[name=nc-team]")?.value === "t1");
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await page.waitForFunction(() => !document.querySelector("dialog.new-project button[type=submit]")?.disabled);
+  await dialog.getByRole("button", { name: "取消" }).click();
+  // 再打開：還是先選設定的預設專案（剛才的選擇不會蓋過設定）。
+  dialog = await openComet(page);
+  section = dialog.locator(".np-comet");
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  assert.equal(await section.locator("select[name=nc-project]").inputValue(), "Contoso");
+  assert.equal(await section.locator("select[name=nc-team]").inputValue(), "t2");
+  assert.ok(!(await calls(page)).some((c) => c.cmd === "save_settings" && JSON.parse(c.args.json).adoDefaultProject !== "Contoso"));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet setup，完成後列出建立的檔案", async () => {
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
   const dialog = await openComet(page);
@@ -377,8 +403,8 @@ test("COMET 專案：oMarker 沒有連線 Azure DevOps 時貼上 Sprint 網址",
   await context.close();
 });
 
-test("COMET 專案：這台電腦已經設定過 PATH 時，「設定本機 PATH」預設不勾並註明；沒設定過時預設勾選", async () => {
-  // 已經設定過：預設不勾、註明，送出的設定不做本機設定。
+test("COMET 專案：這台電腦已經設定過 PATH 時，「設定本機 PATH」不勾、不能勾並註明；沒設定過時預設勾選", async () => {
+  // 已經設定過：不勾、變灰不能勾、註明，送出的設定不做本機設定。
   let { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_path_ready: true } });
   let dialog = await openComet(page);
   let section = dialog.locator(".np-comet");
@@ -386,6 +412,7 @@ test("COMET 專案：這台電腦已經設定過 PATH 時，「設定本機 PATH
   await section.locator(".nc-local-done:not([hidden])").waitFor();
   assert.equal(await section.locator(".nc-local-done").textContent(), "這台電腦已經設定過");
   assert.equal(await local().isChecked(), false);
+  assert.equal(await local().isDisabled(), true);
   assert.match(await section.locator("label:has(input[name=nc-local])").textContent(), /^\s*設定本機 PATH（第一次使用 COMET 需要）/);
   await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
   await section.locator("input[name=nc-url]").fill("https://ado.test/tfs/DefaultCollection/產品/_sprints/taskboard/Contoso/產品/Sprint%2012");
@@ -402,6 +429,7 @@ test("COMET 專案：這台電腦已經設定過 PATH 時，「設定本機 PATH
   section = dialog.locator(".np-comet");
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_path_ready"));
   assert.equal(await local().isChecked(), true);
+  assert.equal(await local().isDisabled(), false);
   assert.equal(await section.locator(".nc-local-done").isHidden(), true);
   assert.deepEqual(errors, []);
   await context.close();

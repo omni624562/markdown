@@ -8,6 +8,7 @@
  */
 import { desktop, isRemote } from "../desktop.ts";
 import { t } from "../i18n.ts";
+import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { cometPresent } from "./comet-presence.ts";
 import { type CometForm, cometForm, cometSetupRunning, runCometSetup } from "./comet-setup.ts";
@@ -34,6 +35,7 @@ function build(): HTMLDialogElement {
     <form method="dialog">
       <h2 id="cp-title"></h2>
       <p class="pe-path cp-hint"></p>
+      <p class="cp-warn" hidden></p>
       <section class="np-card np-comet"></section>
       <div class="choice-actions">
         <button type="button" class="btn" value="cancel"></button>
@@ -88,6 +90,10 @@ export function openCometProjectSetup(): void {
   q(".cp-hint").textContent = again
     ? t("用新的設定在「{name}」資料夾再執行一次 comet setup，例如換 Sprint 或指派對象。", { name })
     : t("在「{name}」資料夾執行 comet setup，設定好就是 COMET 專案。", { name });
+  // 重新設定時 comet 可能依新的規則改寫它產生的檔案（例如 AGENTS.md）：手動改過的話先留備份。
+  const warn = q(".cp-warn");
+  warn.hidden = !again;
+  warn.replaceChildren(icon("info"), t("comet 可能會依新的規則更新 AGENTS.md 等它產生的檔案。如果你手動改過，請先提交到 Git 或留個備份。"));
   q<HTMLButtonElement>("button[type=submit]").disabled = true;
   void form.load().then(() => (q<HTMLButtonElement>("button[type=submit]").disabled = !form.request()));
   d.showModal();

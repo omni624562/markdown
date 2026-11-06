@@ -745,6 +745,10 @@ export function initCommands(): void {
       keys: "Shift-Alt-f",
       when: () => app.cur.kind === "json",
       run() {
+        if (app.editor.view.state.readOnly) {
+          toast(t("這個檔案目前是唯讀的，不能重新排版。"));
+          return;
+        }
         try {
           const formatted = formatJson(app.editor.text);
           if (formatted !== app.editor.text) app.editor.replaceAll(formatted);

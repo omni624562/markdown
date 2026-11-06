@@ -55,6 +55,10 @@ export interface Settings {
   adoNotify: boolean;
   /** 工作項目類型的自訂顏色（類型名稱 → `#rrggbb`）；沒列到的用預設顏色（見 work-item-colors.ts）。 */
   workItemColors: Record<string, string>;
+  /** 設定 COMET 時先選的 Azure DevOps 專案（空字串是不指定：用上次選的）。 */
+  adoDefaultProject: string;
+  /** 預設專案裡先選的團隊名稱（空字串是專案在 Azure DevOps 設定的預設團隊）。 */
+  adoDefaultTeam: string;
   /** 打字自動轉符號：`<=` → `≤`、`->` → `→` 等（程式碼裡不轉換）。 */
   autoSymbols: boolean;
   /** 標示中國用語與常見錯字（波浪底線），滑鼠移上去可以替換。 */
@@ -165,6 +169,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   autoSave: true,
   adoNotify: true,
   workItemColors: {},
+  adoDefaultProject: "",
+  adoDefaultTeam: "",
   termCheck: true,
   termIgnore: [],
   spellCheck: true,
@@ -347,6 +353,12 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   if ("dailyFolder" in input) {
     const v = typeof input.dailyFolder === "string" ? cleanFolder(input.dailyFolder) : null;
     if (v !== null && v.length <= 200) out.dailyFolder = v;
+    else problems++;
+  }
+  for (const key of ["adoDefaultProject", "adoDefaultTeam"] as const) {
+    if (!(key in input)) continue;
+    const v = input[key];
+    if (typeof v === "string" && v.length <= 256) out[key] = v.trim();
     else problems++;
   }
   if ("dailyTemplate" in input) {

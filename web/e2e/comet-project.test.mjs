@@ -48,6 +48,7 @@ test("設定成 COMET 專案：只有 COMET 設定一張，在專案資料夾執
   await dialog.waitFor();
   assert.equal(await dialog.locator("#cp-title").textContent(), "設定成 COMET 專案");
   assert.equal(await dialog.locator(".cp-hint").textContent(), "在「產品筆記」資料夾執行 comet setup，設定好就是 COMET 專案。");
+  assert.equal(await dialog.locator(".cp-warn").isVisible(), false);
   // 沒有新專案的「① 專案」那一張，只有 COMET 設定。
   assert.equal(await dialog.locator(".np-card").count(), 1);
   const start = dialog.getByRole("button", { name: "開始設定" });
@@ -91,6 +92,9 @@ test("已經是 COMET 專案：選單是「重新設定 COMET…」，對話框�
   await dialog.waitFor();
   assert.equal(await dialog.locator("#cp-title").textContent(), "重新設定 COMET");
   assert.match(await dialog.locator(".cp-hint").textContent(), /再執行一次 comet setup/);
+  // 提醒 comet 可能會改寫它產生的檔案（例如 AGENTS.md）。
+  assert.match(await dialog.locator(".cp-warn").textContent(), /可能會依新的規則更新 AGENTS\.md/);
+  assert.equal(await dialog.locator(".cp-warn").isVisible(), true);
   await dialog.getByRole("button", { name: "取消" }).click();
   assert.deepEqual(errors, []);
   await context.close();
