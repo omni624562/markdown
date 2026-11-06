@@ -366,6 +366,7 @@ fn main() {
             ado::ado_disconnect,
             ado::ado_repos,
             ado::ado_clone,
+            ado::ado_publish,
             ado::ado_work_items,
             ado::ado_work_item,
             ado::ado_image,

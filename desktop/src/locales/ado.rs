@@ -1,6 +1,13 @@
 //! Azure DevOps：連線、儲存庫、工作項目、Pull Request。
 
 pub static EN: &[(&str, &str)] = &[
+    ("上傳到 Azure DevOps", "Upload to Azure DevOps"),
+    ("「{folder}」資料夾原本的遠端 origin 是「{origin}」。要改成 Azure DevOps 專案「{project}」的儲存庫「{name}」，並上傳所有的檔案和版本紀錄嗎？", "The \"{folder}\" folder's remote origin is \"{origin}\". Change it to the \"{name}\" repository in the Azure DevOps project \"{project}\" and upload all files and history?"),
+    ("請選擇 Azure DevOps 專案", "Choose an Azure DevOps project."),
+    ("「{name}」已經有內容，請選空的儲存庫，或建立新的儲存庫", "\"{name}\" already has content. Choose an empty repository or create a new one."),
+    ("讀取專案失敗", "Couldn't load the project"),
+    ("{what}失敗：專案「{project}」已經有叫「{name}」的儲存庫，請換一個名稱，或選「用已經存在的空儲存庫」", "{what} failed: The project \"{project}\" already has a repository named \"{name}\". Choose another name, or pick \"Use an Existing Empty Repository\"."),
+    ("{what}失敗：沒有權限。建立儲存庫需要專案的「建立儲存庫」權限，個人存取權杖也要勾選 Code 的 Read, write, & manage；也可以請管理員先建立空的儲存庫，再選「用已經存在的空儲存庫」", "{what} failed: Permission denied. Creating a repository needs the project's \"Create repository\" permission, and the personal access token needs the Code (Read, write, & manage) scope. You can also ask an administrator to create an empty repository and pick \"Use an Existing Empty Repository\"."),
     ("讀取留言", "Loading comments"),
     ("下載附件", "Downloading the attachment"),
     ("{what}失敗：伺服器上找不到這個附件（可能已經刪除）", "{what} failed: The attachment wasn't found on the server (it may have been deleted)."),

@@ -346,6 +346,8 @@ export interface AdoRepo {
   webUrl: string | null;
   /** 專案 Wiki。 */
   wiki: boolean;
+  /** 還沒有任何分支的空儲存庫（可以把本機資料夾上傳到這裡）。舊版原生端沒有這一項。 */
+  empty?: boolean;
 }
 
 export interface AdoWiki {
@@ -1104,6 +1106,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
     adoClone: (cloneUrl: string, name: string) => core.invoke<Cloned | null>("ado_clone", { cloneUrl, name }),
+    /** 把目前開啟的資料夾上傳到 Azure DevOps（`existing`：上傳到已經存在的空儲存庫），回傳網頁網址；使用者取消時是 null。 */
+    adoPublish: (project: string, name: string, existing: boolean) =>
+      core.invoke<string | null>("ado_publish", { project, name, existing }),
     adoWorkItems: (search: string, filter?: AdoWorkItemFilter) => core.invoke<AdoWorkItem[]>("ado_work_items", { search, filter }),
     adoWorkItemFilters: () =>
       core.invoke<{ projects: string[]; kinds: string[]; stateSets?: KindStates[] }>("ado_work_item_filters"),
