@@ -30,7 +30,7 @@ grep-matcher = "0.1.9"
 regex = "1.13"
 notify-debouncer-full = "0.7.0"
 trash = "5.2.9"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dunce = "1.0.5"
 # AI 協作（第 3 批，預設關閉）
@@ -58,7 +58,7 @@ ring = "0.17.14"
 # 內建 Git（不需要另外安裝 Git）。不執行儲存庫設定指定的外部程式，打開來路不明的資料夾也安全。
 # HTTPS 在 Windows 用系統的 WinHTTP（沿用系統憑證與 Proxy）；不支援 SSH 遠端。
 git2 = { version = "0.21.0", default-features = false, features = ["https", "vendored-libgit2"] }
-fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap"] }
+fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap"] }
 # 由原生端把 MCP 的註冊指令（含權杖）放進剪貼簿，權杖不用交給網頁。
 arboard = { version = "3.7.0", default-features = false }
 

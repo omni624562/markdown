@@ -15,8 +15,6 @@ ignore = [
   # rsa（russh 處理 SSH 的 RSA 金鑰）：Marvin 時序攻擊，至今沒有修好的版本。要大量量測私鑰運算的時間才可能利用，
   # oMarker 只在 SSH 登入時用 RSA 金鑰簽一次；改用 Ed25519 金鑰就不會用到。
   { id = "RUSTSEC-2023-0071", reason = "沒有修好的版本；SSH 登入時只簽一次，難以量測時序" },
-  # ttf-parser（fontdb 列出系統字型）：作者不再維護，沒有已知漏洞；只讀本機已安裝的字型。
-  { id = "RUSTSEC-2026-0192", reason = "沒人維護但沒有已知漏洞；只讀本機已安裝的字型" },
 ]
 
 [sources]
