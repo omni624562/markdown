@@ -831,6 +831,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<Folder>("create_project", req),
     /** 這台電腦有沒有安裝 COMET CLI（`comet` 指令）。 */
     cometInstalled: () => core.invoke<boolean>("comet_installed"),
+    /** `comet` 已經在 PATH 裡（做過 COMET 的本機設定）。 */
+    cometPathReady: () => core.invoke<boolean>("comet_path_ready"),
     /** 在背景用參數執行 `comet setup`；輸出與結果用 `onCometSetup` 收。 */
     cometSetupRun: (req: CometSetupRequest) => core.invoke<void>("comet_setup_run", { req }),
     onCometSetup: (fn: (e: CometSetupEvent) => void) => event.listen<CometSetupEvent>("comet-setup", (e) => fn(e.payload)),
