@@ -37,7 +37,7 @@ import sampleEn from "./sample.en.md?raw";
 import sampleZh from "./sample.md?raw";
 import { type BlockRef, collectBlocks, offsetForLineLazy } from "./scroll-sync.ts";
 import { SPELL_IGNORE_LIMIT, TERM_IGNORE_LIMIT, SettingsStore } from "./settings.ts";
-import { pasteAsMarkdown } from "./html-paste.ts";
+import { smartPasteText } from "./app/table-paste.ts";
 import { hiddenByCollapse, subtreeEnd } from "./sections.ts";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import { type HeadingRef, type RemotePage, encodeLinkPath, linkCompletion } from "./link-complete.ts";
@@ -1381,7 +1381,7 @@ function editorOptions(): EditorOptions {
             return true;
           }
           if (data.types.includes("vscode-editor-data")) return false;
-          const md = pasteAsMarkdown(data.getData("text/html"), data.getData("text/plain"));
+          const md = smartPasteText(v.state, data.getData("text/html"), data.getData("text/plain"));
           if (md === null) return false;
           e.preventDefault();
           v.dispatch(v.state.replaceSelection(md), { scrollIntoView: true, userEvent: "input.paste" });
@@ -1396,7 +1396,9 @@ function editorOptions(): EditorOptions {
           e.preventDefault();
           // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
           const at = new DOMRect(e.clientX, e.clientY, 0, 0);
-          setTimeout(() => contextMenu.open(at));
+          const show = () => setTimeout(() => contextMenu.open(at));
+          if (e.buttons & 2) window.addEventListener("pointerup", show, { once: true });
+          else show();
           return true;
         },
         drop(e, v) {

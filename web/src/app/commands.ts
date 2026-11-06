@@ -13,9 +13,8 @@ import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { PALETTES } from "../palette.ts";
 import { Palette } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
-import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
-import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { aiAppPresent } from "./ai-app-presence.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
 import { openDailyNote, openNeighborNote } from "./daily-notes.ts";
@@ -26,6 +25,8 @@ import { closeItem, itemTabs, setItemPinned, tabOrder } from "./item-tabs.ts";
 import { newProject } from "./new-project.ts";
 import { imageInput } from "./new-work-item.ts";
 import { runTableEdit } from "./offline-drive.ts";
+import { canConvertToTable, convertSelectionToTable } from "./table-paste.ts";
+import { type TableEdit, inTable } from "../table.ts";
 import { exportPdf } from "./pdf-export.ts";
 import { settingsDialog, fixTerms, convertToTraditional, toggleSetting, changeFontSize } from "./settings-ui.ts";
 import { issueView, issueSide } from "./wiki-edit.ts";
@@ -33,6 +34,7 @@ import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
 import { docName } from "./doc-names.ts";
+import { reportIssue } from "./version-info.ts";
 import type { Doc } from "../main.ts";
 import { cometSetupAvailable, isCometProject, openCometProjectSetup } from "./comet-project.ts";
 import { app } from "./context.ts";
@@ -51,6 +53,11 @@ function insertPlaceholder(text: string, line: number): void {
 
 function fmt(id: string, title: string, iconName: string, run: () => void, keys?: string, group = t("格式")): Command {
   return { id, title, group, icon: iconName, keys, when: isMarkdown, run };
+}
+
+/** 表格操作：游標在表格裡時才出現。 */
+function tableCmd(id: string, title: string, iconName: string, kind: TableEdit): Command {
+  return { id, title, group: t("格式"), icon: iconName, when: () => isMarkdown() && inTable(app.editor.view.state), run: () => runTableEdit(kind) };
 }
 
 const palette = new Palette(commands);
@@ -434,7 +441,7 @@ export function initCommands(): void {
       title: t("說明：回報問題或建議…"),
       group: t("說明"),
       icon: "bug",
-      run: () => openUrl(`${REPO_URL}/issues/new`),
+      run: () => reportIssue(),
     },
     {
       id: "about",
@@ -795,11 +802,27 @@ export function initCommands(): void {
       const at = app.editor.view.coordsAtPos(pos);
       if (at) openInsertMenu(new DOMRect(at.left, at.top, 0, at.bottom - at.top));
     }, "Mod-Shift-Enter", t("插入")),
-    fmt("table-format", t("表格：對齊目前的表格"), "table", () => runTableEdit("format")),
-    fmt("table-insert-row", t("表格：在下方插入一列"), "table", () => runTableEdit("insert-row")),
-    fmt("table-insert-column", t("表格：在右側插入一欄"), "table", () => runTableEdit("insert-column")),
-    fmt("table-delete-row", t("表格：刪除目前這一列"), "table", () => runTableEdit("delete-row")),
-    fmt("table-delete-column", t("表格：刪除目前這一欄"), "table", () => runTableEdit("delete-column")),
+    // 游標在表格裡時才出現（右鍵選單的「表格」子選單、指令面板）；原始碼、分割模式也能用。
+    tableCmd("table-insert-row-above", t("表格：在上方插入一列"), "arrow-up", "insert-row-above"),
+    tableCmd("table-insert-row", t("表格：在下方插入一列"), "arrow-down", "insert-row"),
+    tableCmd("table-insert-column-left", t("表格：在左側插入一欄"), "arrow-left", "insert-column-left"),
+    tableCmd("table-insert-column", t("表格：在右側插入一欄"), "arrow-right", "insert-column"),
+    tableCmd("table-delete-row", t("表格：刪除目前這一列"), "trash", "delete-row"),
+    tableCmd("table-delete-column", t("表格：刪除目前這一欄"), "trash", "delete-column"),
+    tableCmd("table-align-left", t("表格：這一欄靠左"), "align-left", "align-left"),
+    tableCmd("table-align-center", t("表格：這一欄置中"), "align-center", "align-center"),
+    tableCmd("table-align-right", t("表格：這一欄靠右"), "align-right", "align-right"),
+    tableCmd("table-sort-asc", t("表格：依這一欄排序（小到大）"), "arrow-down-a-z", "sort-asc"),
+    tableCmd("table-sort-desc", t("表格：依這一欄排序（大到小）"), "arrow-down-z-a", "sort-desc"),
+    tableCmd("table-format", t("表格：對齊目前的表格"), "table", "format"),
+    {
+      id: "table-from-text",
+      title: t("轉成表格"),
+      group: t("格式"),
+      icon: "table",
+      when: () => isMarkdown() && canConvertToTable(app.editor.view.state),
+      run: () => convertSelectionToTable(),
+    },
     {
       id: "format-tables",
       title: t("對齊文件中所有表格"),
