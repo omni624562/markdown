@@ -1,0 +1,25 @@
+# Rust 相依套件的稽核（cargo-deny，見 .github/workflows/audit.yml）：
+# - advisories：RustSec 公告的漏洞、沒人維護的套件，以及已經撤回（yanked）的版本。
+# - sources：套件只能來自 crates.io，不接受其他登錄處或 git 來源（被調包成別的來源會擋下來）。
+# 根目錄的 crates/ 會編成網頁版的 wasm、命令列工具與桌面版的一部分，三種平台都檢查；
+# 桌面版（desktop/）只發佈 Windows，workflow 跑它時用 --target 只檢查 Windows 用得到的套件。
+
+[graph]
+targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
+all-features = true
+
+[advisories]
+yanked = "deny"
+# 暫時接受的公告：一定要寫原因，有修好的版本時就移除。
+ignore = [
+  # rsa（russh 處理 SSH 的 RSA 金鑰）：Marvin 時序攻擊，至今沒有修好的版本。要大量量測私鑰運算的時間才可能利用，
+  # oMarker 只在 SSH 登入時用 RSA 金鑰簽一次；改用 Ed25519 金鑰就不會用到。
+  { id = "RUSTSEC-2023-0071", reason = "沒有修好的版本；SSH 登入時只簽一次，難以量測時序" },
+  # ttf-parser（fontdb 列出系統字型）：作者不再維護，沒有已知漏洞；只讀本機已安裝的字型。
+  { id = "RUSTSEC-2026-0192", reason = "沒人維護但沒有已知漏洞；只讀本機已安裝的字型" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
