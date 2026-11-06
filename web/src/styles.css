@@ -2142,17 +2142,34 @@ button.git-info:disabled { cursor: default; }
 .git-files [data-status="deleted"] b, .git-files [data-status="conflicted"] b { color: var(--danger); }
 
 /* ---- WebDAV ---- */
-/* 檔案面板沒開資料夾時的動作：一欄清單（和起始頁的「開始」一樣），第一個「開啟資料夾」是主要動作。 */
-.side-buttons { display: flex; flex-direction: column; gap: 2px; }
-/* #sidebar .btn 會把字置中，這裡的清單要靠左（權重要比它高）。 */
-#sidebar .side-buttons .btn { justify-content: flex-start; gap: 10px; width: 100%; height: auto; min-height: 32px; padding: 6px 10px; border: 0; background: none; color: var(--accent); white-space: normal; text-align: start; }
-#sidebar .side-buttons .btn:hover, #sidebar .side-buttons .btn:focus-visible { background: var(--active-line); }
-.side-buttons .btn .icon { flex: none; width: 16px; height: 16px; }
+/* 檔案面板沒開資料夾時（app/workspace-ui.ts 的 renderFilesEmpty）：最上面是最近的專案（名稱下面一行是位置），
+   接著是「開啟資料夾…」（主要動作）、「新專案…」，最後是其他方式（下載儲存庫、連線到遠端資料夾）。 */
+.files-projects-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; margin: 8px 0 4px; }
+.side-empty .files-projects-head h3 { margin: 0; }
+.files-all-projects { display: inline-flex; flex: none; gap: 1px; align-items: center; padding: 0 2px; border: 0; border-radius: 4px; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+.files-all-projects .icon { width: 13px; height: 13px; }
+.files-all-projects:hover { text-decoration: underline; }
+.files-project-list { margin-bottom: 14px; }
+.files-project-list li > button:first-child { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 8px; align-items: center; padding: 5px 6px; line-height: 1.45; }
+.files-project-list button .project-dot { justify-self: center; margin: 0; }
+.files-row-name { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.files-row-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-row-where { grid-column: 2; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.files-kind-badge { flex: none; padding: 0 6px; border-radius: 8px; background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--muted); font-size: 10.5px; font-weight: 600; line-height: 16px; }
+.files-main { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 16px; }
+/* #sidebar .btn 會把字置中，這裡要靠左（權重要比它高）。 */
+#sidebar .files-main .btn { justify-content: flex-start; gap: 8px; width: 100%; height: auto; min-height: 32px; padding: 6px 10px; }
+#sidebar .files-main .btn-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+#sidebar .files-main .btn-primary:hover, #sidebar .files-main .btn-primary:focus-visible { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.files-main .btn .icon { flex: none; width: 16px; height: 16px; }
+.side-empty .files-main + h3 { margin-top: 0; }
+.files-other { margin: 0; padding: 0; list-style: none; }
+.files-other button { display: flex; gap: 8px; align-items: center; width: 100%; min-height: 30px; padding: 5px 6px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: inherit; line-height: 1.45; text-align: start; cursor: pointer; }
+.files-other button:hover, .files-other button:focus-visible { background: var(--active-line); }
+.files-other .icon { flex: none; width: 16px; height: 16px; color: var(--muted); }
 /* 下載儲存庫的狀態（還沒登入、還沒連線，或登入的帳號）：名稱下面一行的淡色小字（見 app/repo-sources.ts）。 */
-.side-buttons .repo-label { display: flex; flex-direction: column; min-width: 0; }
-.side-buttons .repo-note { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-#sidebar .side-buttons .btn:first-child { margin-bottom: 4px; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
-#sidebar .side-buttons .btn:first-child:hover, #sidebar .side-buttons .btn:first-child:focus-visible { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.files-other .repo-label { display: flex; flex-direction: column; min-width: 0; }
+.files-other .repo-note { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .recent-list li { display: flex; align-items: center; }
 .recent-list li > button:first-child { flex: 1; min-width: 0; }
 .recent-list .recent-forget { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }

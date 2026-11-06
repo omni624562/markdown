@@ -34,7 +34,7 @@ test("起始頁、檔案面板、切換專案、專案總覽：COMET 專案的�
   await page.keyboard.press("Control+Shift+E");
   const files = page.locator("#files-empty .recent-list li button:first-child");
   await files.first().waitFor();
-  assert.deepEqual(await files.evaluateAll((els) => els.filter((el) => el.querySelector(".comet-badge")).map((el) => el.firstElementChild.nextElementSibling.textContent)), ["產品交付"]);
+  assert.deepEqual(await files.evaluateAll((els) => els.filter((el) => el.querySelector(".comet-badge")).map((el) => el.querySelector(".files-row-name > span").textContent)), ["產品交付"]);
 
   await page.keyboard.press("Control+Alt+P");
   const options = page.locator(".palette [role=option]");

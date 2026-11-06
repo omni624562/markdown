@@ -45,20 +45,20 @@ test("起始頁的「專案」：自訂名稱與顏色、最近開啟的 4 個�
   await context.close();
 });
 
-test("檔案面板（沒開資料夾）：標題是「專案」，和起始頁同樣的名稱、顏色與順序；標題列沒有第二個「⋯」", async () => {
+test("檔案面板（沒開資料夾）：標題是「最近的專案」，和起始頁同樣的名稱、顏色與順序；標題列沒有第二個「⋯」", async () => {
   const { page, context, errors } = await open({ desktop: DESKTOP });
   assert.equal(await page.locator("#files-more").count(), 0);
   await page.keyboard.press("Control+Shift+E");
   const box = page.locator("#files-empty");
-  await box.locator("h3", { hasText: "專案" }).waitFor();
-  assert.deepEqual(await box.locator("h3").allTextContents(), ["專案"]);
-  const rows = box.locator(".recent-list li button:first-child");
+  await box.locator("h3", { hasText: "最近的專案" }).waitFor();
+  assert.deepEqual(await box.locator("h3").allTextContents(), ["最近的專案", "其他方式"]);
+  const rows = box.locator(".recent-list li button:first-child .files-row-name > span:first-child");
   assert.deepEqual(await rows.allTextContents(), ["鈷藍計畫", "notes", "釘選的專案", "有群組的", "很久沒開"]);
   assert.deepEqual(
     await box.locator(".recent-list .project-dot").evaluateAll((dots) => dots.map((d) => d.dataset.color ?? null)),
     ["blue", null, "red", "green", null],
   );
-  await box.getByRole("button", { name: "全部專案…" }).click();
+  await box.getByRole("button", { name: "全部專案" }).click();
   await page.locator("dialog.project-overview[open]").waitFor();
   assert.deepEqual(errors, []);
   await context.close();
@@ -124,9 +124,9 @@ const repoRows = (dialog) =>
       .map((el) => [el.querySelector(".palette-title").textContent, el.querySelector(".palette-group")?.textContent ?? null]),
   );
 
-/** 檔案面板（沒開資料夾）的下載儲存庫按鈕：名稱與右邊的狀態。 */
+/** 檔案面板（沒開資料夾）的下載儲存庫按鈕：名稱與下面一行的狀態。 */
 const filesRepos = (page) =>
-  page.locator("#files-empty .side-buttons button:has(.repo-note)").evaluateAll((els) =>
+  page.locator("#files-empty .files-other button:has(.repo-note)").evaluateAll((els) =>
     els.map((el) => {
       const note = el.querySelector(".repo-note");
       return [el.querySelector(".repo-label > span").textContent, note.hidden ? null : note.textContent];
