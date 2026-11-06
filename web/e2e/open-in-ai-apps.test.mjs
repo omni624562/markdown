@@ -75,6 +75,8 @@ test("「☰」→「專案」→「在 Codex／Claude Code 開啟這個專案�
   let sub = await projectMenu(page);
   await sub.locator(":scope > button", { hasText: CODEX }).click();
   await page.locator(".toast", { hasText: "正在用 Codex 開啟「產品筆記」" }).waitFor();
+  // ChatGPT 桌面版停在聊天畫面時不一定會自己切到 Codex：提示怎麼切。
+  await page.locator(".toast", { hasText: "請按左上角的「ChatGPT」切到「Codex」" }).waitFor();
   sub = await projectMenu(page);
   await sub.locator(":scope > button", { hasText: CLAUDE }).click();
   await page.locator(".toast", { hasText: "正在用 Claude 開啟「產品筆記」" }).waitFor();

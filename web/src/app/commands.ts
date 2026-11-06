@@ -13,9 +13,8 @@ import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { PALETTES } from "../palette.ts";
 import { Palette } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
-import { REPO_URL } from "../repo.ts";
 import { toast } from "../ui/toast.ts";
-import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, openUrl, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { aiAppPresent } from "./ai-app-presence.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
 import { openDailyNote, openNeighborNote } from "./daily-notes.ts";
@@ -33,7 +32,9 @@ import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
 import { docName } from "./doc-names.ts";
+import { reportIssue } from "./version-info.ts";
 import type { Doc } from "../main.ts";
+import { cometSetupAvailable, isCometProject, openCometProjectSetup } from "./comet-project.ts";
 import { app } from "./context.ts";
 
 /** 目前開著的專案的名稱（自訂的名稱，沒有就是資料夾名稱）。 */
@@ -343,6 +344,24 @@ export function initCommands(): void {
       run: () => app.projectUi?.openInApp("claude"),
     },
     {
+      id: "comet-setup-project",
+      title: t("設定成 COMET 專案…"),
+      group: t("資料夾與專案"),
+      icon: "wand-sparkles",
+      // 先建好的專案，之後才要用 COMET（這台電腦有 COMET、專案還不是 COMET 專案時）。
+      when: () => cometSetupAvailable() && !isCometProject(),
+      run: () => openCometProjectSetup(),
+    },
+    {
+      id: "comet-resetup-project",
+      title: t("重新設定 COMET…"),
+      group: t("資料夾與專案"),
+      icon: "rotate-ccw",
+      // 已經是 COMET 專案：用新的設定再執行一次 comet setup（例如換 Sprint 或指派對象）。
+      when: () => cometSetupAvailable() && isCometProject(),
+      run: () => openCometProjectSetup(),
+    },
+    {
       id: "delete-project",
       title: t("刪除專案…"),
       group: t("資料夾與專案"),
@@ -415,7 +434,7 @@ export function initCommands(): void {
       title: t("說明：回報問題或建議…"),
       group: t("說明"),
       icon: "bug",
-      run: () => openUrl(`${REPO_URL}/issues/new`),
+      run: () => reportIssue(),
     },
     {
       id: "about",
