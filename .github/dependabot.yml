@@ -27,6 +27,14 @@ updates:
       npm-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # @types/node 跟著 CI 與發佈用的 Node 主版本（目前 22），換 Node 版本時再一起升。
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 7（用 Go 重寫的編譯器）拿掉了 JavaScript 的編譯器 API（src/i18n.test.ts 用到），
+      # 型別檢查也更嚴，要另外安排遷移。
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: cargo
     directories: ["/", "/desktop"]
