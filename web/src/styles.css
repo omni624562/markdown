@@ -777,10 +777,6 @@ kbd {
 .side-actions .btn .icon { width: 16px; height: 16px; }
 /* 檔案面板上方釘上去的按鈕（app/pin-commands.ts）：在最右邊，和新增檔案等按鈕之間一條細線。 */
 .side-actions .head-pin-sep { flex: none; align-self: center; width: 1px; height: 16px; margin: 0 3px; background: var(--border); }
-/* 有釘按鈕時，新增檔案、新增資料夾、重新讀取平常藏起來，滑鼠移到面板上（或焦點在面板裡）才出現，專案名稱才有位置。 */
-@media (hover: hover) {
-  #panel-files:not(:hover, :focus-within) #files-head.has-pins > :not(.head-pin) { display: none; }
-}
 .side-body { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; }
 .side-empty { margin: 4px 6px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .side-empty p { margin: 0 0 12px; }
