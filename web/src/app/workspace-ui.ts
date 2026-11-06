@@ -38,6 +38,7 @@ import { docName } from "./doc-names.ts";
 import { renameFileShortcuts } from "./file-shortcuts.ts";
 import { setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
 import { showFilters } from "./filter-collapse.ts";
+import { cometChangeWarning, refreshCometGuards } from "./comet-files.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -557,6 +558,7 @@ export async function setWorkspace(folder: Folder | null): Promise<void> {
   if (folder) storage.save("workspace", folder.path);
   else storage.remove("workspace");
   await app.renderProjectName();
+  refreshCometGuards(); // 讀到專案清單後才知道是不是 COMET 專案：開著的設定檔跟著鎖上
   renderFilesHeadPins(); // 跟著專案：提示裡的專案名稱、能不能用（例如遠端資料夾不能在 Codex 開啟）
   await app.fileTree?.setRoot(folder?.path ?? null, folder?.name, folder ? loadProjectView(folder.path).expanded : []);
   app.treeActive = app.cur.fileHandle?.path ?? null;
@@ -684,6 +686,15 @@ function pickAndUpload(dir: string): void {
 export async function renameEntry(entry: Entry, name: string): Promise<void> {
   const d = desktop;
   if (!d) return;
+  // COMET 的檔案（例如 AGENTS.md、docs/spec）：改名前多問一次。
+  const comet = cometChangeWarning(entry.path, "rename");
+  if (comet) {
+    const choice = await choose(t("要改名 COMET 的檔案嗎？"), comet, [
+      { id: "rename", label: t("仍要改名"), danger: true },
+      { id: "cancel", label: t("取消"), primary: true },
+    ]);
+    if (choice !== "rename") return;
+  }
   const parent = dirname(entry.path);
   // 改名前記下各文件的連結，改名後才知道哪些要更新。
   const local = !isRemote(entry.path) && !!app.workspaceRoot;
@@ -703,6 +714,7 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
   ({ name: app.cur.fileName, handle: app.cur.fileHandle } = app.active);
   // 左側圖示列上的檔案捷徑也換到新路徑。
   renameFileShortcuts(entry.path, to);
+  refreshCometGuards();
   app.fileListCache = null;
   app.persistSession();
   app.renderSaveState();
@@ -759,15 +771,22 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
       const note = affected.some((doc) => doc.dirty) ? t("已開啟的分頁會保留內容，但有尚未存檔的變更。") : "";
       // 遠端資料夾沒有資源回收筒：講清楚是永久刪除。
       const remote = isRemote(entry.path);
+      // COMET 的檔案：說明會動到哪些，按鈕改成「仍要…」，預設是取消。
+      const comet = cometChangeWarning(entry.path, "trash");
       const choice = remote
         ? await choose(t("永久刪除？"), t("要刪除{what}嗎？遠端資料夾沒有資源回收筒，刪除後無法復原。{note}", { what, note }), [
             { id: "trash", label: t("永久刪除"), danger: true },
             { id: "cancel", label: t("取消"), primary: true },
           ])
-        : await choose(t("移到資源回收筒？"), t("要把{what}移到資源回收筒嗎？之後可以從資源回收筒還原。{note}", { what, note }), [
-            { id: "trash", label: t("移到資源回收筒"), danger: true },
-            { id: "cancel", label: t("取消") },
-          ]);
+        : comet
+          ? await choose(t("要刪除 COMET 的檔案嗎？"), comet + t("要把{what}移到資源回收筒嗎？之後可以從資源回收筒還原。{note}", { what, note }), [
+              { id: "trash", label: t("仍要移到資源回收筒"), danger: true },
+              { id: "cancel", label: t("取消"), primary: true },
+            ])
+          : await choose(t("移到資源回收筒？"), t("要把{what}移到資源回收筒嗎？之後可以從資源回收筒還原。{note}", { what, note }), [
+              { id: "trash", label: t("移到資源回收筒"), danger: true },
+              { id: "cancel", label: t("取消") },
+            ]);
       if (choice !== "trash") return;
       await d.trashEntry(entry.path);
       for (const doc of affected) doc.missing = true;
