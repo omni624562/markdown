@@ -158,6 +158,7 @@ fn removal(
     trash_folder: bool,
     exists: bool,
     system: &[PathBuf],
+    terminals: usize,
 ) -> Result<Removal, String> {
     if !trash_folder || !exists {
         return Ok(Removal::ListOnly);
@@ -168,13 +169,44 @@ fn removal(
             name = display_name(dir)
         ));
     }
-    Ok(Removal::Trash(Question::new(
-        tr!("刪除專案"),
-        tr!(
-            "要把「{path}」整個資料夾移到資源回收筒嗎？可以從資源回收筒還原。",
-            path = path_string(dir)
-        ),
-    )))
+    let mut message = tr!(
+        "要把「{path}」整個資料夾移到資源回收筒嗎？可以從資源回收筒還原。",
+        path = path_string(dir)
+    );
+    if terminals > 0 {
+        message.push_str("\n\n");
+        message.push_str(&tr!(
+            "在這個資料夾開著的 {n} 個終端機會一起關閉。",
+            n = terminals
+        ));
+    }
+    Ok(Removal::Trash(Question::new(tr!("刪除專案"), message)))
+}
+
+/// 移到資源回收筒失敗後再試幾次：剛結束的終端機、防毒軟體或搜尋索引可能還短暫占用檔案。
+const TRASH_ATTEMPTS: usize = 4;
+
+/// 把資料夾移到資源回收筒。失敗時等一下再試；最後還是失敗，多半是有程式還在使用裡面的檔案
+/// （Windows 回報「Some operations were aborted」之類看不懂的訊息），改成說明可以怎麼做。
+fn move_to_trash(dir: &Path) -> Result<(), String> {
+    let mut last = String::new();
+    for attempt in 0..TRASH_ATTEMPTS {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        // 上一次其實已經移走了（例如回報錯誤前已經完成）：不必再試。
+        if attempt > 0 && !dir.exists() {
+            return Ok(());
+        }
+        match trash::delete(dir) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = e.to_string(),
+        }
+    }
+    Err(tr!(
+        "無法把資料夾移到資源回收筒，通常是資料夾或裡面的檔案還有程式在使用（例如檔案總管、VS Code、Codex 或命令提示字元）。請關閉這些程式後再試一次；也可以取消勾選「同時把資料夾移到資源回收筒」，只從清單移除。（{e}）",
+        e = last
+    ))
 }
 
 /// 刪除專案：從專案清單移除；`trash_folder` 時把整個資料夾移到資源回收筒（可以從回收筒還原）。
@@ -215,7 +247,9 @@ pub async fn project_delete(
     .into_iter()
     .filter_map(Result::ok)
     .collect();
-    if let Removal::Trash(question) = removal(&dir, trash_folder, dir.exists(), &system)? {
+    let terminals = app.state::<crate::ai::term::Terminals>().count_inside(&dir);
+    if let Removal::Trash(question) = removal(&dir, trash_folder, dir.exists(), &system, terminals)?
+    {
         if !crate::confirm::confirm(&window, Some(question)).await {
             return Ok(false);
         }
@@ -223,10 +257,12 @@ pub async fn project_delete(
         if is_open(&app) {
             return Err(tr!("請先關閉這個專案再刪除"));
         }
+        // 在這個資料夾啟動的終端機先結束，否則 Windows 不讓資料夾移走。
+        app.state::<crate::ai::term::Terminals>().kill_inside(&dir);
         let d = dir.clone();
         // 很大的資料夾移到回收筒要一點時間。
         crate::io::blocking_for(std::time::Duration::from_secs(300), move || {
-            trash::delete(&d).map_err(|e| tr!("無法把資料夾移到資源回收筒：{e}", e = e))
+            move_to_trash(&d)
         })
         .await?;
     }
@@ -358,19 +394,25 @@ mod tests {
     fn only_moving_to_the_recycle_bin_is_confirmed() {
         let system = [PathBuf::from("/home/me")];
         let dir = Path::new("/home/me/Documents/產品筆記");
-        assert_eq!(removal(dir, false, true, &system), Ok(Removal::ListOnly));
+        assert_eq!(removal(dir, false, true, &system, 0), Ok(Removal::ListOnly));
         // 資料夾已經不在了：沒有東西要移，只從清單移除。
-        assert_eq!(removal(dir, true, false, &system), Ok(Removal::ListOnly));
-        let Ok(Removal::Trash(q)) = removal(dir, true, true, &system) else {
+        assert_eq!(removal(dir, true, false, &system, 0), Ok(Removal::ListOnly));
+        let Ok(Removal::Trash(q)) = removal(dir, true, true, &system, 0) else {
             panic!("要移到資源回收筒時應該先確認");
         };
         assert_eq!(q.title, "刪除專案");
         assert!(q.message.contains(&path_string(dir)), "{}", q.message);
         assert!(q.message.contains("資源回收筒"), "{}", q.message);
+        assert!(!q.message.contains("終端機"), "{}", q.message);
+        // 有終端機開在這個資料夾：問的時候說會一起關閉。
+        let Ok(Removal::Trash(q)) = removal(dir, true, true, &system, 2) else {
+            panic!("要移到資源回收筒時應該先確認");
+        };
+        assert!(q.message.contains("2 個終端機會一起關閉"), "{}", q.message);
         // 系統資料夾直接拒絕，不必問。
-        assert!(removal(Path::new("/home"), true, true, &system).is_err());
+        assert!(removal(Path::new("/home"), true, true, &system, 0).is_err());
         assert_eq!(
-            removal(Path::new("/home"), false, true, &system),
+            removal(Path::new("/home"), false, true, &system, 0),
             Ok(Removal::ListOnly)
         );
     }

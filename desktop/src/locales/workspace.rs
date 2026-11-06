@@ -54,7 +54,7 @@ pub static EN: &[(&str, &str)] = &[
         "「{name}」是系統或使用者資料夾，不能移到資源回收筒；可以只從清單移除",
         "\"{name}\" is a system or user folder and can't be moved to the Recycle Bin. You can still remove it from the list.",
     ),
-    ("無法把資料夾移到資源回收筒：{e}", "Couldn't move the folder to the Recycle Bin: {e}"),
+    ("無法把資料夾移到資源回收筒，通常是資料夾或裡面的檔案還有程式在使用（例如檔案總管、VS Code、Codex 或命令提示字元）。請關閉這些程式後再試一次；也可以取消勾選「同時把資料夾移到資源回收筒」，只從清單移除。（{e}）", "Couldn't move the folder to the Recycle Bin. Usually another program is still using the folder or a file in it (for example File Explorer, VS Code, Codex or Command Prompt). Close those programs and try again, or clear \"Also move the folder to the Recycle Bin\" to only remove it from the list. ({e})"),
     ("COMET 設定的「{what}」不正確", "The COMET setting \"{what}\" is not valid."),
     ("Sprint 網址", "Sprint URL"),
     ("集合網址", "Collection URL"),
@@ -88,4 +88,5 @@ pub static EN: &[(&str, &str)] = &[
     ("無法建立資料夾「{name}」", "Couldn't create the folder \"{name}\""),
     ("刪除專案", "Delete Project"),
     ("要把「{path}」整個資料夾移到資源回收筒嗎？可以從資源回收筒還原。", "Move the entire folder \"{path}\" to the Recycle Bin? You can restore it from the Recycle Bin."),
+    ("在這個資料夾開著的 {n} 個終端機會一起關閉。", "{n} terminal(s) open in this folder will be closed too."),
 ];

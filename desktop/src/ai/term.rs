@@ -13,7 +13,7 @@
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
@@ -39,6 +39,8 @@ struct Session {
     /// 寫入會停住，不能讓前端的指令（以及握著的 `sessions` 鎖）跟著卡住。
     input: std::sync::mpsc::Sender<Vec<u8>>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    /// 啟動時的目前資料夾（專案的資料夾）。
+    cwd: PathBuf,
 }
 
 /// 每個終端機最多保留的輸出（位元組）。
@@ -81,6 +83,28 @@ impl Terminals {
         }
     }
 
+    /// 在 `dir`（或裡面的資料夾）啟動、還在執行的終端機數目。
+    pub fn count_inside(&self, dir: &Path) -> usize {
+        self.sessions
+            .lock()
+            .values()
+            .filter(|s| s.cwd.starts_with(dir))
+            .count()
+    }
+
+    /// 結束在 `dir`（或裡面的資料夾）啟動的終端機，回傳結束了幾個。刪除專案前用：
+    /// Windows 上只要有程式的目前資料夾在裡面，資料夾就移不到資源回收筒。
+    /// 工作階段等程式真的結束後才移除（和使用者自己關閉時一樣，會送出 `term-exit`）。
+    pub fn kill_inside(&self, dir: &Path) -> usize {
+        let mut sessions = self.sessions.lock();
+        let mut killed = 0;
+        for s in sessions.values_mut().filter(|s| s.cwd.starts_with(dir)) {
+            let _ = s.killer.kill();
+            killed += 1;
+        }
+        killed
+    }
+
     /// 一個終端機的輸出紀錄。
     pub fn log(&self, id: u32) -> Option<Log> {
         self.logs.lock().get(&id).cloned()
@@ -120,7 +144,7 @@ impl Terminals {
             .root()
             .or_else(|| app.path().home_dir().ok())
             .unwrap_or_else(|| PathBuf::from("."));
-        cmd.cwd(cwd);
+        cmd.cwd(&cwd);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         drop_invalid_env(&mut cmd);
@@ -162,6 +186,7 @@ impl Terminals {
                 master: pair.master,
                 input,
                 killer,
+                cwd,
             },
         );
         self.logs.lock().insert(
