@@ -85,7 +85,8 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     assignedAuto: t("oMarker 登入的帳號"),
     change: t("換人"),
     smoke: t("完成後查詢我的工作，確認連得上 Azure DevOps"),
-    local: t("設定本機 PATH 與 VSCode（第一次使用 COMET 需要）"),
+    local: t("設定本機 PATH（第一次使用 COMET 需要）"),
+    localDone: t("這台電腦已經設定過"),
   };
   host.innerHTML = `
     <h3><span class="np-num" aria-hidden="true">2</span>${tr.heading}<span class="nc-off-note">${tr.offNote}</span></h3>
@@ -105,7 +106,7 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     </div>
     <label class="nc-who-input">${tr.assigned}<input name="nc-assigned" spellcheck="false" autocomplete="off" /><span class="nc-note">${tr.assignedNote}</span></label>
     <label class="pe-check"><input type="checkbox" name="nc-smoke" checked /> ${tr.smoke}</label>
-    <label class="pe-check"><input type="checkbox" name="nc-local" checked /> ${tr.local}</label>`;
+    <label class="pe-check"><input type="checkbox" name="nc-local" checked /> ${tr.local}<span class="nc-local-done" hidden>${tr.localDone}</span></label>`;
   const q = <T extends HTMLElement>(sel: string) => host.querySelector<T>(sel)!;
   const project = q<HTMLSelectElement>("select[name=nc-project]");
   const team = q<HTMLSelectElement>("select[name=nc-team]");
@@ -185,10 +186,30 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     assigned.focus();
   });
 
+  // 設定本機 PATH：comet 已經在 PATH 裡（這台電腦做過 COMET 的本機設定）就預設不勾，註明已經設定過。
+  // 查詢期間使用者自己改了勾選就照使用者的。
+  const local = q<HTMLInputElement>("input[name=nc-local]");
+  let localTouched = false;
+  local.addEventListener("change", () => (localTouched = true));
+  const checkLocal = () => {
+    localTouched = false;
+    local.checked = true;
+    q(".nc-local-done").hidden = true;
+    void desktop
+      ?.cometPathReady()
+      .then((ready) => {
+        if (ready !== true || localTouched) return;
+        local.checked = false;
+        q(".nc-local-done").hidden = false;
+      })
+      .catch(() => {});
+  };
+
   return {
     async load() {
       const n = ++seq;
       cadenceTouched = false;
+      checkLocal();
       cadence.value = String(DEFAULT_CADENCE);
       account = await desktop!.adoAccount().catch(() => null);
       if (n !== seq) return;
