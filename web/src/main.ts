@@ -1391,7 +1391,9 @@ function editorOptions(): EditorOptions {
           e.preventDefault();
           // Linux 按下右鍵就觸發 contextmenu，等放開後再顯示，以免被當成點在選單外而立刻關閉。
           const at = new DOMRect(e.clientX, e.clientY, 0, 0);
-          setTimeout(() => contextMenu.open(at));
+          const show = () => setTimeout(() => contextMenu.open(at));
+          if (e.buttons & 2) window.addEventListener("pointerup", show, { once: true });
+          else show();
           return true;
         },
         drop(e, v) {
