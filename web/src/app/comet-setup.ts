@@ -13,6 +13,7 @@ import { t } from "../i18n.ts";
 import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
+import { refreshCometGuards } from "./comet-files.ts";
 import { app } from "./context.ts";
 
 /** 「COMET 設定」那一段的欄位。 */
@@ -431,6 +432,12 @@ export function runCometSetup(
       if (smokeStep) smokeStep.state = e.ok ? "done" : smokeStep.state === "run" ? "fail" : "wait";
       renderSteps();
       if (e.ok) {
+        // 剛變成 COMET 專案：檔案面板的「C」、設定檔唯讀跟著更新。
+        void app.projectUi
+          ?.refresh()
+          .then(() => app.fileTree?.refresh())
+          .then(refreshCometGuards)
+          .catch(console.error);
         if (info.existing) {
           head(
             "ok",
