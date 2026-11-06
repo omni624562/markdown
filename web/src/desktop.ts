@@ -346,6 +346,8 @@ export interface AdoRepo {
   webUrl: string | null;
   /** 專案 Wiki。 */
   wiki: boolean;
+  /** 還沒有任何分支的空儲存庫（可以把本機資料夾上傳到這裡）。舊版原生端沒有這一項。 */
+  empty?: boolean;
 }
 
 export interface AdoWiki {
@@ -869,6 +871,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),
     /** 在 Claude 桌面版的 Claude Code 開啟專案（專案清單裡的本機資料夾）。 */
     projectOpenClaude: (path: string) => core.invoke<void>("project_open_claude", { path }),
+    /** 傳給 ChatGPT：把文字帶進 ChatGPT 的輸入框（網址由原生端組，見 desktop/src/chatgpt.rs）。原生端看存好的設定，所以等設定存好。 */
+    chatgptSend: (target: "desktop" | "web", text: string) =>
+      afterSettings(() => core.invoke<void>("chatgpt_send", { target, text })),
     /** 這台電腦有沒有安裝 Codex、Claude 桌面版（系統有沒有登記開啟 codex://、claude:// 網址的程式）。 */
     aiAppsInstalled: () => core.invoke<Record<AiApp, boolean> | null>("ai_apps_installed"),
     /** 重新指定搬走的專案資料夾；取消時回傳 null。 */
@@ -1101,6 +1106,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoDisconnect: () => core.invoke<void>("ado_disconnect"),
     adoRepos: () => core.invoke<AdoRepo[]>("ado_repos"),
     adoClone: (cloneUrl: string, name: string) => core.invoke<Cloned | null>("ado_clone", { cloneUrl, name }),
+    /** 把目前開啟的資料夾上傳到 Azure DevOps（`existing`：上傳到已經存在的空儲存庫），回傳網頁網址；使用者取消時是 null。 */
+    adoPublish: (project: string, name: string, existing: boolean) =>
+      core.invoke<string | null>("ado_publish", { project, name, existing }),
     adoWorkItems: (search: string, filter?: AdoWorkItemFilter) => core.invoke<AdoWorkItem[]>("ado_work_items", { search, filter }),
     adoWorkItemFilters: () =>
       core.invoke<{ projects: string[]; kinds: string[]; stateSets?: KindStates[] }>("ado_work_item_filters"),

@@ -152,3 +152,13 @@ test("區塊樣式：預設是圓角區塊、留間隔；只接受圓角區塊�
   assert.equal(bad.settings.panelStyle, "spaced");
   assert.equal(bad.problems, 1);
 });
+
+test("傳給 ChatGPT：預設關閉，只接受三種值", () => {
+  assert.equal(sanitize({}).settings.chatgptSend, "off");
+  assert.equal(sanitize({}).settings.chatgptAcknowledged, false);
+  assert.equal(sanitize({ chatgptSend: "desktop" }).settings.chatgptSend, "desktop");
+  assert.equal(sanitize({ chatgptSend: "web", chatgptAcknowledged: true }).settings.chatgptAcknowledged, true);
+  const bad = sanitize({ chatgptSend: "https://example.test/" });
+  assert.equal(bad.settings.chatgptSend, "off");
+  assert.equal(bad.problems, 1);
+});

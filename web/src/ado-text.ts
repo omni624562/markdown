@@ -13,3 +13,16 @@ export function workItemLink(item: Pick<AdoWorkItem, "id" | "title" | "webUrl">)
 export function isInsecureUrl(url: string): boolean {
   return /^http:\/\//i.test(url.trim());
 }
+
+/**
+ * Azure DevOps 儲存庫的名稱（預設用資料夾名稱）：可以用中文與空白，但不能有 `\ / : * ? " < > | ; # $ { } , + = [ ]`
+ * 與控制字元（換成 `-`），不能用 `_` 或 `.` 開頭、`.` 結尾，最多 64 個字。
+ */
+export function adoRepoNameFrom(folder: string): string {
+  const name = [...folder.normalize("NFC").replace(/[\\/:*?"<>|;#$\{\},+=\[\]\u0000-\u001f\u007f]+/g, "-")]
+    .slice(0, 64)
+    .join("")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[\s._-]+|[\s.-]+$/g, "");
+  return name || "notes";
+}

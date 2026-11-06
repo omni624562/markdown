@@ -429,6 +429,7 @@ export const main: Record<string, Translation> = {
   "GitHub：發佈成網站（GitHub Pages）…": "GitHub: Publish as Website (GitHub Pages)…",
   "GitHub：分享成 Gist…": "GitHub: Share as Gist…",
   "Azure DevOps：下載儲存庫…": "Azure DevOps: Download Repository…",
+  "Azure DevOps：把這個資料夾上傳到 Azure DevOps…": "Azure DevOps: Upload This Folder to Azure DevOps…",
   "Azure DevOps：工作項目": "Azure DevOps: Work Items",
   "Azure DevOps：連線設定…": "Azure DevOps: Connection Settings…",
   // 下載儲存庫名稱右邊的狀態（app/repo-sources.ts）
@@ -452,6 +453,17 @@ export const main: Record<string, Translation> = {
   "減少縮排": "Outdent",
   "AI：把選取範圍傳給終端機中的 Claude Code／Codex": "AI: Send Selection to Claude Code/Codex in Terminal",
   "AI 協作設定…": "AI Collaboration Settings…",
+  "傳給 ChatGPT": "Send to ChatGPT",
+  "關閉（預設）": "Off (default)",
+  "ChatGPT 桌面版": "ChatGPT desktop app",
+  "ChatGPT 桌面版（未偵測到）": "ChatGPT desktop app (not detected)",
+  "網頁版（chatgpt.com）": "Web (chatgpt.com)",
+  "在「複製」旁邊多一項「傳給 ChatGPT」，把選取的文字、Wiki 頁面、工作項目等帶進 ChatGPT 的輸入框，由你按送出。內容會送到 OpenAI（公司以外的服務），公司資料請先確認規定允許。桌面版的方式還沒有官方保證，不能用時請改用網頁版。":
+    "Adds \"Send to ChatGPT\" next to \"Copy\". It puts the selected text, Wiki page, work item, and so on into the ChatGPT message box, and you press Send. The content goes to OpenAI, a service outside your company, so check that your company's rules allow it. The desktop app method isn't officially supported; if it doesn't work, use the web version.",
+  "內容會送到 OpenAI 的 ChatGPT（公司以外的服務）。公司文件、Wiki、工作項目等資料，請先確認公司規定允許再傳送。之後不會再問，可以在設定關掉這個功能。":
+    "The content will be sent to OpenAI's ChatGPT, a service outside your company. For company documents, Wiki pages, work items, and other data, make sure your company's rules allow it first. You won't be asked again; you can turn this off in Settings.",
+  "以下是內容：": "Here is the content:",
+  "內容較長，已複製。請在 ChatGPT 按 Ctrl+V 貼上。": "The content is long, so it was copied. Press Ctrl+V in ChatGPT to paste it.",
   "Git：加入 Claude Code 自動校對（GitHub Actions）…": "Git: Add Claude Code Auto Proofreading (GitHub Actions)…",
   "操作失敗：{error}": "Something went wrong: {error}",
   "{title}（{keys}）": "{title} ({keys})",
