@@ -67,7 +67,7 @@ arboard = { version = "3.7.0", default-features = false }
 windows-native-keyring-store = "1.1.0"
 # 直接匯出 PDF（WebView2 的 PrintToPdf）；版本和 Tauri 使用的一致。
 webview2-com = "0.39.1"
-windows-core = "0.62.2"
+windows-core = "0.100.0"
 # 自動更新在公司網路上的備援：WinHTTP 會用系統的 Proxy 自動設定與 Windows 帳號驗證。
 # 檢查有沒有安裝 Codex、Claude 桌面版：登錄檔與檔案關聯（AssocQueryStringW，要先初始化 COM）。
 # 重要操作的確認對話框（MessageBox，預設按鈕是「否」）。
