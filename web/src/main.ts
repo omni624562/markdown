@@ -3434,6 +3434,8 @@ setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
       "project-overview",
       "open-in-codex",
       "open-in-claude",
+      "comet-setup-project",
+      "comet-resetup-project",
       "-",
       "open-folder",
       { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },

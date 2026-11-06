@@ -306,16 +306,17 @@ export function runCometSetup(
   d: HTMLDialogElement,
   view: HTMLElement,
   req: CometSetupRequest,
-  info: { name: string; git: boolean; summary: CometSummaryRow[] },
+  info: { name: string; git: boolean; summary: CometSummaryRow[]; existing?: boolean },
   ready: Promise<unknown> = Promise.resolve(),
 ): Promise<boolean> {
+  // 已經有的專案（設定成 COMET 專案、重新設定）：沒有建立資料夾、Git 儲存庫這兩步。
+  const setupStep: Step = { label: t("執行 comet setup"), state: "run" };
   const steps: Step[] = [
-    { label: t("建立資料夾與 README.md"), state: "done" },
-    ...(info.git ? [{ label: t("建立 Git 儲存庫"), state: "done" } as Step] : []),
-    { label: t("執行 comet setup"), state: "run" },
+    ...(info.existing ? [] : [{ label: t("建立資料夾與 README.md"), state: "done" } as Step]),
+    ...(!info.existing && info.git ? [{ label: t("建立 Git 儲存庫"), state: "done" } as Step] : []),
+    setupStep,
     ...(req.connectionTest ? [{ label: t("查詢我的工作"), state: "wait" } as Step] : []),
   ];
-  const setupStep = steps[info.git ? 2 : 1];
   const smokeStep = req.connectionTest ? steps[steps.length - 1] : null;
   const tr = { steps: t("做了什麼"), settings: t("COMET 設定"), files: t("建立的檔案") };
   view.innerHTML = `
@@ -409,11 +410,19 @@ export function runCometSetup(
       if (smokeStep) smokeStep.state = e.ok ? "done" : smokeStep.state === "run" ? "fail" : "wait";
       renderSteps();
       if (e.ok) {
-        head(
-          "ok",
-          t("「{name}」建立好了", { name: info.name }),
-          req.connectionTest ? t("已切換到這個專案，也查詢了你的工作，確認連得上 Azure DevOps。") : t("已切換到這個專案。"),
-        );
+        if (info.existing) {
+          head(
+            "ok",
+            t("「{name}」設定好了", { name: info.name }),
+            req.connectionTest ? t("已經是 COMET 專案，也查詢了你的工作，確認連得上 Azure DevOps。") : t("已經是 COMET 專案了。"),
+          );
+        } else {
+          head(
+            "ok",
+            t("「{name}」建立好了", { name: info.name }),
+            req.connectionTest ? t("已切換到這個專案，也查詢了你的工作，確認連得上 Azure DevOps。") : t("已切換到這個專案。"),
+          );
+        }
         const made = createdFiles(lines, req.dir);
         if (made.length) {
           q(".nc-count").textContent = String(made.length);
