@@ -379,6 +379,63 @@ fn lists_repos_and_project_wikis() {
 }
 
 #[test]
+fn marks_empty_repos_that_have_no_branch_yet() {
+    let base = "https://ado.test/tfs/DC";
+    let repos = json!({"value": [
+        {"name": "web", "remoteUrl": "https://ado.test/tfs/DC/產品/_git/web", "project": {"name": "產品"},
+         "defaultBranch": "refs/heads/main"},
+        {"name": "新的", "remoteUrl": "https://ado.test/tfs/DC/產品/_git/新的", "project": {"name": "產品"}}
+    ]});
+    let list = repos_from(base, &repos, &Value::Null, &Value::Null);
+    let empty: Vec<_> = list.iter().map(|r| (r.name.as_str(), r.empty)).collect();
+    assert_eq!(empty, [("web", false), ("新的", true)]);
+}
+
+#[test]
+fn builds_the_request_to_create_a_repo_with_the_project_id() {
+    assert_eq!(
+        create_repo_body("週報", "p1"),
+        json!({"name": "週報", "project": {"id": "p1"}})
+    );
+}
+
+#[test]
+fn push_url_drops_the_account_in_the_server_address() {
+    assert_eq!(
+        push_url(" https://contoso@ado.test/contoso/產品/_git/web "),
+        "https://ado.test/contoso/產品/_git/web"
+    );
+    assert_eq!(
+        push_url("https://ado.test/tfs/DC/產品/_git/web"),
+        "https://ado.test/tfs/DC/產品/_git/web"
+    );
+}
+
+#[test]
+fn asks_before_replacing_another_origin_only() {
+    let target = "https://ado.test/tfs/DC/產品/_git/web";
+    // 沒有遠端，或原本就是同一個儲存庫（大小寫、帳號、結尾的斜線不同也算）：不用問。
+    assert!(publish_question("產品", "web", "web", None, target).is_none());
+    assert!(publish_question(
+        "產品",
+        "web",
+        "web",
+        Some("https://me@ADO.test/tfs/DC/產品/_git/web/"),
+        target
+    )
+    .is_none());
+    // 原本連到別的地方：要問。
+    assert!(publish_question(
+        "產品",
+        "web",
+        "web",
+        Some("https://github.com/wang-xiaoming/web.git"),
+        target
+    )
+    .is_some());
+}
+
+#[test]
 fn lists_wikis_and_page_trees() {
     let wikis = json!({"value": [
         {"id": "w2", "name": "docs", "type": "codeWiki", "projectId": "p1", "repositoryId": "r2",

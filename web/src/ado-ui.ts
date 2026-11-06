@@ -1,11 +1,12 @@
 /**
  * Azure DevOps（公司自架的 Azure DevOps Server／TFS 或雲端版，桌面版）：
- * 用個人存取權杖連線、從 ADO 開啟儲存庫或專案 Wiki。工作項目在側邊欄（ui/workitems-panel.ts）。
+ * 用個人存取權杖連線、從 ADO 開啟儲存庫或專案 Wiki、把本機資料夾上傳成 ADO 的儲存庫。
+ * 工作項目在側邊欄（ui/workitems-panel.ts）。
  */
 import type { AdoAccount, AdoRepo, Desktop, Folder } from "./desktop.ts";
-import { isInsecureUrl } from "./ado-text.ts";
+import { adoRepoNameFrom, isInsecureUrl } from "./ado-text.ts";
 import { t } from "./i18n.ts";
-import { choose } from "./ui/choice.ts";
+import { askText, choose } from "./ui/choice.ts";
 import { Picker } from "./ui/picker.ts";
 import { toast } from "./ui/toast.ts";
 
@@ -20,6 +21,31 @@ export interface AdoHooks {
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** 從清單選一項；關掉清單沒選時是 null。 */
+function pickOne<T>(options: Omit<ConstructorParameters<typeof Picker<T>>[0], "pick" | "closed">): Promise<T | null> {
+  return new Promise((resolve) => {
+    let picked: T | null = null;
+    new Picker<T>({ ...options, pick: (item) => (picked = item), closed: () => resolve(picked) }).open();
+  });
+}
+
+/** 新的儲存庫名稱：預設是資料夾名稱，不能用的符號換掉後再請使用者確認一次。 */
+async function askAdoRepoName(initial: string): Promise<string | null> {
+  for (let value = initial; ; ) {
+    const name = await askText(
+      t("上傳到 Azure DevOps"),
+      t("新的儲存庫名稱（可以用中文和空白，不能有 \\ / : * ? \" < > | 等符號）："),
+      value,
+      t("下一步"),
+    );
+    if (name === null) return null;
+    const clean = adoRepoNameFrom(name);
+    if (clean === name.trim()) return clean;
+    value = clean;
+    toast(t("儲存庫名稱改成「{name}」，確認後按「下一步」", { name: clean }));
+  }
 }
 
 export class Ado {
@@ -139,6 +165,96 @@ export class Ado {
       pick: (r) => void this.#clone(r),
     });
     picker.open();
+  }
+
+  /**
+   * 把目前開啟的本機資料夾（名稱是 `folder`）上傳到 Azure DevOps：選專案，再選建立新的儲存庫，
+   * 或上傳到那個專案裡已經存在的空儲存庫。成功時回傳 true（呼叫端更新原始碼控制面板）。
+   */
+  async publish(folder: string): Promise<boolean> {
+    if (!folder) {
+      toast(t("請先開啟要上傳的資料夾。"));
+      return false;
+    }
+    if (!(await this.#ensure())) return false;
+    const wait = toast(t("正在讀取 Azure DevOps 專案…"), { duration: 60000 });
+    let projects: string[];
+    let repos: Promise<AdoRepo[]>;
+    try {
+      // 儲存庫清單同時讀，選好專案時通常已經讀完。
+      repos = this.#d.adoRepos().catch(() => [] as AdoRepo[]);
+      projects = (await this.#d.adoWorkItemFilters()).projects;
+    } catch (e) {
+      toast(message(e), { tone: "error", duration: 12000 });
+      return false;
+    } finally {
+      wait.dismiss();
+    }
+    if (!projects.length) {
+      toast(t("看不到任何 Azure DevOps 專案，請確認個人存取權杖有讀取專案的權限"), { tone: "error", duration: 12000 });
+      return false;
+    }
+    const project =
+      projects.length === 1
+        ? projects[0]
+        : await pickOne<string>({
+            label: t("上傳到 Azure DevOps"),
+            placeholder: t("要放在哪個 Azure DevOps 專案？搜尋 {n} 個專案…", { n: projects.length }),
+            empty: t("找不到符合的專案"),
+            query: (text) => {
+              const q = text.trim().toLowerCase();
+              return q ? projects.filter((p) => p.toLowerCase().includes(q)) : projects;
+            },
+            render: (p) => ({ title: p, icon: "briefcase-business" }),
+          });
+    if (!project) return false;
+    const empty = (await repos).filter((r) => r.project === project && !r.wiki && r.empty);
+    const where = await choose(
+      t("上傳到 Azure DevOps"),
+      t("會把「{folder}」資料夾的檔案和版本紀錄放到 Azure DevOps 專案「{project}」。要建立新的儲存庫，還是用已經存在的空儲存庫？", {
+        folder,
+        project,
+      }),
+      [
+        { id: "cancel", label: t("取消") },
+        ...(empty.length ? [{ id: "existing", label: t("用已經存在的空儲存庫…") }] : []),
+        { id: "new", label: t("建立新的儲存庫"), primary: true },
+      ],
+    );
+    let name: string | null = null;
+    if (where === "new") name = await askAdoRepoName(adoRepoNameFrom(folder));
+    else if (where === "existing") {
+      const repo = await pickOne<AdoRepo>({
+        label: t("上傳到 Azure DevOps"),
+        placeholder: t("選一個空的儲存庫（{project}）", { project }),
+        empty: t("找不到符合的儲存庫"),
+        query: (text) => {
+          const q = text.trim().toLowerCase();
+          return q ? empty.filter((r) => r.name.toLowerCase().includes(q)) : empty;
+        },
+        render: (r) => ({ title: r.name, detail: t("空的儲存庫"), icon: "git-branch" }),
+      });
+      name = repo?.name ?? null;
+    }
+    if (!name) return false;
+    const uploading = toast(t("正在上傳到 Azure DevOps…"), { duration: 600000 });
+    try {
+      const url = await this.#d.adoPublish(project, name, where === "existing");
+      uploading.dismiss();
+      // 在系統的確認對話框選了「否」：什麼都沒做。
+      if (!url) return false;
+      toast(t("已上傳到 Azure DevOps：{project} / {name}", { project, name }), {
+        tone: "success",
+        duration: 12000,
+        action: { label: t("在瀏覽器開啟"), run: () => void this.#d.openExternal(url) },
+      });
+      this.#hooks.changed();
+      return true;
+    } catch (e) {
+      uploading.dismiss();
+      toast(message(e), { tone: "error", duration: 12000 });
+      return false;
+    }
   }
 
   async #clone(repo: AdoRepo): Promise<void> {
