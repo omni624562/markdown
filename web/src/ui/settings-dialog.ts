@@ -106,6 +106,10 @@ export interface AdoSettingsHooks {
   disconnect(): void;
   /** 伺服器上的工作項目類型（設定類型的顏色時列出來）。 */
   kinds(): Promise<string[]>;
+  /** 伺服器上的專案（選預設專案時列出來）。 */
+  projects(): Promise<string[]>;
+  /** 專案裡的團隊（選預設團隊時列出來）。 */
+  teams(project: string): Promise<{ name: string; default: boolean }[]>;
   /** 逐項檢查權杖能做什麼。 */
   check(): Promise<{ label: string; status: "ok" | "fail" | "unknown"; detail: string }[]>;
   /** 儲存診斷資料（伺服器的實際回應，拿掉個人資料）。 */
@@ -1344,6 +1348,7 @@ export class SettingsDialog {
       },
     );
     const colors = this.#kindColors(ado);
+    const defaults = this.#adoDefaults(ado);
     const refresh = () => {
       const a = ado.account();
       if (!a) editing = false;
@@ -1352,7 +1357,9 @@ export class SettingsDialog {
       // 上面兩列藏起來時，帳號是第一列，不需要分隔線。
       statusRow.style.borderTop = asking ? "" : "0";
       notifyRow.hidden = checkRow.hidden = diagnoseRow.hidden = colors.row.hidden = colors.grid.hidden = !a;
+      for (const r of defaults.rows) r.hidden = !a;
       colors.account(a?.url ?? null);
+      defaults.account(a?.url ?? null);
       if (!a) results.hidden = true;
       label.textContent = a ? t("帳號") : t("連線");
       hint.textContent = a
@@ -1370,8 +1377,95 @@ export class SettingsDialog {
       ...this.#group(t("連線"), [urlRow, patRow, statusRow, checkRow, results, diagnoseRow]),
       // 沒連線時這一組都藏起來，連小標題一起（見 #hideEmptyGroups）。
       ...this.#group(t("工作項目"), [notifyRow, colors.row, colors.grid]),
+      ...this.#group(t("COMET 設定"), defaults.rows),
     );
     return { section, refresh };
+  }
+
+  /**
+   * 預設的 Azure DevOps 專案與團隊：設定 COMET（新專案、設定成 COMET 專案、重新設定）時先選這個，對話框裡還是可以改。
+   * 不指定專案時照舊用上次選的；不指定團隊時用專案在 Azure DevOps 設定的預設團隊。
+   * 設定打開著、已經連線時才讀伺服器上的專案與團隊。
+   */
+  #adoDefaults(ado: AdoSettingsHooks): { rows: HTMLElement[]; account(url: string | null): void } {
+    const project = document.createElement("select");
+    project.id = "setting-ado-default-project";
+    const team = document.createElement("select");
+    team.id = "setting-ado-default-team";
+    let projects: string[] = [];
+    let teams: { name: string; default: boolean }[] = [];
+    let shownFor: string | null = null;
+    let loadedFor: string | null = null;
+    let teamsFor = "";
+    const fill = (sel: HTMLSelectElement, options: [string, string][], value: string) => {
+      // 存的值不在清單裡（還沒讀到、或伺服器上改了名）：照樣列出來，不會被悄悄改掉。
+      if (value && !options.some(([v]) => v === value)) options.push([value, value]);
+      sel.replaceChildren(...options.map(([v, l]) => new Option(l, v)));
+      sel.value = value;
+    };
+    const render = () => {
+      const s = this.#store.value;
+      fill(project, [["", t("不指定（用上次選的）")], ...projects.map((p): [string, string] => [p, p])], s.adoDefaultProject);
+      fill(
+        team,
+        [["", t("專案的預設團隊")], ...teams.map((x): [string, string] => [x.name, x.default ? t("{name}（預設）", { name: x.name }) : x.name])],
+        s.adoDefaultTeam,
+      );
+      team.disabled = !s.adoDefaultProject;
+    };
+    const loadTeams = () => {
+      const p = this.#store.value.adoDefaultProject;
+      if (p === teamsFor) return;
+      teamsFor = p;
+      teams = [];
+      render();
+      if (!p) return;
+      ado
+        .teams(p)
+        .then((list) => {
+          if (teamsFor !== p) return;
+          teams = list;
+          render();
+        })
+        .catch(() => (teamsFor = ""));
+    };
+    project.addEventListener("change", () => this.#store.update({ adoDefaultProject: project.value, adoDefaultTeam: "" }));
+    team.addEventListener("change", () => this.#store.update({ adoDefaultTeam: team.value }));
+    this.#store.subscribe((_, changed) => {
+      if (!changed.includes("adoDefaultProject") && !changed.includes("adoDefaultTeam")) return;
+      render();
+      if (loadedFor) loadTeams();
+    });
+    render();
+    const rows = [
+      this.#row("ado-default-project", t("預設專案"), t("設定 COMET 時先選這個專案，對話框裡還是可以改；不指定時用上次選的"), () => project),
+      this.#row("ado-default-team", t("預設團隊"), t("預設專案裡先選的團隊；不指定時用專案在 Azure DevOps 設定的預設團隊"), () => team),
+    ];
+    return {
+      rows,
+      // 設定打開著、已經連線時讀一次伺服器上的專案（換了伺服器時重讀）。
+      account: (url) => {
+        if (url !== shownFor) {
+          shownFor = url;
+          loadedFor = null;
+          projects = [];
+          teams = [];
+          teamsFor = "";
+          render();
+        }
+        if (!url || loadedFor === url || !this.#dialog.open) return;
+        loadedFor = url;
+        ado
+          .projects()
+          .then((list) => {
+            if (shownFor !== url) return;
+            projects = list;
+            render();
+            loadTeams();
+          })
+          .catch(() => (loadedFor = null));
+      },
+    };
   }
 
   /**

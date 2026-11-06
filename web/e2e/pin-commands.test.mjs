@@ -1,7 +1,7 @@
 /**
  * 釘選指令：「☰」選單裡的指令按右鍵，可以釘到「檔案」面板上方（專案名稱旁邊）或左側圖示列。
  * 檔案面板上方的按鈕在最右邊、跟著專案（沒開專案時那一列不顯示）；釘了按鈕之後，原本的新增檔案等三個按鈕
- * 滑鼠移到面板上才出現（出現時釘上去的按鈕不會移動）。「在 Codex 開啟」「在 Claude Code 開啟」用不同的圖示。
+ * 照樣一直顯示，滑鼠在哪裡都一樣。「在 Codex 開啟」「在 Claude Code 開啟」用不同的圖示。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -46,15 +46,15 @@ test("右鍵釘到檔案面板上方：顯示在專案名稱旁邊，提示寫�
   const button = page.locator("#files-head .head-pin[data-command='open-in-codex']");
   await button.waitFor();
   assert.equal(await button.getAttribute("aria-label"), "在 Codex 開啟「產品筆記」");
-  // 釘了按鈕：滑鼠不在面板上時，新增檔案等三個按鈕藏起來，專案名稱才有位置；移上去就出現。
+  // 釘了按鈕：新增檔案等三個按鈕照樣一直顯示，滑鼠在面板外、面板上看到的都一樣（按鈕不會出現、消失或移動）。
   await page.locator(".cm-content").focus();
   await page.mouse.move(900, 500);
-  assert.equal(await shown(page, "#tree-new-file"), false);
+  assert.equal(await shown(page, "#tree-new-file"), true);
   assert.equal(await shown(page, ".head-pin"), true);
   const before = await button.boundingBox();
   await page.hover("#panel-files .side-body");
   assert.equal(await shown(page, "#tree-new-file"), true);
-  assert.deepEqual(await button.boundingBox(), before, "新增檔案等按鈕出現時，釘上去的按鈕不會移動（在最右邊）");
+  assert.deepEqual(await button.boundingBox(), before, "滑鼠移到面板上，釘上去的按鈕不會移動");
   await button.click();
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "project_open_codex"));
   assert.deepEqual((await calls(page)).find((c) => c.cmd === "project_open_codex").args, { path: ROOT });
@@ -62,7 +62,7 @@ test("右鍵釘到檔案面板上方：顯示在專案名稱旁邊，提示寫�
   await context.close();
 });
 
-test("檔案面板上方的按鈕跟著專案：關閉專案後不見；右鍵可以移除，三個按鈕又一直顯示", async () => {
+test("檔案面板上方的按鈕跟著專案：關閉專案後不見；右鍵可以移除", async () => {
   const { page, context, errors } = await open({ desktop: DESKTOP });
   await openProject(page);
   await (await rightClickInProjectMenu(page, "在 Claude Code 開啟這個專案")).getByRole("menuitem", { name: "釘到檔案面板上方" }).click();
@@ -88,7 +88,7 @@ test("檔案面板上方的按鈕跟著專案：關閉專案後不見；右鍵�
   await page.waitForFunction(() => !document.querySelector("#files-head .head-pin"));
   await page.locator(".cm-content").focus();
   await page.mouse.move(900, 500);
-  assert.equal(await shown(page, "#tree-new-file"), true, "沒釘按鈕時照舊一直顯示");
+  assert.equal(await shown(page, "#tree-new-file"), true, "沒釘按鈕時也一直顯示");
   assert.deepEqual(errors, []);
   await context.close();
 });
