@@ -265,6 +265,18 @@ jobs:
           node scripts/sign-update.mjs version.json
           node scripts/sign-update.mjs tagged/version.json
           cat version.json
+      # 內建的 GITHUB_TOKEN 只能在 main 最新的提交上建立標籤：等核准的期間 main 又合併了東西，
+      # 建立 Release 會被拒絕（HTTP 403 Resource not accessible by integration）。在動到任何 Release 之前就停下來，
+      # 免得舊的「最新版」已經刪掉、新的卻建不起來。這時重新執行一次 Desktop（main）就好。
+      - name: 確認 main 還停在要發佈的提交
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          if [ "$head" != "$RELEASE_SHA" ]; then
+            echo "::error::等核准的期間 main 有新的提交（${head::7}），這次要發佈的是比較舊的 ${RELEASE_SHA::7}，GitHub 不讓這個工作替它建立標籤。沒有發佈任何東西，請重新執行一次 Desktop（main）。"
+            exit 1
+          fi
       - name: 更新「最新版」Release，並保留這個版本號的 Release
         env:
           GH_TOKEN: ${{ github.token }}
