@@ -3335,6 +3335,17 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .project-edit .np-comet select, .project-edit .np-comet input:not([type="checkbox"]) { width: 100%; min-width: 0; box-sizing: border-box; }
 /* 有 COMET 時對話框是橫的：左右兩張卡片等寬、等高，不用捲動。視窗太窄時上下排。 */
 .choice.new-project.with-comet { width: min(940px, calc(100vw - 32px)); }
+/* 已經有的專案設定成 COMET 專案（app/comet-project.ts）：只有「COMET 設定」一張；設定中、完成時和新專案一樣寬。 */
+.choice.new-project.comet-only { width: min(520px, calc(100vw - 32px)); }
+.choice.new-project.comet-only:has(> .np-progress:not([hidden])) { width: min(940px, calc(100vw - 32px)); }
+.new-project.comet-only .np-card {
+  padding: 14px 16px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 2.5%, var(--bg));
+}
+.new-project.comet-only .np-comet > h3 .np-num,
+.new-project.comet-only .np-comet .nc-off-note { display: none; }
 @media (min-width: 760px) {
   .new-project.with-comet form {
     display: grid;
