@@ -3066,7 +3066,7 @@ version = "1.131.3"
 dependencies = [
  "arboard",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "dunce",
  "encoding_rs",
