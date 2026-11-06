@@ -151,6 +151,104 @@ pub async fn comet_installed(app: AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// PATH 設定（`;` 分隔）裡的資料夾：去掉前後空白與引號，略過空的。
+fn path_dirs(value: &str) -> Vec<PathBuf> {
+    value
+        .split(';')
+        .map(|d| d.trim().trim_matches('"'))
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+        .collect()
+}
+
+/// 這些資料夾裡有沒有 COMET 的執行檔。
+fn comet_in(dirs: &[PathBuf]) -> bool {
+    let exe = if cfg!(windows) { "comet.exe" } else { "comet" };
+    dirs.iter().any(|d| d.join(exe).is_file())
+}
+
+/// Windows 記在登錄檔裡、現在的使用者與系統 PATH（展開 `%USERPROFILE%` 這類變數）。
+/// 執行過 `comet setup` 之後，新開的程式才會拿到新的 PATH；oMarker 已經開著時自己的 PATH 還是舊的，
+/// 所以另外讀登錄檔。
+#[cfg(windows)]
+fn registry_path() -> String {
+    use std::ptr::null_mut;
+    use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+    use windows_sys::Win32::System::Registry::{
+        RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_EXPAND_SZ,
+        RRF_RT_REG_SZ,
+    };
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(Some(0)).collect()
+    }
+    fn read(root: HKEY, key: &str) -> Option<String> {
+        let key = wide(key);
+        let name = wide("Path");
+        let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
+        let mut size: u32 = 0;
+        // SAFETY: 機碼與值的名稱是以 0 結尾的 UTF-16 字串；第一次只問大小（不給緩衝區），
+        // 第二次給剛好那麼大的緩衝區，系統寫入的位元組數不會超過 size。REG_EXPAND_SZ 由系統展開。
+        unsafe {
+            if RegGetValueW(
+                root,
+                key.as_ptr(),
+                name.as_ptr(),
+                flags,
+                null_mut(),
+                null_mut(),
+                &mut size,
+            ) != ERROR_SUCCESS
+                || size == 0
+            {
+                return None;
+            }
+            let mut buf = vec![0u16; (size as usize).div_ceil(2)];
+            if RegGetValueW(
+                root,
+                key.as_ptr(),
+                name.as_ptr(),
+                flags,
+                null_mut(),
+                buf.as_mut_ptr().cast(),
+                &mut size,
+            ) != ERROR_SUCCESS
+            {
+                return None;
+            }
+            let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            Some(String::from_utf16_lossy(&buf[..len]))
+        }
+    }
+    [
+        read(HKEY_CURRENT_USER, "Environment"),
+        read(
+            HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(";")
+}
+
+#[cfg(not(windows))]
+fn registry_path() -> String {
+    String::new()
+}
+
+/// `comet` 指令已經在 PATH 裡（做過 COMET 的本機設定，也就是 `comet setup` 沒加 `--skip-local-tools`）。
+/// 新專案的 COMET 設定預設不再勾「設定本機 PATH」。看 oMarker 自己的 PATH，也看登錄檔裡現在的設定。
+#[tauri::command]
+pub async fn comet_path_ready() -> bool {
+    tauri::async_runtime::spawn_blocking(|| {
+        which::which("comet").is_ok() || comet_in(&path_dirs(&registry_path()))
+    })
+    .await
+    .unwrap_or(false)
+}
+
 /// 終端機要輸入的 `comet setup` 指令（只有終端機面板可以呼叫）：`comet` 在 PATH 裡就直接執行，
 /// 不在時用安裝位置的完整路徑執行。都找不到時照樣送 `comet setup`，讓殼層說找不到指令。
 ///
@@ -297,6 +395,30 @@ pub async fn create_project(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_dirs_skip_blanks_and_quotes() {
+        assert_eq!(
+            path_dirs(r#"C:\Tools; "C:\Users\me\Comet\bin" ;;"#),
+            vec![
+                PathBuf::from(r"C:\Tools"),
+                PathBuf::from(r"C:\Users\me\Comet\bin")
+            ]
+        );
+        assert!(path_dirs("").is_empty());
+    }
+
+    #[test]
+    fn comet_in_finds_the_executable() {
+        let dir = std::env::temp_dir().join(format!("omarker-comet-path-{}", std::process::id()));
+        let bin = dir.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        assert!(!comet_in(std::slice::from_ref(&bin)));
+        let exe = if cfg!(windows) { "comet.exe" } else { "comet" };
+        fs::write(bin.join(exe), b"").unwrap();
+        assert!(comet_in(&[dir.join("missing"), bin.clone()]));
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn remembered_parent_must_be_an_existing_local_folder() {

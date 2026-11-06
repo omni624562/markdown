@@ -160,6 +160,7 @@ mod tests {
         "pick_project_parent",
         "create_project",
         "comet_installed",
+        "comet_path_ready",
         "comet_setup_line",
         "comet_setup_run",
         "reopen_with_encoding",
