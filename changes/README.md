@@ -12,3 +12,4 @@ bump: minor
 - 第一行 `bump:` 是升哪一碼：`minor`（新功能）、`patch`（修正與調整）、`major`（不相容的改變）。一次合併好幾個片段時取最大的。
 - 可以再加一行 `section:` 指定分類（`新功能`、`調整`、`修正`、`不相容的改變`）；沒寫時 `minor` 放「新功能」、`patch` 放「修正」、`major` 放「不相容的改變」。
 - 空一行之後是 `CHANGELOG.md` 的項目，`- ` 開頭，用使用者看得懂的話寫。
+- Dependabot 開的、只更新相依套件清單與鎖定檔（`web/package*.json`、`Cargo.toml`、`Cargo.lock`）的 PR 不需要片段。
