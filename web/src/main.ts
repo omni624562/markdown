@@ -47,6 +47,7 @@ import { choose } from "./ui/choice.ts";
 import { FileTree } from "./ui/filetree.ts";
 import { aiAppPresent } from "./app/ai-app-presence.ts";
 import { cometBadge } from "./ui/comet-badge.ts";
+import { cometFileGuard, cometTreeMark } from "./app/comet-files.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage } from "./ui/start-page.ts";
 import { setupMenu } from "./ui/menu.ts";
@@ -1294,7 +1295,7 @@ function editorOptions(): EditorOptions {
       }),
     ],
     extra: [
-      review.extension,
+      review.extension, cometFileGuard(), // COMET 的設定檔唯讀（app/comet-files.ts）
       EditorView.updateListener.of((u) => onSimplifiedPaste(u)),
       autoSymbols(() => cur.kind !== "json" && settings.value.autoSymbols),
       // 連到 Azure DevOps 工作項目、Wiki 頁面的連結：滑鼠移上去顯示摘要。
@@ -2192,7 +2193,7 @@ const fileTree = desktop
   ? new FileTree($("#file-tree"), {
       list: (dir) => desktop!.listDir(dir),
       open: (path) => void openPath(path).catch(reportError),
-      action: (action, entry) => void treeAction(action, entry).catch(reportError),
+      action: (action, entry) => void treeAction(action, entry).catch(reportError), mark: cometTreeMark,
       remote: () => !!workspaceRoot && isRemote(workspaceRoot.path),
       dropFiles: (dir, files) => void uploadFiles(dir, files).catch(reportError),
       expandedChanged: () => {
@@ -3850,10 +3851,10 @@ async function onExternalChange(path: string): Promise<void> {
       if (!showExternalChanges(original, file.text)) {
         // 改回原本的內容了：結束標示，直接顯示目前的版本。
         if (review.active) review.finish();
-        if (editor.text !== file.text) editor.replaceAll(file.text);
+        if (editor.text !== file.text) editor.replaceAll(file.text, { userEvent: "input.reload" });
       }
     } else if (file.text !== editor.text) {
-      editor.replaceAll(file.text);
+      editor.replaceAll(file.text, { userEvent: "input.reload" }); // 外部修改：COMET 設定檔鎖著也照常重新載入
       toast(t("「{name}」已被{who}更新，已重新載入。", { name: doc.name, who: otherWriter(path) }), {
         action: { label: t("復原"), run: () => void undo(editor.view) },
       });
