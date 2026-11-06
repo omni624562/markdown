@@ -161,6 +161,32 @@ const ADO = {
   comet_installed: true,
 };
 
+test("COMET 專案：設定裡指定了預設專案與團隊時先選它們，對話框裡改了不會動到設定", async () => {
+  const { page, context, errors } = await open({
+    desktop: { ...DESKTOP, ...ADO, load_settings: JSON.stringify({ adoDefaultProject: "Contoso", adoDefaultTeam: "Contoso" }) },
+  });
+  let dialog = await openComet(page);
+  let section = dialog.locator(".np-comet");
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  assert.equal(await section.locator("select[name=nc-project]").inputValue(), "Contoso");
+  assert.equal(await section.locator("select[name=nc-team]").inputValue(), "t2");
+  // 在對話框裡換專案：團隊用那個專案的預設團隊。
+  await section.locator("select[name=nc-project]").selectOption("產品");
+  await page.waitForFunction(() => document.querySelector("select[name=nc-team]")?.value === "t1");
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await page.waitForFunction(() => !document.querySelector("dialog.new-project button[type=submit]")?.disabled);
+  await dialog.getByRole("button", { name: "取消" }).click();
+  // 再打開：還是先選設定的預設專案（剛才的選擇不會蓋過設定）。
+  dialog = await openComet(page);
+  section = dialog.locator(".np-comet");
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  assert.equal(await section.locator("select[name=nc-project]").inputValue(), "Contoso");
+  assert.equal(await section.locator("select[name=nc-team]").inputValue(), "t2");
+  assert.ok(!(await calls(page)).some((c) => c.cmd === "save_settings" && JSON.parse(c.args.json).adoDefaultProject !== "Contoso"));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet setup，完成後列出建立的檔案", async () => {
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
   const dialog = await openComet(page);

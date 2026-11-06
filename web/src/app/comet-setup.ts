@@ -157,11 +157,15 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
   const loadTeams = async (n: number) => {
     teams = project.value ? await desktop!.adoTeams(project.value).catch(() => []) : [];
     if (n !== seq) return;
-    const saved = storage.load("comet-team") ?? storage.load("board-team") ?? "";
+    // 設定裡的預設專案：先選設定的團隊（沒指定時是專案的預設團隊）；其他專案照舊用上次選的。
+    const defaults = app.settings.value;
+    const preset = project.value === defaults.adoDefaultProject;
+    const named = preset && defaults.adoDefaultTeam ? teams.find((x) => x.name === defaults.adoDefaultTeam)?.id : undefined;
+    const saved = preset ? "" : (storage.load("comet-team") ?? storage.load("board-team") ?? "");
     fill(
       team,
       teams.map((x) => [x.id, x.default ? t("{name}（預設）", { name: x.name }) : x.name]),
-      teams.some((x) => x.id === saved) ? saved : (teams.find((x) => x.default)?.id ?? ""),
+      named ?? (teams.some((x) => x.id === saved) ? saved : (teams.find((x) => x.default)?.id ?? "")),
     );
     await loadSprints(n);
   };
@@ -226,7 +230,9 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
       if (n !== seq) return;
       useAdo(projects.length > 0);
       if (projects.length) {
-        const saved = storage.load("comet-project") ?? storage.load("board-project") ?? "";
+        // 設定裡指定了預設專案就先選它（對話框裡可以改，改了不會動到設定）；沒指定時用上次選的。
+        const preferred = app.settings.value.adoDefaultProject;
+        const saved = projects.includes(preferred) ? preferred : (storage.load("comet-project") ?? storage.load("board-project") ?? "");
         fill(
           project,
           projects.map((p) => [p, p]),
