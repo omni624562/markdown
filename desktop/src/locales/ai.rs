@@ -25,4 +25,9 @@ pub static EN: &[(&str, &str)] = &[
     ("請先開啟「讓 AI 讀取目前的文件」", "Turn on \"Let AI Read the Current Document\" first."),
     ("不支援這個工具", "This tool isn't supported."),
     ("無法複製到剪貼簿：{e}", "Couldn't copy to the clipboard: {e}"),
+    ("沒有要傳給 ChatGPT 的內容", "There's nothing to send to ChatGPT."),
+    ("內容太長，沒辦法直接帶進 ChatGPT", "The content is too long to send to ChatGPT directly."),
+    ("請先在設定打開「傳給 ChatGPT」", "Turn on \"Send to ChatGPT\" in Settings first."),
+    ("無法開啟 ChatGPT 桌面版（請確認已經安裝，或在設定改用網頁版）：{e}", "Couldn't open the ChatGPT desktop app (make sure it's installed, or switch to the web version in Settings): {e}"),
+    ("無法開啟 ChatGPT：{e}", "Couldn't open ChatGPT: {e}"),
 ];

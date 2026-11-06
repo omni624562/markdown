@@ -34,6 +34,8 @@ export interface LookHooks {
 export interface AiHooks {
   available(): Promise<{ claude: string | null; codex: string | null }>;
   copyRegistration(tool: "claude" | "codex"): Promise<void>;
+  /** 這台電腦有沒有 ChatGPT 桌面版（「傳給 ChatGPT」的桌面版選項，見 app/chatgpt.ts）。 */
+  chatgptDesktop?(): boolean;
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
@@ -77,6 +79,11 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
   aiTool: [
     ["claude", "Claude Code"],
     ["codex", "Codex"],
+  ],
+  chatgptSend: [
+    ["off", t("關閉（預設）")],
+    ["desktop", t("ChatGPT 桌面版")],
+    ["web", t("網頁版（chatgpt.com）")],
   ],
   gitSyncMinutes: [
     ["5", t("每 {n} 分鐘", { n: 5 })],
@@ -127,6 +134,10 @@ export interface AboutHooks {
   shortcuts(): void;
   welcome(): void;
   changelog(): void;
+  /** 把版本資訊（版本、管道、建置、系統）複製到剪貼簿，回報問題時貼上。 */
+  copyInfo(): void;
+  /** 開 GitHub 的新問題，內文先放好版本資訊。 */
+  report(): void;
 }
 
 /** 「版面」頁的左側圖示列：面板圖示的順序與顯示、釘上去的指令按鈕。 */
@@ -449,7 +460,11 @@ export class SettingsDialog {
         const section = this.#dialog.querySelector<HTMLElement>(`#${b.getAttribute("aria-controls")}`);
         return [b.textContent ?? "", ...(section ? (this.#aliases.get(section) ?? []) : [])].some((n) => names.includes(n));
       });
-      tab?.click();
+      if (tab) {
+        tab.click();
+        // 焦點跟著移到這個分類（不然焦點框還留在原本的「一般」上，看起來像選了兩個）。
+        tab.focus();
+      }
     }
   }
 
@@ -522,11 +537,20 @@ export class SettingsDialog {
       "sparkles",
       t("使用你自己安裝並登入的 Claude Code 或 Codex。編輯器不會儲存帳號或金鑰；AI 提出的修改一律先標示差異，由你決定是否套用。"),
     );
+    // 傳給 ChatGPT：和上面的 AI 協作無關（不用開啟），網頁版也能用。
+    const chatgpt = this.#group(t("傳給 ChatGPT"), [
+      this.#row(
+        "chatgptSend",
+        t("傳給 ChatGPT"),
+        t("在「複製」旁邊多一項「傳給 ChatGPT」，把選取的文字、Wiki 頁面、工作項目等帶進 ChatGPT 的輸入框，由你按送出。內容會送到 OpenAI（公司以外的服務），公司資料請先確認規定允許。桌面版的方式還沒有官方保證，不能用時請改用網頁版。"),
+        () => this.#control("chatgptSend"),
+      ),
+    ]);
     if (!this.#ai) {
       const p = document.createElement("p");
       p.className = "settings-note";
       p.textContent = t("AI 協作（Claude Code／Codex）需要桌面版。");
-      section.append(p);
+      section.append(p, ...chatgpt);
       return section;
     }
     section.append(
@@ -598,7 +622,7 @@ export class SettingsDialog {
     const hint = document.createElement("p");
     hint.className = "settings-group-hint";
     hint.textContent = t("選取文字後按 Ctrl+J（或按右鍵）執行；提示詞會連同選取的文字一起送出。");
-    section.append(title, hint, this.#actions, add);
+    section.append(title, hint, this.#actions, add, ...chatgpt);
     return section;
   }
 
@@ -649,6 +673,14 @@ export class SettingsDialog {
 
   /** 標出沒有安裝的工具。 */
   async #refreshTools(): Promise<void> {
+    // 「傳給 ChatGPT」的桌面版：偵測到 ChatGPT 桌面版才能選（已經選了的照舊留著）。
+    const gpt = this.#dialog.querySelector<HTMLSelectElement>("select[data-key=chatgptSend]");
+    const desktopOpt = gpt && [...gpt.options].find((o) => o.value === "desktop");
+    if (desktopOpt) {
+      const found = !!this.#ai?.chatgptDesktop?.();
+      desktopOpt.disabled = !found && gpt.value !== "desktop";
+      desktopOpt.textContent = found ? t("ChatGPT 桌面版") : t("ChatGPT 桌面版（未偵測到）");
+    }
     if (!this.#ai) return;
     const sel = this.#dialog.querySelector<HTMLSelectElement>("select[data-key=aiTool]");
     try {
@@ -674,7 +706,7 @@ export class SettingsDialog {
     logo.alt = "";
     const name = document.createElement("div");
     const title = Object.assign(document.createElement("strong"), { textContent: "oMarker" });
-    const tagline = Object.assign(document.createElement("p"), { textContent: t("給中文寫作的 Markdown 編輯器：即時預覽、資料夾、Git 與 AI 協作") });
+    const tagline = Object.assign(document.createElement("p"), { textContent: t("給中文寫作與團隊協作的 Markdown 編輯器：專案、Git、Azure DevOps 與 AI") });
     name.append(title);
     // 版本號只寫一次：有更新功能時寫在下面「更新」的第一列（旁邊是發佈日期與「檢查更新」），否則寫在名稱下面。
     if (!update && about) name.append(Object.assign(document.createElement("span"), { textContent: t("版本 {version}", { version: about.version }) }));
@@ -687,7 +719,24 @@ export class SettingsDialog {
       checkBtn.type = "button";
       checkBtn.className = "btn";
       checkBtn.addEventListener("click", () => (update.pending() ? update.restart() : update.check()));
-      const versionRow = this.#row("version", t("版本"), t("讀取中…"), () => checkBtn);
+      // 「複製版本資訊」在「檢查更新」旁邊：回報問題時貼上（版本、更新管道、建置、Windows 與 WebView2 的版本）。
+      const versionButtons = () => {
+        const box = document.createElement("div");
+        box.className = "settings-buttons";
+        if (about) {
+          const copy = document.createElement("button");
+          copy.type = "button";
+          copy.className = "btn";
+          copy.id = "setting-copy-version";
+          copy.append(icon("copy"), t("複製版本資訊"));
+          copy.addEventListener("click", () => about.copyInfo());
+          box.append(copy);
+        }
+        checkBtn.id = "setting-check-update";
+        box.append(checkBtn);
+        return box;
+      };
+      const versionRow = this.#row("version", t("版本"), t("讀取中…"), versionButtons);
       const label = versionRow.querySelector("label")!;
       const hint = versionRow.querySelector("small")!;
       // 新版已經下載好時，版本列直接說明，按鈕改成「重新啟動並更新」。
@@ -732,13 +781,13 @@ export class SettingsDialog {
         });
         return b;
       };
-      const link = (id: string, text: string, url: string) => () => {
+      const link = (id: string, text: string, open: () => void) => () => {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "btn";
         b.id = `setting-${id}`;
         b.append(icon("external-link"), text);
-        b.addEventListener("click", () => about.openUrl(url));
+        b.addEventListener("click", open);
         return b;
       };
       section.append(
@@ -748,8 +797,8 @@ export class SettingsDialog {
           this.#row("changelog", t("更新紀錄"), t("每一版改了什麼"), button("changelog", t("開啟"), "scroll-text", about.changelog)),
         ]),
         ...this.#group(t("意見回饋"), [
-          this.#row("report", t("回報問題或建議"), t("在 GitHub 上留言；附上版本號會更容易找到原因"), link("report", t("回報"), `${REPO_URL}/issues/new`)),
-          this.#row("source", t("原始碼"), t("oMarker 以 MIT 授權開放原始碼"), link("source", "GitHub", REPO_URL)),
+          this.#row("report", t("回報問題或建議"), t("在 GitHub 上留言（公開的頁面），會自動附上版本資訊"), link("report", t("回報"), () => about.report())),
+          this.#row("source", t("原始碼"), t("oMarker 以 MIT 授權開放原始碼"), link("source", "GitHub", () => about.openUrl(REPO_URL))),
         ]),
       );
     }

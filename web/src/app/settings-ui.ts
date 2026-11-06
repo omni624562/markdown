@@ -18,6 +18,7 @@ import { toast } from "../ui/toast.ts";
 import { versionLabel, versionDetail, versionTooltip } from "../updater.ts";
 import { applyActivityLayout, openUrl, openWelcome, openChangelog, panelOrder, PANEL_LABELS, PANEL_ICONS, addActivityCommand } from "./activity-bar.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
+import { copyVersionInfo, reportIssue } from "./version-info.ts";
 import { reportError } from "./git-actions.ts";
 import { buildFormatBar } from "./new-work-item.ts";
 import { gitPanel } from "./work-item-updates.ts";
@@ -25,6 +26,7 @@ import { renderAdoTab, renderIssuesTab } from "./work-items-panel.ts";
 import { kindColorCss } from "../work-item-colors.ts";
 import type { ViewUpdate } from "@codemirror/view";
 import type { ViewMode } from "../main.ts";
+import { chatgptDesktopFound } from "./chatgpt.ts";
 import { app } from "./context.ts";
 import { saveAdoDiagnostics } from "./ado-status.ts";
 
@@ -238,7 +240,9 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
       accent: () => app.accent,
       setAccent: app.setAccent,
     },
-    desktop && app.ai ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => app.ai!.copyRegistration(tool) } : null,
+    desktop && app.ai
+      ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => app.ai!.copyRegistration(tool), chatgptDesktop: chatgptDesktopFound }
+      : null,
     app.updater
       ? {
           async version() {
@@ -275,6 +279,8 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
       shortcuts: () => showShortcuts(),
       welcome: () => openWelcome(),
       changelog: () => void openChangelog().catch(reportError),
+      copyInfo: () => void copyVersionInfo().catch(reportError),
+      report: () => reportIssue(),
     },
     {
       panels: () =>
