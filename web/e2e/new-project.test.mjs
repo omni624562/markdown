@@ -187,6 +187,42 @@ test("COMET 專案：設定裡指定了預設專案與團隊時先選它們，�
   await context.close();
 });
 
+test("COMET 專案：伺服器很慢時，一打開就先顯示設定的預設專案與團隊；清單一起向伺服器要，再打開時不用再等", async () => {
+  const slow = (value) => ({ $delay: 1500, value });
+  const { page, context, errors } = await open({
+    desktop: {
+      ...DESKTOP,
+      ...ADO,
+      load_settings: JSON.stringify({ adoDefaultProject: "Contoso", adoDefaultTeam: "Contoso" }),
+      ado_work_item_filters: [slow(ADO.ado_work_item_filters)],
+      ado_teams: [slow(ADO.ado_teams[0])],
+      ado_team_iterations: [slow(ADO.ado_team_iterations[0])],
+    },
+  });
+  let dialog = await openComet(page);
+  const shown = (name) =>
+    page.locator(`select[name=nc-${name}]`).evaluate((el) => ({ text: el.selectedOptions[0]?.textContent ?? "", disabled: el.disabled }));
+  // 還沒讀到清單：先顯示設定的預設專案與團隊，讀好之前不能選。
+  assert.deepEqual(await shown("project"), { text: "Contoso", disabled: true });
+  assert.deepEqual(await shown("team"), { text: "Contoso", disabled: true });
+  assert.deepEqual(await shown("sprint"), { text: "讀取中…", disabled: true });
+  // 專案清單、預設專案的團隊與 Sprint 一起要，不等專案清單回來。
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_team_iterations"));
+  assert.ok(!(await page.locator("select[name=nc-project]").isEnabled()), "專案清單還沒回來");
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12");
+  assert.equal(await page.locator("select[name=nc-team]").inputValue(), "t2");
+  assert.deepEqual(await shown("project"), { text: "Contoso", disabled: false });
+  const count = async () => (await calls(page)).filter((c) => ["ado_work_item_filters", "ado_teams", "ado_team_iterations"].includes(c.cmd)).length;
+  const before = await count();
+  // 再打開：剛讀過的清單直接用，馬上選好。
+  await dialog.getByRole("button", { name: "取消" }).click();
+  dialog = await openComet(page);
+  await page.waitForFunction(() => document.querySelector("select[name=nc-sprint]")?.value === "i12", null, { timeout: 1000 });
+  assert.equal(await count(), before);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet setup，完成後列出建立的檔案", async () => {
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, ...ADO } });
   const dialog = await openComet(page);

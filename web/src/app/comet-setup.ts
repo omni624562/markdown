@@ -29,6 +29,23 @@ export interface CometForm {
 const DEFAULT_CADENCE = 14;
 const DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * 讀過的專案清單、團隊與 Sprint：幾分鐘內再打開對話框（或換回剛才的專案）時直接用，不必再等伺服器。
+ * 鍵含伺服器網址；讀取失敗的不留。
+ */
+const lists = new Map<string, { at: number; value: Promise<unknown> }>();
+const FRESH = 5 * 60 * 1000;
+function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = lists.get(key);
+  if (hit && Date.now() - hit.at < FRESH) return hit.value as Promise<T>;
+  const value = load();
+  lists.set(key, { at: Date.now(), value });
+  value.catch(() => {
+    if (lists.get(key)?.value === value) lists.delete(key);
+  });
+  return value;
+}
+
 /** 從相鄰兩個 Sprint 的開始日算 Sprint 天數（算不出來時回傳 null）。 */
 export function cadenceOf(sprints: AdoTeamIteration[], index: number): number | null {
   const start = (i: number) => (sprints[i]?.start ? Date.parse(sprints[i].start!) : Number.NaN);
@@ -88,6 +105,7 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     smoke: t("完成後查詢我的工作，確認連得上 Azure DevOps"),
     local: t("設定本機 PATH（第一次使用 COMET 需要）"),
     localDone: t("這台電腦已經設定過"),
+    loading: t("讀取中…"),
   };
   host.innerHTML = `
     <h3><span class="np-num" aria-hidden="true">2</span>${tr.heading}<span class="nc-off-note">${tr.offNote}</span></h3>
@@ -138,14 +156,23 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     select.replaceChildren(...options.map(([v, label]) => new Option(label, v)));
     select.value = options.some(([v]) => v === value) ? value : (options[0]?.[0] ?? "");
   };
+  /** 讀取中的欄位：先顯示會選的那一項（例如設定的預設專案），讀到清單後再換成完整的，讀好之前不能選。 */
+  const loading = (select: HTMLSelectElement, label = "", value = "") => {
+    fill(select, [[value, label || tr.loading]], value);
+    select.disabled = true;
+  };
+  const ready = (select: HTMLSelectElement) => (select.disabled = false);
+  const teamsOf = (p: string) => cached(`${account?.url}|teams|${p}`, () => desktop!.adoTeams(p));
+  const sprintsOf = (p: string, teamName: string) => cached(`${account?.url}|sprints|${p}|${teamName}`, () => desktop!.adoTeamIterations(p, teamName));
   const autoCadence = () => {
     if (cadenceTouched) return;
     cadence.value = String(cadenceOf(sprints, sprints.findIndex((s) => s.id === sprint.value)) ?? DEFAULT_CADENCE);
   };
   const loadSprints = async (n: number) => {
     const name = teams.find((x) => x.id === team.value)?.name;
-    sprints = name ? await desktop!.adoTeamIterations(project.value, name).catch(() => []) : [];
+    sprints = name ? await sprintsOf(project.value, name).catch(() => []) : [];
     if (n !== seq) return;
+    ready(sprint);
     fill(
       sprint,
       sprints.map((s) => [s.id, s.current ? t("{name}（目前）", { name: s.name }) : s.name]),
@@ -155,8 +182,9 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     changed();
   };
   const loadTeams = async (n: number) => {
-    teams = project.value ? await desktop!.adoTeams(project.value).catch(() => []) : [];
+    teams = project.value ? await teamsOf(project.value).catch(() => []) : [];
     if (n !== seq) return;
+    ready(team);
     // 設定裡的預設專案：先選設定的團隊（沒指定時是專案的預設團隊）；其他專案照舊用上次選的。
     const defaults = app.settings.value;
     const preset = project.value === defaults.adoDefaultProject;
@@ -169,8 +197,15 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     );
     await loadSprints(n);
   };
-  project.addEventListener("change", () => void loadTeams(++seq));
-  team.addEventListener("change", () => void loadSprints(++seq));
+  project.addEventListener("change", () => {
+    loading(team);
+    loading(sprint);
+    void loadTeams(++seq);
+  });
+  team.addEventListener("change", () => {
+    loading(sprint);
+    void loadSprints(++seq);
+  });
   sprint.addEventListener("change", () => {
     autoCadence();
     changed();
@@ -218,21 +253,35 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
       cadenceTouched = false;
       checkLocal();
       cadence.value = String(DEFAULT_CADENCE);
+      // 一打開就先顯示會選的專案與團隊（設定的預設值，沒有時是上次選的），不必等伺服器回應。
+      const defaults = app.settings.value;
+      const preferred = defaults.adoDefaultProject || storage.load("comet-project") || storage.load("board-project") || "";
+      const presetTeam = preferred && preferred === defaults.adoDefaultProject ? defaults.adoDefaultTeam : "";
+      loading(project, preferred, preferred);
+      loading(team, presetTeam);
+      loading(sprint);
       account = await desktop!.adoAccount().catch(() => null);
       if (n !== seq) return;
+      // 專案清單、這個專案的團隊（設定了團隊時連 Sprint）一起向伺服器要，不用一個等一個。
+      if (account && preferred) {
+        void teamsOf(preferred).catch(() => {});
+        if (presetTeam) void sprintsOf(preferred, presetTeam).catch(() => {});
+      }
       // 指派給：登入的帳號（「網域\帳號」或 Email；沒有時用顯示名稱），已登入時不用填。
       assigned.value = account?.account || account?.name || "";
       const name = account?.name.trim() ?? "";
       const login = account?.account?.trim() ?? "";
       q(".nc-who-name").textContent = name && login && name !== login ? t("{name}（{account}）", { name, account: login }) : name || login;
       autoAssign(assigned.value !== "");
-      const projects = account ? await desktop!.adoWorkItemFilters().then((f) => f.projects).catch(() => [] as string[]) : [];
+      const projects = account
+        ? await cached(`${account.url}|projects`, () => desktop!.adoWorkItemFilters().then((f) => f.projects)).catch(() => [] as string[])
+        : [];
       if (n !== seq) return;
       useAdo(projects.length > 0);
       if (projects.length) {
         // 設定裡指定了預設專案就先選它（對話框裡可以改，改了不會動到設定）；沒指定時用上次選的。
-        const preferred = app.settings.value.adoDefaultProject;
-        const saved = projects.includes(preferred) ? preferred : (storage.load("comet-project") ?? storage.load("board-project") ?? "");
+        const saved = projects.includes(defaults.adoDefaultProject) ? defaults.adoDefaultProject : (storage.load("comet-project") ?? storage.load("board-project") ?? "");
+        ready(project);
         fill(
           project,
           projects.map((p) => [p, p]),
