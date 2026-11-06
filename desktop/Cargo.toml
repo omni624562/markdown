@@ -30,7 +30,7 @@ grep-matcher = "0.1.9"
 regex = "1.13"
 notify-debouncer-full = "0.7.0"
 trash = "5.2.9"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dunce = "1.0.5"
 # AI 協作（第 3 批，預設關閉）
