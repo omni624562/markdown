@@ -186,20 +186,22 @@ export function cometForm(host: HTMLElement, changed: () => void): CometForm {
     assigned.focus();
   });
 
-  // 設定本機 PATH：comet 已經在 PATH 裡（這台電腦做過 COMET 的本機設定）就預設不勾，註明已經設定過。
-  // 查詢期間使用者自己改了勾選就照使用者的。
+  // 設定本機 PATH：這一步只是把 comet 加進 PATH，comet 已經在 PATH 裡（這台電腦做過 COMET 的本機設定）就沒有要做的事：
+  // 不勾、也不能勾（變灰），註明已經設定過。查詢期間使用者自己改了勾選就照使用者的。
   const local = q<HTMLInputElement>("input[name=nc-local]");
   let localTouched = false;
   local.addEventListener("change", () => (localTouched = true));
   const checkLocal = () => {
     localTouched = false;
     local.checked = true;
+    local.disabled = false;
     q(".nc-local-done").hidden = true;
     void desktop
       ?.cometPathReady()
       .then((ready) => {
         if (ready !== true || localTouched) return;
         local.checked = false;
+        local.disabled = true;
         q(".nc-local-done").hidden = false;
       })
       .catch(() => {});
