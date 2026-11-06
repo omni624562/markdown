@@ -93,6 +93,15 @@
 - **外部修改逐段標示**：AI 在終端機裡直接改了已開啟的檔案時，標示改了哪些地方，可以逐段還原；連續修改會以第一次修改前的內容為基準
 - **GitHub Actions 的 Claude Code**（指令面板「Git：加入 Claude Code 自動校對」）：在 Git 儲存庫建立 `.github/workflows/claude.yml`（使用 [claude-code-action](https://github.com/anthropics/claude-code-action)）。推送到 GitHub 後，開 PR 修改文件時 Claude 會用台灣繁體中文校對、在 PR 上留言建議（不直接改檔案）；在 issue 或 PR 留言寫「@claude 請幫我……」，Claude 會照著做，需要時開 PR。需要在 GitHub 儲存庫設定一次 `CLAUDE_CODE_OAUTH_TOKEN`（建立後可以直接在終端機執行 `claude setup-token` 取得），或在 Claude Code 裡執行 `/install-github-app` 自動設定
 
+### 傳給 ChatGPT（預設關閉）
+
+在「設定 → AI 協作 → 傳給 ChatGPT」選「ChatGPT 桌面版」或「網頁版（chatgpt.com）」開啟，和上面的 AI 協作開關無關，網頁版 oMarker 也能用（一律開網頁版）。內容會送到 OpenAI 的 ChatGPT，公司的文件、Wiki、工作項目請先確認公司規定允許再傳；第一次使用會先跳出提醒，按「傳給 ChatGPT」後就不再問。
+
+- **在哪裡**：在原本的「複製…」旁邊多一項「傳給 ChatGPT」：編輯器與預覽選取文字的右鍵選單（沒有選取時不顯示）、Wiki 頁面與工作項目分頁的「複製成 Markdown 文件」下面、Wiki 修改紀錄的「複製這一版的內容」旁邊、Wiki 衝突的「複製我的完整版本」旁邊。路徑、提交編號、連結、複製成圖片不會有這一項
+- **怎麼傳**：把內容帶進 ChatGPT 的輸入框，由你自己按送出。桌面版開 `codex://new?prompt=…`，網頁版開 `https://chatgpt.com/?q=…`；網址由原生端組，只接受這兩種，而且要和設定選的一樣
+- **桌面版沒有官方保證**：ChatGPT 桌面版沿用 Codex 的網址，OpenAI 沒有保證一直能用；打不開或沒帶進內容時，請在設定改用網頁版。沒偵測到 ChatGPT 桌面版時，設定裡的桌面版選項不能選
+- **內容太長時**：網址放不下（編碼後超過 2000 個字元）時，先把內容複製到剪貼簿，再開 ChatGPT（網頁版不帶內容，桌面版只帶「以下是內容：」），請在 ChatGPT 按 `Ctrl+V` 貼上
+
 編輯器 MCP 伺服器提供的工具：`get_active_document`、`get_selection`、`list_open_documents`、`read_document`、`propose_edit`、`propose_replace_selection`、`run_command`、`list_terminals`、`read_terminal_output`。
 
 自己編譯（需要 Windows，以及 [開發與架構「開發環境」](development.md#開發環境)列的工具）：

@@ -25,6 +25,7 @@ import { renderAdoTab, renderIssuesTab } from "./work-items-panel.ts";
 import { kindColorCss } from "../work-item-colors.ts";
 import type { ViewUpdate } from "@codemirror/view";
 import type { ViewMode } from "../main.ts";
+import { chatgptDesktopFound } from "./chatgpt.ts";
 import { app } from "./context.ts";
 import { saveAdoDiagnostics } from "./ado-status.ts";
 
@@ -238,7 +239,9 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
       accent: () => app.accent,
       setAccent: app.setAccent,
     },
-    desktop && app.ai ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => app.ai!.copyRegistration(tool) } : null,
+    desktop && app.ai
+      ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => app.ai!.copyRegistration(tool), chatgptDesktop: chatgptDesktopFound }
+      : null,
     app.updater
       ? {
           async version() {

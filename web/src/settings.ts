@@ -19,6 +19,8 @@ export interface QuickAction {
 }
 
 export type AiTool = "claude" | "codex";
+/** 傳給 ChatGPT：關閉、ChatGPT 桌面版、網頁版（見 app/chatgpt.ts）。 */
+export type ChatgptSend = "off" | "desktop" | "web";
 /** 自動更新跟哪個版本：穩定版（維護者選定的版本）或搶先版（每次修改後的最新建置）。 */
 export type UpdateChannel = "stable" | "early";
 
@@ -106,6 +108,10 @@ export interface Settings {
   aiTerminal: boolean;
   /** 檔案被外部程式修改時，逐段標示變更處，可以保留或還原。 */
   markExternalChanges: boolean;
+  /** 傳給 ChatGPT：把選取的文字等帶進 ChatGPT。預設關閉（內容會送到 OpenAI）。 */
+  chatgptSend: ChatgptSend;
+  /** 已經看過「內容會送到 OpenAI」的提醒（第一次使用時問一次）。 */
+  chatgptAcknowledged: boolean;
   quickActions: QuickAction[];
   /** 自訂的文件範本（內建範本不在這裡）。 */
   templates: Template[];
@@ -181,6 +187,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   remoteEnabled: true,
   aiEnabled: false,
   aiTool: "claude",
+  chatgptSend: "off",
+  chatgptAcknowledged: false,
   mcpServer: true,
   aiTerminal: true,
   markExternalChanges: true,
@@ -287,6 +295,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("mcpServer");
   bool("aiTerminal");
   bool("markExternalChanges");
+  bool("chatgptAcknowledged");
   bool("autoUpdate");
   bool("gitAutoSync");
   if ("gitSyncMinutes" in input) {
@@ -300,6 +309,11 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   }
   if ("aiTool" in input) {
     if (input.aiTool === "claude" || input.aiTool === "codex") out.aiTool = input.aiTool;
+    else problems++;
+  }
+  if ("chatgptSend" in input) {
+    const v = input.chatgptSend;
+    if (v === "off" || v === "desktop" || v === "web") out.chatgptSend = v;
     else problems++;
   }
   if ("quickActions" in input) {

@@ -15,6 +15,7 @@ mod i18n;
 mod ado;
 mod ai;
 mod ai_apps;
+mod chatgpt;
 mod comet;
 mod confirm;
 mod dav;
@@ -432,6 +433,7 @@ fn main() {
             projects::project_delete,
             projects::project_open_codex,
             projects::project_open_claude,
+            chatgpt::chatgpt_send,
             ai_apps::ai_apps_installed,
             projects::project_relocate,
             projects::project_reveal,

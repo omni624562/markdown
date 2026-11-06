@@ -163,6 +163,7 @@ mod tests {
         "comet_path_ready",
         "comet_setup_line",
         "comet_setup_run",
+        "chatgpt_send",
         "reopen_with_encoding",
         "file_format",
         "set_file_format",
