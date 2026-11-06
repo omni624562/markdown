@@ -314,6 +314,7 @@ fn main() {
             new_project::pick_project_parent,
             new_project::create_project,
             new_project::comet_installed,
+            new_project::comet_path_ready,
             new_project::comet_setup_line,
             comet::comet_setup_run,
             files::reopen_with_encoding,

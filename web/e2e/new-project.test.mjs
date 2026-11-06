@@ -377,6 +377,36 @@ test("COMET 專案：oMarker 沒有連線 Azure DevOps 時貼上 Sprint 網址",
   await context.close();
 });
 
+test("COMET 專案：這台電腦已經設定過 PATH 時，「設定本機 PATH」預設不勾並註明；沒設定過時預設勾選", async () => {
+  // 已經設定過：預設不勾、註明，送出的設定不做本機設定。
+  let { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_path_ready: true } });
+  let dialog = await openComet(page);
+  let section = dialog.locator(".np-comet");
+  const local = () => section.locator("input[name=nc-local]");
+  await section.locator(".nc-local-done:not([hidden])").waitFor();
+  assert.equal(await section.locator(".nc-local-done").textContent(), "這台電腦已經設定過");
+  assert.equal(await local().isChecked(), false);
+  assert.match(await section.locator("label:has(input[name=nc-local])").textContent(), /^\s*設定本機 PATH（第一次使用 COMET 需要）/);
+  await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
+  await section.locator("input[name=nc-url]").fill("https://ado.test/tfs/DefaultCollection/產品/_sprints/taskboard/Contoso/產品/Sprint%2012");
+  await section.locator("input[name=nc-assigned]").fill("王小明");
+  await dialog.getByRole("button", { name: "建立並設定" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_setup_run"));
+  assert.equal((await setupRuns(page))[0].localTools, false);
+  assert.deepEqual(errors, []);
+  await context.close();
+
+  // 還沒設定過：預設勾選、沒有註明。
+  ({ page, context, errors } = await open({ desktop: { ...DESKTOP, comet_path_ready: false } }));
+  dialog = await openComet(page);
+  section = dialog.locator(".np-comet");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "comet_path_ready"));
+  assert.equal(await local().isChecked(), true);
+  assert.equal(await section.locator(".nc-local-done").isHidden(), true);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("沒裝 COMET 的電腦：對話框只有左邊一張、不列「COMET 專案」；開著 oMarker 時裝好，再打開就會出現", async () => {
   // 第一次（啟動時）找不到，之後找得到（使用者在 oMarker 開著的時候裝好 COMET）。
   const { page, context, errors } = await open({ desktop: { ...DESKTOP, comet_installed: [false, true] } });
