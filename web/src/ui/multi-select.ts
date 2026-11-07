@@ -8,6 +8,7 @@
  * Wiki 的「顯示哪些最上層頁面」也用這個選單：自己的圖示按鈕（`button`）、勾了馬上套用（`live`）。
  */
 
+import { wasOpenOnPress } from "./popover-toggle.ts";
 import { t } from "../i18n.ts";
 import { choiceSummary, normalizeChoice } from "../multi-choice.ts";
 import { containWheel } from "./contain-wheel.ts";
@@ -98,9 +99,12 @@ export class MultiSelect {
     }
     document.body.append(this.#pop);
 
+    // 再按一次按鈕要關上（見 popover-toggle.ts）。
+    const wasOpen = wasOpenOnPress(this.el, () => this.#pop);
     this.el.addEventListener("click", () => {
-      if (this.#pop.matches(":popover-open")) this.#pop.hidePopover();
-      else this.#open();
+      if (wasOpen()) {
+        if (this.#pop.matches(":popover-open")) this.#pop.hidePopover();
+      } else this.#open();
     });
     // 用 beforetoggle：收起的當下就套用選的條件（toggle 事件排在後面才觸發，按 Esc 之後畫面會慢一拍）。
     this.#pop.addEventListener("beforetoggle", (e) => {

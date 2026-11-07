@@ -3,6 +3,7 @@
  * 再找工作項目；每個關聯後面有移除鈕（只拿掉關聯，工作項目本身不動）。改完重新讀取內容。
  * 子項目另外有刪除鈕（垃圾桶）：和分頁右鍵選單的「刪除工作項目…」同一個確認對話框，刪除的會移到回收筒。
  */
+import { wasOpenOnPress } from "../ui/popover-toggle.ts";
 import { type AdoLinkChange, type AdoWorkItem, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { relationLabels, workItemIdOf } from "../issue-doc.ts";
@@ -112,6 +113,8 @@ export function editableRelations(body: HTMLElement, h: WorkItemEditHooks): void
   document.getElementById("wi-add-link-popover")?.remove();
   const entries: MenuEntry[] = [];
   const menu = setupMenu(add, null, entries);
+  // 再按一次「加入關聯」要關上（見 ui/popover-toggle.ts）。
+  const wasOpen = wasOpenOnPress(add, () => menu);
   // 按鈕在 <summary> 裡：不要順便收合段落（所以自己開關選單）。
   add.addEventListener("click", (e) => {
     e.preventDefault();
@@ -137,8 +140,9 @@ export function editableRelations(body: HTMLElement, h: WorkItemEditHooks): void
         },
       })),
     );
-    if (menu.matches(":popover-open")) menu.hidePopover();
-    else menu.showPopover();
+    if (wasOpen()) {
+      if (menu.matches(":popover-open")) menu.hidePopover();
+    } else menu.showPopover();
   });
   removeButtons(box, h);
   renderChildProgress(box, h.detail()?.relations ?? []);
