@@ -44,8 +44,8 @@ export function choiceLayout(options: readonly ChoiceOption[], focus?: string): 
   return { order, focus: first?.id ?? null };
 }
 
-/** 請使用者輸入一行文字（例如範本名稱）。取消時回傳 null。 */
-export function askText(title: string, message: string, value = "", okLabel = t("確定")): Promise<string | null> {
+/** 請使用者輸入一行文字（例如範本名稱）。取消時回傳 null。`secret` 時輸入的內容顯示成圓點（例如 API 金鑰）。 */
+export function askText(title: string, message: string, value = "", okLabel = t("確定"), secret = false): Promise<string | null> {
   const dialog = document.createElement("dialog");
   dialog.className = "choice";
   dialog.setAttribute("aria-labelledby", "ask-title");
@@ -56,6 +56,10 @@ export function askText(title: string, message: string, value = "", okLabel = t(
   dialog.querySelector("p")!.textContent = message;
   const input = dialog.querySelector("input")!;
   input.value = value;
+  if (secret) {
+    input.type = "password";
+    input.autocomplete = "off";
+  }
   dialog.querySelector<HTMLButtonElement>(".btn-primary")!.textContent = okLabel;
   return new Promise((resolve) => {
     let result: string | null = null;

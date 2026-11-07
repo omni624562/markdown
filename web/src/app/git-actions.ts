@@ -1,6 +1,8 @@
 /**
  * Git：合併衝突、分支、Pull Request；GitHub Pages、Gist。
  */
+import { ASSISTANT_ACTIONS } from "../assistant-text.ts";
+import { assistantEnabled, assistantOpen, runAssistantAction, toggleAssistant } from "./assistant.ts";
 import type { Command } from "../commands.ts";
 import { desktop, isRemote } from "../desktop.ts";
 import { stem } from "../files.ts";
@@ -258,6 +260,26 @@ export function initGitActions(): void {
         else app.aiPicker.open();
       },
     },
+    {
+      id: "assistant",
+      title: t("助理（Claude API）"),
+      group: t("AI 與終端機"),
+      icon: "sparkles",
+      keys: "Mod-Shift-l",
+      when: assistantEnabled,
+      checked: assistantOpen,
+      run: () => toggleAssistant(),
+    },
+    ...ASSISTANT_ACTIONS.map(
+      (a): Command => ({
+        id: `assistant-${a.id}`,
+        title: t("助理：{name}", { name: a.label() }),
+        group: t("AI 與終端機"),
+        icon: "sparkles",
+        when: () => assistantEnabled() && app.cur.kind === "markdown",
+        run: () => runAssistantAction(a.id),
+      }),
+    ),
     ...(
       [
         ["github-open", t("GitHub：下載儲存庫…"), "github", () => app.github?.openRepo(), () => true],

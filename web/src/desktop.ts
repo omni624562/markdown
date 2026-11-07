@@ -683,6 +683,23 @@ export interface FileVersion {
   size: number;
 }
 
+/** Claude API 助理這個月的用量（美元，估計值）。 */
+export interface AssistantUsage {
+  month: string;
+  usd: number;
+  limit: number;
+}
+
+export interface AssistantMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export type AssistantRunEvent =
+  | { kind: "delta"; id: number; text: string }
+  | { kind: "done"; id: number; usd: number; monthUsd: number; stop: "max_tokens" | "refusal" | null }
+  | { kind: "error"; id: number; message: string };
+
 export type AiRunEvent =
   | { kind: "delta"; id: number; text: string }
   | { kind: "done"; id: number; text: string; costUsd: number | null; tokens: number | null }
@@ -1034,6 +1051,14 @@ function bridge(core: TauriCore, event: TauriEvent) {
     aiRun: (id: number, tool: AiTool, prompt: string) =>
       afterSettings(() => core.invoke<void>("ai_run", { id, tool, prompt })),
     aiCancel: (id: number) => core.invoke<void>("ai_cancel", { id }),
+    /** Claude API 助理：金鑰只存在原生端（Windows 認證管理員），網頁只知道有沒有。 */
+    assistantKeyStatus: () => core.invoke<boolean>("assistant_key_status"),
+    assistantKeySet: (key: string) => core.invoke<void>("assistant_key_set", { key }),
+    assistantKeyForget: () => core.invoke<void>("assistant_key_forget"),
+    assistantUsage: () => core.invoke<AssistantUsage>("assistant_usage"),
+    assistantSend: (id: number, request: { model: string; system: string; messages: AssistantMessage[] }) =>
+      afterSettings(() => core.invoke<void>("assistant_send", { id, request })),
+    assistantCancel: (id: number) => core.invoke<void>("assistant_cancel", { id }),
 
     gitStatus: () => core.invoke<GitStatus>("git_status"),
     githubAccount: () => core.invoke<GitHubAccount | null>("github_account"),
@@ -1311,6 +1336,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     onTermNotice: (fn: (n: TermNotice) => void) => event.listen<TermNotice>("term-notice", (e) => fn(e.payload)),
     onAiProposal: (fn: (p: AiProposal) => void) => event.listen<AiProposal>("ai-proposal", (e) => fn(e.payload)),
     onAiRun: (fn: (p: AiRunEvent) => void) => event.listen<AiRunEvent>("ai-run", (e) => fn(e.payload)),
+    onAssistantRun: (fn: (p: AssistantRunEvent) => void) =>
+      event.listen<AssistantRunEvent>("assistant-run", (e) => fn(e.payload)),
   };
 }
 

@@ -46,6 +46,7 @@ import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
 import { initPinCommands } from "./pin-commands.ts";
 import { initChatGpt } from "./chatgpt.ts";
 import { initTableCopy } from "./table-copy.ts";
+import { initAssistant } from "./assistant.ts";
 import { app } from "./context.ts";
 
 
@@ -770,6 +771,7 @@ export function initActivityBar(): void {
   initPinCommands();
   initChatGpt();
   initTableCopy();
+  initAssistant();
   headingMenu = formatMenuButton("fmt-heading", t("標題"), "heading", ["h1", "h2", "h3"]);
   insertMenu = formatMenuButton("fmt-insert", t("插入"), "plus", [
     "table",

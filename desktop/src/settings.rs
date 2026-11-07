@@ -62,12 +62,27 @@ fn ai_question() -> Question {
     )
 }
 
-/// 檢查這次要存的設定：從關閉改成開啟的「啟用 AI 協作」與整合功能（`off` 是目前關掉的），
+/// 從關閉改成「Claude API 助理」前要問的話。
+fn claude_question() -> Question {
+    Question::new(
+        tr!("啟用 Claude API 助理"),
+        tr!("啟用後，你在允許 AI 的專案裡送出的內容（目前的文件、選取的文字、你的問題）會送到 Anthropic 的 Claude API，費用算在你的 API 金鑰上。公司的電腦請保持關閉。要啟用嗎？"),
+    )
+}
+
+/// 目前已經開啟的「AI 協作」與「Claude API 助理」（從關閉改成開啟時才要確認）。
+#[derive(Clone, Copy, Default)]
+struct AiOn {
+    ai: bool,
+    claude: bool,
+}
+
+/// 檢查這次要存的設定：從關閉改成開啟的「啟用 AI 協作」「Claude API 助理」與整合功能（`off` 是目前關掉的），
 /// 用 `ask` 問使用者。拒絕的項目在 `value` 裡改回關閉；有任何一項被拒絕時回傳 `false`。
 /// `ask` 在指令裡是系統的對話框，測試時換成固定的回答。
 async fn review<F, Fut>(
     value: &mut serde_json::Value,
-    ai_on: bool,
+    on: AiOn,
     off: &[Feature],
     mut ask: F,
 ) -> bool
@@ -76,8 +91,12 @@ where
     Fut: std::future::Future<Output = bool>,
 {
     let mut accepted = true;
-    if value["aiEnabled"] == true && !ai_on && !ask(ai_question()).await {
+    if value["aiEnabled"] == true && !on.ai && !ask(ai_question()).await {
         value["aiEnabled"] = serde_json::Value::Bool(false);
+        accepted = false;
+    }
+    if value["claudeApiEnabled"] == true && !on.claude && !ask(claude_question()).await {
+        value["claudeApiEnabled"] = serde_json::Value::Bool(false);
         accepted = false;
     }
     let turned_on = crate::features::turned_on(off, value);
@@ -90,7 +109,7 @@ where
     accepted
 }
 
-/// 儲存設定。從關閉改成「啟用 AI 協作」，或重新開啟關掉的整合功能（Git、Azure DevOps、遠端資料夾）時，
+/// 儲存設定。從關閉改成「啟用 AI 協作」「Claude API 助理」，或重新開啟關掉的整合功能（Git、Azure DevOps、遠端資料夾）時，
 /// 用系統的對話框再確認一次；使用者拒絕的項目存成關閉，並回傳 `false`（前端會把開關改回去）。
 /// 內容不是 JSON 物件時不存（壞掉的設定檔會讓關掉的功能全部變回開啟）。
 #[tauri::command]
@@ -111,7 +130,14 @@ pub async fn save_settings(
         .try_state::<Features>()
         .map(|f| f.off())
         .unwrap_or_default();
-    let accepted = review(&mut value, ai_enabled(&app), &off, |q| {
+    let current = read_value(&app);
+    let on = AiOn {
+        ai: current.as_ref().is_some_and(|v| v["aiEnabled"] == true),
+        claude: current
+            .as_ref()
+            .is_some_and(|v| v["claudeApiEnabled"] == true),
+    };
+    let accepted = review(&mut value, on, &off, |q| {
         crate::confirm::confirm(&window, Some(q))
     })
     .await;
@@ -145,7 +171,11 @@ mod tests {
         answers: &[bool],
     ) -> (bool, Vec<String>) {
         let asked = RefCell::new(Vec::new());
-        let accepted = review(value, ai_on, off, |q| {
+        let on = AiOn {
+            ai: ai_on,
+            claude: true,
+        };
+        let accepted = review(value, on, off, |q| {
             let mut asked = asked.borrow_mut();
             let answer = answers[asked.len()];
             asked.push(q.title);
@@ -182,6 +212,28 @@ mod tests {
             v,
             serde_json::json!({ "aiEnabled": false, "gitEnabled": false, "adoEnabled": false })
         );
+    }
+
+    #[tokio::test]
+    async fn claude_api_needs_its_own_confirmation() {
+        let mut v = serde_json::json!({ "aiEnabled": false, "claudeApiEnabled": true });
+        let asked = RefCell::new(Vec::new());
+        let ok = review(&mut v, AiOn::default(), &[], |q| {
+            asked.borrow_mut().push(q.title);
+            async { false }
+        })
+        .await;
+        assert!(!ok);
+        assert_eq!(asked.into_inner(), ["啟用 Claude API 助理"]);
+        assert_eq!(v["claudeApiEnabled"], false);
+        // 已經開著的不再問。
+        let mut v = serde_json::json!({ "claudeApiEnabled": true });
+        let on = AiOn {
+            ai: false,
+            claude: true,
+        };
+        assert!(review(&mut v, on, &[], |_| async { false }).await);
+        assert_eq!(v["claudeApiEnabled"], true);
     }
 
     #[tokio::test]

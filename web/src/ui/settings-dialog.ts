@@ -36,6 +36,8 @@ export interface AiHooks {
   copyRegistration(tool: "claude" | "codex"): Promise<void>;
   /** 這台電腦有沒有 ChatGPT 桌面版（「傳給 ChatGPT」的桌面版選項，見 app/chatgpt.ts）。 */
   chatgptDesktop?(): boolean;
+  /** 「Claude API 助理」那一區（標題、說明與選項，見 app/assistant-settings.ts）。 */
+  assistant?(): HTMLElement[];
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
@@ -451,6 +453,7 @@ export class SettingsDialog {
   /** 開啟設定；`page` 是分類名稱（例如「AI 協作」）。 */
   open(page?: string): void {
     this.#sync();
+    this.#dialog.querySelector("#assistant-settings")?.dispatchEvent(new Event("assistant-refresh"));
     this.#dialog.showModal();
     // 焦點放在目前的分類上（不要一打開就把框框畫在「完成」按鈕上）。
     this.#dialog.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus();
@@ -624,7 +627,7 @@ export class SettingsDialog {
     const hint = document.createElement("p");
     hint.className = "settings-group-hint";
     hint.textContent = t("選取文字後按 Ctrl+J（或按右鍵）執行；提示詞會連同選取的文字一起送出。");
-    section.append(title, hint, this.#actions, add, ...chatgpt);
+    section.append(title, hint, this.#actions, add, ...(this.#ai.assistant?.() ?? []), ...chatgpt);
     return section;
   }
 
