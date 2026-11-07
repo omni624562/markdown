@@ -1149,6 +1149,34 @@ pub async fn ado_comment_delete(
     .await
 }
 
+/// 刪除工作項目：移到回收筒（不帶 `destroy=true`，不是永久刪除），網頁版的回收筒可以還原。
+/// 底下的子項目不會一起刪除。沒有「刪除和還原工作項目」權限時伺服器回 403。
+#[tauri::command]
+pub async fn ado_work_item_delete(app: AppHandle, id: u64) -> Result<(), String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let res = crate::update::agent()
+            .delete(&work_item_delete_url(&a.url, id))
+            .header("Authorization", &basic(&pat))
+            .header("Accept", "application/json")
+            .call();
+        match res {
+            // 回應的內容是回收筒裡的那一筆，不需要讀。
+            Ok(_) => Ok(()),
+            Err(ureq::Error::StatusCode(403)) => Err(tr!(
+                "你沒有刪除這個工作項目的權限（需要「刪除和還原工作項目」權限，請找專案管理員）"
+            )),
+            res => read(res, &tr!("刪除工作項目")).map(|_| ()),
+        }
+    })
+    .await
+}
+
+/// 刪除工作項目的網址：只移到回收筒，一定不帶 `destroy`。
+pub(super) fn work_item_delete_url(base: &str, id: u64) -> String {
+    format!("{base}/_apis/wit/workitems/{id}?api-version={API_VERSION}")
+}
+
 fn comment_url(base: &str, project: &str, id: u64, comment_id: u64) -> String {
     format!(
         "{base}/{}/_apis/wit/workItems/{id}/comments/{comment_id}?api-version={COMMENTS_API}",

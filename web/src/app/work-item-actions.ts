@@ -24,6 +24,7 @@ import { workItemsPanel, barShortcuts, toggleWorkItemShortcut } from "./work-ite
 import { setAttachTarget, uploadAttachments } from "./work-item-attach.ts";
 import { enhanceWorkItem, lazy, type Loaded, type WorkItemEditHooks } from "./work-item-edit.ts";
 import { editableRelations } from "./work-item-links-edit.ts";
+import { deleteWorkItem } from "./work-item-delete.ts";
 import { app } from "./context.ts";
 import { workItemLoaded } from "./work-item-updates.ts";
 
@@ -225,6 +226,7 @@ export function showWorkItem(item: AdoWorkItem): void {
     },
     insertLink: () => insertIssueLink(item),
     history: () => showWorkItemHistory(item),
+    deleteItem: () => void deleteWorkItem(item, detail).catch(app.reportError),
     shortcut: {
       has: () => barShortcuts.some((s) => isWorkItemShortcut(s) && s.workItem === item.id),
       toggle: () => toggleWorkItemShortcut(item),
