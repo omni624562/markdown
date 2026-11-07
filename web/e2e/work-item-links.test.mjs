@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { calls, open } from "./helpers.mjs";
+import { Unlink } from "lucide";
 
 const base = { project: "產品", assignedTo: "王小明", changed: "2026-10-30T00:00:00Z", priority: 2 };
 const item = (id, title, kind = "Task", state = "Active") => ({ ...base, id, title, kind, state, webUrl: `https://ado.test/c/產品/_workitems/edit/${id}` });
@@ -106,6 +107,10 @@ test("加入關聯：已經有上層時是「換上層」；加子項目送 link
   // 移除子項目的關聯：先問，取消不送出；確定才送出。
   const row = sec.locator("li", { hasText: "Task 7" });
   await row.hover();
+  // 圖示是斷開的鏈結（不是 ✕），說明寫清楚工作項目本身不會刪除。
+  assert.equal(await row.locator(".ado-link-remove").getAttribute("title"), "移除關聯（工作項目本身不會刪除）");
+  const firstPath = await row.locator(".ado-link-remove svg > *").first().getAttribute("d");
+  assert.equal(firstPath, Unlink.find(([tag]) => tag === "path")[1].d);
   await row.locator(".ado-link-remove").click();
   await page.locator("dialog.choice[open] button", { hasText: "取消" }).click();
   assert.equal((await updates(page)).length, 1);
