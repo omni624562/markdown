@@ -185,10 +185,38 @@ function removeButtons(box: HTMLElement, h: WorkItemEditHooks): void {
         del.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void deleteWorkItem(child, null).catch(app.reportError);
+          // 刪除後不重新讀取整頁：只拿掉這一列、更新段落標題的數字，畫面和捲動位置不動。
+          void deleteWorkItem(child, null, { refreshShown: false })
+            .then((deleted) => {
+              if (deleted) dropRelationRow(box, li, id, h);
+            })
+            .catch(app.reportError);
         });
         li.append(del);
       }
     }
+  }
+}
+
+/** 刪除子項目後：拿掉那一列（組裡沒有了就連組的標題一起拿掉）、從讀到的內容裡拿掉，更新段落標題的數字。 */
+function dropRelationRow(box: HTMLElement, li: HTMLLIElement, id: number, h: WorkItemEditHooks): void {
+  const ul = li.parentElement;
+  li.remove();
+  if (ul && !ul.querySelector(":scope > li")) {
+    const title = ul.previousElementSibling;
+    if (title?.tagName === "H3") title.remove();
+    ul.remove();
+  }
+  const relations = h.detail()?.relations;
+  const at = relations?.findIndex((r) => r.link === "child" && r.id === id) ?? -1;
+  if (relations && at >= 0) relations.splice(at, 1);
+  const n = relations?.length ?? box.querySelectorAll("li a[href]").length;
+  const h2 = box.closest(".ado-sec")?.querySelector<HTMLElement>(":scope > .ado-sec-head h2");
+  if (h2) h2.textContent = t("相關工作項目（{n}）", { n });
+  if (!n && !box.querySelector(".ado-sec-empty")) {
+    const empty = document.createElement("p");
+    empty.className = "ado-sec-empty";
+    empty.textContent = t("還沒有相關的工作項目，按「加入關聯」設定上層、子項目或相關項目。");
+    box.append(empty);
   }
 }

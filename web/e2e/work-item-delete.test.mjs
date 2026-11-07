@@ -125,7 +125,7 @@ test("指令面板「工作項目：刪除目前的工作項目…」：顯示�
   await context.close();
 });
 
-test("子項目那一列的垃圾桶：同一個確認對話框，刪除子項目後上層重新讀取；上層那一列沒有刪除鈕", async () => {
+test("子項目那一列的垃圾桶：同一個確認對話框，刪除後只拿掉那一列、不重新讀取整頁；上層那一列沒有刪除鈕", async () => {
   const CHILD = { ...ITEM, ...base(1002, "畫面切版（手機）"), relations: [{ ...base(1001, "畫面切版"), link: "parent" }] };
   const { page, context, errors } = await openItem({ ...DESKTOP, ado_work_item: { $by: "id", values: { 1001: ITEM, 1002: CHILD } } });
   const rel = page.locator(".issue-body li", { hasText: "Task 1002" });
@@ -145,8 +145,14 @@ test("子項目那一列的垃圾桶：同一個確認對話框，刪除子項�
   await dialog.getByRole("button", { name: "刪除" }).click();
   await page.locator(".toast", { hasText: "已刪除 Task 1002「畫面切版（手機）」" }).waitFor();
   assert.deepEqual(await deletes(page), [{ id: 1002 }]);
-  // 上層（顯示中的 1001）重新讀取，分頁留著。
-  await page.waitForFunction((n) => window.__fake.calls.filter((c) => c.cmd === "ado_work_item" && c.args.id === 1001).length > n, before);
+  // 只拿掉那一列：子項目那一組沒有了，標題的數字從 2 變成 1；不重新讀取顯示中的 1001，分頁留著。
+  await rel.waitFor({ state: "detached" });
+  const sec = page.locator('.ado-sec[data-kind="relations"]');
+  assert.equal(await sec.locator(".ado-sec-head h2").textContent(), "相關工作項目（1）");
+  assert.equal(await sec.locator("h3", { hasText: "子項目" }).count(), 0);
+  assert.equal(await sec.locator("li", { hasText: "User Story 10" }).count(), 1);
+  await page.waitForTimeout(300);
+  assert.equal(await reads(), before);
   assert.equal(await tab(page).count(), 1);
   assert.deepEqual(errors, []);
   await context.close();
