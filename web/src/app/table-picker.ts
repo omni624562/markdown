@@ -106,7 +106,7 @@ export function openTablePicker(): void {
   // 等指令面板、選單關好再打開（不然焦點會被它們還給編輯器）。
   setTimeout(() => {
     if (!root) return;
-    root.showPopover();
+    if (!root.matches(":popover-open")) root.showPopover();
     const rect = root.getBoundingClientRect();
     const place = placeMenu(
       { left: box.left, top: box.top, right: box.left, bottom: box.bottom },
