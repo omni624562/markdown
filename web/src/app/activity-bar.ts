@@ -45,6 +45,7 @@ import type { SidePanel } from "../main.ts";
 import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
 import { initPinCommands } from "./pin-commands.ts";
 import { initChatGpt } from "./chatgpt.ts";
+import { initTableCopy } from "./table-copy.ts";
 import { app } from "./context.ts";
 
 
@@ -689,12 +690,10 @@ export async function saveAsTemplate(): Promise<void> {
 }
 
 /**
- * 複製為格式文字：選取範圍（沒有選取時是整份文件）渲染成 HTML 並加上行內樣式，
- * 同時放一份 Markdown 純文字，貼到純文字的地方時用。
+ * 把 Markdown 渲染成加了行內樣式的 HTML（圖片換成貼上的程式讀得到的網址）放進剪貼簿，
+ * 同時放一份 Markdown 純文字；失敗時提示並回傳 false。
  */
-export async function copyRich(): Promise<void> {
-  const selected = selectedText();
-  const markdown = selected || app.editor.text;
+export async function writeRichClipboard(markdown: string): Promise<boolean> {
   const docDir = app.cur.fileHandle?.path && !isRemote(app.cur.fileHandle.path) ? dirname(app.cur.fileHandle.path) : null;
   const html = richHtml(renderMarkdown(markdown, { kind: "markdown" }).html, (src) => {
     if (/^(https?:|data:)/i.test(src) || !docDir) return null;
@@ -708,10 +707,20 @@ export async function copyRich(): Promise<void> {
         "text/plain": new Blob([markdown], { type: "text/plain" }),
       }),
     ]);
+    return true;
   } catch {
     toast(t("無法寫入剪貼簿。"), { tone: "error" });
-    return;
+    return false;
   }
+}
+
+/**
+ * 複製為格式文字：選取範圍（沒有選取時是整份文件）渲染成 HTML 並加上行內樣式，
+ * 同時放一份 Markdown 純文字，貼到純文字的地方時用。
+ */
+export async function copyRich(): Promise<void> {
+  const selected = selectedText();
+  if (!(await writeRichClipboard(selected || app.editor.text))) return;
   toast(
     selected
       ? t("已複製選取範圍的格式文字，可以貼到 Word、Outlook、Teams")
@@ -760,6 +769,7 @@ export async function copyDiagram(svg: string): Promise<void> {
 export function initActivityBar(): void {
   initPinCommands();
   initChatGpt();
+  initTableCopy();
   headingMenu = formatMenuButton("fmt-heading", t("標題"), "heading", ["h1", "h2", "h3"]);
   insertMenu = formatMenuButton("fmt-insert", t("插入"), "plus", [
     "table",
@@ -822,6 +832,7 @@ export function initActivityBar(): void {
         "table-sort-desc",
         "-",
         "table-format",
+        "table-copy",
       ],
     },
     "table-from-text",

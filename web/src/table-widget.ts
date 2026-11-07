@@ -1,7 +1,7 @@
 /**
  * 即時預覽中可以直接編輯的表格：點儲存格就能打字（顯示該格的 Markdown 原文），
  * Tab／Shift+Tab 移到下一格或上一格（最後一格按 Tab 新增一列）、Enter 移到下一列、Esc 存好並離開表格。
- * 滑鼠移到表格上時，右上角出現新增／刪除列與欄、對齊、顯示原始碼的按鈕。
+ * 滑鼠移到表格上時，右上角出現新增／刪除列與欄、對齊、顯示原始碼、複製整個表格的按鈕。
  * 每次修改都改寫整個表格的 Markdown，再交給核心依中文字寬對齊。
  * 搜尋列開著時，儲存格裡符合的文字和編輯器其他地方一樣標色（表格是畫出來的，編輯器自己的標色碰不到）。
  */
@@ -22,6 +22,12 @@ import {
   setAlign,
   setCell,
 } from "./table-model.ts";
+
+/**
+ * 工具列的「複製」：從表格發出這個事件（`detail` 是整個表格的 Markdown），由 app/table-copy.ts 放進剪貼簿。
+ * 這個模組不直接碰剪貼簿與通知，單元測試才能在沒有畫面的環境載入。
+ */
+export const TABLE_COPY_EVENT = "table-copy";
 
 /** 表格重畫後要接著編輯的儲存格（用表格在文件中的起點辨認，修改表格不會改變起點）。 */
 let pendingFocus: { from: number; row: number; col: number } | null = null;
@@ -282,6 +288,11 @@ export class EditableTableWidget extends WidgetType {
       button("⇔", t("這一欄置中"), () => align("center")),
       button("⇥", t("這一欄靠右"), () => align("right")),
       button(t("原始碼"), t("顯示表格的 Markdown 原始碼"), () => leave(true)),
+      // 正在編輯的儲存格還沒存回文件，也一起複製。
+      button(t("複製"), t("複製整個表格（貼到 Word、Outlook、Teams 是表格）"), () => {
+        const md = editing ? serializeTable(model()) : this.markdown;
+        wrap.dispatchEvent(new CustomEvent(TABLE_COPY_EVENT, { bubbles: true, detail: editing ? (this.format(md) ?? md) : md }));
+      }),
     );
     wrap.prepend(tools);
 
