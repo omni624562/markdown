@@ -77,9 +77,13 @@ async function expectGroups(page, expected) {
 async function pickAreas(page, values) {
   await page.locator('#workitems-host .multi-select[aria-label^="區域："]').click();
   const pop = page.locator(".multi-select-pop:popover-open");
-  // 不限時全部都勾著：先取消全部，再勾要的。
-  await pop.locator(".multi-select-all input").uncheck();
-  for (const v of values) await pop.locator(`.multi-select-list input[value="${v.replaceAll("\\", "\\\\")}"]`).check();
+  // 不限時全部都勾著（不能一個都不勾）：第一個用「只選這個」，其他的再勾起來。
+  const input = (v) => pop.locator(`.multi-select-list input[value="${v.replaceAll("\\", "\\\\")}"]`);
+  const [first, ...rest] = values;
+  const row = input(first).locator("xpath=ancestor::*[contains(@class, 'multi-select-item')][1]");
+  await row.hover();
+  await row.locator(".multi-select-only").click();
+  for (const v of rest) await input(v).check();
   await page.keyboard.press("Escape");
 }
 

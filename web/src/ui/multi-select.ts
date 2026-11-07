@@ -3,6 +3,8 @@
  * 按鈕的樣子和一般的下拉選單一樣，打開是一排勾選框。第一列「全部」一次勾或取消全部（部分勾選時顯示半勾），
  * 滑鼠移到某一列時右邊有「只選這個」；選項多時可以打字找。
  * 不限時全部都是勾的；離開選單（點外面、按 Esc 或 Enter）時才套用，不會每勾一個就重新查一次。
+ * 不會出現「一個都沒勾」：那和全部勾的意思一樣，畫面卻完全相反，容易以為出錯。全部勾著時再按「全部」維持全部，
+ * 取消最後一個勾的也不行，下面提示要只看某一項時按「只選這個」。
  *
  * `single` 是單選（例如「人」）：同樣的按鈕與選單樣子，點一下就套用並關上。
  * Wiki 的「顯示哪些最上層頁面」也用這個選單：自己的圖示按鈕（`button`）、勾了馬上套用（`live`）。
@@ -195,7 +197,12 @@ export class MultiSelect {
         }
         box.addEventListener("change", () => {
           if (box.checked) this.#draft.add(v);
-          else this.#draft.delete(v);
+          else if (this.#draft.size <= 1) {
+            // 最後一個勾的：不能取消（一個都不勾等於全部，反而看不出來）。
+            box.checked = true;
+            this.#sync(t("至少要勾一項；要看全部請勾「全部」"));
+            return;
+          } else this.#draft.delete(v);
           this.#sync();
         });
         const only = document.createElement("button");
@@ -229,23 +236,29 @@ export class MultiSelect {
     return [...this.#list.querySelectorAll<HTMLInputElement>("input")];
   }
 
-  /** 「全部」的勾選狀態（全勾、半勾、沒勾）與下面的「已選幾項」。 */
-  #sync(): void {
+  /** 「全部」的勾選狀態（全勾、半勾）與下面的「已選幾項」；`hint` 是剛剛的操作沒有作用時的說明。 */
+  #sync(hint?: string): void {
     const shown = this.#boxes().filter((b) => !b.closest<HTMLElement>(".multi-select-item")!.hidden);
     const on = shown.filter((b) => b.checked).length;
     this.#allBox.checked = shown.length > 0 && on === shown.length;
     this.#allBox.indeterminate = on > 0 && on < shown.length;
     const total = this.#boxes().length;
     const picked = this.#draft.size;
-    // 都沒勾時查不到東西也沒意義，當成全部。
-    this.#status.textContent =
-      picked === 0 ? t("都沒勾：等於全部") : picked >= total ? t("全部") : t("已選 {n}／{total} 項", { n: picked, total });
-    this.#status.classList.toggle("warn", picked === 0);
+    this.#status.textContent = hint ?? (picked >= total ? t("全部") : t("已選 {n}／{total} 項", { n: picked, total }));
+    this.#status.classList.toggle("hint", !!hint);
     if (this.#o.live && this.#pop.matches(":popover-open")) this.#apply();
   }
 
-  /** 勾選或取消全部（有打字找時只動找到的那些）。 */
+  /** 勾選或取消全部（有打字找時只動找到的那些）；取消後會一個都不勾時不取消。 */
   #setAll(on: boolean): void {
+    if (!on) {
+      const shown = new Set(this.#boxes().filter((b) => !b.closest<HTMLElement>(".multi-select-item")!.hidden).map((b) => b.value));
+      if (![...this.#draft].some((v) => !shown.has(v))) {
+        this.#allBox.checked = true;
+        this.#sync(t("已經是全部；要只看某一項，按那一項右邊的「只選這個」"));
+        return;
+      }
+    }
     for (const box of this.#boxes()) {
       if (box.closest<HTMLElement>(".multi-select-item")!.hidden) continue;
       box.checked = on;
@@ -262,7 +275,8 @@ export class MultiSelect {
       row.hidden = !!q && !(row.dataset.text ?? "").includes(q);
       if (!row.hidden) shown++;
     }
-    this.#allText.textContent = q ? t("全部符合的（{n}）", { n: shown }) : t("全部（{n}）", { n: shown });
+    // 沒有打字找時就是「全部」（數字是選項的個數，不是工作項目的個數，寫出來反而容易誤會）。
+    this.#allText.textContent = q ? t("全部符合的（{n}）", { n: shown }) : t("全部");
     this.#sync();
   }
 
