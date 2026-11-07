@@ -4,6 +4,7 @@
  *
  * 字數目標與「今天」的起點存在這台電腦（每份文件各自記，用路徑辨認），不會寫進檔案。
  */
+import { wasOpenOnPress } from "../ui/popover-toggle.ts";
 import { type RenderResult, type Stats, render as renderMarkdown } from "../../pkg/md_wasm.js";
 import {
   type TodayMap,
@@ -330,5 +331,12 @@ export function initDocStats(): void {
   const el = app.status.stats;
   el.setAttribute("aria-haspopup", "dialog");
   el.setAttribute("aria-expanded", "false");
-  el.addEventListener("click", () => showDocStats());
+  // 再按一次狀態列的字數要關上（見 ui/popover-toggle.ts）。
+  const wasOpen = wasOpenOnPress(el, () => pop);
+  el.addEventListener("click", () => {
+    if (wasOpen()) {
+      if (pop?.matches(":popover-open")) pop.hidePopover();
+      app.status.stats.setAttribute("aria-expanded", "false");
+    } else showDocStats();
+  });
 }
