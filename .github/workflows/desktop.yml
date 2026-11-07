@@ -62,6 +62,8 @@ jobs:
     # PR、推送到 main 不跑 version（被略過），照常建置。
     if: ${{ !failure() && !cancelled() }}
     runs-on: windows-latest
+    # 發佈時不用快取、全部重新編譯，大約 25 分鐘；PR 更快。卡住時不要等到 GitHub 預設的 6 小時。
+    timeout-minutes: 60
     env:
       WASM_PACK: "0.15.0"
       # wasm-opt（縮小 wasm）用的 binaryen：和 wasm-pack 0.15.0 自己會下載的版本相同，
@@ -122,7 +124,8 @@ jobs:
         run: |
           tmp="$(cygpath -u "$RUNNER_TEMP")"
           file="binaryen-${BINARYEN}-x86_64-windows.tar.gz"
-          curl -fsSL --retry 3 -o "$tmp/$file" "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN}/${file}"
+          # 連不上 30 秒、整個下載超過 5 分鐘（平常幾秒）就算失敗，--retry 會再試。
+          curl -fsSL --retry 3 --connect-timeout 30 --max-time 300 -o "$tmp/$file" "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN}/${file}"
           echo "${BINARYEN_SHA256}  $tmp/$file" | sha256sum -c -
           tar -xzf "$tmp/$file" -C "$tmp"
           "$tmp/binaryen-${BINARYEN}/bin/wasm-opt.exe" --version
