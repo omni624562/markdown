@@ -54,7 +54,10 @@ const TREE_INDENT_MAX = 3;
 export interface Arrangement<T> {
   id: string;
   label: string;
-  arrange(items: T[]): IssueGroup<T>[];
+  /** `desc`：編號由大到小（只有 `ordered` 的排列方式會用到）。 */
+  arrange(items: T[], desc: boolean): IssueGroup<T>[];
+  /** 依編號排序：排列方式旁邊出現「由大到小」的切換按鈕。 */
+  ordered?: boolean;
 }
 
 export interface IssuesHandlers<T extends IssueSummary> {
@@ -70,6 +73,8 @@ export interface IssuesHandlers<T extends IssueSummary> {
   /** 排列方式（第一個是預設）與記住上次的選擇。 */
   arrangements?: Arrangement<T>[];
   arrangement?: { load(): string | null; save(id: string): void };
+  /** 依編號排序的方向（`ordered` 的排列方式）：記住上次的選擇，true 是由大到小。 */
+  order?: { load(): boolean; save(desc: boolean): void };
   /** 項目前面的小圓點（例如「上次看過之後有更新」）；沒有就回傳 null。 */
   mark?(item: T): { kind: string; label: string } | null;
   /** 拖曳項目時帶的 Markdown 連結（拖到文件裡插入）。 */
@@ -167,6 +172,9 @@ export class IssuesPanel<T extends IssueSummary> {
   #collapsed = new Set<string>();
   /** 「全部收合／全部展開」（有分組時才出現）。 */
   #foldAll: HTMLButtonElement | null = null;
+  #orderButton: HTMLButtonElement | null = null;
+  /** 依編號排序時由大到小。 */
+  #desc = false;
   /** 目前畫面上可以收合的分組。 */
   #groupKeys: string[] = [];
   /** 選取的項目（一起改用）；`#selecting` 是選取模式（點一下就是選取，不是開啟）。 */
@@ -216,6 +224,19 @@ export class IssuesPanel<T extends IssueSummary> {
         this.#render();
       });
       this.#arrange = select;
+      // 編號由小到大／由大到小（樹狀的排列方式才有）。
+      const order = document.createElement("button");
+      order.type = "button";
+      order.className = "workitems-order";
+      order.hidden = true;
+      this.#desc = handlers.order?.load() ?? false;
+      order.addEventListener("click", () => {
+        this.#desc = !this.#desc;
+        handlers.order?.save(this.#desc);
+        this.#render();
+        order.focus();
+      });
+      this.#orderButton = order;
       const fold = document.createElement("button");
       fold.type = "button";
       fold.className = "workitems-fold";
@@ -232,7 +253,7 @@ export class IssuesPanel<T extends IssueSummary> {
         fold.focus();
       });
       this.#foldAll = fold;
-      tools.append(select, fold);
+      tools.append(select, order, fold);
     }
     if (handlers.bulk) tools.append(this.#bulkTools());
     if (tools.childElementCount) {
@@ -413,7 +434,8 @@ export class IssuesPanel<T extends IssueSummary> {
   /** 依目前的排列方式畫出清單（分組時每組有可以收合的標題）。 */
   #render(): void {
     const arrangement = this.#h.arrangements?.find((a) => a.id === this.#arrange?.value);
-    const groups = arrangement ? arrangement.arrange(this.#items) : [{ title: null, items: this.#items }];
+    const groups = arrangement ? arrangement.arrange(this.#items, this.#desc) : [{ title: null, items: this.#items }];
+    this.#showOrder(!!arrangement?.ordered);
     const rows: HTMLLIElement[] = [];
     this.#byId.clear();
     this.#groupKeys = [];
@@ -480,6 +502,17 @@ export class IssuesPanel<T extends IssueSummary> {
   /** 樹的節點收合用的識別（後面接項目編號）：有標題的組加上組的識別，同一個上層在好幾組裡各收各的。 */
   #treeKey(prefix: string, group: IssueGroup<T>): string {
     return group.title === null ? `${prefix}tree:` : `${this.#groupKey(prefix, group)}:tree:`;
+  }
+
+  /** 編號排序方向的按鈕：目前的排列方式依編號排序時才顯示；圖示是現在的方向，按一下換成另一個方向。 */
+  #showOrder(shown: boolean): void {
+    const b = this.#orderButton;
+    if (!b) return;
+    b.hidden = !shown;
+    b.setAttribute("aria-pressed", String(this.#desc));
+    b.setAttribute("aria-label", t("編號由大到小"));
+    b.title = this.#desc ? t("編號由大到小（按一下改成由小到大）") : t("編號由小到大（按一下改成由大到小）");
+    b.replaceChildren(icon(this.#desc ? "arrow-down-1-0" : "arrow-down-0-1"));
   }
 
   /** 「全部收合／全部展開」：兩組以上才顯示；有任何一組開著就是「全部收合」。 */
@@ -630,7 +663,7 @@ export class IssuesPanel<T extends IssueSummary> {
     // 分組收起來時，展開它所在的那一組（和檔案面板展開資料夾一樣），才看得到。
     if (id !== null) {
       const arrangement = this.#h.arrangements?.find((a) => a.id === this.#arrange?.value);
-      const groups = arrangement?.arrange(this.#items) ?? [];
+      const groups = arrangement?.arrange(this.#items, this.#desc) ?? [];
       const prefix = `${arrangement?.id}:`;
       // 樹狀：它所有的上層（`dim`：它在這裡是淡色的上層）。
       const path = (nodes: IssueTreeNode<T>[], treeKey: string): { keys: string[]; dim: boolean } | null => {

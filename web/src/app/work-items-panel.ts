@@ -411,12 +411,12 @@ function issueTree(
  * 「依上層項目分組」：排成樹（Epic → Feature → Story → Task），每一項只出現一次。
  * 清單上的項目的上層還沒讀到時先照原本的順序顯示；上層的上層讀到一層就重畫一次。
  */
-function groupByParentItems(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
+function groupByParentItems(items: (AdoWorkItem & IssueSummary)[], desc: boolean): IssueGroup<AdoWorkItem & IssueSummary>[] {
   if (!parentsKnown(items)) return [{ title: null, items }];
   const extra = moreChildren(items);
   const all = extra.length ? [...items, ...extra] : items;
   loadAncestors(all);
-  const roots = parentTree(all, workItemParentOf, workItemParentItems);
+  const roots = parentTree(all, workItemParentOf, workItemParentItems, desc);
   // 沒有上層的項目也是樹的最上層（例如 Epic 底下的都不在清單上），不另外分「沒有上層」一組。
   return [{ title: null, items: [], tree: roots.map((n) => issueTree(n)) }];
 }
@@ -453,10 +453,10 @@ function withSubArea(item: AdoWorkItem & IssueSummary, sub: string | null): AdoW
  * 不補不在清單上的子項目（`moreChildren`）：補的是符合同樣篩選、只是因為清單只取最近更新的 100 個而沒列到的，
  * 補進來組的數量、甚至組本身就和依區域分組不一樣了；依區域分組也只列清單上的，兩種排法列的項目一致比較好懂。
  */
-function groupByAreaAndParent(items: (AdoWorkItem & IssueSummary)[]): IssueGroup<AdoWorkItem & IssueSummary>[] {
+function groupByAreaAndParent(items: (AdoWorkItem & IssueSummary)[], desc: boolean): IssueGroup<AdoWorkItem & IssueSummary>[] {
   if (!parentsKnown(items)) return groupByArea(items);
   loadAncestors(items);
-  return areaTrees(items, app.workItemFilter.areas, workItemAreaOrder, workItemParentOf, workItemParentItems).map((g) => {
+  return areaTrees(items, app.workItemFilter.areas, workItemAreaOrder, workItemParentOf, workItemParentItems, desc).map((g) => {
     // 子區域的小字只標在這一組自己的項目上（淡色的上層不標）。
     const subs = new Map(g.items.map(({ item, sub }) => [item.id, sub]));
     return {
@@ -777,14 +777,18 @@ export function initWorkItemsPanel(): void {
             arrange: (items) => [{ title: null, items: [...items].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99)) }],
           },
           { id: "state", label: t("依狀態分組"), arrange: (items) => app.groupItems(items, (w) => w.state) },
-          { id: "parent", label: t("依上層項目分組"), arrange: (items) => groupByParentItems(items) },
+          { id: "parent", label: t("依上層項目分組"), arrange: (items, desc) => groupByParentItems(items, desc), ordered: true },
           { id: "kind", label: t("依類型分組"), arrange: (items) => app.groupItems(items, (w) => w.kind) },
           { id: "area", label: t("依區域分組"), arrange: (items) => groupByArea(items) },
-          { id: "area-parent", label: t("依區域＋上層項目分組"), arrange: (items) => groupByAreaAndParent(items) },
+          { id: "area-parent", label: t("依區域＋上層項目分組"), arrange: (items, desc) => groupByAreaAndParent(items, desc), ordered: true },
         ],
         arrangement: {
           load: () => storage.load("workitem-arrange"),
           save: (id) => storage.save("workitem-arrange", id),
+        },
+        order: {
+          load: () => storage.load("workitem-order") === "desc",
+          save: (desc) => storage.save("workitem-order", desc ? "desc" : "asc"),
         },
         mark: (item) => {
           // 分組標題列上、不在清單裡的上層項目（不是指派給你的）不標。
