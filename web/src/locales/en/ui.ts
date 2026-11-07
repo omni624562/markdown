@@ -959,6 +959,7 @@ export const ui: Record<string, Translation> = {
     "No related work items yet. Use “Add Link” to set a parent, children or related items.",
   "換上層…": "Change Parent…",
   "移除關聯": "Remove Link",
+  "移除關聯（工作項目本身不會刪除）": "Remove link (the work item itself isn't deleted)",
   "移除和「{name}」的關聯": "Remove the link to “{name}”",
   "要移除和「{name}」的關聯嗎？工作項目本身不會刪除。": "Remove the link to “{name}”? The work item itself is not deleted.",
   "已移除和 {id} 的關聯": "Removed the link to {id}",

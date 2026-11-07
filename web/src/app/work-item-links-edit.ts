@@ -155,9 +155,10 @@ function removeButtons(box: HTMLElement, h: WorkItemEditHooks): void {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ado-link-remove";
-      button.title = t("移除關聯");
+      // 斷開的鏈結：一看就知道是拿掉關聯，不會被當成刪除工作項目或關閉。
+      button.title = t("移除關聯（工作項目本身不會刪除）");
       button.setAttribute("aria-label", t("移除和「{name}」的關聯", { name }));
-      button.append(icon("x"));
+      button.append(icon("unlink"));
       button.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
