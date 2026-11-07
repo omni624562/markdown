@@ -19,6 +19,9 @@ export interface QuickAction {
 }
 
 export type AiTool = "claude" | "codex";
+/** Claude API 助理可以選的模型。 */
+export const CLAUDE_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] as const;
+export type ClaudeModel = (typeof CLAUDE_MODELS)[number];
 /** 傳給 ChatGPT：關閉、ChatGPT 桌面版、網頁版（見 app/chatgpt.ts）。 */
 export type ChatgptSend = "off" | "desktop" | "web";
 /** 自動更新跟哪個版本：穩定版（維護者選定的版本）或搶先版（每次修改後的最新建置）。 */
@@ -116,6 +119,18 @@ export interface Settings {
   chatgptSend: ChatgptSend;
   /** 已經看過「內容會送到 OpenAI」的提醒（第一次使用時問一次）。 */
   chatgptAcknowledged: boolean;
+  /**
+   * Claude API 助理（桌面版，預設關閉，只在私人電腦使用）：從關閉改成開啟時原生端會再確認一次。
+   * 只有 `assistantProjects` 列出的專案能用；Azure DevOps 的內容一律不送。
+   */
+  claudeApiEnabled: boolean;
+  claudeModel: ClaudeModel;
+  /** 每個月的費用上限（美元）；到了就停止送出（原生端檢查）。 */
+  claudeMonthlyLimit: number;
+  /** 允許使用 Claude API 助理的專案（資料夾路徑）。 */
+  assistantProjects: string[];
+  /** 第一次送出時勾了「以後不用再問」的專案。 */
+  assistantConfirmed: string[];
   quickActions: QuickAction[];
   /** 自訂的文件範本（內建範本不在這裡）。 */
   templates: Template[];
@@ -195,6 +210,11 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   aiTool: "claude",
   chatgptSend: "off",
   chatgptAcknowledged: false,
+  claudeApiEnabled: false,
+  claudeModel: "claude-sonnet-5-5",
+  claudeMonthlyLimit: 10,
+  assistantProjects: [],
+  assistantConfirmed: [],
   mcpServer: true,
   aiTerminal: true,
   markExternalChanges: true,
@@ -259,6 +279,8 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     quickActions: DEFAULTS.quickActions.map((a) => ({ ...a })),
     templates: [],
     termIgnore: [],
+    assistantProjects: [],
+    assistantConfirmed: [],
     spellIgnore: [],
     activityOrder: [],
     activityHidden: [...DEFAULTS.activityHidden],
@@ -302,6 +324,25 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("aiTerminal");
   bool("markExternalChanges");
   bool("chatgptAcknowledged");
+  bool("claudeApiEnabled");
+  if ("claudeModel" in input) {
+    const m = input.claudeModel;
+    if (CLAUDE_MODELS.includes(m as ClaudeModel)) out.claudeModel = m as ClaudeModel;
+    else problems++;
+  }
+  if ("claudeMonthlyLimit" in input) {
+    const n = input.claudeMonthlyLimit;
+    if (typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1000) out.claudeMonthlyLimit = Math.round(n * 100) / 100;
+    else problems++;
+  }
+  for (const key of ["assistantProjects", "assistantConfirmed"] as const) {
+    if (!(key in input)) continue;
+    const list = input[key];
+    if (Array.isArray(list)) {
+      out[key] = [...new Set(list.filter((p): p is string => typeof p === "string" && p.length > 0 && p.length <= 1000))].slice(0, 200);
+      if (out[key].length !== list.length) problems++;
+    } else problems++;
+  }
   bool("autoUpdate");
   bool("gitAutoSync");
   if ("gitSyncMinutes" in input) {
@@ -454,7 +495,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
 type Listener = (settings: Settings, changed: (keyof Settings)[]) => void;
 
 /** 從關閉改成開啟時，原生端會用系統的對話框再確認一次的開關（使用者拒絕時存成關閉）。 */
-const CONFIRMED_SWITCHES = ["aiEnabled", "gitEnabled", "adoEnabled", "remoteEnabled"] as const;
+const CONFIRMED_SWITCHES = ["aiEnabled", "claudeApiEnabled", "gitEnabled", "adoEnabled", "remoteEnabled"] as const;
 
 export class SettingsStore {
   #value: Settings;
@@ -520,7 +561,7 @@ export class SettingsStore {
         .then(async (accepted) => {
           if (accepted !== false) return;
           // 使用者在系統的確認對話框拒絕啟用 AI 協作或重新開啟整合功能：原生端存成關閉，開關跟著改回去。
-          let stored: Record<string, unknown> = { aiEnabled: false };
+          let stored: Record<string, unknown> = { aiEnabled: false, claudeApiEnabled: false };
           try {
             stored = JSON.parse((await d.loadSettings()) ?? "{}") as Record<string, unknown>;
           } catch {

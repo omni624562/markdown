@@ -229,6 +229,13 @@ mod tests {
         "mcp_respond",
         "ai_run",
         "ai_cancel",
+        // Claude API 助理有自己的開關（`claudeApiEnabled`，送出前在 assistant.rs 檢查）。
+        "assistant_key_status",
+        "assistant_key_set",
+        "assistant_key_forget",
+        "assistant_usage",
+        "assistant_send",
+        "assistant_cancel",
         "app_version",
         "update_check",
         "update_install",

@@ -15,6 +15,7 @@ mod i18n;
 mod ado;
 mod ai;
 mod ai_apps;
+mod assistant;
 mod chatgpt;
 mod comet;
 mod confirm;
@@ -275,6 +276,7 @@ fn main() {
         .manage(ai::view::TermView::default())
         .manage(ai::mcp::Mcp::default())
         .manage(ai::run::Runs::default())
+        .manage(assistant::AssistantRuns::default())
         .manage(dav::Dav::default())
         .manage(pdf::PdfTarget::default())
         .manage(image_protocol::ImageRoots::default())
@@ -506,6 +508,12 @@ fn main() {
             ai::mcp::mcp_respond,
             ai::run::ai_run,
             ai::run::ai_cancel,
+            assistant::assistant_key_status,
+            assistant::assistant_key_set,
+            assistant::assistant_key_forget,
+            assistant::assistant_usage,
+            assistant::assistant_send,
+            assistant::assistant_cancel,
             update::app_version,
             update::update_check,
             update::update_install,

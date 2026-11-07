@@ -1,6 +1,7 @@
 /**
  * 設定：套用設定、字型大小、簡體轉繁體、設定對話框。
  */
+import { assistantSettings } from "./assistant-settings.ts";
 import { desktop } from "../desktop.ts";
 import { fontStack } from "../fonts.ts";
 import { t, currentLang } from "../i18n.ts";
@@ -241,7 +242,12 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
       setAccent: app.setAccent,
     },
     desktop && app.ai
-      ? { available: () => desktop!.aiTools(), copyRegistration: (tool) => app.ai!.copyRegistration(tool), chatgptDesktop: chatgptDesktopFound }
+      ? {
+          available: () => desktop!.aiTools(),
+          copyRegistration: (tool) => app.ai!.copyRegistration(tool),
+          chatgptDesktop: chatgptDesktopFound,
+          assistant: assistantSettings,
+        }
       : null,
     app.updater
       ? {
