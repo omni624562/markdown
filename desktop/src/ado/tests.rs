@@ -1701,3 +1701,26 @@ fn deletes_work_items_to_the_recycle_bin_only() {
     // 永久刪除（跳過回收筒）要帶 destroy=true：一定不能出現。
     assert!(!url.contains("destroy"));
 }
+
+#[test]
+fn work_items_carry_hours_when_the_process_has_them() {
+    let v = json!({"id": 1002, "fields": {
+        "System.Title": "串接登入 API", "System.State": "Active", "System.WorkItemType": "Task",
+        "System.TeamProject": "產品",
+        "Microsoft.VSTS.Scheduling.RemainingWork": 4.5, "Microsoft.VSTS.Scheduling.CompletedWork": 2
+    }});
+    let w = item_of("https://ado.test/c", &v).unwrap();
+    assert_eq!((w.remaining, w.completed), (Some(4.5), Some(2.0)));
+    let out = serde_json::to_value(&w).unwrap();
+    assert_eq!(out["remaining"], 4.5);
+    // 沒有工時（Basic 流程、User Story）：不輸出這兩個欄位。
+    let bare =
+        json!({"id": 201, "fields": {"System.Title": "登入與註冊", "System.TeamProject": "產品"}});
+    let out = serde_json::to_value(item_of("https://ado.test/c", &bare).unwrap()).unwrap();
+    assert!(out.get("remaining").is_none() && out.get("completed").is_none());
+    // 欄位從多到少：最後一組只剩基本欄位（流程範本沒有工時、優先順序時用）。
+    let sets = field_sets();
+    assert!(sets[0].contains(REMAINING) && sets[0].contains(COMPLETED));
+    assert!(sets[1].contains(REMAINING) && !sets[1].contains(COMPLETED));
+    assert_eq!(sets[3], FIELDS);
+}

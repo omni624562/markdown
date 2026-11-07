@@ -44,6 +44,8 @@ export interface IssueTreeNode<T> {
   dim?: boolean;
   /** 標題列上的摘要（例如「3 個 User Story・8 個 Task」）。 */
   summary?: string;
+  /** 標題列上的進度條（Feature、Story 底下完成了多少，見 ui/progress-bar.ts）；每次重畫時建立。 */
+  progress?: () => HTMLElement;
   children: IssueTreeNode<T>[];
 }
 
@@ -75,6 +77,8 @@ export interface IssuesHandlers<T extends IssueSummary> {
   arrangement?: { load(): string | null; save(id: string): void };
   /** 依編號排序的方向（`ordered` 的排列方式）：記住上次的選擇，true 是由大到小。 */
   order?: { load(): boolean; save(desc: boolean): void };
+  /** 樹狀的排列方式上的進度條依工時（否則依數量）：排列方式旁邊出現切換按鈕。 */
+  progressMode?: { load(): boolean; save(hours: boolean): void };
   /** 項目前面的小圓點（例如「上次看過之後有更新」）；沒有就回傳 null。 */
   mark?(item: T): { kind: string; label: string } | null;
   /** 拖曳項目時帶的 Markdown 連結（拖到文件裡插入）。 */
@@ -173,6 +177,7 @@ export class IssuesPanel<T extends IssueSummary> {
   /** 「全部收合／全部展開」（有分組時才出現）。 */
   #foldAll: HTMLButtonElement | null = null;
   #orderButton: HTMLButtonElement | null = null;
+  #progressButton: HTMLButtonElement | null = null;
   /** 依編號排序時由大到小。 */
   #desc = false;
   /** 目前畫面上可以收合的分組。 */
@@ -237,6 +242,17 @@ export class IssuesPanel<T extends IssueSummary> {
         order.focus();
       });
       this.#orderButton = order;
+      // 進度條依數量／依工時（樹狀的排列方式才有）。
+      const progress = document.createElement("button");
+      progress.type = "button";
+      progress.className = "workitems-progress";
+      progress.hidden = true;
+      progress.addEventListener("click", () => {
+        handlers.progressMode?.save(!handlers.progressMode.load());
+        this.#render();
+        progress.focus();
+      });
+      if (handlers.progressMode) this.#progressButton = progress;
       const fold = document.createElement("button");
       fold.type = "button";
       fold.className = "workitems-fold";
@@ -253,7 +269,7 @@ export class IssuesPanel<T extends IssueSummary> {
         fold.focus();
       });
       this.#foldAll = fold;
-      tools.append(select, order, fold);
+      tools.append(select, order, progress, fold);
     }
     if (handlers.bulk) tools.append(this.#bulkTools());
     if (tools.childElementCount) {
@@ -513,6 +529,14 @@ export class IssuesPanel<T extends IssueSummary> {
     b.setAttribute("aria-label", t("編號由大到小"));
     b.title = this.#desc ? t("編號由大到小（按一下改成由小到大）") : t("編號由小到大（按一下改成由大到小）");
     b.replaceChildren(icon(this.#desc ? "arrow-down-1-0" : "arrow-down-0-1"));
+    const p = this.#progressButton;
+    if (!p) return;
+    p.hidden = !shown;
+    const hours = !!this.#h.progressMode?.load();
+    p.setAttribute("aria-pressed", String(hours));
+    p.setAttribute("aria-label", t("進度依工時"));
+    p.title = hours ? t("進度依工時（按一下改成依數量）") : t("進度依數量（按一下改成依工時）");
+    p.replaceChildren(icon(hours ? "clock" : "list-checks"));
   }
 
   /** 「全部收合／全部展開」：兩組以上才顯示；有任何一組開著就是「全部收合」。 */
@@ -571,6 +595,7 @@ export class IssuesPanel<T extends IssueSummary> {
         summary.textContent = node.summary;
         li.querySelector(".workitem")?.append(summary);
       }
+      if (node.progress) li.querySelector(".workitem")?.append(node.progress());
       if (open) this.#treeRows(node.children, depth + 1, treeKey, rows);
     }
   }

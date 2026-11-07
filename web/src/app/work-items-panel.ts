@@ -1,6 +1,8 @@
 /**
  * 側邊欄的 Azure DevOps 面板：工作項目、Wiki、GitHub Issues，以及釘在上方的捷徑。
  */
+import { leaves, progressOf } from "../work-item-progress.ts";
+import { progressBar, progressByHours, progressNumbers, progressTooltip, setProgressByHours } from "../ui/progress-bar.ts";
 import { workItemLink } from "../ado-text.ts";
 import { setBounded } from "../bounded.ts";
 import { type AdoWorkItem, desktop, type AdoWorkItemFilter, type AdoWiki } from "../desktop.ts";
@@ -403,7 +405,28 @@ function issueTree(
           .map(([kind, count]) => t("{n} 個 {kind}", { n: count, kind }))
           .join(t("・"))
       : undefined,
+    progress: n.children.length ? progressRow(n) : undefined,
     children: n.children.map((c) => issueTree(c, row)),
+  };
+}
+
+/**
+ * 標題列上的進度：底下所有最下層的項目（Feature 是底下所有的 Task）完成了多少；淡色的不算。
+ * 只算清單上列出的項目（依目前的篩選），滑鼠移上去看各狀態的數量與工時。
+ */
+function progressRow(n: TreeNode<AdoWorkItem & IssueSummary>): (() => HTMLElement) | undefined {
+  const p = progressOf(leaves(n));
+  if (!p.total) return undefined;
+  return () => {
+    const hours = progressByHours();
+    const box = document.createElement("span");
+    box.className = "workitem-progress";
+    box.title = [progressTooltip(`${n.item.kind} ${n.item.id}`, p), t("（只算清單上列出的項目）")].join("\n");
+    const num = document.createElement("span");
+    num.className = "workitem-progress-num";
+    num.textContent = progressNumbers(p, hours);
+    box.append(progressBar(p, hours), num);
+    return box;
   };
 }
 
@@ -790,6 +813,7 @@ export function initWorkItemsPanel(): void {
           load: () => storage.load("workitem-order") === "desc",
           save: (desc) => storage.save("workitem-order", desc ? "desc" : "asc"),
         },
+        progressMode: { load: progressByHours, save: setProgressByHours },
         mark: (item) => {
           // 分組標題列上、不在清單裡的上層項目（不是指派給你的）不標。
           if (!workItemListed.has(item.id)) return null;

@@ -4742,3 +4742,29 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
   :root { --assistant-width: min(360px, 100vw); }
   .workspace.assistant-open { padding-right: 0; }
 }
+
+/* ---- 工作項目的進度條（ui/progress-bar.ts）：顏色和狀態圓點（.ado-state-dot）一樣。 ---- */
+.wi-bar { display: flex; flex: 1; min-width: 40px; height: 6px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.wi-bar > i { display: block; height: 100%; }
+.wi-bar-closed { background: #339933; }
+.wi-bar-resolved { background: #ff9d00; }
+.wi-bar-active { background: #007acc; }
+.wi-bar-new { background: #b2b2b2; }
+.workitem-progress { display: flex; gap: 6px; align-items: center; width: 100%; margin-top: 3px; }
+.workitem-progress .wi-bar { max-width: 160px; }
+.workitem-progress-num { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.workitems-progress { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.workitems-progress[hidden] { display: none; }
+.workitems-progress .icon { width: 14px; height: 14px; }
+.workitems-progress:hover { color: var(--fg); background: var(--active-line); }
+.workitems-progress:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.workitems-progress[aria-pressed="true"] { color: var(--accent); }
+.wi-progress { margin: 4px 0 10px; }
+.wi-progress-head { margin-bottom: 4px; color: var(--muted); font-size: 12.5px; }
+.wi-bar-big { height: 10px; max-width: 520px; cursor: pointer; }
+.wi-progress-legend { display: flex; flex-wrap: wrap; gap: 2px 6px; margin-top: 6px; }
+.wi-progress-legend button { display: inline-flex; align-items: center; padding: 1px 8px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.wi-progress-legend button:hover { color: var(--fg); background: var(--hover, var(--active-line)); }
+.wi-progress-legend button[aria-pressed="true"] { border-color: var(--border); background: var(--surface); color: var(--fg); font-weight: 600; }
+.wi-progress-legend .ado-state-dot { width: 8px; height: 8px; }
+.wi-progress-hours { margin-top: 6px; color: var(--muted); font-size: 12px; }
