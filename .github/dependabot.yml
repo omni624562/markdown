@@ -47,3 +47,10 @@ updates:
       cargo-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # 匯出 PDF（desktop/src/pdf.rs）直接用 Tauri 內建 WebView2 的介面，windows-core、webview2-com
+      # 必須和 Tauri（wry）用的版本相同，不然型別對不上、編譯失敗。等 Tauri 升級時再一起手動升。
+      - dependency-name: "windows-core"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "webview2-com"
+        update-types: ["version-update:semver-major"]
