@@ -124,3 +124,30 @@ test("指令面板「工作項目：刪除目前的工作項目…」：顯示�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("子項目那一列的垃圾桶：同一個確認對話框，刪除子項目後上層重新讀取；上層那一列沒有刪除鈕", async () => {
+  const CHILD = { ...ITEM, ...base(1002, "畫面切版（手機）"), relations: [{ ...base(1001, "畫面切版"), link: "parent" }] };
+  const { page, context, errors } = await openItem({ ...DESKTOP, ado_work_item: { $by: "id", values: { 1001: ITEM, 1002: CHILD } } });
+  const rel = page.locator(".issue-body li", { hasText: "Task 1002" });
+  await rel.hover();
+  const del = rel.locator(".ado-link-delete");
+  assert.equal(await del.getAttribute("title"), "刪除這個工作項目…（會移到回收筒）");
+  // 上層（User Story 10）只能移除關聯，不能從這裡刪除。
+  assert.equal(await page.locator(".issue-body li", { hasText: "User Story 10" }).locator(".ado-link-delete").count(), 0);
+  await del.click();
+  const dialog = page.locator("dialog[open]", { hasText: "刪除 Task 1002「畫面切版（手機）」？" });
+  await dialog.waitFor();
+  // 子項目底下沒有子項目：不顯示那段提醒；焦點在「取消」。
+  assert.doesNotMatch(await dialog.textContent(), /子項目/);
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), "取消");
+  const reads = async () => (await calls(page)).filter((c) => c.cmd === "ado_work_item" && c.args.id === 1001).length;
+  const before = await reads();
+  await dialog.getByRole("button", { name: "刪除" }).click();
+  await page.locator(".toast", { hasText: "已刪除 Task 1002「畫面切版（手機）」" }).waitFor();
+  assert.deepEqual(await deletes(page), [{ id: 1002 }]);
+  // 上層（顯示中的 1001）重新讀取，分頁留著。
+  await page.waitForFunction((n) => window.__fake.calls.filter((c) => c.cmd === "ado_work_item" && c.args.id === 1001).length > n, before);
+  assert.equal(await tab(page).count(), 1);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

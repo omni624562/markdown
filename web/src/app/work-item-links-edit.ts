@@ -1,6 +1,7 @@
 /**
  * 工作項目的關聯：「相關工作項目」段落的標題列有「加入關聯」，選種類（上層、子項目、相關、前置、後續項目）
  * 再找工作項目；每個關聯後面有移除鈕（只拿掉關聯，工作項目本身不動）。改完重新讀取內容。
+ * 子項目另外有刪除鈕（垃圾桶）：和分頁右鍵選單的「刪除工作項目…」同一個確認對話框，刪除的會移到回收筒。
  */
 import { type AdoLinkChange, type AdoWorkItem, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
@@ -10,6 +11,7 @@ import { icon } from "../ui/icons.ts";
 import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { Picker } from "../ui/picker.ts";
 import { app } from "./context.ts";
+import { deleteWorkItem } from "./work-item-delete.ts";
 import type { WorkItemEditHooks } from "./work-item-edit.ts";
 
 type LinkKind = AdoLinkChange["kind"];
@@ -171,6 +173,22 @@ function removeButtons(box: HTMLElement, h: WorkItemEditHooks): void {
         })();
       });
       li.append(button);
+      // 子項目：可以直接刪除（先確認，移到回收筒）。上層與其他關聯只能移除關聯。
+      const child = linkKind === "child" ? h.detail()?.relations.find((r) => r.link === "child" && r.id === id) : undefined;
+      if (child) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "ado-link-delete";
+        del.title = t("刪除這個工作項目…（會移到回收筒）");
+        del.setAttribute("aria-label", t("刪除「{name}」", { name }));
+        del.append(icon("trash"));
+        del.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void deleteWorkItem(child, null).catch(app.reportError);
+        });
+        li.append(del);
+      }
     }
   }
 }
