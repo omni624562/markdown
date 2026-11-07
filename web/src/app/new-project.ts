@@ -100,7 +100,7 @@ function build(): HTMLDialogElement {
               `<label class="np-tile"><input type="radio" name="content" value="${k}"${k === "blank" ? " checked" : ""} /><b>${tr[k]}</b><small>${tr[`${k}Note`]}</small></label>`,
           ).join("")}
         </fieldset>
-        <label class="pe-check np-f-git"><input type="checkbox" name="git" checked /> ${tr.git}</label>
+        <label class="pe-check np-f-git"><input type="checkbox" name="git" /> ${tr.git}</label>
         <fieldset class="pe-colors"><legend>${tr.color}</legend>${colors}</fieldset>
       </section>
       <section class="np-card np-comet" hidden></section>
@@ -261,7 +261,8 @@ export async function newProject(kind?: ProjectKind): Promise<void> {
   q<HTMLInputElement>("input[name=name]").value = "";
   const parent = q<HTMLInputElement>("input[name=parent]");
   if (!parent.value) parent.value = (await desktop.projectDefaultParent().catch(() => null)) ?? "";
-  q<HTMLInputElement>("input[name=git]").checked = true;
+  // 預設不建立 Git 儲存庫（需要的人再勾）。
+  q<HTMLInputElement>("input[name=git]").checked = false;
   q<HTMLInputElement>("input[name=color][value='']").checked = true;
   q<HTMLInputElement>("input[name=name]").dispatchEvent(new Event("input"));
   d.showModal();
