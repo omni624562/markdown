@@ -69,10 +69,10 @@ export function assistantOpen(): boolean {
 /** 目前不能送出的原因；可以送出時是 null。 */
 function blocked(): { message: string; action?: { label: string; run: () => void } } | null {
   if (!assistantEnabled()) {
-    return { message: t("Claude API 助理還沒開啟。"), action: { label: t("打開設定"), run: () => app.settingsDialog.open(t("AI 協作")) } };
+    return { message: t("Claude API 助理還沒開啟。"), action: { label: t("打開設定"), run: () => app.settingsDialog.open(t("Claude API 助理")) } };
   }
   if (!hasKey) {
-    return { message: t("還沒有輸入 Claude API 金鑰。"), action: { label: t("打開設定"), run: () => app.settingsDialog.open(t("AI 協作")) } };
+    return { message: t("還沒有輸入 Claude API 金鑰。"), action: { label: t("打開設定"), run: () => app.settingsDialog.open(t("Claude API 助理")) } };
   }
   if (app.issueView.shownKey || app.active.wiki) {
     return { message: t("這裡是 Azure DevOps／GitHub 的內容，不會送給 AI。") };
