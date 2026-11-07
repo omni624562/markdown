@@ -1690,3 +1690,14 @@ fn reads_work_item_history() {
     assert!(desc.long && desc.new.is_none(), "長文字只標出有修改");
     assert!(work_item_revisions(&json!({})).is_empty());
 }
+
+#[test]
+fn deletes_work_items_to_the_recycle_bin_only() {
+    let url = work_item_delete_url("https://ado.test/tfs/DefaultCollection", 1001);
+    assert_eq!(
+        url,
+        format!("https://ado.test/tfs/DefaultCollection/_apis/wit/workitems/1001?api-version={API_VERSION}")
+    );
+    // 永久刪除（跳過回收筒）要帶 destroy=true：一定不能出現。
+    assert!(!url.contains("destroy"));
+}

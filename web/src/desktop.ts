@@ -1152,6 +1152,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       }),
     adoWorkItemUpdate: (id: number, change: AdoWorkItemChange) =>
       core.invoke<void>("ado_work_item_update", { id, change: { ...change, rev: change.rev ?? null } }),
+    /** 刪除工作項目：移到回收筒（網頁版可以還原），子項目不會一起刪除。 */
+    adoWorkItemDelete: (id: number) => core.invoke<void>("ado_work_item_delete", { id }),
     /** 改一則留言（`html` 是新的內容）；只能改自己的。 */
     adoCommentUpdate: (project: string, id: number, commentId: number, html: string) =>
       core.invoke<void>("ado_comment_update", { project, id, commentId, html }),

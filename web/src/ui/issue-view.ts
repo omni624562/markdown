@@ -51,6 +51,8 @@ export interface IssueSource {
   addChild?(): void;
   /** 「刪除這一頁」（Wiki 頁面；不能刪除的不給）。 */
   remove?(): void;
+  /** 「刪除工作項目」（Azure DevOps 工作項目）：放在選單最後面，紅字。 */
+  deleteItem?(): void;
   /** 「哪些頁面連到這一頁」（Wiki 頁面）。 */
   backlinks?(): void;
   /** 「改名或搬移」（Wiki 頁面；不能搬的不給）。 */
@@ -311,6 +313,13 @@ export class IssueView {
           if (this.#source && this.#markdown) this.#h.offline?.toggle(this.#source, this.#markdown);
         },
       },
+      {
+        label: t("刪除工作項目…"),
+        icon: "trash",
+        danger: true,
+        when: () => !!this.#source?.deleteItem,
+        run: () => this.#source?.deleteItem?.(),
+      },
     ];
     const sep = document.createElement("span");
     sep.className = "issue-actions-sep";
@@ -452,6 +461,11 @@ export class IssueView {
   /** 內容的根元素（找連結等用）。 */
   get body(): HTMLElement {
     return this.#body;
+  }
+
+  /** 顯示中內容的「刪除工作項目」（不是工作項目或沒有開著時是 null），指令面板用。 */
+  get deleteShown(): (() => void) | null {
+    return this.isOpen ? (this.#source?.deleteItem ?? null) : null;
   }
 
   /** 顯示中的內容（沒有開著時是 null），分頁的右鍵選單用來判斷按的是不是這一個。 */
