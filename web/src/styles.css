@@ -4768,3 +4768,5 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 .wi-progress-legend button[aria-pressed="true"] { border-color: var(--border); background: var(--surface); color: var(--fg); font-weight: 600; }
 .wi-progress-legend .ado-state-dot { width: 8px; height: 8px; }
 .wi-progress-hours { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.assistant-quick .assistant-more { display: inline-flex; gap: 2px; align-items: center; padding-right: 6px; }
+.assistant-quick .assistant-more .icon { width: 13px; height: 13px; }
