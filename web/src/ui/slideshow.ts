@@ -144,8 +144,21 @@ export class Slideshow {
     if (this.#el.hidden) return;
     this.#el.hidden = true;
     this.#page.replaceChildren();
-    if (document.fullscreenElement === this.#el) void document.exitFullscreen().catch(() => {});
-    this.#onClose?.();
+    const onClose = this.#onClose;
+    if (document.fullscreenElement !== this.#el) {
+      onClose?.();
+      return;
+    }
+    // 全螢幕還沒結束前，頁面其他部分不能取得焦點（游標放不回編輯器），要等離開全螢幕後再交回。
+    // 萬一一直沒有離開全螢幕的通知，一秒後照樣交回。
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      onClose?.();
+    };
+    void document.exitFullscreen().then(finish, finish);
+    setTimeout(finish, 1000);
   }
 
   go(index: number): void {
