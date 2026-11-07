@@ -36,8 +36,8 @@ export interface AiHooks {
   copyRegistration(tool: "claude" | "codex"): Promise<void>;
   /** 這台電腦有沒有 ChatGPT 桌面版（「傳給 ChatGPT」的桌面版選項，見 app/chatgpt.ts）。 */
   chatgptDesktop?(): boolean;
-  /** 「Claude API 助理」那一區（標題、說明與選項，見 app/assistant-settings.ts）。 */
-  assistant?(): HTMLElement[];
+  /** 「Claude API 助理」那一頁的說明與內容（見 app/assistant-settings.ts）。 */
+  assistant?(): { desc: string; content: HTMLElement[] } | null;
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
@@ -422,6 +422,13 @@ export class SettingsDialog {
     body.append(edit);
 
     body.append(this.#aiSection());
+    // Claude API 助理自成一頁：和上面的 AI 協作（Claude Code、Codex）是不同的開關，只在私人電腦使用。
+    const assistant = this.#ai?.assistant?.();
+    if (assistant) {
+      const page = this.#section(t("Claude API 助理"), "message-square", assistant.desc, ["Claude API"]);
+      page.append(...assistant.content);
+      body.append(page);
+    }
     // 下載、上傳儲存庫與顯示工作項目是一次性的動作，在 ⋯ 選單、指令面板與 Git 面板：設定裡只放帳號與選項。
     const gitPage = github ? this.#gitPage(github) : null;
     const adoPage = ado ? this.#adoPage(ado) : null;
@@ -627,7 +634,7 @@ export class SettingsDialog {
     const hint = document.createElement("p");
     hint.className = "settings-group-hint";
     hint.textContent = t("選取文字後按 Ctrl+J（或按右鍵）執行；提示詞會連同選取的文字一起送出。");
-    section.append(title, hint, this.#actions, add, ...(this.#ai.assistant?.() ?? []), ...chatgpt);
+    section.append(title, hint, this.#actions, add, ...chatgpt);
     return section;
   }
 
