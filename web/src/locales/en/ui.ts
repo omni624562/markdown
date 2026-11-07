@@ -960,6 +960,7 @@ export const ui: Record<string, Translation> = {
   "換上層…": "Change Parent…",
   "移除關聯": "Remove Link",
   "移除關聯（工作項目本身不會刪除）": "Remove link (the work item itself isn't deleted)",
+  "刪除這個工作項目…（會移到回收筒）": "Delete this work item… (moves it to the Recycle Bin)",
   "移除和「{name}」的關聯": "Remove the link to “{name}”",
   "要移除和「{name}」的關聯嗎？工作項目本身不會刪除。": "Remove the link to “{name}”? The work item itself is not deleted.",
   "已移除和 {id} 的關聯": "Removed the link to {id}",
