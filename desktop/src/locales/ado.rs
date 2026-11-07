@@ -128,6 +128,8 @@ pub static EN: &[(&str, &str)] = &[
     ("留言不能是空的", "The comment can't be empty."),
     ("修改留言", "Edit the comment"),
     ("刪除留言", "Delete the comment"),
+    ("刪除工作項目", "Deleting the work item"),
+    ("你沒有刪除這個工作項目的權限（需要「刪除和還原工作項目」權限，請找專案管理員）", "You don't have permission to delete this work item (the \"Delete and restore work items\" permission is required; ask a project administrator)."),
     ("這個伺服器不支援修改或刪除留言（需要 Azure DevOps Server 2020 以上）", "This server doesn't support editing or deleting comments (Azure DevOps Server 2020 or later is required)."),
     ("讀取團隊設定", "Load team settings"),
     ("查詢工作板", "Query the taskboard"),

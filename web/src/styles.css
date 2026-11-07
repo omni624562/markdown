@@ -1145,6 +1145,9 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 /* 一次只反白一項：滑鼠移過去時焦點也跟著移過去（menu.ts），鍵盤操作時反白焦點所在的項目。 */
 .menu button:hover, .menu button:focus-visible { background: var(--menu-hover); outline: none; }
 .menu button .icon { color: var(--muted); }
+/* 危險的動作（例如刪除工作項目）：紅字，滑鼠移上去淡紅底。 */
+.menu button.menu-danger, .menu button.menu-danger .icon { color: var(--danger); }
+.menu button.menu-danger:hover, .menu button.menu-danger:focus-visible { background: var(--danger-soft); }
 /* 和上一項同一個圖示時留空白（見 menu.ts 的 hideRepeatedIcons），文字照樣對齊。 */
 .menu button .menu-icon-blank { display: inline-block; flex: none; width: 18px; height: 18px; }
 .menu button[aria-checked="true"] > .icon:last-child { color: var(--accent); }

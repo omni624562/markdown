@@ -407,6 +407,7 @@ fn main() {
             ado::ado_iterations,
             notify::notify_work_items,
             ado::ado_work_item_create,
+            ado::ado_work_item_delete,
             ado::ado_wiki_save,
             ado::ado_wiki_page_info,
             ado::ado_wiki_history,
