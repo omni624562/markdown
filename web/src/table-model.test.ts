@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  blankTable,
   cellText,
   deleteColumn,
   deleteRow,
@@ -57,4 +58,15 @@ test("新增、刪除列與欄，設定對齊", () => {
   assert.ok(serializeTable(t).split("\n")[1].includes(":---:"));
   t = deleteColumn(t, 1);
   assert.deepEqual(t.header, ["項目", "數量"]);
+});
+
+test("空白表格：指定欄數與列數（含標題列），內容是空的", () => {
+  const md = serializeTable(blankTable(3, 3, (n) => `欄位 ${n}`));
+  assert.equal(md, "| 欄位 1 | 欄位 2 | 欄位 3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |");
+  // 只有標題列
+  assert.equal(serializeTable(blankTable(1, 1, () => "名稱")), "| 名稱 |\n| --- |");
+  // 讀回來的大小一樣
+  const back = parseTable(md);
+  assert.equal(back.header.length, 3);
+  assert.equal(back.body.length, 2);
 });
