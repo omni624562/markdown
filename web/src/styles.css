@@ -2359,6 +2359,23 @@ button.git-info:disabled { cursor: default; }
 /* 插入選單的定位點：不顯示，只用來決定選單出現的位置。 */
 .insert-anchor { position: fixed; z-index: -1; padding: 0; border: 0; background: none; opacity: 0; pointer-events: none; }
 
+/* ---- 插入表格：選大小的格子（app/table-picker.ts） ---- */
+.table-picker { min-width: 0; padding: 8px; }
+.table-picker-grid { display: grid; gap: 3px; padding: 2px; border-radius: 4px; outline: none; }
+.table-picker-grid:focus-visible { box-shadow: 0 0 0 2px var(--accent-soft); }
+.table-picker-cell {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  cursor: pointer;
+}
+/* 第一列是標題列 */
+.table-picker-cell.head { background: var(--menu-hover); }
+.table-picker-cell.on { border-color: var(--accent); background: var(--accent-soft); }
+.table-picker-label { margin-top: 6px; color: var(--muted); font-size: 12px; text-align: center; }
+
 /* ---- 符號面板 ---- */
 .symbol-picker {
   width: min(520px, calc(100vw - 32px));
@@ -2461,6 +2478,8 @@ button.git-info:disabled { cursor: default; }
 .cm-lp-table { position: relative; cursor: default; }
 .cm-lp-table:hover { outline: none; }
 .cm-lp-table td, .cm-lp-table th { cursor: text; }
+/* 空白的儲存格也有一行高（剛插入的空白表格、還沒填的格子），不會被壓扁，也比較好點。 */
+.markdown-body td:empty { height: 1lh; }
 .cm-lp-table .cm-lp-cell-editing { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--bg); white-space: pre-wrap; }
 .cm-lp-table-tools {
   position: absolute;

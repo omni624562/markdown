@@ -67,7 +67,9 @@ export const editing: Record<string, Translation> = {
   "標籤「{tag}」（Ctrl＋點一下列出同標籤的文件）": "Tag \"{tag}\" (Ctrl+Click to list documents with this tag)",
   // format.ts、inline-tools.ts
   "連結文字": "link text",
-  "| 欄位 1 | 欄位 2 |\n| --- | --- |\n| 內容 | 內容 |": "| Column 1 | Column 2 |\n| --- | --- |\n| Content | Content |",
+  "欄位 {n}": "Column {n}",
+  "{cols} 欄 × {rows} 列": "{cols} × {rows} table",
+  "用方向鍵選要幾欄、幾列，按 Enter 插入": "Use the arrow keys to choose columns and rows, then press Enter to insert",
   "插入（Ctrl+Shift+Enter）": "Insert (Ctrl+Shift+Enter)",
   // pdf-print.ts、docx-export.ts、docx-import.ts
   "Letter（美規）": "Letter (US)",

@@ -5,7 +5,7 @@ import { render as renderMarkdown, formatJson, formatAllTables, spacingPositions
 import { Commands, type Command, fuzzyScore } from "../commands.ts";
 import { desktop, displayPath, isRemote } from "../desktop.ts";
 import { openFile, stem, replaceExtension, download } from "../files.ts";
-import { insertBlock, toggleWrap, insertLink, clearInlineFormat, toggleLineStyle, TABLE_TEMPLATE } from "../format.ts";
+import { insertBlock, toggleWrap, insertLink, clearInlineFormat, toggleLineStyle } from "../format.ts";
 import { t } from "../i18n.ts";
 import { KINDS, type DocKind } from "../kinds.ts";
 import { saveDraft } from "../session.ts";
@@ -26,6 +26,7 @@ import { newProject } from "./new-project.ts";
 import { imageInput } from "./new-work-item.ts";
 import { runTableEdit } from "./offline-drive.ts";
 import { canConvertToTable, convertSelectionToTable } from "./table-paste.ts";
+import { openTablePicker } from "./table-picker.ts";
 import { type TableEdit, inTable } from "../table.ts";
 import { exportPdf } from "./pdf-export.ts";
 import { settingsDialog, fixTerms, convertToTraditional, toggleSetting, changeFontSize } from "./settings-ui.ts";
@@ -790,8 +791,8 @@ export function initCommands(): void {
     fmt("ordered", t("編號清單"), "list-ordered", () => app.editor.exec(toggleLineStyle("ordered")), "Mod-Shift-7"),
     fmt("task", t("待辦清單"), "list-checks", () => app.editor.exec(toggleLineStyle("task")), "Mod-Shift-9"),
     fmt("code-block", t("程式碼區塊"), "square-code", () => insertPlaceholder(t("```\n程式碼\n```"), 1)),
-    // 插入後選取第一個欄位名稱，直接打字就能取代。
-    fmt("table", t("插入表格"), "table", () => app.editor.exec(insertBlock(TABLE_TEMPLATE, TABLE_TEMPLATE.split("|")[1].trim())), undefined, t("插入")),
+    // 先選大小（幾欄、幾列）再插入。
+    fmt("table", t("插入表格"), "table", () => openTablePicker(), undefined, t("插入")),
     fmt("hr", t("分隔線"), "minus", () => app.editor.exec(insertBlock("---")), undefined, t("插入")),
     fmt("insert-toc", t("插入或更新目錄"), "toc", () => insertToc(), undefined, t("插入")),
     fmt("math-block", t("數學公式區塊"), "sigma", () => insertPlaceholder(t("$$\n公式\n$$"), 1), undefined, t("插入")),

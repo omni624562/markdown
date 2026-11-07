@@ -193,8 +193,6 @@ export const insertLink: StateCommand = ({ state, dispatch }) => {
   return apply(state, dispatch, tr);
 };
 
-export const TABLE_TEMPLATE = t("| 欄位 1 | 欄位 2 |\n| --- | --- |\n| 內容 | 內容 |");
-
 /** 清除格式時會拿掉的成對標記（由長到短比對）。 */
 const INLINE_MARKERS: [string, string][] = [
   ["<mark>", "</mark>"],

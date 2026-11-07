@@ -39,6 +39,16 @@ export function parseTable(markdown: string): TableModel {
   };
 }
 
+/** 空白表格：`cols` 欄、`rows` 列（含標題列）；標題列的文字是 `header(第幾欄，從 1 算起)`。 */
+export function blankTable(cols: number, rows: number, header: (n: number) => string): TableModel {
+  return {
+    indent: "",
+    header: Array.from({ length: cols }, (_, i) => header(i + 1)),
+    aligns: Array<Align>(cols).fill(null),
+    body: Array.from({ length: Math.max(0, rows - 1) }, () => Array<string>(cols).fill("")),
+  };
+}
+
 export function serializeTable(t: TableModel): string {
   return [buildRow(t.header), buildRow(t.aligns.map(separator)), ...t.body.map(buildRow)]
     .map((l) => t.indent + l)
