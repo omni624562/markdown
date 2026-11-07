@@ -4,7 +4,8 @@
  * 先確認（寫出類型、編號、標題；有子項目時提醒子項目不會一起刪除），焦點預設在「取消」。
  * 伺服器上只移到回收筒，網頁版可以還原；刪除後關掉它的分頁、拿掉左側圖示列的捷徑、重新讀取清單，
  * 顯示中的工作項目（例如它的上層）也重新讀取，「子項目」不再列出它。
- * 「相關工作項目」裡子項目那一列的垃圾桶也用這裡（同一個確認對話框）；「移除關聯」只拿掉關聯，不會刪除。
+ * 「相關工作項目」裡子項目那一列的垃圾桶也用這裡（同一個確認對話框），刪除後只拿掉那一列，不重新讀取整頁；
+ * 「移除關聯」只拿掉關聯，不會刪除。
  */
 import { type AdoWorkItem, type AdoWorkItemDetail, desktop } from "../desktop.ts";
 import { currentLang, t } from "../i18n.ts";
@@ -23,8 +24,16 @@ export function recycleBinUrl(webUrl: string): string | null {
   return m ? `${m[1]}/recyclebin` : null;
 }
 
-/** `detail` 是已經讀到的內容（算子項目用）；沒有時另外讀一次，讀不到就不寫子項目。 */
-export async function deleteWorkItem(item: AdoWorkItem, detail: AdoWorkItemDetail | null): Promise<void> {
+/**
+ * `detail` 是已經讀到的內容（算子項目用）；沒有時另外讀一次，讀不到就不寫子項目。
+ * `refreshShown` 為 false 時不重新讀取顯示中的工作項目（從上層的子項目列刪除時，由那一列自己拿掉，不重刷頁面）。
+ * 真的刪除了回傳 true（取消或失敗是 false）。
+ */
+export async function deleteWorkItem(
+  item: AdoWorkItem,
+  detail: AdoWorkItemDetail | null,
+  { refreshShown = true }: { refreshShown?: boolean } = {},
+): Promise<boolean> {
   const info = detail ?? (await desktop!.adoWorkItem(item.id).catch(() => null));
   const children = info?.relations.filter((r) => r.link === "child") ?? [];
   const name = t("{kind} {id}「{title}」", { kind: item.kind, id: item.id, title: item.title });
@@ -40,12 +49,12 @@ export async function deleteWorkItem(item: AdoWorkItem, detail: AdoWorkItemDetai
     { id: "delete", label: t("刪除"), danger: true },
     { id: "cancel", label: t("取消") },
   ]);
-  if (choice !== "delete") return;
+  if (choice !== "delete") return false;
   try {
     await desktop!.adoWorkItemDelete(item.id);
   } catch (e) {
     toast(String(e), { tone: "error" });
-    return;
+    return false;
   }
   const bin = recycleBinUrl(item.webUrl);
   toast(t("已刪除 {name}，可以在網頁版的回收筒還原", { name }), {
@@ -59,5 +68,6 @@ export async function deleteWorkItem(item: AdoWorkItem, detail: AdoWorkItemDetai
   if (left.length !== barShortcuts.length) setBarShortcuts(left);
   forgetListCopies("wi-");
   void workItemsPanel?.refresh();
-  if (issueView.shownKey?.startsWith("ado:")) void issueView.refresh(true);
+  if (refreshShown && issueView.shownKey?.startsWith("ado:")) void issueView.refresh(true);
+  return true;
 }
