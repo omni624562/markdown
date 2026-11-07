@@ -18,6 +18,11 @@ pub struct WorkItem {
     /// 區域（例如「產品\前端」）：清單「依區域分組」與內容上方的專案與區域都用這個。
     pub(super) area: Option<String>,
     pub(super) web_url: String,
+    /// 剩餘、已完成工時（Task 才有；流程範本沒有這些欄位時是空的）：清單與子項目的進度用。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) remaining: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) completed: Option<f64>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -168,6 +173,22 @@ pub(super) const CLOSED_STATES: &[&str] = &[
 pub(super) const FIELDS: &str = "System.Id,System.Title,System.State,System.WorkItemType,System.TeamProject,System.AssignedTo,System.ChangedDate,System.AreaPath";
 /// 優先順序欄位（清單排序用）；自訂的流程範本可能沒有。
 pub(super) const PRIORITY: &str = "Microsoft.VSTS.Common.Priority";
+pub(super) const REMAINING: &str = "Microsoft.VSTS.Scheduling.RemainingWork";
+pub(super) const COMPLETED: &str = "Microsoft.VSTS.Scheduling.CompletedWork";
+
+/// 讀清單時要的欄位，從多到少：流程範本沒有某個欄位時伺服器整個回錯誤（例如 Scrum 沒有已完成工時、
+/// Basic 沒有工時），就改用下一組。
+pub(super) fn field_sets() -> [String; 4] {
+    [
+        format!("{FIELDS},{PRIORITY},{REMAINING},{COMPLETED}"),
+        format!("{FIELDS},{PRIORITY},{REMAINING}"),
+        format!("{FIELDS},{PRIORITY}"),
+        FIELDS.to_string(),
+    ]
+}
+
+/// 上次讀得到的那一組（`field_sets` 的位置）：之後從這一組開始，不必每次先試一次會失敗的。
+static FIELD_SET: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 pub(super) fn wiql_string(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
@@ -384,6 +405,8 @@ pub(super) fn item_of(base: &str, v: &Value) -> Option<WorkItem> {
             .map(str::to_string),
         priority: field(v, PRIORITY).and_then(Value::as_u64),
         area: Some(field_str(v, "System.AreaPath")).filter(|a| !a.trim().is_empty()),
+        remaining: field(v, REMAINING).and_then(Value::as_f64),
+        completed: field(v, COMPLETED).and_then(Value::as_f64),
     })
 }
 
@@ -475,11 +498,21 @@ pub(super) fn fetch_work_items(
             &tr!("讀取工作項目"),
         )
     };
-    // 連優先順序一起讀；流程範本沒有這個欄位（伺服器回錯誤）時改成不讀。
-    let res = match fetch(&format!("{FIELDS},{PRIORITY}")) {
-        Ok(res) => res,
-        Err(e) if e.contains("401") || e.contains("403") => return Err(e),
-        Err(_) => fetch(FIELDS)?,
+    // 連優先順序、工時一起讀；流程範本沒有這些欄位（伺服器回錯誤）時少讀幾個。
+    use std::sync::atomic::Ordering;
+    let sets = field_sets();
+    let mut level = FIELD_SET.load(Ordering::Relaxed).min(sets.len() - 1);
+    let res = loop {
+        match fetch(&sets[level]) {
+            Ok(res) => {
+                FIELD_SET.store(level, Ordering::Relaxed);
+                break res;
+            }
+            Err(e) if e.contains("401") || e.contains("403") || level + 1 == sets.len() => {
+                return Err(e)
+            }
+            Err(_) => level += 1,
+        }
     };
     let mut items: Vec<WorkItem> = values(&res)
         .iter()
@@ -1022,16 +1055,8 @@ pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, St
             let mut ids: Vec<u64> = links.iter().map(|(_, _, id)| *id).collect();
             ids.sort_unstable();
             ids.dedup();
-            let ids: Vec<String> = ids.iter().map(u64::to_string).collect();
-            let path = format!(
-                "/_apis/wit/workitems?ids={}&fields={FIELDS}&errorPolicy=omit",
-                ids.join(",")
-            );
-            if let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取工作項目")) {
-                let items: Vec<WorkItem> = values(&res)
-                    .iter()
-                    .filter_map(|v| item_of(&a.url, v))
-                    .collect();
+            // 和清單一樣連工時一起讀（子項目的進度用）。
+            if let Ok(items) = fetch_work_items(&a.url, &pat, &ids) {
                 d.relations = links
                     .into_iter()
                     .filter_map(|(link, link_name, id)| {

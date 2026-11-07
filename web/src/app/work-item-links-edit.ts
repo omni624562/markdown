@@ -12,6 +12,7 @@ import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { Picker } from "../ui/picker.ts";
 import { app } from "./context.ts";
 import { deleteWorkItem } from "./work-item-delete.ts";
+import { renderChildProgress } from "./work-item-children-progress.ts";
 import type { WorkItemEditHooks } from "./work-item-edit.ts";
 
 type LinkKind = AdoLinkChange["kind"];
@@ -140,6 +141,7 @@ export function editableRelations(body: HTMLElement, h: WorkItemEditHooks): void
     else menu.showPopover();
   });
   removeButtons(box, h);
+  renderChildProgress(box, h.detail()?.relations ?? []);
 }
 
 /** 每個關聯後面的移除鈕（問過再拿掉）。 */
@@ -203,13 +205,16 @@ function dropRelationRow(box: HTMLElement, li: HTMLLIElement, id: number, h: Wor
   const ul = li.parentElement;
   li.remove();
   if (ul && !ul.querySelector(":scope > li")) {
-    const title = ul.previousElementSibling;
+    // 子項目的標題和清單中間可能有進度條（見 work-item-children-progress.ts）。
+    let title = ul.previousElementSibling;
+    if (title?.classList.contains("wi-progress")) title = title.previousElementSibling;
     if (title?.tagName === "H3") title.remove();
     ul.remove();
   }
   const relations = h.detail()?.relations;
   const at = relations?.findIndex((r) => r.link === "child" && r.id === id) ?? -1;
   if (relations && at >= 0) relations.splice(at, 1);
+  renderChildProgress(box, relations ?? []);
   const n = relations?.length ?? box.querySelectorAll("li a[href]").length;
   const h2 = box.closest(".ado-sec")?.querySelector<HTMLElement>(":scope > .ado-sec-head h2");
   if (h2) h2.textContent = t("相關工作項目（{n}）", { n });

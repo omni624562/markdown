@@ -385,6 +385,9 @@ export interface AdoWorkItem {
   /** 區域（例如「產品\\前端」）；更新前存下的離線副本沒有。 */
   area?: string | null;
   webUrl: string;
+  /** 剩餘、已完成工時（小時；Task 才有，流程範本沒有這些欄位時沒有）。 */
+  remaining?: number | null;
+  completed?: number | null;
 }
 
 export interface AdoWorkItemDetail extends AdoWorkItem {
