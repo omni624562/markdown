@@ -26,6 +26,7 @@ import { newProject } from "./new-project.ts";
 import { imageInput } from "./new-work-item.ts";
 import { runTableEdit } from "./offline-drive.ts";
 import { canConvertToTable, convertSelectionToTable } from "./table-paste.ts";
+import { copyTableAtCursor } from "./table-copy.ts";
 import { openTablePicker } from "./table-picker.ts";
 import { type TableEdit, inTable } from "../table.ts";
 import { exportPdf } from "./pdf-export.ts";
@@ -820,6 +821,14 @@ export function initCommands(): void {
     tableCmd("table-sort-asc", t("表格：依這一欄排序（小到大）"), "arrow-down-a-z", "sort-asc"),
     tableCmd("table-sort-desc", t("表格：依這一欄排序（大到小）"), "arrow-down-z-a", "sort-desc"),
     tableCmd("table-format", t("表格：對齊目前的表格"), "table", "format"),
+    {
+      id: "table-copy",
+      title: t("表格：複製整個表格"),
+      group: t("格式"),
+      icon: "copy",
+      when: () => isMarkdown() && inTable(app.editor.view.state),
+      run: () => copyTableAtCursor(),
+    },
     {
       id: "table-from-text",
       title: t("轉成表格"),
