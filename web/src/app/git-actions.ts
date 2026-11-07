@@ -2,7 +2,7 @@
  * Git：合併衝突、分支、Pull Request；GitHub Pages、Gist。
  */
 import { ASSISTANT_ACTIONS } from "../assistant-text.ts";
-import { assistantEnabled, assistantOpen, runAssistantAction, toggleAssistant } from "./assistant.ts";
+import { assistantEnabled, assistantOpen, openAssistantMore, runAssistantAction, toggleAssistant } from "./assistant.ts";
 import type { Command } from "../commands.ts";
 import { desktop, isRemote } from "../desktop.ts";
 import { stem } from "../files.ts";
@@ -280,6 +280,14 @@ export function initGitActions(): void {
         run: () => runAssistantAction(a.id),
       }),
     ),
+    {
+      id: "assistant-custom",
+      title: t("助理：自訂動作…"),
+      group: t("AI 與終端機"),
+      icon: "sparkles",
+      when: () => assistantEnabled() && app.cur.kind === "markdown" && app.settings.value.assistantActions.length > 0,
+      run: openAssistantMore,
+    },
     ...(
       [
         ["github-open", t("GitHub：下載儲存庫…"), "github", () => app.github?.openRepo(), () => true],

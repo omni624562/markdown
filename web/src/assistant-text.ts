@@ -3,7 +3,7 @@
  */
 import type { AssistantMessage } from "./desktop.ts";
 import { t } from "./i18n.ts";
-import type { ClaudeModel } from "./settings.ts";
+import type { AssistantCustomAction, ClaudeModel } from "./settings.ts";
 
 /**
  * 回答怎麼用：`answer` 是一般回答（可以複製、插入到游標處）；`replace` 是取代選取文字的建議；
@@ -11,15 +11,16 @@ import type { ClaudeModel } from "./settings.ts";
  */
 export type ActionMode = "answer" | "replace" | "insert";
 
-/** 常用動作。`group`：`main` 是輸入框下緣的按鈕，`write` 放在「更多」選單裡。 */
+/** 常用動作。`group`：`main` 是輸入框下緣的按鈕，`write` 放在「更多」選單裡，`custom` 是使用者在設定加的。 */
 export interface AssistantAction {
-  id: "summary" | "rewrite" | "translate" | "review" | "slides" | "diagram" | "table" | "todos" | "continue" | "formal" | "casual" | "concise";
+  /** 內建動作的代號；自訂動作是 `custom-<順序>`。 */
+  id: string;
   label: () => string;
   prompt: () => string;
   /** 需要先選取文字。 */
   needsSelection: boolean;
   mode: ActionMode;
-  group: "main" | "write";
+  group: "main" | "write" | "custom";
   /** 回答是 Mermaid 流程圖（插入時一定包成 ```mermaid 區塊）。 */
   mermaid?: boolean;
 }
@@ -127,6 +128,18 @@ export const ASSISTANT_ACTIONS: AssistantAction[] = [
     group: "write",
   },
 ];
+
+/** 設定裡的自訂動作。取代選取文字的動作需要先選取文字；其他的沒選取時用整份文件。 */
+export function customActions(list: readonly AssistantCustomAction[]): AssistantAction[] {
+  return list.map((a, i) => ({
+    id: `custom-${i}`,
+    label: () => a.name,
+    prompt: () => a.prompt,
+    needsSelection: a.mode === "replace",
+    mode: a.mode,
+    group: "custom",
+  }));
+}
 
 /** 給 Claude 的系統提示（固定的內容放前面，方便快取）。 */
 export function systemPrompt(mode: ActionMode): string {

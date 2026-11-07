@@ -4764,6 +4764,17 @@ body.assistant-open > .statusbar { grid-column: 1 / -1; }
 .assistant-projects-title { margin: 10px 12px 0; font-size: 12.5px; }
 .assistant-projects-hint { display: block; margin: 0 12px 10px; color: var(--muted); }
 .assistant-key-status { color: var(--muted); font-size: 12px; }
+/* 自訂動作：名稱、回答怎麼用、刪除一列，下面是提示詞。 */
+.assistant-actions-list { margin: 0 12px 8px; }
+.assistant-actions-list .quick-action { grid-template-columns: 1fr auto auto; align-items: start; }
+.assistant-action-mode {
+  height: 26px; margin-top: 7px; padding: 0 26px 0 10px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23898e96' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center;
+  color: var(--muted); font: 12.5px var(--font-ui); appearance: none; cursor: pointer;
+}
+.assistant-action-mode:hover { border-color: var(--subtle); color: var(--fg); }
+.assistant-dependents .quick-action-add { width: calc(100% - 24px); margin: 0 12px 12px; }
 /* 窄視窗：助理變成從右邊滑出來的抽屜，蓋在文件上（左邊有陰影），按 ✕ 或 Esc 收起。 */
 @media (max-width: 900px) {
   body.assistant-open { grid-template-columns: minmax(0, 1fr); }
