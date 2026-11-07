@@ -29,11 +29,13 @@ export interface TreeNode<T> {
  * 子項目依編號由小到大排（和建立的先後一樣，Task 1、2、3 依序往下）；最上層先依層級
  * （Epic → Feature → Story → Task），同一層再依編號。沒有上層、底下也沒有項目的（例如 Epic 底下的
  * 項目都不在清單上）也是最上層的一列，不另外分一組。讀不到的上層就當成沒有上層。
+ * `desc` 為 true 時編號由大到小（新建立的在上面）；最上層照樣先依層級。
  */
 export function parentTree<T extends GroupItem>(
   items: T[],
   parentOf: Map<number, number | null>,
   parents: Map<number, T>,
+  desc = false,
 ): TreeNode<T>[] {
   const listed = new Map(items.map((it) => [it.id, it]));
   const nodes = new Map<number, TreeNode<T>>();
@@ -66,13 +68,14 @@ export function parentTree<T extends GroupItem>(
       node = parent;
     }
   }
-  const byId = (a: TreeNode<T>, b: TreeNode<T>) => a.item.id - b.item.id;
+  const dir = desc ? -1 : 1;
+  const byId = (a: TreeNode<T>, b: TreeNode<T>) => dir * (a.item.id - b.item.id);
   const sort = (list: TreeNode<T>[]) => {
     list.sort(byId);
     for (const n of list) sort(n.children);
   };
   sort(roots);
-  roots.sort((a, b) => kindLevel(a.item.kind) - kindLevel(b.item.kind) || a.item.id - b.item.id);
+  roots.sort((a, b) => kindLevel(a.item.kind) - kindLevel(b.item.kind) || byId(a, b));
   return roots;
 }
 
@@ -241,6 +244,7 @@ export function areaTrees<T extends GroupItem & { area?: string | null }>(
   order: readonly string[],
   parentOf: Map<number, number | null>,
   parents: Map<number, T>,
+  desc = false,
 ): AreaTree<T>[] {
   const known = new Map(parents);
   for (const it of items) known.set(it.id, it);
@@ -250,6 +254,7 @@ export function areaTrees<T extends GroupItem & { area?: string | null }>(
       g.items.map(({ item }) => item),
       parentOf,
       known,
+      desc,
     ),
   }));
 }

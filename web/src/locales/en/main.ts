@@ -628,6 +628,9 @@ export const main: Record<string, Translation> = {
   "搜尋{label}": "Search {label}",
   "收合": "Collapse",
   "全部收合": "Collapse All",
+  "編號由大到小": "Highest ID first",
+  "編號由大到小（按一下改成由小到大）": "Highest ID first (click for lowest first)",
+  "編號由小到大（按一下改成由大到小）": "Lowest ID first (click for highest first)",
   "全部展開": "Expand All",
   "用 SSH 連線到 Linux 主機…": "Connect to a Linux Host with SSH…",
   "「{name}」的編碼無法辨識（不是 UTF-8 也不是 Big5），畫面上可能有亂碼。為了保護原檔，這個檔案不會自動存檔。":

@@ -2552,11 +2552,13 @@ button.git-info:disabled { cursor: default; }
 .workitems-statusrow .workitems-status { flex: 1 1 0; min-width: 3em; }
 .workitems-statusrow .workitems-status:not(.from-copy) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .workitems-tools { display: inline-flex; flex: 0 1 auto; gap: 2px; align-items: center; min-width: 0; }
-.workitems-fold { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
-.workitems-fold[hidden] { display: none; }
-.workitems-fold .icon { width: 14px; height: 14px; }
-.workitems-fold:hover { color: var(--fg); background: var(--active-line); }
-.workitems-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.workitems-fold, .workitems-order { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.workitems-fold[hidden], .workitems-order[hidden] { display: none; }
+.workitems-fold .icon, .workitems-order .icon { width: 14px; height: 14px; }
+.workitems-fold:hover, .workitems-order:hover { color: var(--fg); background: var(--active-line); }
+.workitems-fold:focus-visible, .workitems-order:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+/* 編號由大到小時用強調色，看得出不是預設的方向。 */
+.workitems-order[aria-pressed="true"] { color: var(--accent); }
 .workitems-pick.active { background: var(--accent-soft); color: var(--accent); }
 /* 選了好幾個：清單上方的「已選 N 項・一起改…・取消選取」。 */
 .workitems-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 6px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 8px; background: var(--accent-soft); }
