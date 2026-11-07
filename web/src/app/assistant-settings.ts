@@ -1,5 +1,5 @@
 /**
- * 設定 → AI 協作 →「Claude API 助理」：總開關、API 金鑰、模型、每月上限、哪些專案可以用。
+ * 設定 →「Claude API 助理」那一頁：總開關、API 金鑰、模型、每月上限、哪些專案可以用。
  * 金鑰交給原生端存進 Windows 認證管理員，這裡只顯示有沒有設定。
  */
 import { MODEL_LABELS, formatUsd, listed, toggled } from "../assistant-text.ts";
@@ -48,17 +48,12 @@ function switchInput(checked: boolean, onChange: (on: boolean) => void): HTMLInp
   return input;
 }
 
-/** 設定頁裡的整個區塊（標題、說明與選項）。 */
-export function assistantSettings(): HTMLElement[] {
+/** 設定裡「Claude API 助理」那一頁的說明與選項。 */
+export function assistantSettings(): { desc: string; content: HTMLElement[] } | null {
   const d = desktop;
-  if (!d) return [];
+  if (!d) return null;
   const s = () => app.settings.value;
-  const title = document.createElement("h4");
-  title.className = "settings-group-title";
-  title.textContent = t("Claude API 助理");
-  const hint = document.createElement("p");
-  hint.className = "settings-group-hint";
-  hint.textContent = t("用你自己的 Claude API 金鑰，在右側的助理問問題、摘要、改寫、翻譯。只在私人電腦使用，公司電腦請保持關閉；Azure DevOps 的內容一律不會送出。");
+  const desc = t("用你自己的 Claude API 金鑰，在右側的助理問問題、摘要、改寫、翻譯。只在私人電腦使用，公司電腦請保持關閉；Azure DevOps 的內容一律不會送出。");
   const card = document.createElement("div");
   card.className = "settings-group";
   card.id = "assistant-settings";
@@ -188,5 +183,5 @@ export function assistantSettings(): HTMLElement[] {
     void refreshUsage();
     void refreshProjects();
   });
-  return [title, hint, card];
+  return { desc, content: [card] };
 }

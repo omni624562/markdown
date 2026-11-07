@@ -125,3 +125,20 @@ test("專案還沒允許：只顯示提示，按下去才允許", async () => {
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("設定：Claude API 助理自成一頁，不在 AI 協作那一頁", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ claudeApiEnabled: true, assistantProjects: [ROOT] }) });
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+,");
+  const dialog = page.locator("dialog.settings[open]");
+  await dialog.locator("[role=tab]", { hasText: "AI 協作" }).click();
+  assert.equal(await dialog.locator("section:not([hidden]) #assistant-settings").count(), 0);
+  await dialog.locator("[role=tab]", { hasText: "Claude API 助理" }).click();
+  const card = dialog.locator("#assistant-settings");
+  await card.waitFor();
+  assert.ok(await card.isVisible());
+  assert.match(await card.textContent(), /已存在 Windows 認證管理員/);
+  assert.equal(await card.locator('[data-key="claudeApiEnabled"]').isChecked(), true);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

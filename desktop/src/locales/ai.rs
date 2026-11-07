@@ -36,7 +36,7 @@ pub static EN: &[(&str, &str)] = &[
     ("請先在設定開啟「Claude API 助理」", "Turn on \"Claude API Assistant\" in Settings first."),
     ("請先開啟允許 AI 的專案資料夾", "Open a project folder that allows AI first."),
     ("這是 Azure DevOps 的儲存庫，內容不會送給 AI", "This is an Azure DevOps repository. Its content isn't sent to AI."),
-    ("這個專案還沒允許使用 AI（設定 → AI 協作 → Claude API 助理）", "This project doesn't allow AI yet (Settings → AI → Claude API Assistant)."),
+    ("這個專案還沒允許使用 AI（設定 → Claude API 助理）", "This project doesn't allow AI yet (Settings → Claude API Assistant)."),
     ("API 金鑰無效或已經撤銷，請在設定換一把", "The API key is invalid or was revoked. Enter a new one in Settings."),
     ("這把 API 金鑰沒有使用這個模型的權限", "This API key can't use this model."),
     ("要求太頻繁或額度用完了，請稍後再試", "Too many requests, or the credit ran out. Try again later."),

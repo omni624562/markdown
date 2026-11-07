@@ -224,9 +224,7 @@ fn check(
                 .any(|p| same_path(p, &root))
         });
     if !allowed {
-        return Err(tr!(
-            "這個專案還沒允許使用 AI（設定 → AI 協作 → Claude API 助理）"
-        ));
+        return Err(tr!("這個專案還沒允許使用 AI（設定 → Claude API 助理）"));
     }
     Ok(())
 }
