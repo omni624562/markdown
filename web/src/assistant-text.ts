@@ -11,7 +11,7 @@ import type { ClaudeModel } from "./settings.ts";
  */
 export type ActionMode = "answer" | "replace" | "insert";
 
-/** 常用動作。`group`：`main` 是助理下方的按鈕，`write` 放在「寫作」選單裡。 */
+/** 常用動作。`group`：`main` 是輸入框下緣的按鈕，`write` 放在「更多」選單裡。 */
 export interface AssistantAction {
   id: "summary" | "rewrite" | "translate" | "review" | "slides" | "diagram" | "table" | "todos" | "continue" | "formal" | "casual" | "concise";
   label: () => string;
@@ -65,7 +65,7 @@ export const ASSISTANT_ACTIONS: AssistantAction[] = [
       t("請把這份內容整理成簡報的 Markdown：每張投影片用一行 --- 分開，第一張是標題，每張最多 5 個重點。"),
     needsSelection: false,
     mode: "answer",
-    group: "main",
+    group: "write",
   },
   {
     id: "diagram",
