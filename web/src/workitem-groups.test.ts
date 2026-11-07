@@ -53,6 +53,27 @@ test("往上一路到最上層（Epic）；每一層依編號由小到大，不�
   assert.equal(draw(parentTree(items, parentOf, parents)), "~1000(~100(~10(1)) ~200(~20(2 3)))");
 });
 
+test("由大到小：每一層編號大的在上面；最上層仍先依層級（Feature 在 Task 前面）", () => {
+  const items = [task(3), task(1), task(2), task(7), feature(300)];
+  const parentOf = new Map<number, number | null>([
+    [1, 10],
+    [2, 20],
+    [3, 20],
+    [7, null],
+    [10, 100],
+    [20, 100],
+    [100, null],
+    [300, null],
+  ]);
+  const parents = new Map<number, GroupItem>([
+    [10, story(10)],
+    [20, story(20)],
+    [100, feature(100)],
+  ]);
+  assert.equal(draw(parentTree(items, parentOf, parents, true)), "300 ~100(~20(3 2) ~10(1)) 7");
+  assert.equal(draw(parentTree(items, parentOf, parents)), "~100(~10(1) ~20(2 3)) 300 7");
+});
+
 test("同一個 Story 的 Task 依編號由小到大（清單是最近更新的在前面）", () => {
   const items = [task(1940132), task(1940131), task(1940130), task(1940129)];
   const parentOf = new Map<number, number | null>(items.map((t) => [t.id, 1940123]));

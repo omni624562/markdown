@@ -128,3 +128,26 @@ test("收合一層、全部收合到只剩最上層、全部展開；開啟收�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("編號由大到小：按排列方式旁邊的按鈕，每一層編號大的在上面；記住選擇；不是樹狀的排列方式不顯示", async () => {
+  const { page, context, errors } = await treeList();
+  const titles = async () => (await rows(page)).map((r) => (typeof r === "string" ? r : r[0]));
+  const order = page.locator("#workitems-host .workitems-order");
+  assert.equal(await order.getAttribute("aria-pressed"), "false");
+  await order.click();
+  assert.equal(await order.getAttribute("aria-pressed"), "true");
+  // Story 20 在 Story 10 上面，Task 2 在 Task 1 上面；最上層照樣 Epic 在 Bug 前面。
+  assert.deepEqual(await titles(), ["數位訂單", "訂單明細查詢", "退貨申請", "申請表單", "查詢條件", "畫面切版", "API 規格", "修錯字"]);
+  // 記住選擇（下次開啟還是由大到小）。
+  assert.equal(await page.evaluate(() => localStorage.getItem("md-editor:workitem-order")), "desc");
+  // 「最近更新」不是依編號排：不顯示這個按鈕。
+  await page.locator("#workitems-host select.workitems-arrange").selectOption("recent");
+  await order.waitFor({ state: "hidden" });
+  // 換回樹狀：按鈕回來，再按一次改回由小到大。
+  await page.locator("#workitems-host select.workitems-arrange").selectOption("parent");
+  await order.click();
+  assert.equal(await order.getAttribute("aria-pressed"), "false");
+  assert.equal((await titles())[2], "查詢條件");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
