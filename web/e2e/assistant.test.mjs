@@ -63,7 +63,7 @@ test("改寫選取的文字：第一次先確認，回答變成建議卡片，�
   await panel.waitFor();
   assert.match(await panel.locator(".assistant-usage").textContent(), /US\$0\.42 \/ US\$10$/);
   const chips = await panel.locator(".assistant-chip").allTextContents();
-  assert.ok(chips.some((c) => c.includes("選取的文字")), chips.join("|"));
+  assert.ok(chips.some((c) => /選取 \d+ 字/.test(c)), chips.join("|"));
 
   await panel.locator(".assistant-quick button", { hasText: "改寫" }).click();
   const confirm = page.locator("dialog.choice[open]");
@@ -178,6 +178,66 @@ test("設定：Claude API 助理自成一頁，不在 AI 協作那一頁", async
   assert.ok(await card.isVisible());
   assert.match(await card.textContent(), /已存在 Windows 認證管理員/);
   assert.equal(await card.locator('[data-key="claudeApiEnabled"]').isChecked(), true);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("版面：助理是右邊自己一欄（分頁列只到編輯區）；模型用 oMarker 的選單換；寬度可以拖曳並記住", async () => {
+  const { page, context, errors } = await open({ desktop: desktop(ON) });
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  const box = await panel.boundingBox();
+  const tabs = await page.locator("#tab-bar").boundingBox();
+  // 從最上面開始，分頁列在助理左邊結束。
+  assert.ok(box.y < 10, `top ${box.y}`);
+  assert.ok(tabs.x + tabs.width <= box.x, `tabs end ${tabs.x + tabs.width} > ${box.x}`);
+  const editor = await page.locator(".editor-pane").boundingBox();
+  assert.ok(editor.x + editor.width <= box.x);
+
+  // 模型：標題列的文字按鈕，選單裡標著目前的模型。
+  await panel.locator("#assistant-model").click();
+  const menu = page.locator("#assistant-model-popover");
+  await menu.waitFor();
+  await menu.getByRole("menuitemradio", { name: /Opus 5\.5/ }).click();
+  await page.waitForFunction(() => document.querySelector("#assistant-model").textContent.includes("Opus 5.5"));
+  const saved = (await calls(page)).filter((c) => c.cmd === "save_settings").map((c) => JSON.parse(c.args.json));
+  assert.equal(saved.at(-1).claudeModel, "claude-opus-5-5");
+
+  // 拖曳左緣調整寬度，重新打開還是一樣寬。
+  const grip = panel.locator(".assistant-resizer");
+  const g = await grip.boundingBox();
+  await page.mouse.move(g.x + 3, g.y + g.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(g.x - 97, g.y + g.height / 2, { steps: 5 });
+  await page.mouse.up();
+  const wide = (await panel.boundingBox()).width;
+  assert.ok(Math.abs(wide - (box.width + 100)) <= 2, `width ${wide}`);
+  assert.equal(await page.evaluate(() => localStorage.getItem("assistant-width") !== null || Object.keys(localStorage).some((k) => k.includes("assistant-width"))), true);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("窄視窗：助理變成蓋在文件上的抽屜，按 Esc 收起", async () => {
+  const { page, context, errors } = await open({ desktop: desktop(ON) });
+  await page.setViewportSize({ width: 760, height: 640 });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  assert.equal(await panel.evaluate((el) => getComputedStyle(el).position), "fixed");
+  const box = await panel.boundingBox();
+  assert.ok(box.x + box.width <= 760);
+  await panel.locator("textarea").press("Escape");
+  await panel.waitFor({ state: "hidden" });
   assert.deepEqual(errors, []);
   await context.close();
 });

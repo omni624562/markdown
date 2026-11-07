@@ -46,7 +46,7 @@ test("取代選取文字的動作都要先選取；插入、回答的不用", ()
   assert.ok(ASSISTANT_ACTIONS.every((a) => (a.mode === "replace") === a.needsSelection));
   assert.deepEqual(ASSISTANT_ACTIONS.filter((a) => a.mode === "insert").map((a) => a.id), ["diagram", "todos", "continue"]);
   // 下方按鈕只放原本五個，其他放在「寫作」選單。
-  assert.deepEqual(ASSISTANT_ACTIONS.filter((a) => a.group === "main").map((a) => a.id), ["summary", "rewrite", "translate", "review", "slides"]);
+  assert.deepEqual(ASSISTANT_ACTIONS.filter((a) => a.group === "main").map((a) => a.id), ["summary", "rewrite", "translate", "review"]);
 });
 
 test("流程圖一定包成 mermaid 區塊", () => {

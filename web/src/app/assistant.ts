@@ -36,6 +36,10 @@ import { app } from "./context.ts";
 import { docName as tabName } from "./doc-names.ts";
 
 const OPEN_KEY = "assistant-open";
+const WIDTH_KEY = "assistant-width";
+/** 寬度的範圍（拖曳左緣調整）。 */
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 640;
 
 interface Pending {
   id: number;
@@ -56,7 +60,7 @@ let chips!: HTMLElement;
 let input!: HTMLTextAreaElement;
 let sendBtn!: HTMLButtonElement;
 let usageEl!: HTMLElement;
-let modelSel!: HTMLSelectElement;
+let modelBtn!: HTMLButtonElement;
 let notice!: HTMLElement;
 let history: AssistantMessage[] = [];
 let pending: Pending | null = null;
@@ -111,10 +115,6 @@ function docName(): string {
 /** 這次會送出的內容（標籤，可以拿掉目前的文件）。 */
 function renderChips(): void {
   const items: HTMLElement[] = [];
-  const label = document.createElement("small");
-  label.className = "assistant-chips-label";
-  label.textContent = t("這次會送給 Claude 的內容");
-  items.push(label);
   const chip = (text: string, iconName: string, remove?: () => void) => {
     const el = document.createElement("span");
     el.className = "assistant-chip";
@@ -141,7 +141,7 @@ function renderChips(): void {
     items.push(add);
   }
   const sel = selection().text;
-  if (sel.trim()) chip(t("選取的文字（{n} 字）", { n: sel.length }), "text-cursor");
+  if (sel.trim()) chip(t("選取 {n} 字", { n: sel.length }), "text-cursor");
   chips.replaceChildren(...items);
 }
 
@@ -217,13 +217,24 @@ async function copy(text: string): Promise<void> {
   }
 }
 
-/** 一般回答：複製、插入到游標的位置。 */
+function toolButton(label: string, iconName: string, run: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "assistant-tool";
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.append(icon(iconName));
+  b.addEventListener("click", run);
+  return b;
+}
+
+/** 一般回答下面的小圖示：複製、插入到游標的位置（滑鼠移上去看說明）。 */
 function answerActions(el: HTMLElement, text: string): void {
   const bar = document.createElement("div");
-  bar.className = "assistant-actions";
+  bar.className = "assistant-tools";
   bar.append(
-    cardButton(t("複製"), () => void copy(text)),
-    cardButton(t("插入到游標處"), () => {
+    toolButton(t("複製"), "copy", () => void copy(text)),
+    toolButton(t("插入到游標處"), "text-cursor-input", () => {
       const at = app.editor.view.state.selection.main.head;
       app.editor.view.dispatch({ changes: { from: at, insert: text }, userEvent: "input.ai" });
       toast(t("已插入（可以按 Ctrl+Z 復原）"), { tone: "success" });
@@ -416,6 +427,72 @@ function newChat(): void {
   input.focus();
 }
 
+/** 模型的短名稱（標題列放不下完整的說明）。 */
+function shortModel(m: ClaudeModel): string {
+  return m.replace(/^claude-(\w+)-(\d+)-(\d+)$/, (_, n: string, a, b) => `${n[0].toUpperCase()}${n.slice(1)} ${a}.${b}`);
+}
+
+function renderModel(): void {
+  const m = app.settings.value.claudeModel;
+  modelBtn.replaceChildren(shortModel(m), icon("chevron-down"));
+  modelBtn.title = t("模型：{name}（按一下換）", { name: MODEL_LABELS[m]() });
+  modelBtn.setAttribute("aria-label", modelBtn.title);
+}
+
+function headButton(label: string, iconName: string, run: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn icon-only";
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.append(icon(iconName));
+  b.addEventListener("click", run);
+  return b;
+}
+
+function applyWidth(px: number): number {
+  const w = Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, px)));
+  document.documentElement.style.setProperty("--assistant-width", `${w}px`);
+  return w;
+}
+
+/** 左緣的把手：拖曳調整寬度，記住；鍵盤用左右鍵。 */
+function resizer(): HTMLElement {
+  const grip = document.createElement("div");
+  grip.className = "assistant-resizer";
+  grip.role = "separator";
+  grip.tabIndex = 0;
+  grip.setAttribute("aria-orientation", "vertical");
+  grip.setAttribute("aria-label", t("調整助理寬度"));
+  grip.title = t("拖曳調整寬度");
+  const width = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--assistant-width")) || 360;
+  const save = () => storage.save(WIDTH_KEY, String(Math.round(width())));
+  grip.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    const start = e.clientX;
+    const startWidth = width();
+    document.body.classList.add("resizing");
+    const move = (ev: PointerEvent) => applyWidth(startWidth + start - ev.clientX);
+    const up = () => {
+      grip.removeEventListener("pointermove", move);
+      document.body.classList.remove("resizing");
+      save();
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", up, { once: true });
+    grip.addEventListener("pointercancel", up, { once: true });
+  });
+  grip.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    applyWidth(width() + (e.key === "ArrowLeft" ? 20 : -20));
+    save();
+  });
+  return grip;
+}
+
 function build(): HTMLElement {
   const aside = document.createElement("aside");
   aside.className = "assistant-panel";
@@ -423,40 +500,29 @@ function build(): HTMLElement {
   aside.setAttribute("aria-label", t("助理"));
   aside.hidden = true;
 
+  // 標題列：助理、模型（oMarker 的選單）、新對話、關閉。
   const head = document.createElement("div");
   head.className = "assistant-head";
   const title = document.createElement("h2");
   title.append(icon("sparkles"), t("助理"));
-  modelSel = document.createElement("select");
-  modelSel.className = "assistant-model";
-  modelSel.setAttribute("aria-label", t("模型"));
-  // 側欄比較窄：只放短名稱，滑鼠移上去看完整的說明。
-  for (const m of CLAUDE_MODELS) {
-    const o = new Option(m.replace(/^claude-(\w+)-(\d+)-(\d+)$/, (_, n: string, a, b) => `${n[0].toUpperCase()}${n.slice(1)} ${a}.${b}`), m);
-    o.title = MODEL_LABELS[m]();
-    modelSel.append(o);
-  }
-  modelSel.addEventListener("change", () => app.settings.update({ claudeModel: modelSel.value as ClaudeModel }));
-  usageEl = document.createElement("span");
-  usageEl.className = "assistant-usage";
-  const fresh = document.createElement("button");
-  fresh.type = "button";
-  fresh.className = "btn icon-only";
-  fresh.title = t("新對話");
-  fresh.setAttribute("aria-label", fresh.title);
-  fresh.append(icon("message-square-plus"));
-  fresh.addEventListener("click", newChat);
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "btn icon-only";
-  close.title = t("關閉助理");
-  close.setAttribute("aria-label", close.title);
-  close.append(icon("x"));
-  close.addEventListener("click", () => toggleAssistant(false));
-  head.append(title, modelSel, usageEl, fresh, close);
+  modelBtn = document.createElement("button");
+  modelBtn.type = "button";
+  modelBtn.id = "assistant-model";
+  modelBtn.className = "assistant-model";
+  setupMenu(
+    modelBtn,
+    null,
+    CLAUDE_MODELS.map((m) => ({
+      label: MODEL_LABELS[m](),
+      checked: () => app.settings.value.claudeModel === m,
+      run: () => app.settings.update({ claudeModel: m }),
+    })),
+  );
+  renderModel();
+  const spacer = document.createElement("span");
+  spacer.className = "assistant-spacer";
+  head.append(title, modelBtn, spacer, headButton(t("新對話"), "message-square-plus", newChat), headButton(t("關閉助理"), "x", () => toggleAssistant(false)));
 
-  chips = document.createElement("div");
-  chips.className = "assistant-chips";
   notice = document.createElement("div");
   notice.className = "assistant-notice";
   log = document.createElement("div");
@@ -470,22 +536,39 @@ function build(): HTMLElement {
     if (/^https?:\/\//.test(a.href)) openUrl(a.href);
   });
 
-  const quick = document.createElement("div");
-  quick.className = "assistant-quick";
+  // 輸入框：上面是這次會送出的內容（小標籤），下緣是常用動作與送出。
+  const box = document.createElement("div");
+  box.className = "assistant-input";
+  chips = document.createElement("div");
+  chips.className = "assistant-chips";
+  chips.setAttribute("aria-label", t("這次會送給 Claude 的內容"));
+  input = document.createElement("textarea");
+  input.rows = 2;
+  input.placeholder = t("問助理…（Enter 送出、Shift+Enter 換行）");
+  input.setAttribute("aria-label", t("問助理"));
+  input.addEventListener("keydown", (e) => {
+    // 注音、倉頡選字時的 Enter 不是送出。
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      void send(input.value);
+    }
+  });
+  const bar = document.createElement("div");
+  bar.className = "assistant-quick";
   for (const a of ASSISTANT_ACTIONS.filter((x) => x.group === "main")) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = a.label();
     b.title = a.needsSelection ? t("先選取文字") : a.prompt();
     b.addEventListener("click", () => void send(a.prompt(), a));
-    quick.append(b);
+    bar.append(b);
   }
-  // 其他寫作動作放在「寫作」選單（轉成流程圖、整理成表格、抓出待辦、續寫、換語氣）。
+  // 其他動作放在「更多」選單（轉成簡報、流程圖、表格、待辦、續寫、換語氣）。
   const more = document.createElement("button");
   more.type = "button";
   more.id = "assistant-write";
   more.className = "assistant-more";
-  more.append(t("寫作"), icon("chevron-down"));
+  more.append(t("更多"), icon("chevron-down"));
   more.title = t("更多寫作動作");
   setupMenu(
     more,
@@ -495,48 +578,53 @@ function build(): HTMLElement {
       run: () => void send(a.prompt(), a),
     })),
   );
-  quick.append(more);
-
-  const box = document.createElement("div");
-  box.className = "assistant-input";
-  input = document.createElement("textarea");
-  input.rows = 2;
-  input.placeholder = t("問助理，或按下面的常用動作…");
-  input.setAttribute("aria-label", t("問助理"));
-  input.addEventListener("keydown", (e) => {
-    // 注音、倉頡選字時的 Enter 不是送出。
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
-      e.preventDefault();
-      void send(input.value);
-    }
-  });
   sendBtn = document.createElement("button");
   sendBtn.type = "button";
   sendBtn.className = "btn icon-only btn-primary assistant-send";
   sendBtn.addEventListener("click", () => (pending ? stop() : void send(input.value)));
-  box.append(input, sendBtn);
+  bar.append(more, sendBtn);
+  box.append(chips, input, bar);
+  box.addEventListener("click", (e) => {
+    if (e.target === box) input.focus();
+  });
 
-  const foot = document.createElement("small");
+  // 最下面一行小字：說明與本月費用。
+  const foot = document.createElement("div");
   foot.className = "assistant-foot";
-  foot.textContent = t("內容會送到 Anthropic（Claude API）。修改都要你按「套用」。");
+  const note = document.createElement("span");
+  note.textContent = t("送到 Anthropic・修改要按「套用」");
+  note.title = t("內容會送到 Anthropic（Claude API）。修改都要你按「套用」。");
+  usageEl = document.createElement("span");
+  usageEl.className = "assistant-usage";
+  foot.append(note, usageEl);
 
-  aside.append(head, chips, notice, log, quick, box, foot);
+  aside.append(resizer(), head, notice, log, box, foot);
   aside.addEventListener("pointerenter", renderChips);
+  // 窄視窗時助理蓋在文件上：Esc 收起。
+  aside.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !e.defaultPrevented && window.matchMedia("(max-width: 900px)").matches) {
+      e.preventDefault();
+      toggleAssistant(false);
+    }
+  });
   return aside;
 }
 
 export function toggleAssistant(open = !assistantOpen()): void {
   if (!desktop) return;
   if (!panel) {
+    const saved = Number(storage.load(WIDTH_KEY));
+    if (saved) applyWidth(saved);
     panel = build();
-    app.workspace.append(panel);
+    // 自己一欄：從最上面（和分頁列同高）到狀態列上面，分頁列只到編輯區為止。
+    document.body.append(panel);
     setRunning(false);
   }
   panel.hidden = !open;
-  app.workspace.classList.toggle("assistant-open", open);
+  document.body.classList.toggle("assistant-open", open);
   storage.save(OPEN_KEY, open ? "1" : "");
   if (!open) return app.editor.view.focus();
-  modelSel.value = app.settings.value.claudeModel;
+  renderModel();
   renderChips();
   renderNotice();
   void refreshStatus();
@@ -563,7 +651,7 @@ export function initAssistant(): void {
   });
   app.settings.subscribe((s, changed) => {
     if (!panel) return;
-    if (changed.includes("claudeModel")) modelSel.value = s.claudeModel;
+    if (changed.includes("claudeModel")) renderModel();
     if (changed.some((k) => k === "claudeApiEnabled" || k === "assistantProjects" || k === "claudeMonthlyLimit")) void refreshStatus();
     // 關掉總開關時收起側欄。
     if (changed.includes("claudeApiEnabled") && !s.claudeApiEnabled) toggleAssistant(false);
