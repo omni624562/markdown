@@ -125,3 +125,42 @@ test("專案還沒允許：只顯示提示，按下去才允許", async () => {
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("寫作選單：轉成流程圖，套用後插在選取的文字後面", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await setText(page, "先備份照片，再同步到雲端。\n\n下一段");
+  // 選取第一行。
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("Shift+End");
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  await panel.locator("#assistant-write").click();
+  const menu = page.locator("#assistant-write-popover");
+  const items = await menu.locator(":scope > button").allTextContents();
+  assert.ok(items.some((s) => s.includes("轉成流程圖")), items.join("|"));
+  assert.ok(items.some((s) => s.includes("整理成表格（選取的文字）")), items.join("|"));
+  await menu.locator(":scope > button", { hasText: "轉成流程圖" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const [{ request }] = await sends(page);
+  assert.match(request.system, /只輸出要插入文件的新內容/);
+  // 回答沒有包程式碼框：插入時補成 mermaid 區塊。
+  await reply(page, "flowchart TD\n  A[備份照片] --> B[同步到雲端]");
+  const card = panel.locator(".assistant-card");
+  await card.waitFor();
+  assert.equal(await card.locator("h4").textContent(), "插入到選取的文字後面（建議）");
+  assert.equal(await card.locator(".assistant-diff .del").count(), 0);
+  await card.getByRole("button", { name: "套用" }).click();
+  // 即時預覽會把流程圖畫出來：直接讀編輯器的內容。
+  const text = await page.evaluate(() => {
+    const content = document.querySelector(".cm-content");
+    const tile = content?.cmView ?? content?.cmTile;
+    return (tile?.view ?? tile?.root?.view).state.doc.toString();
+  });
+  assert.match(text, /^先備份照片，再同步到雲端。\n\n```mermaid\nflowchart TD\n {2}A\[備份照片\] --> B\[同步到雲端\]\n```\n\n下一段/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

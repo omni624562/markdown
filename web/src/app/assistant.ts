@@ -8,6 +8,7 @@
  */
 import { render as renderMarkdown } from "../../pkg/md_wasm.js";
 import {
+  type ActionMode,
   ASSISTANT_ACTIONS,
   type AssistantAction,
   MODEL_LABELS,
@@ -15,6 +16,8 @@ import {
   estimateUsd,
   formatUsd,
   listed,
+  insertPadding,
+  mermaidBlock,
   replacementText,
   systemPrompt,
   toggled,
@@ -26,6 +29,7 @@ import { CLAUDE_MODELS, type ClaudeModel } from "../settings.ts";
 import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
+import { setupMenu } from "../ui/menu.ts";
 import { toast } from "../ui/toast.ts";
 import { openUrl } from "./activity-bar.ts";
 import { app } from "./context.ts";
@@ -37,8 +41,12 @@ interface Pending {
   id: number;
   answer: HTMLElement;
   text: string;
-  /** 取代選取文字的動作：原本的範圍與文字（套用前確認沒被改過）。 */
-  replace: { from: number; to: number; original: string } | null;
+  /** 動作的回答怎麼用（見 assistant-text.ts 的 ActionMode）。 */
+  mode: ActionMode;
+  /** 流程圖：插入時包成 ```mermaid 區塊。 */
+  mermaid: boolean;
+  /** 取代或插入的範圍：送出當下選取的範圍與文字（套用前確認沒被改過；插入的位置是範圍的結尾）。 */
+  range: { from: number; to: number; original: string };
   question: string;
 }
 
@@ -224,14 +232,19 @@ function answerActions(el: HTMLElement, text: string): void {
   el.append(bar);
 }
 
-/** 取代選取文字的建議卡片：看過差異再套用。 */
+/** 取代或插入的建議卡片：看過差異再套用。 */
 function suggestionCard(el: HTMLElement, p: Pending, text: string): void {
-  const r = p.replace!;
-  const next = replacementText(text);
+  const r = p.range;
+  const insert = p.mode === "insert";
+  const next = p.mermaid ? mermaidBlock(text) : replacementText(text);
   const card = document.createElement("div");
   card.className = "assistant-card";
   const h = document.createElement("h4");
-  h.textContent = t("取代選取的文字（建議）");
+  h.textContent = insert
+    ? r.from === r.to
+      ? t("插入到游標處（建議）")
+      : t("插入到選取的文字後面（建議）")
+    : t("取代選取的文字（建議）");
   const diff = document.createElement("div");
   diff.className = "assistant-diff";
   const line = (cls: string, s: string) => {
@@ -241,7 +254,7 @@ function suggestionCard(el: HTMLElement, p: Pending, text: string): void {
     return d;
   };
   diff.append(
-    ...r.original.split("\n").map((s) => line("del", `- ${s}`)),
+    ...(insert ? [] : r.original.split("\n").map((s) => line("del", `- ${s}`))),
     ...next.split("\n").map((s) => line("add", `+ ${s}`)),
   );
   const bar = document.createElement("div");
@@ -263,7 +276,12 @@ function suggestionCard(el: HTMLElement, p: Pending, text: string): void {
           toast(t("選取的那段文字已經改過了，請重新選取再試一次"), { tone: "error" });
           return;
         }
-        view.dispatch({ changes: { from: r.from, to: r.to, insert: next }, userEvent: "input.ai" });
+        if (insert) {
+          // 插在選取的文字（或游標）後面，前後空一行，插入的內容自成段落。
+          const doc = view.state.doc;
+          const { prefix, suffix } = insertPadding(r.to > 0 ? doc.sliceString(r.to - 1, r.to) : "", doc.sliceString(r.to, r.to + 1));
+          view.dispatch({ changes: { from: r.to, insert: prefix + next + suffix }, userEvent: "input.ai" });
+        } else view.dispatch({ changes: { from: r.from, to: r.to, insert: next }, userEvent: "input.ai" });
         done(t("已套用（可以按 Ctrl+Z 復原）"));
       },
       true,
@@ -306,8 +324,8 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   }
   const ctx = { doc: includeDoc ? { name: docName(), text: app.editor.text } : null, selection: sel.text };
   const content = userContent(question, ctx);
-  const replace = !!action?.replace;
-  const system = systemPrompt(replace);
+  const mode = action?.mode ?? "answer";
+  const system = systemPrompt(mode);
   const model = app.settings.value.claudeModel;
   if (!(await confirmFirst(content.length + system.length, model))) return;
   const shown = action ? action.label() : question;
@@ -316,12 +334,12 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   answer.classList.add("loading");
   answer.textContent = t("思考中…");
   const id = nextId++;
-  pending = { id, answer, text: "", question, replace: replace ? { from: sel.from, to: sel.to, original: sel.text } : null };
+  pending = { id, answer, text: "", question, mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
   input.value = "";
   setRunning(true);
   try {
-    // 取代選取文字的動作不接續之前的對話（只看這一段）。
-    await desktop.assistantSend(id, { model, system, messages: conversation(replace ? [] : history, content) });
+    // 會改文件的動作不接續之前的對話（只看這一次的內容）。
+    await desktop.assistantSend(id, { model, system, messages: conversation(mode === "answer" ? history : [], content) });
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }
@@ -368,8 +386,8 @@ function onRun(e: AssistantRunEvent): void {
       s.textContent = t("回答太長，後面被截斷了。");
       p.answer.append(s);
     }
-    if (p.replace) suggestionCard(p.answer, p, p.text);
-    else if (p.text.trim()) {
+    if (p.mode !== "answer" && p.text.trim()) suggestionCard(p.answer, p, p.text);
+    else if (p.mode === "answer" && p.text.trim()) {
       answerActions(p.answer, p.text);
       history = [...history, { role: "user" as const, content: p.question }, { role: "assistant" as const, content: p.text }].slice(-12);
     }
@@ -454,7 +472,7 @@ function build(): HTMLElement {
 
   const quick = document.createElement("div");
   quick.className = "assistant-quick";
-  for (const a of ASSISTANT_ACTIONS) {
+  for (const a of ASSISTANT_ACTIONS.filter((x) => x.group === "main")) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = a.label();
@@ -462,6 +480,22 @@ function build(): HTMLElement {
     b.addEventListener("click", () => void send(a.prompt(), a));
     quick.append(b);
   }
+  // 其他寫作動作放在「寫作」選單（轉成流程圖、整理成表格、抓出待辦、續寫、換語氣）。
+  const more = document.createElement("button");
+  more.type = "button";
+  more.id = "assistant-write";
+  more.className = "assistant-more";
+  more.append(t("寫作"), icon("chevron-down"));
+  more.title = t("更多寫作動作");
+  setupMenu(
+    more,
+    null,
+    ASSISTANT_ACTIONS.filter((x) => x.group === "write").map((a) => ({
+      label: a.needsSelection ? t("{name}（選取的文字）", { name: a.label() }) : a.label(),
+      run: () => void send(a.prompt(), a),
+    })),
+  );
+  quick.append(more);
 
   const box = document.createElement("div");
   box.className = "assistant-input";

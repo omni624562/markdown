@@ -5,7 +5,9 @@ import {
   conversation,
   estimateUsd,
   formatUsd,
+  insertPadding,
   listed,
+  mermaidBlock,
   replacementText,
   systemPrompt,
   toggled,
@@ -30,17 +32,36 @@ test("對話紀錄接上這一輪", () => {
 });
 
 test("取代選取文字時只要新的內容", () => {
-  assert.match(systemPrompt(true), /只輸出取代選取文字/);
-  assert.doesNotMatch(systemPrompt(false), /只輸出取代選取文字/);
-  assert.match(systemPrompt(false), /台灣用語/);
+  assert.match(systemPrompt("replace"), /只輸出取代選取文字/);
+  assert.doesNotMatch(systemPrompt("answer"), /只輸出取代選取文字/);
+  assert.match(systemPrompt("insert"), /只輸出要插入文件的新內容/);
+  assert.match(systemPrompt("answer"), /台灣用語/);
   assert.equal(replacementText("```markdown\n新的段落\n```"), "新的段落");
   assert.equal(replacementText("  新的段落\n"), "新的段落");
 });
 
-test("改寫、翻譯需要選取文字", () => {
+test("取代選取文字的動作都要先選取；插入、回答的不用", () => {
   const need = ASSISTANT_ACTIONS.filter((a) => a.needsSelection).map((a) => a.id);
-  assert.deepEqual(need, ["rewrite", "translate"]);
-  assert.ok(ASSISTANT_ACTIONS.every((a) => a.replace === a.needsSelection));
+  assert.deepEqual(need, ["rewrite", "translate", "table", "formal", "casual", "concise"]);
+  assert.ok(ASSISTANT_ACTIONS.every((a) => (a.mode === "replace") === a.needsSelection));
+  assert.deepEqual(ASSISTANT_ACTIONS.filter((a) => a.mode === "insert").map((a) => a.id), ["diagram", "todos", "continue"]);
+  // 下方按鈕只放原本五個，其他放在「寫作」選單。
+  assert.deepEqual(ASSISTANT_ACTIONS.filter((a) => a.group === "main").map((a) => a.id), ["summary", "rewrite", "translate", "review", "slides"]);
+});
+
+test("流程圖一定包成 mermaid 區塊", () => {
+  assert.equal(mermaidBlock("```mermaid\nflowchart TD\n  A --> B\n```"), "```mermaid\nflowchart TD\n  A --> B\n```");
+  assert.equal(mermaidBlock("說明\n```\nflowchart TD\n  A --> B\n```\n補充"), "```mermaid\nflowchart TD\n  A --> B\n```");
+  assert.equal(mermaidBlock("flowchart TD\n  A --> B"), "```mermaid\nflowchart TD\n  A --> B\n```");
+});
+
+test("插入時自成段落：前後空一行", () => {
+  // 接在一行文字後面：前面空一行；後面還有文字：後面也空一行。
+  assert.deepEqual(insertPadding("。", "下"), { prefix: "\n\n", suffix: "\n\n" });
+  // 在行首（前一個字是換行）：前面補一個換行就好；在文件結尾：後面不用補。
+  assert.deepEqual(insertPadding("\n", ""), { prefix: "\n", suffix: "" });
+  // 空白文件。
+  assert.deepEqual(insertPadding("", ""), { prefix: "", suffix: "" });
 });
 
 test("估計費用", () => {
