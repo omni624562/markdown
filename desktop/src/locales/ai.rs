@@ -45,6 +45,10 @@ pub static EN: &[(&str, &str)] = &[
     ("Claude API 回應錯誤（{status}）：{detail}", "The Claude API returned an error ({status}): {detail}"),
     ("不支援這個模型", "This model isn't supported."),
     ("沒有要送出的內容", "There's nothing to send."),
+    (
+        "圖片只能是 PNG、JPEG、GIF 或 WebP，每張不超過 5 MB，一次最多 4 張",
+        "Images must be PNG, JPEG, GIF or WebP, up to 5 MB each and 4 at a time.",
+    ),
     ("內容太長（超過 {max} 字），請改送選取的段落", "The content is too long (over {max} characters). Send a selected passage instead."),
     ("請先在設定輸入 Claude API 金鑰", "Enter a Claude API key in Settings first."),
     ("這個月已經用了 US${spent}，到達上限 US${cap}；可以在設定調高上限", "You've used US${spent} this month and reached the US${cap} limit. You can raise the limit in Settings."),

@@ -347,3 +347,42 @@ test("建議連結和標籤：附上專案裡其他筆記的名稱和已有的�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("附圖片：在輸入框貼上圖片變成小標籤，送出時圖片附在這一題；不支援的格式不收", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  const paste = (name, type, bytes) =>
+    panel.locator("textarea").evaluate(
+      (el, [name, type, bytes]) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([new Uint8Array(bytes)], name, { type }));
+        el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+      },
+      [name, type, bytes],
+    );
+  // 1×1 的 PNG 開頭幾個位元組就夠了（只檢查格式與大小）。
+  await paste("截圖.png", "image/png", [137, 80, 78, 71, 13, 10, 26, 10]);
+  await panel.locator(".assistant-chip-image", { hasText: "截圖.png" }).waitFor();
+  await paste("圖.svg", "image/svg+xml", [60, 115, 118, 103, 62]);
+  await page.locator(".toast", { hasText: "不是 PNG、JPEG、GIF 或 WebP" }).waitFor();
+  assert.equal(await panel.locator(".assistant-chip-image").count(), 1);
+
+  await panel.locator("textarea").fill("這張圖在講什麼？");
+  await panel.locator("textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const [{ request }] = await sends(page);
+  const last = request.messages.at(-1);
+  assert.deepEqual(last.images, [{ mediaType: "image/png", data: "iVBORw0KGgo=" }]);
+  assert.match(last.content, /這張圖在講什麼？$/);
+  // 送出後清空，問題旁邊有縮圖。
+  assert.equal(await panel.locator(".assistant-chip-image").count(), 0);
+  assert.equal(await panel.locator(".assistant-user .assistant-thumb").count(), 1);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
