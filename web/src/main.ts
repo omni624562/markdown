@@ -97,6 +97,7 @@ import { openWorkItemById, quickOpen, wikiLinkPages, wikiLinkPicker, workItemIdC
 import { availableRightTabs } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
+import { closeSide, initSideBySide, openBeside, refreshOtherPane, renderPaneHeads } from "./app/side-by-side.ts";
 import { compareWithCommit, copyWebLink, historyPicker, initFileHistory, openOnWeb } from "./app/file-history.ts";
 import { initStatusView, setIssueFacts } from "./app/status-view.ts";
 import { autoSaveNow, autoSavePending, exclusiveSave, resumeAutoSave, scheduleDiskSave } from "./app/autosave.ts";
@@ -307,6 +308,24 @@ const app = {
   },
   get editors() {
     return allEditors();
+  },
+  get focusPane() {
+    return focusPane;
+  },
+  get ensureSideEditor() {
+    return ensureSideEditor;
+  },
+  get otherPane() {
+    return otherPane;
+  },
+  get paneEditor() {
+    return paneEditor;
+  },
+  get focusedPane() {
+    return focusedPane;
+  },
+  setSideDoc(doc: Doc | null): void {
+    paneDocs.side = doc;
   },
   get openBeside() {
     return openBeside;
@@ -1070,7 +1089,7 @@ let updater: Updater | null = null;
 /** 按下 Ctrl+Shift+V 後的短時間內，貼上一律用純文字。 */
 let plainPasteUntil = 0;
 
-type Pane = "main" | "side";
+export type Pane = "main" | "side";
 /** 並排編輯時游標所在的那一邊；「目前的文件」（active、editor、kind 等）都是那一邊的。 */
 let focusedPane: Pane = "main";
 /** 兩邊各顯示哪一份文件（沒有並排時 side 是 null）。 */
@@ -2158,8 +2177,6 @@ function renderTabs(): void {
 // 存檔、格式、找字、大綱、狀態列都跟著它；另一邊的內容存在它的分頁物件裡（和沒顯示的分頁一樣）。
 
 let sideEditor: Editor | null = null;
-const mainPaneHead = $("#main-pane-head");
-const sidePaneHead = $("#side-pane-head");
 
 /** 兩邊的編輯器（設定改變時都要套用）。 */
 function allEditors(): Editor[] {
@@ -2224,134 +2241,7 @@ function focusPane(pane: Pane, focusView = false): void {
   if (focusView) editor.view.focus();
 }
 
-/** 在右邊並排開啟（已經在右邊就換過去；目前的文件要移到右邊時，左邊換成旁邊的分頁）。 */
-function openBeside(doc: Doc): void {
-  if (narrowQuery.matches) {
-    toast(t("視窗太窄，放不下並排的兩份文件。"));
-    return;
-  }
-  if (paneDocs.side === doc) {
-    focusPane("side", true);
-    return;
-  }
-  if (doc === paneDocs.main) {
-    if (paneDocs.side) {
-      toast(t("「{name}」已經在左邊了。", { name: docName(doc) }));
-      return;
-    }
-    const i = docs.indexOf(doc);
-    const neighbour = docs[i - 1] ?? docs[i + 1];
-    if (!neighbour) {
-      toast(t("要並排編輯，請先再開一份文件。"));
-      return;
-    }
-    activate(neighbour);
-  }
-  // 預覽要讓出位置：分割、只看預覽時改成即時預覽。工作項目等並排在右邊時收起來。
-  if (view === "split" || view === "preview") setView("live");
-  hideItem();
-  if (focusedPane === "side") focusPane("main");
-  const ed = ensureSideEditor();
-  paneDocs.side = doc;
-  if (doc.state) ed.restore(doc.state, doc.kind, doc.scrollTop);
-  else ed.load(loadDraft(doc.id) ?? "", doc.kind);
-  ed.setFileName(doc.name);
-  doc.state = ed.state;
-  // 草稿被清掉的分頁：從檔案讀回內容（讀到後在 refreshOtherPane 換上）。
-  const path = docPath(doc);
-  if (doc.unloaded && path && desktop && !loadDraft(doc.id)) {
-    void reloadDoc(doc, path)
-      .then(() => renderTabs())
-      .catch(() => {
-        if (!isRemote(path)) doc.missing = true;
-        renderTabs();
-      });
-  }
-  applyLayout();
-  focusPane("side", true);
-  renderTabs();
-}
-
-/** 關閉並排：右邊的文件留在分頁裡，游標回到左邊。 */
-function closeSide(): void {
-  if (!paneDocs.side) return;
-  if (focusedPane === "side") focusPane("main");
-  paneDocs.side = null;
-  applyLayout();
-  renderTabs();
-  renderPaneHeads();
-  // 焦點在藏起來的右邊編輯器或按掉的按鈕上：放回左邊的編輯器，不要掉到 body。
-  const at = document.activeElement as HTMLElement | null;
-  if (!at || at === document.body || !at.checkVisibility()) editor.view.focus();
-}
-
-/**
- * 另一邊（游標不在的那一邊）的文件被別的地方換掉內容時（例如外部修改後重新讀取），重新顯示；
- * 那份文件已經關掉（例如切換專案）時關閉並排。
- */
-function refreshOtherPane(): void {
-  const pane = otherPane();
-  if (!pane) return;
-  const doc = paneDocs[pane]!;
-  if (!docs.includes(doc) || !docs.includes(active)) {
-    closeSide();
-    return;
-  }
-  const ed = paneEditor(pane)!;
-  if (doc.state?.doc === ed.state.doc) return;
-  if (doc.state) ed.restore(doc.state, doc.kind, ed.view.scrollDOM.scrollTop);
-  else ed.load(loadDraft(doc.id) ?? "", doc.kind);
-  doc.state = ed.state;
-}
-
-/** 兩邊上方的文件名稱：游標所在的那一邊標出來；右邊有「關閉並排」。 */
-function renderPaneHeads(): void {
-  const on = !!paneDocs.side;
-  mainPaneHead.hidden = !on;
-  if (!on) return;
-  const head = (el: HTMLElement, pane: Pane) => {
-    const doc = paneDocs[pane]!;
-    const focused = pane === focusedPane;
-    const label = Object.assign(document.createElement("span"), { className: "pane-head-name", textContent: docName(doc) });
-    label.title = (focused ? cur.fileHandle?.path : doc.path) ?? docTooltip(doc);
-    const parts: Node[] = [icon(doc.wiki ? "book-open-text" : "file-text"), label];
-    if (doc.dirty) {
-      const dot = document.createElement("span");
-      dot.className = "pane-head-dirty";
-      dot.title = t("尚未存檔");
-      parts.push(dot);
-    }
-    parts.push(Object.assign(document.createElement("span"), { className: "pane-head-spacer" }));
-    if (pane === "side") {
-      const close = document.createElement("button");
-      close.type = "button";
-      close.className = "btn icon-only";
-      close.title = t("關閉並排（文件留在分頁裡）");
-      close.setAttribute("aria-label", close.title);
-      close.append(icon("x"));
-      close.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeSide();
-      });
-      parts.push(close);
-    }
-    el.replaceChildren(...parts);
-    el.classList.toggle("focused", focused);
-  };
-  head(mainPaneHead, "main");
-  head(sidePaneHead, "side");
-}
-
-for (const [el, pane] of [
-  [mainPaneHead, "main"],
-  [sidePaneHead, "side"],
-] as const) {
-  el.addEventListener("mousedown", (e) => {
-    if ((e.target as Element).closest("button")) return;
-    e.preventDefault();
-    focusPane(pane, true);
-  });
-}
+initSideBySide();
 mainEditor.view.dom.addEventListener("focusin", () => focusPane("main"));
 
 function activate(doc: Doc): void {
