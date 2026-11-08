@@ -4,6 +4,7 @@ import {
   ASSISTANT_ACTIONS,
   conversation,
   customActions,
+  projectIndex,
   noteName,
   transcriptMarkdown,
   estimateUsd,
@@ -115,4 +116,22 @@ test("對話存成筆記：檔名有日期時間，問題用引言，回答照�
     md,
     "# 助理對話\n\n2026-11-08 09:05 · NAS 備份規劃\n\n---\n\n> 這份文件在講什麼？\n> 請簡短\n\n在講 **NAS 備份**。\n\n---\n\n> 摘要\n\n- 兩份備份\n- 每晚自動\n",
   );
+});
+
+test("建議連結和標籤：筆記名稱去掉 .md、不列目前的文件；標籤依出現次數", () => {
+  const idx = projectIndex(
+    [
+      { rel: "筆記/家用網路.md", tags: ["網路", "家裡"] },
+      { rel: "NAS 備份規劃.md", tags: ["備份", "網路"] },
+      { rel: "電腦清單.md", tags: ["網路"] },
+      { rel: "圖片/截圖.png", tags: [] },
+    ],
+    "NAS 備份規劃.md",
+  );
+  assert.deepEqual(idx.notes, ["筆記/家用網路", "電腦清單"].sort((a, b) => a.localeCompare(b, "zh-Hant")));
+  // 「網路」出現在三份文件，排第一；其他各一次。
+  assert.equal(idx.tags[0], "網路");
+  assert.deepEqual([...idx.tags].sort(), ["備份", "家裡", "網路"].sort());
+  const content = userContent("建議", { doc: null, selection: "", index: { notes: ["家用網路"], tags: ["網路", "備份"] } });
+  assert.equal(content, "<notes>\n家用網路\n</notes>\n\n<tags>\n#網路 #備份\n</tags>\n\n建議");
 });
