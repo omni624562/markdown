@@ -12,6 +12,7 @@ import {
   ASSISTANT_ACTIONS,
   type AssistantAction,
   MODEL_LABELS,
+  briefingTasks,
   conversation,
   customActions,
   type NoteText,
@@ -32,7 +33,7 @@ import {
   userContent,
 } from "../assistant-text.ts";
 import { type AssistantImage, type AssistantMessage, type AssistantRunEvent, type AssistantUsage, desktop } from "../desktop.ts";
-import { t } from "../i18n.ts";
+import { currentLang, t } from "../i18n.ts";
 import { CLAUDE_MODELS, type ClaudeModel } from "../settings.ts";
 import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
@@ -146,6 +147,13 @@ function docName(): string {
 }
 
 /** 這次會送出的內容（標籤，可以拿掉目前的文件）。 */
+/** 今天的日期（YYYY-MM-DD 星期幾），給今日簡報用。 */
+function todayLabel(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  const week = d.toLocaleDateString(currentLang() === "en" ? "en" : "zh-TW", { weekday: "long" });
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${week}`;
+}
+
 /** 標籤列目前顯示的內容（判斷要不要重畫）。 */
 let shownChips = "";
 function chipsKey(): string {
@@ -450,7 +458,19 @@ async function send(question: string, action: AssistantAction | null = null): Pr
       return;
     }
   }
-  const ctx = { doc: includeDoc ? { name: docName(), text: app.editor.text } : null, selection: sel.text, index, notes };
+  // 今日簡報：整個專案還沒完成的待辦（不送目前的文件）。
+  let tasks: { today: string; list: string } | undefined;
+  if (action?.needsTasks) {
+    const docs = await indexedDocs().catch(() => []);
+    tasks = { today: todayLabel(new Date()), list: briefingTasks(docs.map((d) => ({ rel: d.rel, tasks: d.info.tasks }))) };
+  }
+  const ctx = {
+    doc: includeDoc && !action?.needsTasks ? { name: docName(), text: app.editor.text } : null,
+    selection: action?.needsTasks ? "" : sel.text,
+    index,
+    notes,
+    tasks,
+  };
   const content = userContent(question, ctx);
   const system = systemPrompt(mode, project);
   const model = app.settings.value.claudeModel;
@@ -872,7 +892,8 @@ export function runAssistantAction(id: AssistantAction["id"]): void {
   const action = [...ASSISTANT_ACTIONS, ...customActions(app.settings.value.assistantActions)].find((a) => a.id === id);
   if (!action) return;
   toggleAssistant(true);
-  void send(action.prompt(), action);
+  // 第一次打開時要先知道有沒有金鑰，否則會被當成還沒設定而不送出。
+  void refreshStatus().then(() => send(action.prompt(), action));
 }
 
 export function initAssistant(): void {

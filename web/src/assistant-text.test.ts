@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   ASSISTANT_ACTIONS,
   conversation,
+  briefingTasks,
   customActions,
   pickNotes,
   queryTerms,
@@ -155,4 +156,31 @@ test("問整個專案：依問題挑出相關的筆記，超過字數上限就�
   assert.match(systemPrompt("answer", true), /\[\[筆記名稱\]\]/);
   assert.doesNotMatch(systemPrompt("answer"), /<note>/);
   assert.equal(userContent("問", { doc: null, selection: "", notes: [{ name: "a\"b", text: "內容" }] }), "<note name=\"a'b\">\n內容\n</note>\n\n問");
+});
+
+test("今日簡報：只列還沒完成的待辦，有截止日的依日期在前，寫出在哪份筆記與負責人", () => {
+  const list = briefingTasks([
+    {
+      rel: "工作/週報.md",
+      tasks: [
+        { done: false, text: "寫週報", due: "2026-11-09", owners: [] },
+        { done: true, text: "已經做完", due: "2026-11-01", owners: [] },
+      ],
+    },
+    {
+      rel: "NAS 備份規劃.md",
+      tasks: [
+        { done: false, text: "買硬碟", due: null, owners: ["王小明"] },
+        { done: false, text: "設定排程", due: "2026-11-07", owners: [] },
+      ],
+    },
+  ]);
+  assert.equal(
+    list,
+    ["- [ ] 設定排程（NAS 備份規劃，due 2026-11-07）", "- [ ] 寫週報（工作/週報，due 2026-11-09）", "- [ ] 買硬碟（NAS 備份規劃，@王小明）"].join("\n"),
+  );
+  assert.equal(
+    userContent("簡報", { doc: null, selection: "", tasks: { today: "2026-11-08 星期日", list: "- [ ] 寫週報" } }),
+    "<today>2026-11-08 星期日</today>\n\n<tasks>\n- [ ] 寫週報\n</tasks>\n\n簡報",
+  );
 });

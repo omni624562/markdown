@@ -1174,6 +1174,8 @@ export const ui: Record<string, Translation> = {
   "請把選取的文字精簡到大約一半的長度，保留重點，保留 Markdown 格式。": "Shorten the selected text to about half its length, keeping the key points and the Markdown formatting.",
   "請接著選取的文字（沒有選取時接著文件最後）往下寫一到兩段，語氣和用詞跟前文一致。只輸出新寫的內容。": "Continue writing one or two paragraphs after the selected text (or the end of the document if nothing is selected), matching the tone and wording. Output only the new text.",
   "轉成流程圖": "Make a Flowchart",
+  "今日簡報": "Today's Briefing",
+  "請根據 <tasks> 幫我做今天（<today>）的簡報：先列已經過期的、今天到期的，再列這週內到期的，最後建議今天先做哪三件事並說明原因。條列、簡短，每項後面寫在哪份筆記。沒有待辦時直接說今天沒有待辦。": "Using <tasks>, give me a briefing for today (<today>): first what's overdue and due today, then what's due this week, and finally suggest the three things to do first today and why. Keep it short with bullet points, and note which note each item is in. If there are no to-dos, just say so.",
   "上網查": "Web search",
   "讓 Claude 上網搜尋（每次搜尋約 US$0.01）": "Let Claude search the web (about US$0.01 per search)",
   "來源": "Sources",
