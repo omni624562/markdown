@@ -21,7 +21,7 @@ import { type WikiPageInfo, myChanges } from "../wiki-coedit.ts";
 import { isWikiShortcut } from "../wiki-shortcuts.ts";
 import { pageName, wikiMarkdown, wikiPageLink } from "../wiki-text.ts";
 import { openDiagram, copyDiagram, openUrl } from "./activity-bar.ts";
-import { finishWikiEdit } from "./ado-files.ts";
+import { createWikiPage, deleteWikiPage, editWikiPage, finishWikiEdit, openRepoFileLink, repoImagesPlugin, showIssue, wikiServerEtag } from "./ado-files.ts";
 import { openRemoteLink } from "./ado-links.ts";
 import { linkWorkItemRefs } from "./work-item-refs.ts";
 import { markPageHero } from "../ui/page-hero.ts";
@@ -38,6 +38,11 @@ import { barShortcuts, toggleWikiShortcut, wikiPanel, workItemsPanel, issuesPane
 import type { Doc } from "../main.ts";
 import { chatgptButton, chatgptIssueHooks } from "./chatgpt.ts";
 import { app } from "./context.ts";
+import { setIssueFacts } from "./status-view.ts";
+import { commands } from "./commands.ts";
+import { renderOutline } from "./outline-list.ts";
+import { renderSaveState, updateActiveHeading } from "./outline.ts";
+import { workItemChipsPlugin } from "./work-item-chips.ts";
 
 
 // 在 init 時建立。
@@ -146,7 +151,7 @@ async function fetchWikiLatest(doc: Doc): Promise<{ content: string; etag: strin
 async function compareWikiLatest(doc: Doc): Promise<void> {
   if (doc !== app.active) return;
   const latest = await fetchWikiLatest(doc);
-  if (latest.etag) app.wikiServerEtag.set(doc.id, latest.etag);
+  if (latest.etag) wikiServerEtag.set(doc.id, latest.etag);
   wikiNewer.delete(doc.id);
   renderWikiBar();
   const started = app.review.start(latest.content, {
@@ -180,12 +185,12 @@ export async function loadWikiLatest(doc: Doc, latest?: { content: string; etag:
     wikiMineCollapsed.delete(doc.id);
   }
   app.editor.replaceAll(latest.content, { userEvent: "input.reload", isolate: true });
-  app.wikiServerEtag.delete(doc.id);
+  wikiServerEtag.delete(doc.id);
   wikiNewer.delete(doc.id);
   doc.wiki = { ...doc.wiki!, etag: latest.etag };
   storage.save(`wiki-base:${doc.id}`, latest.content);
   app.setBaseline(latest.content, true);
-  app.renderSaveState();
+  renderSaveState();
   app.renderTabs();
   renderWikiBar();
   renderWikiMine();
@@ -373,7 +378,7 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
   let webUrl = wiki.webUrl ?? "";
   const title = pageName(path);
   offlineRefs.set(`wiki:${wiki.id}:${path}`, { type: "wiki", wiki, path });
-  void app.showIssue({
+  void showIssue({
     key: `wiki:${wiki.id}:${path}`,
     origin: { kind: "wiki", icon: "book-open-text", text: "Azure DevOps Wiki" },
     label: wiki.name,
@@ -383,12 +388,12 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
     },
     fileName: issueFileName(wiki.name, title),
     // 程式碼 Wiki 的內容在 Git 儲存庫裡，要用 Git 改；專案 Wiki 可以直接編輯、存回。
-    edit: wiki.code ? undefined : () => void app.editWikiPage(wiki, path).catch(reportError),
+    edit: wiki.code ? undefined : () => void editWikiPage(wiki, path).catch(reportError),
     history: wiki.code
       ? undefined
       : () => openWikiHistory({ projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path }, wiki),
-    addChild: wiki.code ? undefined : () => void app.createWikiPage(wiki, path).catch(reportError),
-    remove: wiki.code ? undefined : () => void app.deleteWikiPage(wiki, path).catch(reportError),
+    addChild: wiki.code ? undefined : () => void createWikiPage(wiki, path).catch(reportError),
+    remove: wiki.code ? undefined : () => void deleteWikiPage(wiki, path).catch(reportError),
     backlinks: () => void openWikiBacklinks(wiki, path).catch(reportError),
     move: wiki.code ? undefined : () => void moveWikiPage(wiki, path).catch(reportError),
     shortcut: {
@@ -468,20 +473,20 @@ export function initWikiEdit(): void {
   });
   issueView = new IssueView(app.$(".workspace"), {
     decorateFailed: (error) =>
-      toast(t("畫面有一部分沒辦法顯示（{error}），內容照常顯示。可以用「{command}」回報。", { error, command: app.commands.title("copy-error-log") }), {
+      toast(t("畫面有一部分沒辦法顯示（{error}），內容照常顯示。可以用「{command}」回報。", { error, command: commands.title("copy-error-log") }), {
         tone: "error",
       }),
     render(markdown, into) {
       issuePreview ??= new Preview(into, [
         highlightPlugin(),
-        app.workItemChipsPlugin,
+        workItemChipsPlugin,
         // Wiki 常用流程圖與數學式：和本機預覽一樣畫出來（依同樣的設定）。
         mathPlugin(() => app.settings.value.math),
         mermaidPlugin(() => app.settings.value.mermaid, { open: (svg) => openDiagram(svg), copy: (svg) => void copyDiagram(svg) }),
         tablesPlugin(),
         app.adoImagesPlugin,
         app.wikiImagesPlugin,
-        app.repoImagesPlugin,
+        repoImagesPlugin,
         {
           name: "remote-images",
           apply() {},
@@ -494,12 +499,12 @@ export function initWikiEdit(): void {
       // 大綱改列這一頁的標題；捲動內容時標示目前讀到的段落。
       if (app.outlineView) {
         app.outlineView = { ...app.outlineView, headings: result.headings, body: into };
-        app.renderOutline(result.headings);
-        app.updateActiveHeading();
+        renderOutline(result.headings);
+        updateActiveHeading();
       }
       if (!into.dataset.outlineScroll) {
         into.dataset.outlineScroll = "1";
-        into.parentElement?.addEventListener("scroll", () => app.outlineView && app.updateActiveHeading(), { passive: true });
+        into.parentElement?.addEventListener("scroll", () => app.outlineView && updateActiveHeading(), { passive: true });
       }
     },
     // 連到 Azure DevOps 工作項目、Wiki 頁面的網址在 oMarker 裡開（網址寫法和連線設定不同也認得），其他用瀏覽器。
@@ -508,7 +513,7 @@ export function initWikiEdit(): void {
         .then((opened) => (opened ? undefined : desktop?.openExternal(url)))
         .catch(reportError),
     browse: (url) => openUrl(url),
-    follow: (href) => app.openRepoFileLink(href),
+    follow: (href) => openRepoFileLink(href),
     chatgpt: chatgptIssueHooks,
     copyAsDocument(name, markdown) {
       const doc = app.makeDoc({ name, kind: "markdown", baseline: app.hash("") });
@@ -517,12 +522,12 @@ export function initWikiEdit(): void {
       toast(t("已複製成新的 Markdown 分頁，修改不會回寫到伺服器"));
     },
     offline: issueOffline,
-    facts: (list) => app.setIssueFacts(list),
+    facts: (list) => setIssueFacts(list),
     opened(source) {
       itemOpened(source);
       app.issueKey = source.key;
       app.outlineView = { key: source.key, headings: [], body: null };
-      app.renderOutline([]);
+      renderOutline([]);
       // Wiki 頁面、儲存庫檔案讀到內容時才設定（圖片的相對路徑以它為準）。
       app.wikiPage = null;
       app.repoFile = null;
@@ -545,8 +550,8 @@ export function initWikiEdit(): void {
       markBarShortcuts();
       app.wikiPage = null;
       app.outlineView = null;
-      app.renderOutline(app.docHeadings);
-      app.updateActiveHeading();
+      renderOutline(app.docHeadings);
+      updateActiveHeading();
       workItemsPanel?.select(null);
       issuesPanel?.select(null);
       wikiPanel?.select(null);

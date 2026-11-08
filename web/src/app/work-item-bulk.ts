@@ -9,8 +9,9 @@ import { t } from "../i18n.ts";
 import { toast } from "../ui/toast.ts";
 import { iterationGroups } from "../work-item-fields.ts";
 import { changeFor, commonStates } from "../work-item-bulk-model.ts";
-import { app } from "./context.ts";
 import { forgetListCopies } from "./offline-copies.ts";
+import { issueView } from "./wiki-edit.ts";
+import { workItemsPanel } from "./work-items-panel.ts";
 
 /** 「不變」的選項值。 */
 const KEEP = "";
@@ -152,8 +153,8 @@ export function bulkEditWorkItems(items: AdoWorkItem[], done: () => void): void 
       dialog.close();
       done();
       forgetListCopies("wi-");
-      void app.workItemsPanel?.refresh();
-      void app.issueView.refresh();
+      void workItemsPanel?.refresh();
+      void issueView.refresh();
       if (!failed.length) toast(t("已修改 {n} 個工作項目", { n: changed }), { tone: "success" });
       else
         toast(t("改好 {ok} 個，{fail} 個沒改成：{details}", { ok: changed, fail: failed.length, details: failed.join(t("；")) }), {

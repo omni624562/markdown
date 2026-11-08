@@ -26,6 +26,10 @@ import { showIssue } from "./ado-files.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { showWorkItem } from "./work-item-actions.ts";
 import { workItemLoaded } from "./work-item-updates.ts";
+import { commands } from "./commands.ts";
+import { issueView } from "./wiki-edit.ts";
+import { openWorkItemById } from "./quick-open.ts";
+import { showPanel } from "./workspace-ui.ts";
 
 /** 「工作」類型（卡片）：各種流程範本的名稱。 */
 const TASK_KINDS = new Set(["Task", "工作"]); // i18n-ignore：伺服器上的類型名稱
@@ -117,7 +121,7 @@ function boardSource(s: Selection): IssueSource {
     async load() {
       // 有副本就先顯示（不用等伺服器），背景讀完再重畫一次。
       const update = () => {
-        if (app.issueView.shownKey === key) void app.issueView.refresh(true);
+        if (issueView.shownKey === key) void issueView.refresh(true);
       };
       const items = await withOfflineCopy(`board:${key}`, () => desktop!.adoBoard(s.project, s.team.name, s.iteration.path), update);
       fresh = freshnessOf(items);
@@ -208,7 +212,7 @@ export function stateDot(state: string): HTMLElement {
 function reloadAfterEdit(id: number): void {
   justEdited.add(id);
   forgetListCopies("board");
-  void app.issueView.refresh(true);
+  void issueView.refresh(true);
 }
 
 function scopeOf(s: Selection): BoardScope {
@@ -330,7 +334,7 @@ function renderBoard(body: HTMLElement, board: Board, s: Selection, raw: Map<num
       const link = card(p, raw, false);
       link.classList.add("tb-parent-card");
       // 上層項目不在這個 Sprint 裡時，點了用編號開。
-      if (!raw.has(p.id)) link.addEventListener("click", () => void app.openWorkItemById(p.id));
+      if (!raw.has(p.id)) link.addEventListener("click", () => void openWorkItemById(p.id));
       const state = document.createElement("span");
       state.className = "workitem-state";
       state.append(stateDot(p.state), p.state);
@@ -413,7 +417,7 @@ function dropZone(cell: HTMLElement, s: Selection, raw: Map<number, AdoBoardItem
         reportError(err);
       }
       forgetListCopies("board");
-      void app.issueView.refresh(true);
+      void issueView.refresh(true);
     })();
   });
   void s;
@@ -551,7 +555,7 @@ async function fillPanel(): Promise<void> {
     if (person) storage.save("board-person", person);
     else storage.remove("board-person");
     // 開著工作板時馬上套用。
-    if (app.issueView.shownKey?.startsWith("board:")) app.issueView.rerender();
+    if (issueView.shownKey?.startsWith("board:")) issueView.rerender();
   });
   open.addEventListener("click", openBoard);
   await loadTeams();
@@ -566,14 +570,14 @@ export function initTaskboard(): void {
     forgetListCopies("sprints:");
     forgetListCopies("wi-filters");
     boardPanelShown();
-    if (app.issueView.shownKey?.startsWith("board:")) void app.issueView.refresh();
+    if (issueView.shownKey?.startsWith("board:")) void issueView.refresh();
   });
-  app.commands.register({
+  commands.register({
     id: "show-board",
     title: t("顯示工作板（Azure DevOps）"),
     group: "Azure DevOps",
     icon: "layout-grid",
     when: () => !!app.ado?.account,
-    run: () => app.showPanel("board"),
+    run: () => showPanel("board"),
   });
 }

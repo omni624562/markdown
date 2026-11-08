@@ -13,6 +13,7 @@ import { type FileShortcut, SHORTCUT_DRAG_TYPE, fileExtension, fileInitial, isFi
 import { app } from "./context.ts";
 import { selectedItemId } from "./item-tabs.ts";
 import { addBarShortcut, barShortcuts, removeBarShortcut, setBarShortcuts } from "./work-items-panel.ts";
+import { openPath } from "./workspace-ui.ts";
 
 /** 可以放到圖示列的檔案（桌面版、本機的檔案）；網頁版、遠端資料夾的檔案、還沒存成檔案的文件是 null。 */
 export function fileShortcut(path: string | null | undefined): FileShortcut | null {
@@ -57,7 +58,7 @@ export const fileTabMenuEntries = (): FileMenuEntry[] => menuEntries(() => (app.
  */
 export async function openFileShortcut(item: FileShortcut): Promise<boolean> {
   try {
-    await app.openPath(item.file);
+    await openPath(item.file);
     return true;
   } catch (e) {
     const exists = await desktop?.pathsExist([item.file]).then(

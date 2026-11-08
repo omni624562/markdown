@@ -7,6 +7,8 @@ import { toast } from "../ui/toast.ts";
 import { imageFiles, insertImages } from "./image-paste.ts";
 import { dropOnWorkItem, overWorkItem } from "./work-item-attach.ts";
 import { app } from "./context.ts";
+import { importDocxData } from "./activity-bar.ts";
+import { reportError } from "./git-actions.ts";
 
 
 // 在 init 時建立。
@@ -42,20 +44,20 @@ export function initFileDrop(): void {
     const files = [...(e.dataTransfer?.files ?? [])];
     const images = imageFiles(e.dataTransfer?.files);
     if (images.length && images.length === files.length) {
-      await insertImages(images).catch(app.reportError);
+      await insertImages(images).catch(reportError);
       return;
     }
     const file = files.find((f) => !images.includes(f));
     if (!file) return;
     if (/\.docx$/i.test(file.name)) {
-      await app.importDocxData(file.name, await file.arrayBuffer(), null).catch(app.reportError);
+      await importDocxData(file.name, await file.arrayBuffer(), null).catch(reportError);
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
       toast(t("檔案超過 20 MB，可能不是文字檔。"), { tone: "error" });
       return;
     }
-    const text = await readTextFile(file).catch(app.reportError);
+    const text = await readTextFile(file).catch(reportError);
     if (text === undefined) return;
     app.openDocument(file.name, text, null);
     toast(t("已開啟「{name}」", { name: file.name }));

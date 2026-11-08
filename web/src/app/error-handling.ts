@@ -6,7 +6,7 @@ import { OfflineError } from "../ado-online.ts";
 import { errorEntries, errorLogText, isNoise, logError } from "../error-log.ts";
 import { t } from "../i18n.ts";
 import { toast } from "../ui/toast.ts";
-import { app } from "./context.ts";
+import { commands } from "./commands.ts";
 
 /** 同一段時間只提示一次（一個錯誤常常連續發生好幾次）。 */
 const NOTICE_GAP = 10_000;
@@ -17,10 +17,14 @@ const COPY_LOG_TITLE = () => t("說明：複製錯誤紀錄");
 
 /**
  * 提示裡的指令名稱：從指令中心取，指令改名時跟著變（「⋯」→「說明」裡也是這個名稱）。
- * 啟動早期還沒登記指令（甚至還沒有 `app`）時就出錯，用這裡登記的名稱。
+ * 啟動早期還沒登記指令（甚至指令中心的模組還沒載入）時就出錯，用這裡登記的名稱。
  */
 function copyLogTitle(): string {
-  return app?.commands.get(COPY_LOG)?.title ?? COPY_LOG_TITLE();
+  try {
+    return commands.get(COPY_LOG)?.title ?? COPY_LOG_TITLE();
+  } catch {
+    return COPY_LOG_TITLE();
+  }
 }
 
 function unexpected(where: string, e: unknown): void {
@@ -53,7 +57,7 @@ window.addEventListener("error", (e) => unexpected(t("未處理的錯誤"), e.er
 window.addEventListener("unhandledrejection", (e) => unexpected(t("未處理的錯誤"), e.reason));
 
 export function initErrorHandling(): void {
-  app.commands.register({
+  commands.register({
     id: COPY_LOG,
     title: COPY_LOG_TITLE(),
     group: t("說明"),

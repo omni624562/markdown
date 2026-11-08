@@ -6,6 +6,8 @@ import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { commands } from "./commands.ts";
+import { settingsDialog } from "./settings-ui.ts";
 
 
 // 在 init 時建立。
@@ -80,7 +82,7 @@ export async function saveAdoDiagnostics(): Promise<void> {
 }
 
 export function initAdoStatus(): void {
-  app.commands.register({
+  commands.register({
     id: "ado-diagnostics",
     title: t("Azure DevOps：把診斷資料存檔…"),
     group: "Azure DevOps",
@@ -90,7 +92,7 @@ export function initAdoStatus(): void {
   });
   adoStatus = app.$("#status-ado");
   adoStatus.addEventListener("click", () => {
-    if (adoPing?.status === "auth") app.settingsDialog.open("Azure DevOps");
+    if (adoPing?.status === "auth") settingsDialog.open("Azure DevOps");
     else void pingAdo();
   });
   window.setInterval(() => {

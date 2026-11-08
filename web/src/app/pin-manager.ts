@@ -9,6 +9,7 @@ import { ACTIVITY_LIMIT, FILES_HEAD_LIMIT } from "../settings.ts";
 import { icon } from "../ui/icons.ts";
 import { sortByGroup } from "../ui/palette.ts";
 import { app } from "./context.ts";
+import { commands } from "./commands.ts";
 
 type Place = "filesHeadCommands" | "activityCommands";
 
@@ -18,7 +19,7 @@ const LIMIT: Record<Place, number> = { filesHeadCommands: FILES_HEAD_LIMIT, acti
 function pinnable(): Command[] {
   const seen = new Set<string>();
   return sortByGroup(
-    app.commands.all().filter((c) => {
+    commands.all().filter((c) => {
       if (!c.icon || c.id === "palette" || c.id === "pin-manage" || seen.has(c.id)) return false;
       seen.add(c.id);
       return true;

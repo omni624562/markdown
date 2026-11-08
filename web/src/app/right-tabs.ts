@@ -12,6 +12,7 @@ import { assistantEnabled, assistantPanel, assistantShown } from "./assistant.ts
 import { app } from "./context.ts";
 import { wikiPanel } from "./work-items-panel.ts";
 import { outlinePlacedRight, renderBacklinks, wikiPlacedRight } from "./workspace-ui.ts";
+import { updateActiveHeading } from "./outline.ts";
 
 const TAB_KEY = "right-tab";
 const WIDTH_KEY = "outline-right-width";
@@ -58,7 +59,7 @@ export function selectRightTab(tab: RightTab): void {
   }
   app.applyLayout();
   if (rightTab() !== tab || app.$("aside#outline-right").hidden) return;
-  if (tab === "outline") app.updateActiveHeading();
+  if (tab === "outline") updateActiveHeading();
   else if (tab === "backlinks") void renderBacklinks();
   else if (tab === "wiki") wikiPanel?.shown();
   else assistantShown();

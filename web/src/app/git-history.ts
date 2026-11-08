@@ -7,30 +7,34 @@ import type { GitHistory } from "../ui/history-view.ts";
 import { SearchPanel } from "../ui/search-panel.ts";
 import { hideItem } from "./item-tabs.ts";
 import { app } from "./context.ts";
+import { compareWithCommit } from "./file-history.ts";
+import { gitPanel } from "./work-item-updates.ts";
+import { openPath, showPanel } from "./workspace-ui.ts";
+import { reportError } from "./git-actions.ts";
 
 
 export let historyView: GitHistory | null = null;
 
 /** Git 歷史第一次開啟時才載入。 */
 async function gitHistory(): Promise<GitHistory | null> {
-  if (!desktop || !app.gitPanel) return null;
+  if (!desktop || !gitPanel) return null;
   if (historyView) return historyView;
   const { GitHistory } = await import("../ui/history-view.ts");
-  const panel = app.gitPanel;
+  const panel = gitPanel;
   historyView = new GitHistory(app.$(".workspace"), desktop, {
     status: () => panel.status,
     hasUnsaved: () => app.docs.some((d) => d.dirty),
     async openFile(path) {
       historyView?.close();
-      await app.openPath(path);
+      await openPath(path);
     },
     async compareWithCurrent(path, c) {
-      await app.openPath(path);
-      await app.compareWithCommit({ ...c, author: "", time: 0, path });
+      await openPath(path);
+      await compareWithCommit({ ...c, author: "", time: 0, path });
     },
-    openUrl: (url) => void desktop!.openExternal(url).catch(app.reportError),
+    openUrl: (url) => void desktop!.openExternal(url).catch(reportError),
     resolveConflicts(conflicts) {
-      app.showPanel("git");
+      showPanel("git");
       panel.resolveConflicts(conflicts);
     },
     async changed() {
@@ -41,7 +45,7 @@ async function gitHistory(): Promise<GitHistory | null> {
     push: () => panel.push(),
     commit() {
       historyView?.close();
-      app.showPanel("git");
+      showPanel("git");
       panel.focusMessage();
     },
     closed: () => {
@@ -84,7 +88,7 @@ export function initGitHistory(): void {
           app.workspaceRoot
             ? desktop!.search(query, caseSensitive, regex, app.workspaceRoot.path)
             : Promise.reject(new Error(t("還沒有開啟資料夾"))),
-        open: (path, line, column) => void app.openPath(path, line, column).catch(app.reportError),
+        open: (path, line, column) => void openPath(path, line, column).catch(reportError),
         async replace(query, replacement, caseSensitive, regex) {
           if (!app.workspaceRoot) throw new Error(t("還沒有開啟資料夾"));
           app.stash();
@@ -92,7 +96,7 @@ export function initGitHistory(): void {
           const skip = app.docs.filter((d) => (d === app.active ? app.cur.baseline !== app.hash(app.editor.text) : d.dirty)).flatMap((d) => app.docPath(d) ?? []);
           const r = await desktop!.replaceInFolder(query, replacement, caseSensitive, regex, skip, app.workspaceRoot.path);
           app.fileListCache = null;
-          app.gitPanel?.refreshSoon(300);
+          gitPanel?.refreshSoon(300);
           return r;
         },
       })

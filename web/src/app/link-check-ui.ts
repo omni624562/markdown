@@ -15,6 +15,8 @@ import { toast } from "../ui/toast.ts";
 import type { IndexedDoc } from "../workspace-index.ts";
 import { indexedDocs, indexScope, openIndexed } from "./workspace-ui.ts";
 import { app } from "./context.ts";
+import { issueView } from "./wiki-edit.ts";
+import { markdownFiles } from "./wiki-links.ts";
 
 /** 後端一次最多查幾個路徑（和 `paths_exist` 的上限相同，超過會被拒絕）。 */
 const BATCH = 500;
@@ -36,7 +38,7 @@ function problemText(p: LinkProblem): string {
 async function findBroken(docs: IndexedDoc[]): Promise<{ found: Found[]; checked: number }> {
   const folder = indexScope() === "folder";
   if (folder) app.fileListCache ??= await desktop!.listFiles(app.workspaceRoot!.path).catch(() => []);
-  const files = folder && app.fileListCache ? app.markdownFiles(app.fileListCache) : null;
+  const files = folder && app.fileListCache ? markdownFiles(app.fileListCache) : null;
   const found: Found[] = [];
   const ask: { path: string; found: Found }[] = [];
   let checked = 0;
@@ -63,7 +65,7 @@ async function findBroken(docs: IndexedDoc[]): Promise<{ found: Found[]; checked
 
 /** 正在看（或在分頁裡編輯）的 Wiki 頁面：路徑、內容與跳到某個連結的方法；不是 Wiki 頁面時是 null。 */
 function shownWikiPage(): { path: string; text: string; jump(p: LinkProblem): void } | null {
-  const view = app.issueView;
+  const view = issueView;
   if (view.isOpen) {
     if (!view.shownKey?.startsWith("wiki:") || !app.wikiPage) return null;
     return {

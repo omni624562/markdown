@@ -30,7 +30,9 @@ import type { ViewMode } from "../view-modes.ts";
 import { chatgptDesktopFound } from "./chatgpt.ts";
 import { app } from "./context.ts";
 import { saveAdoDiagnostics } from "./ado-status.ts";
-import { drawerQuery } from "./workspace-ui.ts";
+import { drawerQuery, wideQuery } from "./workspace-ui.ts";
+import { commands } from "./commands.ts";
+import { rerenderIssue } from "./wiki-edit.ts";
 
 
 const PREVIEW_WIDTH: Record<Settings["previewWidth"], string> = { narrow: "680px", medium: "820px", wide: "1080px" };
@@ -124,11 +126,11 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
     app.preview.clear();
     app.renderNow();
     for (const ed of editors) refreshLivePreview(ed.view);
-    app.rerenderIssue();
+    rerenderIssue();
   }
   if (changed.includes("termCheck") || changed.includes("termIgnore")) for (const ed of editors) recheckTerms(ed.view);
   if (changed.includes("keybindings")) {
-    app.commands.setBindings(s.keybindings);
+    commands.setBindings(s.keybindings);
     app.refreshKeyHints();
   }
   if (changed.includes("spellCheck") || changed.includes("spellIgnore")) for (const ed of editors) recheckSpelling(ed.view);
@@ -294,7 +296,7 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
       panels: () =>
         panelOrder().map((p) => ({ id: p, label: PANEL_LABELS[p](), icon: PANEL_ICONS[p], available: !app.$(`#side-tab-${p}`).hidden })),
       command(id) {
-        const c = app.commands.get(id);
+        const c = commands.get(id);
         return c ? { title: c.title, icon: c.icon ?? "command" } : null;
       },
       add: () => void addActivityCommand().catch(reportError),
@@ -316,7 +318,7 @@ export function initSettingsUi(): void {
   });
   document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((btn) => {
     const mode = btn.dataset.view as ViewMode;
-    const cmd = app.commands.get(`view-${mode}`)!;
+    const cmd = commands.get(`view-${mode}`)!;
     btn.dataset.keysFor = cmd.id;
     btn.title = app.withKeys(cmd.title, cmd.keys);
     // 視窗窄時只剩圖示（文字藏起來）：螢幕閱讀器仍然要念得出名稱。
@@ -346,7 +348,7 @@ export function initSettingsUi(): void {
     storage.save("split", String(r));
     app.applyLayout();
   });
-  app.wideQuery.addEventListener("change", () => app.applyLayout());
+  wideQuery.addEventListener("change", () => app.applyLayout());
   drawerQuery.addEventListener("change", () => app.applyLayout());
   app.narrowQuery.addEventListener("change", () => {
     // 切換到手機寬度時，大綱抽屜先收起來，避免蓋住內容。

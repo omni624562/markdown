@@ -10,6 +10,9 @@ import { myChanges } from "../wiki-coedit.ts";
 import { inPageScope, pageName, revisionNote } from "../wiki-text.ts";
 import { chatgptButton } from "./chatgpt.ts";
 import { app } from "./context.ts";
+import { editWikiPage } from "./ado-files.ts";
+import { reportError } from "./git-actions.ts";
+import { showWikiPage } from "./wiki-edit.ts";
 
 
 interface WikiRevisionItem {
@@ -37,7 +40,7 @@ export function openWikiHistory(target: WikiHistoryTarget, wiki: AdoWiki | null)
     gitPath,
     revisions: revisions.map((r, i) => ({ ...r, previous: revisions[i + 1]?.id ?? null })),
   }));
-  wikiHistoryLoad.catch(app.reportError);
+  wikiHistoryLoad.catch(reportError);
   wikiHistoryPicker.open();
 }
 
@@ -106,7 +109,7 @@ async function showWikiRevision(r: WikiRevisionItem): Promise<void> {
     ...(gpt ? [gpt] : []),
     button(t("和目前的內容比較"), () => {
       dialog.close();
-      void compareWikiRevision(target, text, who, when).catch(app.reportError);
+      void compareWikiRevision(target, text, who, when).catch(reportError);
     }),
     button(t("關閉"), () => dialog.close(), true),
   );
@@ -120,7 +123,7 @@ async function showWikiRevision(r: WikiRevisionItem): Promise<void> {
 async function compareWikiRevision(target: WikiHistoryTarget & { wiki: AdoWiki | null }, text: string, who: string, when: string): Promise<void> {
   const open = app.docs.find((d) => d.wiki?.wikiId === target.wikiId && d.wiki.path === target.path);
   if (open) app.activate(open);
-  else if (target.wiki) await app.editWikiPage(target.wiki, target.path);
+  else if (target.wiki) await editWikiPage(target.wiki, target.path);
   else return;
   if (!app.active.wiki || app.active.wiki.path !== target.path) return;
   if (app.review.active) app.review.finish();
@@ -149,7 +152,7 @@ export function openWikiRecent(wiki: AdoWiki, scope: string[] | null = null): vo
   recentOf = wiki;
   recentScope = scope;
   recentLoad = desktop!.adoWikiRecent(wiki);
-  recentLoad.catch(app.reportError);
+  recentLoad.catch(reportError);
   recentPicker.open();
 }
 
@@ -203,7 +206,7 @@ export function initWikiHistory(): void {
         toast(t("「{name}」已經刪除了。", { name: pageName(c.path) }));
         return;
       }
-      app.showWikiPage(recentOf, c.path);
+      showWikiPage(recentOf, c.path);
     },
   });
 
@@ -224,6 +227,6 @@ export function initWikiHistory(): void {
       detail: (r.comment && revisionNote(r.comment, wikiHistoryOf?.path ?? "")) || r.id.slice(0, 8),
       icon: "history",
     }),
-    pick: (r) => void showWikiRevision(r).catch(app.reportError),
+    pick: (r) => void showWikiRevision(r).catch(reportError),
   });
 }

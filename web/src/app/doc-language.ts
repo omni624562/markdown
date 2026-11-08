@@ -5,6 +5,7 @@
 import { languages } from "@codemirror/language-data";
 import { replaceExtension } from "../files.ts";
 import { app } from "./context.ts";
+import { renderSaveState } from "./outline.ts";
 
 /** 分頁 → 使用者選的語言（`""` 是純文字、不上色）。沒有記錄的分頁依副檔名。 */
 const chosen = new Map<string, string>();
@@ -28,6 +29,6 @@ export function initDocLanguage(): void {
     const ext = name ? languages.find((l) => l.name === name)?.extensions[0] : undefined;
     if (ext && !app.cur.fileHandle) app.setFileName(replaceExtension(app.cur.fileName, `.${ext}`));
     renderDocLanguage();
-    app.renderSaveState();
+    renderSaveState();
   });
 }

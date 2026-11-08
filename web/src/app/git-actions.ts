@@ -25,6 +25,15 @@ import { selectAll, indentMore, indentLess } from "@codemirror/commands";
 import { app } from "./context.ts";
 import { logError } from "../error-log.ts";
 import { insertMyWorkItems } from "./daily-notes.ts";
+import { TERMINAL_KEYS, commands } from "./commands.ts";
+import { addActivityCommand, startAiTool, symbolPicker } from "./activity-bar.ts";
+import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady } from "./ai-terminal.ts";
+import { copyWebLink, historyPicker, openOnWeb } from "./file-history.ts";
+import { issueView } from "./wiki-edit.ts";
+import { openPath, showPanel } from "./workspace-ui.ts";
+import { reloadDoc } from "./desktop-startup.ts";
+import { settingsDialog } from "./settings-ui.ts";
+import { wikiLinkPicker, workItemLinkPicker } from "./quick-open.ts";
 
 
 /** 開啟衝突的檔案（磁碟上是都採用本機的內容），逐段和「都採用遠端」比較。 */
@@ -32,9 +41,9 @@ export async function resolveMergeConflict(path: string, theirs: string): Promis
   const existing = app.tabForPath(path);
   if (existing) {
     app.activate(existing);
-    await app.reloadDoc(existing, path);
+    await reloadDoc(existing, path);
   } else {
-    await app.openPath(path);
+    await openPath(path);
   }
   if (app.cur.fileHandle?.path !== path) return;
   if (app.review.active) app.review.finish();
@@ -45,7 +54,7 @@ export async function resolveMergeConflict(path: string, theirs: string): Promis
     rejectLabel: t("保留本機"),
   });
   if (!started) toast(t("這個檔案已經處理好了，存檔後按「完成合併」。"));
-  app.showPanel("git", false);
+  showPanel("git", false);
 }
 
 type BranchChoice = { name: string; kind: "local" | "remote" | "new" };
@@ -102,7 +111,7 @@ async function createBranch(): Promise<string | null> {
 /** 拉取遠端的更新，再推送自己的提交（拉取失敗或有衝突時不推送）。 */
 async function gitSync(): Promise<void> {
   if (!gitPanel) return;
-  app.showPanel("git");
+  showPanel("git");
   await gitPanel.pull();
   if (gitPanel.status?.merging) return;
   await gitPanel.push();
@@ -113,7 +122,7 @@ export async function createPullRequest(): Promise<void> {
   if (!desktop || !status?.repo) return;
   if (status.changes.length) {
     toast(t("還有未提交的變更，請先提交再建立 Pull Request。"));
-    app.showPanel("git");
+    showPanel("git");
     return;
   }
   const branch = status.branch?.name ?? "";
@@ -237,7 +246,7 @@ export function reportError(e: unknown): void {
 }
 
 export function initGitActions(): void {
-  app.commands.register(
+  commands.register(
     {
       id: "toggle-terminal",
       title: t("顯示／隱藏終端機"),
@@ -257,7 +266,7 @@ export function initGitActions(): void {
       run() {
         const { from, to } = app.editor.view.state.selection.main;
         if (from === to) toast(t("請先選取要處理的文字。"));
-        else app.aiPicker.open();
+        else aiPicker.open();
       },
     },
     {
@@ -299,7 +308,7 @@ export function initGitActions(): void {
           t("Git：提交變更…"),
           "git-commit-horizontal",
           () => {
-            app.showPanel("git");
+            showPanel("git");
             gitPanel?.focusMessage();
           },
           () => !!gitPanel?.status?.repo,
@@ -339,7 +348,7 @@ export function initGitActions(): void {
         ["ado-items", t("Azure DevOps：工作項目"), "square-kanban", () => showAdo("workitems"), () => !!app.ado?.account],
         ["ado-wiki", t("Azure DevOps：Wiki"), "book-open-text", () => showAdo("wiki"), () => !!app.ado?.account],
         ["ado-offline", t("Azure DevOps：保留離線的頁面…"), "download", () => keptPicker.open(), () => !!desktop && keptPages.length > 0],
-        ["ado-connect", t("Azure DevOps：連線設定…"), "shield-check", () => app.settingsDialog.open("Azure DevOps"), () => !!app.ado],
+        ["ado-connect", t("Azure DevOps：連線設定…"), "shield-check", () => settingsDialog.open("Azure DevOps"), () => !!app.ado],
         ["ado-create-work-item", t("Azure DevOps：建立工作項目…"), "plus", () => createWorkItemDialog(), () => !!app.ado?.account],
         [
           "ado-create-from-selection",
@@ -375,14 +384,14 @@ export function initGitActions(): void {
       title: t("圖示列：新增按鈕…"),
       group: t("檢視"),
       icon: "plus",
-      run: () => app.addActivityCommand(),
+      run: () => addActivityCommand(),
     },
     {
       id: "activity-customize",
       title: t("圖示列：自訂…"),
       group: t("檢視"),
       icon: "settings",
-      run: () => app.settingsDialog.open(t("版面")),
+      run: () => settingsDialog.open(t("版面")),
     },
     {
       id: "git-history",
@@ -407,7 +416,7 @@ export function initGitActions(): void {
       group: t("Git"),
       icon: "external-link",
       when: () => !!desktop && !!app.cur.fileHandle?.path && !!gitPanel?.status?.remote,
-      run: () => void app.openOnWeb().catch(reportError),
+      run: () => void openOnWeb().catch(reportError),
     },
     {
       id: "git-copy-link",
@@ -415,16 +424,16 @@ export function initGitActions(): void {
       group: t("Git"),
       icon: "link",
       when: () => !!desktop && !!app.cur.fileHandle?.path && !!gitPanel?.status?.remote,
-      run: () => void app.copyWebLink().catch(reportError),
+      run: () => void copyWebLink().catch(reportError),
     },
     {
       id: "wiki-history",
       title: t("Wiki 頁面的修改紀錄…"),
       group: "Azure DevOps",
       icon: "history",
-      when: () => !!desktop && (!!app.active.wiki || (app.issueView.isOpen && !!app.wikiPage && !app.wikiPage.wiki.code)),
+      when: () => !!desktop && (!!app.active.wiki || (issueView.isOpen && !!app.wikiPage && !app.wikiPage.wiki.code)),
       run: () => {
-        if (app.issueView.isOpen && app.wikiPage) {
+        if (issueView.isOpen && app.wikiPage) {
           const { wiki, path } = app.wikiPage;
           openWikiHistory({ projectId: wiki.projectId, wikiId: wiki.id, repositoryId: wiki.repositoryId, path }, wiki);
         } else if (app.active.wiki) openWikiHistory(app.active.wiki, null);
@@ -447,7 +456,7 @@ export function initGitActions(): void {
       title: t("Wiki 頁面改名或搬移…"),
       group: "Azure DevOps",
       icon: "text-cursor-input",
-      when: () => !!desktop && !!app.ado?.account && app.issueView.isOpen && !!app.wikiPage && !app.wikiPage.wiki.code,
+      when: () => !!desktop && !!app.ado?.account && issueView.isOpen && !!app.wikiPage && !app.wikiPage.wiki.code,
       run: () => {
         if (app.wikiPage) void moveWikiPage(app.wikiPage.wiki, app.wikiPage.path).catch(reportError);
       },
@@ -457,7 +466,7 @@ export function initGitActions(): void {
       title: t("哪些頁面連到這一頁…"),
       group: "Azure DevOps",
       icon: "link-2",
-      when: () => !!desktop && !!app.ado?.account && app.issueView.isOpen && !!app.wikiPage,
+      when: () => !!desktop && !!app.ado?.account && issueView.isOpen && !!app.wikiPage,
       run: () => {
         if (app.wikiPage) void openWikiBacklinks(app.wikiPage.wiki, app.wikiPage.path).catch(reportError);
       },
@@ -468,7 +477,7 @@ export function initGitActions(): void {
       group: t("檔案"),
       icon: "history",
       when: () => !!desktop && !!app.cur.fileHandle?.path,
-      run: () => app.historyPicker.open(),
+      run: () => historyPicker.open(),
     },
     {
       id: "check-update",
@@ -494,7 +503,7 @@ export function initGitActions(): void {
         icon: "sparkles",
         // 沒開啟 AI 協作或沒安裝時也列出來，按下去說明怎麼開始，而不是找不到這個功能。
         when: () => !!app.terminal,
-        run: () => void app.startAiTool(tool),
+        run: () => void startAiTool(tool),
       }),
     ),
     {
@@ -503,7 +512,7 @@ export function initGitActions(): void {
       group: t("插入"),
       icon: "square-kanban",
       when: () => !!desktop && !!app.ado?.account && app.cur.kind === "markdown" && app.view !== "preview",
-      run: () => app.workItemLinkPicker.open(),
+      run: () => workItemLinkPicker.open(),
     },
     {
       id: "insert-my-work-items",
@@ -519,7 +528,7 @@ export function initGitActions(): void {
       group: t("插入"),
       icon: "book-open-text",
       when: () => !!desktop && !!app.ado?.account && app.cur.kind === "markdown" && app.view !== "preview",
-      run: () => app.wikiLinkPicker.open(),
+      run: () => wikiLinkPicker.open(),
     },
     {
       id: "insert-symbol",
@@ -528,7 +537,7 @@ export function initGitActions(): void {
       icon: "omega",
       keys: "Mod-Alt-s",
       when: () => app.view !== "preview",
-      run: () => app.symbolPicker.open(),
+      run: () => symbolPicker.open(),
     },
     ...(
       [
@@ -558,8 +567,8 @@ export function initGitActions(): void {
       group: t("AI 與終端機"),
       icon: "square-terminal",
       keys: "Mod-Alt-j",
-      when: () => app.terminalAiReady() && app.view !== "preview",
-      run: () => app.sendSelectionToAi(),
+      when: () => terminalAiReady() && app.view !== "preview",
+      run: () => sendSelectionToAi(),
     },
     {
       id: "ai-settings",
@@ -567,7 +576,7 @@ export function initGitActions(): void {
       group: t("AI 與終端機"),
       icon: "sparkles",
       when: () => !!desktop,
-      run: () => app.settingsDialog.open(t("AI 協作")),
+      run: () => settingsDialog.open(t("AI 協作")),
     },
     {
       id: "git-claude-workflow",
@@ -575,7 +584,7 @@ export function initGitActions(): void {
       group: t("Git"),
       icon: "github",
       when: () => !!gitPanel?.status?.repo && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path),
-      run: () => app.addClaudeWorkflow(),
+      run: () => addClaudeWorkflow(),
     },
   );
   // 全域快速鍵：在捕獲階段處理，確保焦點在任何地方都一致。
@@ -583,11 +592,11 @@ export function initGitActions(): void {
     "keydown",
     (e) => {
       if (e.isComposing || document.querySelector("dialog[open]")) return;
-      const cmd = app.commands.match(e);
+      const cmd = commands.match(e);
       if (!cmd) return;
       const target = e.target as HTMLElement;
       // 終端機裡的按鍵大多要交給終端機（例如 Ctrl+W、Ctrl+P），只保留少數全域快速鍵。
-      if (target.closest(".terminal-panel") && !app.TERMINAL_KEYS.has(cmd.id)) return;
+      if (target.closest(".terminal-panel") && !TERMINAL_KEYS.has(cmd.id)) return;
       // 焦點在助理裡時，字級快速鍵調整助理的字（assistant.ts 處理），不動編輯區。
       if (target.closest("#assistant-panel") && cmd.id.startsWith("font-")) return;
       const inField =
@@ -595,7 +604,7 @@ export function initGitActions(): void {
       if (inField && (cmd.group === t("格式") || cmd.group === t("插入"))) return;
       e.preventDefault();
       e.stopPropagation();
-      app.commands.run(cmd.id).catch(reportError);
+      commands.run(cmd.id).catch(reportError);
     },
     { capture: true },
   );

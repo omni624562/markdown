@@ -22,6 +22,7 @@ import { aiAppPresent } from "./ai-app-presence.ts";
 import { openUrl } from "./activity-bar.ts";
 import { reportError } from "./git-actions.ts";
 import { app } from "./context.ts";
+import { commands } from "./commands.ts";
 
 /** 設定打開了（選了桌面版或網頁版）。 */
 export function chatgptEnabled(): boolean {
@@ -86,7 +87,7 @@ export function chatgptButton(text: () => string, make: (label: string, run: () 
 export const chatgptDesktopFound = (): boolean => aiAppPresent("codex");
 
 export function initChatGpt(): void {
-  app.commands.register({
+  commands.register({
     id: "send-to-chatgpt",
     title: t("傳給 ChatGPT"),
     group: t("AI 與終端機"),

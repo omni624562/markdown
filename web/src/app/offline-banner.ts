@@ -9,6 +9,7 @@ import { pingAdo, adoPingOffline } from "./ado-status.ts";
 import { app } from "./context.ts";
 import { forgetListCopies } from "./offline-copies.ts";
 import { wikiPanel, workItemsPanel } from "./work-items-panel.ts";
+import { issueView } from "./wiki-edit.ts";
 
 const banners: HTMLElement[] = [];
 
@@ -37,7 +38,7 @@ function reload(): void {
   forgetListCopies();
   if (app.sidePanel === "workitems") void workItemsPanel?.refresh(true);
   if (app.sidePanel === "wiki" || app.rightOutlineShown) void wikiPanel?.refresh(true);
-  if (app.issueView.isOpen) void app.issueView.refresh(true);
+  if (issueView.isOpen) void issueView.refresh(true);
 }
 
 export function initOfflineBanner(): void {

@@ -11,6 +11,8 @@ import type { WikiTarget } from "../session.ts";
 import { toast } from "../ui/toast.ts";
 import { imageRepoPath } from "../wiki-text.ts";
 import { app } from "./context.ts";
+import { offlineImage } from "./offline-copies.ts";
+import { reportError } from "./git-actions.ts";
 
 
 const IMAGE_EXT: Record<string, string> = {
@@ -89,7 +91,7 @@ export async function insertImages(original: File[]): Promise<void> {
         run: () =>
           void Promise.all(files.map(readDataUrl))
             .then((urls) => insertAtCursor(urls.map((url, i) => `![${altText(files[i].name)}](${url})`).join("\n")))
-            .catch(app.reportError),
+            .catch(reportError),
       },
     });
     return;
@@ -107,7 +109,7 @@ export async function insertImages(original: File[]): Promise<void> {
         run: () =>
           void app.save(false)
             .then(() => (app.cur.fileHandle?.path ? insertImages(files) : undefined))
-            .catch(app.reportError),
+            .catch(reportError),
       },
     });
     return;
@@ -174,7 +176,7 @@ export function wikiEditImage(target: WikiTarget, src: string): Promise<string> 
   let url = wikiEditImages.get(key);
   if (!url) {
     const wiki = { projectId: target.projectId, repositoryId: target.repositoryId ?? target.wikiId, version: null } as AdoWiki;
-    url = app.offlineImage(key, () => desktop!.adoWikiImage(wiki, path));
+    url = offlineImage(key, () => desktop!.adoWikiImage(wiki, path));
     url.catch(() => wikiEditImages.delete(key));
     if (wikiEditImages.size > 200) wikiEditImages.clear();
     wikiEditImages.set(key, url);

@@ -45,6 +45,9 @@ import { rightTab, selectRightTab, showBacklinksCount, syncRightTabs } from "./r
 import { showFilters } from "./filter-collapse.ts";
 import { cometChangeWarning, refreshCometGuards } from "./comet-files.ts";
 import { autoSaveNow, autoSavePending } from "./autosave.ts";
+import { markdownFiles, updateLinksAfterRename } from "./wiki-links.ts";
+import { reloadDocs, reloadRemoteDocs } from "./desktop-startup.ts";
+import { renderSaveState, updateActiveHeading } from "./outline.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -128,7 +131,7 @@ export async function renderBacklinks(): Promise<void> {
   const docsNow = await indexedDocs().catch(() => null);
   if (!docsNow || seq !== backlinksSeq) return;
   app.fileListCache ??= await desktop!.listFiles(app.workspaceRoot!.path).catch(() => []);
-  const list = backlinks(path, docsNow, app.markdownFiles(app.fileListCache));
+  const list = backlinks(path, docsNow, markdownFiles(app.fileListCache));
   // 摘要要用到那一行的內容：只讀連過來的這幾份。
   const texts = await docIndex.texts(list.map((b) => b.doc)).catch(() => list.map(() => ""));
   if (seq !== backlinksSeq) return;
@@ -241,7 +244,7 @@ export function setRightOutline(shown: boolean): void {
   app.applyLayout();
   if (shown) {
     void renderBacklinks();
-    app.updateActiveHeading();
+    updateActiveHeading();
   }
 }
 
@@ -261,7 +264,7 @@ export function placeOutline(): void {
     outlineTab.hidden = true;
     if (app.sidePanel === "outline") showPanel("files", false);
     void renderBacklinks();
-    app.updateActiveHeading();
+    updateActiveHeading();
   } else if (!onRight && panel.parentElement === right) {
     app.$("#panel-files").after(panel);
     outlineTab.hidden = false;
@@ -338,7 +341,7 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
     // 要看大綱（指令、快速鍵）：右側欄切到大綱那一頁；啟動時還原等自動的切換不動使用者選的分頁。
     if (!app.rightOutlineShown) setRightOutline(true);
     if (reveal) selectRightTab("outline");
-    else app.updateActiveHeading();
+    else updateActiveHeading();
     return;
   }
   // Wiki 在右側時一直顯示（右側欄收起來時打開），不用切換左邊的側邊欄。
@@ -365,7 +368,7 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
     app.$(`#panel-${tab.dataset.panel}`).hidden = !on;
   }
   if (reveal && !app.outlineShown) app.setOutline(true);
-  if (panel === "outline") app.updateActiveHeading();
+  if (panel === "outline") updateActiveHeading();
   if (panel === "workitems") workItemsPanel?.shown();
   if (panel === "board") boardPanelShown();
   if (panel === "wiki") wikiPanel?.shown();
@@ -566,7 +569,7 @@ export async function openRemote(c: Pick<DavConnection, "id" | "kind" | "name" |
   if (!folder) return;
   await setWorkspace(folder);
   showPanel("files");
-  await app.reloadRemoteDocs(folder.path);
+  await reloadRemoteDocs(folder.path);
 }
 
 export async function setWorkspace(folder: Folder | null): Promise<void> {
@@ -621,7 +624,7 @@ async function switchTabs(scope: string): Promise<void> {
     app.activate(target);
   }
   // 分頁收起來的期間檔案可能被改過：重新讀一次（和啟動時一樣）。
-  if (app.docsLoaded) void app.reloadDocs(fresh);
+  if (app.docsLoaded) void reloadDocs(fresh);
 }
 
 /**
@@ -728,7 +731,7 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
   const local = !isRemote(entry.path) && !!app.workspaceRoot;
   const before = local ? await indexedDocs().catch(() => []) : [];
   app.fileListCache ??= local && app.workspaceRoot ? await d.listFiles(app.workspaceRoot.path).catch(() => []) : app.fileListCache;
-  const filesBefore = app.markdownFiles(app.fileListCache ?? []);
+  const filesBefore = markdownFiles(app.fileListCache ?? []);
   const to = await d.renameEntry(entry.path, name);
   // 已開啟的分頁（含改名資料夾底下的檔案）改用新路徑。
   app.stash();
@@ -745,10 +748,10 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
   refreshCometGuards();
   app.fileListCache = null;
   app.persistSession();
-  app.renderSaveState();
+  renderSaveState();
   app.renderTabs();
   await app.fileTree?.refresh([parent]);
-  if (local && (entry.isDir || /\.(md|markdown)$/i.test(entry.path))) await app.updateLinksAfterRename(entry.path, to, before, filesBefore);
+  if (local && (entry.isDir || /\.(md|markdown)$/i.test(entry.path))) await updateLinksAfterRename(entry.path, to, before, filesBefore);
 }
 
 /**

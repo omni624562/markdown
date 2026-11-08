@@ -17,6 +17,8 @@ import { Updater } from "../updater.ts";
 import { reportError } from "./git-actions.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { app } from "./context.ts";
+import { TERMINAL_KEYS, commands } from "./commands.ts";
+import { openPath } from "./workspace-ui.ts";
 
 
 /** 已安裝的 Claude Code／Codex（找不到時是 null）。 */
@@ -134,7 +136,7 @@ export function initAiTerminal(): void {
       () => app.editor.view.requestMeasure(),
       () => Number(app.settings.value.uiScale) / 100 || 1,
       (id) => {
-        if (app.TERMINAL_KEYS.has(id)) app.commands.get(id)?.run();
+        if (TERMINAL_KEYS.has(id)) commands.get(id)?.run();
       },
     );
     app.ai = new AiController(
@@ -145,7 +147,7 @@ export function initAiTerminal(): void {
         review: app.review,
         snapshot: editorSnapshot,
         async showDocument(path) {
-          if (path && path !== app.cur.fileHandle?.path) await app.openPath(path);
+          if (path && path !== app.cur.fileHandle?.path) await openPath(path);
         },
       },
       app.$("#ai-bar"),

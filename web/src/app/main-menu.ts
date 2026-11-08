@@ -5,9 +5,10 @@
 import { t } from "../i18n.ts";
 import { setupMenu } from "../ui/menu.ts";
 import { app } from "./context.ts";
+import { commands } from "./commands.ts";
 
 export function initMainMenu(): void {
-  setupMenu(app.$<HTMLButtonElement>("#main-menu"), app.commands, [
+  setupMenu(app.$<HTMLButtonElement>("#main-menu"), commands, [
     "new",
     "new-from-template",
     "daily-note",

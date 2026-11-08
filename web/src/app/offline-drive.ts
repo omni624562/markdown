@@ -9,6 +9,9 @@ import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { loadWikiLatest } from "./wiki-edit.ts";
+import { reportError } from "./git-actions.ts";
+import { wikiServerEtag } from "./ado-files.ts";
 
 
 /** 原生端回報網路錯誤時，訊息以這段文字開頭（和後端的 `io::OFFLINE` 一致）。 */
@@ -68,7 +71,7 @@ export function renderOffline(): void {
   if (offline.back) {
     msg.append(remote ? t("遠端伺服器已恢復連線。") : t("網路磁碟已恢復連線。"));
     button.textContent = t("立即存檔");
-    button.addEventListener("click", () => void app.save(false).catch(app.reportError));
+    button.addEventListener("click", () => void app.save(false).catch(reportError));
   } else {
     msg.append(
       Object.assign(document.createElement("strong"), { textContent: remote ? t("遠端伺服器無法連線") : t("網路磁碟無法連線") }),
@@ -77,7 +80,7 @@ export function renderOffline(): void {
       }),
     );
     button.textContent = t("重試存檔");
-    button.addEventListener("click", () => void app.save(false).catch(app.reportError));
+    button.addEventListener("click", () => void app.save(false).catch(reportError));
   }
   offlineBar.replaceChildren(msg, button);
 }
@@ -111,7 +114,7 @@ export async function resolveConflict(name: string, diskText: string): Promise<v
       { id: "cancel", label: t("取消") },
     ],
   );
-  if (choice === "reload") await app.loadWikiLatest(app.active, { content: diskText, etag: app.wikiServerEtag.get(app.active.id) ?? null });
+  if (choice === "reload") await loadWikiLatest(app.active, { content: diskText, etag: wikiServerEtag.get(app.active.id) ?? null });
   else if (choice === "overwrite") await app.save(false, true);
   else if (choice === "save-as") await app.save(true);
   else if (choice === "compare") {
@@ -120,7 +123,7 @@ export async function resolveConflict(name: string, diskText: string): Promise<v
       hint: t("逐段選擇要採用哪個版本，全部處理完會自動存檔。"),
       acceptLabel: wiki || isRemote(app.cur.fileHandle?.path) ? t("採用伺服器版本") : t("採用磁碟版本"),
       rejectLabel: t("保留我的版本"),
-      onFinish: () => void app.save(false, true).catch(app.reportError),
+      onFinish: () => void app.save(false, true).catch(reportError),
     });
     if (!started) await app.save(false, true);
   }

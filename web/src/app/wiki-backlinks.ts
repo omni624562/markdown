@@ -11,6 +11,7 @@ import { type Backlink, findBacklinks } from "../wiki-backlinks.ts";
 import { flattenPages, pageLinkResolver, pageName } from "../wiki-text.ts";
 import { wikiPageTree } from "./ado-links.ts";
 import { app } from "./context.ts";
+import { showWikiPage } from "./wiki-edit.ts";
 
 /** 讀得比這個久才顯示「讀取中」的通知（讀過的 Wiki 通常很快）。 */
 const PROGRESS_DELAY = 400;
@@ -83,7 +84,7 @@ function backlinkPicker(): Picker<Backlink> {
       icon: "link-2",
     }),
     pick: (l) => {
-      if (shown) app.showWikiPage(shown.wiki, l.page);
+      if (shown) showWikiPage(shown.wiki, l.page);
     },
   });
   return picker;

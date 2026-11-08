@@ -12,6 +12,8 @@ import { toast } from "../ui/toast.ts";
 import { pageName } from "../wiki-text.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { app } from "./context.ts";
+import { showWikiPage } from "./wiki-edit.ts";
+import { showWorkItem } from "./work-item-actions.ts";
 
 
 /** `href` 是連線中那台伺服器上的工作項目或 Wiki 頁面嗎。 */
@@ -80,7 +82,7 @@ export async function openRemoteLink(href: string): Promise<boolean> {
   if (!link) return false;
   try {
     if (link.kind === "workitem") {
-      app.showWorkItem(await peekWorkItem(link.id));
+      showWorkItem(await peekWorkItem(link.id));
       return true;
     }
     const target = await resolveWikiLink(link);
@@ -89,7 +91,7 @@ export async function openRemoteLink(href: string): Promise<boolean> {
       toast(t("在 oMarker 裡找不到這一頁，改用瀏覽器開啟"));
       return false;
     }
-    app.showWikiPage(target.wiki, target.path);
+    showWikiPage(target.wiki, target.path);
     return true;
   } catch {
     return false;
