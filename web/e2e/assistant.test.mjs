@@ -194,8 +194,8 @@ test("版面：助理是右邊自己一欄（分頁列只到編輯區）；模�
   await panel.waitFor();
   const box = await panel.boundingBox();
   const tabs = await page.locator("#tab-bar").boundingBox();
-  // 從最上面開始，分頁列在助理左邊結束。
-  assert.ok(box.y < 10, `top ${box.y}`);
+  // 從頂端列下面開始（頂端列橫跨整個視窗，視窗按鈕在右上角），分頁列在助理左邊結束。
+  assert.ok(box.y >= tabs.y + tabs.height - 1 && box.y < 60, `top ${box.y}`);
   assert.ok(tabs.x + tabs.width <= box.x, `tabs end ${tabs.x + tabs.width} > ${box.x}`);
   const editor = await page.locator(".editor-pane").boundingBox();
   assert.ok(editor.x + editor.width <= box.x);
