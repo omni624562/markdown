@@ -4828,6 +4828,11 @@ body.assistant-open > .statusbar { grid-column: 1 / -1; }
 .workitems-progress[aria-pressed="true"] { color: var(--accent); }
 .wi-progress { margin: 4px 0 10px; }
 .wi-progress-head { margin-bottom: 4px; color: var(--muted); font-size: 12.5px; }
+/* 「0/6 完成・2 進行中」的數字用長條那一段的顏色（文字用深一點的色調，對比夠）。 */
+.wi-progress-count { font-weight: 600; }
+.wi-progress-count.closed { color: light-dark(#2b7a2b, #7bc97b); }
+.wi-progress-count.resolved { color: light-dark(#9a5a00, #ffb84d); }
+.wi-progress-count.active { color: light-dark(#005a9e, #5cb3ff); }
 .wi-bar-big { height: 10px; max-width: 520px; cursor: pointer; }
 .wi-progress-legend { display: flex; flex-wrap: wrap; gap: 2px 6px; margin-top: 6px; }
 .wi-progress-legend button { display: inline-flex; align-items: center; padding: 1px 8px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }

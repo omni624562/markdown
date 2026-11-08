@@ -104,7 +104,11 @@ test("工作項目分頁：子項目上方的分色長條，點圖例只看那�
   await page.keyboard.press("Enter");
   const box = page.locator(".issue-pane .wi-progress");
   await box.waitFor();
-  assert.equal(await box.locator(".wi-progress-head").textContent(), "1/4 完成・25%");
+  // 完成只算結束的項目；待驗證、進行中另外寫出來，顏色和長條的那一段一樣。
+  assert.equal(await box.locator(".wi-progress-head").textContent(), "1/4 完成・1 待驗證・1 進行中");
+  const colors = await box.locator(".wi-progress-count").evaluateAll((els) => els.map((el) => [el.className, getComputedStyle(el).color]));
+  assert.deepEqual(colors.map(([c]) => c), ["wi-progress-count closed", "wi-progress-count resolved", "wi-progress-count active"]);
+  assert.equal(new Set(colors.map(([, c]) => c)).size, 3);
   assert.deepEqual(await box.locator(".wi-progress-legend button").allTextContents(), ["完成 1", "待驗證 1", "進行中 1", "還沒開始 1"]);
   assert.equal(await box.locator(".wi-progress-hours").textContent(), "剩餘 7 小時・已完成 8 小時・合計 15 小時");
   // 進度條在「子項目」標題的下面、子項目清單的上面。
