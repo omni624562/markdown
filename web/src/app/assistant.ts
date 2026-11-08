@@ -35,7 +35,7 @@ import {
 } from "../assistant-text.ts";
 import { type AssistantImage, type AssistantMessage, type AssistantRunEvent, type AssistantUsage, desktop } from "../desktop.ts";
 import { currentLang, t } from "../i18n.ts";
-import { CLAUDE_MODELS, type ClaudeModel } from "../settings.ts";
+import { ASSISTANT_FONT_RANGE, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
@@ -725,7 +725,9 @@ function shortModel(m: ClaudeModel): string {
 
 function renderModel(): void {
   const m = app.settings.value.claudeModel;
-  modelBtn.replaceChildren(shortModel(m), icon("chevron-down"));
+  const name = document.createElement("span");
+  name.textContent = shortModel(m);
+  modelBtn.replaceChildren(name, icon("chevron-down"));
   modelBtn.title = t("模型：{name}（按一下換）", { name: MODEL_LABELS[m]() });
   modelBtn.setAttribute("aria-label", modelBtn.title);
 }
@@ -745,6 +747,22 @@ function applyWidth(px: number): number {
   const w = Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, px)));
   document.documentElement.style.setProperty("--assistant-width", `${w}px`);
   return w;
+}
+
+/** 助理的字級（和編輯區分開）：套用到側欄的 `--assistant-font`。 */
+function applyFont(): void {
+  panel?.style.setProperty("--assistant-font", `${app.settings.value.assistantFontSize}px`);
+}
+
+/** 放大（1）、縮小（-1）助理的字，0 是恢復預設；到上下限時說明。 */
+export function changeAssistantFont(delta: number): void {
+  const now = app.settings.value.assistantFontSize;
+  const size = delta === 0 ? DEFAULT_SETTINGS.assistantFontSize : Math.min(ASSISTANT_FONT_RANGE.max, Math.max(ASSISTANT_FONT_RANGE.min, now + delta));
+  if (size === now) {
+    if (delta) toast(delta > 0 ? t("已經是最大的字級（{size}px）", { size }) : t("已經是最小的字級（{size}px）", { size }));
+    return;
+  }
+  app.settings.update({ assistantFontSize: size });
 }
 
 /** 左緣的把手：拖曳調整寬度，記住；鍵盤用左右鍵。 */
@@ -795,7 +813,10 @@ function build(): HTMLElement {
   const head = document.createElement("div");
   head.className = "assistant-head";
   const title = document.createElement("h2");
-  title.append(icon("sparkles"), t("助理"));
+  const titleText = document.createElement("span");
+  titleText.className = "assistant-title-text";
+  titleText.textContent = t("助理");
+  title.append(icon("sparkles"), titleText);
   modelBtn = document.createElement("button");
   modelBtn.type = "button";
   modelBtn.id = "assistant-model";
@@ -814,7 +835,16 @@ function build(): HTMLElement {
   spacer.className = "assistant-spacer";
   saveBtn = headButton(t("存成筆記"), "file-down", () => void saveNote());
   saveBtn.disabled = true;
-  head.append(title, modelBtn, spacer, saveBtn, headButton(t("新對話"), "message-square-plus", newChat), headButton(t("關閉助理"), "x", () => toggleAssistant(false)));
+  head.append(
+    title,
+    modelBtn,
+    spacer,
+    headButton(t("縮小助理的字（Ctrl+-）"), "a-arrow-down", () => changeAssistantFont(-1)),
+    headButton(t("放大助理的字（Ctrl+=）"), "a-arrow-up", () => changeAssistantFont(1)),
+    saveBtn,
+    headButton(t("新對話"), "message-square-plus", newChat),
+    headButton(t("關閉助理"), "x", () => toggleAssistant(false)),
+  );
 
   notice = document.createElement("div");
   notice.className = "assistant-notice";
@@ -926,6 +956,15 @@ function build(): HTMLElement {
   aside.addEventListener("pointerenter", () => {
     if (chipsKey() !== shownChips) renderChips();
   });
+  // 焦點在助理裡時，Ctrl+= / Ctrl+- / Ctrl+0 調整助理的字，不動編輯區的字級。
+  aside.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    const delta = e.key === "=" || e.key === "+" ? 1 : e.key === "-" ? -1 : e.key === "0" ? 0 : null;
+    if (delta === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    changeAssistantFont(delta);
+  });
   // 窄視窗時助理蓋在文件上：Esc 收起。
   aside.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !e.defaultPrevented && window.matchMedia("(max-width: 900px)").matches) {
@@ -942,6 +981,7 @@ export function toggleAssistant(open = !assistantOpen()): void {
     const saved = Number(storage.load(WIDTH_KEY));
     if (saved) applyWidth(saved);
     panel = build();
+    applyFont();
     // 自己一欄：從最上面（和分頁列同高）到狀態列上面，分頁列只到編輯區為止。
     document.body.append(panel);
     setRunning(false);
@@ -979,6 +1019,7 @@ export function initAssistant(): void {
   app.settings.subscribe((s, changed) => {
     if (!panel) return;
     if (changed.includes("claudeModel")) renderModel();
+    if (changed.includes("assistantFontSize")) applyFont();
     if (changed.some((k) => k === "claudeApiEnabled" || k === "assistantProjects" || k === "claudeMonthlyLimit")) void refreshStatus();
     // 關掉總開關時收起側欄。
     if (changed.includes("claudeApiEnabled") && !s.claudeApiEnabled) toggleAssistant(false);
