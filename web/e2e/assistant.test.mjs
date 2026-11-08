@@ -241,3 +241,45 @@ test("窄視窗：助理變成蓋在文件上的抽屜，按 Esc 收起", async 
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("自訂動作：設定頁新增，出現在「更多」選單的「自訂動作」，執行時送出自己的提示詞", async () => {
+  const actions = [{ name: "整理成會議紀錄", prompt: "請整理成會議紀錄：日期、與會者、決議、待辦。", mode: "insert" }];
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT], assistantActions: actions }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await setText(page, "週一和王小明討論備份，決定改成每晚自動備份。");
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  await panel.locator("#assistant-write").click();
+  const menu = page.locator("#assistant-write-popover");
+  await menu.waitFor();
+  assert.match(await menu.textContent(), /自訂動作/);
+  await menu.getByRole("menuitem", { name: "整理成會議紀錄" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const [{ request }] = await sends(page);
+  assert.match(request.messages[0].content, /請整理成會議紀錄：日期、與會者、決議、待辦。$/);
+  assert.match(request.system, /只輸出要插入文件的新內容/);
+  await reply(page, "## 會議紀錄\n\n- 決議：每晚自動備份");
+  await panel.locator(".assistant-card").waitFor();
+
+  // 設定頁：看得到這個動作，新增一個之後選單也跟著有。
+  await panel.locator("#assistant-write").click();
+  await menu.getByRole("menuitem", { name: "管理自訂動作…" }).click();
+  const dialog = page.locator("dialog.settings[open]");
+  const list = dialog.locator(".assistant-actions-list .quick-action");
+  await list.first().waitFor();
+  assert.equal(await list.count(), 1);
+  assert.equal(await list.first().locator("input").inputValue(), "整理成會議紀錄");
+  assert.equal(await list.first().locator("select").inputValue(), "insert");
+  await dialog.locator("#assistant-settings .quick-action-add").click();
+  assert.equal(await list.count(), 2);
+  await list.nth(1).locator("input").fill("改成英文");
+  await list.nth(1).locator("input").press("Tab");
+  const saved = (await calls(page)).filter((c) => c.cmd === "save_settings").map((c) => JSON.parse(c.args.json));
+  assert.deepEqual(saved.at(-1).assistantActions.map((a) => a.name), ["整理成會議紀錄", "改成英文"]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

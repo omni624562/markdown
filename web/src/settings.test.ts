@@ -162,3 +162,17 @@ test("傳給 ChatGPT：預設關閉，只接受三種值", () => {
   assert.equal(bad.settings.chatgptSend, "off");
   assert.equal(bad.problems, 1);
 });
+
+test("助理的自訂動作：名稱、提示詞不能空白，回答怎麼用只能是三種之一", () => {
+  const { settings, problems } = sanitize({
+    assistantActions: [
+      { name: " 會議紀錄 ", prompt: "整理成會議紀錄", mode: "insert" },
+      { name: "空的", prompt: "  ", mode: "answer" },
+      { name: "亂填", prompt: "做點事", mode: "delete" },
+      "不是物件",
+    ],
+  });
+  assert.deepEqual(settings.assistantActions, [{ name: "會議紀錄", prompt: "整理成會議紀錄", mode: "insert" }]);
+  assert.ok(problems > 0);
+  assert.deepEqual(sanitize({}).settings.assistantActions, []);
+});

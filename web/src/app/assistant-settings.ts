@@ -1,12 +1,13 @@
 /**
- * 設定 →「Claude API 助理」那一頁：總開關、API 金鑰、模型、每月上限、哪些專案可以用。
+ * 設定 →「Claude API 助理」那一頁：總開關、API 金鑰、模型、每月上限、哪些專案可以用、自訂動作。
  * 金鑰交給原生端存進 Windows 認證管理員，這裡只顯示有沒有設定。
  */
 import { MODEL_LABELS, formatUsd, listed, toggled } from "../assistant-text.ts";
 import { type Project, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
-import { CLAUDE_MODELS, type ClaudeModel } from "../settings.ts";
+import { ASSISTANT_ACTION_LIMITS, type AssistantCustomAction, CLAUDE_MODELS, type ClaudeModel } from "../settings.ts";
 import { askText } from "../ui/choice.ts";
+import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { assistantKeyChanged } from "./assistant.ts";
 import { app } from "./context.ts";
@@ -46,6 +47,90 @@ function switchInput(checked: boolean, onChange: (on: boolean) => void): HTMLInp
   input.checked = checked;
   input.addEventListener("change", () => onChange(input.checked));
   return input;
+}
+
+const MODES: { value: AssistantCustomAction["mode"]; label: () => string }[] = [
+  { value: "answer", label: () => t("在助理裡回答") },
+  { value: "replace", label: () => t("取代選取的文字") },
+  { value: "insert", label: () => t("插在後面") },
+];
+
+/** 自訂動作：每個一張卡片（名稱、回答怎麼用、提示詞），和 AI 快速動作同樣的樣子。 */
+function customActionsEditor(): { box: HTMLElement; render: () => void } {
+  const L = ASSISTANT_ACTION_LIMITS;
+  const box = document.createElement("div");
+  const title = document.createElement("h5");
+  title.className = "assistant-projects-title";
+  title.textContent = t("自訂動作");
+  const hint = document.createElement("small");
+  hint.className = "assistant-projects-hint";
+  hint.textContent = t("出現在助理的「更多」選單。提示詞會連同目前的文件、選取的文字一起送出；取代、插入一樣先變成建議，按「套用」才會改。");
+  const list = document.createElement("div");
+  list.className = "quick-actions assistant-actions-list";
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "quick-action-add";
+  add.append(icon("plus"), t("新增動作"));
+  const save = () => {
+    const rows = [...list.querySelectorAll<HTMLElement>(".quick-action")];
+    app.settings.update({
+      assistantActions: rows.map((r) => ({
+        name: r.querySelector("input")!.value,
+        prompt: r.querySelector("textarea")!.value,
+        mode: r.querySelector("select")!.value as AssistantCustomAction["mode"],
+      })),
+    });
+  };
+  add.addEventListener("click", () => {
+    const actions = app.settings.value.assistantActions;
+    app.settings.update({
+      assistantActions: [...actions, { name: t("新動作"), prompt: t("請描述要助理怎麼處理這份內容"), mode: "answer" }],
+    });
+    render();
+    list.querySelector<HTMLInputElement>(".quick-action:last-child input")?.select();
+  });
+  const render = () => {
+    const actions = app.settings.value.assistantActions;
+    add.disabled = actions.length >= L.count;
+    list.replaceChildren(
+      ...actions.map((a, i) => {
+        const row = document.createElement("div");
+        row.className = "quick-action";
+        const name = document.createElement("input");
+        name.value = a.name;
+        name.maxLength = L.name;
+        name.placeholder = t("動作名稱");
+        name.setAttribute("aria-label", t("第 {n} 個動作的名稱", { n: i + 1 }));
+        const mode = document.createElement("select");
+        mode.className = "assistant-action-mode";
+        mode.setAttribute("aria-label", t("「{name}」的回答怎麼用", { name: a.name }));
+        for (const m of MODES) mode.append(new Option(m.label(), m.value));
+        mode.value = a.mode;
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "quick-action-delete";
+        del.title = t("刪除這個動作");
+        del.setAttribute("aria-label", t("刪除「{name}」", { name: a.name }));
+        del.append(icon("x"));
+        del.addEventListener("click", () => {
+          row.remove();
+          save();
+          render();
+        });
+        const prompt = document.createElement("textarea");
+        prompt.value = a.prompt;
+        prompt.rows = 2;
+        prompt.maxLength = L.prompt;
+        prompt.placeholder = t("要助理怎麼處理這份內容（選取的文字優先）");
+        prompt.setAttribute("aria-label", t("「{name}」的提示詞", { name: a.name }));
+        for (const el of [name, prompt, mode]) el.addEventListener("change", save);
+        row.append(name, mode, del, prompt);
+        return row;
+      }),
+    );
+  };
+  box.append(title, hint, list, add);
+  return { box, render };
 }
 
 /** 設定裡「Claude API 助理」那一頁的說明與選項。 */
@@ -149,6 +234,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
   };
   const refreshProjects = async () => renderProjects(await d.projects().catch(() => []));
 
+  const custom = customActionsEditor();
   const dependents = document.createElement("div");
   dependents.className = "assistant-dependents";
   dependents.append(
@@ -158,6 +244,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     projectsTitle,
     projects,
     projectsHint,
+    custom.box,
   );
   card.append(
     row("claudeApiEnabled", t("啟用 Claude API 助理"), t("只在私人電腦開啟；開啟時會再確認一次"), enabled),
@@ -173,8 +260,11 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
   app.settings.subscribe((_, changed) => {
     sync();
     if (changed.includes("assistantProjects")) void refreshProjects();
+    // 自己在這頁改的不用重畫（輸入中的游標不會跳掉）。
+    if (changed.includes("assistantActions") && !custom.box.contains(document.activeElement)) custom.render();
   });
   sync();
+  custom.render();
   void refreshKey();
   void refreshUsage();
   void refreshProjects();

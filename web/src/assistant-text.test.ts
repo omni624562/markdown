@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   ASSISTANT_ACTIONS,
   conversation,
+  customActions,
   estimateUsd,
   formatUsd,
   insertPadding,
@@ -81,4 +82,18 @@ test("允許的專案清單不分大小寫與斜線", () => {
   assert.deepEqual(toggled(list, "C:\\Users\\me\\產品", true), ["C:\\Users\\me\\筆記", "C:\\Users\\me\\產品"]);
   // 重複加入不會出現兩次。
   assert.deepEqual(toggled(list, "C:\\Users\\me\\筆記", true), ["C:\\Users\\me\\筆記"]);
+});
+
+test("自訂動作：取代選取文字的才需要先選取，代號依順序", () => {
+  const list = customActions([
+    { name: "會議紀錄", prompt: "整理成會議紀錄", mode: "insert" },
+    { name: "改成英文", prompt: "翻成英文", mode: "replace" },
+  ]);
+  assert.deepEqual(
+    list.map((a) => [a.id, a.label(), a.prompt(), a.mode, a.needsSelection, a.group]),
+    [
+      ["custom-0", "會議紀錄", "整理成會議紀錄", "insert", false, "custom"],
+      ["custom-1", "改成英文", "翻成英文", "replace", true, "custom"],
+    ],
+  );
 });

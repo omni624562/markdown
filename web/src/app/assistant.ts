@@ -13,6 +13,7 @@ import {
   type AssistantAction,
   MODEL_LABELS,
   conversation,
+  customActions,
   estimateUsd,
   formatUsd,
   listed,
@@ -563,21 +564,26 @@ function build(): HTMLElement {
     b.addEventListener("click", () => void send(a.prompt(), a));
     bar.append(b);
   }
-  // 其他動作放在「更多」選單（轉成簡報、流程圖、表格、待辦、續寫、換語氣）。
+  // 其他動作放在「更多」選單（轉成簡報、流程圖、表格、待辦、續寫、換語氣），下面是設定裡的自訂動作。
   const more = document.createElement("button");
   more.type = "button";
   more.id = "assistant-write";
   more.className = "assistant-more";
   more.append(t("更多"), icon("chevron-down"));
   more.title = t("更多寫作動作");
-  setupMenu(
-    more,
-    null,
-    ASSISTANT_ACTIONS.filter((x) => x.group === "write").map((a) => ({
-      label: a.needsSelection ? t("{name}（選取的文字）", { name: a.label() }) : a.label(),
-      run: () => void send(a.prompt(), a),
-    })),
-  );
+  const item = (a: AssistantAction) => ({
+    label: a.needsSelection ? t("{name}（選取的文字）", { name: a.label() }) : a.label(),
+    run: () => void send(a.prompt(), a),
+  });
+  setupMenu(more, null, () => {
+    const custom = customActions(app.settings.value.assistantActions);
+    return [
+      ...ASSISTANT_ACTIONS.filter((x) => x.group === "write").map(item),
+      "-",
+      ...(custom.length ? [{ heading: t("自訂動作") }, ...custom.map(item)] : []),
+      { label: custom.length ? t("管理自訂動作…") : t("新增自訂動作…"), icon: "settings", run: () => app.settingsDialog.open(t("Claude API 助理")) },
+    ];
+  });
   sendBtn = document.createElement("button");
   sendBtn.type = "button";
   sendBtn.className = "btn icon-only btn-primary assistant-send";
@@ -633,7 +639,7 @@ export function toggleAssistant(open = !assistantOpen()): void {
 
 /** 常用動作（指令面板用）：打開側欄並執行。 */
 export function runAssistantAction(id: AssistantAction["id"]): void {
-  const action = ASSISTANT_ACTIONS.find((a) => a.id === id);
+  const action = [...ASSISTANT_ACTIONS, ...customActions(app.settings.value.assistantActions)].find((a) => a.id === id);
   if (!action) return;
   toggleAssistant(true);
   void send(action.prompt(), action);
@@ -657,6 +663,12 @@ export function initAssistant(): void {
     if (changed.includes("claudeApiEnabled") && !s.claudeApiEnabled) toggleAssistant(false);
   });
   if (storage.load(OPEN_KEY) === "1" && assistantEnabled()) toggleAssistant(true);
+}
+
+/** 指令面板的「助理：自訂動作…」：打開助理和「更多」選單。 */
+export function openAssistantMore(): void {
+  toggleAssistant(true);
+  panel?.querySelector<HTMLButtonElement>("#assistant-write")?.click();
 }
 
 /** 設定改了金鑰之後（設定頁呼叫）。 */

@@ -18,6 +18,15 @@ export interface QuickAction {
   prompt: string;
 }
 
+/** Claude API 助理的自訂動作：回答怎麼用見 assistant-text.ts 的 ActionMode。 */
+export interface AssistantCustomAction {
+  name: string;
+  prompt: string;
+  mode: "answer" | "replace" | "insert";
+}
+
+export const ASSISTANT_ACTION_LIMITS = { count: 20, name: 30, prompt: 2000 } as const;
+
 export type AiTool = "claude" | "codex";
 /** Claude API 助理可以選的模型。 */
 export const CLAUDE_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] as const;
@@ -131,6 +140,8 @@ export interface Settings {
   assistantProjects: string[];
   /** 第一次送出時勾了「以後不用再問」的專案。 */
   assistantConfirmed: string[];
+  /** 助理「更多」選單裡的自訂動作。 */
+  assistantActions: AssistantCustomAction[];
   quickActions: QuickAction[];
   /** 自訂的文件範本（內建範本不在這裡）。 */
   templates: Template[];
@@ -215,6 +226,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   claudeMonthlyLimit: 10,
   assistantProjects: [],
   assistantConfirmed: [],
+  assistantActions: [],
   mcpServer: true,
   aiTerminal: true,
   markExternalChanges: true,
@@ -281,6 +293,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     termIgnore: [],
     assistantProjects: [],
     assistantConfirmed: [],
+    assistantActions: [],
     spellIgnore: [],
     activityOrder: [],
     activityHidden: [...DEFAULTS.activityHidden],
@@ -341,6 +354,21 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     if (Array.isArray(list)) {
       out[key] = [...new Set(list.filter((p): p is string => typeof p === "string" && p.length > 0 && p.length <= 1000))].slice(0, 200);
       if (out[key].length !== list.length) problems++;
+    } else problems++;
+  }
+  if ("assistantActions" in input) {
+    const list = input.assistantActions;
+    if (Array.isArray(list)) {
+      const L = ASSISTANT_ACTION_LIMITS;
+      out.assistantActions = list
+        .filter(
+          (a): a is AssistantCustomAction =>
+            !!a && typeof a === "object" && typeof a.name === "string" && typeof a.prompt === "string" && ["answer", "replace", "insert"].includes(a.mode),
+        )
+        .map((a) => ({ name: a.name.trim().slice(0, L.name), prompt: a.prompt.trim().slice(0, L.prompt), mode: a.mode }))
+        .filter((a) => a.name && a.prompt)
+        .slice(0, L.count);
+      if (out.assistantActions.length !== list.length) problems++;
     } else problems++;
   }
   bool("autoUpdate");
