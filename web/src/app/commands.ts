@@ -28,6 +28,7 @@ import { runTableEdit } from "./offline-drive.ts";
 import { canConvertToTable, convertSelectionToTable } from "./table-paste.ts";
 import { copyTableAtCursor } from "./table-copy.ts";
 import { openTablePicker } from "./table-picker.ts";
+import { viewsFor } from "../view-modes.ts";
 import { type TableEdit, inTable } from "../table.ts";
 import { exportPdf } from "./pdf-export.ts";
 import { settingsDialog, fixTerms, convertToTraditional, toggleSetting, changeFontSize } from "./settings-ui.ts";
@@ -917,7 +918,7 @@ export function initCommands(): void {
         }[mode],
         group: t("檢視"),
         icon: { editor: "code", live: "file-pen-line", split: "columns-2", preview: "eye" }[mode],
-        when: () => mode !== "split" || !app.narrowQuery.matches,
+        when: () => viewsFor(app.cur.kind).includes(mode) && (mode !== "split" || !app.narrowQuery.matches),
         run: () => app.setView(mode),
       }),
     ),
