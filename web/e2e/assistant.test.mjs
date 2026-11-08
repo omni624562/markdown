@@ -194,10 +194,11 @@ test("版面：助理是右側欄的一頁（分頁列只到右側欄左邊）�
   await panel.waitFor();
   const box = await panel.boundingBox();
   const tabs = await page.locator("#tab-bar").boundingBox();
-  // 助理在右側欄裡、從頂端列下面開始（頂端列橫跨整個視窗），分頁列在右側欄左邊結束；右上角那塊的分頁列選著「助理」。
-  assert.ok(box.y >= tabs.y + tabs.height - 1 && box.y < 60, `top ${box.y}`);
+  // 助理在右側欄裡、在右側欄自己的分頁列下面（頂端列橫跨整個視窗），文件的分頁列在右側欄左邊結束；右側欄的分頁列選著「助理」。
+  const strip = await page.locator("#outline-right > .right-tabs").boundingBox();
+  assert.ok(strip.y >= tabs.y + tabs.height - 1 && box.y >= strip.y + strip.height - 1 && box.y < 100, `top ${strip.y} / ${box.y}`);
   assert.equal(await page.locator("#outline-right #assistant-panel").count(), 1, "助理在右側欄裡");
-  assert.equal(await page.locator('.top-actions .right-tab[data-tab="assistant"]').getAttribute("aria-selected"), "true");
+  assert.equal(await page.locator('#outline-right .right-tab[data-tab="assistant"]').getAttribute("aria-selected"), "true");
   assert.ok(tabs.x + tabs.width <= box.x, `tabs end ${tabs.x + tabs.width} > ${box.x}`);
   const editor = await page.locator(".editor-pane").boundingBox();
   assert.ok(editor.x + editor.width <= box.x);
