@@ -54,6 +54,8 @@ export interface SaveRequest {
   extensions: string[];
   /** 使用者已確認要覆蓋被別的程式改過的檔案。 */
   force?: boolean;
+  /** 另存新檔對話框一開始顯示的資料夾（見 files.ts 的 setSaveDirectory）。 */
+  directory?: string | null;
 }
 
 export type DesktopSaveOutcome =
@@ -953,7 +955,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     revealEntry: (path: string) =>
       route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported(t("遠端資料夾不支援在檔案總管中顯示"))),
     /** 選擇 PDF 的存檔位置；取消時回傳 null。 */
-    pickPdfPath: (suggestedName: string) => core.invoke<string | null>("pick_pdf_path", { suggestedName }),
+    pickPdfPath: (suggestedName: string, directory: string | null = null) =>
+      core.invoke<string | null>("pick_pdf_path", { suggestedName, directory }),
     /** 把主視窗目前的內容（列印樣式）直接存成 PDF。 */
     printToPdf: (
       path: string,
@@ -1057,8 +1060,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     mcpRespond: (id: number, decision: { ok: boolean; message: string }) =>
       core.invoke<boolean>("mcp_respond", { id, decision }),
     /** 匯出二進位檔（例如 .docx）：顯示另存對話框後寫入，取消時回傳 null。 */
-    exportBinary: (suggestedName: string, dataBase64: string, filterName: string, extensions: string[]) =>
-      core.invoke<string | null>("export_binary", { suggestedName, dataBase64, filterName, extensions }),
+    exportBinary: (suggestedName: string, dataBase64: string, filterName: string, extensions: string[], directory: string | null = null) =>
+      core.invoke<string | null>("export_binary", { suggestedName, dataBase64, filterName, extensions, directory }),
     /** 在工作區的 .github/workflows/ 建立工作流程檔（不覆蓋）。 */
     createWorkflow: (name: string, text: string) => core.invoke<string>("create_workflow", { name, text }),
     aiRun: (id: number, tool: AiTool, prompt: string) =>

@@ -592,6 +592,15 @@ pub async fn read_in_background(app: &AppHandle, path: PathBuf) -> Result<Opened
     crate::io::blocking(move || read_file(&app, path, &app.state::<KnownFiles>())).await
 }
 
+/// 存檔、匯出對話框一開始顯示的資料夾：前端給的（目前文件所在的資料夾或專案資料夾）存在時才用，
+/// 否則交給系統（通常是上次用過的資料夾）。只影響對話框起始的位置，使用者還是可以選別的地方。
+pub fn start_in(dialog: rfd::AsyncFileDialog, directory: Option<String>) -> rfd::AsyncFileDialog {
+    match directory.map(PathBuf::from) {
+        Some(dir) if dir.is_absolute() && dir.is_dir() => dialog.set_directory(dir),
+        _ => dialog,
+    }
+}
+
 /// 匯出二進位檔（例如 Word .docx）：讓使用者選位置後寫入。取消時回傳 None。
 #[tauri::command]
 pub async fn export_binary(
@@ -600,6 +609,7 @@ pub async fn export_binary(
     data_base64: String,
     filter_name: String,
     extensions: Vec<String>,
+    directory: Option<String>,
 ) -> Result<Option<String>, String> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
@@ -609,13 +619,12 @@ pub async fn export_binary(
         .iter()
         .map(|e| e.trim_start_matches('.'))
         .collect();
-    let picked = rfd::AsyncFileDialog::new()
+    let dialog = rfd::AsyncFileDialog::new()
         .set_parent(&window)
         .set_title(tr!("匯出"))
         .set_file_name(&suggested_name)
-        .add_filter(&filter_name, &exts)
-        .save_file()
-        .await;
+        .add_filter(&filter_name, &exts);
+    let picked = start_in(dialog, directory).save_file().await;
     let Some(handle) = picked else {
         return Ok(None);
     };
@@ -792,6 +801,7 @@ pub async fn save_file(
     filter_name: String,
     extensions: Vec<String>,
     force: Option<bool>,
+    directory: Option<String>,
 ) -> Result<SaveOutcome, String> {
     if let Some(path) = path.map(PathBuf::from) {
         if known.contains(&path) {
@@ -805,13 +815,12 @@ pub async fn save_file(
         .iter()
         .map(|e| e.trim_start_matches('.'))
         .collect();
-    let picked = rfd::AsyncFileDialog::new()
+    let dialog = rfd::AsyncFileDialog::new()
         .set_parent(&window)
         .set_title(tr!("另存新檔"))
         .set_file_name(&suggested_name)
-        .add_filter(&filter_name, &exts)
-        .save_file()
-        .await;
+        .add_filter(&filter_name, &exts);
+    let picked = start_in(dialog, directory).save_file().await;
     let Some(handle) = picked else {
         return Ok(SaveOutcome::Cancelled);
     };
