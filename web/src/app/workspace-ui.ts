@@ -732,6 +732,20 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
  * 在分頁上改已經存成檔案的文件：和檔案面板一樣，只能改目前開啟的資料夾（本機或遠端）裡的檔案；
  * 不行時說明原因，回傳 false。
  */
+/**
+ * 存檔建立了新檔案（第一次存檔、另存新檔）：原生端的監看把自己存的檔案當成「內容沒變」而不通知，
+ * 檔案樹和待辦、標籤的索引要在這裡自己更新。覆蓋原檔（路徑沒變）不用。
+ */
+export function fileSaved<H extends { path?: string | null } | null>(before: string | null | undefined, handle: H): H {
+  const after = handle?.path;
+  if (after && after !== before) {
+    app.fileListCache = null;
+    refreshIndexPanels(300);
+    void app.fileTree?.refresh([dirname(after)]).catch(reportError);
+  }
+  return handle;
+}
+
 export function canRenameFile(path: string | null): boolean {
   if (desktop && path && app.workspaceRoot && isInside(path, app.workspaceRoot.path)) return true;
   if (!desktop) toast(t("網頁版無法重新命名已經存成檔案的文件；可以用「另存新檔」存成新的名稱。"));
@@ -754,7 +768,8 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
     case "new-file":
     case "new-folder": {
       const isDir = action === "new-folder";
-      let name = await app.fileTree.promptName(entry.path, isDir ? t("新資料夾") : t("未命名.md"), isDir ? "folder" : "file");
+      // 新檔案要自己取名（預設不填「未命名.md」：照著按 Enter 會真的在磁碟上留下一個「未命名.md」）；空白就取消。
+      let name = await app.fileTree.promptName(entry.path, isDir ? t("新資料夾") : "", isDir ? "folder" : "file", undefined, isDir ? "" : t("檔案名稱，例如 會議紀錄.md"));
       if (!name) return;
       if (!isDir && !name.includes(".")) name += ".md";
       const path = await d.createEntry(entry.path, name, isDir);
