@@ -43,6 +43,10 @@ jobs:
     timeout-minutes: 60
     env:
       WASM_PACK: "0.15.0"
+      # wasm-opt 從 npm 的 binaryen 套件安裝，不讓 wasm-pack 自己從 GitHub Releases 下載（那裡不穩時整個工作會失敗）。
+      # 版本與檢查碼和 desktop.yml 相同。
+      BINARYEN_NPM: "117.0.0"
+      BINARYEN_NPM_SHA256: 5f2770ade768fef921b7bc42f415d299c3825d9b4a1569774f4b45305e32efd4
     defaults:
       run:
         working-directory: web
@@ -68,6 +72,15 @@ jobs:
           cache-dependency-path: web/package-lock.json
       # 不執行套件的安裝腳本（esbuild 的平台執行檔由 optionalDependencies 提供，不需要）。
       - run: npm ci --ignore-scripts
+      - name: 安裝 wasm-opt（固定版本的 binaryen，從 npm 安裝並核對檢查碼）
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p binaryen && cd binaryen
+          npm pack "binaryen@${BINARYEN_NPM}" --silent
+          echo "${BINARYEN_NPM_SHA256}  binaryen-${BINARYEN_NPM}.tgz" | sha256sum -c -
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock "./binaryen-${BINARYEN_NPM}.tgz"
+          ./node_modules/.bin/wasm-opt --version
+          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
       - run: npm run wasm
       - run: npm run typecheck
       - run: npm test

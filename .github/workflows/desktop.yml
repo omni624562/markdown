@@ -74,10 +74,12 @@ jobs:
     timeout-minutes: 60
     env:
       WASM_PACK: "0.15.0"
-      # wasm-opt（縮小 wasm）用的 binaryen：和 wasm-pack 0.15.0 自己會下載的版本相同，
-      # 檢查碼是 binaryen 官方 Release 附的 SHA-256（binaryen-version_117-x86_64-windows.tar.gz.sha256）。
-      BINARYEN: version_117
-      BINARYEN_SHA256: b09f260176483bd30194303ccb15ac81c2247e4e566894f9d931e4313cb36d58
+      # wasm-opt（縮小 wasm）用的 binaryen：和 wasm-pack 0.15.0 自己會下載的版本相同（117）。
+      # 從 npm 的 binaryen 套件安裝（同一份程式編成 WebAssembly，慢一點但結果一樣），不從 GitHub Releases 下載：
+      # 2026-11-08 那裡的 Windows 檔案整個下午回 504，發佈卡住。檢查碼是 npm 上 binaryen-117.0.0.tgz 的 SHA-256
+      # （`npm pack binaryen@117.0.0` 之後 `sha256sum`），和 ci.yml 的 web 工作相同。
+      BINARYEN_NPM: "117.0.0"
+      BINARYEN_NPM_SHA256: 5f2770ade768fef921b7bc42f415d299c3825d9b4a1569774f4b45305e32efd4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -124,26 +126,26 @@ jobs:
           if [ -z "$bindgen" ]; then echo "::error::在 Cargo.lock 找不到 wasm-bindgen 的版本"; exit 1; fi
           cargo install wasm-bindgen-cli --version "$bindgen" --locked --force
           wasm-bindgen --version
-          # wasm-pack 要下載工具時會放到這裡；建置完確認它是空的。
-          echo "WASM_PACK_CACHE=$RUNNER_TEMP\\wasm-pack-cache" >> "$GITHUB_ENV"
-      - name: 安裝 wasm-opt（發佈：固定 binaryen 版本並核對檢查碼）
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          tmp="$(cygpath -u "$RUNNER_TEMP")"
-          file="binaryen-${BINARYEN}-x86_64-windows.tar.gz"
-          # 連不上 30 秒、整個下載超過 5 分鐘（平常幾秒）就算失敗，--retry 會再試。
-          curl -fsSL --retry 3 --connect-timeout 30 --max-time 300 -o "$tmp/$file" "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN}/${file}"
-          echo "${BINARYEN_SHA256}  $tmp/$file" | sha256sum -c -
-          tar -xzf "$tmp/$file" -C "$tmp"
-          "$tmp/binaryen-${BINARYEN}/bin/wasm-opt.exe" --version
-          cygpath -w "$tmp/binaryen-${BINARYEN}/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           # 發佈時也不用 npm 的快取（npm ci 照 package-lock.json 的檢查碼重新下載）。
           cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}
           cache-dependency-path: web/package-lock.json
+      # PR 的建置也用這一份（不讓 wasm-pack 自己從 GitHub Releases 下載），每個 PR 都會驗到這一步。
+      # wasm-pack 在 PATH 上找到 wasm-opt 就直接用（Windows 上是 npm 產生的 wasm-opt.cmd）。
+      - name: 安裝 wasm-opt（固定版本的 binaryen，從 npm 安裝並核對檢查碼）
+        shell: bash
+        run: |
+          dir="$(cygpath -u "$RUNNER_TEMP")/binaryen"
+          mkdir -p "$dir" && cd "$dir"
+          npm pack "binaryen@${BINARYEN_NPM}" --silent
+          echo "${BINARYEN_NPM_SHA256}  binaryen-${BINARYEN_NPM}.tgz" | sha256sum -c -
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock "./binaryen-${BINARYEN_NPM}.tgz"
+          ./node_modules/.bin/wasm-opt --version
+          cygpath -w "$dir/node_modules/.bin" >> "$GITHUB_PATH"
+          # wasm-pack 要下載工具時會放到這裡；建置完確認它是空的。
+          echo "WASM_PACK_CACHE=$RUNNER_TEMP\\wasm-pack-cache" >> "$GITHUB_ENV"
 
       - name: 建置前端
         working-directory: web
@@ -152,13 +154,19 @@ jobs:
           npm run wasm
           npm run build
 
-      - name: 確認 wasm-pack 沒有自己下載工具（發佈）
-        if: github.event_name == 'workflow_dispatch'
+      # 發佈時 wasm-bindgen、wasm-opt 都事先裝好，這裡必須是空的；PR 的建置沒有事先裝 wasm-bindgen（wasm-pack 會用
+      # cargo 從 crates.io 裝，有檢查碼），只確認 wasm-opt 沒有被下載。
+      - name: 確認 wasm-pack 沒有自己下載工具
         shell: bash
         run: |
           dir="$(cygpath -u "${WASM_PACK_CACHE:?}")"
-          if [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
-            echo "::error::wasm-pack 自己下載了工具（應該用事先安裝好的 wasm-bindgen、wasm-opt）：$(ls "$dir")"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            found="$(ls -A "$dir" 2>/dev/null || true)"
+          else
+            found="$(ls -A "$dir" 2>/dev/null | grep -i "wasm-opt" || true)"
+          fi
+          if [ -n "$found" ]; then
+            echo "::error::wasm-pack 自己下載了工具（應該用事先安裝好的 wasm-bindgen、wasm-opt）：$found"
             exit 1
           fi
 
