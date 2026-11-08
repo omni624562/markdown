@@ -10,7 +10,7 @@ import { Ado } from "./ado-ui.ts";
 import { type PaletteId, applyPalette, isDark, loadAccent, loadPalette, savePalette } from "./palette.ts";
 import { formatKeys } from "./commands.ts";
 import { Editor, type EditorHandlers, type EditorOptions, cursorInfo } from "./editor.ts";
-import { type FileCommit, type FileItem, type Folder, desktop, displayPath, isRemote } from "./desktop.ts";
+import { type FileItem, type Folder, desktop, displayPath, isRemote } from "./desktop.ts";
 import type { EditorState, Text } from "@codemirror/state";
 import { type FileHandle, type OpenedFile, type SaveOutcome, desktopHandle, replaceExtension, saveFile } from "./files.ts";
 import { autoSymbols } from "./auto-symbols.ts";
@@ -48,7 +48,6 @@ import { setupMenu } from "./ui/menu.ts";
 import { KindPicker } from "./ui/kind-picker.ts";
 import { initDocLanguage } from "./app/doc-language.ts";
 import { askUtf8, encodingLabel, initFileFormat } from "./app/file-format.ts";
-import { Picker } from "./ui/picker.ts";
 import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
 import { projectInitials } from "./projects.ts";
@@ -63,16 +62,15 @@ import { type TabInfo, TabBar } from "./ui/tabbar.ts";
 import { initSideDrop } from "./app/side-drop.ts";
 import { TerminalProxy } from "./terminal-proxy.ts";
 import { Updater } from "./updater.ts";
-import { sizeLabel, versionTitle } from "./history-label.ts";
 import { DEFAULT_WORK_ITEM_FILTER, isDefaultWorkItemFilter, parseWorkItemFilter } from "./work-item-filter.ts";
-import type { AdoWiki, AdoWorkItem, AdoWorkItemFilter, FileVersion, GitStatus } from "./desktop.ts";
+import type { AdoWiki, AdoWorkItem, AdoWorkItemFilter, GitStatus } from "./desktop.ts";
 import { urlAt } from "./remote-links.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
 import { toast } from "./ui/toast.ts";
 import { imageFiles, insertImages, wikiEditImage, wikiEditImagesPlugin } from "./app/image-paste.ts";
 import { initFileDrop } from "./app/file-drop.ts";
 import { pasteLink } from "./app/paste-link.ts";
-import { clearOffline, isOffline, offline, renderOffline, resolveConflict, showOffline, storeName, initOfflineDrive } from "./app/offline-drive.ts";
+import { clearOffline, isOffline, offline, renderOffline, resolveConflict, showOffline, initOfflineDrive } from "./app/offline-drive.ts";
 import { initWikiHistory } from "./app/wiki-history.ts";
 import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
 import { openRemoteLink, remoteCard, remoteLinkOf, initAdoLinks } from "./app/ado-links.ts";
@@ -99,6 +97,7 @@ import { openWorkItemById, quickOpen, wikiLinkPages, wikiLinkPicker, workItemIdC
 import { availableRightTabs } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
+import { compareWithCommit, copyWebLink, historyPicker, initFileHistory, openOnWeb } from "./app/file-history.ts";
 import { initStatusView, setIssueFacts } from "./app/status-view.ts";
 import { autoSaveNow, autoSavePending, exclusiveSave, resumeAutoSave, scheduleDiskSave } from "./app/autosave.ts";
 import { forgetOutlineCollapse, initOutlineList, outlineHeadings, renderOutline, toggleOutline } from "./app/outline-list.ts";
@@ -2670,85 +2669,7 @@ initOfflineDrive();
 initCommands();
 initAiTerminal();
 
-// ---- 本機版本記錄（E12） ------------------------------------------------------
-
-const historyPicker = new Picker<FileVersion & { path: string }>({
-  label: t("版本紀錄"),
-  placeholder: t("選擇一個版本，和目前的內容比較"),
-  empty: t("這個檔案還沒有版本紀錄。存檔時會自動保存。"),
-  async query(q) {
-    const path = cur.fileHandle?.path;
-    if (!desktop || !path) return [];
-    const versions = await desktop.historyList(path);
-    return versions
-      .map((v) => ({ ...v, path }))
-      .filter((v) => !q.trim() || versionTitle(v.id).includes(q.trim()));
-  },
-  render: (v) => ({
-    title: versionTitle(v.id),
-    detail:
-      v.kind === "disk"
-        ? t("存檔前{store}上的內容 · {size}", { store: storeName(v.path), size: sizeLabel(v.size) })
-        : sizeLabel(v.size),
-    icon: "history",
-  }),
-  pick: (v) => void compareWithVersion(v).catch(reportError),
-});
-
-async function compareWithVersion(v: FileVersion & { path: string }): Promise<void> {
-  if (!desktop || cur.fileHandle?.path !== v.path) return;
-  const text = await desktop.historyRead(v.path, v.id);
-  if (review.active) review.finish();
-  const started = review.start(text, {
-    title: t("與 {version} 的版本比較", { version: versionTitle(v.id) }),
-    hint: t("「採用舊版」會把那一段換回舊版的內容，可以用 Ctrl+Z 復原；處理完記得存檔"),
-    acceptLabel: t("採用舊版"),
-    rejectLabel: t("保留目前"),
-  });
-  if (!started) toast(t("這個版本和目前的內容相同。"));
-}
-
-// ---- Git：檔案的提交歷史、網頁連結 --------------------------------------------
-
-async function compareWithCommit(c: FileCommit & { path: string }): Promise<void> {
-  if (!desktop || cur.fileHandle?.path !== c.path) return;
-  const text = await desktop.gitFileAt(c.path, c.id);
-  if (review.active) review.finish();
-  const started = review.start(text, {
-    title: t("與提交 {commit}（{summary}）的版本比較", { commit: c.short, summary: c.summary }),
-    hint: t("「採用這一版」會把那一段換回這次提交時的內容，可以用 Ctrl+Z 復原；處理完記得存檔"),
-    acceptLabel: t("採用這一版"),
-    rejectLabel: t("保留目前"),
-  });
-  if (!started) toast(t("這次提交時的內容和目前相同。"));
-}
-
-/** 目前檔案在 GitHub／Azure DevOps 網頁上的網址；有選取文字時標示那幾行。 */
-async function webLink(): Promise<string | null> {
-  const path = cur.fileHandle?.path;
-  if (!desktop || !path) return null;
-  const { state } = editor.view;
-  const sel = state.selection.main;
-  const lines = sel.empty
-    ? undefined
-    : [state.doc.lineAt(sel.from).number, state.doc.lineAt(Math.max(sel.from, sel.to - 1)).number];
-  return desktop.gitWebUrl(path, lines?.[0], lines?.[1]);
-}
-
-async function openOnWeb(): Promise<void> {
-  if (cur.fileHandle && !active.dirty && gitPanel?.status?.branch?.ahead) {
-    toast(t("這個檔案還有提交沒有推送，網頁上看到的可能是舊的內容。"));
-  }
-  const url = await webLink();
-  if (url) await desktop!.openExternal(url);
-}
-
-async function copyWebLink(): Promise<void> {
-  const url = await webLink();
-  if (!url) return;
-  await navigator.clipboard.writeText(url);
-  toast(url.includes("#L") || url.includes("&line=") ? t("已複製連結（含選取的行號）") : t("已複製連結"));
-}
+initFileHistory();
 
 initGitActions();
 initErrorHandling();
