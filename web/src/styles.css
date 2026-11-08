@@ -4731,6 +4731,15 @@ body.assistant-open > .statusbar { grid-column: 1 / -1; }
 .assistant-tool { display: inline-grid; place-items: center; width: 26px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }
 .assistant-tool .icon { width: 14px; height: 14px; }
 .assistant-tool:hover { background: var(--hover, var(--active-line)); color: var(--fg); }
+/* 回答下面的按鈕：圖示加文字，不用猜是什麼。 */
+.assistant-tool.with-text { display: inline-flex; gap: 4px; width: auto; padding: 0 7px; font: inherit; font-size: 12px; white-space: nowrap; }
+.assistant-tools { flex-wrap: wrap; }
+/* 回答裡的程式碼區塊、表格：右上角的「複製」「插入」只拿那一塊。 */
+.assistant-block { position: relative; margin: 0 0 12px; }
+.assistant-block > pre, .assistant-block > table { margin-bottom: 0; }
+.assistant-block-tools { display: flex; gap: 2px; justify-content: flex-end; margin: 0 0 2px; }
+.assistant-block-tools .assistant-tool.with-text { height: 20px; padding: 0 5px; font-size: 11.5px; }
+.assistant-block-tools .assistant-tool .icon { width: 12px; height: 12px; }
 .assistant-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; margin-top: 8px; }
 .assistant-actions small { color: var(--muted); }
 .assistant-card { margin-top: 10px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }

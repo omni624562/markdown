@@ -533,3 +533,42 @@ test("字級：標題列的 A−／A＋ 調整助理的字並記住；焦點在�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("回答寫回文件：按鈕有文字；插入到游標處、加到最後都自成段落；程式碼區塊、表格可以只插入那一塊", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  // 原始碼檢視：畫面上的每一行就是文件的原文。
+  await page.locator(".segmented [data-view=editor]").click();
+  await setText(page, "第一段\n\n第二段");
+  const docText = () => page.evaluate(() => [...document.querySelectorAll(".cm-content .cm-line")].map((l) => l.textContent).join("\n"));
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.locator(".assistant-input textarea").fill("給我一個範例");
+  await panel.locator(".assistant-input textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  await reply(page, "範例如下：\n\n```js\nconsole.log(1);\n```\n\n| 欄 | 值 |\n| --- | --- |\n| 甲 | 1 |\n\n以上。");
+  const answer = panel.locator(".assistant-assistant").last();
+  await answer.locator(".assistant-tools").waitFor();
+  assert.deepEqual(await answer.locator(".assistant-tools .assistant-tool").allTextContents(), ["複製", "插入", "加到最後"]);
+  assert.equal(await answer.locator(".assistant-block").count(), 2);
+
+  // 游標放在「第一段」的中間：插入的內容前後空一行，自成段落。
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await answer.locator(".assistant-block").first().getByRole("button", { name: "把這一塊插入到游標處" }).click();
+  const after = await docText();
+  assert.equal(after, "第一\n\n```js\nconsole.log(1);\n```\n\n段\n\n第二段");
+
+  // 加到最後：接在文件結尾，前面空一行。
+  await answer.locator(".assistant-block").nth(1).getByRole("button", { name: "把這一塊插入到游標處" }).waitFor();
+  await answer.locator(".assistant-tools").getByRole("button", { name: "加到文件最後" }).click();
+  const end = await docText();
+  assert.ok(end.startsWith(after + "\n\n範例如下："), end);
+  assert.ok(end.endsWith("以上。"), end);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
