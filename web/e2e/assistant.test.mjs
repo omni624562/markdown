@@ -323,3 +323,27 @@ test("存成筆記：對話之後按標題列的按鈕，在專案裡建立一�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("建議連結和標籤：附上專案裡其他筆記的名稱和已有的標籤", async () => {
+  const doc = (rel, tags) => ({ path: `${ROOT}\\${rel}`, rel, mtime: 1, info: { tasks: [], tags, links: [] } });
+  const d = desktop({ ...ON, assistantConfirmed: [ROOT] });
+  d.scan_docs = [[doc("家用網路.md", ["網路", "家裡"]), doc("電腦清單.md", ["網路"])]];
+  const { page, context, errors } = await open({ desktop: d });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await setText(page, "NAS 要放在家用網路裡。");
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  await panel.locator("#assistant-write").click();
+  await page.locator("#assistant-write-popover").getByRole("menuitem", { name: "建議連結和標籤" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const [{ request }] = await sends(page);
+  assert.match(request.messages[0].content, /<notes>\n家用網路\n電腦清單\n<\/notes>/);
+  assert.match(request.messages[0].content, /<tags>\n#網路 #家裡\n<\/tags>/);
+  assert.match(request.messages[0].content, /\[\[筆記名稱\]\]/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

@@ -23,6 +23,8 @@ export interface AssistantAction {
   group: "main" | "write" | "custom";
   /** 回答是 Mermaid 流程圖（插入時一定包成 ```mermaid 區塊）。 */
   mermaid?: boolean;
+  /** 要附上專案裡的筆記名稱與標籤（建議連結和標籤用）。 */
+  needsIndex?: boolean;
 }
 
 export const ASSISTANT_ACTIONS: AssistantAction[] = [
@@ -127,7 +129,44 @@ export const ASSISTANT_ACTIONS: AssistantAction[] = [
     mode: "replace",
     group: "write",
   },
+  {
+    id: "links",
+    label: () => t("建議連結和標籤"),
+    prompt: () =>
+      t(
+        "請根據這份內容，從 <notes> 挑出最相關的 3 到 8 篇筆記，用 [[筆記名稱]] 列出並各附一句為什麼相關；再從 <tags> 建議 3 到 6 個標籤（優先用已經有的，真的需要才提新的並註明「新」）。不要列出 <notes> 裡沒有的筆記。",
+      ),
+    needsSelection: false,
+    mode: "answer",
+    group: "write",
+    needsIndex: true,
+  },
 ];
+
+/** 專案裡的筆記與標籤（建議連結和標籤用）；太多時只送前面的。 */
+export interface ProjectIndex {
+  notes: string[];
+  tags: string[];
+}
+
+export const INDEX_LIMITS = { notes: 400, tags: 200 } as const;
+
+/** 筆記名稱（去掉 .md）與標籤（不重複、依出現次數排序）。目前這份文件不列。 */
+export function projectIndex(docs: readonly { rel: string; tags: readonly string[] }[], current: string | null): ProjectIndex {
+  const notes = docs
+    .map((d) => d.rel)
+    .filter((r) => r !== current && /\.(md|markdown)$/i.test(r))
+    .map((r) => r.replace(/\.(md|markdown)$/i, ""))
+    .sort((a, b) => a.localeCompare(b, "zh-Hant"))
+    .slice(0, INDEX_LIMITS.notes);
+  const count = new Map<string, number>();
+  for (const d of docs) for (const tag of new Set(d.tags)) count.set(tag, (count.get(tag) ?? 0) + 1);
+  const tags = [...count]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hant"))
+    .slice(0, INDEX_LIMITS.tags)
+    .map(([tag]) => tag);
+  return { notes, tags };
+}
 
 /** 設定裡的自訂動作。取代選取文字的動作需要先選取文字；其他的沒選取時用整份文件。 */
 export function customActions(list: readonly AssistantCustomAction[]): AssistantAction[] {
@@ -161,6 +200,8 @@ export interface AssistantContext {
   /** 目前的文件（名稱與全文）；使用者拿掉時是 null。 */
   doc: { name: string; text: string } | null;
   selection: string;
+  /** 專案裡的筆記與標籤（只有建議連結和標籤時送）。 */
+  index?: ProjectIndex;
 }
 
 /** 這一輪要送出的使用者訊息：資料放前面，問題放最後。 */
@@ -168,6 +209,10 @@ export function userContent(question: string, ctx: AssistantContext): string {
   const parts: string[] = [];
   if (ctx.doc) parts.push(`<document name="${ctx.doc.name.replace(/"/g, "'")}">\n${ctx.doc.text}\n</document>`);
   if (ctx.selection.trim()) parts.push(`<selection>\n${ctx.selection}\n</selection>`);
+  if (ctx.index) {
+    parts.push(`<notes>\n${ctx.index.notes.join("\n")}\n</notes>`);
+    parts.push(`<tags>\n${ctx.index.tags.map((tag) => `#${tag}`).join(" ")}\n</tags>`);
+  }
   parts.push(question.trim());
   return parts.join("\n\n");
 }

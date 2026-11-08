@@ -14,6 +14,8 @@ import {
   MODEL_LABELS,
   conversation,
   customActions,
+  type ProjectIndex,
+  projectIndex,
   noteName,
   type TranscriptItem,
   transcriptMarkdown,
@@ -36,7 +38,7 @@ import { icon } from "../ui/icons.ts";
 import { setupMenu } from "../ui/menu.ts";
 import { toast } from "../ui/toast.ts";
 import { openUrl } from "./activity-bar.ts";
-import { openPath } from "./workspace-ui.ts";
+import { indexedDocs, openPath } from "./workspace-ui.ts";
 import { app } from "./context.ts";
 import { docName as tabName } from "./doc-names.ts";
 
@@ -343,7 +345,15 @@ async function send(question: string, action: AssistantAction | null = null): Pr
     toast(t("請先選取要「{name}」的文字", { name: action.label() }));
     return;
   }
-  const ctx = { doc: includeDoc ? { name: docName(), text: app.editor.text } : null, selection: sel.text };
+  let index: ProjectIndex | undefined;
+  if (action?.needsIndex) {
+    const docs = await indexedDocs().catch(() => []);
+    index = projectIndex(
+      docs.map((d) => ({ rel: d.rel, tags: d.info.tags })),
+      docs.find((d) => d.path && d.path === app.cur.fileHandle?.path)?.rel ?? null,
+    );
+  }
+  const ctx = { doc: includeDoc ? { name: docName(), text: app.editor.text } : null, selection: sel.text, index };
   const content = userContent(question, ctx);
   const mode = action?.mode ?? "answer";
   const system = systemPrompt(mode);
