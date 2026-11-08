@@ -386,3 +386,41 @@ test("附圖片：在輸入框貼上圖片變成小標籤，送出時圖片附�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]] 點了會打開那份筆記", async () => {
+  const docs = [
+    { path: `${ROOT}\\NAS 備份規劃.md`, rel: "NAS 備份規劃.md", mtime: 1, info: { tasks: [], tags: [], links: [] } },
+    { path: `${ROOT}\\家用網路.md`, rel: "家用網路.md", mtime: 1, info: { tasks: [], tags: [], links: [] } },
+  ];
+  const d = desktop({ ...ON, assistantConfirmed: [ROOT] });
+  d.scan_docs = [docs];
+  const [nas, net] = docs.map((x) => x.path);
+  d.read_docs = {
+    $by: "paths",
+    values: { [`${nas},${net}`]: ["每晚把照片備份到 NAS。", "路由器在客廳。"], [`${net},${nas}`]: ["路由器在客廳。", "每晚把照片備份到 NAS。"] },
+  };
+  const { page, context, errors } = await open({ desktop: d });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  await panel.getByRole("button", { name: "問整個專案" }).click();
+  await panel.locator(".assistant-chip:not(.assistant-chip-add)", { hasText: "整個專案" }).waitFor();
+  await panel.locator("textarea").fill("NAS 備份怎麼做？");
+  await panel.locator("textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const [{ request }] = await sends(page);
+  assert.match(request.messages[0].content, /<note name="NAS 備份規劃">\n每晚把照片備份到 NAS。\n<\/note>/);
+  assert.doesNotMatch(request.messages[0].content, /路由器/);
+  assert.match(request.system, /\[\[筆記名稱\]\]/);
+  assert.match(await panel.locator(".assistant-scope").textContent(), /根據專案裡 1 篇筆記/);
+  await reply(page, "每晚自動備份 [[NAS 備份規劃]]。");
+  const cite = panel.locator(".assistant-answer a[data-wikilink]");
+  await cite.waitFor();
+  assert.equal(await cite.textContent(), "NAS 備份規劃");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

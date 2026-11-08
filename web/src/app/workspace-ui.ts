@@ -86,6 +86,11 @@ export async function indexedDocs(): Promise<IndexedDoc[]> {
   return docIndex.docs(openDocsForIndex());
 }
 
+/** 讀出索引裡幾份文件的全文（問整個專案時用）。 */
+export function indexedTexts(docs: readonly IndexedDoc[]): Promise<string[]> {
+  return docIndex.texts(docs);
+}
+
 export function indexScope(): string {
   if (desktop && app.workspaceRoot && !isRemote(app.workspaceRoot.path)) return "folder";
   return "tabs";
