@@ -14,6 +14,9 @@ import {
   MODEL_LABELS,
   conversation,
   customActions,
+  noteName,
+  type TranscriptItem,
+  transcriptMarkdown,
   estimateUsd,
   formatUsd,
   listed,
@@ -33,6 +36,7 @@ import { icon } from "../ui/icons.ts";
 import { setupMenu } from "../ui/menu.ts";
 import { toast } from "../ui/toast.ts";
 import { openUrl } from "./activity-bar.ts";
+import { openPath } from "./workspace-ui.ts";
 import { app } from "./context.ts";
 import { docName as tabName } from "./doc-names.ts";
 
@@ -53,6 +57,8 @@ interface Pending {
   /** 取代或插入的範圍：送出當下選取的範圍與文字（套用前確認沒被改過；插入的位置是範圍的結尾）。 */
   range: { from: number; to: number; original: string };
   question: string;
+  /** 畫面上顯示的問題（動作名稱或使用者打的字），存成筆記時用。 */
+  shown: string;
 }
 
 let panel: HTMLElement | null = null;
@@ -64,6 +70,9 @@ let usageEl!: HTMLElement;
 let modelBtn!: HTMLButtonElement;
 let notice!: HTMLElement;
 let history: AssistantMessage[] = [];
+/** 這次對話的一問一答（存成筆記用）。 */
+let transcript: TranscriptItem[] = [];
+let saveBtn!: HTMLButtonElement;
 let pending: Pending | null = null;
 let nextId = 1;
 let includeDoc = true;
@@ -346,7 +355,7 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   answer.classList.add("loading");
   answer.textContent = t("思考中…");
   const id = nextId++;
-  pending = { id, answer, text: "", question, mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
+  pending = { id, answer, text: "", question, shown, mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
   input.value = "";
   setRunning(true);
   try {
@@ -398,6 +407,8 @@ function onRun(e: AssistantRunEvent): void {
       s.textContent = t("回答太長，後面被截斷了。");
       p.answer.append(s);
     }
+    if (p.text.trim()) transcript.push({ question: p.shown, answer: p.text });
+    saveBtn.disabled = !transcript.length;
     if (p.mode !== "answer" && p.text.trim()) suggestionCard(p.answer, p, p.text);
     else if (p.mode === "answer" && p.text.trim()) {
       answerActions(p.answer, p.text);
@@ -407,6 +418,27 @@ function onRun(e: AssistantRunEvent): void {
   if (usage) usage = { ...usage, usd: e.monthUsd };
   renderUsage();
   setRunning(false);
+}
+
+/** 把這次對話存成專案裡的一份筆記，並打開它。 */
+async function saveNote(): Promise<void> {
+  const root = app.workspaceRoot;
+  if (!desktop || !root || !transcript.length) return;
+  const now = new Date();
+  const text = transcriptMarkdown(transcript, now, includeDoc ? docName() : null);
+  try {
+    const path = await desktop.createEntry(root.path, noteName(now), false);
+    app.fileListCache = null;
+    app.indexStale = true;
+    await app.fileTree?.refresh([root.path]);
+    await openPath(path);
+    if (app.cur.fileHandle?.path !== path || app.editor.text) return;
+    app.editor.replaceAll(text, { isolate: true });
+    await app.save(false);
+    toast(t("已存成筆記「{name}」", { name: noteName(now) }), { tone: "success" });
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), { tone: "error" });
+  }
 }
 
 function stop(): void {
@@ -424,6 +456,8 @@ function stop(): void {
 function newChat(): void {
   if (pending) stop();
   history = [];
+  transcript = [];
+  saveBtn.disabled = true;
   log.replaceChildren();
   input.focus();
 }
@@ -522,7 +556,9 @@ function build(): HTMLElement {
   renderModel();
   const spacer = document.createElement("span");
   spacer.className = "assistant-spacer";
-  head.append(title, modelBtn, spacer, headButton(t("新對話"), "message-square-plus", newChat), headButton(t("關閉助理"), "x", () => toggleAssistant(false)));
+  saveBtn = headButton(t("存成筆記"), "file-down", () => void saveNote());
+  saveBtn.disabled = true;
+  head.append(title, modelBtn, spacer, saveBtn, headButton(t("新對話"), "message-square-plus", newChat), headButton(t("關閉助理"), "x", () => toggleAssistant(false)));
 
   notice = document.createElement("div");
   notice.className = "assistant-notice";
