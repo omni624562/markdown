@@ -298,7 +298,8 @@ function bubble(role: "user" | "assistant", text = ""): HTMLElement {
 function showAnswer(el: HTMLElement, text: string): void {
   const body = document.createElement("div");
   body.className = "markdown-body assistant-answer";
-  body.innerHTML = renderMarkdown(text, { kind: "markdown" }).html;
+  // sourcepos：回答裡的程式碼區塊、表格對回原文（見 blockActions）。
+  body.innerHTML = renderMarkdown(text, { kind: "markdown", sourcepos: true }).html;
   el.replaceChildren(body);
 }
 
@@ -320,13 +321,18 @@ async function copy(text: string): Promise<void> {
   }
 }
 
-function toolButton(label: string, iconName: string, run: () => void): HTMLButtonElement {
+function toolButton(label: string, iconName: string, run: () => void, text?: string): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = "assistant-tool";
+  b.className = text ? "assistant-tool with-text" : "assistant-tool";
   b.title = label;
   b.setAttribute("aria-label", label);
   b.append(icon(iconName));
+  if (text) {
+    const span = document.createElement("span");
+    span.textContent = text;
+    b.append(span);
+  }
   b.addEventListener("click", run);
   return b;
 }
@@ -346,20 +352,65 @@ function writable(view: EditorView): boolean {
   return false;
 }
 
-/** 一般回答下面的小圖示：複製、插入到游標的位置（滑鼠移上去看說明）。 */
+/**
+ * 把回答（或其中一塊）寫進目前的文件：`at` 是插入的位置（游標或文件最後）。
+ * 插在一行的中間或緊接著文字時前後空一行，插入的內容自成段落；插完游標移到內容後面並捲到看得到。
+ */
+function insertIntoDoc(text: string, where: "cursor" | "end"): void {
+  const view = app.editor.view;
+  if (!writable(view)) return;
+  const doc = view.state.doc;
+  const at = where === "end" ? doc.length : view.state.selection.main.head;
+  const { prefix, suffix } = insertPadding(at > 0 ? doc.sliceString(at - 1, at) : "", doc.sliceString(at, at + 1));
+  const insert = prefix + text.trim() + suffix;
+  view.dispatch({
+    changes: { from: at, insert },
+    selection: { anchor: at + prefix.length + text.trim().length },
+    scrollIntoView: true,
+    userEvent: "input.ai",
+  });
+  toast(where === "end" ? t("已加到文件最後（可以按 Ctrl+Z 復原）") : t("已插入（可以按 Ctrl+Z 復原）"), { tone: "success" });
+}
+
+/** 回答下面的按鈕（圖示加文字）：複製、插入到游標處、加到文件最後。 */
 function answerActions(el: HTMLElement, text: string): void {
   const bar = document.createElement("div");
   bar.className = "assistant-tools";
   bar.append(
-    toolButton(t("複製"), "copy", () => void copy(text)),
-    toolButton(t("插入到游標處"), "text-cursor-input", () => {
-      if (!writable(app.editor.view)) return;
-      const at = app.editor.view.state.selection.main.head;
-      app.editor.view.dispatch({ changes: { from: at, insert: text }, userEvent: "input.ai" });
-      toast(t("已插入（可以按 Ctrl+Z 復原）"), { tone: "success" });
-    }),
+    toolButton(t("複製"), "copy", () => void copy(text), t("複製")),
+    toolButton(t("插入到游標處"), "clipboard-paste", () => insertIntoDoc(text, "cursor"), t("插入")),
+    toolButton(t("加到文件最後"), "arrow-down-to-line", () => insertIntoDoc(text, "end"), t("加到最後")),
   );
   el.append(bar);
+  blockActions(el, text);
+}
+
+/**
+ * 回答裡的程式碼區塊、表格、流程圖：右上角各有「複製」「插入」，只拿那一塊。
+ * 用預覽的 `data-sourcepos` 對回原文：複製程式碼只複製內容，插入時連同 ``` 一起插入（保留 Markdown）。
+ */
+function blockActions(el: HTMLElement, text: string): void {
+  const lines = text.split("\n");
+  const body = el.querySelector(".assistant-answer");
+  if (!body) return;
+  for (const block of body.querySelectorAll<HTMLElement>(":scope > pre[data-sourcepos], :scope > table[data-sourcepos]")) {
+    const m = /^(\d+):\d+-(\d+):\d+$/.exec(block.dataset.sourcepos ?? "");
+    if (!m) continue;
+    const source = lines.slice(Number(m[1]) - 1, Number(m[2])).join("\n");
+    if (!source.trim()) continue;
+    const isCode = block.tagName === "PRE";
+    const content = isCode ? (block.querySelector("code")?.textContent ?? block.textContent ?? "").replace(/\n$/, "") : source;
+    const wrap = document.createElement("div");
+    wrap.className = "assistant-block";
+    block.replaceWith(wrap);
+    const tools = document.createElement("div");
+    tools.className = "assistant-block-tools";
+    tools.append(
+      toolButton(isCode ? t("複製程式碼") : t("複製表格"), "copy", () => void copy(content), t("複製")),
+      toolButton(t("把這一塊插入到游標處"), "clipboard-paste", () => insertIntoDoc(source, "cursor"), t("插入")),
+    );
+    wrap.append(tools, block);
+  }
 }
 
 /** 取代或插入的建議卡片：看過差異再套用。 */
