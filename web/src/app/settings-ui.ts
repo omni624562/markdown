@@ -26,7 +26,7 @@ import { gitPanel } from "./work-item-updates.ts";
 import { renderAdoTab, renderIssuesTab } from "./work-items-panel.ts";
 import { kindColorCss } from "../work-item-colors.ts";
 import type { ViewUpdate } from "@codemirror/view";
-import type { ViewMode } from "../main.ts";
+import type { ViewMode } from "../view-modes.ts";
 import { chatgptDesktopFound } from "./chatgpt.ts";
 import { app } from "./context.ts";
 import { saveAdoDiagnostics } from "./ado-status.ts";

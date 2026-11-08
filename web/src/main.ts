@@ -110,7 +110,7 @@ import { renderStartRecent } from "./app/recent-files.ts";
 import { initErrorHandling } from "./app/error-handling.ts";
 import { refreshRepoNotes, repoSources } from "./app/repo-sources.ts";
 
-export type ViewMode = "editor" | "live" | "split" | "preview";
+import { type ViewMode, applyViewSwitch, chooseView, currentView } from "./view-modes.ts";
 type ThemePref = "system" | "light" | "dark";
 
 /** 範例文件（英文介面用英文版）。 */
@@ -2069,6 +2069,7 @@ function setKind(next: DocKind, { rename = true } = {}): void {
   preview.clear();
   buildFormatBar();
   renderNow();
+  applyLayout();
 }
 
 function setBaseline(text: string, backed: boolean): void {
@@ -2835,6 +2836,7 @@ function focusPane(pane: Pane, focusView = false): void {
     buildFormatBar();
     persistSession();
     renderNow();
+    applyLayout();
     renderTabs();
     renderOffline();
     renderWikiBar();
@@ -3017,6 +3019,7 @@ function activate(doc: Doc): void {
   buildFormatBar();
   persistSession();
   renderNow();
+  applyLayout();
   renderTabs();
   renderOffline();
   renderWikiBar();
@@ -3502,6 +3505,7 @@ function previewVisible(): boolean {
 }
 
 function applyLayout(): void {
+  view = currentView(cur.kind); // 這種文件用不到的模式退回原始碼（見 view-modes.ts）
   const narrow = narrowQuery.matches;
   // 手機寬度放不下並排，分割模式改為只顯示編輯區（可用分頁切換到預覽）。
   // 起始頁也一樣：佔滿整個區域，開始打字後才分成左右兩半。
@@ -3541,9 +3545,7 @@ function applyLayout(): void {
     rightColumnOn() ? "var(--outline-right-width)" : "0px",
   ];
   workspace.style.gridTemplateColumns = cols.join(" ");
-  document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((b) => {
-    b.setAttribute("aria-checked", String(b.dataset.view === effective));
-  });
+  applyViewSwitch(document, cur.kind, effective);
   // 側邊欄打開時，分頁從編輯區的左緣開始，和下面的欄位對齊。
   $(".topbar").classList.toggle("with-sidebar", outlineShown && !narrow);
   $(".topbar").classList.toggle("with-right", rightColumnOn());
@@ -3573,8 +3575,7 @@ function setView(mode: ViewMode): void {
   if (paneDocs.side && (mode === "split" || mode === "preview")) closeSide();
   if (!issueSide) hideItem();
   historyView?.close();
-  view = mode;
-  storage.save("view", mode);
+  chooseView(mode);
   applyLayout();
   // 預覽之前沒有顯示、內容是舊的：現在補畫。
   if (preview.stale && previewVisible()) renderNow();
@@ -3640,8 +3641,7 @@ initFileDrop();
 
 // ---- 初始狀態 -----------------------------------------------------------
 
-const savedView = storage.load("view");
-view = savedView === "editor" || savedView === "live" || savedView === "preview" ? savedView : "split";
+view = currentView(cur.kind);
 kindSelect.value = cur.kind;
 setTheme(themePref);
 applySettings(settings.value);
