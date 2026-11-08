@@ -24,7 +24,9 @@ test("點圖片：在分頁裡顯示，不會當成文字檔打開", async () =>
   const tab = page.locator("#tab-bar .tab[aria-selected=true] .tab-name");
   assert.equal(await tab.textContent(), "王小明.png");
   assert.equal(await page.getAttribute(".issue-pane", "data-source"), "image");
-  assert.equal(await page.locator(".issue-pane .issue-body.image-view img").getAttribute("alt"), "王小明");
+  const img = page.locator(".issue-pane .issue-body.image-view img");
+  assert.equal(await img.getAttribute("alt"), "王小明");
+  assert.match(await img.getAttribute("src"), /^http:\/\/mdimg\.localhost\//, "用 mdimg 協定讀圖");
   // 本機圖片沒有網址：「在瀏覽器開啟」藏起來。
   assert.equal(await page.locator(".issue-pane button[title='在瀏覽器開啟']").isVisible(), false);
   // 沒有呼叫讀文字檔的指令。
