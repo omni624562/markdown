@@ -30,6 +30,7 @@ import type { ViewMode } from "../view-modes.ts";
 import { chatgptDesktopFound } from "./chatgpt.ts";
 import { app } from "./context.ts";
 import { saveAdoDiagnostics } from "./ado-status.ts";
+import { drawerQuery } from "./workspace-ui.ts";
 
 
 const PREVIEW_WIDTH: Record<Settings["previewWidth"], string> = { narrow: "680px", medium: "820px", wide: "1080px" };
@@ -346,6 +347,7 @@ export function initSettingsUi(): void {
     app.applyLayout();
   });
   app.wideQuery.addEventListener("change", () => app.applyLayout());
+  drawerQuery.addEventListener("change", () => app.applyLayout());
   app.narrowQuery.addEventListener("change", () => {
     // 切換到手機寬度時，大綱抽屜先收起來，避免蓋住內容。
     if (app.narrowQuery.matches) app.outlineShown = false;

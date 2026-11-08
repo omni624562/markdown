@@ -41,7 +41,7 @@ import { boardPanelShown } from "./taskboard.ts";
 import { repoNoteEl } from "./repo-sources.ts";
 import { docName } from "./doc-names.ts";
 import { renameFileShortcuts } from "./file-shortcuts.ts";
-import { setSectionCollapsed, showBacklinksCount, syncRightSections } from "./right-sections.ts";
+import { rightTab, selectRightTab, showBacklinksCount, syncRightTabs } from "./right-tabs.ts";
 import { showFilters } from "./filter-collapse.ts";
 import { cometChangeWarning, refreshCometGuards } from "./comet-files.ts";
 
@@ -115,12 +115,13 @@ export function openTag(tag: string): void {
 
 let backlinksSeq = 0;
 /** 大綱面板下方的反向連結：哪些文件連到目前的文件。 */
-async function renderBacklinks(): Promise<void> {
+export async function renderBacklinks(): Promise<void> {
   const el = app.$("section#backlinks");
   const path = app.cur.fileHandle?.path;
   const seq = ++backlinksSeq;
   if (!path || app.cur.kind !== "markdown" || indexScope() !== "folder") {
     el.hidden = true;
+    showBacklinksCount(0);
     return;
   }
   const docsNow = await indexedDocs().catch(() => null);
@@ -212,9 +213,15 @@ export let wikiRightWanted = storage.load("wiki-right") === "1";
 export function wikiPlacedRight(): boolean {
   return wikiRightWanted && !!app.ado?.account && wideQuery.matches && !app.narrowQuery.matches;
 }
-/** 右側欄有東西（大綱或 Wiki）而且沒有收起來。 */
+/** 視窗不夠寬（900px 以下）時右側欄不佔一欄，改成蓋在文件上的抽屜（這時只有助理會放在右側欄）。 */
+export const drawerQuery = matchMedia("(max-width: 900px)");
+/** 右側欄是一欄而且開著、有東西可以看（大綱、Wiki，或使用者打開過的助理；見 app/right-tabs.ts）。 */
 export function rightColumnOn(): boolean {
-  return (outlinePlacedRight() || wikiPlacedRight()) && app.rightOutlineShown;
+  return app.rightOutlineShown && !drawerQuery.matches && rightTab() !== null;
+}
+/** 視窗不夠寬：右側欄是蓋在文件上的抽屜（只有助理會這樣開）。 */
+export function rightDrawerOn(): boolean {
+  return app.rightOutlineShown && drawerQuery.matches && rightTab() === "assistant";
 }
 
 /** 把 Wiki 面板移到右側或移回左邊。 */
@@ -260,8 +267,10 @@ export function placeOutline(): void {
     panel.hidden = app.sidePanel !== "outline";
   }
   placeWiki(right);
-  syncRightSections();
-  right.hidden = !rightColumnOn();
+  syncRightTabs();
+  const drawer = rightDrawerOn();
+  right.classList.toggle("right-drawer", drawer);
+  right.hidden = !(rightColumnOn() || drawer);
 }
 
 /** 依設定把 Wiki 面板移到右側欄或放回左邊的側邊欄。 */
@@ -325,16 +334,16 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
   pendingPanel = panel === requested ? null : requested;
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
   if (panel === "outline" && outlinePlacedRight()) {
-    // 要看大綱（指令、快速鍵）：右側欄的大綱收合著時展開；啟動時還原等自動的切換不動使用者收合的分區。
-    if (reveal) setSectionCollapsed("outline", false);
+    // 要看大綱（指令、快速鍵）：右側欄切到大綱那一頁；啟動時還原等自動的切換不動使用者選的分頁。
     if (!app.rightOutlineShown) setRightOutline(true);
+    if (reveal) selectRightTab("outline");
     else app.updateActiveHeading();
     return;
   }
   // Wiki 在右側時一直顯示（右側欄收起來時打開），不用切換左邊的側邊欄。
   if (panel === "wiki" && wikiPlacedRight()) {
-    if (reveal) setSectionCollapsed("wiki", false);
     if (!app.rightOutlineShown) setRightOutline(true);
+    if (reveal) selectRightTab("wiki");
     wikiPanel?.shown();
     // 從圖示列打開：和搜尋、標籤面板一樣，游標直接放進搜尋框。
     if (focusInput) {

@@ -102,6 +102,7 @@ import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./a
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
 import { docName, docTooltip, renumber, saveFileName } from "./app/doc-names.ts";
 import { openWorkItemById, quickOpen, wikiLinkPages, wikiLinkPicker, workItemIdCompletion, workItemLinkPicker } from "./app/quick-open.ts";
+import { availableRightTabs } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
@@ -3332,9 +3333,9 @@ function applyLayout(): void {
   // 側邊欄打開時，分頁從編輯區的左緣開始，和下面的欄位對齊。
   $(".topbar").classList.toggle("with-sidebar", outlineShown && !narrow);
   $(".topbar").classList.toggle("with-right", rightColumnOn());
-  // 右上角的按鈕：大綱放在右邊時，收起或打開右邊那一欄。
+  // 右上角那一塊：右側欄的分頁列（app/right-tabs.ts）和收起／打開右側欄的開關；沒有任何分頁時整塊藏起來。
   const rightToggle = $("[data-command='toggle-outline-right']");
-  rightToggle.hidden = !outlinePlacedRight() && !wikiPlacedRight();
+  rightToggle.hidden = availableRightTabs().length === 0;
   $(".top-actions").hidden = rightToggle.hidden;
   if (rightToggle.getAttribute("aria-pressed") !== String(rightOutlineShown)) {
     rightToggle.setAttribute("aria-pressed", String(rightOutlineShown));

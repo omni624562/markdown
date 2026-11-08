@@ -326,7 +326,7 @@ export const main: Record<string, Translation> = {
   "縮小編輯區文字": "Decrease Editor Font Size",
   "編輯區文字恢復預設大小": "Reset Editor Font Size",
   "顯示／隱藏側邊欄": "Show/Hide Sidebar",
-  "顯示／隱藏右側欄（大綱、Wiki）": "Show/Hide Right Sidebar (Outline, Wiki)",
+  "顯示／隱藏右側欄（大綱、反向連結、Wiki、助理）": "Show/Hide Right Sidebar (Outline, Backlinks, Wiki, Assistant)",
   "Wiki 放在右側": "Wiki on the Right",
   "視窗寬一點時 Wiki 才會放在右側（現在先留在左邊）。": "The wiki moves to the right when the window is wider (it stays on the left for now).",
   "移回左邊的側邊欄": "Move Back to the Left Sidebar",
