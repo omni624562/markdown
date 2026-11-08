@@ -63,6 +63,8 @@ interface Pending {
   /** 取代或插入的範圍：送出當下選取的範圍與文字（套用前確認沒被改過；插入的位置是範圍的結尾）。 */
   range: { from: number; to: number; original: string };
   question: string;
+  /** 上網查資料時引用的網頁（網址 → 標題）。 */
+  sources: Map<string, string>;
   /** 畫面上顯示的問題（動作名稱或使用者打的字），存成筆記時用。 */
   shown: string;
 }
@@ -95,6 +97,8 @@ let nextId = 1;
 let includeDoc = true;
 /** 問整個專案：送出前從專案裡挑出相關的筆記一起送，回答標出處。 */
 let askProject = false;
+/** 這一題上網查資料（設定裡允許時才出現這個選項）。 */
+let webSearch = false;
 let usage: AssistantUsage | null = null;
 let hasKey = false;
 
@@ -145,7 +149,16 @@ function docName(): string {
 /** 標籤列目前顯示的內容（判斷要不要重畫）。 */
 let shownChips = "";
 function chipsKey(): string {
-  return JSON.stringify([includeDoc, includeDoc && docName(), selection().text.length, askProject, !!app.workspaceRoot, attached.length]);
+  return JSON.stringify([
+    includeDoc,
+    includeDoc && docName(),
+    selection().text.length,
+    askProject,
+    webSearch,
+    app.settings.value.claudeWebSearch,
+    !!app.workspaceRoot,
+    attached.length,
+  ]);
 }
 
 function renderChips(): void {
@@ -175,6 +188,18 @@ function renderChips(): void {
     add.append(icon("plus"), t("加入目前的文件"));
     add.addEventListener("click", () => ((includeDoc = true), renderChips()));
     items.push(add);
+  }
+  if (app.settings.value.claudeWebSearch) {
+    if (webSearch) chip(t("上網查"), "globe", () => ((webSearch = false), renderChips()));
+    else {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "assistant-chip assistant-chip-add";
+      add.title = t("讓 Claude 上網搜尋（每次搜尋約 US$0.01）");
+      add.append(icon("plus"), t("上網查"));
+      add.addEventListener("click", () => ((webSearch = true), renderChips(), input.focus()));
+      items.push(add);
+    }
   }
   if (app.workspaceRoot) {
     if (askProject) chip(t("整個專案"), "folder-open", () => ((askProject = false), renderChips()));
@@ -453,14 +478,16 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   answer.classList.add("loading");
   answer.textContent = t("思考中…");
   const id = nextId++;
-  pending = { id, answer, text: "", question, shown, mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
+  pending = { id, answer, text: "", question, shown, sources: new Map(), mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
   input.value = "";
   setRunning(true);
   try {
     // 會改文件的動作不接續之前的對話（只看這一次的內容）。
     const messages = conversation(mode === "answer" ? history : [], content);
     if (images.length) messages[messages.length - 1] = { ...messages[messages.length - 1], images };
-    await desktop.assistantSend(id, { model, system, messages });
+    // 上網查只用在一般問答，而且設定裡要允許。
+    const web = webSearch && mode === "answer" && app.settings.value.claudeWebSearch;
+    await desktop.assistantSend(id, { model, system, messages, webSearch: web });
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }
@@ -494,17 +521,27 @@ function onRun(e: AssistantRunEvent): void {
     return;
   }
   if (e.kind === "error") return fail(e.message);
+  if (e.kind === "source") {
+    p.sources.set(e.url, e.title);
+    return;
+  }
   pending = null;
+  // 引用的網頁列在回答最後（也會跟著存成筆記、插入文件）。
+  if (p.sources.size && p.text.trim()) {
+    const list = [...p.sources].map(([url, title]) => `- [${title.replace(/[[\]]/g, "")}](${url})`);
+    const heading = "**" + t("來源") + "**";
+    p.text = [p.text.trimEnd(), heading, list.join("\n")].join("\n\n");
+  }
   p.answer.classList.remove("loading");
   if (e.stop === "refusal" && !p.text.trim()) {
     p.answer.classList.add("error");
     p.answer.textContent = t("Claude 沒有回答這個要求。");
   } else {
     showAnswer(p.answer, p.text || t("（沒有回答）"));
-    if (e.stop === "max_tokens") {
+    if (e.stop === "max_tokens" || e.stop === "pause_turn") {
       const s = document.createElement("small");
       s.className = "assistant-cut";
-      s.textContent = t("回答太長，後面被截斷了。");
+      s.textContent = e.stop === "max_tokens" ? t("回答太長，後面被截斷了。") : t("搜尋還沒做完，回答可能不完整；可以再問一次。");
       p.answer.append(s);
     }
     if (p.text.trim()) transcript.push({ question: p.shown, answer: p.text });

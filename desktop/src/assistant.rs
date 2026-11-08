@@ -32,7 +32,13 @@ struct Model {
     cache_read: f64,
     /// 拒絕回答時改用其他模型重試（伺服器端處理）。
     fallback: bool,
+    /// 上網查資料的工具版本（Haiku 只能用基本版）。
+    web_search: &'static str,
 }
+
+/// 上網查資料：每次搜尋 US$0.01，一次回答最多查幾次。
+const SEARCH_USD: f64 = 0.01;
+const MAX_SEARCHES: u64 = 5;
 
 const MODELS: [Model; 3] = [
     Model {
@@ -41,6 +47,7 @@ const MODELS: [Model; 3] = [
         output: 0.50,
         cache_read: 0.01,
         fallback: false,
+        web_search: "web_search_20250305",
     },
     Model {
         id: "claude-sonnet-5-5",
@@ -48,6 +55,7 @@ const MODELS: [Model; 3] = [
         output: 10.0,
         cache_read: 0.20,
         fallback: true,
+        web_search: "web_search_20260209",
     },
     Model {
         id: "claude-opus-5-5",
@@ -55,6 +63,7 @@ const MODELS: [Model; 3] = [
         output: 20.0,
         cache_read: 0.20,
         fallback: true,
+        web_search: "web_search_20260209",
     },
 ];
 
@@ -276,6 +285,9 @@ pub struct SendRequest {
     model: String,
     system: String,
     messages: Vec<ChatMessage>,
+    /// 這一題允許上網查資料（設定也要開著才會生效）。
+    #[serde(default)]
+    web_search: bool,
 }
 
 /// 對話要從使用者開始、輪流、以使用者結束，內容不能空白。
@@ -287,7 +299,7 @@ fn valid_messages(messages: &[ChatMessage]) -> bool {
         })
 }
 
-fn request_body(m: &Model, req: &SendRequest) -> serde_json::Value {
+fn request_body(m: &Model, req: &SendRequest, web: bool) -> serde_json::Value {
     let messages: Vec<_> = req
         .messages
         .iter()
@@ -323,6 +335,11 @@ fn request_body(m: &Model, req: &SendRequest) -> serde_json::Value {
     if m.fallback {
         body["fallbacks"] = serde_json::json!("default");
     }
+    if web {
+        body["tools"] = serde_json::json!([
+            { "type": m.web_search, "name": "web_search", "max_uses": MAX_SEARCHES }
+        ]);
+    }
     body
 }
 
@@ -332,6 +349,8 @@ struct Tokens {
     cache_write: u64,
     cache_read: u64,
     output: u64,
+    /// 上網搜尋的次數。
+    searches: u64,
 }
 
 /// 估計的費用（美元）。寫入快取的部分是一般輸入的 1.25 倍。
@@ -341,6 +360,7 @@ fn cost(m: &Model, t: &Tokens) -> f64 {
         + per(t.cache_write, m.input * 1.25)
         + per(t.cache_read, m.cache_read)
         + per(t.output, m.output)
+        + t.searches as f64 * SEARCH_USD
 }
 
 /// 串流裡的一個事件（`data:` 那一行的 JSON）。
@@ -351,8 +371,14 @@ enum Sse {
         tokens: Tokens,
     },
     Text(String),
+    /// 回答引用的網頁。
+    Source {
+        url: String,
+        title: String,
+    },
     Delta {
         output: u64,
+        searches: u64,
         stop: Option<String>,
     },
     Error(String),
@@ -374,14 +400,28 @@ fn parse_sse(data: &str) -> Sse {
                     cache_write: n(&u["cache_creation_input_tokens"]),
                     cache_read: n(&u["cache_read_input_tokens"]),
                     output: n(&u["output_tokens"]),
+                    searches: 0,
                 },
             }
         }
         Some("content_block_delta") if v["delta"]["type"] == "text_delta" => {
             Sse::Text(v["delta"]["text"].as_str().unwrap_or_default().to_string())
         }
+        Some("content_block_delta") if v["delta"]["type"] == "citations_delta" => {
+            let c = &v["delta"]["citation"];
+            match c["url"].as_str() {
+                Some(url) if url.starts_with("https://") || url.starts_with("http://") => {
+                    Sse::Source {
+                        url: url.to_string(),
+                        title: c["title"].as_str().unwrap_or(url).to_string(),
+                    }
+                }
+                _ => Sse::Other,
+            }
+        }
         Some("message_delta") => Sse::Delta {
             output: n(&v["usage"]["output_tokens"]),
+            searches: n(&v["usage"]["server_tool_use"]["web_search_requests"]),
             stop: v["delta"]["stop_reason"].as_str().map(str::to_string),
         },
         Some("error") => Sse::Error(
@@ -420,6 +460,11 @@ enum RunEvent {
     Delta {
         id: u64,
         text: String,
+    },
+    Source {
+        id: u64,
+        url: String,
+        title: String,
     },
     #[serde(rename_all = "camelCase")]
     Done {
@@ -481,7 +526,9 @@ pub fn assistant_send(
             cap = format!("{cap:.2}")
         ));
     }
-    let body = request_body(m, &request).to_string();
+    // 上網查資料要設定裡開著、這一題也勾了才會送出搜尋工具。
+    let web = request.web_search && settings["claudeWebSearch"] == true;
+    let body = request_body(m, &request, web).to_string();
     let cancel = Arc::new(AtomicBool::new(false));
     runs.0.lock().insert(id, cancel.clone());
     std::thread::spawn(move || {
@@ -558,8 +605,16 @@ fn run(
             Sse::Text(text) if !text.is_empty() => {
                 let _ = app.emit("assistant-run", RunEvent::Delta { id, text });
             }
-            Sse::Delta { output, stop: s } => {
+            Sse::Source { url, title } => {
+                let _ = app.emit("assistant-run", RunEvent::Source { id, url, title });
+            }
+            Sse::Delta {
+                output,
+                searches,
+                stop: s,
+            } => {
                 tokens.output = tokens.output.max(output);
+                tokens.searches = tokens.searches.max(searches);
                 if s.is_some() {
                     stop = s;
                 }
@@ -580,7 +635,7 @@ fn run(
         id,
         usd,
         month_usd,
-        stop: stop.filter(|s| s == "max_tokens" || s == "refusal"),
+        stop: stop.filter(|s| s == "max_tokens" || s == "refusal" || s == "pause_turn"),
     }
 }
 
@@ -679,15 +734,23 @@ mod tests {
                 content: "摘要".into(),
                 images: vec![],
             }],
+            web_search: false,
         };
-        let body = request_body(model(&req.model).unwrap(), &req);
+        let body = request_body(model(&req.model).unwrap(), &req, false);
         assert_eq!(body["model"], "claude-sonnet-5-5");
         assert_eq!(body["stream"], true);
         assert_eq!(body["fallbacks"], "default");
         assert_eq!(body["messages"][0]["content"], "摘要");
         assert!(body.get("thinking").is_none() && body.get("temperature").is_none());
-        let haiku = request_body(model("claude-haiku-5-5").unwrap(), &req);
+        let haiku = request_body(model("claude-haiku-5-5").unwrap(), &req, false);
         assert!(haiku.get("fallbacks").is_none());
+        // 沒開上網查資料時不送工具；開了依模型用對應的版本，最多查 5 次。
+        assert!(body.get("tools").is_none());
+        let web = request_body(model(&req.model).unwrap(), &req, true);
+        assert_eq!(web["tools"][0]["type"], "web_search_20260209");
+        assert_eq!(web["tools"][0]["max_uses"], 5);
+        let haiku = request_body(model("claude-haiku-5-5").unwrap(), &req, true);
+        assert_eq!(haiku["tools"][0]["type"], "web_search_20250305");
     }
 
     #[test]
@@ -705,8 +768,9 @@ mod tests {
             model: "claude-haiku-5-5".into(),
             system: String::new(),
             messages: vec![msg("user", vec![img("image/png", "iVBORw0KGgo=")])],
+            web_search: false,
         };
-        let body = request_body(model(&req.model).unwrap(), &req);
+        let body = request_body(model(&req.model).unwrap(), &req, false);
         let content = &body["messages"][0]["content"];
         assert_eq!(content[0]["type"], "image");
         assert_eq!(content[0]["source"]["media_type"], "image/png");
@@ -741,8 +805,15 @@ mod tests {
             cache_write: 0,
             cache_read: 1_000_000,
             output: 100_000,
+            searches: 0,
         };
         assert!((cost(sonnet, &t) - (2.0 + 0.2 + 1.0)).abs() < 1e-9);
+        // 每次搜尋 US$0.01。
+        let t = Tokens {
+            searches: 3,
+            ..Default::default()
+        };
+        assert!((cost(sonnet, &t) - 0.03).abs() < 1e-9);
         let t = Tokens {
             cache_write: 1_000_000,
             ..Default::default()
@@ -762,7 +833,8 @@ mod tests {
                     input: 12,
                     cache_write: 0,
                     cache_read: 3,
-                    output: 1
+                    output: 1,
+                    searches: 0
                 },
             }
         );
@@ -785,8 +857,35 @@ mod tests {
             ),
             Sse::Delta {
                 output: 40,
+                searches: 0,
                 stop: Some("end_turn".into())
             }
+        );
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":9,"server_tool_use":{"web_search_requests":2}}}"#
+            ),
+            Sse::Delta {
+                output: 9,
+                searches: 2,
+                stop: Some("end_turn".into())
+            }
+        );
+        // 引用的網頁變成來源；不是 http(s) 的網址不收。
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"content_block_delta","index":2,"delta":{"type":"citations_delta","citation":{"type":"web_search_result_location","url":"https://example.com/nas","title":"NAS 備份","cited_text":"…"}}}"#
+            ),
+            Sse::Source {
+                url: "https://example.com/nas".into(),
+                title: "NAS 備份".into()
+            }
+        );
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"content_block_delta","index":2,"delta":{"type":"citations_delta","citation":{"url":"javascript:alert(1)"}}}"#
+            ),
+            Sse::Other
         );
         assert_eq!(
             parse_sse(

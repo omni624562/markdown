@@ -424,3 +424,51 @@ test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]]
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("上網查資料：設定沒開時沒有這個選項；開了才出現，送出時這一題才帶上網搜尋，回答最後列出來源", async () => {
+  {
+    const { page, context } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+    await openProject(page);
+    await page.locator(".cm-content").focus();
+    await page.keyboard.press("Control+Shift+L");
+    const panel = page.locator("#assistant-panel");
+    await panel.waitFor();
+    assert.equal(await panel.getByRole("button", { name: "上網查" }).count(), 0);
+    await context.close();
+  }
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT], claudeWebSearch: true }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  // 沒按「上網查」的那一題不帶搜尋。
+  await panel.locator("textarea").fill("你好");
+  await panel.locator("textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  assert.equal((await sends(page))[0].request.webSearch, false);
+  await reply(page, "你好！");
+  await panel.locator(".assistant-tools").waitFor();
+
+  await panel.getByRole("button", { name: "上網查" }).click();
+  await panel.locator(".assistant-chip:not(.assistant-chip-add)", { hasText: "上網查" }).waitFor();
+  await panel.locator("textarea").fill("NAS 硬碟要選哪一種？");
+  await panel.locator("textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "assistant_send").length === 2);
+  const second = (await sends(page))[1];
+  assert.equal(second.request.webSearch, true);
+  await page.evaluate((id) => {
+    window.__fake.emit("assistant-run", { kind: "delta", id, text: "選 NAS 專用硬碟。" });
+    window.__fake.emit("assistant-run", { kind: "source", id, url: "https://example.com/nas-disk", title: "NAS 硬碟怎麼選" });
+    window.__fake.emit("assistant-run", { kind: "source", id, url: "https://example.com/nas-disk", title: "NAS 硬碟怎麼選" });
+    window.__fake.emit("assistant-run", { kind: "done", id, usd: 0.02, monthUsd: 0.45, stop: null });
+  }, second.id);
+  const link = panel.locator(".assistant-answer a", { hasText: "NAS 硬碟怎麼選" });
+  await link.waitFor();
+  assert.equal(await link.count(), 1, "同一個來源只列一次");
+  assert.equal(await link.getAttribute("href"), "https://example.com/nas-disk");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

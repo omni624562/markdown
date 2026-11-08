@@ -708,7 +708,9 @@ export interface AssistantMessage {
 
 export type AssistantRunEvent =
   | { kind: "delta"; id: number; text: string }
-  | { kind: "done"; id: number; usd: number; monthUsd: number; stop: "max_tokens" | "refusal" | null }
+  /** 上網查資料時回答引用的網頁。 */
+  | { kind: "source"; id: number; url: string; title: string }
+  | { kind: "done"; id: number; usd: number; monthUsd: number; stop: "max_tokens" | "refusal" | "pause_turn" | null }
   | { kind: "error"; id: number; message: string };
 
 export type AiRunEvent =
@@ -1067,7 +1069,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
     assistantKeySet: (key: string) => core.invoke<void>("assistant_key_set", { key }),
     assistantKeyForget: () => core.invoke<void>("assistant_key_forget"),
     assistantUsage: () => core.invoke<AssistantUsage>("assistant_usage"),
-    assistantSend: (id: number, request: { model: string; system: string; messages: AssistantMessage[] }) =>
+    assistantSend: (id: number, request: { model: string; system: string; messages: AssistantMessage[]; webSearch?: boolean }) =>
       afterSettings(() => core.invoke<void>("assistant_send", { id, request })),
     assistantCancel: (id: number) => core.invoke<void>("assistant_cancel", { id }),
 
