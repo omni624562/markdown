@@ -41,6 +41,11 @@ export function isTextFileName(name: string): boolean {
   return dot > 0 && TEXT_EXTENSIONS.includes(name.slice(dot + 1).toLowerCase());
 }
 
+/** PDF：檔案面板會列出，點了用系統預設的程式開啟（oMarker 不顯示 PDF）。 */
+export function isPdfName(name: string): boolean {
+  return /\.pdf$/i.test(name);
+}
+
 /** 檔案面板會列出、可以在分頁裡檢視的圖片（和桌面版 desktop/src/images.rs 的 ALLOWED 一致）。 */
 export const IMAGE_EXTENSIONS: readonly string[] = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"];
 

@@ -954,6 +954,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
       ),
     revealEntry: (path: string) =>
       route(path, () => core.invoke<void>("reveal_entry", { path }), () => unsupported(t("遠端資料夾不支援在檔案總管中顯示"))),
+    /** 用系統預設的程式開啟 PDF（只接受目前資料夾裡、或開過的 PDF）。 */
+    openWithDefault: (path: string) =>
+      route(path, () => core.invoke<void>("open_with_default", { path }), () => unsupported(t("遠端資料夾裡的 PDF 要先下載到電腦再開啟"))),
     /** 選擇 PDF 的存檔位置；取消時回傳 null。 */
     pickPdfPath: (suggestedName: string, directory: string | null = null) =>
       core.invoke<string | null>("pick_pdf_path", { suggestedName, directory }),

@@ -448,6 +448,7 @@ fn main() {
             workspace::rename_entry,
             workspace::trash_entry,
             workspace::reveal_entry,
+            workspace::open_with_default,
             workspace::search,
             workspace::replace_in_folder,
             doc_index::scan_docs,
