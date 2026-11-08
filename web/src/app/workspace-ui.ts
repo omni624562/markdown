@@ -44,6 +44,7 @@ import { renameFileShortcuts } from "./file-shortcuts.ts";
 import { rightTab, selectRightTab, showBacklinksCount, syncRightTabs } from "./right-tabs.ts";
 import { showFilters } from "./filter-collapse.ts";
 import { cometChangeWarning, refreshCometGuards } from "./comet-files.ts";
+import { autoSaveNow, autoSavePending } from "./autosave.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -593,7 +594,7 @@ export async function setWorkspace(folder: Folder | null): Promise<void> {
  */
 async function switchTabs(scope: string): Promise<void> {
   app.flushDraft();
-  if (app.diskSaveTimer) await app.autoSaveNow();
+  if (autoSavePending()) await autoSaveNow();
   if (app.review.active) app.review.finish();
   app.persistSession();
   const carry = app.tabScope === null ? app.docs.filter((d) => d.dirty || d.fileBacked) : [];
@@ -632,7 +633,7 @@ export async function closeProject(): Promise<void> {
   if (!folder || !desktop) return;
   const name = app.projectUi?.current?.label ?? folder.name;
   app.flushDraft();
-  if (app.diskSaveTimer) await app.autoSaveNow();
+  if (autoSavePending()) await autoSaveNow();
   if (app.review.active) app.review.finish();
   app.persistSession();
   await desktop.closeFolder();
