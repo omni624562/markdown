@@ -154,12 +154,19 @@ jobs:
           npm run wasm
           npm run build
 
+      # 發佈時 wasm-bindgen、wasm-opt 都事先裝好，這裡必須是空的；PR 的建置沒有事先裝 wasm-bindgen（wasm-pack 會用
+      # cargo 從 crates.io 裝，有檢查碼），只確認 wasm-opt 沒有被下載。
       - name: 確認 wasm-pack 沒有自己下載工具
         shell: bash
         run: |
           dir="$(cygpath -u "${WASM_PACK_CACHE:?}")"
-          if [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
-            echo "::error::wasm-pack 自己下載了工具（應該用事先安裝好的 wasm-bindgen、wasm-opt）：$(ls "$dir")"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            found="$(ls -A "$dir" 2>/dev/null || true)"
+          else
+            found="$(ls -A "$dir" 2>/dev/null | grep -i "wasm-opt" || true)"
+          fi
+          if [ -n "$found" ]; then
+            echo "::error::wasm-pack 自己下載了工具（應該用事先安裝好的 wasm-bindgen、wasm-opt）：$found"
             exit 1
           fi
 
