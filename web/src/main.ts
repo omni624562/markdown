@@ -1533,8 +1533,8 @@ function startConnect(): StartAction[] {
  * 有預覽時放在預覽區；即時預覽、原始碼只有編輯區，改放在編輯區中間（不擋打字，打字就消失）。
  */
 function renderEmptyState(text: string): void {
-  // 不用 trim()：大文件每次都會複製一份字串。
-  const empty = !/\S/.test(text) && !startDismissed.has(active.id);
+  // 不用 trim()：大文件每次都會複製一份字串。磁碟上的空白檔案、Wiki 頁面是使用者開的檔案，不顯示起始頁。
+  const empty = !/\S/.test(text) && !startDismissed.has(active.id) && !cur.fileBacked && !cur.fileHandle && !active.wiki;
   emptyStateEl.hidden = !empty;
   if (startOpen !== empty) {
     startOpen = empty;
