@@ -5,6 +5,7 @@
  */
 import { formatTable } from "../../pkg/md_wasm.js";
 import { insertBlock } from "../format.ts";
+import { syncFocusNow } from "../inline-tools.ts";
 import { t } from "../i18n.ts";
 import { blankTable, serializeTable } from "../table-model.ts";
 import { placeMenu } from "../ui/menu-place.ts";
@@ -88,9 +89,11 @@ function insert(): void {
   root?.hidePopover();
   const first = t("欄位 {n}", { n: 1 });
   const md = serializeTable(blankTable(size.cols, size.rows, (n) => t("欄位 {n}", { n })));
+  // 先把焦點放回編輯器（並馬上記進狀態）再插入：即時預覽才會把游標所在的新表格顯示成原始碼，
   // 插入後選取第一個欄位名稱，直接打字就能取代。
-  app.editor.exec(insertBlock(formatTable(md) ?? md, first));
   app.editor.view.focus();
+  syncFocusNow(app.editor.view);
+  app.editor.exec(insertBlock(formatTable(md) ?? md, first));
 }
 
 /** 在游標旁邊打開表格大小選擇器。 */
