@@ -1,6 +1,6 @@
 /**
  * COMET 專案裡由 COMET 管理的檔案：檔案面板標「C」；`.comet.json`、`.comet/` 裡的設定檔在編輯器預設唯讀
- * （上方說明，按「仍要編輯」才能改，「鎖上」再鎖回去）；AGENTS.md 上方提醒重新設定時可能被覆蓋；
+ * （上方說明，按「仍要編輯」才能改，「鎖上」再鎖回去）；COMET 產生的 AGENTS.md 也預設唯讀，說明不建議手動修改；
  * 刪除、改名 COMET 的檔案時說明會動到哪些，預設是取消。一般專案不受影響。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -46,12 +46,12 @@ async function openFile(page, rel) {
   await page.waitForFunction((n) => document.querySelector("#tab-bar .tab[aria-selected=true] .tab-name")?.textContent === n, name);
 }
 
-test("COMET 專案：檔案面板標「C」；設定檔預設唯讀，按「仍要編輯」才能改；AGENTS.md 提醒可能被覆蓋", async () => {
+test("COMET 專案：檔案面板標「C」；設定檔與 AGENTS.md 預設唯讀，按「仍要編輯」才能改", async () => {
   const { page, context, errors } = await open({ desktop: desktop(true) });
   await row(page, ".comet.json").locator(".tree-mark").waitFor();
   const marked = await page.$$eval("#file-tree .tree-row", (rows) => rows.filter((r) => r.querySelector(".tree-mark")).map((r) => r.querySelector("span").textContent));
   assert.deepEqual(marked, [".comet", ".comet.json", "AGENTS.md"]);
-  assert.equal(await row(page, "AGENTS.md").locator(".tree-mark").getAttribute("title"), "COMET 產生的檔案：重新設定 COMET 時可能被覆蓋");
+  assert.equal(await row(page, "AGENTS.md").locator(".tree-mark").getAttribute("title"), "COMET 產生的檔案：不建議手動修改，在 oMarker 開啟時預設唯讀");
   // 規格的資料夾標「C」，裡面的規格文件不標。
   await row(page, "docs").click();
   await row(page, "docs/spec").locator(".tree-mark").waitFor();
@@ -89,15 +89,21 @@ test("COMET 專案：檔案面板標「C」；設定檔預設唯讀，按「仍�
   await page.keyboard.type("y");
   assert.match(await text(page), /x$/);
 
-  // AGENTS.md：可以改，上方提醒可能被覆蓋，可以關掉。
+  // AGENTS.md：也預設唯讀，說明不建議手動修改；想改時說明閃一下，按「仍要編輯」才能改。
   await openFile(page, "AGENTS.md");
-  await note(page).locator("text=可能被覆蓋").waitFor();
+  await note(page).locator("text=不建議手動修改").waitFor();
+  assert.equal(await note(page).getAttribute("data-locked"), "1");
   await page.locator(".cm-content").click();
   await page.keyboard.press("Control+End");
   await page.keyboard.type("新增");
+  await page.keyboard.press("Backspace");
+  assert.doesNotMatch(await text(page), /新增|新/);
+  assert.equal(await note(page).evaluate((el) => el.classList.contains("comet-note-nudge")), true);
+  await note(page).getByRole("button", { name: "仍要編輯" }).click();
+  await note(page).locator("text=修改前請先提交到 Git").waitFor();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("新增");
   assert.match(await text(page), /新增$/);
-  await note(page).getByRole("button", { name: "關閉提醒" }).click();
-  await note(page).waitFor({ state: "detached" });
 
   // 一般的檔案：沒有說明。
   await openFile(page, "README.md");

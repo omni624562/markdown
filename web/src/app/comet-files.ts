@@ -2,8 +2,8 @@
  * COMET 專案裡由 COMET 管理的檔案（哪些檔案見 comet-paths.ts），避免在 oMarker 裡不小心動到：
  *
  * - 檔案面板：COMET 的項目（`.comet.json`、`.comet`、`AGENTS.md`、`docs/spec`）名稱後面標一個「C」。
- * - 編輯器：`.comet.json` 與 `.comet/` 裡的設定檔預設唯讀，上方說明為什麼，按「仍要編輯」才能改（只有這個分頁，
- *   關掉再開會再鎖上）。`AGENTS.md` 可以改，上方提醒重新設定 COMET 時可能被覆蓋。`docs/spec/` 的規格照常編輯。
+ * - 編輯器：`.comet.json`、`.comet/` 裡的設定檔與 COMET 產生的 `AGENTS.md` 預設唯讀，上方說明為什麼，
+ *   想改時說明閃一下；按「仍要編輯」才能改（只有這個分頁，關掉再開會再鎖上）。`docs/spec/` 的規格照常編輯。
  *   唯讀只擋在 oMarker 裡打字、貼上、刪除這些手動編輯，不改檔案的屬性：comet 指令、Git、AI 直接改檔案都照常，
  *   檔案被改了也照常重新載入；AI 透過 oMarker 提出的修改（逐段接受）也不擋。
  * - 刪除、改名：確認對話框說明會動到 COMET 的哪些檔案。
@@ -35,7 +35,7 @@ export function cometKindOf(path: string | null | undefined): CometKind | null {
 
 const MARK_TITLE: Record<CometKind, () => string> = {
   config: () => t("COMET 的設定檔：由 comet 指令維護，在 oMarker 開啟時預設唯讀"),
-  generated: () => t("COMET 產生的檔案：重新設定 COMET 時可能被覆蓋"),
+  generated: () => t("COMET 產生的檔案：不建議手動修改，在 oMarker 開啟時預設唯讀"),
   spec: () => t("COMET 的規格文件：你和 AI 都可以編輯"),
 };
 
@@ -66,17 +66,15 @@ interface Guard {
   path: string | null | undefined;
   kind: CometKind | null;
   locked: boolean;
-  /** 關掉了上方的提醒（AGENTS.md）。 */
-  hidden: boolean;
 }
 
 const retarget = StateEffect.define<string | null>();
 const setLocked = StateEffect.define<boolean>();
-const hideNote = StateEffect.define<null>();
 
 function guardFor(path: string | null): Guard {
   const kind = cometKindOf(path);
-  return { path, kind, locked: kind === "config", hidden: false };
+  // 設定檔與 COMET 產生的 AGENTS.md 都不建議手動修改：預設唯讀。
+  return { path, kind, locked: kind === "config" || kind === "generated" };
 }
 
 /** 擋下來的手動編輯：打字、貼上、刪除、排版、搬移、復原。外部修改重新載入（input.reload）與逐段接受（input.review）不擋。 */
@@ -86,18 +84,17 @@ function manualEdit(tr: Transaction): boolean {
 }
 
 const guardField: StateField<Guard> = StateField.define<Guard>({
-  create: () => ({ path: undefined, kind: null, locked: false, hidden: false }),
+  create: () => ({ path: undefined, kind: null, locked: false }),
   update(g, tr) {
     for (const e of tr.effects) {
       if (e.is(retarget)) g = guardFor(e.value);
       else if (e.is(setLocked)) g = { ...g, locked: e.value };
-      else if (e.is(hideNote)) g = { ...g, hidden: true };
     }
     return g;
   },
   provide: (f) => [
     EditorState.readOnly.from(f, (g) => g.locked),
-    showPanel.from(f, (g) => (g.kind === "config" || (g.kind === "generated" && !g.hidden) ? notePanel : null)),
+    showPanel.from(f, (g) => (g.kind === "config" || g.kind === "generated" ? notePanel : null)),
   ],
 });
 
@@ -153,23 +150,23 @@ function notePanel(view: EditorView): Panel {
     dom.dataset.kind = g.kind ?? "";
     dom.dataset.locked = g.locked ? "1" : "";
     const text = document.createElement("span");
-    if (g.kind === "generated") {
-      text.textContent = t("這個檔案由 COMET 產生。重新設定 COMET 時（例如規則改了）可能被覆蓋，手動修改前請先提交到 Git 或留個備份。");
-      const close = button("", () => view.dispatch({ effects: hideNote.of(null) }), "comet-note-close");
-      close.append(icon("x"));
-      close.title = t("關閉提醒");
-      close.setAttribute("aria-label", close.title);
-      dom.replaceChildren(icon("info"), text, close);
-    } else if (g.locked) {
-      text.textContent = t("這是 COMET 的設定檔，由 comet 指令維護。手動修改可能讓 COMET 無法正常運作，所以在 oMarker 裡預設唯讀。");
-      const edit = button(t("仍要編輯"), () => {
+    const unlock = () =>
+      button(t("仍要編輯"), () => {
         view.dispatch({ effects: setLocked.of(false) });
         view.focus();
       });
-      dom.replaceChildren(icon("lock"), text, edit);
+    const relock = () => button(t("鎖上"), () => view.dispatch({ effects: setLocked.of(true) }));
+    if (g.kind === "generated") {
+      text.textContent = g.locked
+        ? t("這是 COMET 產生的檔案，AI 會照著裡面的規則工作，不建議手動修改；重新設定 COMET 時也可能被覆蓋。所以在 oMarker 裡預設唯讀。")
+        : t("可以編輯這個 COMET 產生的檔案了。修改前請先提交到 Git 或留個備份；重新設定 COMET 時可能被覆蓋，關掉分頁後再開會再鎖上。");
+      dom.replaceChildren(icon(g.locked ? "lock" : "info"), text, g.locked ? unlock() : relock());
+    } else if (g.locked) {
+      text.textContent = t("這是 COMET 的設定檔，由 comet 指令維護。手動修改可能讓 COMET 無法正常運作，所以在 oMarker 裡預設唯讀。");
+      dom.replaceChildren(icon("lock"), text, unlock());
     } else {
       text.textContent = t("可以編輯這個 COMET 設定檔了。改錯可能讓 COMET 無法正常運作；關掉分頁後再開會再鎖上。");
-      dom.replaceChildren(icon("info"), text, button(t("鎖上"), () => view.dispatch({ effects: setLocked.of(true) })));
+      dom.replaceChildren(icon("info"), text, relock());
     }
   };
   render(view.state.field(guardField));
