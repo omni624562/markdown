@@ -95,7 +95,8 @@ function fakeTauri(respond) {
         return next;
         return cmd in DEFAULTS ? DEFAULTS[cmd] : null;
       },
-      convertFileSrc: (p) => p,
+      // 和 Windows 上的 Tauri 一樣：mdimg 協定的網址是 http://mdimg.localhost/<路徑>（CSP 允許這個來源）。
+      convertFileSrc: (p, scheme = "asset") => `http://${scheme}.localhost/${encodeURIComponent(p)}`,
       Channel,
     },
     event: {

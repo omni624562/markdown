@@ -3725,6 +3725,10 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-find-count.issue-find-none { color: var(--danger); }
 .issue-scroll { flex: 1; min-height: 0; overflow: auto; }
 .issue-body { padding-top: 24px; padding-bottom: 80px; }
+/* 圖片分頁（app/image-view.ts）：圖置中、不超出寬度，點一下放大；下面一行小字是尺寸。 */
+.issue-body.image-view { text-align: center; }
+.issue-body.image-view img { max-width: 100%; max-height: calc(100vh - 220px); cursor: zoom-in; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised, var(--surface)); }
+.issue-body.image-view .image-view-caption { margin-top: 10px; color: var(--muted); font-size: 13px; }
 /* 工作項目比照 TFS 網頁：欄位格狀排列、狀態顏色、段落分隔線、留言頭像（class 由 work-item-look.ts 加上）。 */
 .issue-pane[data-source="ado"] .issue-body > h1 { margin-bottom: 0.6em; font-size: 1.55em; line-height: 1.35; }
 /* TFS 的內容一行一個 <div>，轉成段落後間距太大：段落之間只留一點空隙。 */

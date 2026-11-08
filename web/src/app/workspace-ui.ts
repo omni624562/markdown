@@ -9,6 +9,8 @@ import { fromDesktop, desktopHandle } from "../files.ts";
 import { t } from "../i18n.ts";
 import { backlinks } from "../links.ts";
 import { dirname, rebase, basename, isInside } from "../paths.ts";
+import { isImageName } from "../kinds.ts";
+import { showImage } from "./image-view.ts";
 import { samePath } from "../projects.ts";
 import { draftVersion, loadDraft, loadProjectView, dropDraft, loadSession } from "../session.ts";
 import * as storage from "../storage.ts";
@@ -646,6 +648,8 @@ export async function openRecentFolder(path: string): Promise<void> {
 
 /** 開啟（或切換到）指定路徑的檔案，可再跳到指定的行與欄。 */
 export async function openPath(path: string, line?: number, column?: number): Promise<void> {
+  // 圖片不是文字檔：在唯讀的分頁裡檢視。
+  if (isImageName(path)) return showImage(path);
   const existing = app.tabForPath(path);
   if (existing) app.activate(existing);
   else if (desktop) app.openOpenedFile(fromDesktop(await desktop.reopenFile(path)));

@@ -12,7 +12,7 @@ import { logError } from "../error-log.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
-  kind: "ado" | "github" | "wiki" | "repo";
+  kind: "ado" | "github" | "wiki" | "repo" | "image";
   icon: string;
   text: string;
 }
@@ -201,6 +201,8 @@ export class IssueView {
   #forwardBtn: HTMLButtonElement;
   /** 「保留離線」。 */
   #editBtn: HTMLButtonElement;
+  /** 「在瀏覽器開啟」：沒有網址的內容（例如本機圖片）不顯示。 */
+  #browseBtn = iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.browse(this.#source.webUrl));
   #historyBtn: HTMLButtonElement;
   #actions: MenuEntry[] = [];
   #matches: FindMatch[] = [];
@@ -327,7 +329,7 @@ export class IssueView {
     actions.append(
       this.#editBtn,
       this.#historyBtn,
-      iconButton(t("在瀏覽器開啟"), "external-link", () => this.#source && this.#h.browse(this.#source.webUrl)),
+      this.#browseBtn,
       sep,
       iconButton(t("在內容中尋找"), "search", () => this.openFind(), "Mod-f"),
       iconButton(t("重新整理"), "refresh-cw", () => void this.refresh()),
@@ -595,6 +597,7 @@ export class IssueView {
     this.#h.facts?.([]);
     this.#updateNav();
     this.#pane.dataset.source = source.origin.kind;
+    this.#browseBtn.hidden = !source.webUrl;
     this.#pane.dataset.sourceName = source.origin.text;
     this.#pane.classList.remove("issue-hero", "issue-page-hero", "issue-scrolled", "issue-title-away");
     this.#label.replaceChildren(...this.#crumbs(source));
