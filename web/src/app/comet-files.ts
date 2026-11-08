@@ -4,6 +4,7 @@
  * - 檔案面板：COMET 的項目（`.comet.json`、`.comet`、`AGENTS.md`、`docs/spec`）名稱後面標一個「C」。
  * - 編輯器：`.comet.json`、`.comet/` 裡的設定檔與 COMET 產生的 `AGENTS.md` 預設唯讀，上方說明為什麼，
  *   想改時說明閃一下；按「仍要編輯」才能改（只有這個分頁，關掉再開會再鎖上）。`docs/spec/` 的規格照常編輯。
+ *   只顯示預覽時編輯器藏起來，預覽上方也放同一段說明。
  *   唯讀只擋在 oMarker 裡打字、貼上、刪除這些手動編輯，不改檔案的屬性：comet 指令、Git、AI 直接改檔案都照常，
  *   檔案被改了也照常重新載入；AI 透過 oMarker 提出的修改（逐段接受）也不擋。
  * - 刪除、改名：確認對話框說明會動到 COMET 的哪些檔案。
@@ -121,10 +122,14 @@ const syncPlugin = ViewPlugin.fromClass(
   class {
     constructor(view: EditorView) {
       // 建立狀態時還不知道是哪一份文件：等這次更新結束後（使用者還來不及輸入）再對照。
-      queueMicrotask(() => sync(view));
+      queueMicrotask(() => {
+        sync(view);
+        showPreviewNote(view);
+      });
     }
     update(u: ViewUpdate) {
       if (u.state.field(guardField).path !== viewPath(u.view)) queueMicrotask(() => sync(u.view));
+      if (u.state.field(guardField) !== u.startState.field(guardField)) showPreviewNote(u.view);
     }
   },
 );
@@ -134,41 +139,51 @@ export function refreshCometGuards(): void {
   for (const ed of app?.editors ?? []) sync(ed.view);
 }
 
-function notePanel(view: EditorView): Panel {
-  const dom = document.createElement("div");
-  dom.className = "comet-note";
-  dom.setAttribute("role", "note");
-  const button = (label: string, run: () => void, cls = "btn") => {
+/** 把說明的內容畫進 `dom`（編輯器上方與預覽上方共用）。 */
+function fillNote(dom: HTMLElement, g: Guard, unlock: () => void, relock: () => void): void {
+  const button = (label: string, run: () => void) => {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = cls;
+    b.className = "btn";
     b.textContent = label;
     b.addEventListener("click", run);
     return b;
   };
-  const render = (g: Guard) => {
-    dom.dataset.kind = g.kind ?? "";
-    dom.dataset.locked = g.locked ? "1" : "";
-    const text = document.createElement("span");
-    const unlock = () =>
-      button(t("仍要編輯"), () => {
+  dom.dataset.kind = g.kind ?? "";
+  dom.dataset.locked = g.locked ? "1" : "";
+  const text = document.createElement("span");
+  const action = g.locked ? button(t("仍要編輯"), unlock) : button(t("鎖上"), relock);
+  if (g.kind === "generated") {
+    text.textContent = g.locked
+      ? t("這是 COMET 產生的檔案，AI 會照著裡面的規則工作，不建議手動修改；重新設定 COMET 時也可能被覆蓋。所以在 oMarker 裡預設唯讀。")
+      : t("可以編輯這個 COMET 產生的檔案了。修改前請先提交到 Git 或留個備份；重新設定 COMET 時可能被覆蓋，關掉分頁後再開會再鎖上。");
+  } else if (g.locked) {
+    text.textContent = t("這是 COMET 的設定檔，由 comet 指令維護。手動修改可能讓 COMET 無法正常運作，所以在 oMarker 裡預設唯讀。");
+  } else {
+    text.textContent = t("可以編輯這個 COMET 設定檔了。改錯可能讓 COMET 無法正常運作；關掉分頁後再開會再鎖上。");
+  }
+  dom.replaceChildren(icon(g.locked ? "lock" : "info"), text, action);
+}
+
+function noteDom(): HTMLElement {
+  const dom = document.createElement("div");
+  dom.className = "comet-note";
+  dom.setAttribute("role", "note");
+  return dom;
+}
+
+function notePanel(view: EditorView): Panel {
+  const dom = noteDom();
+  const render = (g: Guard) =>
+    fillNote(
+      dom,
+      g,
+      () => {
         view.dispatch({ effects: setLocked.of(false) });
         view.focus();
-      });
-    const relock = () => button(t("鎖上"), () => view.dispatch({ effects: setLocked.of(true) }));
-    if (g.kind === "generated") {
-      text.textContent = g.locked
-        ? t("這是 COMET 產生的檔案，AI 會照著裡面的規則工作，不建議手動修改；重新設定 COMET 時也可能被覆蓋。所以在 oMarker 裡預設唯讀。")
-        : t("可以編輯這個 COMET 產生的檔案了。修改前請先提交到 Git 或留個備份；重新設定 COMET 時可能被覆蓋，關掉分頁後再開會再鎖上。");
-      dom.replaceChildren(icon(g.locked ? "lock" : "info"), text, g.locked ? unlock() : relock());
-    } else if (g.locked) {
-      text.textContent = t("這是 COMET 的設定檔，由 comet 指令維護。手動修改可能讓 COMET 無法正常運作，所以在 oMarker 裡預設唯讀。");
-      dom.replaceChildren(icon("lock"), text, unlock());
-    } else {
-      text.textContent = t("可以編輯這個 COMET 設定檔了。改錯可能讓 COMET 無法正常運作；關掉分頁後再開會再鎖上。");
-      dom.replaceChildren(icon("info"), text, relock());
-    }
-  };
+      },
+      () => view.dispatch({ effects: setLocked.of(true) }),
+    );
   render(view.state.field(guardField));
   return {
     dom,
@@ -178,6 +193,38 @@ function notePanel(view: EditorView): Panel {
       if (g !== u.startState.field(guardField)) render(g);
     },
   };
+}
+
+// ---- 只顯示預覽時：預覽上方也放同一段說明 ------------------------------------------
+
+let previewNote: HTMLElement | null = null;
+
+/**
+ * 只顯示預覽時編輯器整個藏起來，上方的說明也看不到：在預覽上方放一份一樣的說明（CSS 只在只顯示預覽時顯示）。
+ * 「仍要編輯」解除唯讀並切到可以編輯的檢視。
+ */
+function showPreviewNote(view: EditorView): void {
+  if (!app?.editor || view !== app.editor.view || !view.dom.isConnected) return;
+  const g = view.state.field(guardField, false);
+  const shown = !!g && (g.kind === "config" || g.kind === "generated");
+  if (!shown && !previewNote) return;
+  if (!previewNote) {
+    previewNote = noteDom();
+    previewNote.classList.add("preview-comet-note");
+    document.querySelector("#preview")?.before(previewNote);
+  }
+  previewNote.hidden = !shown;
+  if (!g || !shown) return;
+  fillNote(
+    previewNote,
+    g,
+    () => {
+      view.dispatch({ effects: setLocked.of(false) });
+      app.setView(app.cur.kind === "markdown" ? "live" : "editor");
+      view.focus();
+    },
+    () => view.dispatch({ effects: setLocked.of(true) }),
+  );
 }
 
 /** 唯讀時想打字：上方的說明閃一下，告訴使用者為什麼不能改。 */

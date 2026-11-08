@@ -4655,7 +4655,7 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
   text-decoration: none;
   cursor: help;
 }
-.cm-editor .cm-panels .comet-note {
+.comet-note {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -4665,9 +4665,12 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
   color: var(--fg);
   font: 12.5px/1.5 var(--font-ui);
 }
-.cm-editor .cm-panels .comet-note > svg { flex: none; width: 15px; height: 15px; color: var(--accent); }
-.cm-editor .cm-panels .comet-note > span { flex: 1 1 240px; }
-.cm-editor .cm-panels .comet-note > .btn { min-height: 26px; padding: 0 10px; font-size: 12.5px; }
+.comet-note > svg { flex: none; width: 15px; height: 15px; color: var(--accent); }
+.comet-note > span { flex: 1 1 240px; }
+.comet-note > .btn { min-height: 26px; padding: 0 10px; font-size: 12.5px; }
+/* 只顯示預覽時：預覽上方也放同一段說明（分割時編輯器上方已經有了，不重複）。 */
+.preview-comet-note { display: none; position: sticky; top: 0; z-index: 3; border-bottom: 1px solid var(--border); }
+.workspace:is([data-view="preview"], .side-preview) > .preview-pane > .preview-comet-note:not([hidden]) { display: flex; }
 /* 唯讀時想打字：說明閃一下。 */
 .cm-editor .cm-panels .comet-note-nudge { animation: comet-nudge 0.6s ease; }
 @keyframes comet-nudge { 30% { background: color-mix(in srgb, var(--accent) 28%, var(--bg)); } }

@@ -116,6 +116,40 @@ test("COMET 專案：檔案面板標「C」；設定檔與 AGENTS.md 預設唯�
   await context.close();
 });
 
+test("只顯示預覽時：預覽上方也有 COMET 的說明，按「仍要編輯」切到可以編輯的檢視", async () => {
+  const { page, context, errors } = await open({ desktop: desktop(true) });
+  await row(page, "AGENTS.md").locator(".tree-mark").waitFor();
+  await openFile(page, "AGENTS.md");
+  await note(page).locator("text=不建議手動修改").waitFor();
+  const pnote = page.locator("#preview-scroller > .preview-comet-note");
+  // 分割、即時預覽：編輯器上方已經有了，預覽上方不重複。
+  assert.equal(await pnote.isVisible(), false);
+
+  await page.locator(".segmented [data-view=preview]").click();
+  await pnote.locator("text=不建議手動修改").waitFor();
+  assert.equal(await pnote.getAttribute("data-locked"), "1");
+  await pnote.getByRole("button", { name: "仍要編輯" }).click();
+  await page.waitForFunction(() => document.querySelector(".segmented [data-view=live]")?.getAttribute("aria-checked") === "true");
+  await note(page).locator("text=修改前請先提交到 Git").waitFor();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("新增");
+  assert.match(await text(page), /新增$/);
+
+  // 回到預覽：說明跟著顯示已解除唯讀，「鎖上」再鎖回去。
+  await page.locator(".segmented [data-view=preview]").click();
+  await pnote.locator("text=修改前請先提交到 Git").waitFor();
+  await pnote.getByRole("button", { name: "鎖上" }).click();
+  await pnote.locator("text=不建議手動修改").waitFor();
+  assert.equal(await note(page).getAttribute("data-locked"), "1");
+
+  // 一般的檔案：預覽上方沒有說明。
+  await openFile(page, "README.md");
+  await page.waitForFunction(() => document.querySelector("#preview-scroller > .preview-comet-note")?.hidden === true);
+  assert.equal(await pnote.isVisible(), false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("刪除、改名 COMET 的檔案：說明會動到哪些，預設是取消", async () => {
   const { page, context, errors } = await open({ desktop: desktop(true) });
   await row(page, "AGENTS.md").locator(".tree-mark").waitFor();
