@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# 同一個 PR 再推送時取消還在跑的舊執行（只有最新的提交有意義）；main 的執行不取消，一個接一個跑。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # 只需要讀取程式碼。第三方 action 一律不用（改用 rustup、actions/cache 等），減少供應鏈風險。
 # 用到的官方 action 也固定在提交的 SHA（後面註明版本），由 Dependabot（.github/dependabot.yml）提醒更新。
 permissions:

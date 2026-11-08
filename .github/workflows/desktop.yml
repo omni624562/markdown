@@ -11,8 +11,16 @@ name: Desktop
 on:
   push:
     branches: [main]
+    paths-ignore: ["docs/**", "changes/**", "**.md"]
   pull_request:
+    # 只改說明文件、更新片段的 PR 不用建置 Windows 版（CI 的 version 工作還是會檢查片段）。
+    paths-ignore: ["docs/**", "changes/**", "**.md"]
   workflow_dispatch:
+
+# 同一個 PR 再推送時取消還在跑的舊建置；main 的建置與發佈不取消（發佈的工作另外有自己的 concurrency）。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
