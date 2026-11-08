@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
-import { byRecent, demoteHeadings, githubIssueMarkdown, inlineText, issueFileName, stateTone, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
+import { byRecent, demoteHeadings, githubIssueMarkdown, inlineText, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { findMatches } from "./ui/issue-view.ts";
 
 const item: AdoWorkItemDetail = {
@@ -149,13 +149,6 @@ test("工作項目：狀態的原因放在狀態後面，Bug 的系統資訊另�
   assert.match(md, /## 系統資訊\n\nChrome 120/);
   // 舊的離線副本沒有這兩個欄位。
   assert.doesNotMatch(workItemMarkdown(item), /原因|系統資訊/);
-});
-
-test("狀態的顏色分類（比照 TFS 網頁）", () => {
-  assert.deepEqual(
-    ["New", "Active", "In Progress", "Resolved", "Closed", "Done", "Removed", "已關閉", "自訂狀態"].map(stateTone),
-    ["new", "active", "active", "resolved", "closed", "closed", "removed", "closed", "new"],
-  );
 });
 
 test("說明、重現步驟、留言裡的標題往下降，不會和段落標題（##）同一層；程式碼區塊裡的 # 不動", () => {

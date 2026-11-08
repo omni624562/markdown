@@ -3665,7 +3665,7 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .wi-chip[hidden] { display: none; }
 .wi-chip[data-tone="new"] { --tone: var(--muted); }
 .wi-chip[data-tone="resolved"] { --tone: light-dark(#7c3aed, #a78bfa); }
-.wi-chip[data-tone="done"] { --tone: var(--success); }
+.wi-chip[data-tone="closed"] { --tone: var(--success); }
 .wi-chip[data-tone="removed"] { --tone: var(--subtle); text-decoration: line-through; }
 .issue-title { margin: 0; overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .issue-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
