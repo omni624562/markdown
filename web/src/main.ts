@@ -72,7 +72,7 @@ import { toast } from "./ui/toast.ts";
 import { imageFiles, insertImages, wikiEditImage, wikiEditImagesPlugin } from "./app/image-paste.ts";
 import { initFileDrop } from "./app/file-drop.ts";
 import { pasteLink } from "./app/paste-link.ts";
-import { clearOffline, isOffline, offline, otherWriter, renderOffline, resolveConflict, showOffline, storeName, initOfflineDrive } from "./app/offline-drive.ts";
+import { clearOffline, isOffline, offline, renderOffline, resolveConflict, showOffline, storeName, initOfflineDrive } from "./app/offline-drive.ts";
 import { initWikiHistory } from "./app/wiki-history.ts";
 import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
 import { openRemoteLink, remoteCard, remoteLinkOf, initAdoLinks } from "./app/ado-links.ts";
@@ -100,6 +100,7 @@ import { openWorkItemById, quickOpen, wikiLinkPages, wikiLinkPicker, workItemIdC
 import { availableRightTabs } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
+import { autoSaveNow, autoSavePending, exclusiveSave, resumeAutoSave, scheduleDiskSave } from "./app/autosave.ts";
 import { forgetOutlineCollapse, initOutlineList, outlineHeadings, renderOutline, toggleOutline } from "./app/outline-list.ts";
 import { workItemChips, workItemChipsPlugin } from "./app/work-item-chips.ts";
 import { forgetChangeNotice, reloadDoc, reloadDocs, reloadRemoteDocs, startDesktop } from "./app/desktop-startup.ts";
@@ -277,9 +278,6 @@ const app = {
   },
   get deleteWikiPage() {
     return deleteWikiPage;
-  },
-  get diskSaveTimer() {
-    return diskSaveTimer;
   },
   get docHeadings() {
     return docHeadings;
@@ -1666,81 +1664,6 @@ function scheduleAutosave(doc: Text): void {
   saveTimer = window.setTimeout(flushDraft, draftDelay(doc.length));
 }
 
-// ---- 自動存檔（桌面版、已經存過的檔案） ---------------------------------------
-
-const DISK_SAVE_DELAY = 1500;
-let diskSaveTimer = 0;
-let saving = false;
-/** 自動存檔遇到衝突或錯誤的檔案：使用者手動存檔（Ctrl+S）之前不再自動存。 */
-let diskSaveBlocked: string | null = null;
-
-function scheduleDiskSave(): void {
-  clearTimeout(diskSaveTimer);
-  if (!settings.value.autoSave || !desktop || !cur.fileHandle?.path) return;
-  diskSaveTimer = window.setTimeout(() => void autoSaveNow(), DISK_SAVE_DELAY);
-}
-
-/**
- * 自動存檔：安靜地存，遇到衝突或錯誤就停下來交給使用者，不打斷打字。
- * 開始時就記下是哪個分頁、哪些內容，存檔期間切換分頁也會存到正確的檔案。
- */
-async function autoSaveNow(): Promise<void> {
-  clearTimeout(diskSaveTimer);
-  diskSaveTimer = 0;
-  const doc = active;
-  const handle = cur.fileHandle;
-  const path = handle?.path;
-  if (path && !editor.view.composing) refreshToc();
-  const text = editor.text;
-  if (!path || !settings.value.autoSave || saving || diskSaveBlocked === path) return;
-  if (hash(text) === cur.baseline || doc.missing || doc.unloaded || doc.lossy || review.active || offline?.path === path) return;
-  // 注音、倉頡選字中先不存，等組字結束。
-  if (editor.view.composing) {
-    scheduleDiskSave();
-    return;
-  }
-  saving = true;
-  try {
-    const out = await saveFile(text, cur.fileName, cur.kind, handle, { saveAs: false, force: false });
-    if (!out) return;
-    if (out.status !== "saved") {
-      diskSaveBlocked = path;
-      const message =
-        out.status === "conflict"
-          ? t("「{name}」被{who}改過，已暫停自動存檔。按 Ctrl+S 比較差異後再存。", { name: out.name, who: otherWriter(path) })
-          : t("「{name}」是 {encoding} 編碼，存不了「{chars}」，已暫停自動存檔。按 Ctrl+S 存檔時可以改存成 UTF-8。", { name: out.name, encoding: encodingLabel(out.encoding), chars: out.chars });
-      toast(message, { tone: "error", duration: 12000 });
-      return;
-    }
-    // 自動存檔：只更新這個檔案的 Git 狀態，不重新掃描整個資料夾。
-    if (out.handle?.path) void gitPanel?.fileSaved(out.handle.path);
-    else gitPanel?.refreshSoon(300);
-    if (doc === active) {
-      cur.fileHandle = out.handle;
-      setBaseline(text, true);
-      renderSaveState();
-      renderTabs(); // setBaseline 已經更新了 active.dirty，renderSaveState 不會重畫分頁
-      // 存檔期間又打了字：再排一次。
-      if (editor.text !== text) scheduleDiskSave();
-    } else {
-      doc.handle = out.handle;
-      doc.baseline = hash(text);
-      doc.fileBacked = true;
-      doc.dirty = hash(doc.state?.doc.toString() ?? loadDraft(doc.id) ?? "") !== doc.baseline;
-      persistSession();
-      renderTabs();
-    }
-  } catch (e) {
-    if (isOffline(e)) showOffline(path);
-    else {
-      diskSaveBlocked = path;
-      toast(t("自動存檔失敗，已暫停：{error}", { error: e instanceof Error ? e.message : String(e) }), { tone: "error", duration: 12000 });
-    }
-  } finally {
-    saving = false;
-  }
-}
-
 /** 立刻寫入尚未儲存的草稿（切換、關閉分頁前呼叫）。 */
 function flushDraft(): void {
   clearTimeout(saveTimer);
@@ -2334,7 +2257,7 @@ function focusPane(pane: Pane, focusView = false): void {
   if (!target || !doc) return;
   if (pane !== focusedPane) {
     flushDraft();
-    if (diskSaveTimer) void autoSaveNow();
+    if (autoSavePending()) void autoSaveNow();
     if (review.active) review.finish();
     if (docs.includes(active)) stash();
     focusedPane = pane;
@@ -2509,7 +2432,7 @@ function activate(doc: Doc): void {
   if (doc === active) return;
   flushDraft();
   // 切換前先把這個分頁還沒自動存的內容存起來（autoSaveNow 一開始就記下了分頁與內容）。
-  if (diskSaveTimer) void autoSaveNow();
+  if (autoSavePending()) void autoSaveNow();
   if (review.active) review.finish();
   if (docs.includes(active)) stash();
   active = doc;
@@ -2754,14 +2677,7 @@ async function save(saveAs: boolean, force = false): Promise<void> {
     if (choice !== "overwrite") return;
   }
   // 自動存檔正在寫：等它寫完再存，兩次存檔不會同時寫同一個檔案。
-  while (saving) await new Promise((r) => setTimeout(r, 50));
-  saving = true;
-  let conflict: Awaited<ReturnType<typeof saveNow>>;
-  try {
-    conflict = await saveNow(saveAs, force);
-  } finally {
-    saving = false;
-  }
+  const conflict = await exclusiveSave(() => saveNow(saveAs, force));
   // 檔案的編碼（例如 Big5）寫不進某些字：問要不要改存成 UTF-8，要的話再存一次。
   if (conflict && "chars" in conflict) return void ((await askUtf8(conflict)) && (await save(saveAs)));
   // 衝突處理可能再存一次（覆蓋、另存），要在這次存檔結束之後。
@@ -2772,9 +2688,8 @@ async function save(saveAs: boolean, force = false): Promise<void> {
 async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string; diskText: string } | Extract<SaveOutcome, { status: "unencodable" }> | void> {
   if (review.active) review.finish();
   refreshToc();
-  clearTimeout(diskSaveTimer);
   // 手動存檔後恢復自動存檔。
-  diskSaveBlocked = null;
+  resumeAutoSave();
   const text = editor.text;
   // 編輯中的 Wiki 頁面：存回伺服器（另存新檔則照常存成本機檔案）。
   if (active.wiki && !saveAs && desktop) return saveWikiPage(text, force);
