@@ -91,6 +91,19 @@ pub fn is_doc_or_image(path: &Path) -> bool {
             .is_some_and(|e| crate::images::ALLOWED.contains(&e.to_ascii_lowercase().as_str()))
 }
 
+/// PDF：檔案樹會列出，點了用系統預設的程式開啟（oMarker 不顯示 PDF）。
+pub fn is_pdf(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+}
+
+/// 檔案樹列出的檔案：文件與圖片（[`is_doc_or_image`]）和 PDF（[`is_pdf`]）。
+/// 搜尋、待辦與標籤的索引、監看仍只看文件（[`is_doc`]）。
+pub fn is_listed(path: &Path) -> bool {
+    is_doc_or_image(path) || is_pdf(path)
+}
+
 /// 名稱是 `.git`（不分大小寫）。Windows 會去掉結尾的點與空白，`:` 之後是替代資料流，
 /// 所以 `.git.`、`.git::$INDEX_ALLOCATION` 也都指向 `.git`。
 pub fn is_git_name(name: &OsStr) -> bool {
@@ -243,7 +256,7 @@ fn real_inside(root: &Path, path: &Path) -> Result<PathBuf, String> {
     }
 }
 
-/// 改名的規則：資料夾不能改成 `.git`；檔案只能在文件與圖片之間改名（見 [`is_doc_or_image`]），
+/// 改名的規則：資料夾不能改成 `.git`；檔案只能在文件、圖片與 PDF 之間改名（見 [`is_listed`]），
 /// 原本和新的名稱都要是，不能改成執行檔、捷徑之類的其他類型。`entry` 是 [`check_entry`] 回傳的位置。
 fn check_new_name(entry: &Path, new_name: &str, is_dir: bool) -> Result<(), String> {
     if is_git_name(OsStr::new(new_name)) {
@@ -252,15 +265,15 @@ fn check_new_name(entry: &Path, new_name: &str, is_dir: bool) -> Result<(), Stri
     if is_dir {
         return Ok(());
     }
-    if !is_doc_or_image(entry) {
+    if !is_listed(entry) {
         return Err(tr!(
-            "只有文件和圖片可以在 oMarker 裡重新命名，「{name}」不是",
+            "只有文件、圖片和 PDF 可以在 oMarker 裡重新命名，「{name}」不是",
             name = display_name(entry)
         ));
     }
-    if !is_doc_or_image(Path::new(new_name)) {
+    if !is_listed(Path::new(new_name)) {
         return Err(tr!(
-            "檔案只能改成文件或圖片的名稱（例如 .md、.txt、.png），不能改成「{name}」",
+            "檔案只能改成文件、圖片或 PDF 的名稱（例如 .md、.txt、.png、.pdf），不能改成「{name}」",
             name = new_name
         ));
     }
@@ -375,7 +388,7 @@ fn list_children(dir: &Path) -> Vec<Entry> {
         .filter(|e| e.depth() == 1)
         .filter_map(|e| {
             let is_dir = e.file_type()?.is_dir();
-            (is_dir || is_doc(e.path())).then(|| Entry {
+            (is_dir || is_listed(e.path())).then(|| Entry {
                 name: e.file_name().to_string_lossy().into_owned(),
                 path: path_string(e.path()),
                 is_dir,
@@ -820,6 +833,41 @@ fn reveal_now(app: &AppHandle, path: &str) -> Result<(), String> {
         crate::files::may_reopen(app, p)
     })?;
     reveal_path(&path)
+}
+
+/// 用系統預設的程式開啟 PDF（oMarker 不顯示 PDF）。只接受目前資料夾裡、或使用者開過的 PDF，
+/// 和「在檔案總管中顯示」同一套規則（[`reveal_target`]），不能拿來執行其他類型的檔案。
+#[tauri::command]
+pub async fn open_with_default(app: AppHandle, path: String) -> Result<(), String> {
+    crate::io::blocking(move || {
+        let root = app.state::<Workspace>().root();
+        let target = open_target(root.as_deref(), Path::new(&path), |p| {
+            crate::files::may_reopen(&app, p)
+        })?;
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_path(target.to_string_lossy(), None::<&str>)
+            .map_err(|e| {
+                tr!(
+                    "無法開啟「{name}」：{e}",
+                    name = display_name(&target),
+                    e = e
+                )
+            })
+    })
+    .await
+}
+
+/// 可以交給預設程式開啟的檔案：PDF，而且位置符合 [`reveal_target`] 的規則。
+fn open_target(
+    root: Option<&Path>,
+    path: &Path,
+    opened: impl Fn(&Path) -> bool,
+) -> Result<PathBuf, String> {
+    if !is_pdf(path) {
+        return Err(tr!("只有 PDF 可以用預設的程式開啟"));
+    }
+    reveal_target(root, path, opened)
 }
 
 /// 「在檔案總管中顯示」可以選取的位置：目前開啟的資料夾內的項目，或使用者開過的檔案
@@ -1357,6 +1405,8 @@ mod tests {
         fs::write(dir.join("README.md"), "# 標題\n\n季度報告的內容\n").unwrap();
         fs::write(dir.join("第2章/筆記.md"), "第一行\n這份季度報告很重要\n").unwrap();
         fs::write(dir.join("圖片.png"), b"\x89PNG").unwrap();
+        fs::write(dir.join("報告.pdf"), b"%PDF-1.4").unwrap();
+        fs::write(dir.join("程式.exe"), b"MZ").unwrap();
         fs::write(dir.join("node_modules/x.md"), "季度報告").unwrap();
         fs::write(dir.join("略過.md"), "季度報告").unwrap();
         fs::write(dir.join(".gitignore"), "略過.md\n").unwrap();
@@ -1385,6 +1435,33 @@ mod tests {
         ] {
             assert!(!is_doc(Path::new(name)), "{name}");
         }
+    }
+
+    #[test]
+    fn tree_lists_docs_images_and_pdfs_only() {
+        for name in ["筆記.md", "圖片.PNG", "報告.pdf", "簡報.Pdf"] {
+            assert!(is_listed(Path::new(name)), "{name}");
+        }
+        for name in ["程式.exe", "封裝.zip", "報告.docx", "捷徑.lnk", "pdf"] {
+            assert!(!is_listed(Path::new(name)), "{name}");
+        }
+        assert!(is_pdf(Path::new("C:\\Users\\me\\報告.PDF")));
+        assert!(!is_pdf(Path::new("報告.pdf.exe")));
+    }
+
+    #[test]
+    fn opens_pdfs_in_the_folder_with_the_default_app_only() {
+        let dir = temp_ws("open-default");
+        let pdf = dir.join("報告.pdf");
+        fs::write(&pdf, "%PDF-1.4").unwrap();
+        let exe = dir.join("程式.exe");
+        fs::write(&exe, "MZ").unwrap();
+        assert_eq!(open_target(Some(&dir), &pdf, |_| false), Ok(pdf.clone()));
+        // 不是 PDF 的不開（就算在資料夾裡）；資料夾外、沒開過的 PDF 也不開。
+        assert!(open_target(Some(&dir), &exe, |_| false).is_err());
+        let outside = std::env::temp_dir().join("md-ws-open-default-out.pdf");
+        assert!(open_target(Some(&dir), &outside, |_| false).is_err());
+        assert!(open_target(Some(&dir), &dir.join("沒有.pdf"), |_| false).is_err());
     }
 
     #[test]
@@ -1611,7 +1688,11 @@ mod tests {
     fn lists_docs_and_folders_in_natural_order() {
         let dir = temp_ws("list");
         let names: Vec<String> = list_children(&dir).into_iter().map(|e| e.name).collect();
-        assert_eq!(names, ["第2章", "第10章", "README.md"]);
+        // 資料夾在前；檔案列出文件、圖片與 PDF，執行檔不列。
+        assert_eq!(
+            names,
+            ["第2章", "第10章", "README.md", "圖片.png", "報告.pdf"]
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 

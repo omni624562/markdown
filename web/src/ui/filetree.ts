@@ -7,7 +7,7 @@ import { dirname, isInside } from "../paths.ts";
 import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 
-export type TreeAction = "new-file" | "new-folder" | "upload" | "download" | "rename" | "trash" | "reveal" | "copy-path";
+export type TreeAction = "new-file" | "new-folder" | "upload" | "download" | "rename" | "trash" | "reveal" | "copy-path" | "insert-link";
 
 export interface FileTreeHandlers {
   list(dir: string): Promise<Entry[]>;
@@ -36,6 +36,7 @@ const MENU: { action: TreeAction; label: string; dirOnly?: boolean; fileOnly?: b
   { action: "trash", label: t("移到資源回收筒"), key: "Delete" },
   { action: "reveal", label: t("在檔案總管中顯示") },
   { action: "copy-path", label: t("複製路徑") },
+  { action: "insert-link", label: t("插入連結到目前的文件"), fileOnly: true },
 ];
 
 export class FileTree {

@@ -150,6 +150,7 @@ mod tests {
         "startup_target",
         "probe_path",
         "open_external",
+        "open_with_default",
         "set_title",
         "set_ui_zoom",
         "custom_title_bar",

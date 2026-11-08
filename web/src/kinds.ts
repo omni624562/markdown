@@ -41,6 +41,11 @@ export function isTextFileName(name: string): boolean {
   return dot > 0 && TEXT_EXTENSIONS.includes(name.slice(dot + 1).toLowerCase());
 }
 
+/** PDF：檔案面板會列出，點了用系統預設的程式開啟（oMarker 不顯示 PDF）。 */
+export function isPdfName(name: string): boolean {
+  return /\.pdf$/i.test(name);
+}
+
 /** 開檔對話框可選的所有類型。 */
 export const OPEN_ACCEPT = {
   description: t("文件與程式碼"),

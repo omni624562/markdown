@@ -9,6 +9,9 @@ import { fromDesktop, desktopHandle } from "../files.ts";
 import { t } from "../i18n.ts";
 import { backlinks } from "../links.ts";
 import { dirname, rebase, basename, isInside } from "../paths.ts";
+import { isPdfName } from "../kinds.ts";
+import { fileLink } from "../file-link.ts";
+import { insertAtCursor } from "./image-paste.ts";
 import { samePath } from "../projects.ts";
 import { draftVersion, loadDraft, loadProjectView, dropDraft, loadSession } from "../session.ts";
 import * as storage from "../storage.ts";
@@ -646,6 +649,12 @@ export async function openRecentFolder(path: string): Promise<void> {
 
 /** 開啟（或切換到）指定路徑的檔案，可再跳到指定的行與欄。 */
 export async function openPath(path: string, line?: number, column?: number): Promise<void> {
+  // PDF 不在 oMarker 裡顯示：交給系統預設的程式。
+  if (isPdfName(path) && desktop) {
+    await desktop.openWithDefault(path);
+    toast(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
+    return;
+  }
   const existing = app.tabForPath(path);
   if (existing) app.activate(existing);
   else if (desktop) app.openOpenedFile(fromDesktop(await desktop.reopenFile(path)));
@@ -807,6 +816,11 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
     case "copy-path":
       await navigator.clipboard.writeText(entry.path);
       toast(t("已複製路徑"));
+      break;
+    case "insert-link":
+      // 相對於目前文件的 Markdown 連結（沒有文件時是完整路徑）。
+      insertAtCursor(fileLink(entry.path, app.cur.fileHandle?.path));
+      toast(t("已插入「{name}」的連結", { name: entry.name }));
       break;
   }
 }

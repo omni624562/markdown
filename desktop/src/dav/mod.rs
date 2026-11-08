@@ -23,7 +23,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::files::{decode, OpenedFile, SaveOutcome};
 use crate::io::offline;
-use crate::workspace::{is_doc, natural_cmp, validate_name, Entry, FileItem, FolderInfo};
+use crate::workspace::{
+    is_doc, is_listed, natural_cmp, validate_name, Entry, FileItem, FolderInfo,
+};
 
 pub const SCHEME: &str = "webdav://";
 /// 版本標記未知（伺服器沒給 ETag）：存檔時只要求檔案還在，不比對版本。
@@ -677,7 +679,7 @@ pub async fn dav_list(path: String, dav: State<'_, Dav>) -> Result<Vec<Entry>, S
             .into_iter()
             .filter(|i| i.rel != rel && !i.rel.is_empty())
             .filter(|i| !name_of(&i.rel).starts_with('.'))
-            .filter(|i| i.is_dir || is_doc(std::path::Path::new(&i.rel)))
+            .filter(|i| i.is_dir || is_listed(std::path::Path::new(&i.rel)))
             .map(|i| Entry::new(name_of(&i.rel), join(&id, &i.rel), i.is_dir).with_detail(i.detail))
             .collect();
         entries.sort_by(|a, b| {
