@@ -29,7 +29,7 @@ import {
   toggled,
   userContent,
 } from "../assistant-text.ts";
-import { type AssistantMessage, type AssistantRunEvent, type AssistantUsage, desktop } from "../desktop.ts";
+import { type AssistantImage, type AssistantMessage, type AssistantRunEvent, type AssistantUsage, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { CLAUDE_MODELS, type ClaudeModel } from "../settings.ts";
 import * as storage from "../storage.ts";
@@ -72,6 +72,17 @@ let usageEl!: HTMLElement;
 let modelBtn!: HTMLButtonElement;
 let notice!: HTMLElement;
 let history: AssistantMessage[] = [];
+/** 這次要附上的圖片（貼上或按迴紋針選的）；送出後清空。 */
+interface Attached extends AssistantImage {
+  name: string;
+  url: string;
+}
+let attached: Attached[] = [];
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** 估計費用時一張圖片算多少字（大約 1,600 token）。 */
+const IMAGE_CHARS = 1600;
 /** 這次對話的一問一答（存成筆記用）。 */
 let transcript: TranscriptItem[] = [];
 let saveBtn!: HTMLButtonElement;
@@ -154,6 +165,26 @@ function renderChips(): void {
   }
   const sel = selection().text;
   if (sel.trim()) chip(t("選取 {n} 字", { n: sel.length }), "text-cursor");
+  attached.forEach((img, i) => {
+    const el = document.createElement("span");
+    el.className = "assistant-chip assistant-chip-image";
+    const thumb = document.createElement("img");
+    thumb.src = img.url;
+    thumb.alt = "";
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "assistant-chip-x";
+    x.title = t("不要送出");
+    x.setAttribute("aria-label", t("不要送出「{name}」", { name: img.name }));
+    x.append(icon("x"));
+    x.addEventListener("click", () => {
+      URL.revokeObjectURL(img.url);
+      attached.splice(i, 1);
+      renderChips();
+    });
+    el.append(thumb, img.name, x);
+    items.push(el);
+  });
   chips.replaceChildren(...items);
 }
 
@@ -358,9 +389,19 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   const mode = action?.mode ?? "answer";
   const system = systemPrompt(mode);
   const model = app.settings.value.claudeModel;
-  if (!(await confirmFirst(content.length + system.length, model))) return;
+  const images = attached.map(({ mediaType, data }) => ({ mediaType, data }));
+  if (!(await confirmFirst(content.length + system.length + images.length * IMAGE_CHARS, model))) return;
   const shown = action ? action.label() : question;
-  bubble("user", shown);
+  const userBubble = bubble("user", shown);
+  for (const img of attached) {
+    const thumb = document.createElement("img");
+    thumb.className = "assistant-thumb";
+    thumb.src = img.url;
+    thumb.alt = img.name;
+    userBubble.append(thumb);
+  }
+  attached = [];
+  renderChips();
   const answer = bubble("assistant");
   answer.classList.add("loading");
   answer.textContent = t("思考中…");
@@ -370,7 +411,9 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   setRunning(true);
   try {
     // 會改文件的動作不接續之前的對話（只看這一次的內容）。
-    await desktop.assistantSend(id, { model, system, messages: conversation(mode === "answer" ? history : [], content) });
+    const messages = conversation(mode === "answer" ? history : [], content);
+    if (images.length) messages[messages.length - 1] = { ...messages[messages.length - 1], images };
+    await desktop.assistantSend(id, { model, system, messages });
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }
@@ -428,6 +471,35 @@ function onRun(e: AssistantRunEvent): void {
   if (usage) usage = { ...usage, usd: e.monthUsd };
   renderUsage();
   setRunning(false);
+}
+
+/** 讀進要附上的圖片：格式、大小、張數不對時提示，不送出。 */
+async function attachFiles(files: File[]): Promise<void> {
+  for (const f of files) {
+    if (attached.length >= MAX_IMAGES) {
+      toast(t("一次最多附 {n} 張圖片", { n: MAX_IMAGES }));
+      break;
+    }
+    if (!(IMAGE_TYPES as readonly string[]).includes(f.type)) {
+      toast(t("「{name}」不是 PNG、JPEG、GIF 或 WebP 圖片", { name: f.name || t("圖片") }), { tone: "error" });
+      continue;
+    }
+    if (f.size > MAX_IMAGE_BYTES) {
+      toast(t("「{name}」超過 5 MB", { name: f.name || t("圖片") }), { tone: "error" });
+      continue;
+    }
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    attached.push({
+      mediaType: f.type as AssistantImage["mediaType"],
+      data: btoa(bin),
+      name: f.name || t("貼上的圖片"),
+      url: URL.createObjectURL(f),
+    });
+  }
+  renderChips();
+  input.focus();
 }
 
 /** 把這次對話存成專案裡的一份筆記，並打開它。 */
@@ -634,7 +706,30 @@ function build(): HTMLElement {
   sendBtn.type = "button";
   sendBtn.className = "btn icon-only btn-primary assistant-send";
   sendBtn.addEventListener("click", () => (pending ? stop() : void send(input.value)));
-  bar.append(more, sendBtn);
+  // 附圖片：按迴紋針選檔案，或直接在輸入框貼上。
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = IMAGE_TYPES.join(",");
+  fileInput.multiple = true;
+  fileInput.hidden = true;
+  fileInput.addEventListener("change", () => {
+    void attachFiles([...(fileInput.files ?? [])]);
+    fileInput.value = "";
+  });
+  const attach = document.createElement("button");
+  attach.type = "button";
+  attach.className = "assistant-attach";
+  attach.title = t("附上圖片（也可以直接貼上）");
+  attach.setAttribute("aria-label", attach.title);
+  attach.append(icon("paperclip"));
+  attach.addEventListener("click", () => fileInput.click());
+  input.addEventListener("paste", (e) => {
+    const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    e.preventDefault();
+    void attachFiles(files);
+  });
+  bar.append(more, attach, fileInput, sendBtn);
   box.append(chips, input, bar);
   box.addEventListener("click", (e) => {
     if (e.target === box) input.focus();

@@ -231,10 +231,43 @@ fn check(
 
 // ---- 送出 ----
 
+/// 附在問題裡的圖片（Base64）。
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatImage {
+    media_type: String,
+    data: String,
+}
+
+/// 一次最多附幾張圖片、每張多大（Base64 之後；原始檔大約 5 MB）。
+const MAX_IMAGES: usize = 4;
+const MAX_IMAGE_BASE64: usize = 7_000_000;
+const IMAGE_TYPES: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
 #[derive(Deserialize, Debug)]
 pub struct ChatMessage {
     role: String,
     content: String,
+    /// 只有使用者的訊息能附圖片。
+    #[serde(default)]
+    images: Vec<ChatImage>,
+}
+
+/// 圖片的格式、大小、張數都在範圍內，而且只附在使用者的訊息。
+fn valid_images(messages: &[ChatMessage]) -> bool {
+    messages.iter().all(|m| {
+        m.images.is_empty()
+            || (m.role == "user"
+                && m.images.len() <= MAX_IMAGES
+                && m.images.iter().all(|i| {
+                    IMAGE_TYPES.contains(&i.media_type.as_str())
+                        && !i.data.is_empty()
+                        && i.data.len() <= MAX_IMAGE_BASE64
+                        && i.data.bytes().all(|b| {
+                            b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'='
+                        })
+                }))
+    })
 }
 
 #[derive(Deserialize, Debug)]
@@ -258,7 +291,24 @@ fn request_body(m: &Model, req: &SendRequest) -> serde_json::Value {
     let messages: Vec<_> = req
         .messages
         .iter()
-        .map(|msg| serde_json::json!({ "role": msg.role, "content": msg.content }))
+        .map(|msg| {
+            if msg.images.is_empty() {
+                return serde_json::json!({ "role": msg.role, "content": msg.content });
+            }
+            // 圖片放在文字前面。
+            let mut blocks: Vec<_> = msg
+                .images
+                .iter()
+                .map(|i| {
+                    serde_json::json!({
+                        "type": "image",
+                        "source": { "type": "base64", "media_type": i.media_type, "data": i.data },
+                    })
+                })
+                .collect();
+            blocks.push(serde_json::json!({ "type": "text", "text": msg.content }));
+            serde_json::json!({ "role": msg.role, "content": blocks })
+        })
         .collect();
     let mut body = serde_json::json!({
         "model": m.id,
@@ -404,6 +454,11 @@ pub fn assistant_send(
     let m = model(&request.model).ok_or_else(|| tr!("不支援這個模型"))?;
     if !valid_messages(&request.messages) {
         return Err(tr!("沒有要送出的內容"));
+    }
+    if !valid_images(&request.messages) {
+        return Err(tr!(
+            "圖片只能是 PNG、JPEG、GIF 或 WebP，每張不超過 5 MB，一次最多 4 張"
+        ));
     }
     let chars = request.system.chars().count()
         + request
@@ -600,6 +655,7 @@ mod tests {
         let m = |role: &str, content: &str| ChatMessage {
             role: role.into(),
             content: content.into(),
+            images: vec![],
         };
         assert!(valid_messages(&[m("user", "摘要")]));
         assert!(valid_messages(&[
@@ -621,6 +677,7 @@ mod tests {
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "摘要".into(),
+                images: vec![],
             }],
         };
         let body = request_body(model(&req.model).unwrap(), &req);
@@ -631,6 +688,49 @@ mod tests {
         assert!(body.get("thinking").is_none() && body.get("temperature").is_none());
         let haiku = request_body(model("claude-haiku-5-5").unwrap(), &req);
         assert!(haiku.get("fallbacks").is_none());
+    }
+
+    #[test]
+    fn sends_images_before_the_text() {
+        let img = |t: &str, data: &str| ChatImage {
+            media_type: t.into(),
+            data: data.into(),
+        };
+        let msg = |role: &str, images: Vec<ChatImage>| ChatMessage {
+            role: role.into(),
+            content: "這張圖在講什麼？".into(),
+            images,
+        };
+        let req = SendRequest {
+            model: "claude-haiku-5-5".into(),
+            system: String::new(),
+            messages: vec![msg("user", vec![img("image/png", "iVBORw0KGgo=")])],
+        };
+        let body = request_body(model(&req.model).unwrap(), &req);
+        let content = &body["messages"][0]["content"];
+        assert_eq!(content[0]["type"], "image");
+        assert_eq!(content[0]["source"]["media_type"], "image/png");
+        assert_eq!(content[0]["source"]["data"], "iVBORw0KGgo=");
+        assert_eq!(content[1]["text"], "這張圖在講什麼？");
+
+        assert!(valid_images(&req.messages));
+        // 不支援的格式、不是 Base64、助理的訊息附圖、太多張都不行。
+        assert!(!valid_images(&[msg(
+            "user",
+            vec![img("image/svg+xml", "PHN2Zz4=")]
+        )]));
+        assert!(!valid_images(&[msg(
+            "user",
+            vec![img("image/png", "<script>")]
+        )]));
+        assert!(!valid_images(&[msg(
+            "assistant",
+            vec![img("image/png", "AAAA")]
+        )]));
+        assert!(!valid_images(&[msg(
+            "user",
+            (0..5).map(|_| img("image/png", "AAAA")).collect()
+        )]));
     }
 
     #[test]

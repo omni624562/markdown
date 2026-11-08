@@ -4750,12 +4750,18 @@ body.assistant-open > .statusbar { grid-column: 1 / -1; }
 .assistant-chip-x:hover { background: var(--hover, var(--active-line)); color: var(--fg); }
 .assistant-input textarea { display: block; box-sizing: border-box; width: 100%; min-height: 44px; max-height: 200px; padding: 6px 10px; border: 0; outline: 0; background: none; color: var(--fg); font: inherit; font-size: 13px; resize: none; field-sizing: content; }
 .assistant-quick { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 2px 6px 6px 8px; cursor: default; }
-.assistant-quick button:not(.assistant-send) { padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--fg); font: inherit; font-size: 11.5px; cursor: pointer; }
-.assistant-quick button:not(.assistant-send):hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.assistant-quick button:not(.assistant-send, .assistant-attach) { padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--fg); font: inherit; font-size: 11.5px; cursor: pointer; }
+.assistant-quick button:not(.assistant-send, .assistant-attach):hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .assistant-quick button:disabled { opacity: 0.5; cursor: default; }
 .assistant-quick .assistant-more { display: inline-flex; gap: 2px; align-items: center; padding-right: 5px; }
 .assistant-quick .assistant-more .icon { width: 12px; height: 12px; }
 .assistant-send { width: 28px; height: 28px; margin-left: auto; border-radius: 7px; }
+.assistant-quick .assistant-attach { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-left: auto; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); }
+.assistant-quick .assistant-attach:hover:not(:disabled) { background: var(--hover, var(--active-line)); color: var(--fg); }
+.assistant-quick .assistant-attach .icon { width: 15px; height: 15px; }
+.assistant-quick .assistant-attach ~ .assistant-send { margin-left: 0; }
+.assistant-chip-image img { width: 18px; height: 18px; border-radius: 3px; object-fit: cover; }
+.assistant-thumb { display: block; max-width: 100%; max-height: 120px; margin-top: 6px; border-radius: 6px; }
 /* 最下面一行小字：說明與本月費用。 */
 .assistant-foot { display: flex; flex: none; gap: 8px; justify-content: space-between; padding: 0 12px 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .assistant-foot > span:first-child { overflow: hidden; text-overflow: ellipsis; }

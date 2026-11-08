@@ -693,9 +693,17 @@ export interface AssistantUsage {
   limit: number;
 }
 
+/** 附在問題裡的圖片（Base64，不含 `data:` 開頭）。 */
+export interface AssistantImage {
+  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  data: string;
+}
+
 export interface AssistantMessage {
   role: "user" | "assistant";
   content: string;
+  /** 只有使用者的訊息能附圖片。 */
+  images?: AssistantImage[];
 }
 
 export type AssistantRunEvent =
