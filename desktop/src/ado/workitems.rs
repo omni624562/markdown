@@ -727,6 +727,22 @@ pub struct KindStates {
     pub(super) states: Vec<StateOption>,
 }
 
+/// 各專案的類型清單（`workitemtypes` 的回應）→ 篩選用的類型（去重、不分大小寫排序）與每個類型的狀態。
+pub(super) fn filter_kinds(types: &[(&str, Value)]) -> (Vec<String>, Vec<KindStates>) {
+    let mut kinds: Vec<String> = vec![];
+    let mut state_sets: Vec<KindStates> = vec![];
+    for (project, res) in types {
+        for k in values(res).iter().filter_map(|t| str_of(t, "name")) {
+            if !HIDDEN_KINDS.contains(&k) && !kinds.iter().any(|x| x == k) {
+                kinds.push(k.to_string());
+            }
+        }
+        state_sets.extend(kind_states(project, res));
+    }
+    kinds.sort_by_key(|k| k.to_lowercase());
+    (kinds, state_sets)
+}
+
 /// 專案的工作項目類型清單（`workitemtypes` 的回應）→ 每個類型的狀態；略過不會出現在清單的類型。
 pub(super) fn kind_states(project: &str, types: &Value) -> Vec<KindStates> {
     values(types)
@@ -815,21 +831,31 @@ pub async fn ado_work_item_filters(app: AppHandle) -> Result<WorkItemFilterOptio
             .filter_map(|p| str_of(p, "name").map(str::to_string))
             .collect();
         projects.sort_by_key(|p| p.to_lowercase());
-        let mut kinds: Vec<String> = vec![];
-        let mut state_sets: Vec<KindStates> = vec![];
-        for p in projects.iter().take(20) {
-            let path = format!("/{}/_apis/wit/workitemtypes", encode_segment(p));
-            let Ok(res) = get(&a.url, &pat, &path, &tr!("讀取工作項目類型")) else {
-                continue;
-            };
-            for k in values(&res).iter().filter_map(|t| str_of(t, "name")) {
-                if !HIDDEN_KINDS.contains(&k) && !kinds.iter().any(|x| x == k) {
-                    kinds.push(k.to_string());
+        // 每個專案的類型各讀一次：一次 6 個平行送（和 wiki.rs 讀提交一樣），不是一個等一個；
+        // 讀不到的專案略過，順序照專案清單。
+        let picked: Vec<&String> = projects.iter().take(20).collect();
+        let mut types: Vec<Option<Value>> = vec![None; picked.len()];
+        for (chunk_index, chunk) in picked.chunks(6).enumerate() {
+            std::thread::scope(|s| {
+                let handles: Vec<_> = chunk
+                    .iter()
+                    .map(|p| {
+                        let path = format!("/{}/_apis/wit/workitemtypes", encode_segment(p));
+                        let (url, pat) = (&a.url, &pat);
+                        s.spawn(move || get(url, pat, &path, &tr!("讀取工作項目類型")).ok())
+                    })
+                    .collect();
+                for (i, h) in handles.into_iter().enumerate() {
+                    types[chunk_index * 6 + i] = h.join().ok().flatten();
                 }
-            }
-            state_sets.extend(kind_states(p, &res));
+            });
         }
-        kinds.sort_by_key(|k| k.to_lowercase());
+        let found: Vec<(&str, Value)> = picked
+            .into_iter()
+            .zip(types)
+            .filter_map(|(p, t)| Some((p.as_str(), t?)))
+            .collect();
+        let (kinds, state_sets) = filter_kinds(&found);
         Ok(WorkItemFilterOptions {
             projects,
             kinds,
@@ -1076,12 +1102,18 @@ pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, St
             "/{}/_apis/wit/workItems/{id}/comments",
             encode_segment(&d.item.project)
         );
-        if let Ok(c) = get_version(&a.url, &pat, &path, Some(COMMENTS_API), &tr!("讀取留言")) {
-            d.comments = comments_of(&c, true);
-        } else if let Ok(c) =
-            get_version(&a.url, &pat, &path, Some("5.0-preview.2"), &tr!("讀取留言"))
-        {
-            d.comments = comments_of(&c, false);
+        // 這台伺服器哪個版本讀得到，第一次試過就記住：舊版伺服器不必每開一個項目都先吃一次 404。
+        let known = COMMENTS_EDITABLE
+            .lock()
+            .as_ref()
+            .filter(|(url, _)| *url == a.url)
+            .map(|(_, editable)| *editable);
+        for (version, editable) in comment_versions(known) {
+            if let Ok(c) = get_version(&a.url, &pat, &path, Some(version), &tr!("讀取留言")) {
+                d.comments = comments_of(&c, *editable);
+                *COMMENTS_EDITABLE.lock() = Some((a.url.clone(), *editable));
+                break;
+            }
         }
         Ok(d)
     })
@@ -1089,7 +1121,21 @@ pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, St
 }
 
 /// 可以編輯、刪除留言的 API 版本（Azure DevOps Server 2020 起）。
-const COMMENTS_API: &str = "5.1-preview.3";
+pub(super) const COMMENTS_API: &str = "5.1-preview.3";
+/// 只能讀的舊版（TFS 2019）。
+pub(super) const COMMENTS_API_OLD: &str = "5.0-preview.2";
+
+/// 上次哪台伺服器（網址）的留言用的是可以編輯的版本（true）或舊版（false）。
+static COMMENTS_EDITABLE: Mutex<Option<(String, bool)>> = Mutex::new(None);
+
+/// 要依序試的留言 API：`known` 是這台伺服器上次成功的版本（可以編輯與否），知道了就只試那一個。
+pub(super) fn comment_versions(known: Option<bool>) -> &'static [(&'static str, bool)] {
+    match known {
+        Some(true) => &[(COMMENTS_API, true)],
+        Some(false) => &[(COMMENTS_API_OLD, false)],
+        None => &[(COMMENTS_API, true), (COMMENTS_API_OLD, false)],
+    }
+}
 
 /// `editable`：用的是可以編輯、刪除的 API（留言帶編號）。
 pub(super) fn comments_of(v: &Value, editable: bool) -> Vec<WorkItemComment> {
