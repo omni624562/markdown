@@ -5,7 +5,7 @@
 import { MODEL_LABELS, formatUsd, listed, toggled } from "../assistant-text.ts";
 import { type Project, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
-import { ASSISTANT_ACTION_LIMITS, type AssistantCustomAction, CLAUDE_MODELS, type ClaudeModel } from "../settings.ts";
+import { ASSISTANT_ACTION_LIMITS, ASSISTANT_FONT_RANGE, type AssistantCustomAction, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { askText } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
@@ -179,6 +179,12 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
   model.value = s().claudeModel;
   model.addEventListener("change", () => app.settings.update({ claudeModel: model.value as ClaudeModel }));
 
+  const font = document.createElement("select");
+  for (let n = ASSISTANT_FONT_RANGE.min; n <= ASSISTANT_FONT_RANGE.max; n++)
+    font.append(new Option(n === DEFAULT_SETTINGS.assistantFontSize ? t("{n}px（預設）", { n }) : t("{n}px", { n }), String(n)));
+  font.value = String(s().assistantFontSize);
+  font.addEventListener("change", () => app.settings.update({ assistantFontSize: Number(font.value) }));
+
   const limitBox = document.createElement("span");
   limitBox.className = "setting-buttons";
   const limit = document.createElement("input");
@@ -242,6 +248,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
   dependents.append(
     row("assistant-key", t("API 金鑰"), t("在 Anthropic Console 建立；費用算在這把金鑰上"), keyBox),
     row("claudeModel", t("預設模型"), t("Haiku 最便宜、Opus 最強；側欄也可以臨時換"), model),
+    row("assistantFontSize", t("字級"), t("助理側欄的字；焦點在助理裡時也可以按 Ctrl+= 或 Ctrl+- 調整"), font),
     row("claudeMonthlyLimit", t("每月上限"), t("這個月估計的費用到了上限就停止送出"), limitBox),
     row("claudeWebSearch", t("允許上網查資料"), t("開啟後助理輸入框上方會有「上網查」，按了的那一題 Claude 才會上網搜尋；每次搜尋約 US$0.01"), web),
     projectsTitle,
@@ -258,6 +265,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     enabled.checked = s().claudeApiEnabled;
     dependents.classList.toggle("is-off", !s().claudeApiEnabled);
     model.value = s().claudeModel;
+    font.value = String(s().assistantFontSize);
     web.checked = s().claudeWebSearch;
     if (limit !== document.activeElement) limit.value = String(s().claudeMonthlyLimit);
   };

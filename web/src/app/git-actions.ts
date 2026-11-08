@@ -588,6 +588,8 @@ export function initGitActions(): void {
       const target = e.target as HTMLElement;
       // 終端機裡的按鍵大多要交給終端機（例如 Ctrl+W、Ctrl+P），只保留少數全域快速鍵。
       if (target.closest(".terminal-panel") && !app.TERMINAL_KEYS.has(cmd.id)) return;
+      // 焦點在助理裡時，字級快速鍵調整助理的字（assistant.ts 處理），不動編輯區。
+      if (target.closest("#assistant-panel") && cmd.id.startsWith("font-")) return;
       const inField =
         (target.matches("input, select, textarea") && !target.closest(".cm-editor")) || target.isContentEditable && !!target.closest(".cm-lp-table");
       if (inField && (cmd.group === t("格式") || cmd.group === t("插入"))) return;

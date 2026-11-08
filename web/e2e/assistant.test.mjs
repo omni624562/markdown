@@ -497,3 +497,39 @@ test("今日簡報：從「更多」選單或指令面板執行，送出今天�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("字級：標題列的 A−／A＋ 調整助理的字並記住；焦點在助理裡時 Ctrl+= / Ctrl+- / Ctrl+0 只動助理，不動編輯區", async () => {
+  const { page, context, errors } = await open({ desktop: desktop(ON) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  const size = () => panel.locator(".assistant-input textarea").evaluate((el) => getComputedStyle(el).fontSize);
+  const editorSize = () => page.locator(".cm-content").evaluate((el) => getComputedStyle(el).fontSize);
+  const before = await editorSize();
+  assert.equal(await size(), "13px");
+
+  await panel.getByRole("button", { name: "放大助理的字（Ctrl+=）" }).click();
+  await panel.getByRole("button", { name: "放大助理的字（Ctrl+=）" }).click();
+  assert.equal(await size(), "15px");
+  const saved = () => calls(page).then((list) => list.filter((c) => c.cmd === "save_settings").map((c) => JSON.parse(c.args.json)).at(-1));
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "save_settings" && JSON.parse(c.args.json).assistantFontSize === 15));
+
+  await panel.locator(".assistant-input textarea").focus();
+  await page.keyboard.press("Control+Equal");
+  assert.equal(await size(), "16px");
+  await page.keyboard.press("Control+Minus");
+  await page.keyboard.press("Control+Minus");
+  assert.equal(await size(), "14px");
+  assert.equal(await editorSize(), before);
+  await page.keyboard.press("Control+0");
+  assert.equal(await size(), "13px");
+  await panel.getByRole("button", { name: "縮小助理的字（Ctrl+-）" }).click();
+  assert.equal(await size(), "12px");
+  assert.equal((await saved()).assistantFontSize, 12);
+  assert.equal(await editorSize(), before);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

@@ -144,6 +144,8 @@ export interface Settings {
   claudeWebSearch: boolean;
   /** 助理「更多」選單裡的自訂動作。 */
   assistantActions: AssistantCustomAction[];
+  /** 助理側欄的字級（px）；和編輯區的字級分開。 */
+  assistantFontSize: number;
   quickActions: QuickAction[];
   /** 自訂的文件範本（內建範本不在這裡）。 */
   templates: Template[];
@@ -230,6 +232,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   assistantConfirmed: [],
   assistantActions: [],
   claudeWebSearch: false,
+  assistantFontSize: 13,
   mcpServer: true,
   aiTerminal: true,
   markExternalChanges: true,
@@ -285,6 +288,8 @@ export const termCheckLabel = (): string => t("檢查兩國用語、錯字與標
 export const SPELL_IGNORE_LIMIT = 2000;
 
 export const FONT_SIZE_RANGE = { min: 12, max: 24 } as const;
+/** 助理側欄字級的範圍（px）。 */
+export const ASSISTANT_FONT_RANGE = { min: 11, max: 22 } as const;
 
 /** 驗證讀進來的設定：型別不對或超出範圍的欄位一律用預設值。 */
 export function sanitize(raw: unknown): { settings: Settings; problems: number } {
@@ -346,6 +351,12 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
     const m = input.claudeModel;
     if (CLAUDE_MODELS.includes(m as ClaudeModel)) out.claudeModel = m as ClaudeModel;
     else problems++;
+  }
+  if ("assistantFontSize" in input) {
+    const n = input.assistantFontSize;
+    if (typeof n === "number" && Number.isFinite(n)) {
+      out.assistantFontSize = Math.round(Math.min(ASSISTANT_FONT_RANGE.max, Math.max(ASSISTANT_FONT_RANGE.min, n)));
+    } else problems++;
   }
   if ("claudeMonthlyLimit" in input) {
     const n = input.claudeMonthlyLimit;
