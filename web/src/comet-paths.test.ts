@@ -22,6 +22,10 @@ test("cometKind：設定檔、產生的 AGENTS.md、規格文件；資料夾裡�
   assert.equal(cometKind("agents.md"), "generated");
   assert.equal(cometKind("docs/spec"), "spec");
   assert.equal(cometKind("docs/spec/需求.md"), "spec");
+  assert.equal(cometKind("docs/spec/templates"), "template");
+  assert.equal(cometKind("Docs/Spec/Templates/feature.md"), "template");
+  assert.equal(cometKind("docs/spec/templates/sub/a.md"), "template");
+  assert.equal(cometKind("docs/spec/templates-old/a.md"), "spec");
   // 只有專案資料夾最上層的 AGENTS.md；名稱開頭一樣的不算。
   assert.equal(cometKind("docs/AGENTS.md"), null);
   assert.equal(cometKind(".comet.json.bak"), null);
@@ -37,6 +41,8 @@ test("cometItemKind：只有 COMET 的項目本身（檔案面板標「C」的�
   assert.equal(cometItemKind("AGENTS.md"), "generated");
   assert.equal(cometItemKind("docs/spec"), "spec");
   assert.equal(cometItemKind("docs/spec/需求.md"), null);
+  assert.equal(cometItemKind("docs/spec/templates"), "template");
+  assert.equal(cometItemKind("docs/spec/templates/feature.md"), null);
   assert.equal(cometItemKind(".comet/contexts"), null);
   assert.equal(cometItemKind("docs"), null);
 });
@@ -47,6 +53,8 @@ test("cometAffected：刪除或改名會動到的 COMET 項目", () => {
   // 裝著 COMET 項目的資料夾：列出裡面的項目。
   assert.deepEqual(cometAffected("docs"), ["docs/spec"]);
   assert.deepEqual(cometAffected("Docs"), ["docs/spec"]);
+  assert.deepEqual(cometAffected("docs/spec"), ["docs/spec"]);
+  assert.deepEqual(cometAffected("docs/spec/templates/feature.md"), ["docs/spec/templates/feature.md"]);
   assert.deepEqual(cometAffected("README.md"), []);
   assert.deepEqual(cometAffected("doc"), []);
 });

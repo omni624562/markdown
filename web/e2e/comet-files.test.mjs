@@ -23,7 +23,8 @@ const desktop = (comet) => ({
     values: {
       [ROOT]: [entry(".comet", true), entry("docs", true), entry(".comet.json"), entry("AGENTS.md"), entry("README.md")],
       [at("docs")]: [entry("docs/spec", true), entry("docs/週報.md")],
-      [at("docs/spec")]: [entry("docs/spec/需求.md")],
+      [at("docs/spec")]: [entry("docs/spec/templates", true), entry("docs/spec/需求.md")],
+      [at("docs/spec/templates")]: [entry("docs/spec/templates/功能.md")],
     },
   },
   reopen_file: {
@@ -32,6 +33,8 @@ const desktop = (comet) => ({
       [at(".comet.json")]: file(".comet.json", SETTINGS),
       [at("AGENTS.md")]: file("AGENTS.md", "# 給 AI 的說明\n"),
       [at("README.md")]: file("README.md", "# 產品筆記\n"),
+      [at("docs/spec/templates/功能.md")]: file("docs/spec/templates/功能.md", "# 功能規格範本\n"),
+      [at("docs/spec/需求.md")]: file("docs/spec/需求.md", "# 需求\n"),
     },
   },
 });
@@ -146,6 +149,48 @@ test("只顯示預覽時：預覽上方也有 COMET 的說明，按「仍要編�
   await openFile(page, "README.md");
   await page.waitForFunction(() => document.querySelector("#preview-scroller > .preview-comet-note")?.hidden === true);
   assert.equal(await pnote.isVisible(), false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("規格範本（docs/spec/templates）：資料夾標「C」，裡面的檔案預設唯讀；其他規格照常編輯；刪除前說明", async () => {
+  const { page, context, errors } = await open({ desktop: desktop(true) });
+  await row(page, "AGENTS.md").locator(".tree-mark").waitFor();
+  await row(page, "docs").click();
+  await row(page, "docs/spec").click();
+  await row(page, "docs/spec/templates").locator(".tree-mark").waitFor();
+  assert.equal(await row(page, "docs/spec/templates").locator(".tree-mark").getAttribute("title"), "COMET 的規格範本：AI 照著它寫規格，在 oMarker 開啟時預設唯讀");
+  assert.equal(await row(page, "docs/spec/需求.md").locator(".tree-mark").count(), 0);
+
+  await row(page, "docs/spec/templates").click();
+  await openFile(page, "docs/spec/templates/功能.md");
+  await note(page).locator("text=這是 COMET 的規格範本").waitFor();
+  assert.equal(await note(page).getAttribute("data-locked"), "1");
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("改");
+  assert.doesNotMatch(await text(page), /改/);
+  await note(page).getByRole("button", { name: "仍要編輯" }).click();
+  await note(page).locator("text=可以編輯這個 COMET 規格範本了").waitFor();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("改");
+  assert.match(await text(page), /改$/);
+
+  // 其他規格文件：照常編輯，沒有說明。
+  await openFile(page, "docs/spec/需求.md");
+  await page.waitForTimeout(100);
+  assert.equal(await note(page).count(), 0);
+
+  // 刪除範本資料夾：說明會動到 COMET 的檔案，預設是取消。
+  const dialog = page.locator("dialog[open].choice");
+  await row(page, "docs/spec/templates").focus();
+  await page.keyboard.press("Delete");
+  await dialog.waitFor();
+  assert.match(await dialog.locator("p").first().textContent(), /^「docs\/spec\/templates」是 COMET 用到的檔案，刪除後 COMET 可能無法正常運作。/);
+  await page.keyboard.press("Enter");
+  await dialog.waitFor({ state: "detached" });
+  const cmds = (await calls(page)).map((c) => c.cmd);
+  assert.ok(!cmds.includes("trash_entry"), cmds.join("|"));
   assert.deepEqual(errors, []);
   await context.close();
 });
