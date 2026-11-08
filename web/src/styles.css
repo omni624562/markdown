@@ -4668,9 +4668,6 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 .cm-editor .cm-panels .comet-note > svg { flex: none; width: 15px; height: 15px; color: var(--accent); }
 .cm-editor .cm-panels .comet-note > span { flex: 1 1 240px; }
 .cm-editor .cm-panels .comet-note > .btn { min-height: 26px; padding: 0 10px; font-size: 12.5px; }
-.cm-editor .cm-panels .comet-note-close { display: inline-flex; padding: 3px; border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer; }
-.cm-editor .cm-panels .comet-note-close:hover { background: var(--active-line); color: var(--fg); }
-.cm-editor .cm-panels .comet-note-close .icon { width: 14px; height: 14px; }
 /* 唯讀時想打字：說明閃一下。 */
 .cm-editor .cm-panels .comet-note-nudge { animation: comet-nudge 0.6s ease; }
 @keyframes comet-nudge { 30% { background: color-mix(in srgb, var(--accent) 28%, var(--bg)); } }
