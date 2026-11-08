@@ -3046,7 +3046,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "md-core"
-version = "1.138.0"
+version = "1.138.1"
 dependencies = [
  "comrak",
  "serde_json",
@@ -3055,7 +3055,7 @@ dependencies = [
 
 [[package]]
 name = "md-desktop"
-version = "1.138.0"
+version = "1.138.1"
 dependencies = [
  "arboard",
  "axum",
@@ -3107,14 +3107,14 @@ dependencies = [
 
 [[package]]
 name = "md-docx"
-version = "1.138.0"
+version = "1.138.1"
 dependencies = [
  "md-core",
 ]
 
 [[package]]
 name = "md-text"
-version = "1.138.0"
+version = "1.138.1"
 dependencies = [
  "serde",
 ]
