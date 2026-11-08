@@ -164,21 +164,7 @@ export function workItemMarkdown(d: AdoWorkItemDetail): string {
     .join("\n\n");
 }
 
-/** 狀態的分類（決定顏色，比照 TFS 網頁）：新增灰、進行中藍、已解決橘、完成綠、移除淡灰。 */
-export type StateTone = "new" | "active" | "resolved" | "closed" | "removed";
-
-const STATE_TONES: [StateTone, string[]][] = [
-  // 中文的流程範本狀態名稱（不是介面文字）。
-  ["resolved", ["resolved", "已解決"]], // i18n-ignore
-  ["closed", ["closed", "done", "completed", "已關閉", "已完成", "完成", "關閉"]], // i18n-ignore
-  ["removed", ["removed", "cut", "inactive", "已移除", "已刪除"]], // i18n-ignore
-  ["active", ["active", "committed", "in progress", "doing", "approved", "open", "作用中", "進行中"]], // i18n-ignore
-];
-
-export function stateTone(state: string): StateTone {
-  const s = state.trim().toLowerCase();
-  return STATE_TONES.find(([, names]) => names.includes(s))?.[0] ?? "new";
-}
+export { type StateTone, stateTone } from "./work-item-state.ts";
 
 /** 工作項目網址裡的編號（`…/_workitems/edit/123`）；不是工作項目的網址回傳 null。 */
 export function workItemIdOf(href: string): number | null {
