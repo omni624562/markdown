@@ -13,3 +13,5 @@ license = "MIT"
 lto = true
 opt-level = "s"
 codegen-units = 1
+# 去掉符號名稱：wasm 少四分之一（name 區段），md-cli 也一起縮小。桌面版的 profile 在 desktop/Cargo.toml 另外設定。
+strip = true
