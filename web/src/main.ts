@@ -44,7 +44,6 @@ import { cometBadge } from "./ui/comet-badge.ts";
 import { cometFileGuard, cometTreeMark } from "./app/comet-files.ts";
 import { hydrateIcons, icon } from "./ui/icons.ts";
 import { type StartAction, buildStartPage } from "./ui/start-page.ts";
-import { setupMenu } from "./ui/menu.ts";
 import { KindPicker } from "./ui/kind-picker.ts";
 import { initDocLanguage } from "./app/doc-language.ts";
 import { askUtf8, encodingLabel, initFileFormat } from "./app/file-format.ts";
@@ -97,6 +96,7 @@ import { openWorkItemById, quickOpen, wikiLinkPages, wikiLinkPicker, workItemIdC
 import { availableRightTabs } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
+import { initMainMenu } from "./app/main-menu.ts";
 import { closeSide, initSideBySide, openBeside, refreshOtherPane, renderPaneHeads } from "./app/side-by-side.ts";
 import { compareWithCommit, copyWebLink, historyPicker, initFileHistory, openOnWeb } from "./app/file-history.ts";
 import { initStatusView, setIssueFacts } from "./app/status-view.ts";
@@ -2605,58 +2605,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
   if (btn.classList.contains("icon-only")) btn.setAttribute("aria-label", cmd.title);
   btn.addEventListener("click", () => commands.run(cmd.id).catch(reportError));
 });
-// 主選單：第一層放最常用的（新增、開啟、存檔）與分好類的子選單，少用的工具收進「文件工具」。
-setupMenu($<HTMLButtonElement>("#main-menu"), commands, [
-  "new",
-  "new-from-template",
-  "daily-note",
-  "open",
-  "open-recent",
-  "save",
-  "save-as",
-  "-",
-  {
-    label: t("專案"),
-    icon: "folder-kanban",
-    items: [
-      "new-project",
-      "switch-project",
-      "project-overview",
-      "open-in-codex",
-      "open-in-claude",
-      "comet-setup-project",
-      "comet-resetup-project",
-      "-",
-      "open-folder",
-      { label: t("下載儲存庫"), icon: "download", items: ["github-open", "ado-open"] },
-      { label: t("連線到遠端資料夾"), icon: "cloud", items: ["connect-webdav", "connect-ssh"] },
-      "-",
-      "delete-project",
-    ],
-  },
-  {
-    label: t("Git"),
-    icon: "git-branch",
-    items: ["show-git", "git-history", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "ado-publish", "-", "git-file-history", "git-open-web", "git-copy-link"],
-  },
-  "-",
-  {
-    label: t("匯入與匯出"),
-    icon: "download",
-    items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich", "-", "import-docx"],
-  },
-  { label: t("文件工具"), icon: "wand-sparkles", items: ["doc-stats", "history", "save-as-template", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
-  "-",
-  { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
-  { label: t("外觀"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark", "-", "choose-palette"] },
-  {
-    label: t("說明"),
-    icon: "circle-help",
-    items: ["show-shortcuts", "show-welcome", "show-changelog", "-", "check-update", "report-issue", "copy-error-log", "-", "about"],
-  },
-  "pin-manage", "palette",
-  "settings",
-]);
+initMainMenu();
 // 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。網頁版不能在資料夾中搜尋，Ctrl+Shift+F 沒有作用，不寫。
 for (const [tab, id] of [
   ["#side-tab-files", "show-files"],
