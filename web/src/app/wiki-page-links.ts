@@ -13,7 +13,7 @@ import { wikiPageTree } from "./ado-links.ts";
 import { showRepoFile } from "./ado-files.ts";
 import { reportError } from "./git-actions.ts";
 import { wikiPanel } from "./work-items-panel.ts";
-import { app } from "./context.ts";
+import { showWikiPage } from "./wiki-edit.ts";
 
 /** 網址、mailto: 等（交給呼叫的人：Azure DevOps 的網址在 oMarker 開，其他用瀏覽器）。 */
 const EXTERNAL = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
@@ -29,7 +29,7 @@ function decoded(href: string): string {
 /** 開啟 `wiki` 的 `path` 這一頁，左側面板顯示的是同一個 Wiki 時一起選取。 */
 function openPage(wiki: AdoWiki, path: string): void {
   if (wikiPanel?.wiki?.id === wiki.id) wikiPanel.select(path);
-  app.showWikiPage(wiki, path);
+  showWikiPage(wiki, path);
 }
 
 /**

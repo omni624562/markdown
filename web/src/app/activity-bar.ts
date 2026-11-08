@@ -42,13 +42,16 @@ import { issueSide, issueView, toggleIssueSide } from "./wiki-edit.ts";
 import { barShortcuts, openShortcutFromBar, removeBarShortcut, shortcutBar, shortcutName, setBarShortcuts } from "./work-items-panel.ts";
 import { fileTabMenuEntries } from "./file-shortcuts.ts";
 import type { SidePanel } from "../main.ts";
-import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
+import { openPath, setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
 import { initPinCommands } from "./pin-commands.ts";
 import { initChatGpt } from "./chatgpt.ts";
 import { initTableCopy } from "./table-copy.ts";
 import { initAssistant } from "./assistant.ts";
 import { app } from "./context.ts";
 import { exportName } from "./export-target.ts";
+import { commands } from "./commands.ts";
+import { closeSide, openBeside } from "./side-by-side.ts";
+import { settingsDialog } from "./settings-ui.ts";
 
 
 /** 面板圖示的名稱（aria-label 會加上變更數，這裡用固定的名稱）。 */
@@ -167,7 +170,7 @@ function renderActivityCommands(): void {
   const box = app.$(".activity-cmds");
   box.replaceChildren(
     ...app.settings.value.activityCommands.flatMap((id) => {
-      const cmd = app.commands.get(id);
+      const cmd = commands.get(id);
       if (!cmd) return [];
       const b = document.createElement("button");
       b.type = "button";
@@ -180,7 +183,7 @@ function renderActivityCommands(): void {
       b.append(icon(cmd.icon ?? "command"));
       b.addEventListener("click", () => {
         if (HISTORY_COMMANDS.includes(id) && historyView?.isOpen) historyView.close();
-        else void app.commands.run(id).catch(reportError);
+        else void commands.run(id).catch(reportError);
       });
       return [b];
     }),
@@ -193,7 +196,7 @@ function renderActivityCommands(): void {
 export function refreshActivityCommands(): void {
   const box = app.$(".activity-cmds");
   for (const b of box.querySelectorAll<HTMLButtonElement>("button")) {
-    const cmd = app.commands.get(b.dataset.command!);
+    const cmd = commands.get(b.dataset.command!);
     b.hidden = !cmd || !(cmd.when?.() ?? true);
   }
   box.hidden = ![...box.querySelectorAll("button")].some((b) => !(b as HTMLElement).hidden);
@@ -215,7 +218,7 @@ function pickActivityCommand(): Promise<string | null> {
       query: (q) => {
         const pinned = new Set(app.settings.value.activityCommands);
         const needle = q.trim().toLowerCase();
-        return sortByGroup(app.commands.available()).filter(
+        return sortByGroup(commands.available()).filter(
           (c) => c.icon && !pinned.has(c.id) && c.id !== "palette" && (!needle || `${c.group} ${c.title}`.toLowerCase().includes(needle)),
         );
       },
@@ -236,7 +239,7 @@ export async function addActivityCommand(): Promise<void> {
     return;
   }
   setActivity({ activityCommands: [...list, id] });
-  toast(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: app.commands.get(id)?.title ?? id }), { tone: "success" });
+  toast(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: commands.get(id)?.title ?? id }), { tone: "success" });
 }
 
 /** 圖示列的右鍵選單：勾選要顯示的面板與按鈕、新增按鈕、到設定調整。 */
@@ -264,7 +267,7 @@ function openActivityMenu(at: DOMRect): void {
     },
     "-",
     ...app.settings.value.activityCommands.flatMap((id) => {
-      const cmd = app.commands.get(id);
+      const cmd = commands.get(id);
       return cmd
         ? [
             {
@@ -292,7 +295,7 @@ export async function startAiTool(tool: "claude" | "codex"): Promise<void> {
   if (!app.ai?.enabled) {
     toast(t("要先在設定開啟「啟用 AI 協作」，才能在終端機使用 {name}。", { name }), {
       duration: 12000,
-      action: { label: t("開啟設定"), run: () => app.settingsDialog.open(t("AI 協作")) },
+      action: { label: t("開啟設定"), run: () => settingsDialog.open(t("AI 協作")) },
     });
     return;
   }
@@ -350,7 +353,7 @@ function formatMenuButton(id: string, label: string, iconName: string, entries: 
   b.title = label;
   b.append(icon(iconName), Object.assign(document.createElement("span"), { textContent: label }), icon("chevron-down"));
   b.addEventListener("mousedown", (e) => e.preventDefault());
-  setupMenu(b, app.commands, entries);
+  setupMenu(b, commands, entries);
   return b;
 }
 export let headingMenu: HTMLButtonElement;
@@ -358,7 +361,7 @@ export let insertMenu: HTMLButtonElement;
 
 /** 執行指令的按鈕（格式工具列、選取時浮出的按鈕共用）。 */
 export function commandButton(id: string, withLabel = false): HTMLButtonElement {
-  const cmd = app.commands.get(id)!;
+  const cmd = commands.get(id)!;
   const b = document.createElement("button");
   b.type = "button";
   b.className = withLabel ? "btn" : "btn icon-only";
@@ -369,7 +372,7 @@ export function commandButton(id: string, withLabel = false): HTMLButtonElement 
   if (withLabel) b.append(Object.assign(document.createElement("span"), { textContent: cmd.title }));
   // 用 mousedown 阻止預設行為，按下按鈕時編輯器才不會失去選取範圍。
   b.addEventListener("mousedown", (e) => e.preventDefault());
-  b.addEventListener("click", () => app.commands.run(id).catch(reportError));
+  b.addEventListener("click", () => commands.run(id).catch(reportError));
   return b;
 }
 
@@ -395,7 +398,7 @@ export function formatBubble(): HTMLElement {
   more.addEventListener("mousedown", (e) => e.preventDefault());
   more.addEventListener("click", () => moreFormatMenu.open(more.getBoundingClientRect()));
   bar.append(more);
-  const aiButtons = ["ai-actions", "send-to-terminal-ai"].filter((id) => app.commands.get(id)?.when?.() ?? false);
+  const aiButtons = ["ai-actions", "send-to-terminal-ai"].filter((id) => commands.get(id)?.when?.() ?? false);
   if (aiButtons.length) bar.append(separator("format-sep"), ...aiButtons.map((id) => commandButton(id)));
   return bar;
 }
@@ -411,7 +414,7 @@ export function floatingMenu(id: string, entries: MenuEntry[], onClose?: () => v
   anchor.className = "insert-anchor";
   anchor.tabIndex = -1;
   document.body.append(anchor);
-  const menu = setupMenu(anchor, app.commands, entries);
+  const menu = setupMenu(anchor, commands, entries);
   menu.addEventListener("toggle", (e) => {
     const closed = (e as ToggleEvent).newState === "closed";
     if (closed && (document.activeElement === anchor || document.activeElement === document.body)) app.editor.view.focus();
@@ -458,7 +461,7 @@ const SLASH_KEYWORDS: Record<string, string> = {
 function slashItems(): SlashItem[] {
   return Object.entries(SLASH_KEYWORDS).flatMap(([id, keywords]) => {
     if (id === "insert-today") return [{ id, title: t("今天的日期"), keywords }];
-    const cmd = app.commands.get(id);
+    const cmd = commands.get(id);
     if (!cmd || !(cmd.when?.() ?? true)) return [];
     const keys = cmd.keys ?? cmd.shownKeys;
     return [{ id, title: cmd.title, keywords, keys: keys ? formatKeys(keys) : undefined }];
@@ -586,7 +589,7 @@ export async function importDocxData(name: string, data: ArrayBuffer, mdPath: st
     if (!out || out.status !== "saved") return;
     app.fileListCache = null;
     app.indexStale = true;
-    await app.openPath(mdPath);
+    await openPath(mdPath);
     void app.fileTree?.refresh([dirname(mdPath)]);
     toast(t("已匯入「{name}」，存成「{file}」。{notes}", { name, file: basename(mdPath), notes: notes.join(t("；")) }), { tone: "success", duration: notes.length ? 10000 : undefined });
   } else {
@@ -688,7 +691,7 @@ export async function saveAsTemplate(): Promise<void> {
     return;
   }
   app.settings.update({ templates: [{ name, body }, ...others] });
-  toast(t("已存成範本「{name}」，可以從「☰」→「{command}」使用", { name, command: app.commands.title("new-from-template") }), { tone: "success" });
+  toast(t("已存成範本「{name}」，可以從「☰」→「{command}」使用", { name, command: commands.title("new-from-template") }), { tone: "success" });
 }
 
 /**
@@ -959,7 +962,7 @@ export function initActivityBar(): void {
   }
   for (const el of document.querySelectorAll<HTMLButtonElement>(".project-switch, #activity-project")) {
     el.disabled = !desktop;
-    el.addEventListener("click", () => void app.commands.run("switch-project").catch(reportError));
+    el.addEventListener("click", () => void commands.run("switch-project").catch(reportError));
   }
   // Windows 桌面版：頂端列兼當標題列。
   void desktop
@@ -968,7 +971,7 @@ export function initActivityBar(): void {
       if (custom) setupWindowControls(app.$(".topbar"), (action) => desktop!.windowControl(action));
     })
     .catch(console.error);
-  app.status.save.addEventListener("click", () => void app.commands.run("save").catch(reportError));
+  app.status.save.addEventListener("click", () => void commands.run("save").catch(reportError));
   /**
    * 桌面版：其他元件沒有處理的右鍵（搜尋框、設定欄位、預覽裡選取的文字等）改用自己的小選單，
    * 不顯示 WebView2 內建的選單（裡面有重新整理、列印與 Windows 的語音輸入）。
@@ -1000,7 +1003,7 @@ export function initActivityBar(): void {
       app.editor.view.dispatch(app.editor.view.state.replaceSelection(dateFormats(new Date())[0].text), { userEvent: "input" });
       return;
     }
-    void app.commands.run(id).catch(reportError);
+    void commands.run(id).catch(reportError);
   });
   /** 按右鍵的是顯示中的工作項目、Wiki 頁面分頁（它的動作才列出來）。 */
   const shownMenuItem = () => {
@@ -1020,7 +1023,7 @@ export function initActivityBar(): void {
         label: t("釘選分頁"),
         icon: "pin",
         checked: () => app.tabPinned(app.menuItemTab()?.id ?? app.menuTab().id),
-        run: () => void app.commands.run("tab-pin"),
+        run: () => void commands.run("tab-pin"),
       },
       // 工作項目等的分頁：和文件並排。
       {
@@ -1042,13 +1045,13 @@ export function initActivityBar(): void {
           const doc = app.menuTab();
           return !app.menuItemTab() && doc !== app.paneDocs.side && !(app.paneDocs.side && doc === app.paneDocs.main);
         },
-        run: () => app.openBeside(app.menuTab()),
+        run: () => openBeside(app.menuTab()),
       },
       {
         label: t("關閉並排"),
         icon: "x",
         when: () => !app.menuItemTab() && !!app.paneDocs.side && [app.paneDocs.main, app.paneDocs.side].includes(app.menuTab()),
-        run: () => app.closeSide(),
+        run: () => closeSide(),
       },
       // 顯示中的工作項目、Wiki 頁面的動作（新增子頁面、放到左側圖示列、複製成 Markdown、刪除、保留離線）。
       "-",
@@ -1058,7 +1061,7 @@ export function initActivityBar(): void {
       }),
       "-",
       // 文件的分頁：在分頁上改名（存成檔案的和檔案面板一樣改磁碟上的檔名）。
-      { label: t("重新命名…"), icon: "pencil", when: () => !app.menuItemTab(), run: () => void app.commands.run("rename-doc") },
+      { label: t("重新命名…"), icon: "pencil", when: () => !app.menuItemTab(), run: () => void commands.run("rename-doc") },
       "tab-copy-path",
       "tab-reveal",
       // 本機的檔案：放到左側圖示列（已經放了是「從左側圖示列移除」）。

@@ -8,6 +8,8 @@ import { app } from "./context.ts";
 import { docName, refreshDocName } from "./doc-names.ts";
 import { renderDocLanguage } from "./doc-language.ts";
 import { renderFileFormat } from "./file-format.ts";
+import { commands } from "./commands.ts";
+import { outlineHeadings, toggleOutline } from "./outline-list.ts";
 
 
 let draggingSection: number | null = null;
@@ -40,7 +42,7 @@ function dropTarget(e: DragEvent): { li: HTMLElement; before: number; after: boo
   const index = Number(link.dataset.index);
   // 收合的標題底下的子標題看不到，放在它下面就是放在整個章節後面。
   const collapsed = li.querySelector(".outline-toggle[aria-expanded='false']");
-  const next = collapsed ? subtreeEnd(app.outlineHeadings.map((h) => h.level), index) : index + 1;
+  const next = collapsed ? subtreeEnd(outlineHeadings.map((h) => h.level), index) : index + 1;
   return { li, before: after ? next : index, after };
 }
 
@@ -147,7 +149,7 @@ export function renderSaveState(): void {
   app.status.save.setAttribute("aria-label", state);
   // 已存檔時不佔位置；只有需要注意時才顯示。
   app.status.save.hidden = !dirty;
-  app.status.save.title = dirty ? app.withKeys(t("按一下存檔"), app.commands.get("save")?.keys) : "";
+  app.status.save.title = dirty ? app.withKeys(t("按一下存檔"), commands.get("save")?.keys) : "";
   (app.status.save as HTMLButtonElement).disabled = !dirty;
   renderFileFormat();
 }
@@ -157,11 +159,11 @@ export function initOutline(): void {
   app.outlineList.addEventListener("click", (e) => {
     const toggle = (e.target as Element).closest<HTMLButtonElement>(".outline-toggle");
     if (toggle) {
-      app.toggleOutline(Number(toggle.dataset.index));
+      toggleOutline(Number(toggle.dataset.index));
       return;
     }
     const a = (e.target as Element).closest<HTMLAnchorElement>("a[data-index]");
-    const h = a && app.outlineHeadings[Number(a.dataset.index)];
+    const h = a && outlineHeadings[Number(a.dataset.index)];
     if (!h) return;
     e.preventDefault();
     if (app.outlineView) {
@@ -207,11 +209,11 @@ export function initOutline(): void {
     draggingSection = null;
     if (from === null || !t) return;
     e.preventDefault();
-    const out = moveSection(app.editor.text, app.outlineHeadings, from, t.before);
+    const out = moveSection(app.editor.text, outlineHeadings, from, t.before);
     if (out === null) return;
     // 搬移後，被搬移的標題在大綱中的新位置。
-    const count = sectionRange(app.outlineHeadings, from, app.editor.view.state.doc.lines);
-    const size = app.outlineHeadings.filter((h) => h.line >= count.first && h.line < count.end).length;
+    const count = sectionRange(outlineHeadings, from, app.editor.view.state.doc.lines);
+    const size = outlineHeadings.filter((h) => h.line >= count.first && h.line < count.end).length;
     applySectionMove(out, t.before > from ? t.before - size : t.before, false);
   });
   app.outlineList.addEventListener("dragend", () => {
@@ -225,10 +227,10 @@ export function initOutline(): void {
       if (!link) return;
       e.preventDefault();
       const index = Number(link.dataset.index);
-      if (app.toggleOutline(index, e.key === "ArrowLeft") || e.key === "ArrowRight") return;
-      const level = app.outlineHeadings[index].level;
+      if (toggleOutline(index, e.key === "ArrowLeft") || e.key === "ArrowRight") return;
+      const level = outlineHeadings[index].level;
       for (let i = index - 1; i >= 0; i--) {
-        if (app.outlineHeadings[i].level < level) {
+        if (outlineHeadings[i].level < level) {
           app.outlineList.querySelectorAll<HTMLElement>("a")[i]?.focus();
           break;
         }
@@ -239,7 +241,7 @@ export function initOutline(): void {
     const link = (e.target as HTMLElement).closest?.<HTMLAnchorElement>("a[data-index]");
     if (!link || app.cur.kind !== "markdown" || app.outlineView) return;
     e.preventDefault();
-    const moved = swapSection(app.editor.text, app.outlineHeadings, Number(link.dataset.index), e.key === "ArrowUp" ? -1 : 1);
+    const moved = swapSection(app.editor.text, outlineHeadings, Number(link.dataset.index), e.key === "ArrowUp" ? -1 : 1);
     if (moved) applySectionMove(moved.text, moved.index, true);
   });
 }

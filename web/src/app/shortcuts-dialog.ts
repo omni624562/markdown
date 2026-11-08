@@ -8,6 +8,7 @@ import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { sortByGroup } from "../ui/palette.ts";
 import { app } from "./context.ts";
+import { commands } from "./commands.ts";
 
 /** 錄製中的按法有問題（沒有修飾鍵、基本按鍵），或跟別的指令撞到。 */
 type Note =
@@ -64,7 +65,7 @@ export function showShortcuts(): void {
     const q = search.value.trim();
     const seen = new Set<string>();
     return sortByGroup(
-      app.commands.all().filter((c) => {
+      commands.all().filter((c) => {
         if (seen.has(c.id)) return false;
         seen.add(c.id);
         const keys = c.keys ?? c.shownKeys;
@@ -75,7 +76,7 @@ export function showShortcuts(): void {
   }
 
   function save(id: string, keys: string | null, unbind: readonly Command[] = []): void {
-    const next = withBinding(customized(), id, keys, (x) => app.commands.defaultKeys(x), unbind.map((c) => c.id));
+    const next = withBinding(customized(), id, keys, (x) => commands.defaultKeys(x), unbind.map((c) => c.id));
     editing = null;
     note = null;
     app.settings.update({ keybindings: next });
@@ -88,10 +89,10 @@ export function showShortcuts(): void {
    */
   function setKeys(id: string, keys: string): void {
     const builtIn = (x: string) => {
-      const def = app.commands.defaultKeys(x);
+      const def = commands.defaultKeys(x);
       return !!def && normalizeKeys(def) === normalizeKeys(keys);
     };
-    const others = app.commands.usedBy(keys, id).filter((o) => !(builtIn(id) && builtIn(o.id)));
+    const others = commands.usedBy(keys, id).filter((o) => !(builtIn(id) && builtIn(o.id)));
     if (!others.length) return save(id, keys);
     editing = id;
     note = { kind: "conflict", keys, others };
@@ -166,7 +167,7 @@ export function showShortcuts(): void {
     cell.append(wrap);
     if (custom) {
       row.classList.add("custom");
-      const def = app.commands.defaultKeys(c.id);
+      const def = commands.defaultKeys(c.id);
       const reset = document.createElement("button");
       reset.type = "button";
       reset.className = "btn icon-only shortcut-reset";

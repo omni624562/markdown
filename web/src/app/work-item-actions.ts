@@ -16,7 +16,7 @@ import * as storage from "../storage.ts";
 import { isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { historyMarkdown } from "../work-item-history.ts";
 import { type Iteration, longFields } from "../work-item-fields.ts";
-import { openAttachment, saveAttachment } from "./ado-files.ts";
+import { openAttachment, saveAttachment, showIssue } from "./ado-files.ts";
 import { insertIssueLink } from "./ado-links.ts";
 import { forgetListCopies, offlineRefs } from "./offline-copies.ts";
 import { workItemSeen } from "./work-item-updates.ts";
@@ -27,6 +27,9 @@ import { editableRelations } from "./work-item-links-edit.ts";
 import { deleteWorkItem } from "./work-item-delete.ts";
 import { app } from "./context.ts";
 import { workItemLoaded } from "./work-item-updates.ts";
+import { issueView } from "./wiki-edit.ts";
+import { openWorkItemById } from "./quick-open.ts";
+import { reportError } from "./git-actions.ts";
 
 
 /** 每種工作項目可以設定的狀態（同一個專案、類型只讀一次）。 */
@@ -58,12 +61,12 @@ function workItemEditing(item: AdoWorkItem): {
       toast(done, { tone: "success" });
       // 改了標題：重新開啟，分頁名稱也跟著換。
       if (change.title) showWorkItem({ ...item, title: change.title });
-      else await app.issueView.refresh();
+      else await issueView.refresh();
       forgetListCopies("wi-");
       void workItemsPanel?.refresh();
       return true;
     } catch (e) {
-      app.reportError(e);
+      reportError(e);
       return false;
     } finally {
       busy = false;
@@ -78,10 +81,10 @@ function workItemEditing(item: AdoWorkItem): {
       if (html === null) await desktop!.adoCommentDelete(item.project, item.id, commentId);
       else await desktop!.adoCommentUpdate(item.project, item.id, commentId, html);
       toast(done, { tone: "success" });
-      await app.issueView.refresh();
+      await issueView.refresh();
       return true;
     } catch (e) {
-      app.reportError(e);
+      reportError(e);
       return false;
     } finally {
       busy = false;
@@ -98,7 +101,7 @@ function workItemEditing(item: AdoWorkItem): {
         done.length === 1 ? t("已加入附件「{name}」", { name: done[0].name }) : t("已加入 {n} 個附件", { n: done.length }),
       );
     } catch (e) {
-      app.reportError(e);
+      reportError(e);
       return false;
     }
   };
@@ -171,7 +174,7 @@ export function showWorkItem(item: AdoWorkItem): void {
   const seenAt = workItemSeen?.[item.id] ?? null;
   offlineRefs.set(`ado:${item.id}`, { type: "ado", item });
   const editing = workItemEditing(item);
-  void app.showIssue({
+  void showIssue({
     key: `ado:${item.id}`,
     origin: { kind: "ado", icon: "square-kanban", text: t("Azure DevOps 工作項目") },
     label: `${item.kind} ${item.id}`,
@@ -226,7 +229,7 @@ export function showWorkItem(item: AdoWorkItem): void {
     },
     insertLink: () => insertIssueLink(item),
     history: () => showWorkItemHistory(item),
-    deleteItem: () => void deleteWorkItem(item, detail).catch(app.reportError),
+    deleteItem: () => void deleteWorkItem(item, detail).catch(reportError),
     shortcut: {
       has: () => barShortcuts.some((s) => isWorkItemShortcut(s) && s.workItem === item.id),
       toggle: () => toggleWorkItemShortcut(item),
@@ -245,7 +248,7 @@ export function showWorkItem(item: AdoWorkItem): void {
 
 /** 修改紀錄：開在同一個分頁（按上一頁回到工作項目），排成時間軸；裡面的工作項目連結也在 oMarker 開。 */
 function showWorkItemHistory(item: AdoWorkItem): void {
-  void app.issueView
+  void issueView
     .show({
       key: `ado-history:${item.id}`,
       origin: { kind: "ado", icon: "history", text: t("Azure DevOps 工作項目") },
@@ -262,9 +265,9 @@ function showWorkItemHistory(item: AdoWorkItem): void {
       link: (href) => {
         const id = workItemIdOf(href);
         if (id === null) return false;
-        void app.openWorkItemById(id);
+        void openWorkItemById(id);
         return true;
       },
     })
-    .catch(app.reportError);
+    .catch(reportError);
 }

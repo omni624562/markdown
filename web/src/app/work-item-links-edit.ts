@@ -11,10 +11,11 @@ import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { Picker } from "../ui/picker.ts";
-import { app } from "./context.ts";
 import { deleteWorkItem } from "./work-item-delete.ts";
 import { renderChildProgress } from "./work-item-children-progress.ts";
 import type { WorkItemEditHooks } from "./work-item-edit.ts";
+import { DEFAULT_WORK_ITEM_FILTER } from "../work-item-filter.ts";
+import { reportError } from "./git-actions.ts";
 
 type LinkKind = AdoLinkChange["kind"];
 
@@ -73,7 +74,7 @@ function openPicker(kind: LinkKind, skip: Set<number>, pick: (w: AdoWorkItem) =>
         await new Promise((r) => setTimeout(r, 250));
         if (mine !== seq) return [];
         const text = q.trim().replace(/^#/, "");
-        const base = app.DEFAULT_WORK_ITEM_FILTER;
+        const base = DEFAULT_WORK_ITEM_FILTER;
         const filter = text ? { ...base, person: "", state: "all" as const } : base;
         return (await desktop.adoWorkItems(text, filter)).filter((w) => !exclude.has(w.id)).slice(0, 50);
       },
@@ -196,7 +197,7 @@ function removeButtons(box: HTMLElement, h: WorkItemEditHooks): void {
             .then((deleted) => {
               if (deleted) dropRelationRow(box, li, id, h);
             })
-            .catch(app.reportError);
+            .catch(reportError);
         });
         li.append(del);
       }

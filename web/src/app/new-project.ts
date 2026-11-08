@@ -17,6 +17,7 @@ import { toast } from "../ui/toast.ts";
 import { checkComet, cometPresent } from "./comet-presence.ts";
 import { type CometForm, cometForm, cometSetupRunning, runCometSetup } from "./comet-setup.ts";
 import { app } from "./context.ts";
+import { openPath, setWorkspace, showPanel } from "./workspace-ui.ts";
 
 /** Windows 不能當檔名的名稱（不分大小寫，也不能加副檔名）。 */
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
@@ -166,9 +167,9 @@ function build(): HTMLDialogElement {
         const switched = (async () => {
           // 先存顏色再切換：側邊欄與狀態列的專案名稱一出現就是選的顏色。
           if (color) await desktop!.projectUpdate(folder.path, { name: null, color, group: null, pinned: false }).catch(() => {});
-          await app.setWorkspace(folder);
-          app.showPanel("files");
-          await app.openPath(joinPath(folder.path, "README.md"));
+          await setWorkspace(folder);
+          showPanel("files");
+          await openPath(joinPath(folder.path, "README.md"));
         })();
         if (setup) {
           // COMET 專案：對話框留著，馬上換成設定的進度（不會有空白的一下）；切換到新專案、開好 README.md 才執行 comet setup。

@@ -33,7 +33,7 @@ import { availableRightTabs } from "./right-tabs.ts";
 import { type TableEdit, inTable } from "../table.ts";
 import { exportPdf } from "./pdf-export.ts";
 import { settingsDialog, fixTerms, convertToTraditional, toggleSetting, changeFontSize } from "./settings-ui.ts";
-import { issueView, issueSide } from "./wiki-edit.ts";
+import { issueSide, issueView } from "./wiki-edit.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
@@ -43,6 +43,9 @@ import { reportIssue } from "./version-info.ts";
 import type { Doc } from "../main.ts";
 import { cometSetupAvailable, isCometProject, openCometProjectSetup } from "./comet-project.ts";
 import { app } from "./context.ts";
+import { closeProject, davDialog, setRightOutline, setWorkspace, showPanel, sshDialog } from "./workspace-ui.ts";
+import { closeSide, openBeside } from "./side-by-side.ts";
+import { quickOpen } from "./quick-open.ts";
 
 /** 目前開著的專案的名稱（自訂的名稱，沒有就是資料夾名稱）。 */
 const projectName = () => app.projectUi?.current?.label ?? app.workspaceRoot?.name ?? "";
@@ -99,7 +102,7 @@ function pickBeside(): void {
         .sort((a, b) => b.score - a.score)
         .map((x) => x.d),
     render: (d) => ({ title: docName(d), detail: d.path ? displayPath(d.path) : undefined, icon: d.wiki ? "book-open-text" : "file-text" }),
-    pick: (d) => app.openBeside(d),
+    pick: (d) => openBeside(d),
   });
   besidePicker.open();
 }
@@ -323,8 +326,8 @@ export function initCommands(): void {
       async run() {
         const folder = await desktop?.openFolder();
         if (!folder) return;
-        await app.setWorkspace(folder);
-        app.showPanel("files");
+        await setWorkspace(folder);
+        showPanel("files");
       },
     },
     {
@@ -333,7 +336,7 @@ export function initCommands(): void {
       group: t("資料夾與專案"),
       icon: "folder-x",
       when: () => !!desktop && !!app.workspaceRoot,
-      run: () => app.closeProject(),
+      run: () => closeProject(),
     },
     {
       id: "open-in-codex",
@@ -413,10 +416,10 @@ export function initCommands(): void {
       icon: "cloud",
       when: () => app.features.remote,
       async run() {
-        const folder = await app.davDialog?.open();
+        const folder = await davDialog?.open();
         if (!folder) return;
-        await app.setWorkspace(folder);
-        app.showPanel("files");
+        await setWorkspace(folder);
+        showPanel("files");
       },
     },
     {
@@ -470,10 +473,10 @@ export function initCommands(): void {
       icon: "server",
       when: () => app.features.remote,
       async run() {
-        const folder = await app.sshDialog?.open();
+        const folder = await sshDialog?.open();
         if (!folder) return;
-        await app.setWorkspace(folder);
-        app.showPanel("files");
+        await setWorkspace(folder);
+        showPanel("files");
       },
     },
     {
@@ -482,7 +485,7 @@ export function initCommands(): void {
       group: t("檔案"),
       icon: "search",
       keys: "Mod-p",
-      run: () => app.quickOpen.open(),
+      run: () => quickOpen.open(),
     },
     {
       id: "open-work-item",
@@ -491,7 +494,7 @@ export function initCommands(): void {
       icon: "square-kanban",
       when: () => !!app.ado?.account,
       // 快速開啟裡輸入 #編號 直接開啟，#文字 搜尋標題。
-      run: () => app.quickOpen.open("#"),
+      run: () => quickOpen.open("#"),
     },
     {
       id: "search-in-folder",
@@ -501,7 +504,7 @@ export function initCommands(): void {
       keys: "Mod-Shift-f",
       when: () => !!desktop,
       run() {
-        app.showPanel("search");
+        showPanel("search");
         // 選取範圍只有一行時，直接拿來當搜尋關鍵字。
         const { from, to } = app.editor.view.state.selection.main;
         const selected = app.editor.view.state.sliceDoc(from, to);
@@ -515,7 +518,7 @@ export function initCommands(): void {
       icon: "replace",
       when: () => !!searchPanel && !!app.workspaceRoot && !isRemote(app.workspaceRoot.path),
       run() {
-        app.showPanel("search");
+        showPanel("search");
         searchPanel?.showReplace();
       },
     },
@@ -532,7 +535,7 @@ export function initCommands(): void {
       group: t("檢視"),
       icon: "columns-2",
       when: () => !app.paneDocs.side && app.docs.length > 1,
-      run: () => app.openBeside(app.active),
+      run: () => openBeside(app.active),
     },
     {
       id: "focus-other-pane",
@@ -548,12 +551,12 @@ export function initCommands(): void {
       group: t("檢視"),
       icon: "x",
       when: () => !!app.paneDocs.side,
-      run: () => app.closeSide(),
+      run: () => closeSide(),
     },
-    { id: "show-files", title: t("顯示檔案"), group: t("檢視"), icon: "folder", keys: "Mod-Shift-e", run: () => app.showPanel("files") },
-    { id: "show-outline", title: t("顯示大綱"), group: t("檢視"), icon: "list-tree", run: () => app.showPanel("outline") },
-    { id: "show-tasks", title: t("顯示待辦總覽"), group: t("檢視"), icon: "list-checks", run: () => app.showPanel("tasks") },
-    { id: "show-tags", title: t("顯示標籤"), group: t("檢視"), icon: "tags", run: () => app.showPanel("tags", true, true) },
+    { id: "show-files", title: t("顯示檔案"), group: t("檢視"), icon: "folder", keys: "Mod-Shift-e", run: () => showPanel("files") },
+    { id: "show-outline", title: t("顯示大綱"), group: t("檢視"), icon: "list-tree", run: () => showPanel("outline") },
+    { id: "show-tasks", title: t("顯示待辦總覽"), group: t("檢視"), icon: "list-checks", run: () => showPanel("tasks") },
+    { id: "show-tags", title: t("顯示標籤"), group: t("檢視"), icon: "tags", run: () => showPanel("tags", true, true) },
     {
       id: "show-git",
       title: t("顯示原始碼控制（Git）"),
@@ -561,7 +564,7 @@ export function initCommands(): void {
       icon: "git-branch",
       keys: "Mod-Shift-g",
       when: () => !!gitPanel,
-      run: () => app.showPanel("git"),
+      run: () => showPanel("git"),
     },
     { id: "save", title: t("存檔"), group: t("檔案"), icon: "save", keys: "Mod-s", run: () => app.save(false) },
     { id: "save-as", title: t("另存新檔…"), group: t("檔案"), icon: "file", keys: "Mod-Shift-s", run: () => app.save(true) },
@@ -680,7 +683,7 @@ export function initCommands(): void {
       group: t("編輯"),
       icon: "unlink",
       // 要在本機查檔案存不存在：桌面版，而且不是遠端資料夾；看 Wiki 頁面時檢查頁面連結。
-      when: () => !!desktop && (!isRemote(app.workspaceRoot?.path) || !!app.active.wiki || !!app.issueView.shownKey?.startsWith("wiki:")),
+      when: () => !!desktop && (!isRemote(app.workspaceRoot?.path) || !!app.active.wiki || !!issueView.shownKey?.startsWith("wiki:")),
       run: () => checkLinks(),
     },
     {
@@ -978,7 +981,7 @@ export function initCommands(): void {
       icon: "panel-right",
       keys: "Mod-Alt-b",
       when: () => availableRightTabs().length > 0,
-      run: () => app.setRightOutline(!app.rightOutlineShown),
+      run: () => setRightOutline(!app.rightOutlineShown),
     },
     ...(["system", "light", "dark"] as const).map(
       (pref): Command => ({

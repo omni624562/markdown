@@ -5,6 +5,7 @@
 import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 import { app } from "./context.ts";
+import { openBeside } from "./side-by-side.ts";
 
 /** 拖曳分頁時放進 dataTransfer 的資料類型（值是分頁的 id）。 */
 export const TAB_DRAG_TYPE = "application/x-omarker-tab";
@@ -66,7 +67,7 @@ export function initSideDrop(): void {
       e.stopPropagation();
       show(null);
       const doc = app.docs.find((d) => d.id === e.dataTransfer!.getData(TAB_DRAG_TYPE));
-      if (doc) app.openBeside(doc);
+      if (doc) openBeside(doc);
     },
     true,
   );

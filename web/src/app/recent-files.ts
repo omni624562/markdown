@@ -11,6 +11,7 @@ import { fillStartRecent } from "../ui/start-page.ts";
 import { app } from "./context.ts";
 import { reportError } from "./git-actions.ts";
 import { openPath, openRecentFolder } from "./workspace-ui.ts";
+import { commands } from "./commands.ts";
 
 /** 起始頁列出幾個專案、幾個檔案；「最近開啟的檔案…」列出幾個檔案。 */
 const LIMITS = { startProjects: 4, startFiles: 5, files: 10 } as const;
@@ -43,6 +44,6 @@ export async function renderStartRecent(page: HTMLElement, stale: () => boolean)
     display: displayPath,
     openProject: (path) => void openRecentFolder(path),
     openFile: (path) => void openPath(path).catch(reportError),
-    allProjects: () => void app.commands.run("project-overview").catch(reportError),
+    allProjects: () => void commands.run("project-overview").catch(reportError),
   });
 }

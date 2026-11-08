@@ -15,10 +15,11 @@ import { checkAiApps } from "./ai-app-presence.ts";
 import { icon } from "../ui/icons.ts";
 import { onCommandPins, type MenuEntry } from "../ui/menu.ts";
 import { toast } from "../ui/toast.ts";
-import { floatingMenu } from "./activity-bar.ts";
+import { floatingMenu, refreshActivityCommands } from "./activity-bar.ts";
 import { openPinManager } from "./pin-manager.ts";
 import { reportError } from "./git-actions.ts";
 import { app } from "./context.ts";
+import { commands } from "./commands.ts";
 
 /** 釘到檔案面板上方，或從那裡移除。 */
 function toggleHead(id: string): void {
@@ -32,7 +33,7 @@ function toggleHead(id: string): void {
     return;
   }
   app.settings.update({ filesHeadCommands: [...list, id] });
-  const name = app.commands.get(id)?.title ?? id;
+  const name = commands.get(id)?.title ?? id;
   // 沒開資料夾時看不到那一列：說明開了專案才會出現。
   const where = app.workspaceRoot ? t("已把「{name}」釘到檔案面板上方。", { name }) : t("已把「{name}」釘到檔案面板上方，開啟專案後就會出現。", { name });
   toast(where, { tone: "success" });
@@ -50,7 +51,7 @@ function toggleActivity(id: string): void {
     return;
   }
   app.settings.update({ activityCommands: [...list, id] });
-  toast(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: app.commands.get(id)?.title ?? id }), { tone: "success" });
+  toast(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: commands.get(id)?.title ?? id }), { tone: "success" });
 }
 
 /** 釘選的選項：釘到檔案面板上方、左側圖示列（已經釘了的換成移除）。 */
@@ -83,7 +84,7 @@ export function renderFilesHeadPins(): void {
   if (!head) return;
   for (const el of head.querySelectorAll(".head-pin, .head-pin-sep")) el.remove();
   const buttons = app.settings.value.filesHeadCommands.flatMap((id) => {
-    const cmd = app.commands.get(id);
+    const cmd = commands.get(id);
     if (!cmd || !(cmd.when?.() ?? true)) return [];
     const label = cmd.tip?.() ?? cmd.title;
     const b = document.createElement("button");
@@ -93,7 +94,7 @@ export function renderFilesHeadPins(): void {
     b.title = app.withKeys(label, cmd.keys);
     b.setAttribute("aria-label", label);
     b.append(icon(cmd.icon ?? "command"));
-    b.addEventListener("click", () => void app.commands.run(id).catch(reportError));
+    b.addEventListener("click", () => void commands.run(id).catch(reportError));
     b.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const at = new DOMRect(e.clientX, e.clientY, 0, 0);
@@ -114,12 +115,12 @@ export function renderFilesHeadPins(): void {
 /** 指令能不能用變了（開了別的資料夾、偵測到裝了 Codex）：釘上去的按鈕跟著更新。 */
 function refreshPins(): void {
   renderFilesHeadPins();
-  app.refreshActivityCommands();
+  refreshActivityCommands();
 }
 
 export function initPinCommands(): void {
   onCommandPins({ entries: pinEntries, pinned: isPinned, context: openPinMenu });
-  app.commands.register({
+  commands.register({
     id: "pin-manage",
     title: t("釘選常用指令…"),
     group: t("檢視"),

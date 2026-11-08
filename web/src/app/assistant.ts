@@ -48,6 +48,8 @@ import { availableRightTabs, selectRightTab } from "./right-tabs.ts";
 import { app } from "./context.ts";
 import { cometLocked, unlockComet } from "./comet-files.ts";
 import { docName as tabName } from "./doc-names.ts";
+import { issueView } from "./wiki-edit.ts";
+import { settingsDialog } from "./settings-ui.ts";
 
 
 interface Pending {
@@ -113,12 +115,12 @@ export function assistantOpen(): boolean {
 /** 目前不能送出的原因；可以送出時是 null。 */
 function blocked(): { message: string; action?: { label: string; run: () => void } } | null {
   if (!assistantEnabled()) {
-    return { message: t("Claude API 助理還沒開啟。"), action: { label: t("打開設定"), run: () => app.settingsDialog.open(t("Claude API 助理")) } };
+    return { message: t("Claude API 助理還沒開啟。"), action: { label: t("打開設定"), run: () => settingsDialog.open(t("Claude API 助理")) } };
   }
   if (!hasKey) {
-    return { message: t("還沒有輸入 Claude API 金鑰。"), action: { label: t("打開設定"), run: () => app.settingsDialog.open(t("Claude API 助理")) } };
+    return { message: t("還沒有輸入 Claude API 金鑰。"), action: { label: t("打開設定"), run: () => settingsDialog.open(t("Claude API 助理")) } };
   }
-  if (app.issueView.shownKey || app.active.wiki) {
+  if (issueView.shownKey || app.active.wiki) {
     return { message: t("這裡是 Azure DevOps／GitHub 的內容，不會送給 AI。") };
   }
   const root = app.workspaceRoot?.path;
@@ -859,7 +861,7 @@ function build(): HTMLElement {
       ...ASSISTANT_ACTIONS.filter((x) => x.group === "write").map(item),
       "-",
       ...(custom.length ? [{ heading: t("自訂動作") }, ...custom.map(item)] : []),
-      { label: custom.length ? t("管理自訂動作…") : t("新增自訂動作…"), icon: "settings", run: () => app.settingsDialog.open(t("Claude API 助理")) },
+      { label: custom.length ? t("管理自訂動作…") : t("新增自訂動作…"), icon: "settings", run: () => settingsDialog.open(t("Claude API 助理")) },
     ];
   });
   sendBtn = document.createElement("button");

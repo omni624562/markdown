@@ -13,6 +13,10 @@ import { wikiMarkdown } from "../wiki-text.ts";
 import { CopyCache } from "../copy-cache.ts";
 export { type Freshness, freshnessOf, keepFreshness } from "../copy-cache.ts";
 import { app } from "./context.ts";
+import { commands } from "./commands.ts";
+import { reportError } from "./git-actions.ts";
+import { showWikiPage } from "./wiki-edit.ts";
+import { showWorkItem } from "./work-item-actions.ts";
 
 /** 「保留離線」的頁面（不會自動刪掉，連線時在背景更新）。 */
 export let keptPages = parseKept(storage.load("offline-kept"));
@@ -150,9 +154,9 @@ export function initOfflineCopies(): void {
             // 保留不了（例如保留的副本已經滿了）：取消這一頁的保留，圖片也放回自動存的區域。
             saveKept(keptPages.filter((p) => p.key !== source.key));
             for (const key of images) void desktop!.offlineRelease(key).catch(() => {});
-            app.reportError(e);
+            reportError(e);
           });
-          toast(t("已保留離線：沒有網路時也能開啟（指令面板的「{command}」）", { command: app.commands.title("ado-offline") }));
+          toast(t("已保留離線：沒有網路時也能開啟（指令面板的「{command}」）", { command: commands.title("ado-offline") }));
         },
       }
     : undefined;
@@ -170,8 +174,8 @@ export function initOfflineCopies(): void {
       icon: p.ref.type === "ado" ? "square-kanban" : "book-open-text",
     }),
     pick(p) {
-      if (p.ref.type === "ado") app.showWorkItem(p.ref.item);
-      else app.showWikiPage(p.ref.wiki, p.ref.path);
+      if (p.ref.type === "ado") showWorkItem(p.ref.item);
+      else showWikiPage(p.ref.wiki, p.ref.path);
     },
   });
 }

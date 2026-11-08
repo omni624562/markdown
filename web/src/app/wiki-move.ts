@@ -15,6 +15,7 @@ import { closeItemsWhere } from "./item-tabs.ts";
 import { forgetListCopies } from "./offline-copies.ts";
 import { barShortcuts, setBarShortcuts, wikiPanel } from "./work-items-panel.ts";
 import { app } from "./context.ts";
+import { issueView, showWikiPage } from "./wiki-edit.ts";
 
 /** 搬到哪裡：上層頁面（null 是最上層）與在那一層排第幾個（沒給就放最後）。 */
 export interface WikiMoveTarget {
@@ -235,7 +236,7 @@ export async function moveWikiPage(wiki: AdoWiki, path: string, to?: WikiMoveTar
   if (barShortcuts.some((s) => isWikiShortcut(s) && s.wiki === wiki.id && moved.has(s.path))) {
     setBarShortcuts(barShortcuts.map((s) => (isWikiShortcut(s) && s.wiki === wiki.id && moved.has(s.path) ? { ...s, path: moved.get(s.path)! } : s)));
   }
-  const showing = app.issueView.isOpen && app.wikiPage?.wiki.id === wiki.id ? moved.get(app.wikiPage.path) : undefined;
+  const showing = issueView.isOpen && app.wikiPage?.wiki.id === wiki.id ? moved.get(app.wikiPage.path) : undefined;
   closeItemsWhere((key) => {
     const [kind, id, ...rest] = key.split(":");
     return kind === "wiki" && id === wiki.id && moved.has(rest.join(":"));
@@ -247,7 +248,7 @@ export async function moveWikiPage(wiki: AdoWiki, path: string, to?: WikiMoveTar
     await wikiPanel.refresh(true);
     wikiPanel.select(newPath);
   }
-  if (showing) app.showWikiPage(wiki, showing);
+  if (showing) showWikiPage(wiki, showing);
   const what =
     parentPath(newPath) === parentPath(path)
       ? t("已改名為「{name}」", { name: pageName(newPath) })

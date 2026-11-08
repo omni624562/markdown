@@ -5,9 +5,10 @@
 import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { toast } from "../ui/toast.ts";
-import { app } from "./context.ts";
 import { imageFiles } from "./image-paste.ts";
 import { pastedName } from "../attachments.ts";
+import { issueView } from "./wiki-edit.ts";
+import { reportError } from "./git-actions.ts";
 
 /** Azure DevOps 預設的附件上限。 */
 export const MAX_ATTACHMENT = 60 * 1024 * 1024;
@@ -45,7 +46,7 @@ export function pasteImagesInto(textarea: HTMLTextAreaElement, project: string):
         textarea.setRangeText(md, textarea.selectionStart, textarea.selectionEnd, "end");
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
       })
-      .catch(app.reportError);
+      .catch(reportError);
   });
 }
 
@@ -58,7 +59,7 @@ export function setAttachTarget(key: string, attach: (files: File[]) => void): v
 
 /** 拖曳到的位置是不是開著的工作項目（是的話放開就加入附件，不是開檔）。 */
 export function overWorkItem(target: EventTarget | null): boolean {
-  return !!dropTarget && app.issueView.isOpen && app.issueView.shownKey === dropTarget.key && !!(target as Element | null)?.closest?.(".issue-pane");
+  return !!dropTarget && issueView.isOpen && issueView.shownKey === dropTarget.key && !!(target as Element | null)?.closest?.(".issue-pane");
 }
 
 /** 檔案放到工作項目上：加入附件；不是放在工作項目上時回傳 false（照原本的方式開檔）。 */

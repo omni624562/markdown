@@ -61,7 +61,7 @@ import { type TabInfo, TabBar } from "./ui/tabbar.ts";
 import { initSideDrop } from "./app/side-drop.ts";
 import { TerminalProxy } from "./terminal-proxy.ts";
 import { Updater } from "./updater.ts";
-import { DEFAULT_WORK_ITEM_FILTER, isDefaultWorkItemFilter, parseWorkItemFilter } from "./work-item-filter.ts";
+import { isDefaultWorkItemFilter, parseWorkItemFilter } from "./work-item-filter.ts";
 import type { AdoWiki, AdoWorkItem, AdoWorkItemFilter, GitStatus } from "./desktop.ts";
 import { urlAt } from "./remote-links.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
@@ -77,33 +77,32 @@ import { historyView, initGitHistory } from "./app/git-history.ts";
 import { buildFormatBar, initNewWorkItem } from "./app/new-work-item.ts";
 import { markBarShortcuts, renderAdoTab, renderIssuesTab, wikiPanel, workItemsPanel, initWorkItemsPanel } from "./app/work-items-panel.ts";
 import { initAdoStatus } from "./app/ado-status.ts";
-import { gitPanel, noteWorkItems, pollWorkItems, renderAdoBadge, workItemSeen, initWorkItemUpdates } from "./app/work-item-updates.ts";
-import { groupItems, showWorkItem } from "./app/work-item-actions.ts";
-import { createPullRequest, reportError, resolveMergeConflict, showExternalChanges, switchBranch, initGitActions } from "./app/git-actions.ts";
-import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady, initAiTerminal } from "./app/ai-terminal.ts";
-import { addActivityCommand, commandButton, contextMenu, copyCode, copyDiagram, formatBubble, headingMenu, importDocxData, insertMenu, openDiagram, openInsertMenu, openWelcome, refreshActivityCommands, refreshToc, separator, showActivityLabels, slashSource, startAiTool, symbolPicker, tabMenu, initActivityBar } from "./app/activity-bar.ts";
+import { gitPanel, initWorkItemUpdates } from "./app/work-item-updates.ts";
+import { reportError, showExternalChanges, switchBranch, initGitActions } from "./app/git-actions.ts";
+import { initAiTerminal } from "./app/ai-terminal.ts";
+import { contextMenu, copyCode, copyDiagram, formatBubble, openDiagram, openInsertMenu, openWelcome, refreshToc, showActivityLabels, slashSource, tabMenu, initActivityBar } from "./app/activity-bar.ts";
 import { showShortcuts } from "./app/shortcuts-dialog.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
 import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focusedItem, hideItem, itemTabInfo, itemTabs, reopenItem, selectItem, selectedItemId, setItemPinned, tabOrder } from "./app/item-tabs.ts";
-import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
-import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
-import { NOT_CONNECTED, canRenameFile, closeProject, davDialog, fileSaved, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, renameEntry, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
-import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
-import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
+import { checkWikiNewer, issueSide, renderWikiBar, renderWikiMine, rerenderIssue, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
+import { commands, initCommands } from "./app/commands.ts";
+import { NOT_CONNECTED, canRenameFile, closeProject, fileSaved, openPath, openRecentFolder, openRemote, openTag, renameEntry, rightColumnOn, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setWorkspace, showPanel, suggestReconnect, treeAction, uploadFiles, initWorkspaceUi } from "./app/workspace-ui.ts";
+import { openRepoFileLink, saveWikiPage } from "./app/ado-files.ts";
+import { markdownFiles, openWiki, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
 import { docName, docTooltip, renumber, saveFileName } from "./app/doc-names.ts";
-import { openWorkItemById, quickOpen, wikiLinkPages, wikiLinkPicker, workItemIdCompletion, workItemLinkPicker } from "./app/quick-open.ts";
+import { wikiLinkPages, workItemIdCompletion } from "./app/quick-open.ts";
 import { availableRightTabs } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initMainMenu } from "./app/main-menu.ts";
-import { closeSide, initSideBySide, openBeside, refreshOtherPane, renderPaneHeads } from "./app/side-by-side.ts";
-import { compareWithCommit, copyWebLink, historyPicker, initFileHistory, openOnWeb } from "./app/file-history.ts";
-import { initStatusView, setIssueFacts } from "./app/status-view.ts";
+import { closeSide, initSideBySide, refreshOtherPane, renderPaneHeads } from "./app/side-by-side.ts";
+import { initFileHistory } from "./app/file-history.ts";
+import { initStatusView } from "./app/status-view.ts";
 import { autoSaveNow, autoSavePending, exclusiveSave, resumeAutoSave, scheduleDiskSave } from "./app/autosave.ts";
-import { forgetOutlineCollapse, initOutlineList, outlineHeadings, renderOutline, toggleOutline } from "./app/outline-list.ts";
+import { forgetOutlineCollapse, initOutlineList, renderOutline } from "./app/outline-list.ts";
 import { workItemChips, workItemChipsPlugin } from "./app/work-item-chips.ts";
-import { forgetChangeNotice, reloadDoc, reloadDocs, reloadRemoteDocs, startDesktop } from "./app/desktop-startup.ts";
+import { forgetChangeNotice, reloadDoc, startDesktop } from "./app/desktop-startup.ts";
 import { initTaskboard } from "./app/taskboard.ts";
 import { renderStartRecent } from "./app/recent-files.ts";
 import { initErrorHandling } from "./app/error-handling.ts";
@@ -167,9 +166,6 @@ const app = {
   get CACHE_MAX() {
     return CACHE_MAX;
   },
-  get DEFAULT_WORK_ITEM_FILTER() {
-    return DEFAULT_WORK_ITEM_FILTER;
-  },
   get DOWNLOAD_URL() {
     return DOWNLOAD_URL;
   },
@@ -179,20 +175,11 @@ const app = {
   get SIDE_PANELS() {
     return SIDE_PANELS;
   },
-  get TERMINAL_KEYS() {
-    return TERMINAL_KEYS;
-  },
   get activate() {
     return activate;
   },
   get active() {
     return active;
-  },
-  get addActivityCommand() {
-    return addActivityCommand;
-  },
-  get addClaudeWorkflow() {
-    return addClaudeWorkflow;
   },
   get addTab() {
     return addTab;
@@ -222,20 +209,11 @@ const app = {
   set ai(v: typeof ai) {
     ai = v;
   },
-  get aiPicker() {
-    return aiPicker;
-  },
   get allowRemoteImages() {
     return allowRemoteImages;
   },
   get applyLayout() {
     return applyLayout;
-  },
-  get setIssueFacts() {
-    return setIssueFacts;
-  },
-  get autoSaveNow() {
-    return autoSaveNow;
   },
   get cur() {
     return cur;
@@ -243,41 +221,14 @@ const app = {
   get blockRemote() {
     return blockRemote;
   },
-  get closeProject() {
-    return closeProject;
-  },
   get closeTab() {
     return closeTab;
   },
   get closeTabs() {
     return closeTabs;
   },
-  get commandButton() {
-    return commandButton;
-  },
-  get commands() {
-    return commands;
-  },
-  get compareWithCommit() {
-    return compareWithCommit;
-  },
-  get copyWebLink() {
-    return copyWebLink;
-  },
-  get createPullRequest() {
-    return createPullRequest;
-  },
-  get createWikiPage() {
-    return createWikiPage;
-  },
   get cycleTab() {
     return cycleTab;
-  },
-  get davDialog() {
-    return davDialog;
-  },
-  get deleteWikiPage() {
-    return deleteWikiPage;
   },
   get docHeadings() {
     return docHeadings;
@@ -299,9 +250,6 @@ const app = {
   },
   set docsLoaded(v: boolean) {
     docsLoaded = v;
-  },
-  get editWikiPage() {
-    return editWikiPage;
   },
   get editor() {
     return editor;
@@ -326,12 +274,6 @@ const app = {
   },
   setSideDoc(doc: Doc | null): void {
     paneDocs.side = doc;
-  },
-  get openBeside() {
-    return openBeside;
-  },
-  get closeSide() {
-    return closeSide;
   },
   get paneDocs(): Readonly<typeof paneDocs> {
     return paneDocs;
@@ -369,14 +311,8 @@ const app = {
   set gitHistoryKey(v: typeof gitHistoryKey) {
     gitHistoryKey = v;
   },
-  get gitPanel() {
-    return gitPanel;
-  },
   get github() {
     return github;
-  },
-  get groupItems() {
-    return groupItems;
   },
   get pendingDraft() {
     return pendingDraft;
@@ -387,23 +323,11 @@ const app = {
   get hash() {
     return hash;
   },
-  get headingMenu() {
-    return headingMenu;
-  },
-  get historyPicker() {
-    return historyPicker;
-  },
-  get importDocxData() {
-    return importDocxData;
-  },
   get indexStale() {
     return indexStale;
   },
   set indexStale(v: typeof indexStale) {
     indexStale = v;
-  },
-  get insertMenu() {
-    return insertMenu;
   },
   get isDefaultFilter() {
     return isDefaultFilter;
@@ -414,14 +338,8 @@ const app = {
   set issueKey(v: typeof issueKey) {
     issueKey = v;
   },
-  get issueView() {
-    return issueView;
-  },
   get kindSelect() {
     return kindSelect;
-  },
-  get loadWikiLatest() {
-    return loadWikiLatest;
   },
   get loadWorkItemFilterOptions() {
     return loadWorkItemFilterOptions;
@@ -431,9 +349,6 @@ const app = {
   },
   get makeDoc() {
     return makeDoc;
-  },
-  get markdownFiles() {
-    return markdownFiles;
   },
   get menuTab() {
     return menuTab;
@@ -459,41 +374,14 @@ const app = {
   get narrowQuery() {
     return narrowQuery;
   },
-  get noteWorkItems() {
-    return noteWorkItems;
-  },
-  get offlineImage() {
-    return offlineImage;
-  },
   get openDocument() {
     return openDocument;
-  },
-  get openOnWeb() {
-    return openOnWeb;
   },
   get openOpenedFile() {
     return openOpenedFile;
   },
-  get openPath() {
-    return openPath;
-  },
-  get openRepoFileLink() {
-    return openRepoFileLink;
-  },
-  get openWorkItemById() {
-    return openWorkItemById;
-  },
-  get outlineHeadings() {
-    return outlineHeadings;
-  },
   get outlineList() {
     return outlineList;
-  },
-  get outlinePlacedRight() {
-    return outlinePlacedRight;
-  },
-  get wikiPlacedRight() {
-    return wikiPlacedRight;
   },
   get outlineShown() {
     return outlineShown;
@@ -506,12 +394,6 @@ const app = {
   },
   set outlineView(v: typeof outlineView) {
     outlineView = v;
-  },
-  get panelAvailable() {
-    return panelAvailable;
-  },
-  get panelUnavailable() {
-    return panelUnavailable;
   },
   get persistSession() {
     return persistSession;
@@ -528,9 +410,6 @@ const app = {
   set pollItems(v: typeof pollItems) {
     pollItems = v;
   },
-  get pollWorkItems() {
-    return pollWorkItems;
-  },
   get preview() {
     return preview;
   },
@@ -546,38 +425,14 @@ const app = {
   get projectUi() {
     return projectUi;
   },
-  get quickOpen() {
-    return quickOpen;
-  },
-  get refreshActivityCommands() {
-    return refreshActivityCommands;
-  },
-  get reloadDoc() {
-    return reloadDoc;
-  },
-  get reloadDocs() {
-    return reloadDocs;
-  },
-  get reloadRemoteDocs() {
-    return reloadRemoteDocs;
-  },
-  get renderAdoBadge() {
-    return renderAdoBadge;
-  },
   get renderFolderBranch() {
     return renderFolderBranch;
   },
   get renderNow() {
     return renderNow;
   },
-  get renderOutline() {
-    return renderOutline;
-  },
   get renderProjectName() {
     return renderProjectName;
-  },
-  get renderSaveState() {
-    return renderSaveState;
   },
   get renderTabs() {
     return renderTabs;
@@ -590,18 +445,6 @@ const app = {
   },
   set repoFile(v: typeof repoFile) {
     repoFile = v;
-  },
-  get repoImagesPlugin() {
-    return repoImagesPlugin;
-  },
-  get reportError() {
-    return reportError;
-  },
-  get rerenderIssue() {
-    return rerenderIssue;
-  },
-  get resolveMergeConflict() {
-    return resolveMergeConflict;
   },
   get review() {
     return review;
@@ -627,12 +470,6 @@ const app = {
   set searchStale(v: typeof searchStale) {
     searchStale = v;
   },
-  get sendSelectionToAi() {
-    return sendSelectionToAi;
-  },
-  get separator() {
-    return separator;
-  },
   get setBaseline() {
     return setBaseline;
   },
@@ -648,38 +485,17 @@ const app = {
   get setPinned() {
     return setPinned;
   },
-  get setRightOutline() {
-    return setRightOutline;
-  },
   get setTheme() {
     return setTheme;
   },
   get setView() {
     return setView;
   },
-  get setWorkspace() {
-    return setWorkspace;
-  },
   get settings() {
     return settings;
   },
-  get settingsDialog() {
-    return settingsDialog;
-  },
   get showAssignee() {
     return showAssignee;
-  },
-  get showIssue() {
-    return showIssue;
-  },
-  get showPanel() {
-    return showPanel;
-  },
-  get showWikiPage() {
-    return showWikiPage;
-  },
-  get showWorkItem() {
-    return showWorkItem;
   },
   get sidePanel() {
     return sidePanel;
@@ -696,23 +512,11 @@ const app = {
   set splitRatio(v: typeof splitRatio) {
     splitRatio = v;
   },
-  get sshDialog() {
-    return sshDialog;
-  },
-  get startAiTool() {
-    return startAiTool;
-  },
   get stash() {
     return stash;
   },
   get status() {
     return status;
-  },
-  get switchBranch() {
-    return switchBranch;
-  },
-  get symbolPicker() {
-    return symbolPicker;
   },
   get tabBar() {
     return tabBar;
@@ -735,9 +539,6 @@ const app = {
   set terminal(v: typeof terminal) {
     terminal = v;
   },
-  get terminalAiReady() {
-    return terminalAiReady;
-  },
   get themePref() {
     return themePref;
   },
@@ -753,20 +554,11 @@ const app = {
   get setAccent() {
     return setAccent;
   },
-  get toggleOutline() {
-    return toggleOutline;
-  },
   get treeActive() {
     return treeActive;
   },
   set treeActive(v: typeof treeActive) {
     treeActive = v;
-  },
-  get updateActiveHeading() {
-    return updateActiveHeading;
-  },
-  get updateLinksAfterRename() {
-    return updateLinksAfterRename;
   },
   get updater() {
     return updater;
@@ -777,14 +569,8 @@ const app = {
   get view() {
     return view;
   },
-  get wideQuery() {
-    return wideQuery;
-  },
   get wikiImagesPlugin() {
     return wikiImagesPlugin;
-  },
-  get wikiLinkPicker() {
-    return wikiLinkPicker;
   },
   get wikiListCache() {
     return wikiListCache;
@@ -798,29 +584,14 @@ const app = {
   set wikiPage(v: typeof wikiPage) {
     wikiPage = v;
   },
-  get wikiServerEtag() {
-    return wikiServerEtag;
-  },
   get withKeys() {
     return withKeys;
   },
   get refreshKeyHints() {
     return refreshKeyHints;
   },
-  get workItemChipsPlugin() {
-    return workItemChipsPlugin;
-  },
   get workItemFilter() {
     return workItemFilter;
-  },
-  get workItemLinkPicker() {
-    return workItemLinkPicker;
-  },
-  get workItemSeen() {
-    return workItemSeen;
-  },
-  get workItemsPanel() {
-    return workItemsPanel;
   },
   get workspace() {
     return workspace;

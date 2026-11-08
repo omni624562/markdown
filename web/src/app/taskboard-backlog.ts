@@ -17,6 +17,7 @@ import { copyTime } from "../ui/issues-panel.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { showWorkItem } from "./work-item-actions.ts";
 import { workItemLoaded } from "./work-item-updates.ts";
+import { issueView } from "./wiki-edit.ts";
 
 export function openBacklog(s: Selection): void {
   void showIssue(backlogSource(s)).catch(reportError);
@@ -39,7 +40,7 @@ function backlogSource(s: Selection): IssueSource {
     fileName: t("Backlog {team}.md", { team: s.team.name }),
     async load() {
       const update = () => {
-        if (app.issueView.shownKey === key) void app.issueView.refresh(true);
+        if (issueView.shownKey === key) void issueView.refresh(true);
       };
       items = await withOfflineCopy(`backlog:${key}`, () => desktop!.adoBacklog(s.project, s.team.name), update);
       fresh = freshnessOf(items);
@@ -110,7 +111,7 @@ function renderList(items: AdoBoardItem[], s: Selection, key: string): HTMLEleme
           workItemLoaded({ ...w, changed: new Date().toISOString() });
           forgetListCopies("board");
           forgetListCopies(`backlog:${key}`);
-          void app.issueView.refresh(true);
+          void issueView.refresh(true);
         })
         .catch((e) => {
           move.disabled = false;

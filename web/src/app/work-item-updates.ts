@@ -10,14 +10,20 @@ import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { setErrorAction } from "../ui/toast.ts";
 import { type SeenMap, trimSeen, remember, markSeen, markOf, markAllSeen } from "../workitem-seen.ts";
-import { workItemFilterKey } from "../work-item-filter.ts";
+import { DEFAULT_WORK_ITEM_FILTER, workItemFilterKey } from "../work-item-filter.ts";
 import { openGitHistory, historyView } from "./git-history.ts";
 import { createWorkItemDialog } from "./new-work-item.ts";
 import { forgetListCopies, refreshKeptPages, withOfflineCopy } from "./offline-copies.ts";
 import { workItemsPanel, wikiPanel, issuesPanel, renderUnseenLine } from "./work-items-panel.ts";
 import { app } from "./context.ts";
-import { setWikiRight, wikiRightWanted } from "./workspace-ui.ts";
+import { openPath, panelAvailable, setWikiRight, showPanel, wikiRightWanted } from "./workspace-ui.ts";
 import { initOfflineBanner } from "./offline-banner.ts";
+import { commands } from "./commands.ts";
+import { createPullRequest, reportError, resolveMergeConflict, switchBranch } from "./git-actions.ts";
+import { issueView } from "./wiki-edit.ts";
+import { openWorkItemById } from "./quick-open.ts";
+import { refreshActivityCommands } from "./activity-bar.ts";
+import { settingsDialog } from "./settings-ui.ts";
 
 
 export let workItemSeen: SeenMap | null = (() => {
@@ -104,8 +110,8 @@ export async function pollWorkItems(): Promise<void> {
     const signature = () => app.pollItems.map((w) => `${w.id}@${w.changed}`).join();
     const before = signature();
     // 和「指派給你」的清單同一份副本。剛啟動時先用副本（圖示上的數字馬上出來），背景讀完再檢查一次。
-    const key = `wi-list::${workItemFilterKey(app.DEFAULT_WORK_ITEM_FILTER)}`;
-    const fetch = () => desktop!.adoWorkItems("", app.DEFAULT_WORK_ITEM_FILTER);
+    const key = `wi-list::${workItemFilterKey(DEFAULT_WORK_ITEM_FILTER)}`;
+    const fetch = () => desktop!.adoWorkItems("", DEFAULT_WORK_ITEM_FILTER);
     const first = !app.pollItems.length;
     noteWorkItems(await withOfflineCopy(key, fetch, first ? () => window.setTimeout(() => void pollWorkItems(), 0) : undefined, true), true);
     notifyNewWorkItems();
@@ -144,7 +150,7 @@ function notifyNewWorkItems(): void {
 
 /** 打開「工作項目」或「Wiki」面板。 */
 export function showAdo(panel: "workitems" | "wiki"): void {
-  app.showPanel(panel);
+  showPanel(panel);
 }
 // 工作項目清單上方的「建立工作項目」。
 const adoNew = document.createElement("button");
@@ -161,7 +167,7 @@ function retryRemoteLoads(force = false): void {
   if (app.sidePanel === "workitems") workItemsPanel?.retryFailed();
   if (app.sidePanel === "wiki") wikiPanel?.retryFailed();
   if (app.sidePanel === "issues") issuesPanel?.retryFailed();
-  app.issueView.retryFailed();
+  issueView.retryFailed();
 }
 
 export // 在 init 時建立。
@@ -176,7 +182,7 @@ export async function publishToAdo(): Promise<void> {
 
 export function initWorkItemUpdates(): void {
   initOfflineBanner();
-  app.commands.register({
+  commands.register({
     id: "workitems-mark-all-seen",
     title: t("工作項目：全部標示為看過"),
     group: "Azure DevOps",
@@ -186,7 +192,7 @@ export function initWorkItemUpdates(): void {
   });
   if (desktop) {
     void desktop.onNotificationOpen((id) => {
-      if (id) void app.openWorkItemById(id);
+      if (id) void openWorkItemById(id);
       else showAdo("workitems");
     });
   }
@@ -223,17 +229,17 @@ export function initWorkItemUpdates(): void {
     const problem = authProblem(message);
     const github = app.github;
     if (problem === "github" && github) return { label: t("重新登入 GitHub"), primary: true, run: () => void github.login() };
-    if (problem === "ado" && app.ado) return { label: t("開啟連線設定"), primary: true, run: () => app.settingsDialog.open("Azure DevOps") };
+    if (problem === "ado" && app.ado) return { label: t("開啟連線設定"), primary: true, run: () => settingsDialog.open("Azure DevOps") };
     return undefined;
   });
   gitPanel = desktop && app.fileTree && app.github
       ? new GitPanel(app.$("#git-host"), app.$("#git-head"), desktop, app.settings, app.fileTree, app.github, {
           root: () => app.workspaceRoot?.path ?? null,
-          open: (path) => void app.openPath(path).catch(app.reportError),
-          resolve: (path, theirs) => void app.resolveMergeConflict(path, theirs).catch(app.reportError),
-          switchBranch: () => void app.switchBranch().catch(app.reportError),
-          createPr: () => void app.createPullRequest().catch(app.reportError),
-          history: () => void openGitHistory().catch(app.reportError),
+          open: (path) => void openPath(path).catch(reportError),
+          resolve: (path, theirs) => void resolveMergeConflict(path, theirs).catch(reportError),
+          switchBranch: () => void switchBranch().catch(reportError),
+          createPr: () => void createPullRequest().catch(reportError),
+          history: () => void openGitHistory().catch(reportError),
           openAdo: app.ado ? () => void app.ado!.openRepo() : null,
           publishAdo: app.ado ? () => void publishToAdo() : null,
           changed: (status) => {
@@ -244,12 +250,12 @@ export function initWorkItemUpdates(): void {
               app.gitHistoryKey = key;
               historyView?.refresh();
             }
-            app.refreshActivityCommands();
+            refreshActivityCommands();
             app.renderFolderBranch(status);
             // Git 內建在程式裡：圖示一直顯示，還沒同步的資料夾點進去會引導上傳到 GitHub。
             const tab = app.$("#side-tab-git");
             tab.hidden = false;
-            app.panelAvailable("git");
+            panelAvailable("git");
             const count = status?.repo ? status.changes.length : 0;
             const badge = app.$("#git-badge");
             badge.hidden = !count;

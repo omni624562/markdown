@@ -12,6 +12,7 @@ import { icon } from "../ui/icons.ts";
 import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { renderSaveState } from "./outline.ts";
 
 /** 可以選的編碼（和 desktop/src/text_encoding.rs 的 CHOICES 一致）。`common`：存檔的選單一直列出。 */
 const ENCODINGS: { id: string; label: string; note?: () => string; common?: boolean }[] = [
@@ -107,7 +108,7 @@ async function reopen(id: string): Promise<void> {
   app.setBaseline(file.text, true);
   app.renderNow();
   format = await desktop!.fileFormat(path);
-  app.renderSaveState();
+  renderSaveState();
   if (app.active.lossy) {
     toast(t("用 {encoding} 讀取時有解讀不了的字（畫面上的 �），這個檔案可能不是這個編碼。", { encoding: label }), { tone: "error", duration: 10000 });
   }

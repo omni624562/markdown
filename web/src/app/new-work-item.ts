@@ -11,6 +11,10 @@ import { draftFromSelection } from "../workitem-create.ts";
 import { imageFiles, insertImages } from "./image-paste.ts";
 import { app } from "./context.ts";
 import { forgetListCopies } from "./offline-copies.ts";
+import { commandButton, headingMenu, insertMenu, separator } from "./activity-bar.ts";
+import { reportError } from "./git-actions.ts";
+import { showWorkItem } from "./work-item-actions.ts";
+import { workItemsPanel } from "./work-items-panel.ts";
 
 
 /**
@@ -124,12 +128,12 @@ export function createWorkItemDialog(draft: { title?: string; description?: stri
         storage.save("wi-create-assign", assignBox.checked ? "1" : "0");
         dialog.close();
         forgetListCopies("wi-");
-        void app.workItemsPanel?.refresh();
+        void workItemsPanel?.refresh();
         created?.(w);
         toast(t("已建立 {kind} {id}「{title}」", { kind: w.kind, id: w.id, title: w.title }), {
           tone: "success",
           duration: 8000,
-          action: { label: t("開啟"), run: () => app.showWorkItem(w) },
+          action: { label: t("開啟"), run: () => showWorkItem(w) },
         });
       })
       .catch((err) => {
@@ -227,7 +231,7 @@ export const imageInput = Object.assign(document.createElement("input"), { type:
 export function buildFormatBar(): void {
   const groups: (string | HTMLElement)[][] =
     app.cur.kind === "markdown"
-      ? [[app.headingMenu], ["bold", "italic", "strike", "code", "link"], ["bullet", "ordered", "task", "quote"], [app.insertMenu]]
+      ? [[headingMenu], ["bold", "italic", "strike", "code", "link"], ["bullet", "ordered", "task", "quote"], [insertMenu]]
       : app.cur.kind === "json"
         ? [["format-json"]]
         : [];
@@ -235,8 +239,8 @@ export function buildFormatBar(): void {
   app.formatBar.hidden = groups.length === 0 || (app.cur.kind === "markdown" && !app.settings.value.fixedToolbar);
   app.formatBar.replaceChildren(
     ...groups.flatMap((items, gi) => {
-      const buttons = items.map((item) => (typeof item === "string" ? app.commandButton(item, app.cur.kind === "json") : item));
-      return gi === 0 ? buttons : [app.separator("format-sep"), ...buttons];
+      const buttons = items.map((item) => (typeof item === "string" ? commandButton(item, app.cur.kind === "json") : item));
+      return gi === 0 ? buttons : [separator("format-sep"), ...buttons];
     }),
   );
 }
@@ -246,7 +250,7 @@ export function initNewWorkItem(): void {
   imageInput.addEventListener("change", () => {
     const files = imageFiles(imageInput.files);
     imageInput.value = "";
-    if (files.length) void insertImages(files).catch(app.reportError);
+    if (files.length) void insertImages(files).catch(reportError);
   });
   // 工具列的方向鍵導覽（WAI-ARIA toolbar 模式）。
   app.formatBar.addEventListener("keydown", (e) => {

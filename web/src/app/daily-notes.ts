@@ -13,13 +13,16 @@ import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { openPath } from "./workspace-ui.ts";
+import { DEFAULT_WORK_ITEM_FILTER } from "../work-item-filter.ts";
+import { commands } from "./commands.ts";
+import { reportError } from "./git-actions.ts";
 
 /** 開著的資料夾；還沒開資料夾時提示一下，回傳 null。 */
 function workspace(): string | null {
   if (!desktop) return null;
   if (app.workspaceRoot) return app.workspaceRoot.path;
   toast(t("先開啟一個資料夾：每日筆記會存在資料夾裡。"), {
-    action: { label: t("開啟資料夾…"), run: () => void app.commands.run("open-folder").catch(app.reportError) },
+    action: { label: t("開啟資料夾…"), run: () => void commands.run("open-folder").catch(reportError) },
   });
   return null;
 }
@@ -61,7 +64,7 @@ function templateBody(): string {
 
 /** 指派給我、還沒結束的工作項目（和工作項目面板的預設清單一樣）。 */
 function myWorkItems() {
-  return desktop!.adoWorkItems("", app.DEFAULT_WORK_ITEM_FILTER);
+  return desktop!.adoWorkItems("", DEFAULT_WORK_ITEM_FILTER);
 }
 
 /** 範本裡的 `{{工作項目}}` 換成待辦清單；沒有連上時拿掉，讀不到時寫原因（筆記照樣建立）。 */

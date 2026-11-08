@@ -18,7 +18,7 @@ import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isFil
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
 import { areaGroups, areaTrees, kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
-import { fromStateChoice, type KindStates, stateChoice, stateLabel, stateOptions, type StateOption, statesFor, workItemFilterKey } from "../work-item-filter.ts";
+import { DEFAULT_WORK_ITEM_FILTER, fromStateChoice, type KindStates, stateChoice, stateLabel, type StateOption, stateOptions, statesFor, workItemFilterKey } from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
@@ -33,6 +33,13 @@ import { bulkEditWorkItems } from "./work-item-bulk.ts";
 import { drawFileShortcut, fileShortcut, fileShortcutShown, initFileShortcuts, openFileShortcut, syncFileShortcuts } from "./file-shortcuts.ts";
 import { basename } from "../paths.ts";
 import { initFilterCollapse } from "./filter-collapse.ts";
+import { commands } from "./commands.ts";
+import { createWikiPage, showIssue } from "./ado-files.ts";
+import { groupItems, showWorkItem } from "./work-item-actions.ts";
+import { issueView, showWikiPage } from "./wiki-edit.ts";
+import { noteWorkItems, pollWorkItems, renderAdoBadge, workItemSeen } from "./work-item-updates.ts";
+import { panelAvailable, panelUnavailable, showPanel, wikiPlacedRight } from "./workspace-ui.ts";
+import { reportError } from "./git-actions.ts";
 
 
 // 舊版記住的 Azure DevOps 已儲存查詢（已經拿掉這個功能）。
@@ -249,7 +256,7 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
   /** 清掉全部條件，回到預設（指派給我、進行中）。 */
   const resetAll = () => {
     clearTimeout(timer);
-    Object.assign(f, app.DEFAULT_WORK_ITEM_FILTER);
+    Object.assign(f, DEFAULT_WORK_ITEM_FILTER);
     person.value = ["assigned:@me"];
     name.hidden = true;
     name.value = "";
@@ -357,7 +364,7 @@ function loadWorkItemParents(ids: number[]): void {
     .catch((e) => {
       // 讀不到就當成都沒有上層（不要一直重試）。
       for (const id of ids) workItemParentOf.set(id, null);
-      app.reportError(e);
+      reportError(e);
     })
     .finally(() => {
       workItemParentsLoading = false;
@@ -592,7 +599,7 @@ export async function openBarShortcut(item: Shortcut): Promise<boolean> {
     // 標題、類型改了就更新圖示。
     if (w.title !== item.title || w.kind !== item.kind)
       setBarShortcuts(barShortcuts.map((s) => (sameShortcut(s, item) ? { workItem: w.id, kind: w.kind, title: w.title } : s)));
-    app.showWorkItem(w);
+    showWorkItem(w);
     return true;
   }
   const wikis = await withOfflineCopy("wikis", () => desktop!.adoWikis());
@@ -603,7 +610,7 @@ export async function openBarShortcut(item: Shortcut): Promise<boolean> {
   }
   // 舊的釘選搬過來時不知道 Wiki 名稱，開啟時補上（滑鼠提示用）。
   if (item.wikiName !== wiki.name) setBarShortcuts(barShortcuts.map((s) => (sameShortcut(s, item) ? { ...s, wikiName: wiki.name } : s)));
-  app.showWikiPage(wiki, item.path);
+  showWikiPage(wiki, item.path);
   return true;
 }
 
@@ -620,8 +627,8 @@ function showShortcutPanel(item: Shortcut): void {
   if (isFileShortcut(item)) return;
   const panel = isWorkItemShortcut(item) ? "workitems" : "wiki";
   // Wiki 放在右側、右側欄收起來時，和左邊的側邊欄收起來一樣不自己打開。
-  if (panel === "wiki" && app.wikiPlacedRight() && !app.rightOutlineShown) return;
-  app.showPanel(panel, false);
+  if (panel === "wiki" && wikiPlacedRight() && !app.rightOutlineShown) return;
+  showPanel(panel, false);
 }
 
 function renderBarShortcuts(): void {
@@ -655,12 +662,12 @@ function renderBarShortcuts(): void {
     b.prepend(badge);
     b.addEventListener("click", () => {
       // 開著的那一個再按一次：捲回最上面（不要「按了沒反應」）。
-      if (!isFileShortcut(item) && b.getAttribute("aria-current") === "page" && app.issueView.isOpen) {
-        app.issueView.scrollToTop();
+      if (!isFileShortcut(item) && b.getAttribute("aria-current") === "page" && issueView.isOpen) {
+        issueView.scrollToTop();
         showShortcutPanel(item);
         return;
       }
-      void openShortcutFromBar(item).catch(app.reportError);
+      void openShortcutFromBar(item).catch(reportError);
     });
     return b;
   });
@@ -722,8 +729,8 @@ export async function renderIssuesTab(): Promise<void> {
   const tab = app.$("#side-tab-issues");
   tab.hidden = !repo;
   tab.title = repo ? t("Issues（{repo}）", { repo }) : "Issues";
-  if (tab.hidden) app.panelUnavailable("issues");
-  else app.panelAvailable("issues");
+  if (tab.hidden) panelUnavailable("issues");
+  else panelAvailable("issues");
 }
 
 /** 連線到 Azure DevOps 後才顯示「工作項目」「Wiki」圖示。 */
@@ -731,16 +738,16 @@ export function renderAdoTab(): void {
   for (const panel of ["workitems", "board", "wiki"] as const) {
     const tab = app.$(`#side-tab-${panel}`);
     tab.hidden = !app.ado?.account;
-    if (tab.hidden) app.panelUnavailable(panel);
-    else app.panelAvailable(panel);
+    if (tab.hidden) panelUnavailable(panel);
+    else panelAvailable(panel);
   }
   // Wiki 放在右側的：連線或中斷時放上去或拿下來。
   app.applyLayout();
   void pingAdo();
-  if (app.ado?.account) void app.pollWorkItems();
+  if (app.ado?.account) void pollWorkItems();
   else {
     app.pollItems = [];
-    app.renderAdoBadge();
+    renderAdoBadge();
   }
 }
 
@@ -750,7 +757,7 @@ const unseenLine = document.createElement("div");
 
 /** 指派給你、還沒結束的工作項目裡，新的或看過之後有更新的（圖示上的數字）。 */
 export function unseenItems(): AdoWorkItem[] {
-  return app.pollItems.filter((w) => markOf(app.workItemSeen, w));
+  return app.pollItems.filter((w) => markOf(workItemSeen, w));
 }
 
 function showOnlyUnseen(on: boolean): void {
@@ -783,7 +790,7 @@ export function renderUnseenLine(): void {
   unseenLine.replaceChildren(
     text,
     link(t("只看這些"), () => showOnlyUnseen(true)),
-    link(t("全部標示為看過"), () => app.commands.run("workitems-mark-all-seen")),
+    link(t("全部標示為看過"), () => commands.run("workitems-mark-all-seen")),
   );
 }
 
@@ -799,9 +806,9 @@ export function initWorkItemsPanel(): void {
             label: t("優先順序"),
             arrange: (items) => [{ title: null, items: [...items].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99)) }],
           },
-          { id: "state", label: t("依狀態分組"), arrange: (items) => app.groupItems(items, (w) => w.state) },
+          { id: "state", label: t("依狀態分組"), arrange: (items) => groupItems(items, (w) => w.state) },
           { id: "parent", label: t("依上層項目分組"), arrange: (items, desc) => groupByParentItems(items, desc), ordered: true },
-          { id: "kind", label: t("依類型分組"), arrange: (items) => app.groupItems(items, (w) => w.kind) },
+          { id: "kind", label: t("依類型分組"), arrange: (items) => groupItems(items, (w) => w.kind) },
           { id: "area", label: t("依區域分組"), arrange: (items) => groupByArea(items) },
           { id: "area-parent", label: t("依區域＋上層項目分組"), arrange: (items, desc) => groupByAreaAndParent(items, desc), ordered: true },
         ],
@@ -817,7 +824,7 @@ export function initWorkItemsPanel(): void {
         mark: (item) => {
           // 分組標題列上、不在清單裡的上層項目（不是指派給你的）不標。
           if (!workItemListed.has(item.id)) return null;
-          const mark = markOf(app.workItemSeen, item);
+          const mark = markOf(workItemSeen, item);
           if (!mark) return null;
           return { kind: mark, label: mark === "new" ? t("新指派給你，還沒看過") : t("上次看過之後有更新") };
         },
@@ -836,12 +843,12 @@ export function initWorkItemsPanel(): void {
           }
           // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
           const found = await withOfflineCopy(`wi-list:${search}:${workItemFilterKey(app.workItemFilter)}`, () => desktop!.adoWorkItems(search, app.workItemFilter), update);
-          app.noteWorkItems(found, !search && app.isDefaultFilter());
+          noteWorkItems(found, !search && app.isDefaultFilter());
           workItemListed = new Set(found.map((w) => w.id));
           return keepFreshness(found, found.map(workItemRow));
         },
         forget: () => forgetListCopies("wi-"),
-        view: (item) => app.showWorkItem(item),
+        view: (item) => showWorkItem(item),
         // 選了好幾個一起改狀態、指派、優先順序、Sprint，或一起加留言。
         bulk: { run: (items) => bulkEditWorkItems(items, () => workItemsPanel?.clearSelection()) },
         status: (n, search) =>
@@ -914,7 +921,7 @@ export function initWorkItemsPanel(): void {
         pages: (wiki, update) => withOfflineCopy(`wiki-pages:${wiki.id}`, () => desktop!.adoWikiPages(wiki), update),
         forget: () => forgetListCopies("wiki"),
         favorites: favoriteWikis,
-        open: (wiki, path) => app.showWikiPage(wiki, path),
+        open: (wiki, path) => showWikiPage(wiki, path),
         load: () => storage.load("ado-wiki"),
         save: (id) => storage.save("ado-wiki", id),
         prefs(id) {
@@ -928,16 +935,16 @@ export function initWorkItemsPanel(): void {
         },
         savePrefs: (id, prefs) => storage.save(`ado-wiki-pages:${id}`, JSON.stringify(prefs)),
         link: (wiki, path) => (wiki.webUrl ? wikiPageLink(pageName(path), wikiPageUrl(wiki.webUrl, path)) : null),
-        create: (wiki, parent) => void app.createWikiPage(wiki, parent).catch(app.reportError),
+        create: (wiki, parent) => void createWikiPage(wiki, parent).catch(reportError),
         recent: (wiki, scope) => openWikiRecent(wiki, scope),
-        backlinks: (wiki, path) => void openWikiBacklinks(wiki, path).catch(app.reportError),
-        move: (wiki, path, to) => void moveWikiPage(wiki, path, to).catch(app.reportError),
+        backlinks: (wiki, path) => void openWikiBacklinks(wiki, path).catch(reportError),
+        move: (wiki, path, to) => void moveWikiPage(wiki, path, to).catch(reportError),
         canCreate: (wiki) => !wiki.code,
         async reorder(wiki, path, index) {
           try {
             await desktop!.adoWikiMove(wiki, path, path, index);
           } catch (e) {
-            app.reportError(e);
+            reportError(e);
             throw e;
           }
           // 下次讀頁面樹時向伺服器讀新的順序。
@@ -986,7 +993,7 @@ export function initWorkItemsPanel(): void {
               .join("・"),
           })),
         view: (item) =>
-          void app.showIssue({
+          void showIssue({
             key: `github:${item.id}`,
             origin: { kind: "github", icon: "circle-dot", text: "GitHub Issue" },
             label: `#${item.id}`,
