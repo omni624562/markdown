@@ -10,9 +10,8 @@ import init, { type Heading, type RenderResult, formatTable, kindFromFileName, r
 import { AiController } from "./ai.ts";
 import { GitHub } from "./github-ui.ts";
 import { Ado } from "./ado-ui.ts";
-import { workItemLink } from "./ado-text.ts";
 import { type PaletteId, applyPalette, isDark, loadAccent, loadPalette, savePalette } from "./palette.ts";
-import { formatKeys, fuzzyScore } from "./commands.ts";
+import { formatKeys } from "./commands.ts";
 import { Editor, type EditorHandlers, type EditorOptions, cursorInfo } from "./editor.ts";
 import { type FileCommit, type FileItem, type Folder, desktop, displayPath, isRemote } from "./desktop.ts";
 import type { EditorState, Text } from "@codemirror/state";
@@ -39,8 +38,7 @@ import { type BlockRef, collectBlocks, offsetForLineLazy } from "./scroll-sync.t
 import { SPELL_IGNORE_LIMIT, TERM_IGNORE_LIMIT, SettingsStore } from "./settings.ts";
 import { smartPasteText } from "./app/table-paste.ts";
 import { hiddenByCollapse, subtreeEnd } from "./sections.ts";
-import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
-import { type HeadingRef, type RemotePage, encodeLinkPath, linkCompletion } from "./link-complete.ts";
+import { type HeadingRef, linkCompletion } from "./link-complete.ts";
 import { type DocMeta, dropDraft, dropOrphanDrafts, loadDraft, loadSession, newId, peekSession, saveDraft, saveProjectView, saveSession, type Session } from "./session.ts";
 import * as storage from "./storage.ts";
 import { choose } from "./ui/choice.ts";
@@ -59,7 +57,7 @@ import { currentLang, t, translateDom } from "./i18n.ts";
 import { ProjectUi } from "./ui/project-ui.ts";
 import { projectInitials } from "./projects.ts";
 import { Review } from "./ui/review.ts";
-import { flattenPages, imageRepoPath, pageName, wikiPageLink, wikiPageUrl } from "./wiki-text.ts";
+import { imageRepoPath } from "./wiki-text.ts";
 import { type RepoFileLink } from "./repo-links.ts";
 import { openLightbox } from "./ui/lightbox.ts";
 import { dateCompletion } from "./date-complete.ts";
@@ -76,13 +74,13 @@ import type { AdoWiki, AdoWorkItem, AdoWorkItemFilter, FileVersion, GitStatus } 
 import { parseRemoteLink, urlAt } from "./remote-links.ts";
 import { insertHandle, selectionToolbar } from "./inline-tools.ts";
 import { toast } from "./ui/toast.ts";
-import { imageFiles, insertAtCursor, insertImages, wikiEditImage, wikiEditImagesPlugin } from "./app/image-paste.ts";
+import { imageFiles, insertImages, wikiEditImage, wikiEditImagesPlugin } from "./app/image-paste.ts";
 import { initFileDrop } from "./app/file-drop.ts";
 import { pasteLink } from "./app/paste-link.ts";
 import { clearOffline, isOffline, offline, otherWriter, renderOffline, resolveConflict, showOffline, storeName, initOfflineDrive } from "./app/offline-drive.ts";
 import { initWikiHistory } from "./app/wiki-history.ts";
 import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
-import { insertIssueLink, openRemoteLink, peekWorkItem, remoteCard, remoteLinkOf, wikiPagesCache, initAdoLinks } from "./app/ado-links.ts";
+import { openRemoteLink, remoteCard, remoteLinkOf, initAdoLinks } from "./app/ado-links.ts";
 import { historyView, searchPanel, initGitHistory } from "./app/git-history.ts";
 import { buildFormatBar, initNewWorkItem } from "./app/new-work-item.ts";
 import { markBarShortcuts, renderAdoTab, renderIssuesTab, wikiPanel, workItemsPanel, initWorkItemsPanel } from "./app/work-items-panel.ts";
@@ -103,6 +101,7 @@ import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoIma
 import { markdownFiles, openWiki, updateLinksAfterRename, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
 import { docName, docTooltip, renumber, saveFileName } from "./app/doc-names.ts";
+import { openWorkItemById, quickOpen, wikiLinkPages, wikiLinkPicker, workItemIdCompletion, workItemLinkPicker } from "./app/quick-open.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initTaskboard } from "./app/taskboard.ts";
@@ -2492,223 +2491,7 @@ initGitHistory();
 
 initWorkspaceUi();
 
-// ---- 快速開啟（Ctrl+P） --------------------------------------------------
-
-interface QuickItem {
-  title: string;
-  detail: string;
-  doc?: Doc;
-  path?: string;
-  /** 工作項目、Wiki 頁面：選了之後在主要區域開啟。 */
-  remote?: { icon: string; open(): void };
-}
-
-let quickRemoteSeq = 0;
-
-/**
- * Ctrl+P 裡的工作項目與 Wiki 頁面（連上 Azure DevOps 時）：
- * `#123` 直接開啟那個工作項目，`#文字` 搜尋工作項目的標題；其他字找目前 Wiki 的頁面名稱。
- */
-async function quickRemoteItems(q: string): Promise<QuickItem[]> {
-  const text = q.trim();
-  if (!desktop || !ado?.account || !text) return [];
-  if (text.startsWith("#")) {
-    const rest = text.slice(1).trim();
-    if (/^\d+$/.test(rest)) {
-      const id = Number(rest);
-      return [
-        {
-          title: `#${id}`,
-          detail: t("開啟 Azure DevOps 工作項目"),
-          remote: { icon: "square-kanban", open: () => void openWorkItemById(id) },
-        },
-      ];
-    }
-    if (rest.length < 2) return [];
-    // 打字停一下才查詢，免得每個字都向伺服器查一次。
-    const seq = ++quickRemoteSeq;
-    await new Promise((r) => setTimeout(r, 300));
-    if (seq !== quickRemoteSeq) return [];
-    const found = await desktop
-      .adoWorkItems(rest, { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" })
-      .catch(() => [] as AdoWorkItem[]);
-    return found.slice(0, 30).map((w) => ({
-      title: w.title,
-      detail: [`${w.kind} ${w.id}`, w.state].join("・"),
-      remote: { icon: "square-kanban", open: () => showWorkItem(w) },
-    }));
-  }
-  // Wiki 頁面清單在背景讀取：還沒讀到（或網路慢）時先只列檔案，不讓 Ctrl+P 卡住。
-  if (!wikiListCache) {
-    wikiListCache = desktop.adoWikis();
-    wikiListCache.catch(() => (wikiListCache = null));
-  }
-  const wikis = await soon(wikiListCache);
-  const id = wikiPanel?.wiki?.id ?? storage.load("ado-wiki");
-  const wiki = wikis?.find((w) => w.id === id) ?? wikis?.[0];
-  if (!wiki) return [];
-  let pages = wikiPagesCache.get(wiki.id);
-  if (!pages) {
-    pages = desktop.adoWikiPages(wiki);
-    wikiPagesCache.set(wiki.id, pages);
-    pages.catch(() => wikiPagesCache.delete(wiki.id));
-  }
-  const paths = flattenPages((await soon(pages)) ?? []);
-  return paths.map((path) => ({
-    title: pageName(path),
-    detail: t("Wiki・{where}", { where: [wiki.name, path.slice(1, path.lastIndexOf("/"))].filter(Boolean).join(" › ") }),
-    remote: { icon: "book-open-text", open: () => showWikiPage(wiki, path) },
-  }));
-}
-
-/** 連結用的 Wiki 頁面：編輯 Wiki 頁面時是那個 Wiki，否則是 Wiki 面板選的那個。等不到 `wait` 毫秒就先不列。 */
-async function wikiLinkPages(wait = 150): Promise<RemotePage[]> {
-  if (!desktop || !ado?.account) return [];
-  if (!wikiListCache) {
-    wikiListCache = desktop.adoWikis();
-    wikiListCache.catch(() => (wikiListCache = null));
-  }
-  const wikis = await soon(wikiListCache, wait);
-  const target = active.wiki;
-  const id = target?.wikiId ?? wikiPanel?.wiki?.id ?? storage.load("ado-wiki");
-  const wiki = wikis?.find((w) => w.id === id) ?? wikis?.[0];
-  if (!wiki) return [];
-  let pages = wikiPagesCache.get(wiki.id);
-  if (!pages) {
-    pages = desktop.adoWikiPages(wiki);
-    wikiPagesCache.set(wiki.id, pages);
-    pages.catch(() => wikiPagesCache.delete(wiki.id));
-  }
-  const paths = flattenPages((await soon(pages, wait)) ?? []);
-  // 在同一個 Wiki 裡用 Wiki 的相對連結（`/上層/頁面`），TFS 網頁版也點得到；其他文件用網頁網址。
-  const sameWiki = target?.wikiId === wiki.id;
-  return paths.flatMap((path) => {
-    const name = pageName(path);
-    const where = [wiki.name, path.slice(1, path.lastIndexOf("/"))].filter(Boolean).join(" › ");
-    if (sameWiki) return [{ label: name, detail: t("Wiki・{where}", { where }), link: `[${name.replace(/[[\]]/g, "")}](${encodeLinkPath(path)})` }];
-    if (!wiki.webUrl) return [];
-    return [{ label: name, detail: t("Wiki・{where}", { where }), link: wikiPageLink(name, wikiPageUrl(wiki.webUrl, path)) }];
-  });
-}
-
-/** 文件裡打 `#123`（編號）時列出符合的工作項目，選了就換成 `[#123 標題](網址)`。 */
-async function workItemIdCompletion(ctx: CompletionContext): Promise<CompletionResult | null> {
-  if (!desktop || !ado?.account) return null;
-  const m = ctx.matchBefore(/(?<=^|[\s(（「、，,:：])#\d{1,9}$/);
-  if (!m) return null;
-  // 打字停一下才查詢。
-  await new Promise((r) => setTimeout(r, 250));
-  if (ctx.aborted) return null;
-  const found = await desktop
-    .adoWorkItems(m.text.slice(1), { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" })
-    .catch(() => [] as AdoWorkItem[]);
-  if (ctx.aborted || !found.length) return null;
-  return {
-    from: m.from,
-    filter: false,
-    options: found.slice(0, 20).map((w) => ({
-      label: `#${w.id} ${w.title}`,
-      detail: `${w.kind}・${w.state}`,
-      type: "class",
-      apply: workItemLink(w),
-    })),
-  };
-}
-
-/** 插入工作項目連結：輸入標題關鍵字或編號搜尋（空白時列出指派給我的）。 */
-let workItemLinkSeq = 0;
-const workItemLinkPicker = new Picker<AdoWorkItem>({
-  label: t("插入工作項目連結"),
-  placeholder: t("輸入標題關鍵字或編號"),
-  empty: t("找不到符合的工作項目"),
-  async query(q) {
-    if (!desktop) return [];
-    const seq = ++workItemLinkSeq;
-    await new Promise((r) => setTimeout(r, 250));
-    if (seq !== workItemLinkSeq) return [];
-    const text = q.trim().replace(/^#/, "");
-    const filter = text ? { ...DEFAULT_WORK_ITEM_FILTER, person: "", state: "all" as const } : DEFAULT_WORK_ITEM_FILTER;
-    return (await desktop.adoWorkItems(text, filter)).slice(0, 50);
-  },
-  render: (w) => ({ title: w.title, detail: [`${w.kind} ${w.id}`, w.state].join("・"), icon: "square-kanban" }),
-  pick: (w) => insertIssueLink(w),
-});
-
-/** 插入 Wiki 頁面連結。 */
-const wikiLinkPicker = new Picker<RemotePage>({
-  label: t("插入 Wiki 頁面連結"),
-  placeholder: t("輸入頁面名稱"),
-  empty: t("找不到符合的 Wiki 頁面"),
-  async query(q) {
-    const needle = q.trim().toLowerCase();
-    const pages = await wikiLinkPages(3000);
-    return needle ? pages.filter((p) => `${p.label} ${p.detail}`.toLowerCase().includes(needle)) : pages;
-  },
-  render: (p) => ({ title: p.label, detail: p.detail, icon: "book-open-text" }),
-  pick: (p) => insertAtCursor(p.link),
-});
-
-/** `p` 在一小段時間內有結果就回傳結果，否則（或失敗時）回傳 null。 */
-function soon<T>(p: Promise<T>, ms = 150): Promise<T | null> {
-  return Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
-}
-
-/** 依編號開啟工作項目（讀不到時提示）。 */
-async function openWorkItemById(id: number): Promise<void> {
-  try {
-    showWorkItem(await peekWorkItem(id));
-  } catch (e) {
-    toast(e instanceof Error ? e.message : String(e));
-  }
-}
-
-const quickOpen = new Picker<QuickItem>({
-  label: t("快速開啟"),
-  placeholder: desktop ? t("輸入檔名、Wiki 頁面，或 #編號 開啟工作項目") : t("輸入檔名切換分頁"),
-  empty: t("找不到符合的檔案"),
-  async query(q) {
-    stash();
-    // 已開啟的分頁優先（工作項目等的分頁也算），目前分頁放最後（按 Enter 不會停在原地）。
-    const current = selectedItemId();
-    const openItems = itemTabs.filter((tab) => tab.id !== current);
-    const items: QuickItem[] = [
-      ...docs.filter((d) => d !== active || current).map((d) => ({ title: docName(d), detail: t("已開啟"), doc: d })),
-      ...openItems.map((tab) => ({ title: tab.name, detail: t("已開啟"), remote: { icon: tab.icon, open: () => selectItem(tab.id) } })),
-      ...(current ? [] : [{ title: docName(active), detail: t("目前分頁"), doc: active }]),
-    ];
-    const seen = new Set(docs.map((d) => d.path).filter(Boolean));
-    if (desktop) {
-      if (workspaceRoot) {
-        fileListCache ??= await desktop.listFiles(workspaceRoot.path).catch(() => []);
-        for (const f of fileListCache) {
-          if (seen.has(f.path)) continue;
-          seen.add(f.path);
-          const dir = f.rel.includes("/") ? f.rel.slice(0, f.rel.lastIndexOf("/")) : "";
-          items.push({ title: basename(f.path), detail: dir || workspaceRoot.name, path: f.path });
-        }
-      }
-      const { files } = await desktop.recent().catch(() => ({ files: [] as string[] }));
-      for (const path of files) {
-        if (seen.has(path)) continue;
-        seen.add(path);
-        items.push({ title: basename(path), detail: t("最近開啟 · {dir}", { dir: displayPath(dirname(path)) }), path });
-      }
-    }
-    if (!q.trim()) return items.slice(0, 200);
-    const remote = await quickRemoteItems(q);
-    // `#…` 只找工作項目（伺服器已經依相關程度排序）。
-    if (q.trim().startsWith("#")) return remote;
-    items.push(...remote);
-    return items
-      .map((it) => ({ it, score: Math.max(fuzzyScore(q, it.title) * 2, fuzzyScore(q, `${it.detail}/${it.title}`)) }))
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 200)
-      .map((x) => x.it);
-  },
-  render: (it) => ({ title: it.title, detail: it.detail, icon: it.remote?.icon ?? (it.doc ? "file-text" : "file") }),
-  pick: (it) => (it.remote ? it.remote.open() : it.doc ? activate(it.doc) : void openPath(it.path!).catch(reportError)),
-});
+// ---- 分頁的狀態 -------------------------------------------------------
 
 /** 把全域變數（目前分頁）寫回分頁物件。 */
 function stash(): void {
