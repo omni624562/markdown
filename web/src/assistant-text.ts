@@ -25,6 +25,8 @@ export interface AssistantAction {
   mermaid?: boolean;
   /** 要附上專案裡的筆記名稱與標籤（建議連結和標籤用）。 */
   needsIndex?: boolean;
+  /** 要附上專案裡還沒完成的待辦與今天的日期（今日簡報用），不送目前的文件。 */
+  needsTasks?: boolean;
 }
 
 export const ASSISTANT_ACTIONS: AssistantAction[] = [
@@ -130,6 +132,18 @@ export const ASSISTANT_ACTIONS: AssistantAction[] = [
     group: "write",
   },
   {
+    id: "briefing",
+    label: () => t("今日簡報"),
+    prompt: () =>
+      t(
+        "請根據 <tasks> 幫我做今天（<today>）的簡報：先列已經過期的、今天到期的，再列這週內到期的，最後建議今天先做哪三件事並說明原因。條列、簡短，每項後面寫在哪份筆記。沒有待辦時直接說今天沒有待辦。",
+      ),
+    needsSelection: false,
+    mode: "answer",
+    group: "write",
+    needsTasks: true,
+  },
+  {
     id: "links",
     label: () => t("建議連結和標籤"),
     prompt: () =>
@@ -218,6 +232,24 @@ export function pickNotes(notes: readonly { rel: string; text: string }[], quest
   return out;
 }
 
+/** 今日簡報送出的待辦：還沒完成的，有截止日的依日期在前，最多 200 項。 */
+export function briefingTasks(
+  docs: readonly { rel: string; tasks: readonly { done: boolean; text: string; due: string | null; owners: readonly string[] }[] }[],
+  limit = 200,
+): string {
+  const open = docs.flatMap((d) =>
+    d.tasks.filter((x) => !x.done && x.text.trim()).map((x) => ({ ...x, note: d.rel.replace(/\.(md|markdown)$/i, "") })),
+  );
+  open.sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.note.localeCompare(b.note, "zh-Hant"));
+  return open
+    .slice(0, limit)
+    .map((x) => {
+      const meta = [x.note, x.due ? `due ${x.due}` : "", x.owners.map((o) => `@${o}`).join(" ")].filter(Boolean);
+      return `- [ ] ${x.text.trim()}（${meta.join("，")}）`; // i18n-ignore
+    })
+    .join("\n");
+}
+
 /** 設定裡的自訂動作。取代選取文字的動作需要先選取文字；其他的沒選取時用整份文件。 */
 export function customActions(list: readonly AssistantCustomAction[]): AssistantAction[] {
   return list.map((a, i) => ({
@@ -259,6 +291,8 @@ export interface AssistantContext {
   index?: ProjectIndex;
   /** 問整個專案時挑出來的筆記。 */
   notes?: readonly NoteText[];
+  /** 今日簡報：今天的日期與還沒完成的待辦。 */
+  tasks?: { today: string; list: string };
 }
 
 /** 這一輪要送出的使用者訊息：資料放前面，問題放最後。 */
@@ -267,6 +301,7 @@ export function userContent(question: string, ctx: AssistantContext): string {
   if (ctx.doc) parts.push(`<document name="${ctx.doc.name.replace(/"/g, "'")}">\n${ctx.doc.text}\n</document>`);
   if (ctx.selection.trim()) parts.push(`<selection>\n${ctx.selection}\n</selection>`);
   if (ctx.notes?.length) parts.push(ctx.notes.map((n) => `<note name="${n.name.replace(/"/g, "'")}">\n${n.text}\n</note>`).join("\n\n"));
+  if (ctx.tasks) parts.push(`<today>${ctx.tasks.today}</today>\n\n<tasks>\n${ctx.tasks.list}\n</tasks>`);
   if (ctx.index) {
     parts.push(`<notes>\n${ctx.index.notes.join("\n")}\n</notes>`);
     parts.push(`<tags>\n${ctx.index.tags.map((tag) => `#${tag}`).join(" ")}\n</tags>`);

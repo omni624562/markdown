@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calls, open, setText } from "./helpers.mjs";
+import { calls, open, runCommand, setText } from "./helpers.mjs";
 
 const ROOT = "C:\\Users\\me\\Documents\\個人筆記";
 const project = { path: ROOT, label: "個人筆記", name: null, color: "green", group: null, pinned: false, lastOpened: 0 };
@@ -469,6 +469,31 @@ test("上網查資料：設定沒開時沒有這個選項；開了才出現，�
   await link.waitFor();
   assert.equal(await link.count(), 1, "同一個來源只列一次");
   assert.equal(await link.getAttribute("href"), "https://example.com/nas-disk");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("今日簡報：從「更多」選單或指令面板執行，送出今天的日期和專案裡還沒完成的待辦，不送目前的文件", async () => {
+  const task = (text, due, done = false) => ({ line: 1, done, text, owners: [], due });
+  const d = desktop({ ...ON, assistantConfirmed: [ROOT] });
+  d.scan_docs = [
+    [
+      { path: `${ROOT}\\週報.md`, rel: "週報.md", mtime: 1, info: { tasks: [task("寫週報", "2026-11-09"), task("做完了", null, true)], tags: [], links: [] } },
+      { path: `${ROOT}\\NAS 備份規劃.md`, rel: "NAS 備份規劃.md", mtime: 1, info: { tasks: [task("買硬碟", null)], tags: [], links: [] } },
+    ],
+  ];
+  const { page, context, errors } = await open({ desktop: d });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await setText(page, "這份文件不該送出");
+  await runCommand(page, "助理：今日簡報");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const [{ request }] = await sends(page);
+  const content = request.messages[0].content;
+  assert.match(content, /<today>\d{4}-\d{2}-\d{2} /);
+  assert.match(content, /<tasks>\n- \[ \] 寫週報（週報，due 2026-11-09）\n- \[ \] 買硬碟（NAS 備份規劃）\n<\/tasks>/);
+  assert.doesNotMatch(content, /做完了|這份文件不該送出|<document/);
   assert.deepEqual(errors, []);
   await context.close();
 });
