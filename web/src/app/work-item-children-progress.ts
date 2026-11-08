@@ -1,13 +1,13 @@
 /**
  * 工作項目分頁「相關工作項目」裡「子項目」那一組的上方：一條分色長條（完成、待驗證、進行中、還沒開始）、
- * 「4/8 完成・50%」、圖例，與工時（有填才顯示）。點長條的一段或圖例，下面的子項目只留那個狀態；再點一次全部顯示。
+ * 「4/8 完成・1 待驗證・2 進行中」（顏色和長條一樣）、圖例，與工時（有填才顯示）。點長條的一段或圖例，下面的子項目只留那個狀態；再點一次全部顯示。
  * 刪除子項目之後（不重新讀取整頁）也會跟著更新。
  */
 import type { AdoWorkItemRelation } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { relationLabels, stateTone, workItemIdOf } from "../issue-doc.ts";
 import { progressBar, progressTooltip, toneLabel } from "../ui/progress-bar.ts";
-import { PROGRESS_TONES, type ProgressTone, doneRatio, hoursText, progressOf } from "../work-item-progress.ts";
+import { PROGRESS_TONES, type ProgressTone, hoursText, progressOf } from "../work-item-progress.ts";
 
 /** 子項目那一組的標題（H3）與清單（UL）；沒有子項目時是 null。 */
 function childGroup(box: HTMLElement): { h3: HTMLElement; ul: HTMLElement } | null {
@@ -33,8 +33,17 @@ export function renderChildProgress(box: HTMLElement, relations: readonly AdoWor
   wrap.className = "wi-progress";
   const head = document.createElement("div");
   head.className = "wi-progress-head";
-  const pct = Math.round((doneRatio(p) ?? 0) * 100);
-  head.textContent = t("{done}/{total} 完成・{pct}%", { done: p.counts.closed, total: p.total, pct });
+  // 「0/6 完成・2 進行中」：完成只算結束的項目；待驗證、進行中另外寫出來，顏色和長條的那一段一樣，
+  // 才不會看到長條有藍色、數字卻是 0 而以為算錯。
+  const part = (tone: ProgressTone, text: string) => {
+    const s = document.createElement("span");
+    s.className = `wi-progress-count ${tone}`;
+    s.textContent = text;
+    return s;
+  };
+  head.replaceChildren(part("closed", t("{done}/{total} 完成", { done: p.counts.closed, total: p.total })));
+  if (p.counts.resolved) head.append(t("・"), part("resolved", t("{n} 待驗證", { n: p.counts.resolved })));
+  if (p.counts.active) head.append(t("・"), part("active", t("{n} 進行中", { n: p.counts.active })));
   const bar = progressBar(p, false, "wi-bar wi-bar-big");
   bar.title = progressTooltip(t("子項目"), p);
   const legend = document.createElement("div");
