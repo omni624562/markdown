@@ -182,7 +182,7 @@ test("設定：Claude API 助理自成一頁，不在 AI 協作那一頁", async
   await context.close();
 });
 
-test("版面：助理是右邊自己一欄（分頁列只到編輯區）；模型用 oMarker 的選單換；寬度可以拖曳並記住", async () => {
+test("版面：助理是右側欄的一頁（分頁列只到右側欄左邊）；模型用 oMarker 的選單換；右側欄的寬度可以拖曳並記住", async () => {
   const { page, context, errors } = await open({ desktop: desktop(ON) });
   await page.setViewportSize({ width: 1280, height: 760 });
   await openProject(page);
@@ -194,8 +194,10 @@ test("版面：助理是右邊自己一欄（分頁列只到編輯區）；模�
   await panel.waitFor();
   const box = await panel.boundingBox();
   const tabs = await page.locator("#tab-bar").boundingBox();
-  // 從頂端列下面開始（頂端列橫跨整個視窗，視窗按鈕在右上角），分頁列在助理左邊結束。
+  // 助理在右側欄裡、從頂端列下面開始（頂端列橫跨整個視窗），分頁列在右側欄左邊結束；右上角那塊的分頁列選著「助理」。
   assert.ok(box.y >= tabs.y + tabs.height - 1 && box.y < 60, `top ${box.y}`);
+  assert.equal(await page.locator("#outline-right #assistant-panel").count(), 1, "助理在右側欄裡");
+  assert.equal(await page.locator('.top-actions .right-tab[data-tab="assistant"]').getAttribute("aria-selected"), "true");
   assert.ok(tabs.x + tabs.width <= box.x, `tabs end ${tabs.x + tabs.width} > ${box.x}`);
   const editor = await page.locator(".editor-pane").boundingBox();
   assert.ok(editor.x + editor.width <= box.x);
@@ -209,21 +211,21 @@ test("版面：助理是右邊自己一欄（分頁列只到編輯區）；模�
   const saved = (await calls(page)).filter((c) => c.cmd === "save_settings").map((c) => JSON.parse(c.args.json));
   assert.equal(saved.at(-1).claudeModel, "claude-opus-5-5");
 
-  // 拖曳左緣調整寬度，重新打開還是一樣寬。
-  const grip = panel.locator(".assistant-resizer");
+  // 拖曳右側欄的左緣調整寬度（和大綱共用同一個寬度），記住。
+  const grip = page.locator(".sidebar-resizer.right");
   const g = await grip.boundingBox();
   await page.mouse.move(g.x + 3, g.y + g.height / 2);
   await page.mouse.down();
   await page.mouse.move(g.x - 97, g.y + g.height / 2, { steps: 5 });
   await page.mouse.up();
-  const wide = (await panel.boundingBox()).width;
-  assert.ok(Math.abs(wide - (box.width + 100)) <= 2, `width ${wide}`);
-  assert.equal(await page.evaluate(() => localStorage.getItem("assistant-width") !== null || Object.keys(localStorage).some((k) => k.includes("assistant-width"))), true);
+  const wide = (await page.locator("#outline-right").boundingBox()).width;
+  assert.ok(Math.abs(wide - (box.width + 100)) <= 4, `width ${box.width} → ${wide}`);
+  assert.equal(await page.evaluate(() => Object.keys(localStorage).some((k) => k.endsWith("outline-right-width"))), true);
   assert.deepEqual(errors, []);
   await context.close();
 });
 
-test("窄視窗：助理變成蓋在文件上的抽屜，按 Esc 收起", async () => {
+test("窄視窗：右側欄（助理）變成蓋在文件上的抽屜，按 Esc 收起", async () => {
   const { page, context, errors } = await open({ desktop: desktop(ON) });
   await page.setViewportSize({ width: 760, height: 640 });
   await openProject(page);
@@ -233,11 +235,14 @@ test("窄視窗：助理變成蓋在文件上的抽屜，按 Esc 收起", async 
   await page.keyboard.press("Control+Shift+L");
   const panel = page.locator("#assistant-panel");
   await panel.waitFor();
-  assert.equal(await panel.evaluate((el) => getComputedStyle(el).position), "fixed");
-  const box = await panel.boundingBox();
+  const drawer = page.locator("#outline-right.right-drawer");
+  assert.equal(await drawer.evaluate((el) => getComputedStyle(el).position), "fixed");
+  const box = await drawer.boundingBox();
   assert.ok(box.x + box.width <= 760);
+  // 抽屜最上面是分頁列（只有助理一頁）。
+  assert.equal(await page.locator('#outline-right > .right-tabs .right-tab[data-tab="assistant"]').isVisible(), true);
   await panel.locator("textarea").press("Escape");
-  await panel.waitFor({ state: "hidden" });
+  await drawer.waitFor({ state: "hidden" });
   assert.deepEqual(errors, []);
   await context.close();
 });

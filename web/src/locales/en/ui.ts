@@ -354,6 +354,7 @@ export const ui: Record<string, Translation> = {
   // filetree.ts
   "新名稱": "New name",
   "資料夾名稱": "Folder name",
+  "只有專案裡的 Markdown 文件有反向連結。": "Only Markdown documents in the project have backlinks.",
   "已插入圖片「{name}」": "Inserted image \"{name}\"",
   "點一下放大": "Click to enlarge",
   "{width} × {height} 像素": "{width} × {height} px",
@@ -1159,7 +1160,6 @@ export const ui: Record<string, Translation> = {
   "還沒有專案。開啟資料夾後會出現在這裡。": "No projects yet. Open a folder and it will appear here.",
   "還沒有輸入 Claude API 金鑰。": "No Claude API key has been entered.",
   "還沒設定": "Not set",
-  "關閉助理": "Close Assistant",
   "預設模型": "Default Model",
   "（沒有回答）": "(no answer)",
   "{done}/{total} 完成": "{done}/{total} done",
@@ -1234,7 +1234,5 @@ export const ui: Record<string, Translation> = {
   "新增自訂動作…": "Add Custom Action…",
   "助理：自訂動作…": "Assistant: Custom Actions…",
   "模型：{name}（按一下換）": "Model: {name} (click to change)",
-  "調整助理寬度": "Resize assistant",
-  "拖曳調整寬度": "Drag to resize",
   "送到 Anthropic・修改要按「套用」": "Sent to Anthropic · changes need Apply",
 };

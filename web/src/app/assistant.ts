@@ -36,7 +36,6 @@ import {
 import { type AssistantImage, type AssistantMessage, type AssistantRunEvent, type AssistantUsage, desktop } from "../desktop.ts";
 import { currentLang, t } from "../i18n.ts";
 import { ASSISTANT_FONT_RANGE, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
-import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { setupMenu } from "../ui/menu.ts";
@@ -44,16 +43,12 @@ import { toast } from "../ui/toast.ts";
 import { openUrl } from "./activity-bar.ts";
 import { wikiTarget } from "../plugins/doc-links.ts";
 import { openWiki } from "./wiki-links.ts";
-import { indexedDocs, indexedTexts, openPath } from "./workspace-ui.ts";
+import { drawerQuery, indexedDocs, indexedTexts, openPath, setRightOutline } from "./workspace-ui.ts";
+import { availableRightTabs, selectRightTab } from "./right-tabs.ts";
 import { app } from "./context.ts";
 import { cometLocked, unlockComet } from "./comet-files.ts";
 import { docName as tabName } from "./doc-names.ts";
 
-const OPEN_KEY = "assistant-open";
-const WIDTH_KEY = "assistant-width";
-/** 寬度的範圍（拖曳左緣調整）。 */
-const MIN_WIDTH = 280;
-const MAX_WIDTH = 640;
 
 interface Pending {
   id: number;
@@ -110,8 +105,9 @@ export function assistantEnabled(): boolean {
   return !!desktop && app.settings.value.claudeApiEnabled;
 }
 
+/** 助理現在看得到：是右側欄選的那一頁，而且右側欄開著（app/right-tabs.ts 管顯示）。 */
 export function assistantOpen(): boolean {
-  return !!panel && !panel.hidden;
+  return !!panel && !panel.hidden && !app.$("aside#outline-right").hidden;
 }
 
 /** 目前不能送出的原因；可以送出時是 null。 */
@@ -743,11 +739,6 @@ function headButton(label: string, iconName: string, run: () => void): HTMLButto
   return b;
 }
 
-function applyWidth(px: number): number {
-  const w = Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, px)));
-  document.documentElement.style.setProperty("--assistant-width", `${w}px`);
-  return w;
-}
 
 /** 助理的字級（和編輯區分開）：套用到側欄的 `--assistant-font`。 */
 function applyFont(): void {
@@ -763,43 +754,6 @@ export function changeAssistantFont(delta: number): void {
     return;
   }
   app.settings.update({ assistantFontSize: size });
-}
-
-/** 左緣的把手：拖曳調整寬度，記住；鍵盤用左右鍵。 */
-function resizer(): HTMLElement {
-  const grip = document.createElement("div");
-  grip.className = "assistant-resizer";
-  grip.role = "separator";
-  grip.tabIndex = 0;
-  grip.setAttribute("aria-orientation", "vertical");
-  grip.setAttribute("aria-label", t("調整助理寬度"));
-  grip.title = t("拖曳調整寬度");
-  const width = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--assistant-width")) || 360;
-  const save = () => storage.save(WIDTH_KEY, String(Math.round(width())));
-  grip.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    grip.setPointerCapture(e.pointerId);
-    const start = e.clientX;
-    const startWidth = width();
-    document.body.classList.add("resizing");
-    const move = (ev: PointerEvent) => applyWidth(startWidth + start - ev.clientX);
-    const up = () => {
-      grip.removeEventListener("pointermove", move);
-      document.body.classList.remove("resizing");
-      save();
-    };
-    grip.addEventListener("pointermove", move);
-    grip.addEventListener("pointerup", up, { once: true });
-    grip.addEventListener("pointercancel", up, { once: true });
-  });
-  grip.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    applyWidth(width() + (e.key === "ArrowLeft" ? 20 : -20));
-    save();
-  });
-  return grip;
 }
 
 function build(): HTMLElement {
@@ -835,9 +789,8 @@ function build(): HTMLElement {
   spacer.className = "assistant-spacer";
   saveBtn = headButton(t("存成筆記"), "file-down", () => void saveNote());
   saveBtn.disabled = true;
-  // 關閉放最左邊：視窗的關閉鈕在右上角，兩個 ✕ 不相鄰，不會按錯。
+  // 沒有自己的關閉鈕：助理是右側欄的一頁，切到別頁或收起右側欄就好。
   head.append(
-    headButton(t("關閉助理"), "x", () => toggleAssistant(false)),
     title,
     modelBtn,
     spacer,
@@ -952,7 +905,7 @@ function build(): HTMLElement {
   usageEl.className = "assistant-usage";
   foot.append(note, usageEl);
 
-  aside.append(resizer(), head, notice, log, box, foot);
+  aside.append(head, notice, log, box, foot);
   // 滑鼠移進來時更新選取的字數；內容沒變不重畫（重畫會讓剛好按下去的標籤按鈕失效）。
   aside.addEventListener("pointerenter", () => {
     if (chipsKey() !== shownChips) renderChips();
@@ -966,9 +919,9 @@ function build(): HTMLElement {
     e.stopPropagation();
     changeAssistantFont(delta);
   });
-  // 窄視窗時助理蓋在文件上：Esc 收起。
+  // 視窗不夠寬時右側欄是蓋在文件上的抽屜：Esc 收起。
   aside.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !e.defaultPrevented && window.matchMedia("(max-width: 900px)").matches) {
+    if (e.key === "Escape" && !e.defaultPrevented && drawerQuery.matches) {
       e.preventDefault();
       toggleAssistant(false);
     }
@@ -977,43 +930,42 @@ function build(): HTMLElement {
 }
 
 /**
- * 右上角的助理欄開關（index.html 的 #topbar-assistant）：設定開了助理才顯示；助理開著時這一塊和助理欄同寬，
- * 視窗按鈕在它右邊。圖示和左邊側邊欄、右側欄的開關同一套（開著時塗滿）。
+ * 助理的面板（右側欄的一頁，app/right-tabs.ts 放進右側欄並控制顯示）。`create` 為 false 時只回傳已經建好的，
+ * 還沒建就是 null：第一次要顯示時才建立。
  */
-function renderTopbarToggle(): void {
-  const box = document.getElementById("topbar-assistant");
-  const btn = box?.querySelector<HTMLButtonElement>("button");
-  if (!box || !btn) return;
-  const open = assistantOpen();
-  box.hidden = !assistantEnabled();
-  document.querySelector(".topbar")?.classList.toggle("with-assistant", open && !box.hidden);
-  if (btn.getAttribute("aria-pressed") !== String(open)) {
-    btn.setAttribute("aria-pressed", String(open));
-    btn.replaceChildren(icon(open ? "panel-right-on" : "panel-right"));
-  }
-}
-
-export function toggleAssistant(open = !assistantOpen()): void {
-  if (!desktop) return;
-  if (!panel) {
-    const saved = Number(storage.load(WIDTH_KEY));
-    if (saved) applyWidth(saved);
+export function assistantPanel(create: true): HTMLElement;
+export function assistantPanel(create: boolean): HTMLElement | null;
+export function assistantPanel(create: boolean): HTMLElement | null {
+  if (!panel && create && desktop) {
     panel = build();
     applyFont();
-    // 自己一欄：從最上面（和分頁列同高）到狀態列上面，分頁列只到編輯區為止。
-    document.body.append(panel);
     setRunning(false);
   }
-  panel.hidden = !open;
-  document.body.classList.toggle("assistant-open", open);
-  renderTopbarToggle();
-  storage.save(OPEN_KEY, open ? "1" : "");
-  if (!open) return app.editor.view.focus();
+  return panel;
+}
+
+/** 助理這一頁顯示出來了（切到這頁、打開右側欄）：更新內容，游標放進輸入框。 */
+export function assistantShown(): void {
+  if (!panel) return;
   renderModel();
   renderChips();
   renderNotice();
   void refreshStatus();
   input.focus();
+}
+
+/** 打開（右側欄切到「助理」，收著就打開）或關閉（切到右側欄的別頁；沒有別頁就收起右側欄）。 */
+export function toggleAssistant(open = !assistantOpen()): void {
+  if (!desktop || !assistantEnabled()) return;
+  if (open) {
+    if (!app.rightOutlineShown) setRightOutline(true);
+    selectRightTab("assistant");
+    return;
+  }
+  const other = availableRightTabs().find((tab) => tab !== "assistant");
+  if (other && !drawerQuery.matches) selectRightTab(other);
+  else setRightOutline(false);
+  app.editor.view.focus();
 }
 
 /** 常用動作（指令面板用）：打開側欄並執行。 */
@@ -1035,17 +987,14 @@ export function initAssistant(): void {
     clearTimeout(timer);
     timer = window.setTimeout(() => (renderChips(), renderNotice()), 200);
   });
-  app.settings.subscribe((s, changed) => {
+  app.settings.subscribe((_s, changed) => {
     if (!panel) return;
     if (changed.includes("claudeModel")) renderModel();
     if (changed.includes("assistantFontSize")) applyFont();
     if (changed.some((k) => k === "claudeApiEnabled" || k === "assistantProjects" || k === "claudeMonthlyLimit")) void refreshStatus();
-    // 關掉總開關時收起側欄；開關改了，右上角的開關跟著顯示或藏起來。
-    if (changed.includes("claudeApiEnabled") && !s.claudeApiEnabled) toggleAssistant(false);
-    if (changed.includes("claudeApiEnabled")) renderTopbarToggle();
+    // 開關改了：右側欄的分頁跟著出現或消失（關掉時正在看助理的話，右側欄會換到別頁或收起）。
+    if (changed.includes("claudeApiEnabled")) app.applyLayout();
   });
-  renderTopbarToggle();
-  if (storage.load(OPEN_KEY) === "1" && assistantEnabled()) toggleAssistant(true);
 }
 
 /** 指令面板的「助理：自訂動作…」：打開助理和「更多」選單。 */
