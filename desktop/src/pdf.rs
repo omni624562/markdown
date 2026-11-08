@@ -33,13 +33,15 @@ pub struct PageLayout {
 pub async fn pick_pdf_path(
     window: Window,
     suggested_name: String,
+    directory: Option<String>,
     target: State<'_, PdfTarget>,
 ) -> Result<Option<String>, String> {
-    let picked = rfd::AsyncFileDialog::new()
+    let dialog = rfd::AsyncFileDialog::new()
         .set_parent(&window)
         .set_title(tr!("匯出 PDF"))
         .set_file_name(&suggested_name)
-        .add_filter(tr!("PDF 文件"), &["pdf"])
+        .add_filter(tr!("PDF 文件"), &["pdf"]);
+    let picked = crate::files::start_in(dialog, directory)
         .save_file()
         .await
         .map(|h| h.path().to_path_buf());

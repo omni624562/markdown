@@ -4,7 +4,7 @@
 import { render as renderMarkdown, formatJson, formatAllTables, spacingPositions } from "../../pkg/md_wasm.js";
 import { Commands, type Command, fuzzyScore } from "../commands.ts";
 import { desktop, displayPath, isRemote } from "../desktop.ts";
-import { openFile, stem, replaceExtension, download } from "../files.ts";
+import { openFile, stem, download } from "../files.ts";
 import { insertBlock, toggleWrap, insertLink, clearInlineFormat, toggleLineStyle } from "../format.ts";
 import { t } from "../i18n.ts";
 import { KINDS, type DocKind } from "../kinds.ts";
@@ -36,6 +36,7 @@ import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
 import { docName } from "./doc-names.ts";
+import { exportName } from "./export-target.ts";
 import { reportIssue } from "./version-info.ts";
 import type { Doc } from "../main.ts";
 import { cometSetupAvailable, isCometProject, openCometProjectSetup } from "./comet-project.ts";
@@ -569,7 +570,7 @@ export function initCommands(): void {
       icon: "download",
       async run() {
         const html = await app.preview.exportDocument(app.editor.text, app.cur.kind, stem(app.cur.fileName));
-        const name = replaceExtension(app.cur.fileName, ".html");
+        const name = exportName(".html");
         if ((await download(name, html, "text/html")) && desktop) toast(t("已匯出「{name}」", { name }), { tone: "success" });
       },
     },

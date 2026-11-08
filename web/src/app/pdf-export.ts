@@ -12,6 +12,7 @@ import * as storage from "../storage.ts";
 import { askPdfOptions } from "../ui/pdf-dialog.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { defaultSaveDir, exportName } from "./export-target.ts";
 
 
 /**
@@ -56,7 +57,7 @@ export async function exportPdf(printer = false): Promise<void> {
   const { header: _header, ...remember } = opts;
   storage.save("pdf-options", JSON.stringify(remember));
   if (direct) {
-    const path = await desktop!.pickPdfPath(`${stem(app.cur.fileName)}.pdf`);
+    const path = await desktop!.pickPdfPath(exportName(".pdf"), defaultSaveDir());
     if (!path) return;
     const cleanup = await preparePrint(opts, title);
     try {

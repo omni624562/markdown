@@ -48,6 +48,7 @@ import { initChatGpt } from "./chatgpt.ts";
 import { initTableCopy } from "./table-copy.ts";
 import { initAssistant } from "./assistant.ts";
 import { app } from "./context.ts";
+import { exportName } from "./export-target.ts";
 
 
 /** 面板圖示的名稱（aria-label 會加上變更數，這裡用固定的名稱）。 */
@@ -626,7 +627,7 @@ export async function exportDocx(): Promise<void> {
     const blob = await htmlToDocx(renderMarkdown(app.editor.text, { kind: "markdown" }).html, { title, image });
     bytes = new Uint8Array(await blob.arrayBuffer());
   }
-  const name = replaceExtension(app.cur.fileName, ".docx");
+  const name = exportName(".docx");
   const saved = await downloadBytes(
     name,
     bytes,

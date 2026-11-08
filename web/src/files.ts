@@ -35,6 +35,18 @@ export interface OpenedFile {
   encoding?: string;
 }
 
+/** 桌面版另存新檔、匯出對話框一開始顯示的資料夾（app/export-target.ts 設定）；null 時交給系統。 */
+let saveDirectory: () => string | null = () => null;
+
+export function setSaveDirectory(fn: () => string | null): void {
+  saveDirectory = fn;
+}
+
+/** 目前的另存新檔、匯出對話框起始資料夾。 */
+export function startDirectory(): string | null {
+  return saveDirectory();
+}
+
 /**
  * 網頁版（File System Access API）：記下每個檔案最後一次讀寫時的修改時間，
  * 存檔前比對，就能知道檔案是否被別的程式改過。桌面版由 Rust 端以內容雜湊判斷。
@@ -134,6 +146,7 @@ export async function saveFile(
       filterName: info.label,
       extensions: Object.values(info.accept).flat(),
       force,
+      directory: saveDirectory(),
     });
     if (out.status === "cancelled") return null;
     if (out.status === "conflict") return { status: "conflict", name: out.name, diskText: out.diskText };
@@ -180,6 +193,7 @@ export async function download(filename: string, content: string, type: string):
       text: content,
       filterName: ext.slice(1).toUpperCase(),
       extensions: [ext],
+      directory: saveDirectory(),
     });
     return saved.status === "saved";
   }
@@ -207,7 +221,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
 export async function downloadBytes(filename: string, bytes: Uint8Array, type: string, filterName: string): Promise<string | null> {
   if (desktop) {
     const ext = filename.slice(filename.lastIndexOf("."));
-    return desktop.exportBinary(filename, bytesToBase64(bytes), filterName, [ext]);
+    return desktop.exportBinary(filename, bytesToBase64(bytes), filterName, [ext], saveDirectory());
   }
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
   const a = document.createElement("a");
