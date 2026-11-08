@@ -177,6 +177,31 @@ export function conversation(history: AssistantMessage[], content: string): Assi
   return [...history, { role: "user", content }];
 }
 
+/** 存成筆記用的一問一答（問題是畫面上顯示的文字：動作名稱或使用者打的問題）。 */
+export interface TranscriptItem {
+  question: string;
+  answer: string;
+}
+
+function stamp(d: Date): { day: string; time: string } {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return { day: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, time: `${p(d.getHours())}${p(d.getMinutes())}` };
+}
+
+/** 筆記的檔名：`助理對話 2026-11-08 1430.md`。 */
+export function noteName(d: Date): string {
+  const { day, time } = stamp(d);
+  return t("助理對話 {day} {time}.md", { day, time });
+}
+
+/** 對話存成 Markdown：標題、日期與文件，接著每一輪的問題（引言）和回答。 */
+export function transcriptMarkdown(items: readonly TranscriptItem[], d: Date, docName: string | null): string {
+  const { day, time } = stamp(d);
+  const head = ["# " + t("助理對話"), "", `${day} ${time.slice(0, 2)}:${time.slice(2)}${docName ? ` · ${docName}` : ""}`];
+  const body = items.flatMap((it) => ["", "---", "", ...it.question.trim().split("\n").map((l) => `> ${l}`), "", it.answer.trim()]);
+  return `${[...head, ...body].join("\n")}\n`;
+}
+
 /** 每百萬 token 的價格（美元），和原生端相同，只用來在送出前估計。 */
 const PRICES: Record<ClaudeModel, { input: number; output: number }> = {
   "claude-haiku-5-5": { input: 0.1, output: 0.5 },

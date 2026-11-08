@@ -4,6 +4,8 @@ import {
   ASSISTANT_ACTIONS,
   conversation,
   customActions,
+  noteName,
+  transcriptMarkdown,
   estimateUsd,
   formatUsd,
   insertPadding,
@@ -95,5 +97,22 @@ test("自訂動作：取代選取文字的才需要先選取，代號依順序",
       ["custom-0", "會議紀錄", "整理成會議紀錄", "insert", false, "custom"],
       ["custom-1", "改成英文", "翻成英文", "replace", true, "custom"],
     ],
+  );
+});
+
+test("對話存成筆記：檔名有日期時間，問題用引言，回答照原樣", () => {
+  const d = new Date(2026, 10, 8, 9, 5);
+  assert.equal(noteName(d), "助理對話 2026-11-08 0905.md");
+  const md = transcriptMarkdown(
+    [
+      { question: "這份文件在講什麼？\n請簡短", answer: "在講 **NAS 備份**。" },
+      { question: "摘要", answer: "- 兩份備份\n- 每晚自動" },
+    ],
+    d,
+    "NAS 備份規劃",
+  );
+  assert.equal(
+    md,
+    "# 助理對話\n\n2026-11-08 09:05 · NAS 備份規劃\n\n---\n\n> 這份文件在講什麼？\n> 請簡短\n\n在講 **NAS 備份**。\n\n---\n\n> 摘要\n\n- 兩份備份\n- 每晚自動\n",
   );
 });

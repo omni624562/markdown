@@ -283,3 +283,43 @@ test("自訂動作：設定頁新增，出現在「更多」選單的「自訂�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("存成筆記：對話之後按標題列的按鈕，在專案裡建立一份筆記並存檔", async () => {
+  const d = desktop({ ...ON, assistantConfirmed: [ROOT] });
+  Object.assign(d, {
+    create_entry: { $by: "parent", values: { [ROOT]: `${ROOT}\\助理對話.md` } },
+    reopen_file: { path: `${ROOT}\\助理對話.md`, name: "助理對話.md", text: "", encoding: "utf-8" },
+    save_file: { status: "saved", path: `${ROOT}\\助理對話.md`, name: "助理對話.md" },
+  });
+  const { page, context, errors } = await open({ desktop: d });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await setText(page, "NAS 備份規劃");
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  const save = panel.getByRole("button", { name: "存成筆記" });
+  assert.equal(await save.isDisabled(), true, "還沒有對話時不能按");
+  await panel.locator("textarea").fill("這份文件在講什麼？");
+  await panel.locator("textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  await reply(page, "在講 **NAS 備份**。");
+  await panel.locator(".assistant-tools").waitFor();
+  assert.equal(await save.isDisabled(), false);
+  await save.click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "save_file"));
+  const all = await calls(page);
+  const created = all.find((c) => c.cmd === "create_entry").args;
+  assert.equal(created.parent, ROOT);
+  assert.match(created.name, /^助理對話 \d{4}-\d{2}-\d{2} \d{4}\.md$/);
+  const saved = all.find((c) => c.cmd === "save_file").args;
+  assert.match(saved.text, /^# 助理對話\n\n\d{4}-\d{2}-\d{2} \d{2}:\d{2} · /);
+  assert.match(saved.text, /\n> 這份文件在講什麼？\n\n在講 \*\*NAS 備份\*\*。\n$/);
+  // 新對話後清空，又不能按了。
+  await panel.getByRole("button", { name: "新對話" }).click();
+  assert.equal(await save.isDisabled(), true);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
