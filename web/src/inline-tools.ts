@@ -86,6 +86,15 @@ export const focusTracking: Extension = [
   ),
 ];
 
+/**
+ * 立刻把編輯器的焦點記進狀態（`focusTracking` 平常要等一下才記）。先把焦點放回編輯器、馬上要改內容時用：
+ * 不然即時預覽會以為編輯器沒有焦點，把游標所在的表格等區塊畫成元件，焦點記上之前打的字會不見。
+ */
+export function syncFocusNow(view: EditorView): void {
+  const field = view.state.field(interaction, false);
+  if (field && field.focused !== view.hasFocus) view.dispatch({ effects: setFocus.of(view.hasFocus) });
+}
+
 /** 編輯器是否有焦點（需要 focusTracking；沒有時當作有焦點）。 */
 export function editorFocused(state: EditorState): boolean {
   return state.field(interaction, false)?.focused ?? true;
