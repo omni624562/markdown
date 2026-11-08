@@ -34,7 +34,7 @@ const boxes = (page) =>
       editor: box(".editor-pane"),
       preview: box(".preview-pane"),
       right: box(".outline-right"),
-      rightHead: box(".outline-right .side-head"),
+      rightHead: box(".outline-right > :not([hidden])"),
       leftResizer: box(".sidebar-resizer.left"),
       rightResizer: box(".sidebar-resizer.right"),
       radius: getComputedStyle(document.querySelector(".sidebar")).borderBottomLeftRadius,
@@ -84,7 +84,7 @@ test("預設圓角區塊；改成相連時側邊欄、內文、右側欄之間�
   assert.deepEqual([b.topSide.left, b.topSide.right], [b.sidebar.left, b.sidebar.right], s);
   assert.deepEqual([b.topActions.left, b.topActions.right], [b.right.left, b.right.right], s);
   assert.equal(b.radius, "8px");
-  // 分頁列底下的線（分頁列最後一列）和右側欄第一個分區標題列上緣的線在同一條水平線上。
+  // 分頁列底下的線（分頁列最後一列）和右側欄第一列（右側欄自己的分頁列）上緣的線在同一條水平線上。
   assert.equal(b.rightHead.top, b.tabBar.bottom - 1, s);
   // 調整寬度的把手在間隔的正中間。
   const mid = (r) => (r.left + r.right) / 2;

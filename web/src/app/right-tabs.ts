@@ -1,7 +1,7 @@
 /**
  * 右側欄的分頁：大綱、反向連結、Wiki、助理放在同一欄（`aside#outline-right`），一次顯示一頁。
- * 分頁列在寬視窗時放進頂端列右上角那一塊（`.top-actions`，開關的左邊），和左邊「面板標題列在左上角那塊」對稱；
- * 視窗不夠寬時右側欄是蓋在文件上的抽屜（只有助理會這樣開），分頁列在抽屜最上面；右側欄收起時分頁列也藏起來（只剩開關）。
+ * 分頁列是右側欄自己的第一列（和 VSCode 的右側欄一樣），不放在頂端列：頂端列右上角只留開關和視窗按鈕，
+ * 分頁再多、右側欄再窄也不會被視窗按鈕擠掉。視窗不夠寬時右側欄是蓋在文件上的抽屜，分頁列一樣在最上面。
  * 哪些分頁有：大綱與反向連結（設定「大綱放在右邊」）、Wiki（Wiki 放在右側、連上 Azure DevOps）、
  * 助理（設定開了 Claude API 助理）；選了哪一頁記住。
  */
@@ -11,7 +11,7 @@ import * as storage from "../storage.ts";
 import { assistantEnabled, assistantPanel, assistantShown } from "./assistant.ts";
 import { app } from "./context.ts";
 import { wikiPanel } from "./work-items-panel.ts";
-import { drawerQuery, outlinePlacedRight, renderBacklinks, rightColumnOn, wikiPlacedRight } from "./workspace-ui.ts";
+import { outlinePlacedRight, renderBacklinks, wikiPlacedRight } from "./workspace-ui.ts";
 
 const TAB_KEY = "right-tab";
 const WIDTH_KEY = "outline-right-width";
@@ -159,15 +159,8 @@ export function syncRightTabs(): void {
   if (assistant && assistant.parentElement !== right) right.append(assistant);
 
   strip ??= buildStrip();
-  const drawer = drawerQuery.matches;
-  if (drawer) {
-    if (right.firstElementChild !== strip) right.prepend(strip);
-  } else {
-    const host = app.$(".top-actions");
-    const toggle = host.querySelector("[data-command='toggle-outline-right']");
-    if (strip.parentElement !== host || strip.nextElementSibling !== toggle) host.insertBefore(strip, toggle);
-  }
-  strip.hidden = !available.length || (!drawer && !rightColumnOn());
+  if (right.firstElementChild !== strip) right.prepend(strip);
+  strip.hidden = !available.length;
   for (const [id, b] of buttons) {
     b.hidden = !available.includes(id);
     b.setAttribute("aria-selected", String(id === current));

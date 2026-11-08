@@ -206,9 +206,9 @@ kbd {
 .top-actions .btn.icon-only:hover { color: var(--fg); }
 .top-actions .btn.icon-only[aria-pressed="true"] { background: transparent; color: var(--fg); }
 .top-actions .btn.icon-only[aria-pressed="true"]:hover { background: var(--surface); }
-/* 右上角那一塊的開關永遠在最右邊（分頁列在它左邊）。 */
+/* 右上角那一塊的開關永遠在最右邊（緊鄰視窗按鈕）。 */
 .top-actions > [data-command="toggle-outline-right"] { margin-left: auto; }
-/* 右側欄的分頁列（app/right-tabs.ts）：寬視窗時放在右上角那一塊、開關的左邊；窄視窗時在抽屜最上面。 */
+/* 右側欄的分頁列（app/right-tabs.ts）：右側欄自己的第一列（寬視窗、抽屜都一樣）。 */
 .right-tabs { display: flex; flex: 1 1 auto; gap: 2px; align-items: center; min-width: 0; overflow: hidden; }
 .right-tabs[hidden] { display: none; }
 .right-tab { display: inline-flex; flex: 0 1 auto; gap: 5px; align-items: center; min-width: 0; height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; white-space: nowrap; cursor: pointer; }

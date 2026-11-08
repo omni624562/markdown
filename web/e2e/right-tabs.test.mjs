@@ -1,6 +1,6 @@
 /**
- * 右側欄的分頁（app/right-tabs.ts）：大綱、反向連結、Wiki（、助理）放在同一欄，一次顯示一頁；分頁列在右上角那一塊、
- * 收起右側欄的開關左邊。選了哪一頁記住；Wiki 在右側時圖示列不顯示 Wiki，「Azure DevOps：Wiki」指令切到 Wiki 那一頁。
+ * 右側欄的分頁（app/right-tabs.ts）：大綱、反向連結、Wiki（、助理）放在同一欄，一次顯示一頁；分頁列是右側欄自己的第一列
+ * （頂端列右上角只有開關）。選了哪一頁記住；Wiki 在右側時圖示列不顯示 Wiki，「Azure DevOps：Wiki」指令切到 Wiki 那一頁。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -56,13 +56,13 @@ async function setup({ outlineRight = true, wikiRight = true, panelStyle } = {})
   return opened;
 }
 
-const tab = (page, id) => page.locator(`.top-actions .right-tab[data-tab="${id}"]`);
+const tab = (page, id) => page.locator(`#outline-right .right-tab[data-tab="${id}"]`);
 const selected = async (page, id) => (await tab(page, id).getAttribute("aria-selected")) === "true";
-const shownTabs = (page) => page.locator(".top-actions .right-tab:not([hidden]) .right-tab-label").allTextContents();
+const shownTabs = (page) => page.locator("#outline-right .right-tab:not([hidden]) .right-tab-label").allTextContents();
 
-test("分頁列在右上角：大綱、反向連結（有數字）、Wiki；一次顯示一頁，點一下切換，重新載入後還記得；左右鍵切換", async () => {
+test("分頁列在右側欄最上面：大綱、反向連結（有數字）、Wiki；一次顯示一頁，點一下切換，重新載入後還記得；左右鍵切換", async () => {
   const { page, context, errors } = await setup();
-  await page.locator('.top-actions .right-tab[data-tab="backlinks"] .right-tab-badge', { hasText: "2" }).waitFor();
+  await page.locator('#outline-right .right-tab[data-tab="backlinks"] .right-tab-badge', { hasText: "2" }).waitFor();
   assert.deepEqual(await shownTabs(page), ["大綱", "反向連結", "Wiki"]);
   assert.equal(await selected(page, "outline"), true, "預設是大綱");
   assert.equal(await page.locator("#outline-right #panel-outline").isVisible(), true);
@@ -100,10 +100,10 @@ test("Wiki 在右側欄：圖示列不顯示 Wiki；看著別頁時用「Azure D
   await runCommand(page, "Azure DevOps：Wiki");
   assert.equal(await selected(page, "wiki"), true);
   assert.equal(await page.locator("#outline-right").isVisible(), true);
-  // 收起右側欄：右上角只剩開關，分頁列藏起來；再打開回到 Wiki。
+  // 收起右側欄：分頁列跟著藏起來，右上角只剩開關；再打開回到 Wiki。
   await page.keyboard.press("Control+Alt+B");
   await page.locator("#outline-right").waitFor({ state: "hidden" });
-  assert.equal(await page.locator(".top-actions .right-tabs").isVisible(), false);
+  assert.equal(await page.locator("#outline-right .right-tabs").isVisible(), false);
   assert.equal(await page.locator('.top-actions [data-command="toggle-outline-right"]').isVisible(), true);
   await page.keyboard.press("Control+Alt+B");
   await page.locator("#outline-right:not([hidden])").waitFor();

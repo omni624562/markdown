@@ -1,5 +1,6 @@
 /**
- * 右側欄的分頁列與 Windows 的視窗按鈕：右側欄開著時頂端列橫跨整個視窗，右上角那塊（分頁列＋開關）和右側欄同寬、同底色，
+ * 右側欄的分頁列與 Windows 的視窗按鈕：右側欄開著時頂端列橫跨整個視窗，右上角那塊（開關＋視窗按鈕）和右側欄同寬、同底色，
+ * 分頁列是右側欄自己的第一列（不在頂端列，右側欄再窄也不會被視窗按鈕擠掉），
  * 視窗按鈕貼在視窗右上角；右側欄收起時那塊縮成只剩開關；視窗不夠寬時助理是抽屜，開關排在 ☰ 左邊。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -36,7 +37,7 @@ const geometry = (page) =>
       close: box(".window-close"),
       corner: document.elementFromPoint(innerWidth - 1, 1) === close,
       actions: box(".top-actions"),
-      tabs: box(".top-actions .right-tabs"),
+      tabs: box("#outline-right > .right-tabs"),
       right: box("#outline-right"),
       panel: box("#assistant-panel"),
       topbar: box(".topbar"),
@@ -60,7 +61,7 @@ async function start(page) {
 
 const toggle = (page) => page.locator(".top-actions [data-command='toggle-outline-right']");
 
-test("寬視窗：助理開著時右上角那塊（分頁列＋開關）和右側欄同寬、同底色，視窗按鈕在右上角；收起後縮成開關，視窗按鈕還在右上角", async () => {
+test("寬視窗：助理開著時右上角那塊（開關＋視窗按鈕）和右側欄同寬，分頁列在右側欄最上面、同底色，視窗按鈕在右上角；收起後縮成開關，視窗按鈕還在右上角", async () => {
   const { page, context, errors } = await open({ desktop: desktop() });
   await start(page);
   // 只有助理一個分頁、還沒打開過：右側欄收著，右上角只有開關。
@@ -76,8 +77,9 @@ test("寬視窗：助理開著時右上角那塊（分頁列＋開關）和右�
   assert.equal(g.controlsBg, g.rightBg, "視窗按鈕也是同一塊");
   assert.ok(g.panel.top >= g.topbar.bottom - 1, "助理從頂端列下面開始");
   assert.ok(g.tabBar.right <= g.right.left, "分頁列只到右側欄左邊為止");
-  assert.equal(g.selected, "assistant", "右上角的分頁列選著「助理」");
-  assert.ok(g.tabs.left >= g.actions.left && g.tabs.right <= g.close.left, "分頁列在那塊裡、視窗按鈕左邊");
+  assert.equal(g.selected, "assistant", "分頁列選著「助理」");
+  assert.ok(g.tabs.top >= g.topbar.bottom - 1 && g.tabs.left >= g.right.left && g.tabs.right <= g.right.right, `分頁列在右側欄裡、頂端列下面：${JSON.stringify([g.tabs, g.right, g.topbar])}`);
+  assert.ok(g.panel.top >= g.tabs.bottom - 1, "助理在分頁列下面");
   // 收起：那塊縮成只剩開關，視窗按鈕還是貼在右上角。
   await toggle(page).click();
   await page.locator("#outline-right").waitFor({ state: "hidden" });
@@ -106,17 +108,21 @@ test("相連樣式、大綱放右邊：分頁列有大綱、反向連結、助�
   const { page, context, errors } = await open({ desktop: desktop({ panelStyle: "joined", outlineRight: true }) });
   await start(page);
   await page.locator("#outline-right:not([hidden]) #panel-outline").waitFor();
-  assert.deepEqual(await page.locator(".top-actions .right-tab:not([hidden]) .right-tab-label").allTextContents(), ["大綱", "反向連結", "助理"]);
-  await page.locator(".top-actions .right-tab[data-tab='assistant']").click();
+  assert.deepEqual(await page.locator("#outline-right .right-tab:not([hidden]) .right-tab-label").allTextContents(), ["大綱", "反向連結", "助理"]);
+  await page.locator("#outline-right .right-tab[data-tab='assistant']").click();
   await page.locator("#outline-right #assistant-panel:not([hidden])").waitFor();
   const g = await geometry(page);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/joined-outline-open.png` });
   assert.equal(g.actions.left, g.right.left, "右上角那塊和右側欄對齊");
+  // 右側欄是最窄的寬度時，三個分頁的名稱都完整顯示（不會被視窗按鈕擠成「大」「反」）。
+  const cut = await page.$$eval("#outline-right .right-tab:not([hidden]) .right-tab-label", (els) => els.filter((e) => e.scrollWidth > e.clientWidth).map((e) => e.textContent));
+  assert.deepEqual(cut, [], "分頁名稱沒有被截掉");
+  assert.ok(g.tabs.right <= g.right.right && g.tabs.top >= g.topbar.bottom - 1, "分頁列在右側欄裡");
   assert.ok(g.panel.left - g.right.left <= 1, `助理在右側欄裡（右側欄左邊有一條線）：${g.panel.left} / ${g.right.left}`);
   assert.equal(await page.locator("#outline-right #panel-outline").isVisible(), false, "大綱那一頁藏起來");
   assert.equal(g.corner, true);
   // 切回大綱：助理藏起來，右側欄寬度不變（兩頁共用）。
-  await page.locator(".top-actions .right-tab[data-tab='outline']").click();
+  await page.locator("#outline-right .right-tab[data-tab='outline']").click();
   assert.equal(await page.locator("#outline-right #assistant-panel").isVisible(), false);
   assert.equal(await page.locator("#outline-right #panel-outline").isVisible(), true);
   assert.deepEqual(errors, []);
