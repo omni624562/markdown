@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { TEXT_EXTENSIONS, isTextFileName, notTextReason } from "./kinds.ts";
+import { IMAGE_EXTENSIONS, TEXT_EXTENSIONS, isImageName, isTextFileName, notTextReason } from "./kinds.ts";
 
 test("網頁版與桌面版認得的副檔名一致", () => {
   const rust = readFileSync(new URL("../../desktop/src/workspace.rs", import.meta.url), "utf8");
@@ -26,4 +26,15 @@ test("內容有 NUL 或是 PDF 時不當成文字", () => {
   assert.ok(notTextReason("\x89PNG\r\n\x1a\n\0\0\0\rIHDR"));
   assert.ok(notTextReason("%PDF-1.7\n"));
   assert.ok(notTextReason("a\0b\0")?.includes("UTF-16"));
+});
+
+test("網頁版與桌面版認得的圖片副檔名一致", () => {
+  const rust = readFileSync(new URL("../../desktop/src/images.rs", import.meta.url), "utf8");
+  const block = rust.match(/pub\(crate\) const ALLOWED: &\[&str\] = &\[([\s\S]*?)\];/)?.[1] ?? "";
+  const fromRust = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(fromRust.length >= 5);
+  assert.deepEqual([...IMAGE_EXTENSIONS].sort(), fromRust.sort());
+  assert.ok(isImageName("王小明.PNG"));
+  assert.ok(!isImageName("筆記.md"));
+  assert.ok(!isImageName("png"));
 });

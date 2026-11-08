@@ -55,7 +55,7 @@ export interface ClosedItem {
   ref: ItemShortcut | null;
 }
 
-const ORIGIN_ICONS: Record<string, string> = { ado: "square-kanban", wiki: "book-open-text", github: "circle-dot", repo: "git-branch" };
+const ORIGIN_ICONS: Record<string, string> = { ado: "square-kanban", wiki: "book-open-text", github: "circle-dot", repo: "git-branch", image: "image" };
 
 let seq = 0;
 const newId = () => `item-${Date.now().toString(36)}-${++seq}`;

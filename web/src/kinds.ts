@@ -41,6 +41,15 @@ export function isTextFileName(name: string): boolean {
   return dot > 0 && TEXT_EXTENSIONS.includes(name.slice(dot + 1).toLowerCase());
 }
 
+/** 檔案面板會列出、可以在分頁裡檢視的圖片（和桌面版 desktop/src/images.rs 的 ALLOWED 一致）。 */
+export const IMAGE_EXTENSIONS: readonly string[] = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"];
+
+/** 檔名的副檔名是否在 {@link IMAGE_EXTENSIONS} 裡。 */
+export function isImageName(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && IMAGE_EXTENSIONS.includes(name.slice(dot + 1).toLowerCase());
+}
+
 /** 開檔對話框可選的所有類型。 */
 export const OPEN_ACCEPT = {
   description: t("文件與程式碼"),

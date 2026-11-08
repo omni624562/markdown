@@ -354,6 +354,10 @@ export const ui: Record<string, Translation> = {
   // filetree.ts
   "新名稱": "New name",
   "資料夾名稱": "Folder name",
+  "已插入圖片「{name}」": "Inserted image \"{name}\"",
+  "點一下放大": "Click to enlarge",
+  "{width} × {height} 像素": "{width} × {height} px",
+  "讀不到這張圖片（可能已經被移走，或不在專案資料夾裡）": "Could not load this image (it may have been moved, or it is outside the project folder)",
   "檔案名稱": "File name",
   "無法讀取資料夾：{error}": "Couldn't read the folder: {error}",
   "這個資料夾裡沒有 Markdown、純文字或 JSON 檔案。": "This folder has no Markdown, plain text or JSON files.",
