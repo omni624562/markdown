@@ -835,7 +835,9 @@ function build(): HTMLElement {
   spacer.className = "assistant-spacer";
   saveBtn = headButton(t("存成筆記"), "file-down", () => void saveNote());
   saveBtn.disabled = true;
+  // 關閉放最左邊：視窗的關閉鈕在右上角，兩個 ✕ 不相鄰，不會按錯。
   head.append(
+    headButton(t("關閉助理"), "x", () => toggleAssistant(false)),
     title,
     modelBtn,
     spacer,
@@ -843,7 +845,6 @@ function build(): HTMLElement {
     headButton(t("放大助理的字（Ctrl+=）"), "a-arrow-up", () => changeAssistantFont(1)),
     saveBtn,
     headButton(t("新對話"), "message-square-plus", newChat),
-    headButton(t("關閉助理"), "x", () => toggleAssistant(false)),
   );
 
   notice = document.createElement("div");
@@ -975,6 +976,23 @@ function build(): HTMLElement {
   return aside;
 }
 
+/**
+ * 右上角的助理欄開關（index.html 的 #topbar-assistant）：設定開了助理才顯示；助理開著時這一塊和助理欄同寬，
+ * 視窗按鈕在它右邊。圖示和左邊側邊欄、右側欄的開關同一套（開著時塗滿）。
+ */
+function renderTopbarToggle(): void {
+  const box = document.getElementById("topbar-assistant");
+  const btn = box?.querySelector<HTMLButtonElement>("button");
+  if (!box || !btn) return;
+  const open = assistantOpen();
+  box.hidden = !assistantEnabled();
+  document.querySelector(".topbar")?.classList.toggle("with-assistant", open && !box.hidden);
+  if (btn.getAttribute("aria-pressed") !== String(open)) {
+    btn.setAttribute("aria-pressed", String(open));
+    btn.replaceChildren(icon(open ? "panel-right-on" : "panel-right"));
+  }
+}
+
 export function toggleAssistant(open = !assistantOpen()): void {
   if (!desktop) return;
   if (!panel) {
@@ -988,6 +1006,7 @@ export function toggleAssistant(open = !assistantOpen()): void {
   }
   panel.hidden = !open;
   document.body.classList.toggle("assistant-open", open);
+  renderTopbarToggle();
   storage.save(OPEN_KEY, open ? "1" : "");
   if (!open) return app.editor.view.focus();
   renderModel();
@@ -1021,9 +1040,11 @@ export function initAssistant(): void {
     if (changed.includes("claudeModel")) renderModel();
     if (changed.includes("assistantFontSize")) applyFont();
     if (changed.some((k) => k === "claudeApiEnabled" || k === "assistantProjects" || k === "claudeMonthlyLimit")) void refreshStatus();
-    // 關掉總開關時收起側欄。
+    // 關掉總開關時收起側欄；開關改了，右上角的開關跟著顯示或藏起來。
     if (changed.includes("claudeApiEnabled") && !s.claudeApiEnabled) toggleAssistant(false);
+    if (changed.includes("claudeApiEnabled")) renderTopbarToggle();
   });
+  renderTopbarToggle();
   if (storage.load(OPEN_KEY) === "1" && assistantEnabled()) toggleAssistant(true);
 }
 

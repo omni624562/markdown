@@ -202,10 +202,13 @@ kbd {
 .topbar.with-sidebar .topbar-side { display: block; }
 .workspace.narrow.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; margin-left: auto; align-items: center; padding: 0 8px 0 12px; }
-.top-actions .btn.icon-only { color: var(--chrome-icon); }
-.top-actions .btn.icon-only:hover { color: var(--fg); }
-.top-actions .btn.icon-only[aria-pressed="true"] { background: transparent; color: var(--fg); }
-.top-actions .btn.icon-only[aria-pressed="true"]:hover { background: var(--surface); }
+/* 右上角的助理欄開關：和 .top-actions 同一種樣子，排在它右邊；助理開著時和助理欄同寬（見下面的 with-assistant）。 */
+.topbar-assistant { display: flex; flex: none; gap: 4px; align-items: center; padding: 0 4px; }
+.top-actions[hidden] + .topbar-assistant { margin-left: auto; }
+:is(.top-actions, .topbar-assistant) .btn.icon-only { color: var(--chrome-icon); }
+:is(.top-actions, .topbar-assistant) .btn.icon-only:hover { color: var(--fg); }
+:is(.top-actions, .topbar-assistant) .btn.icon-only[aria-pressed="true"] { background: transparent; color: var(--fg); }
+:is(.top-actions, .topbar-assistant) .btn.icon-only[aria-pressed="true"]:hover { background: var(--surface); }
 /*
  * 側邊欄一路到頂（寬視窗）：頂端列左邊那塊（圖示列與側邊欄的正上方）和下面的欄同底色、同一條邊線，
  * 目前面板的標題列（例如檔案面板的專案名稱與按鈕）疊在那塊上（position: fixed，是搬上去，不是多一份），
@@ -215,14 +218,15 @@ kbd {
 @media (min-width: 721px) {
   /* 寬視窗：側邊欄開關在圖示列最上面，頂端列左上角只放主選單。 */
   .topbar > .nav-toggle { display: none; }
-  /* 右上角沒有按鈕時（右側欄開關藏起來）整塊藏起來；Windows 的視窗按鈕和分頁之間用一條線分開。 */
-  .top-actions[hidden] + .window-controls { margin-left: auto; border-left: 1px solid var(--border); }
+  /* 右上角沒有按鈕時（右側欄開關、助理開關都藏起來）整塊藏起來；Windows 的視窗按鈕和分頁之間用一條線分開。 */
+  .topbar:not(:has(> .top-actions:not([hidden]), > .topbar-assistant:not([hidden]))) > .window-controls { margin-left: auto; border-left: 1px solid var(--border); }
   .nav-menu, .topbar.with-sidebar .topbar-side { position: relative; border-right: 1px solid var(--border); background: var(--surface); }
   /* 蓋掉頂端列的底線，和下面的欄接在一起。 */
   .nav-menu::after,
   .topbar.with-sidebar .topbar-side::after,
   .topbar.with-right .top-actions::after,
-  .topbar.with-right .window-controls::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; background: var(--surface); }
+  .topbar.with-assistant .topbar-assistant::after,
+  .topbar:is(.with-right, .with-assistant) .window-controls::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; background: var(--surface); }
   .workspace:not(.narrow):not(.outline-hidden) .sidebar > .side-panel:not([hidden]) > .side-head {
     position: fixed;
     z-index: 30;
@@ -237,10 +241,14 @@ kbd {
   .activity-bar .activity-project { display: none; }
   .tab-bar { margin-right: 12px; }
   .top-actions { position: relative; align-self: stretch; padding: 0 4px 0 8px; border-left: 1px solid var(--border); background: var(--surface); }
-  .top-actions .btn.icon-only:hover, .top-actions .btn.icon-only[aria-pressed="true"]:hover { border-color: transparent; background: var(--active-line); }
+  .topbar-assistant { position: relative; align-self: stretch; padding: 0 4px 0 6px; border-left: 1px solid var(--border); background: var(--surface); }
+  :is(.top-actions, .topbar-assistant) .btn.icon-only:hover, :is(.top-actions, .topbar-assistant) .btn.icon-only[aria-pressed="true"]:hover { border-color: transparent; background: var(--active-line); }
   .window-controls { position: relative; margin-left: 0; background: var(--surface); }
   .topbar.with-right .top-actions { box-sizing: border-box; width: var(--outline-right-width); padding-left: 6px; }
-  .custom-titlebar .topbar.with-right .top-actions { width: calc(var(--outline-right-width) - 3 * 46px); }
+  /* 助理開著時視窗按鈕在助理那塊裡，右側欄那塊不必再扣掉視窗按鈕的寬度。 */
+  .custom-titlebar body:not(.assistant-open) .topbar.with-right .top-actions { width: calc(var(--outline-right-width) - 3 * 46px); }
+  .topbar.with-assistant .topbar-assistant { box-sizing: border-box; width: var(--assistant-width); }
+  .custom-titlebar .topbar.with-assistant .topbar-assistant { width: calc(var(--assistant-width) - 3 * 46px); }
 }
 .segmented {
   display: inline-flex;
@@ -484,7 +492,7 @@ kbd {
     background: var(--backdrop);
   }
   /* 視窗按鈕那段多了右框線（1px），這段扣掉，兩段合起來才和下面的右側欄同寬。 */
-  [data-panel-style="spaced"].custom-titlebar .topbar.with-right .top-actions {
+  [data-panel-style="spaced"].custom-titlebar body:not(.assistant-open) .topbar.with-right .top-actions {
     width: calc(var(--outline-right-width) - var(--panel-gap) - 3 * 46px - 1px);
     border-right: 0;
     border-top-right-radius: 0;
@@ -548,7 +556,7 @@ kbd {
   [data-panel-style="spaced"][data-tab-style="line"] .tab[aria-selected="true"] { box-shadow: inset 0 2px 0 var(--accent); }
   /* 分頁列後面還有東西（右上角的按鈕、視窗按鈕）時，右端交給最後一個。 */
   [data-panel-style="spaced"] .topbar:not(.with-right) .tab-bar:has(~ :not([hidden])) { border-right: 0; border-top-right-radius: 0; }
-  [data-panel-style="spaced"] .topbar:not(.with-right) :is(.top-actions, .window-controls) {
+  [data-panel-style="spaced"] .topbar:not(.with-right) :is(.top-actions, .topbar-assistant, .window-controls) {
     margin-top: var(--panel-gap);
     border: solid var(--panel-line);
     border-width: 1px 0 0;
@@ -556,6 +564,32 @@ kbd {
     box-shadow: inset 0 -1px 0 var(--panel-line);
   }
   [data-panel-style="spaced"] .topbar:not(.with-right) > :last-child { border-right-width: 1px; border-top-right-radius: var(--panel-radius); }
+  /* 助理開著時右上角那塊比照右側欄那塊：和助理欄同寬（扣掉間隔與視窗按鈕）、同底色，兩個上角圓角，視窗按鈕接在右邊。
+     放在上面的通用規則後面，助理開著時以這裡為準。 */
+  [data-panel-style="spaced"] .topbar.with-assistant .topbar-assistant {
+    box-sizing: border-box;
+    width: calc(var(--assistant-width) - var(--panel-gap));
+    margin-top: var(--panel-gap);
+    border: solid var(--panel-line);
+    border-width: 1px 1px 0 1px;
+    border-top-left-radius: var(--panel-radius);
+    border-top-right-radius: var(--panel-radius);
+    background: var(--backdrop);
+    box-shadow: none;
+  }
+  [data-panel-style="spaced"].custom-titlebar .topbar.with-assistant .topbar-assistant {
+    width: calc(var(--assistant-width) - var(--panel-gap) - 3 * 46px - 1px);
+    border-right: 0;
+    border-top-right-radius: 0;
+  }
+  [data-panel-style="spaced"] .topbar.with-assistant .window-controls {
+    margin-top: var(--panel-gap);
+    border: solid var(--panel-line);
+    border-width: 1px 1px 0 0;
+    border-top-right-radius: var(--panel-radius);
+    background: var(--backdrop);
+    box-shadow: none;
+  }
   [data-panel-style="spaced"] .window-close { border-top-right-radius: calc(var(--panel-radius) - 1px); }
   /* 視窗按鈕離視窗邊緣留了間隔：滑到最上面、最右邊（視窗放到最大時）仍然按得到。 */
   [data-panel-style="spaced"] .window-btn { position: relative; }
@@ -1315,8 +1349,9 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   .nav-menu, .nav-toggle { width: 44px; border-right: 0; }
   /* 窄視窗：左上角是側邊欄開關（打開抽屜），主選單在右上角（視窗按鈕前面）；圖示列裡的開關不用。 */
   .topbar > .nav-menu { order: 1; }
-  .topbar:has(> .top-actions[hidden]) > .nav-menu { margin-left: auto; }
-  .topbar > .window-controls { order: 2; }
+  .topbar:has(> .top-actions[hidden]):has(> .topbar-assistant[hidden]) > .nav-menu { margin-left: auto; }
+  /* 助理開關（抽屜）排在 ☰ 左邊；☰ 和視窗按鈕之間一條線隔開，不和關閉鈕相鄰。 */
+  .topbar > .window-controls { order: 2; border-left: 1px solid var(--border); }
   .activity-toggle, .activity-sep { display: none; }
   /* 手機只顯示目前的分頁（用側邊抽屜或 Ctrl+P 切換其他文件）。 */
   .tab-bar .tabs { flex: 1 1 auto; }
@@ -4687,10 +4722,11 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
    分頁列、編輯區、終端機都在左邊那一欄。寬度拖曳左緣調整（--assistant-width）。 ---- */
 :root { --assistant-width: 360px; }
 body.assistant-open { grid-template-columns: minmax(0, 1fr) var(--assistant-width); }
-body.assistant-open > :is(.topbar, .workspace, .terminal-panel) { grid-column: 1; }
-body.assistant-open > .statusbar { grid-column: 1 / -1; }
+body.assistant-open > :is(.workspace, .terminal-panel) { grid-column: 1; }
+/* 頂端列橫跨整個視窗：右上角那塊（.topbar-assistant）在助理欄正上方，Windows 的視窗按鈕才會貼在視窗右上角。 */
+body.assistant-open > :is(.topbar, .statusbar) { grid-column: 1 / -1; }
 .assistant-panel {
-  position: relative; grid-column: 2; grid-row: 1 / 4;
+  position: relative; grid-column: 2; grid-row: 2 / 4;
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0;
   border-left: 1px solid var(--border); background: var(--surface);
@@ -4705,8 +4741,8 @@ body.assistant-open > .statusbar { grid-column: 1 / -1; }
 .assistant-resizer::before { content: ""; position: absolute; top: calc(50% - 16px); left: 2px; width: 3px; height: 32px; border-radius: 2px; background: var(--accent); opacity: 0; transition: opacity 0.15s; }
 .assistant-resizer:is(:hover, :focus-visible)::before { opacity: 0.8; }
 .assistant-resizer:focus-visible { outline: 0; }
-.assistant-head { display: flex; flex: none; gap: 2px; align-items: center; height: 36px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--border); }
-.assistant-head h2 { display: flex; flex: none; gap: 6px; align-items: center; margin: 0 4px 0 0; font-size: 13px; white-space: nowrap; }
+.assistant-head { display: flex; flex: none; gap: 2px; align-items: center; height: 32px; padding: 0 6px 0 4px; border-bottom: 1px solid var(--border); }
+.assistant-head h2 { display: flex; flex: none; gap: 6px; align-items: center; margin: 0 4px 0 2px; font-size: 13px; white-space: nowrap; }
 .assistant-head h2 .icon { width: 15px; height: 15px; color: var(--accent); }
 .assistant-head .btn.icon-only { flex: none; }
 .assistant-spacer { flex: 1; }

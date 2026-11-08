@@ -27,6 +27,11 @@
       <div class="top-actions">
         <button type="button" class="btn icon-only" data-command="toggle-outline-right" aria-pressed="true" hidden><i data-icon="panel-right-close"></i></button>
       </div>
+      <!-- 右上角的助理欄開關（設定開了 Claude API 助理才顯示）：助理開著時這一塊和助理欄同寬、同底色，
+           Windows 的視窗按鈕在它最右邊，永遠貼在視窗右上角（app/assistant.ts 更新狀態）。 -->
+      <div class="topbar-assistant" id="topbar-assistant" hidden>
+        <button type="button" class="btn icon-only" data-command="assistant" aria-pressed="false"><i data-icon="panel-right"></i></button>
+      </div>
     </header>
 
     <main class="workspace" data-view="split">
