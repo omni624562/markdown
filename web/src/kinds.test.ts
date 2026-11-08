@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { TEXT_EXTENSIONS, isPdfName, isTextFileName, notTextReason } from "./kinds.ts";
+import { IMAGE_EXTENSIONS, TEXT_EXTENSIONS, isImageName, isPdfName, isTextFileName, notTextReason } from "./kinds.ts";
 
 test("網頁版與桌面版認得的副檔名一致", () => {
   const rust = readFileSync(new URL("../../desktop/src/workspace.rs", import.meta.url), "utf8");
@@ -33,4 +33,15 @@ test("PDF 依副檔名判斷，不分大小寫", () => {
   assert.ok(isPdfName("C:\\Users\\me\\簡報.PDF"));
   assert.ok(!isPdfName("報告.pdf.md"));
   assert.ok(!isPdfName("pdf"));
+});
+
+test("網頁版與桌面版認得的圖片副檔名一致", () => {
+  const rust = readFileSync(new URL("../../desktop/src/images.rs", import.meta.url), "utf8");
+  const block = rust.match(/pub\(crate\) const ALLOWED: &\[&str\] = &\[([\s\S]*?)\];/)?.[1] ?? "";
+  const fromRust = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(fromRust.length >= 5);
+  assert.deepEqual([...IMAGE_EXTENSIONS].sort(), fromRust.sort());
+  assert.ok(isImageName("王小明.PNG"));
+  assert.ok(!isImageName("筆記.md"));
+  assert.ok(!isImageName("png"));
 });

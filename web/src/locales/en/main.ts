@@ -118,6 +118,7 @@ export const main: Record<string, Translation> = {
   "其他方式": "More Ways to Open",
   "重新連線": "Reconnect",
   "新資料夾": "New Folder",
+  "檔案名稱，例如 會議紀錄.md": "File name, e.g. meeting-notes.md",
   "資料夾「{name}」和裡面所有的檔案": "the folder \"{name}\" and everything in it",
   "「{name}」": "\"{name}\"",
   "已開啟的分頁會保留內容，但有尚未存檔的變更。": "Open tabs keep their content, but some have unsaved changes.",

@@ -78,7 +78,7 @@ jobs:
       # 不用第三方 action（改用 rustup、actions/cache），減少建置流程被竄改的機會。
       - name: 安裝 Rust
         shell: bash
-        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown && rustup default stable
+        run: rustup toolchain install stable --profile minimal --component clippy --target wasm32-unknown-unknown && rustup default stable
       # 快取的鍵只看相依套件：每次發版 Cargo.lock 裡自己的版本號（md-*）都會變，算進去的話每次都對不上，
       # 又要花好幾分鐘重新存一份。
       - name: 相依套件的雜湊
@@ -157,6 +157,11 @@ jobs:
       - name: 測試
         working-directory: desktop
         run: cargo test --locked
+
+      # CLAUDE.md 要求桌面版也要過 clippy（Windows 目標）；根目錄的 workspace 在 ci.yml 檢查，desktop/ 只有這裡。
+      - name: Clippy
+        working-directory: desktop
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: 建置日期
         shell: bash

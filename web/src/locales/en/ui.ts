@@ -354,6 +354,10 @@ export const ui: Record<string, Translation> = {
   // filetree.ts
   "新名稱": "New name",
   "資料夾名稱": "Folder name",
+  "已插入圖片「{name}」": "Inserted image \"{name}\"",
+  "點一下放大": "Click to enlarge",
+  "{width} × {height} 像素": "{width} × {height} px",
+  "讀不到這張圖片（可能已經被移走，或不在專案資料夾裡）": "Could not load this image (it may have been moved, or it is outside the project folder)",
   "已用預設的程式開啟「{name}」": "Opened \"{name}\" with the default app.",
   "遠端資料夾裡的 PDF 要先下載到電腦再開啟": "Download PDFs in a remote folder to this computer before opening them.",
   "檔案名稱": "File name",

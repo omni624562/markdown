@@ -1724,3 +1724,41 @@ fn work_items_carry_hours_when_the_process_has_them() {
     assert!(sets[1].contains(REMAINING) && !sets[1].contains(COMPLETED));
     assert_eq!(sets[3], FIELDS);
 }
+
+#[test]
+fn filter_kinds_merges_projects_in_order_without_duplicates() {
+    let new_state = json!([{"name": "New", "category": "Proposed"}]);
+    let contoso = json!({"value": [
+        {"name": "Bug", "states": new_state},
+        {"name": "Task", "states": new_state},
+        {"name": "Test Case", "states": new_state}
+    ]});
+    let product = json!({"value": [
+        {"name": "Task", "states": new_state},
+        {"name": "Epic", "states": new_state}
+    ]});
+    let (kinds, sets) = filter_kinds(&[("Contoso", contoso), ("產品", product)]);
+    // 兩個專案的類型合在一起：不分大小寫排序、同名只留一個，測試類型不列。
+    assert_eq!(kinds, vec!["Bug", "Epic", "Task"]);
+    let projects: Vec<(&str, &str)> = sets
+        .iter()
+        .map(|s| (s.project.as_str(), s.kind.as_str()))
+        .collect();
+    assert_eq!(
+        projects,
+        vec![
+            ("Contoso", "Bug"),
+            ("Contoso", "Task"),
+            ("產品", "Task"),
+            ("產品", "Epic")
+        ]
+    );
+}
+
+#[test]
+fn comment_api_versions_follow_what_the_server_accepted_last_time() {
+    assert_eq!(comment_versions(None).len(), 2);
+    assert!(comment_versions(None)[0].1);
+    assert_eq!(comment_versions(Some(true)), &[(COMMENTS_API, true)]);
+    assert_eq!(comment_versions(Some(false)), &[(COMMENTS_API_OLD, false)]);
+}

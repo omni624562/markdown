@@ -9,9 +9,11 @@ import { fromDesktop, desktopHandle } from "../files.ts";
 import { t } from "../i18n.ts";
 import { backlinks } from "../links.ts";
 import { dirname, rebase, basename, isInside } from "../paths.ts";
-import { isPdfName } from "../kinds.ts";
+import { isImageName, isPdfName } from "../kinds.ts";
 import { fileLink } from "../file-link.ts";
+import { imageMarkdown } from "../image-markdown.ts";
 import { insertAtCursor } from "./image-paste.ts";
+import { showImage } from "./image-view.ts";
 import { samePath } from "../projects.ts";
 import { draftVersion, loadDraft, loadProjectView, dropDraft, loadSession } from "../session.ts";
 import * as storage from "../storage.ts";
@@ -649,6 +651,8 @@ export async function openRecentFolder(path: string): Promise<void> {
 
 /** 開啟（或切換到）指定路徑的檔案，可再跳到指定的行與欄。 */
 export async function openPath(path: string, line?: number, column?: number): Promise<void> {
+  // 圖片不是文字檔：在唯讀的分頁裡檢視。
+  if (isImageName(path)) return showImage(path);
   // PDF 不在 oMarker 裡顯示：交給系統預設的程式。
   if (isPdfName(path) && desktop) {
     await desktop.openWithDefault(path);
@@ -741,6 +745,20 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
  * 在分頁上改已經存成檔案的文件：和檔案面板一樣，只能改目前開啟的資料夾（本機或遠端）裡的檔案；
  * 不行時說明原因，回傳 false。
  */
+/**
+ * 存檔建立了新檔案（第一次存檔、另存新檔）：原生端的監看把自己存的檔案當成「內容沒變」而不通知，
+ * 檔案樹和待辦、標籤的索引要在這裡自己更新。覆蓋原檔（路徑沒變）不用。
+ */
+export function fileSaved<H extends { path?: string | null } | null>(before: string | null | undefined, handle: H): H {
+  const after = handle?.path;
+  if (after && after !== before) {
+    app.fileListCache = null;
+    refreshIndexPanels(300);
+    void app.fileTree?.refresh([dirname(after)]).catch(reportError);
+  }
+  return handle;
+}
+
 export function canRenameFile(path: string | null): boolean {
   if (desktop && path && app.workspaceRoot && isInside(path, app.workspaceRoot.path)) return true;
   if (!desktop) toast(t("網頁版無法重新命名已經存成檔案的文件；可以用「另存新檔」存成新的名稱。"));
@@ -763,7 +781,8 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
     case "new-file":
     case "new-folder": {
       const isDir = action === "new-folder";
-      let name = await app.fileTree.promptName(entry.path, isDir ? t("新資料夾") : t("未命名.md"), isDir ? "folder" : "file");
+      // 新檔案要自己取名（預設不填「未命名.md」：照著按 Enter 會真的在磁碟上留下一個「未命名.md」）；空白就取消。
+      let name = await app.fileTree.promptName(entry.path, isDir ? t("新資料夾") : "", isDir ? "folder" : "file", undefined, isDir ? "" : t("檔案名稱，例如 會議紀錄.md"));
       if (!name) return;
       if (!isDir && !name.includes(".")) name += ".md";
       const path = await d.createEntry(entry.path, name, isDir);
@@ -818,8 +837,8 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
       toast(t("已複製路徑"));
       break;
     case "insert-link":
-      // 相對於目前文件的 Markdown 連結（沒有文件時是完整路徑）。
-      insertAtCursor(fileLink(entry.path, app.cur.fileHandle?.path));
+      // 相對於目前文件的 Markdown 連結（沒有文件時是完整路徑）；圖片用圖片語法。
+      insertAtCursor((isImageName(entry.name) ? imageMarkdown : fileLink)(entry.path, app.cur.fileHandle?.path));
       toast(t("已插入「{name}」的連結", { name: entry.name }));
       break;
   }

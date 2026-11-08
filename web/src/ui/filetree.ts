@@ -211,7 +211,8 @@ export class FileTree {
   }
 
   /** 在資料夾內顯示一個輸入框，讓使用者輸入新項目名稱。回傳輸入的名稱，取消時為 null。 */
-  async promptName(dir: string, initial: string, kind: "file" | "folder" | "rename", target?: string): Promise<string | null> {
+  /** 在檔案樹裡問名稱：`initial` 是預設填好的名稱（可以是空字串，`placeholder` 是空白時的提示）；空白或 Esc 回傳 null。 */
+  async promptName(dir: string, initial: string, kind: "file" | "folder" | "rename", target?: string, placeholder = ""): Promise<string | null> {
     if (dir !== this.#root?.path && !this.#expanded.has(dir)) {
       this.#expanded.add(dir);
       await this.refresh([dir]);
@@ -220,6 +221,7 @@ export class FileTree {
       const input = document.createElement("input");
       input.className = "tree-input";
       input.value = initial;
+      input.placeholder = placeholder;
       input.setAttribute("aria-label", kind === "rename" ? t("新名稱") : kind === "folder" ? t("資料夾名稱") : t("檔案名稱"));
       let done = false;
       const finish = (value: string | null) => {
