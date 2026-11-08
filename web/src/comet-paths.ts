@@ -3,18 +3,20 @@
  *
  * - `config`：`.comet.json` 與 `.comet/` 裡的設定（例如 Sprint 的資料），由 comet 指令維護。
  * - `generated`：`AGENTS.md`，comet 產生的；重新設定時（例如規則改了）可能被覆蓋。
- * - `spec`：`docs/spec/` 裡的規格文件，人和 AI 都會寫、會改。
+ * - `template`：`docs/spec/templates/` 裡的規格範本，AI 照著它寫規格文件；改壞或改名，之後的規格會跟著走樣或找不到範本。
+ * - `spec`：`docs/spec/` 裡的其他規格文件，人和 AI 都會寫、會改。
  *
  * 路徑一律相對於專案資料夾、用 `/` 分隔；比對不分大小寫（Windows 的檔名不分大小寫）。
  */
 
-export type CometKind = "config" | "generated" | "spec";
+export type CometKind = "config" | "generated" | "template" | "spec";
 
-/** COMET 建立的項目。資料夾以 `/` 結尾。 */
+/** COMET 建立的項目。資料夾以 `/` 結尾；比對時取第一個符合的，所以裡層的資料夾（範本）放在外層（規格）前面。 */
 export const COMET_ITEMS: readonly { path: string; kind: CometKind }[] = [
   { path: ".comet.json", kind: "config" },
   { path: ".comet/", kind: "config" },
   { path: "AGENTS.md", kind: "generated" },
+  { path: "docs/spec/templates/", kind: "template" },
   { path: "docs/spec/", kind: "spec" },
 ];
 
@@ -50,5 +52,7 @@ export function cometKind(rel: string): CometKind | null {
 export function cometAffected(rel: string): string[] {
   const p = norm(rel);
   if (cometKind(p)) return [p];
-  return COMET_ITEMS.filter((i) => inside(i.path, `${p}/`)).map((i) => norm(i.path));
+  const items = COMET_ITEMS.filter((i) => inside(i.path, `${p}/`)).map((i) => i.path);
+  // 已經列了外層的資料夾（docs/spec）時，裡面的項目（docs/spec/templates）不再重複列。
+  return items.filter((i) => !items.some((o) => o !== i && o.endsWith("/") && inside(i, o))).map(norm);
 }

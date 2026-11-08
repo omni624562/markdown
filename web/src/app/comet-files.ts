@@ -1,9 +1,10 @@
 /**
  * COMET 專案裡由 COMET 管理的檔案（哪些檔案見 comet-paths.ts），避免在 oMarker 裡不小心動到：
  *
- * - 檔案面板：COMET 的項目（`.comet.json`、`.comet`、`AGENTS.md`、`docs/spec`）名稱後面標一個「C」。
+ * - 檔案面板：COMET 的項目（`.comet.json`、`.comet`、`AGENTS.md`、`docs/spec`、`docs/spec/templates`）名稱後面標一個「C」。
  * - 編輯器：`.comet.json`、`.comet/` 裡的設定檔與 COMET 產生的 `AGENTS.md` 預設唯讀，上方說明為什麼，
- *   想改時說明閃一下；按「仍要編輯」才能改（只有這個分頁，關掉再開會再鎖上）。`docs/spec/` 的規格照常編輯。
+ *   想改時說明閃一下；按「仍要編輯」才能改（只有這個分頁，關掉再開會再鎖上）。`docs/spec/templates/` 的規格範本也一樣；
+ *   `docs/spec/` 的其他規格照常編輯。
  *   只顯示預覽時編輯器藏起來，預覽上方也放同一段說明。
  *   唯讀只擋在 oMarker 裡打字、貼上、刪除這些手動編輯，不改檔案的屬性：comet 指令、Git、AI 直接改檔案都照常，
  *   檔案被改了也照常重新載入；AI 透過 oMarker 提出的修改（逐段接受）也不擋。
@@ -37,6 +38,7 @@ export function cometKindOf(path: string | null | undefined): CometKind | null {
 const MARK_TITLE: Record<CometKind, () => string> = {
   config: () => t("COMET 的設定檔：由 comet 指令維護，在 oMarker 開啟時預設唯讀"),
   generated: () => t("COMET 產生的檔案：不建議手動修改，在 oMarker 開啟時預設唯讀"),
+  template: () => t("COMET 的規格範本：AI 照著它寫規格，在 oMarker 開啟時預設唯讀"),
   spec: () => t("COMET 的規格文件：你和 AI 都可以編輯"),
 };
 
@@ -72,10 +74,12 @@ interface Guard {
 const retarget = StateEffect.define<string | null>();
 const setLocked = StateEffect.define<boolean>();
 
+/** 預設唯讀、上方有說明的種類：設定檔、COMET 產生的 AGENTS.md、規格範本都不建議手動修改。 */
+const guarded = (kind: CometKind | null) => kind === "config" || kind === "generated" || kind === "template";
+
 function guardFor(path: string | null): Guard {
   const kind = cometKindOf(path);
-  // 設定檔與 COMET 產生的 AGENTS.md 都不建議手動修改：預設唯讀。
-  return { path, kind, locked: kind === "config" || kind === "generated" };
+  return { path, kind, locked: guarded(kind) };
 }
 
 /** 擋下來的手動編輯：打字、貼上、刪除、排版、搬移、復原。外部修改重新載入（input.reload）與逐段接受（input.review）不擋。 */
@@ -95,7 +99,7 @@ const guardField: StateField<Guard> = StateField.define<Guard>({
   },
   provide: (f) => [
     EditorState.readOnly.from(f, (g) => g.locked),
-    showPanel.from(f, (g) => (g.kind === "config" || g.kind === "generated" ? notePanel : null)),
+    showPanel.from(f, (g) => (guarded(g.kind) ? notePanel : null)),
   ],
 });
 
@@ -157,6 +161,10 @@ function fillNote(dom: HTMLElement, g: Guard, unlock: () => void, relock: () => 
     text.textContent = g.locked
       ? t("這是 COMET 產生的檔案，AI 會照著裡面的規則工作，不建議手動修改；重新設定 COMET 時也可能被覆蓋。所以在 oMarker 裡預設唯讀。")
       : t("可以編輯這個 COMET 產生的檔案了。修改前請先提交到 Git 或留個備份；重新設定 COMET 時可能被覆蓋，關掉分頁後再開會再鎖上。");
+  } else if (g.kind === "template") {
+    text.textContent = g.locked
+      ? t("這是 COMET 的規格範本，AI 會照著它寫規格文件，不建議手動修改；改壞或改名，之後的規格可能跟著走樣或找不到範本。所以在 oMarker 裡預設唯讀。")
+      : t("可以編輯這個 COMET 規格範本了。修改前請先提交到 Git 或留個備份；關掉分頁後再開會再鎖上。");
   } else if (g.locked) {
     text.textContent = t("這是 COMET 的設定檔，由 comet 指令維護。手動修改可能讓 COMET 無法正常運作，所以在 oMarker 裡預設唯讀。");
   } else {
@@ -206,7 +214,7 @@ let previewNote: HTMLElement | null = null;
 function showPreviewNote(view: EditorView): void {
   if (!app?.editor || view !== app.editor.view || !view.dom.isConnected) return;
   const g = view.state.field(guardField, false);
-  const shown = !!g && (g.kind === "config" || g.kind === "generated");
+  const shown = !!g && guarded(g.kind);
   if (!shown && !previewNote) return;
   if (!previewNote) {
     previewNote = noteDom();
