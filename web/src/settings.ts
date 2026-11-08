@@ -140,6 +140,8 @@ export interface Settings {
   assistantProjects: string[];
   /** 第一次送出時勾了「以後不用再問」的專案。 */
   assistantConfirmed: string[];
+  /** 允許助理上網查資料（每一題還要按「上網查」才會用；每次搜尋另外計費）。預設關閉。 */
+  claudeWebSearch: boolean;
   /** 助理「更多」選單裡的自訂動作。 */
   assistantActions: AssistantCustomAction[];
   quickActions: QuickAction[];
@@ -227,6 +229,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   assistantProjects: [],
   assistantConfirmed: [],
   assistantActions: [],
+  claudeWebSearch: false,
   mcpServer: true,
   aiTerminal: true,
   markExternalChanges: true,
@@ -338,6 +341,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("markExternalChanges");
   bool("chatgptAcknowledged");
   bool("claudeApiEnabled");
+  bool("claudeWebSearch");
   if ("claudeModel" in input) {
     const m = input.claudeModel;
     if (CLAUDE_MODELS.includes(m as ClaudeModel)) out.claudeModel = m as ClaudeModel;

@@ -234,6 +234,8 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
   };
   const refreshProjects = async () => renderProjects(await d.projects().catch(() => []));
 
+  const web = switchInput(s().claudeWebSearch, (on) => app.settings.update({ claudeWebSearch: on }));
+  web.dataset.key = "claudeWebSearch";
   const custom = customActionsEditor();
   const dependents = document.createElement("div");
   dependents.className = "assistant-dependents";
@@ -241,6 +243,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     row("assistant-key", t("API 金鑰"), t("在 Anthropic Console 建立；費用算在這把金鑰上"), keyBox),
     row("claudeModel", t("預設模型"), t("Haiku 最便宜、Opus 最強；側欄也可以臨時換"), model),
     row("claudeMonthlyLimit", t("每月上限"), t("這個月估計的費用到了上限就停止送出"), limitBox),
+    row("claudeWebSearch", t("允許上網查資料"), t("開啟後助理輸入框上方會有「上網查」，按了的那一題 Claude 才會上網搜尋；每次搜尋約 US$0.01"), web),
     projectsTitle,
     projects,
     projectsHint,
@@ -255,6 +258,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     enabled.checked = s().claudeApiEnabled;
     dependents.classList.toggle("is-off", !s().claudeApiEnabled);
     model.value = s().claudeModel;
+    web.checked = s().claudeWebSearch;
     if (limit !== document.activeElement) limit.value = String(s().claudeMonthlyLimit);
   };
   app.settings.subscribe((_, changed) => {
