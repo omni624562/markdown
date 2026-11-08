@@ -46,11 +46,30 @@ test("指令面板：滑鼠選 4 欄 × 3 列後按一下插入，直接打字�
   await context.close();
 });
 
+test("插入的當下新表格就是原始碼（不是表格元件），插入後馬上打字也會取代第一個欄位名稱", async () => {
+  const { page, context, errors } = await open();
+  await setText(page, "工作分配\n\n");
+  await runCommand(page, "插入表格");
+  await picker(page).waitFor();
+  // 在同一個事件裡點格子、檢查畫面：焦點回到編輯器的狀態要在插入前就記好，即時預覽才不會先畫成表格元件
+  // （元件蓋住游標所在的範圍，焦點記上之前打的字會不見；CI 比較慢時就會遇到）。
+  const widget = await page.evaluate(() => {
+    document.querySelector('.table-picker-cell[data-col="4"][data-row="3"]').click();
+    return !!document.querySelector(".cm-content .cm-lp-table");
+  });
+  assert.equal(widget, false);
+  await page.keyboard.type("項目");
+  assert.deepEqual((await tableRows(page))[0], ["項目", "欄位 2", "欄位 3", "欄位 4"]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("斜線指令：方向鍵調整大小，Enter 插入", async () => {
   const { page, context, errors } = await open();
   await setText(page, "");
   await page.keyboard.type("/表格");
-  await page.locator(".cm-tooltip-autocomplete").waitFor();
+  // 等自動完成選到「表格」再按 Enter（電腦慢時清單還沒依打的字篩好，選到的會是別的指令）。
+  await page.locator('.cm-tooltip-autocomplete li[aria-selected="true"]', { hasText: "表格" }).waitFor();
   await page.keyboard.press("Enter");
   await picker(page).waitFor();
   await page.waitForFunction(() => document.activeElement?.classList.contains("table-picker-grid"));
