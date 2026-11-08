@@ -14,6 +14,8 @@ import {
   MODEL_LABELS,
   conversation,
   customActions,
+  type NoteText,
+  pickNotes,
   type ProjectIndex,
   projectIndex,
   noteName,
@@ -38,7 +40,9 @@ import { icon } from "../ui/icons.ts";
 import { setupMenu } from "../ui/menu.ts";
 import { toast } from "../ui/toast.ts";
 import { openUrl } from "./activity-bar.ts";
-import { indexedDocs, openPath } from "./workspace-ui.ts";
+import { wikiTarget } from "../plugins/doc-links.ts";
+import { openWiki } from "./wiki-links.ts";
+import { indexedDocs, indexedTexts, openPath } from "./workspace-ui.ts";
 import { app } from "./context.ts";
 import { docName as tabName } from "./doc-names.ts";
 
@@ -89,6 +93,8 @@ let saveBtn!: HTMLButtonElement;
 let pending: Pending | null = null;
 let nextId = 1;
 let includeDoc = true;
+/** 問整個專案：送出前從專案裡挑出相關的筆記一起送，回答標出處。 */
+let askProject = false;
 let usage: AssistantUsage | null = null;
 let hasKey = false;
 
@@ -136,7 +142,14 @@ function docName(): string {
 }
 
 /** 這次會送出的內容（標籤，可以拿掉目前的文件）。 */
+/** 標籤列目前顯示的內容（判斷要不要重畫）。 */
+let shownChips = "";
+function chipsKey(): string {
+  return JSON.stringify([includeDoc, includeDoc && docName(), selection().text.length, askProject, !!app.workspaceRoot, attached.length]);
+}
+
 function renderChips(): void {
+  shownChips = chipsKey();
   const items: HTMLElement[] = [];
   const chip = (text: string, iconName: string, remove?: () => void) => {
     const el = document.createElement("span");
@@ -162,6 +175,18 @@ function renderChips(): void {
     add.append(icon("plus"), t("加入目前的文件"));
     add.addEventListener("click", () => ((includeDoc = true), renderChips()));
     items.push(add);
+  }
+  if (app.workspaceRoot) {
+    if (askProject) chip(t("整個專案"), "folder-open", () => ((askProject = false), renderChips()));
+    else {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "assistant-chip assistant-chip-add";
+      add.title = t("從專案裡找相關的筆記一起送出，回答會標出處");
+      add.append(icon("plus"), t("問整個專案"));
+      add.addEventListener("click", () => ((askProject = true), renderChips(), input.focus()));
+      items.push(add);
+    }
   }
   const sel = selection().text;
   if (sel.trim()) chip(t("選取 {n} 字", { n: sel.length }), "text-cursor");
@@ -384,10 +409,25 @@ async function send(question: string, action: AssistantAction | null = null): Pr
       docs.find((d) => d.path && d.path === app.cur.fileHandle?.path)?.rel ?? null,
     );
   }
-  const ctx = { doc: includeDoc ? { name: docName(), text: app.editor.text } : null, selection: sel.text, index };
-  const content = userContent(question, ctx);
   const mode = action?.mode ?? "answer";
-  const system = systemPrompt(mode);
+  // 問整個專案（一般問答才用）：挑出和問題相關的筆記。
+  let notes: NoteText[] | undefined;
+  const project = askProject && mode === "answer";
+  if (project) {
+    const docs = (await indexedDocs().catch(() => [])).filter((d) => d.path !== app.cur.fileHandle?.path);
+    const texts = await indexedTexts(docs).catch(() => []);
+    notes = pickNotes(
+      docs.map((d, i) => ({ rel: d.rel, text: texts[i] ?? "" })).filter((n) => n.text.trim()),
+      question,
+    );
+    if (!notes.length) {
+      toast(t("專案裡沒有可以讀的筆記"));
+      return;
+    }
+  }
+  const ctx = { doc: includeDoc ? { name: docName(), text: app.editor.text } : null, selection: sel.text, index, notes };
+  const content = userContent(question, ctx);
+  const system = systemPrompt(mode, project);
   const model = app.settings.value.claudeModel;
   const images = attached.map(({ mediaType, data }) => ({ mediaType, data }));
   if (!(await confirmFirst(content.length + system.length + images.length * IMAGE_CHARS, model))) return;
@@ -402,6 +442,13 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   }
   attached = [];
   renderChips();
+  if (notes) {
+    const s = document.createElement("small");
+    s.className = "assistant-scope";
+    s.textContent = t("根據專案裡 {n} 篇筆記", { n: notes.length });
+    s.title = notes.map((n) => n.name).join("\n");
+    userBubble.append(s);
+  }
   const answer = bubble("assistant");
   answer.classList.add("loading");
   answer.textContent = t("思考中…");
@@ -652,6 +699,8 @@ function build(): HTMLElement {
     const a = (e.target as HTMLElement).closest("a");
     if (!a) return;
     e.preventDefault();
+    // 出處 [[筆記名稱]]：在編輯器打開那份筆記。
+    if (a.hasAttribute("data-wikilink")) return void openWiki(wikiTarget(a)).catch(() => toast(t("找不到這份筆記"), { tone: "error" }));
     if (/^https?:\/\//.test(a.href)) openUrl(a.href);
   });
 
@@ -746,7 +795,10 @@ function build(): HTMLElement {
   foot.append(note, usageEl);
 
   aside.append(resizer(), head, notice, log, box, foot);
-  aside.addEventListener("pointerenter", renderChips);
+  // 滑鼠移進來時更新選取的字數；內容沒變不重畫（重畫會讓剛好按下去的標籤按鈕失效）。
+  aside.addEventListener("pointerenter", () => {
+    if (chipsKey() !== shownChips) renderChips();
+  });
   // 窄視窗時助理蓋在文件上：Esc 收起。
   aside.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !e.defaultPrevented && window.matchMedia("(max-width: 900px)").matches) {

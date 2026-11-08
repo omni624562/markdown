@@ -4,6 +4,8 @@ import {
   ASSISTANT_ACTIONS,
   conversation,
   customActions,
+  pickNotes,
+  queryTerms,
   projectIndex,
   noteName,
   transcriptMarkdown,
@@ -134,4 +136,23 @@ test("建議連結和標籤：筆記名稱去掉 .md、不列目前的文件；�
   assert.deepEqual([...idx.tags].sort(), ["備份", "家裡", "網路"].sort());
   const content = userContent("建議", { doc: null, selection: "", index: { notes: ["家用網路"], tags: ["網路", "備份"] } });
   assert.equal(content, "<notes>\n家用網路\n</notes>\n\n<tags>\n#網路 #備份\n</tags>\n\n建議");
+});
+
+test("問整個專案：依問題挑出相關的筆記，超過字數上限就不再加", () => {
+  assert.deepEqual(queryTerms("NAS 備份怎麼做"), ["nas", "備份", "份怎", "怎麼", "麼做"]);
+  const notes = [
+    { rel: "家用網路.md", text: "路由器在客廳。" },
+    { rel: "NAS 備份規劃.md", text: "每晚把照片備份到 NAS。備份兩份。" },
+    { rel: "電腦清單.md", text: "桌機一台、NAS 一台。" },
+  ];
+  const picked = pickNotes(notes, "NAS 備份怎麼做");
+  assert.deepEqual(picked.map((n) => n.name), ["NAS 備份規劃", "電腦清單"]);
+  // 一篇都沒對到時照名稱順序全部送（在上限內）。
+  assert.equal(pickNotes(notes, "天氣").length, 3);
+  // 字數上限：第二篇放不下就停；太長的只送前面一段。
+  const small = pickNotes(notes, "NAS 備份", { total: 20, perNote: 10 });
+  assert.deepEqual(small.map((n) => n.text), ["每晚把照片備份到 N\n…"]);
+  assert.match(systemPrompt("answer", true), /\[\[筆記名稱\]\]/);
+  assert.doesNotMatch(systemPrompt("answer"), /<note>/);
+  assert.equal(userContent("問", { doc: null, selection: "", notes: [{ name: "a\"b", text: "內容" }] }), "<note name=\"a'b\">\n內容\n</note>\n\n問");
 });
