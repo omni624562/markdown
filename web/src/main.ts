@@ -89,7 +89,6 @@ import { showShortcuts } from "./app/shortcuts-dialog.ts";
 import { applySettings, onSimplifiedPaste, settingsDialog, initSettingsUi } from "./app/settings-ui.ts";
 import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focusedItem, hideItem, itemTabInfo, itemTabs, reopenItem, selectItem, selectedItemId, setItemPinned, tabOrder } from "./app/item-tabs.ts";
 import { checkWikiNewer, issueSide, issueView, loadWikiLatest, renderWikiBar, renderWikiMine, rerenderIssue, showWikiPage, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
-import type { IssueFact } from "./ui/issue-view.ts";
 import { TERMINAL_KEYS, commands, initCommands } from "./app/commands.ts";
 import { NOT_CONNECTED, canRenameFile, closeProject, davDialog, fileSaved, openPath, openRecentFolder, openRemote, openTag, outlinePlacedRight, renameEntry, rightColumnOn, wikiPlacedRight, panelAvailable, panelUnavailable, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setRightOutline, setWorkspace, showPanel, sshDialog, suggestReconnect, treeAction, uploadFiles, wideQuery, initWorkspaceUi } from "./app/workspace-ui.ts";
 import { createWikiPage, deleteWikiPage, editWikiPage, openRepoFileLink, repoImagesPlugin, saveWikiPage, showIssue, wikiServerEtag } from "./app/ado-files.ts";
@@ -100,6 +99,7 @@ import { openWorkItemById, quickOpen, wikiLinkPages, wikiLinkPicker, workItemIdC
 import { availableRightTabs } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
+import { initStatusView, setIssueFacts } from "./app/status-view.ts";
 import { autoSaveNow, autoSavePending, exclusiveSave, resumeAutoSave, scheduleDiskSave } from "./app/autosave.ts";
 import { forgetOutlineCollapse, initOutlineList, outlineHeadings, renderOutline, toggleOutline } from "./app/outline-list.ts";
 import { workItemChips, workItemChipsPlugin } from "./app/work-item-chips.ts";
@@ -2051,68 +2051,7 @@ let repoFile: Extract<RepoFileLink, { kind: "git" }> | null = null;
 initWikiHistory();
 initWikiEdit();
 
-// ---- 狀態列：開著 Wiki、工作項目、Git 歷史時，顯示正在看什麼，藏起只跟本機文件有關的項目 ----
-
-const statusView = $("#status-view");
-const issuePane = $(".issue-pane:not(.history-pane)");
-/** 正在看的工作項目等內容的摘要（狀態、留言數…），顯示在狀態列右邊。 */
-let issueFacts: IssueFact[] = [];
-
-function setIssueFacts(list: IssueFact[]): void {
-  issueFacts = list;
-  renderStatusView();
-}
-
-function renderStatusView(): void {
-  // 並排顯示時編輯區還在，狀態列照常顯示文件的資訊。
-  const issueOpen = workspace.classList.contains("issue-open") && !workspace.classList.contains("issue-side");
-  const historyOpen = workspace.classList.contains("history-open");
-  const viewing = issueOpen || historyOpen;
-  $(".statusbar").classList.toggle("viewing", viewing);
-  statusView.hidden = !viewing;
-  if (!viewing) return;
-  const source = historyOpen ? "git" : (issuePane.dataset.source ?? "");
-  const names: Record<string, string> = {
-    wiki: "Azure DevOps Wiki",
-    ado: t("Azure DevOps 工作項目"),
-    github: "GitHub Issue",
-    git: t("Git 歷史"),
-  };
-  const label = document.createElement("span");
-  label.className = "status-view-label";
-  label.append(
-    icon(source === "git" ? "git-branch" : "lock"),
-    source === "git" ? names.git : t("{name}・唯讀", { name: names[source] ?? issuePane.dataset.sourceName ?? "" }),
-  );
-  const back = document.createElement("button");
-  back.type = "button";
-  back.className = "status-btn";
-  back.append(icon("arrow-left"), t("回到文件"));
-  back.title = t("回到編輯中的文件（Esc）；工作項目等的分頁留著，點分頁就切換回來");
-  back.addEventListener("click", () => {
-    hideItem();
-    historyView?.close();
-    editor.view.focus();
-  });
-  const facts = document.createElement("span");
-  facts.className = "status-facts";
-  if (issueOpen && !historyOpen) {
-    for (const f of issueFacts) {
-      const item = document.createElement("span");
-      if (f.dot) {
-        const dot = document.createElement("span");
-        dot.className = `ado-state-dot ${f.dot}`;
-        dot.setAttribute("aria-hidden", "true");
-        item.append(dot);
-      }
-      item.append(f.text);
-      if (f.title) item.title = f.title;
-      facts.append(item);
-    }
-  }
-  statusView.replaceChildren(label, back, facts);
-}
-new MutationObserver(renderStatusView).observe(workspace, { attributes: true, attributeFilter: ["class"] });
+initStatusView();
 // 並排顯示時，檢視打開或關閉要重新排版（編輯區讓出右半邊）。
 let issueWasOpen = false;
 new MutationObserver(() => {
@@ -2121,7 +2060,6 @@ new MutationObserver(() => {
   issueWasOpen = open;
   if (issueSide) applyLayout();
 }).observe(workspace, { attributes: true, attributeFilter: ["class"] });
-new MutationObserver(renderStatusView).observe(issuePane, { attributes: true, attributeFilter: ["data-source", "data-source-name"] });
 
 /** 工作項目的篩選條件（記住上次的選擇）。 */
 const workItemFilter: AdoWorkItemFilter = parseWorkItemFilter(storage.load("workitem-filter"));

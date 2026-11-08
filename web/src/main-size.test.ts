@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 /** main.ts 行數的上限。拆出功能、變小之後可以往下調，不要往上加。 */
-const MAX_LINES = 3110;
+const MAX_LINES = 3050;
 
 test("main.ts 不超過行數上限（新功能放在 app/）", () => {
   const lines = readFileSync(new URL("./main.ts", import.meta.url), "utf8").split("\n").length;
