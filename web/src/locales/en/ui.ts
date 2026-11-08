@@ -1101,6 +1101,8 @@ export const ui: Record<string, Translation> = {
   "已儲存 API 金鑰": "API key saved",
   "已套用（可以按 Ctrl+Z 復原）": "Applied (press Ctrl+Z to undo)",
   "已存在 Windows 認證管理員": "Saved in Windows Credential Manager",
+  "這是 COMET 的檔案，在 oMarker 裡預設唯讀；按「仍要編輯」解除後再插入一次。": "This is a COMET file and is read-only by default in oMarker. Click \"Edit Anyway\" to unlock it, then insert again.",
+  "這份文件現在是唯讀的，沒辦法插入。": "This document is read-only right now, so nothing can be inserted.",
   "已插入（可以按 Ctrl+Z 復原）": "Inserted (press Ctrl+Z to undo)",
   "已略過": "Skipped",
   "思考中…": "Thinking…",

@@ -6,6 +6,7 @@
  * 每個專案第一次送出前先確認要送什麼、大約多少錢；修改文件一律變成建議卡片，由使用者按「套用」。
  * API 金鑰只存在原生端，這裡只知道有沒有設定。
  */
+import type { EditorView } from "@codemirror/view";
 import { render as renderMarkdown } from "../../pkg/md_wasm.js";
 import {
   type ActionMode,
@@ -45,6 +46,7 @@ import { wikiTarget } from "../plugins/doc-links.ts";
 import { openWiki } from "./wiki-links.ts";
 import { indexedDocs, indexedTexts, openPath } from "./workspace-ui.ts";
 import { app } from "./context.ts";
+import { cometLocked, unlockComet } from "./comet-files.ts";
 import { docName as tabName } from "./doc-names.ts";
 
 const OPEN_KEY = "assistant-open";
@@ -329,6 +331,21 @@ function toolButton(label: string, iconName: string, run: () => void): HTMLButto
   return b;
 }
 
+/**
+ * 可以把回答寫進目前的文件嗎：唯讀時（例如預設唯讀的 COMET 檔案）不寫，說明原因；COMET 檔案附「仍要編輯」。
+ * 不先看的話，唯讀的文件會把修改擋掉，畫面卻說「已插入」。
+ */
+function writable(view: EditorView): boolean {
+  if (!view.state.readOnly) return true;
+  if (cometLocked(view))
+    toast(t("這是 COMET 的檔案，在 oMarker 裡預設唯讀；按「仍要編輯」解除後再插入一次。"), {
+      tone: "error",
+      action: { label: t("仍要編輯"), run: () => unlockComet(view) },
+    });
+  else toast(t("這份文件現在是唯讀的，沒辦法插入。"), { tone: "error" });
+  return false;
+}
+
 /** 一般回答下面的小圖示：複製、插入到游標的位置（滑鼠移上去看說明）。 */
 function answerActions(el: HTMLElement, text: string): void {
   const bar = document.createElement("div");
@@ -336,6 +353,7 @@ function answerActions(el: HTMLElement, text: string): void {
   bar.append(
     toolButton(t("複製"), "copy", () => void copy(text)),
     toolButton(t("插入到游標處"), "text-cursor-input", () => {
+      if (!writable(app.editor.view)) return;
       const at = app.editor.view.state.selection.main.head;
       app.editor.view.dispatch({ changes: { from: at, insert: text }, userEvent: "input.ai" });
       toast(t("已插入（可以按 Ctrl+Z 復原）"), { tone: "success" });
@@ -384,6 +402,7 @@ function suggestionCard(el: HTMLElement, p: Pending, text: string): void {
       t("套用"),
       () => {
         const view = app.editor.view;
+        if (!writable(view)) return;
         if (r.to > view.state.doc.length || view.state.sliceDoc(r.from, r.to) !== r.original) {
           toast(t("選取的那段文字已經改過了，請重新選取再試一次"), { tone: "error" });
           return;

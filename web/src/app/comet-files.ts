@@ -235,6 +235,16 @@ function showPreviewNote(view: EditorView): void {
   );
 }
 
+/** 這個編輯器顯示的是鎖著的 COMET 檔案（預設唯讀、還沒按「仍要編輯」）。 */
+export function cometLocked(view: EditorView): boolean {
+  return !!view.state.field(guardField, false)?.locked;
+}
+
+/** 解除這個分頁的唯讀（和按說明上的「仍要編輯」一樣）。 */
+export function unlockComet(view: EditorView): void {
+  if (cometLocked(view)) view.dispatch({ effects: setLocked.of(false) });
+}
+
 /** 唯讀時想打字：上方的說明閃一下，告訴使用者為什麼不能改。 */
 function nudge(view: EditorView): boolean {
   if (!view.state.field(guardField).locked) return false;
