@@ -45,3 +45,25 @@ test("狀態列的文件統計：再按一次字數就關上", async () => {
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("狀態列的文件統計：內容變多（設了字數目標）後面板不會蓋住字數，再按一次照樣關上", async () => {
+  const { page, context, errors } = await open();
+  await setText(page, "# 週報\n\n本週完成登入頁。\n");
+  const stats = page.locator("#status-stats");
+  await stats.click();
+  await page.locator(".stats-pop:popover-open").waitFor();
+  // 設了目標之後多出進度列：面板要重新放，不能往下長、蓋住狀態列的字數。
+  await page.locator("#stats-goal-input").fill("2000");
+  await page.keyboard.press("Enter");
+  await page.locator(".stats-pop .stats-goal-track:not([hidden])").waitFor();
+  const r = await page.evaluate(() => ({
+    statsTop: document.querySelector("#status-stats").getBoundingClientRect().top,
+    popBottom: document.querySelector(".stats-pop").getBoundingClientRect().bottom,
+  }));
+  assert.ok(r.popBottom <= r.statsTop, `面板下緣 ${r.popBottom} 蓋到字數上緣 ${r.statsTop}`);
+  await stats.click();
+  await page.waitForFunction(() => !document.querySelector(".stats-pop:popover-open"));
+  assert.equal(await stats.getAttribute("aria-expanded"), "false");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
