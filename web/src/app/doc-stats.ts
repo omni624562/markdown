@@ -167,7 +167,28 @@ function row(label: string, value: string, note?: string): HTMLElement[] {
   return [dt, dd];
 }
 
+/**
+ * 依目前的大小放在狀態列的字數旁邊。內容變了（統計算好、設了字數目標、選取範圍）就重新放：
+ * 不然打開後變高的部分會往下長、蓋住字數本身，再按一次字數會點到面板裡，關不掉。
+ */
+function placePop(): void {
+  if (!pop?.matches(":popover-open")) return;
+  pop.style.maxHeight = "";
+  const anchor = app.status.stats.getBoundingClientRect();
+  const { width, height } = pop.getBoundingClientRect();
+  const p = placeMenu(anchor, { width, height }, { width: innerWidth, height: innerHeight });
+  Object.assign(pop.style, { left: `${p.left}px`, top: `${p.top}px`, maxHeight: `${p.maxHeight}px` });
+}
+
 function renderPop(): void {
+  try {
+    fillPop();
+  } finally {
+    placePop();
+  }
+}
+
+function fillPop(): void {
   if (!pop?.matches(":popover-open")) return;
   if (!last) {
     // JSON 等沒有字數的文件。
@@ -311,10 +332,6 @@ export function showDocStats(focusGoal = false): void {
   // toggle 事件晚一點才觸發，這裡先改，讀螢幕軟體一按下去就知道已經展開。
   app.status.stats.setAttribute("aria-expanded", "true");
   renderPop();
-  const anchor = app.status.stats.getBoundingClientRect();
-  const { width, height } = pop.getBoundingClientRect();
-  const p = placeMenu(anchor, { width, height }, { width: innerWidth, height: innerHeight });
-  Object.assign(pop.style, { left: `${p.left}px`, top: `${p.top}px`, maxHeight: `${p.maxHeight}px` });
   // 焦點放進面板：按 Tab 就到字數目標，Esc 關閉後回到編輯區。
   if (focusGoal && !pop.querySelector<HTMLElement>(".stats-goal")!.hidden) {
     goalInput.focus();
