@@ -1520,7 +1520,7 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   flex: 0 1 auto;
   gap: 6px;
   align-items: center;
-  min-width: 96px;
+  min-width: 140px;
   max-width: 260px;
   height: 100%;
   padding: 0 6px 0 12px;
