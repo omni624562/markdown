@@ -210,6 +210,8 @@ export type TermNotice = { kind: "show" } | { kind: "hide" } | { kind: "command"
 
 export interface McpInfo {
   url: string;
+  /** 固定的連接埠被別的程式占用，改用了別的連接埠（之前手動註冊的 AI 工具要重新註冊）。 */
+  portMoved?: boolean;
 }
 
 /** 給 MCP 伺服器的編輯器狀態。 */

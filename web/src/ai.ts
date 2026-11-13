@@ -99,7 +99,15 @@ export class AiController {
     if (want === this.#mcpRunning) return;
     try {
       if (want) {
-        await this.#d.mcpStart();
+        const info = await this.#d.mcpStart();
+        // 固定的連接埠被別的程式占用：之前用「複製註冊指令」登記的 Claude Code／Codex 會連到那個程式
+        // （權杖已經換掉，不會外洩），要重新註冊才連得到這裡。
+        if (info.portMoved) {
+          toast(t("編輯器的 MCP 伺服器原本的連接埠被別的程式占用，已改用另一個。之前在別的終端機註冊過的 Claude Code／Codex 已經連不到，請到「設定 → AI 協作 → 註冊指令」重新複製並執行一次。"), {
+            tone: "error",
+            duration: 15000,
+          });
+        }
         this.#mcpRunning = true;
         this.#needFull = true;
         this.scheduleSync();
