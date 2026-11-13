@@ -747,12 +747,20 @@ fn load_token(dir: &Path) -> Result<String, String> {
 #[serde(rename_all = "camelCase")]
 pub struct McpInfo {
     url: String,
+    /// 固定的連接埠被別的程式占用，改用了別的連接埠（也換了權杖）：之前手動註冊的 AI 工具會連到占用的那個程式，
+    /// 介面要提示重新註冊。
+    port_moved: bool,
 }
 
 fn info(conn: &Connection) -> McpInfo {
     McpInfo {
         url: conn.url.clone(),
+        port_moved: port_moved(&conn.url),
     }
+}
+
+fn port_moved(url: &str) -> bool {
+    !url.starts_with(&format!("http://127.0.0.1:{PREFERRED_PORT}/"))
 }
 
 /// 手動註冊到 Claude Code／Codex 的指令（含權杖）。Codex 要先把權杖設成環境變數。
@@ -903,6 +911,18 @@ pub fn mcp_respond(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn port_moved_only_when_not_the_fixed_port() {
+        assert!(!port_moved(&format!(
+            "http://127.0.0.1:{PREFERRED_PORT}/mcp"
+        )));
+        assert!(port_moved("http://127.0.0.1:51234/mcp"));
+        // 固定連接埠的數字只是開頭一樣（473210）也算換了。
+        assert!(port_moved(&format!(
+            "http://127.0.0.1:{PREFERRED_PORT}0/mcp"
+        )));
+    }
 
     #[test]
     fn folder_files_exclude_git() {

@@ -142,6 +142,8 @@ export const sync: Record<string, Translation> = {
   // ai.ts
   "請先開啟「啟用 AI 協作」與「讓 AI 讀取目前的文件」": "Turn on \"Enable AI Collaboration\" and \"Let AI Read the Current Document\" first.",
   "無法啟動編輯器的 MCP 伺服器：{error}": "Couldn't start the editor's MCP server: {error}",
+  "編輯器的 MCP 伺服器原本的連接埠被別的程式占用，已改用另一個。之前在別的終端機註冊過的 Claude Code／Codex 已經連不到，請到「設定 → AI 協作 → 註冊指令」重新複製並執行一次。":
+    "Another program is using the editor MCP server's usual port, so it moved to another one. Claude Code / Codex registered earlier in another terminal can no longer reach it: copy and run the command again in Settings → AI Collaboration → Registration Command.",
   "AI 提出的修改": "Changes Proposed by AI",
   "逐段選擇要不要採用；接受後記得存檔。": "Choose whether to accept each chunk. Remember to save after accepting.",
   "接受": "Accept",
