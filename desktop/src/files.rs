@@ -595,10 +595,18 @@ pub async fn read_in_background(app: &AppHandle, path: PathBuf) -> Result<Opened
 /// 存檔、匯出對話框一開始顯示的資料夾：前端給的（目前文件所在的資料夾或專案資料夾）存在時才用，
 /// 否則交給系統（通常是上次用過的資料夾）。只影響對話框起始的位置，使用者還是可以選別的地方。
 pub fn start_in(dialog: rfd::AsyncFileDialog, directory: Option<String>) -> rfd::AsyncFileDialog {
-    match directory.map(PathBuf::from) {
-        Some(dir) if dir.is_absolute() && dir.is_dir() => dialog.set_directory(dir),
+    match directory {
+        Some(dir) if may_check_start_dir(&dir, cfg!(windows)) && Path::new(&dir).is_dir() => {
+            dialog.set_directory(dir)
+        }
         _ => dialog,
     }
+}
+
+/// 只看字串就決定能不能拿去問檔案系統「是不是資料夾」：要是本機的絕對路徑，不能是 UNC 這類會連到別台電腦的寫法
+/// （`\\主機\分享`：一查就會連 SMB、送出 NTLM 雜湊）。只比對字串，對應成磁碟機代號的網路磁碟（`Z:\`）照舊可以用。
+fn may_check_start_dir(dir: &str, windows: bool) -> bool {
+    crate::lexical::is_local_absolute_as(dir, windows)
 }
 
 /// 匯出二進位檔（例如 Word .docx）：讓使用者選位置後寫入。取消時回傳 None。
@@ -940,6 +948,24 @@ mod tests {
         assert!(not_text_reason(b"%PDF-1.7\n").is_some());
         assert!(not_text_reason(b"\xFF\xFEa\0b\0").is_none());
         assert!(not_text_reason(b"a\0b\0").is_some());
+    }
+
+    #[test]
+    fn save_dialog_start_dir_never_probes_network_paths() {
+        // Windows：磁碟機代號（含對應的網路磁碟）可以；UNC、裝置路徑、相對路徑一律不查。
+        assert!(may_check_start_dir(r"C:\Users\me\Documents\產品筆記", true));
+        assert!(may_check_start_dir(r"Z:\專案\Contoso", true));
+        assert!(may_check_start_dir(r"\\?\C:\Users\me", true));
+        assert!(!may_check_start_dir(r"\\attacker\share", true));
+        assert!(!may_check_start_dir("//attacker/share", true));
+        assert!(!may_check_start_dir(r"\\?\UNC\attacker\share", true));
+        assert!(!may_check_start_dir(r"\\.\pipe\x", true));
+        assert!(!may_check_start_dir(r"C:relative", true));
+        assert!(!may_check_start_dir("notes", true));
+        // 其他平台：開頭兩個斜線（可能是網路路徑）不查。
+        assert!(may_check_start_dir("/home/me/notes", false));
+        assert!(!may_check_start_dir("//attacker/share", false));
+        assert!(!may_check_start_dir("notes", false));
     }
 
     #[test]
