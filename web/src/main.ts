@@ -2238,6 +2238,8 @@ function openDocument(
   setBaseline(text, fromFile);
   preview.clear();
   buildFormatBar();
+  // 沿用的空白分頁換了文件類型：檢視模式（網頁檔有預覽、程式碼只有原始碼）和狀態列要跟著換，畫預覽之前先套用。
+  applyLayout();
   renderNow();
   renderTabs();
 }
@@ -2404,7 +2406,7 @@ function previewVisible(): boolean {
 }
 
 function applyLayout(): void {
-  view = currentView(cur.kind); // 這種文件用不到的模式退回原始碼（見 view-modes.ts）
+  view = currentView(cur.kind, cur.fileName); // 這種文件用不到的模式退回原始碼（見 view-modes.ts）
   const narrow = narrowQuery.matches;
   // 手機寬度放不下並排，分割模式改為只顯示編輯區（可用分頁切換到預覽）。
   // 起始頁也一樣：佔滿整個區域，開始打字後才分成左右兩半。
@@ -2444,7 +2446,7 @@ function applyLayout(): void {
     rightColumnOn() ? "var(--outline-right-width)" : "0px",
   ];
   workspace.style.gridTemplateColumns = cols.join(" ");
-  applyViewSwitch(document, cur.kind, effective);
+  applyViewSwitch(document, cur.kind, effective, cur.fileName);
   // 側邊欄打開時，分頁從編輯區的左緣開始，和下面的欄位對齊。
   $(".topbar").classList.toggle("with-sidebar", outlineShown && !narrow);
   $(".topbar").classList.toggle("with-right", rightColumnOn());
@@ -2540,7 +2542,7 @@ initFileDrop();
 
 // ---- 初始狀態 -----------------------------------------------------------
 
-view = currentView(cur.kind);
+view = currentView(cur.kind, cur.fileName);
 kindSelect.value = cur.kind;
 setTheme(themePref);
 applySettings(settings.value);

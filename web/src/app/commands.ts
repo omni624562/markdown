@@ -922,7 +922,7 @@ export function initCommands(): void {
         }[mode],
         group: t("檢視"),
         icon: { editor: "code", live: "file-pen-line", split: "columns-2", preview: "eye" }[mode],
-        when: () => viewsFor(app.cur.kind).includes(mode) && (mode !== "split" || !app.narrowQuery.matches),
+        when: () => viewsFor(app.cur.kind, app.cur.fileName).includes(mode) && (mode !== "split" || !app.narrowQuery.matches),
         run: () => app.setView(mode),
       }),
     ),
