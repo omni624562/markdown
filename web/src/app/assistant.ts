@@ -8,6 +8,7 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { render as renderMarkdown } from "../../pkg/md_wasm.js";
+import { blockRemoteImagesInHtml } from "../remote-images.ts";
 import {
   type ActionMode,
   ASSISTANT_ACTIONS,
@@ -297,7 +298,11 @@ function showAnswer(el: HTMLElement, text: string): void {
   const body = document.createElement("div");
   body.className = "markdown-body assistant-answer";
   // sourcepos：回答裡的程式碼區塊、表格對回原文（見 blockActions）。
-  body.innerHTML = renderMarkdown(text, { kind: "markdown", sourcepos: true }).html;
+  // 回答裡的遠端圖片一律不載入（不看「封鎖遠端圖片」的設定）：送給助理的文件、筆記、搜尋結果裡可能藏著指示，
+  // 要它輸出 `![](https://…?d=其他筆記的內容)`，圖片一載入資料就送出去了。放進畫面「之前」就拿掉網址。
+  body.innerHTML = blockRemoteImagesInHtml(renderMarkdown(text, { kind: "markdown", sourcepos: true }).html);
+  // 這裡沒有「按一下載入」，提示只留原本的網址。
+  for (const img of body.querySelectorAll<HTMLImageElement>("img.remote-blocked")) img.title = img.dataset.blockedSrc ?? "";
   el.replaceChildren(body);
 }
 
