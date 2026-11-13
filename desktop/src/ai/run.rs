@@ -193,9 +193,10 @@ async fn check_codex_version(exe: &Path) -> Result<(), String> {
     if CHECKED.lock().as_deref() == Some(exe) {
         return Ok(());
     }
-    let (prog, pre) = program_for(exe);
-    let mut cmd = tokio::process::Command::new(prog);
-    cmd.args(pre)
+    let program = program_for(exe);
+    let mut cmd = tokio::process::Command::new(program.prog);
+    cmd.args(program.pre)
+        .envs(program.env)
         .arg("--version")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -236,9 +237,9 @@ fn codex_version_unknown() -> String {
 }
 
 fn command(app: &AppHandle, tool: Tool, exe: &Path) -> Result<tokio::process::Command, String> {
-    let (prog, pre) = program_for(exe);
-    let mut cmd = tokio::process::Command::new(prog);
-    cmd.args(pre).args(args(tool));
+    let program = program_for(exe);
+    let mut cmd = tokio::process::Command::new(program.prog);
+    cmd.args(program.pre).envs(program.env).args(args(tool));
     // 在一個中性的資料夾執行，不會讀到任何專案的設定或檔案。
     let dir = app
         .path()

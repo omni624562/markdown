@@ -38,21 +38,39 @@ impl Tool {
     }
 }
 
-/// 要執行的程式與前置參數。npm 安裝的工具在 Windows 上是 .cmd 批次檔，必須透過 cmd.exe 執行。
+/// 要執行的程式、前置參數與要另外設定的環境變數。
+pub struct Program {
+    pub prog: PathBuf,
+    pub pre: Vec<OsString>,
+    pub env: Vec<(&'static str, &'static str)>,
+}
+
+/// cmd.exe 找程式時預設先找目前資料夾。npm 產生的 .cmd 在全域資料夾沒有 node.exe 時會執行 `node …`，
+/// 目前資料夾（開著的專案）裡如果放了 `node.cmd`、`node.exe`，就會執行到它。設了這個環境變數，
+/// cmd.exe 只照 PATH 找（Windows 的 NeedCurrentDirectoryForExePath 規則）。
+const NO_CWD_LOOKUP: (&str, &str) = ("NoDefaultCurrentDirectoryInExePath", "1");
+
+/// 要執行的程式。npm 安裝的工具在 Windows 上是 .cmd 批次檔，必須透過 cmd.exe 執行，
+/// 而且不能讓它在目前資料夾找程式（見 `NO_CWD_LOOKUP`）。
 /// （使用者內容一律從標準輸入傳入，不放在命令列上，避免被 cmd.exe 解讀。）
-pub fn program_for(exe: &Path) -> (PathBuf, Vec<OsString>) {
+pub fn program_for(exe: &Path) -> Program {
     let is_batch = exe
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"));
     if cfg!(windows) && is_batch {
         // 用完整路徑，免得執行到放在本程式旁邊的同名 cmd.exe。
-        (
-            crate::io::system_root().join("System32").join("cmd.exe"),
-            vec!["/d".into(), "/c".into(), exe.into()],
-        )
+        Program {
+            prog: crate::io::system_root().join("System32").join("cmd.exe"),
+            pre: vec!["/d".into(), "/c".into(), exe.into()],
+            env: vec![NO_CWD_LOOKUP],
+        }
     } else {
-        (exe.to_path_buf(), vec![])
+        Program {
+            prog: exe.to_path_buf(),
+            pre: vec![],
+            env: vec![],
+        }
     }
 }
 
@@ -83,19 +101,24 @@ mod tests {
 
     #[test]
     fn batch_files_run_through_cmd_on_windows_only() {
-        let (prog, pre) = program_for(Path::new(r"C:\npm\claude.cmd"));
+        let p = program_for(Path::new(r"C:\npm\claude.cmd"));
         if cfg!(windows) {
             assert!(
-                prog.is_absolute() && prog.ends_with("System32/cmd.exe"),
-                "{prog:?}"
+                p.prog.is_absolute() && p.prog.ends_with("System32/cmd.exe"),
+                "{:?}",
+                p.prog
             );
-            assert_eq!(pre.len(), 3);
+            assert_eq!(p.pre.len(), 3);
+            // cmd.exe 不能在目前資料夾（開著的專案）找 node。
+            assert_eq!(p.env, vec![("NoDefaultCurrentDirectoryInExePath", "1")]);
         } else {
-            assert_eq!(prog, PathBuf::from(r"C:\npm\claude.cmd"));
-            assert!(pre.is_empty());
+            assert_eq!(p.prog, PathBuf::from(r"C:\npm\claude.cmd"));
+            assert!(p.pre.is_empty());
+            assert!(p.env.is_empty());
         }
-        let (prog, pre) = program_for(Path::new("/usr/bin/claude"));
-        assert_eq!(prog, PathBuf::from("/usr/bin/claude"));
-        assert!(pre.is_empty());
+        let p = program_for(Path::new("/usr/bin/claude"));
+        assert_eq!(p.prog, PathBuf::from("/usr/bin/claude"));
+        assert!(p.pre.is_empty());
+        assert!(p.env.is_empty());
     }
 }

@@ -455,9 +455,12 @@ fn default_shell() -> CommandBuilder {
 }
 
 fn tool_command(app: &AppHandle, tool: Tool) -> Result<CommandBuilder, String> {
-    let (prog, pre) = program_for(&tool.locate()?);
-    let mut cmd = CommandBuilder::new(prog);
-    cmd.args(pre);
+    let program = program_for(&tool.locate()?);
+    let mut cmd = CommandBuilder::new(program.prog);
+    cmd.args(program.pre);
+    for (key, value) in program.env {
+        cmd.env(key, value);
+    }
     // 編輯器的 MCP 伺服器開著時，順便讓 AI 能讀取目前的文件、提出修改。
     if let Some(conn) = app.state::<Mcp>().connection() {
         match tool {
