@@ -5,6 +5,8 @@
  * - iframe 的 sandbox 只開 same-origin（讓本程式攔下連結），不允許腳本、表單、彈出視窗、導向主畫面。
  * - 內容另外加一份 CSP：不執行腳本，不載入外部 CSS、字型；圖片照「封鎖遠端圖片」設定。
  * - `<script>`、`<base>`、`<meta http-equiv>`（自動轉址、別的 CSP）先拿掉。
+ * - `<link>` 全部拿掉：外部 CSS 本來就被 CSP 擋下，但 `preconnect`、`dns-prefetch`、`prefetch` 不受 CSP 管，
+ *   一打開檔案就會連到對方的伺服器（透露 IP 與開檔時間）。另外關掉 DNS 預先查詢（連結的主機也不先查）。
  */
 
 import { blockRemoteImages, stripRemoteCss } from "./remote-images.ts";
@@ -24,7 +26,7 @@ export interface HtmlPreviewOptions {
 /** 預覽用的完整 HTML（給 iframe 的 srcdoc）。 */
 export function prepareHtml(source: string, opts: HtmlPreviewOptions): string {
   const doc = new DOMParser().parseFromString(source, "text/html");
-  for (const el of doc.querySelectorAll("script, base, meta[http-equiv], noscript, object, embed, iframe, frame")) el.remove();
+  for (const el of doc.querySelectorAll("script, base, link, meta[http-equiv], noscript, object, embed, iframe, frame")) el.remove();
   for (const el of doc.querySelectorAll("*")) {
     for (const attr of [...el.attributes]) {
       // onclick 等事件屬性（腳本本來就不會執行，拿掉比較乾淨）。
@@ -57,6 +59,10 @@ export function prepareHtml(source: string, opts: HtmlPreviewOptions): string {
     "form-action 'none'",
   ].join("; ");
   doc.head.prepend(csp);
+  const prefetch = doc.createElement("meta");
+  prefetch.httpEquiv = "x-dns-prefetch-control";
+  prefetch.content = "off";
+  doc.head.prepend(prefetch);
   if (!doc.querySelector("meta[charset]")) {
     const charset = doc.createElement("meta");
     charset.setAttribute("charset", "utf-8");

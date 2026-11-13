@@ -1,6 +1,7 @@
 /**
  * 網頁檔（.html、.htm）的預覽：狀態列有原始碼、分割、預覽；預覽照網頁本身的樣子顯示（iframe，不執行腳本）。
- * 其他程式碼檔（.css 等）只有原始碼。
+ * 其他程式碼檔（.css 等）只有原始碼。`<link>`（含 preconnect、dns-prefetch）全部拿掉，也關掉 DNS 預先查詢：
+ * 這些不受 CSP 管，一打開別人給的網頁檔就會連到對方的伺服器。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -41,6 +42,30 @@ test("其他程式碼檔（.css）只有原始碼，狀態列不顯示檢視切�
   await page.locator("#tab-bar .tab", { hasText: "style.css" }).waitFor();
   await page.locator(".view-switch").waitFor({ state: "hidden" });
   assert.deepEqual(await shownViews(page), []);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("網頁檔的預覽：拿掉 <link>（preconnect、dns-prefetch、外部 CSS）與腳本，關掉 DNS 預先查詢，不連到外面", async () => {
+  const source = [
+    "<!doctype html><html><head>",
+    '<link rel="preconnect" href="https://evil.test">',
+    '<link rel="dns-prefetch" href="https://evil.test">',
+    '<link rel="stylesheet" href="https://evil.test/a.css">',
+    "<title>報價單</title></head>",
+    "<body><h1>Contoso 報價單</h1><script>document.title = 'x'</script></body></html>",
+  ].join("\n");
+  const file = { ...FILE, text: source };
+  const { page, context, errors, external } = await open({ desktop: { startup_target: file } });
+  await page.locator('.view-switch [data-view="live"]').waitFor({ state: "hidden" });
+  await page.locator('button[data-view="preview"]').click();
+  await page.frameLocator("iframe.html-preview").locator("h1", { hasText: "Contoso 報價單" }).waitFor();
+  const srcdoc = await page.locator("iframe.html-preview").getAttribute("srcdoc");
+  assert.doesNotMatch(srcdoc, /<link\b/i, "沒有 <link>");
+  assert.doesNotMatch(srcdoc, /<script\b/i, "沒有 <script>");
+  assert.match(srcdoc, /<meta http-equiv="x-dns-prefetch-control" content="off">/);
+  await page.waitForTimeout(300);
+  assert.deepEqual(external.filter((u) => u.includes("evil.test")), [], "沒有連到對方的伺服器");
   assert.deepEqual(errors, []);
   await context.close();
 });
