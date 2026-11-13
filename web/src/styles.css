@@ -4543,6 +4543,10 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 }
 .palette-named { display: flex; flex: 1 1 auto; gap: 6px; align-items: center; min-width: 0; }
 .palette-named .palette-title { flex: 0 1 auto; }
+/* 指令面板：單選的指令目前選的那一項（和主選單一樣打勾、用強調色）。 */
+.palette-current { display: inline-flex; flex: none; color: var(--accent); }
+.palette-current .icon { width: 14px; height: 14px; }
+.palette-current-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .start-recent-item .comet-badge { align-self: center; }
 /* 側邊欄上方的專案名稱很窄：標籤小一點，名稱少被截掉。 */
 .project-switch .comet-badge { height: 16px; margin-left: -2px; padding: 0 4px; font-size: 9.5px; letter-spacing: 0; }

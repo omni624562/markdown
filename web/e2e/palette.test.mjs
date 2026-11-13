@@ -112,3 +112,37 @@ test("設定裡釘了或自訂了已經拿掉的指令：不顯示、不報錯�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("單選的指令：指令面板和主選單一樣，在目前選的那一項打勾，換了之後勾跟著移動", async () => {
+  const { page, context, errors } = await open();
+  await page.locator(".cm-content").waitFor();
+  /** 搜尋「明暗」，回傳每一項的名稱和有沒有打勾。 */
+  const themes = async () => {
+    await page.keyboard.press("Control+Shift+P");
+    const input = page.locator("dialog[open] input").first();
+    await input.waitFor();
+    await input.fill("明暗");
+    await page.locator("dialog[open] [role=option]").first().waitFor();
+    const out = await page.$$eval("dialog[open] [role=option]", (lis) =>
+      lis.map((li) => ({ title: li.querySelector(".palette-title").textContent, current: !!li.querySelector(".palette-current") })),
+    );
+    return out;
+  };
+  let list = await themes();
+  assert.deepEqual(list.filter((x) => x.current).map((x) => x.title), ["明暗：跟隨系統"]);
+  assert.equal(list.length, 3);
+  // 選「深色」：關掉後再打開，勾在「深色」。
+  await page.locator("dialog[open] [role=option]", { hasText: "明暗：深色" }).click();
+  await page.waitForFunction(() => !document.querySelector("dialog[open]"));
+  list = await themes();
+  assert.deepEqual(list.filter((x) => x.current).map((x) => x.title), ["明暗：深色"]);
+  // 讀螢幕軟體唸得到「目前」。
+  assert.match(await page.locator("dialog[open] [role=option]", { hasText: "明暗：深色" }).textContent(), /目前/);
+  await page.keyboard.press("Escape");
+  // 主選單的「外觀」也是同一項打勾。
+  await page.locator("#main-menu").click();
+  await page.locator(".menu:popover-open button", { hasText: "外觀" }).hover();
+  await page.locator('.menu:popover-open [role=menuitemradio][aria-checked="true"]', { hasText: "深色" }).waitFor();
+  assert.deepEqual(errors, []);
+  await context.close();
+});
