@@ -1,6 +1,7 @@
 import { t } from "../i18n.ts";
 import { type Command, type Commands, formatKeys, fuzzyScore } from "../commands.ts";
 import * as storage from "../storage.ts";
+import { icon } from "./icons.ts";
 import { Picker } from "./picker.ts";
 
 /** 指令分類的顯示順序（指令面板、快速鍵一覽共用）；沒列到的分類排在最後。 */
@@ -74,6 +75,8 @@ export class Palette {
           section,
           icon: c.icon ?? "command",
           keys: keys && formatKeys(keys),
+          // 單選的指令（明暗、配色、文件格式…）：目前選的那一項打勾，和主選單一樣。
+          badge: c.checked?.() ? currentMark() : undefined,
         };
       },
       pick: ({ c }) => {
@@ -86,6 +89,16 @@ export class Palette {
   open(): void {
     this.#picker.open();
   }
+}
+
+/** 名稱後面的勾：這是目前選用的那一項。 */
+function currentMark(): HTMLElement {
+  const mark = document.createElement("span");
+  mark.className = "palette-current";
+  mark.title = t("目前");
+  // 讀螢幕軟體唸得到「目前」，畫面上只顯示勾。
+  mark.append(icon("check"), Object.assign(document.createElement("span"), { className: "palette-current-label", textContent: t("目前") }));
+  return mark;
 }
 
 function recentIds(): string[] {
