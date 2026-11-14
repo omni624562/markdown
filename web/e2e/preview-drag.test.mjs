@@ -94,3 +94,19 @@ test("拖一般段落：放在最後一段後面，前後留空白行", async ()
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("拖完按 Ctrl+Z 復原、Ctrl+Y 重做（焦點不在編輯區也一樣）", async () => {
+  const { page, context, errors } = await setup();
+  await dragBlock(page, "#preview h2:has-text('第三天')", "#preview h2:has-text('第一天')");
+  const moved = () => page.evaluate(() => document.querySelector("#preview h2")?.textContent.includes("第三天"));
+  await page.waitForFunction(() => document.querySelector("#preview h2")?.textContent.includes("第三天"));
+  assert.equal(await page.evaluate(() => !!document.activeElement?.closest(".cm-editor")), false, "焦點不在編輯區");
+  await page.keyboard.press("Control+z");
+  await page.waitForFunction(() => document.querySelector("#preview h2")?.textContent.includes("第一天"));
+  assert.equal((await text(page)).trim(), DOC.trim());
+  await page.keyboard.press("Control+y");
+  await page.waitForFunction(() => document.querySelector("#preview h2")?.textContent.includes("第三天"));
+  assert.equal(await moved(), true);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

@@ -102,3 +102,25 @@ test("原始碼模式沒有把手（照舊用選取文字拖曳）", async () =>
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("即時預覽：拖完按 Ctrl+Z 復原、Ctrl+Shift+Z 重做", async () => {
+  const { page, context, errors } = await setup();
+  const order = () =>
+    page.evaluate(() => {
+      const t = [...document.querySelectorAll(".cm-line")].map((l) => l.textContent).join("\n");
+      return t.indexOf("第三天") < t.indexOf("第一天") ? "moved" : "original";
+    });
+  await dragBlock(page, "第三天", "第一天");
+  await page.waitForFunction(() => {
+    const t = [...document.querySelectorAll(".cm-line")].map((l) => l.textContent).join("\n");
+    return t.indexOf("第三天") < t.indexOf("第一天");
+  });
+  await page.keyboard.press("Control+z");
+  await page.waitForTimeout(200);
+  assert.equal(await order(), "original", "Ctrl+Z 復原");
+  await page.keyboard.press("Control+Shift+Z");
+  await page.waitForTimeout(200);
+  assert.equal(await order(), "moved", "Ctrl+Shift+Z 重做");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

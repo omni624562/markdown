@@ -54,10 +54,10 @@ async function settle(page) {
   }
 }
 
-/** 在 `root` 裡選取 `text`，回傳選取範圍中間的座標。 */
-const selectIn = (page, root, text) =>
+/** 在 `root` 裡選取 `text`（`select` 為 false 時只量位置），回傳那段文字中間的座標。 */
+const selectIn = (page, root, text, select = true) =>
   page.evaluate(
-    ([root, text]) => {
+    ([root, text, select]) => {
       const walker = document.createTreeWalker(document.querySelector(root), NodeFilter.SHOW_TEXT);
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {
         const i = n.textContent.indexOf(text);
@@ -65,16 +65,24 @@ const selectIn = (page, root, text) =>
         const r = document.createRange();
         r.setStart(n, i);
         r.setEnd(n, i + text.length);
-        const s = getSelection();
-        s.removeAllRanges();
-        s.addRange(r);
+        if (select) {
+          const s = getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+        }
         const b = r.getBoundingClientRect();
         return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
       }
       return null;
     },
-    [root, text],
+    [root, text, select],
   );
+
+/**
+ * 只量位置、不選取：在編輯區裡選取會讓編輯區取得焦點，CodeMirror 稍後（計時器）會把它自己的選取範圍
+ * 寫回畫面；如果那時已經改選了預覽的文字，預覽的選取就被蓋掉，按下滑鼠時沒有東西可以拖。
+ */
+const pointIn = (page, root, text) => selectIn(page, root, text, false);
 
 async function drag(page, from, to) {
   await page.mouse.move(from.x, from.y);
@@ -116,8 +124,7 @@ test("從編輯區（原始碼）選取拖到助理：放進問題裡，文件�
 
 test("從預覽拖到編輯區：插入在放開的位置；拖連結放在不能輸入的地方，視窗不會被導走", async () => {
   const { page, context, errors } = await setup("split");
-  const target = await selectIn(page, ".cm-content", "第二段文字");
-  await page.evaluate(() => getSelection().removeAllRanges());
+  const target = await pointIn(page, ".cm-content", "第二段文字");
   await drag(page, await selectIn(page, "#preview", "城市通行證"), { x: target.x + 40, y: target.y });
   await page.waitForFunction(() => document.querySelector(".cm-content").textContent.split("城市通行證").length === 3);
   assert.match(await page.locator(".cm-line", { hasText: "第二段" }).textContent(), /城市通行證/, "插入在放開的那一行");
