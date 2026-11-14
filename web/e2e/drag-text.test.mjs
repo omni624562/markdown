@@ -26,7 +26,32 @@ async function setup(view) {
   await page.click(`.statusbar [data-view="${view}"]`);
   await page.keyboard.press("Control+Shift+L");
   await page.locator("#assistant-panel textarea").waitFor();
+  await settle(page);
   return opened;
+}
+
+/**
+ * 等版面停下來：打開助理（右側欄出現）、切到分割檢視（預覽重畫、捲動同步）之後，編輯區與預覽的位置
+ * 可能還在變；量座標之前先等連續兩次量到的都一樣，不然拖的起點、放開的位置會落在舊的位置上。
+ */
+async function settle(page) {
+  const snap = () =>
+    page.evaluate(() =>
+      JSON.stringify(
+        [".cm-content", "#preview", "#assistant-panel"].map((s) => {
+          const el = document.querySelector(s);
+          const r = el?.getBoundingClientRect();
+          return r ? [Math.round(r.left), Math.round(r.top), Math.round(r.width)] : null;
+        }).concat([document.querySelector("#preview-scroller")?.scrollTop ?? 0]),
+      ),
+    );
+  let last = await snap();
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(50);
+    const now = await snap();
+    if (now === last) return;
+    last = now;
+  }
 }
 
 /** 在 `root` 裡選取 `text`，回傳選取範圍中間的座標。 */
