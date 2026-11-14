@@ -99,17 +99,22 @@ test("◧ 和 ◨ 開著時樣子一樣；◨ 緊貼視窗按鈕，收起右側�
   await context.close();
 });
 
-test("標題列中間的空白按住可以拖曳視窗；按 ☰、◧ 不會", async () => {
+test("標題列的空白按住可以拖曳視窗；按 ☰、◧、中間的搜尋框不會", async () => {
   const { page, context, errors } = await setup();
   const drags = () => page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "window_control" && c.args?.action === "drag").length);
   const topbar = await box(page, ".topbar");
-  await page.mouse.move(750, (topbar.top + topbar.bottom) / 2);
+  // 搜尋框左邊的空白。
+  const search = await box(page, "#title-search");
+  await page.mouse.move(search.left - 40, (topbar.top + topbar.bottom) / 2);
   await page.mouse.down();
   await page.mouse.up();
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "window_control" && c.args?.action === "drag"));
   const n = await drags();
   await page.click(".topbar > .nav-toggle");
   await page.click(".topbar > .nav-toggle");
+  await page.click("#title-search");
+  await page.locator("dialog.palette[open]").waitFor();
+  await page.keyboard.press("Escape");
   assert.equal(await drags(), n, "按按鈕不拖曳");
   assert.deepEqual(errors, []);
   await context.close();

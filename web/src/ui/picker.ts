@@ -25,8 +25,18 @@ export interface PickerOptions<T> {
   columns?: boolean;
   /** 說明放在名稱下面一行（說明很長時，例如修改記錄）。 */
   stacked?: boolean;
-  /** 依查詢字串回傳排序好的項目。 */
-  query(text: string): T[] | Promise<T[]>;
+  /** 開在視窗最上面（蓋住標題列中間的搜尋框），不是畫面上方三分之一處。 */
+  top?: boolean;
+  /**
+   * 搜尋框下面「也可以：」那一列：輸入開頭的符號改找別的東西（例如 `>` 指令）。按一下就填入那個符號。
+   * 每次打開時重新取得（依目前的狀況，例如連上 Azure DevOps 才有工作項目）。
+   */
+  tips?(): { prefix: string; label: string }[];
+  /**
+   * 依查詢字串回傳排序好的項目。比較慢的部分（例如向伺服器查詢）可以先不等，
+   * 查到後呼叫 `more` 換成完整的清單（查詢字串已經改了的話會略過）。
+   */
+  query(text: string, more: (items: T[]) => void): T[] | Promise<T[]>;
   render(item: T): PickerItem;
   pick(item: T): void;
   /** 清單關閉時（選了項目之後，或取消）。 */
@@ -45,17 +55,20 @@ export class Picker<T> {
   #items: T[] = [];
   #active = 0;
   #seq = 0;
+  #tips: HTMLElement;
 
   constructor(opts: PickerOptions<T>) {
     this.#opts = opts;
     this.#dialog = document.createElement("dialog");
     this.#dialog.className = opts.columns ? "palette palette-columns" : opts.stacked ? "palette palette-stacked" : "palette";
+    if (opts.top) this.#dialog.classList.add("palette-top");
     this.#dialog.setAttribute("aria-label", opts.label);
     const id = `picker-${Math.random().toString(36).slice(2, 8)}`;
     const tr = { select: t("選擇"), open: t("開啟"), close: t("關閉") };
     this.#dialog.innerHTML = `
       <input type="text" role="combobox" aria-expanded="true" aria-controls="${id}"
         aria-autocomplete="list" autocomplete="off" spellcheck="false" />
+      <p class="palette-tips" hidden></p>
       <ul id="${id}" role="listbox"></ul>
       <p class="palette-hint"><kbd>↑</kbd><kbd>↓</kbd> ${tr.select}\u3000<kbd>Enter</kbd> ${tr.open}\u3000<kbd>Esc</kbd> ${tr.close}</p>`;
     document.body.append(this.#dialog);
@@ -63,6 +76,18 @@ export class Picker<T> {
     this.#input.placeholder = opts.placeholder;
     this.#list = this.#dialog.querySelector("ul")!;
     this.#list.setAttribute("aria-label", opts.label);
+    this.#tips = this.#dialog.querySelector(".palette-tips")!;
+    this.#tips.addEventListener("click", (e) => {
+      const tip = (e.target as HTMLElement).closest<HTMLElement>("[data-prefix]");
+      if (!tip) return;
+      // 已經打的字留著，換掉開頭原本的符號（打了「釜山」再按「? 問助理」→「?釜山」）。
+      const prefixes = [...this.#tips.querySelectorAll<HTMLElement>("[data-prefix]")].map((b) => b.dataset.prefix!);
+      const typed = this.#input.value.trimStart();
+      const old = prefixes.find((p) => typed.startsWith(p));
+      this.#input.value = tip.dataset.prefix! + (old ? typed.slice(old.length) : typed);
+      this.#input.focus();
+      void this.#refresh();
+    });
 
     this.#input.addEventListener("input", () => void this.#refresh());
     this.#input.addEventListener("keydown", (e) => this.#onKey(e));
@@ -80,17 +105,51 @@ export class Picker<T> {
   open(initial = ""): void {
     if (this.#dialog.open) return;
     this.#input.value = initial;
+    this.#renderTips();
     void this.#refresh();
     this.#dialog.showModal();
     this.#input.select();
   }
 
+  #renderTips(): void {
+    const tips = this.#opts.tips?.() ?? [];
+    this.#tips.hidden = !tips.length;
+    this.#tips.replaceChildren(
+      Object.assign(document.createElement("span"), { textContent: t("也可以：") }),
+      ...tips.map(({ prefix, label }) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "palette-tip";
+        b.dataset.prefix = prefix;
+        b.tabIndex = -1; // 用鍵盤直接打符號就好，Tab 不停在這裡
+        b.append(Object.assign(document.createElement("kbd"), { textContent: prefix }), label);
+        return b;
+      }),
+    );
+  }
+
   async #refresh(): Promise<void> {
     const seq = ++this.#seq;
-    const items = await this.#opts.query(this.#input.value);
+    // 慢的結果（`more`）比第一批先到時，等第一批畫完再換上。
+    let shown = false;
+    let late: T[] | null = null;
+    const more = (list: T[]) => {
+      if (seq !== this.#seq) return;
+      if (shown) this.#render(list, true);
+      else late = list;
+    };
+    const items = await this.#opts.query(this.#input.value, more);
     if (seq !== this.#seq) return; // 已經有更新的查詢
+    this.#render(items, false);
+    shown = true;
+    if (late) this.#render(late, true);
+  }
+
+  /** 畫出清單；`keep` 時（補上慢的結果）選取的項目不變。 */
+  #render(items: T[], keep: boolean): void {
+    const picked = keep ? this.#items[this.#active] : undefined;
     this.#items = items;
-    this.#active = 0;
+    this.#active = picked === undefined ? 0 : Math.max(0, items.indexOf(picked));
     const listId = this.#list.id;
     let section: string | undefined;
     this.#list.replaceChildren(

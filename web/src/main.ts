@@ -96,6 +96,7 @@ import { availableRightTabs } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initMainMenu } from "./app/main-menu.ts";
+import { initTitleSearch, renderTitleSearch } from "./app/title-search.ts";
 import { closeSide, initSideBySide, refreshOtherPane, renderPaneHeads } from "./app/side-by-side.ts";
 import { initFileHistory } from "./app/file-history.ts";
 import { initStatusView } from "./app/status-view.ts";
@@ -1742,6 +1743,7 @@ const ado = desktop && features.ado
       },
       changed: () => {
         renderAdoTab();
+        renderTitleSearch();
         workItemsPanel?.reset();
         wikiPanel?.reset();
         if (sidePanel === "workitems" || sidePanel === "wiki") showPanel(sidePanel, false);
@@ -1756,6 +1758,7 @@ const ado = desktop && features.ado
 // 帳號讀到後，起始頁才列出還沒連線的 Azure DevOps、GitHub。
 void Promise.all([ado?.ready(), github?.ready()]).then(() => {
   accountsReady = true;
+  renderTitleSearch();
   renderEmptyState(editor.text);
   refreshRepoNotes();
 });
@@ -2379,6 +2382,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
   btn.addEventListener("click", () => commands.run(cmd.id).catch(reportError));
 });
 initMainMenu();
+initTitleSearch();
 // 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。網頁版不能在資料夾中搜尋，Ctrl+Shift+F 沒有作用，不寫。
 for (const [tab, id] of [
   ["#side-tab-files", "show-files"],

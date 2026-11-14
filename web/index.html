@@ -16,12 +16,15 @@
     <a class="skip-link" href="#editor">跳到編輯區</a>
 
     <header class="topbar">
-      <!-- 標題列：左邊是主選單（☰）與側邊欄開關（◧），右邊是右側欄開關（◨）與 Windows 的視窗按鈕，
-           中間空著（桌面版按住空白處可以拖曳視窗）。文件分頁在文件區自己的第一列（見下面的 #tab-bar），
+      <!-- 標題列：左邊是主選單（☰）與側邊欄開關（◧），中間是搜尋框（app/title-search.ts），右邊是右側欄開關（◨）與
+           Windows 的視窗按鈕；其餘空白（桌面版按住可以拖曳視窗）。文件分頁在文件區自己的第一列（見下面的 #tab-bar），
            側邊欄、右側欄也各有自己的標題列，三個在同一個高度。 -->
       <button type="button" id="main-menu" class="nav-menu" title="更多功能" aria-label="更多功能"><i data-icon="menu"></i></button>
       <button type="button" class="nav-toggle" data-command="toggle-outline" aria-pressed="false">
         <i data-icon="panel-left"></i>
+      </button>
+      <button type="button" id="title-search" class="title-search">
+        <i data-icon="search"></i><span class="title-search-text"></span><kbd class="title-search-keys"></kbd>
       </button>
       <div class="top-actions">
         <button type="button" class="btn icon-only" data-command="toggle-outline-right" aria-pressed="true" hidden><i data-icon="panel-right-close"></i></button>

@@ -169,6 +169,34 @@ kbd {
 .nav-menu:focus-visible, .nav-toggle:focus-visible { outline-offset: -6px; }
 .nav-toggle { width: 34px; }
 .nav-toggle[aria-pressed="true"] { color: var(--fg); }
+/*
+ * 標題列中間的搜尋框（app/title-search.ts）：在視窗正中間（不隨左右的按鈕偏移），寬度跟著視窗、最寬 460px，
+ * 左右至少留 200px 給 ☰ ◧ 與 ◨、視窗按鈕。窄視窗時改成填滿 ◧ 和 ◨ 之間。
+ */
+.title-search {
+  position: absolute;
+  top: calc(50% + env(safe-area-inset-top) / 2);
+  left: 50%;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  box-sizing: border-box;
+  width: clamp(180px, calc(100vw - 400px), 460px);
+  height: 26px;
+  padding: 0 4px 0 10px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  color: var(--muted);
+  font: 12.5px var(--font-ui);
+  cursor: pointer;
+}
+.title-search:hover { border-color: var(--subtle); background: var(--bg); color: var(--fg); }
+.title-search .icon { flex: none; width: 14px; height: 14px; }
+.title-search-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-search-keys { flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--muted); font: 11px/16px var(--font-ui); }
+.title-search-keys:empty { display: none; }
 /* ---- Windows 桌面版的標題列按鈕 ---- */
 .window-controls { display: flex; flex: none; align-self: stretch; }
 /* 右上角沒有右側欄開關時，視窗按鈕自己靠右。 */
@@ -1052,6 +1080,14 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 .palette-columns .palette-group { flex: none; max-width: none; text-align: right; }
 .palette-empty { justify-content: center; color: var(--muted); cursor: default !important; }
 .palette-hint { display: flex; gap: 4px; align-items: center; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+/* 快速開啟：開在視窗最上面，蓋住標題列中間的搜尋框（和按搜尋框打開的位置一樣）。 */
+.palette.palette-top { width: min(600px, calc(100vw - 16px)); margin-top: 4px; }
+/* 搜尋框下面「也可以：」那一列：按一下填入開頭的符號。 */
+.palette-tips { display: flex; flex: none; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.palette-tips[hidden] { display: none; }
+.palette-tip { display: inline-flex; gap: 4px; align-items: center; padding: 1px 8px 1px 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--fg); font: inherit; cursor: pointer; }
+.palette-tip:hover { border-color: var(--accent); color: var(--accent); }
+.palette-tip kbd { min-width: 14px; text-align: center; }
 
 /* ---- 通知 ---- */
 .toasts {
@@ -1134,6 +1170,8 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   .split-only { display: none !important; }
   .top-actions { padding: 0 6px; }
   .nav-menu, .nav-toggle { width: 44px; border-right: 0; }
+  .title-search { position: static; flex: 1 1 auto; align-self: center; width: auto; min-width: 0; margin: 0 4px; transform: none; }
+  .title-search-keys { display: none; }
   /* 手機只顯示目前的分頁（用側邊抽屜或 Ctrl+P 切換其他文件）。 */
   .tab-bar .tabs { flex: 1 1 auto; }
   .tab-bar .tab:not([aria-selected="true"]) { display: none; }
