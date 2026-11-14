@@ -65,7 +65,7 @@ export class Palette {
       placeholder: t("輸入指令名稱，例如「匯出」「表格」「深色」"),
       empty: t("找不到符合的指令"),
       columns: true,
-      query: (q) => paletteItems(commands.available(), q, recentIds()),
+      query: (q) => paletteItems(commands.available(), q, recentCommandIds()),
       render: ({ c, section }) => {
         const keys = c.keys ?? c.shownKeys;
         return {
@@ -80,7 +80,7 @@ export class Palette {
         };
       },
       pick: ({ c }) => {
-        storage.save(RECENT_KEY, JSON.stringify([c.id, ...recentIds().filter((id) => id !== c.id)].slice(0, RECENT_LIMIT)));
+        rememberCommand(c.id);
         void commands.run(c.id);
       },
     });
@@ -101,7 +101,12 @@ function currentMark(): HTMLElement {
   return mark;
 }
 
-function recentIds(): string[] {
+/** 記下用過的指令（指令面板、快速開啟的 `>` 共用「最近使用」）。 */
+export function rememberCommand(id: string): void {
+  storage.save(RECENT_KEY, JSON.stringify([id, ...recentCommandIds().filter((x) => x !== id)].slice(0, RECENT_LIMIT)));
+}
+
+export function recentCommandIds(): string[] {
   try {
     const v: unknown = JSON.parse(storage.load(RECENT_KEY) ?? "[]");
     return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];

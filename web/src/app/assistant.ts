@@ -975,6 +975,16 @@ export function toggleAssistant(open = !assistantOpen()): void {
   app.editor.view.focus();
 }
 
+/** 從快速開啟（標題列的搜尋框）問助理：打開助理、把問題放進輸入框後送出（還不能送出時留在輸入框，提示寫在助理裡）。 */
+export function askAssistant(question: string): void {
+  if (!assistantEnabled() || !question.trim()) return;
+  toggleAssistant(true);
+  if (!panel) return;
+  input.value = question.trim();
+  // 第一次打開時要先知道有沒有金鑰，否則會被當成還沒設定而不送出。
+  void refreshStatus().then(() => send(input.value));
+}
+
 /** 常用動作（指令面板用）：打開側欄並執行。 */
 export function runAssistantAction(id: AssistantAction["id"]): void {
   const action = [...ASSISTANT_ACTIONS, ...customActions(app.settings.value.assistantActions)].find((a) => a.id === id);
