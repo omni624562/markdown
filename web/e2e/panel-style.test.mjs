@@ -1,7 +1,8 @@
 /**
  * 區塊樣式（設定 → 版面 → 區塊樣式）：圓角區塊、留間隔（預設）或相連。
- * 留間隔時，側邊欄、中間（分頁列＋內文）、右側欄是三塊圓角的區塊，彼此留 4px、上緣對齊；
- * 調整寬度的把手在間隔正中間；窄視窗一律相連；Windows 的視窗按鈕滑到視窗最右上角仍然按得到。
+ * 留間隔時，側邊欄、中間（分頁列＋內文）、右側欄是三塊圓角的區塊，彼此留 4px、上緣對齊（都從標題列下面開始），
+ * 三塊最上面的標題列底線在同一條水平線上；調整寬度的把手在間隔正中間；窄視窗一律相連；
+ * Windows 的視窗按鈕在標題列的最右上角。
  * 狀態列上檢視切換左邊的那幾項包成一整條圓條；終端機面板也是圓角區塊，終端機（另一個視窗）放在框線與內距裡面。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -27,7 +28,8 @@ const boxes = (page) =>
       return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom) };
     };
     return {
-      topSide: box(".topbar-side"),
+      topbar: box(".topbar"),
+      sideHead: box("#panel-files > .side-head"),
       tabBar: box(".tab-bar"),
       topActions: box(".top-actions"),
       sidebar: box(".sidebar"),
@@ -69,6 +71,7 @@ test("預設圓角區塊；改成相連時側邊欄、內文、右側欄之間�
   assert.equal(b.editor.left, b.sidebar.right, JSON.stringify(b));
   assert.equal(b.right.left, b.preview.right, JSON.stringify(b));
   assert.equal(b.radius, "0px");
+  assert.deepEqual([b.sideHead.bottom, b.rightHead.bottom], [b.tabBar.bottom, b.tabBar.bottom], JSON.stringify(b));
 
   await pick(page, "spaced");
   await page.waitForTimeout(100);
@@ -77,15 +80,14 @@ test("預設圓角區塊；改成相連時側邊欄、內文、右側欄之間�
   // 間隔 4px。
   assert.equal(b.editor.left - b.sidebar.right, 4, s);
   assert.equal(b.right.left - b.preview.right, 4, s);
-  // 三塊的上緣對齊，離頂端 4px；分頁列和下面的內文同寬，右側欄上面那段和右側欄同寬。
-  for (const top of [b.topSide.top, b.tabBar.top, b.topActions.top]) assert.equal(top, 4, s);
+  // 三塊的上緣對齊，緊接在標題列下面；分頁列和下面的內文同寬。
+  for (const top of [b.sidebar.top, b.tabBar.top, b.right.top]) assert.equal(top, b.topbar.bottom, s);
   assert.equal(b.tabBar.left, b.editor.left, s);
   assert.equal(b.tabBar.right, b.preview.right, s);
-  assert.deepEqual([b.topSide.left, b.topSide.right], [b.sidebar.left, b.sidebar.right], s);
-  assert.deepEqual([b.topActions.left, b.topActions.right], [b.right.left, b.right.right], s);
   assert.equal(b.radius, "8px");
-  // 分頁列底下的線（分頁列最後一列）和右側欄第一列（右側欄自己的分頁列）上緣的線在同一條水平線上。
-  assert.equal(b.rightHead.top, b.tabBar.bottom - 1, s);
+  // 側邊欄的標題列、文件分頁、右側欄的分頁列：底線在同一條水平線上。
+  assert.equal(b.sideHead.bottom, b.tabBar.bottom, s);
+  assert.equal(b.rightHead.bottom, b.tabBar.bottom, s);
   // 調整寬度的把手在間隔的正中間。
   const mid = (r) => (r.left + r.right) / 2;
   assert.ok(Math.abs(mid(b.leftResizer) - (b.sidebar.right + b.editor.left) / 2) <= 1, s);
@@ -112,13 +114,13 @@ test("預設圓角區塊；改成相連時側邊欄、內文、右側欄之間�
   await context.close();
 });
 
-test("圓角區塊：沒有右側欄時，分頁列一路到內文的右緣（右上角沒有按鈕時那塊藏起來，分頁列自己收尾）", async () => {
+test("圓角區塊：沒有右側欄時，分頁列一路到內文的右緣（右上角沒有 ◨，分頁列自己收尾）", async () => {
   const { page, context, errors } = await open({ desktop: desktop({ panelStyle: "spaced", outlineRight: false }) });
   await ready(page);
   const b = await boxes(page);
   const s = JSON.stringify(b);
   assert.equal(b.topActions, null, s);
-  assert.equal(b.tabBar.top, 4, s);
+  assert.equal(b.tabBar.top, b.topbar.bottom, s);
   assert.equal(b.tabBar.right, b.preview.right, s);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".tab-bar")).borderTopRightRadius), "8px");
   assert.deepEqual(errors, []);
@@ -131,14 +133,15 @@ test("圓角區塊：窄視窗一律相連（側邊欄是抽屜）", async () =>
   await page.waitForTimeout(200);
   const style = await page.evaluate(() => {
     const ws = getComputedStyle(document.querySelector(".workspace"));
-    return { padding: ws.paddingRight, tabTop: Math.round(document.querySelector(".tab-bar").getBoundingClientRect().top) };
+    const top = (sel) => Math.round(document.querySelector(sel).getBoundingClientRect().top);
+    return { padding: ws.paddingRight, radius: getComputedStyle(document.querySelector(".tab-bar")).borderTopLeftRadius, tabBelowTopbar: top(".tab-bar") === Math.round(document.querySelector(".topbar").getBoundingClientRect().bottom) };
   });
-  assert.deepEqual(style, { padding: "0px", tabTop: 0 });
+  assert.deepEqual(style, { padding: "0px", radius: "0px", tabBelowTopbar: true });
   assert.deepEqual(errors, []);
   await context.close();
 });
 
-test("圓角區塊（Windows 自訂標題列）：視窗按鈕在最右邊那塊的右上角，滑到視窗最右上角仍然按得到關閉", async () => {
+test("圓角區塊（Windows 自訂標題列）：視窗按鈕在標題列的最右上角，滑到視窗最右上角按得到關閉；◨ 緊貼視窗按鈕左邊", async () => {
   for (const outlineRight of [true, false]) {
     const { page, context, errors } = await open({
       desktop: desktop({ panelStyle: "spaced", outlineRight }, { custom_title_bar: true }),
@@ -150,15 +153,15 @@ test("圓角區塊（Windows 自訂標題列）：視窗按鈕在最右邊那塊
       const corner = document.elementFromPoint(innerWidth - 1, 1);
       return { right: Math.round(innerWidth - box.right), top: Math.round(box.top), corner: corner === close };
     });
-    assert.deepEqual(r, { right: 5, top: 5, corner: true }, `outlineRight=${outlineRight}`);
+    assert.deepEqual(r, { right: 0, top: 0, corner: true }, `outlineRight=${outlineRight}`);
     if (outlineRight) {
       await ready(page);
       const b = await boxes(page);
-      const right = await page.evaluate(() => Math.round(document.querySelector(".window-controls").getBoundingClientRect().right));
-      assert.equal(b.topActions.left, b.right.left, JSON.stringify(b));
-      assert.equal(right, b.right.right, JSON.stringify(b));
+      const controls = await page.evaluate(() => Math.round(document.querySelector(".window-controls").getBoundingClientRect().left));
+      assert.equal(b.topActions.right, controls, JSON.stringify(b));
+      assert.ok(b.topActions.bottom <= b.topbar.bottom, JSON.stringify(b));
       assert.equal(b.tabBar.right, b.preview.right, JSON.stringify(b));
-      assert.equal(b.rightHead.top, b.tabBar.bottom - 1, JSON.stringify(b));
+      assert.equal(b.rightHead.bottom, b.tabBar.bottom, JSON.stringify(b));
     }
     assert.deepEqual(errors, []);
     await context.close();

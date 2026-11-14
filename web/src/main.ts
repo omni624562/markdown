@@ -2447,10 +2447,7 @@ function applyLayout(): void {
   ];
   workspace.style.gridTemplateColumns = cols.join(" ");
   applyViewSwitch(document, cur.kind, effective, cur.fileName);
-  // 側邊欄打開時，分頁從編輯區的左緣開始，和下面的欄位對齊。
-  $(".topbar").classList.toggle("with-sidebar", outlineShown && !narrow);
-  $(".topbar").classList.toggle("with-right", rightColumnOn());
-  // 右上角那一塊：右側欄的分頁列（app/right-tabs.ts）和收起／打開右側欄的開關；沒有任何分頁時整塊藏起來。
+  // 標題列右上角的右側欄開關（◨）：右側欄沒有任何分頁時藏起來。
   const rightToggle = $("[data-command='toggle-outline-right']");
   rightToggle.hidden = availableRightTabs().length === 0;
   $(".top-actions").hidden = rightToggle.hidden;
@@ -2458,7 +2455,7 @@ function applyLayout(): void {
     rightToggle.setAttribute("aria-pressed", String(rightOutlineShown));
     rightToggle.replaceChildren(icon(rightOutlineShown ? "panel-right-on" : "panel-right"));
   }
-  // 側邊欄開關：寬視窗在圖示列最上面，窄視窗在左上角（兩顆一起更新）。
+  // 側邊欄開關（◧）：在標題列左上角、☰ 右邊。
   for (const navToggle of document.querySelectorAll<HTMLElement>("[data-command='toggle-outline']")) {
     if (navToggle.getAttribute("aria-pressed") === String(outlineShown)) continue;
     navToggle.setAttribute("aria-pressed", String(outlineShown));

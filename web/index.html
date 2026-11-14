@@ -16,16 +16,13 @@
     <a class="skip-link" href="#editor">跳到編輯區</a>
 
     <header class="topbar">
-      <!-- 主選單（☰）在最左上角、圖示列的正上方；窄視窗時移到右上角。 -->
+      <!-- 標題列：左邊是主選單（☰）與側邊欄開關（◧），右邊是右側欄開關（◨）與 Windows 的視窗按鈕，
+           中間空著（桌面版按住空白處可以拖曳視窗）。文件分頁在文件區自己的第一列（見下面的 #tab-bar），
+           側邊欄、右側欄也各有自己的標題列，三個在同一個高度。 -->
       <button type="button" id="main-menu" class="nav-menu" title="更多功能" aria-label="更多功能"><i data-icon="menu"></i></button>
-      <!-- 側邊欄開關：窄視窗時在左上角（打開抽屜）；寬視窗時用圖示列最上面那一顆。 -->
       <button type="button" class="nav-toggle" data-command="toggle-outline" aria-pressed="false">
         <i data-icon="panel-left"></i>
       </button>
-      <div class="topbar-side" aria-hidden="true"></div>
-      <div class="tab-bar" id="tab-bar"></div>
-      <!-- 右上角那一塊：收起／打開右側欄的開關（右側欄的分頁列在右側欄自己的第一列）；右側欄開著時和右側欄同寬，
-           Windows 的視窗按鈕在它最右邊，永遠貼在視窗右上角。 -->
       <div class="top-actions">
         <button type="button" class="btn icon-only" data-command="toggle-outline-right" aria-pressed="true" hidden><i data-icon="panel-right-close"></i></button>
       </div>
@@ -33,9 +30,6 @@
 
     <main class="workspace" data-view="split">
       <nav class="activity-bar" aria-label="側邊欄">
-        <!-- 寬視窗的側邊欄開關：圖示列最上面，側邊欄開著或收起都在同一個位置；下面一條細線和面板的圖示分開。 -->
-        <button type="button" class="activity-btn activity-toggle" data-command="toggle-outline" aria-pressed="false"><i data-icon="panel-left"></i></button>
-        <div class="activity-sep" aria-hidden="true"></div>
         <button type="button" class="activity-project" id="activity-project" hidden><span class="project-avatar"></span></button>
         <div class="activity-tabs" role="tablist" aria-label="側邊欄" aria-orientation="vertical">
           <button type="button" role="tab" id="side-tab-files" data-panel="files" aria-controls="panel-files" aria-label="檔案">
@@ -175,6 +169,8 @@
         </section>
       </aside>
 
+      <!-- 文件分頁：文件區（編輯區與預覽）自己的第一列。 -->
+      <div class="tab-bar" id="tab-bar"></div>
       <section class="pane editor-pane" aria-label="編輯區">
         <div class="pane-head" id="main-pane-head" hidden></div>
         <div class="format-bar" id="format-bar" role="toolbar" aria-label="格式工具列" aria-controls="editor"></div>

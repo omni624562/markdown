@@ -67,9 +67,4 @@ export function setupWindowControls(topbar: HTMLElement, control: (action: Actio
     void control(e.detail === 2 ? "toggle-maximize" : "drag").then(show, console.error);
   };
   topbar.addEventListener("mousedown", drag);
-  // 側邊欄開著時，面板的標題列疊在頂端列左邊那塊（styles.css 用 position: fixed），那裡也能拖曳視窗。
-  document.querySelector(".sidebar")?.addEventListener("mousedown", (e) => {
-    const head = (e.target as Element).closest(".side-head");
-    if (head && getComputedStyle(head).position === "fixed") drag(e as MouseEvent);
-  });
 }
