@@ -41,6 +41,9 @@ export interface QuickItem {
   keys?: string;
   /** 分區標題（檔案、工作項目、Wiki、助理）。 */
   section?: string;
+  /** 還沒輸入時：分在哪一區（已開啟、資料夾名稱、最近開啟），說明欄只寫所在的資料夾（`where`）。 */
+  group?: string;
+  where?: string;
 }
 
 /** 開頭是特定符號時改找別的東西（`>` 指令、`?` 問助理）。 */
@@ -274,6 +277,7 @@ export const quickOpen = new Picker<QuickItem>({
     return t("找不到符合的檔案");
   },
   top: true,
+  detailColumn: true,
   tips: quickTips,
   async query(q, more) {
     lastQuery = q;
@@ -285,10 +289,14 @@ export const quickOpen = new Picker<QuickItem>({
     // 已開啟的分頁優先（工作項目等的分頁也算），目前分頁放最後（按 Enter 不會停在原地）。
     const current = selectedItemId();
     const openItems = itemTabs.filter((tab) => tab.id !== current);
+    const opened = t("已開啟");
+    const docWhere = (d: Doc) => (d.path ? displayPath(dirname(d.path)) : "");
     const items: QuickItem[] = [
-      ...app.docs.filter((d) => d !== app.active || current).map((d) => ({ title: docName(d), detail: t("已開啟"), doc: d })),
-      ...openItems.map((tab) => ({ title: tab.name, detail: t("已開啟"), remote: { icon: tab.icon, open: () => selectItem(tab.id) } })),
-      ...(current ? [] : [{ title: docName(app.active), detail: t("目前分頁"), doc: app.active }]),
+      ...app.docs
+        .filter((d) => d !== app.active || current)
+        .map((d) => ({ title: docName(d), detail: opened, doc: d, group: opened, where: docWhere(d) })),
+      ...openItems.map((tab) => ({ title: tab.name, detail: opened, remote: { icon: tab.icon, open: () => selectItem(tab.id) }, group: opened, where: "" })),
+      ...(current ? [] : [{ title: docName(app.active), detail: t("目前分頁"), doc: app.active, group: opened }]),
     ];
     const seen = new Set(app.docs.map((d) => d.path).filter(Boolean));
     if (desktop) {
@@ -298,17 +306,19 @@ export const quickOpen = new Picker<QuickItem>({
           if (seen.has(f.path)) continue;
           seen.add(f.path);
           const dir = f.rel.includes("/") ? f.rel.slice(0, f.rel.lastIndexOf("/")) : "";
-          items.push({ title: basename(f.path), detail: dir || app.workspaceRoot.name, path: f.path });
+          items.push({ title: basename(f.path), detail: dir || app.workspaceRoot.name, path: f.path, group: app.workspaceRoot.name, where: dir });
         }
       }
       const { files } = await desktop.recent().catch(() => ({ files: [] as string[] }));
       for (const path of files) {
         if (seen.has(path)) continue;
         seen.add(path);
-        items.push({ title: basename(path), detail: t("最近開啟 · {dir}", { dir: displayPath(dirname(path)) }), path });
+        const where = displayPath(dirname(path));
+        items.push({ title: basename(path), detail: t("最近開啟 · {dir}", { dir: where }), path, group: t("最近開啟"), where });
       }
     }
-    if (!q.trim()) return items.slice(0, 200);
+    // 還沒輸入：分成已開啟、這個資料夾、最近開啟三區，說明欄只寫所在的資料夾（不用每一行都寫「最近開啟」）。
+    if (!q.trim()) return items.slice(0, 200).map((it) => ({ ...it, section: it.group, detail: it.where ?? it.detail }));
     // 有輸入時分區：檔案、工作項目、Wiki、最後是「問助理：…」這類項目。
     // 工作項目要問伺服器、Wiki 頁面清單可能還在讀：先列出檔案與已經讀到的，查到後補上（`more`）。
     const files = ranked(q, items, 200).map((it) => ({ ...it, section: t("檔案") }));

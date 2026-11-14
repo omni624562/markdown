@@ -27,6 +27,8 @@ export interface PickerOptions<T> {
   stacked?: boolean;
   /** 開在視窗最上面（蓋住標題列中間的搜尋框），不是畫面上方三分之一處。 */
   top?: boolean;
+  /** 說明（所在資料夾等）是固定寬度、靠左的一欄，每一行從同一個位置開始（快速開啟）。 */
+  detailColumn?: boolean;
   /**
    * 搜尋框下面「也可以：」那一列：輸入開頭的符號改找別的東西（例如 `>` 指令）。按一下就填入那個符號。
    * 每次打開時重新取得（依目前的狀況，例如連上 Azure DevOps 才有工作項目）。
@@ -62,6 +64,7 @@ export class Picker<T> {
     this.#dialog = document.createElement("dialog");
     this.#dialog.className = opts.columns ? "palette palette-columns" : opts.stacked ? "palette palette-stacked" : "palette";
     if (opts.top) this.#dialog.classList.add("palette-top");
+    if (opts.detailColumn) this.#dialog.classList.add("palette-detail-col");
     this.#dialog.setAttribute("aria-label", opts.label);
     const id = `picker-${Math.random().toString(36).slice(2, 8)}`;
     const tr = { select: t("選擇"), open: t("開啟"), close: t("關閉") };

@@ -194,3 +194,34 @@ test("網頁版：搜尋框寫「搜尋分頁或指令」；窄視窗時填滿 �
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("快速開啟的說明欄靠左對齊：每一行從同一個位置開始；還沒輸入時分成已開啟、資料夾、最近開啟三區，說明只寫所在的資料夾", async () => {
+  const recent = ["C:\\Users\\me\\Downloads\\先看我.txt", "C:\\Users\\me\\Documents\\很長的資料夾名稱\\子資料夾\\再一層\\README.md", "C:\\Users\\me\\Desktop\\系統架構_流程_測試案例.md"];
+  const { page, context, errors } = await open({ desktop: desktop({}, { recent: { files: recent, folders: [] } }) });
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.locator("#files-head").waitFor();
+  await page.keyboard.press("Control+P");
+  await page.waitForFunction(() => [...document.querySelectorAll("dialog[open] .palette-section")].some((s) => s.textContent === "最近開啟"));
+  const sections = await page.$$eval("dialog[open] .palette-section", (els) => els.map((e) => e.textContent));
+  assert.deepEqual(sections, ["已開啟", "旅遊", "最近開啟"]);
+  const rowsInfo = () =>
+    page.$$eval("dialog[open] [role=option]", (lis) =>
+      lis.flatMap((li) => {
+        const d = li.querySelector(".palette-group");
+        return d ? [{ title: li.querySelector(".palette-title").textContent, detail: d.textContent, left: Math.round(d.getBoundingClientRect().left) }] : [];
+      }),
+    );
+  const empty = await rowsInfo();
+  const recentRows = empty.filter((r) => recent.some((p) => p.endsWith(r.title)));
+  assert.equal(recentRows.length, 3, JSON.stringify(empty));
+  for (const r of recentRows) assert.doesNotMatch(r.detail, /最近開啟/, "區塊標題已經寫了，不用每一行都寫");
+  assert.equal(new Set(empty.map((r) => r.left)).size, 1, `說明欄從同一個位置開始：${JSON.stringify(empty)}`);
+  // 有輸入時也一樣對齊。
+  await input(page).fill("md");
+  await page.waitForFunction(() => document.querySelector("dialog[open] .palette-section")?.textContent === "檔案");
+  const typed = await rowsInfo();
+  assert.ok(typed.length > 2, JSON.stringify(typed));
+  assert.equal(new Set(typed.map((r) => r.left)).size, 1, `說明欄從同一個位置開始：${JSON.stringify(typed)}`);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
