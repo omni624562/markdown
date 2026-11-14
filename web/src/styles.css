@@ -1190,6 +1190,8 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 .preview-drop-line { position: absolute; z-index: 5; height: 3px; margin-top: -1.5px; border-radius: 2px; background: var(--accent); pointer-events: none; }
 .preview-drop-line[hidden] { display: none; }
 #preview .drag-source { opacity: 0.35; }
+/* 即時預覽的把手與放開位置的線放在 body 上，用畫面座標（app/live-drag.ts）。 */
+.preview-drag-handle.live-drag-handle, .preview-drop-line.live-drop-line { position: fixed; z-index: 30; }
 @media (pointer: coarse) { .preview-drag-handle { display: none; } }
 
 /* ---- 預覽中的 highlight.js 色彩（沿用編輯器語法色） ---- */

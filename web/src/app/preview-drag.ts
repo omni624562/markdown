@@ -5,6 +5,7 @@
  * - 清單項目（含子項目）：放在別的項目之間，縮排與項目符號換成目標清單的。
  * - 其他區塊（段落、表格、程式碼、引言、圖片）：放在其他區塊之間。
  * 只在 Markdown 文件、可以編輯、沒有在看差異時有。拖到助理的輸入區是把那段文字放進問題（帶著 text/plain）。
+ * 即時預覽（編輯區）的把手在 app/live-drag.ts，搬移的規則（moveText）共用。
  */
 import { undo } from "@codemirror/commands";
 import { type LineRange, moveBlock, moveListItem } from "../block-move.ts";
@@ -14,9 +15,17 @@ import { moveSection, sectionRange } from "../sections.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { initLiveDrag } from "./live-drag.ts";
 import { outlineHeadings } from "./outline-list.ts";
 
-type Kind = "section" | "item" | "block";
+export type DragKind = "section" | "item" | "block";
+type Kind = DragKind;
+
+/** 放開的位置（原始碼）：`range` 是目標區塊的行範圍（null 是文件最後），`after` 時放在它後面（清單的最後一項）。 */
+export interface DragTarget {
+  range: LineRange | null;
+  after: boolean;
+}
 
 /** 要搬的東西：預覽裡的元素與它在原始碼的行範圍。 */
 interface Source {
@@ -47,9 +56,11 @@ const range = (el: Element): LineRange | null => {
   return pos ? { first: pos.start, last: pos.end } : null;
 };
 
-function enabled(): boolean {
+/** 可以拖動段落：Markdown 文件、可以編輯、沒有在看差異。 */
+export function dragEnabled(): boolean {
   return app.cur.kind === "markdown" && !app.editor.view.state.readOnly && !app.review.active;
 }
+const enabled = dragEnabled;
 
 /** 滑鼠下面那一塊可以搬的東西（清單項目優先，其次是預覽最上層的區塊）。 */
 function sourceAt(target: EventTarget | null): Source | null {
@@ -126,25 +137,44 @@ function nearest(src: Source, clientY: number): Gap | null {
   return best;
 }
 
-/** 搬完的內容；位置沒變時是 null。 */
-function moved(src: Source, gap: Gap): string | null {
+/** 搬完的內容；位置沒變時是 null（預覽、即時預覽共用）。 */
+export function moveText(kind: DragKind, src: LineRange, heading: number, target: DragTarget): string | null {
   const text = app.editor.text;
-  const lines = app.editor.view.state.doc.lines;
-  if (src.kind === "item") {
-    const target = gap.el && range(gap.el);
-    return target ? moveListItem(text, src.range, target, gap.after) : null;
-  }
-  if (src.kind === "section") {
+  if (kind === "item") return target.range ? moveListItem(text, src, target.range, target.after) : null;
+  if (kind === "section") {
     let before = outlineHeadings.length;
-    if (gap.el) {
-      const r = range(gap.el);
-      before = outlineHeadings.findIndex((h) => h.line === r?.first);
+    if (target.range) {
+      const line = target.range.first;
+      before = outlineHeadings.findIndex((h) => h.line === line);
       if (before < 0) return null;
     }
-    return moveSection(text, outlineHeadings, src.heading, before);
+    return moveSection(text, outlineHeadings, heading, before);
   }
-  const target = gap.el ? range(gap.el)?.first : lines + 1;
-  return target ? moveBlock(text, src.range, target) : null;
+  return moveBlock(text, src, target.range ? target.range.first : app.editor.view.state.doc.lines + 1);
+}
+
+/** 換成搬完的內容（一步就能復原），通知上有「復原」。 */
+export function commitMove(out: string): void {
+  app.editor.replaceAll(out, { userEvent: "move.block", isolate: true });
+  app.renderNow();
+  toast(t("已調整順序"), { action: { label: t("復原"), run: () => void (undo(app.editor.view), app.renderNow()) } });
+}
+
+/** 「⋮⋮」把手（預覽、即時預覽各一個）。 */
+export function makeHandle(): HTMLButtonElement {
+  const h = document.createElement("button");
+  h.type = "button";
+  h.className = "preview-drag-handle";
+  h.draggable = true;
+  h.hidden = true;
+  h.title = t("拖曳調整順序");
+  h.setAttribute("aria-label", t("拖曳調整順序"));
+  h.append(icon("grip-vertical"));
+  return h;
+}
+
+function moved(src: Source, gap: Gap): string | null {
+  return moveText(src.kind, src.range, src.heading, { range: gap.el ? range(gap.el) : null, after: gap.after });
 }
 
 function hideHandle(): void {
@@ -160,14 +190,7 @@ function clear(): void {
 
 export function initPreviewDrag(): void {
   const scroller = app.previewScroller;
-  handle = document.createElement("button");
-  handle.type = "button";
-  handle.className = "preview-drag-handle";
-  handle.draggable = true;
-  handle.hidden = true;
-  handle.title = t("拖曳調整順序");
-  handle.setAttribute("aria-label", t("拖曳調整順序"));
-  handle.append(icon("grip-vertical"));
+  handle = makeHandle();
   marker = document.createElement("div");
   marker.className = "preview-drop-line";
   marker.hidden = true;
@@ -229,12 +252,10 @@ export function initPreviewDrag(): void {
     const gap = nearest(src, e.clientY);
     clear();
     const out = gap && moved(src, gap);
-    if (!out) return;
-    app.editor.replaceAll(out, { userEvent: "move.block", isolate: true });
-    app.renderNow();
-    toast(t("已調整順序"), { action: { label: t("復原"), run: () => void (undo(app.editor.view), app.renderNow()) } });
+    if (out) commitMove(out);
   });
   document.addEventListener("dragend", () => {
     if (dragging) clear();
   });
+  initLiveDrag();
 }
