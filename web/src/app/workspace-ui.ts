@@ -42,6 +42,7 @@ import { repoNoteEl } from "./repo-sources.ts";
 import { docName } from "./doc-names.ts";
 import { renameFileShortcuts } from "./file-shortcuts.ts";
 import { rightTab, selectRightTab, showBacklinksCount, syncRightTabs } from "./right-tabs.ts";
+import { assistantContextChanged } from "./assistant.ts";
 import { showFilters } from "./filter-collapse.ts";
 import { cometChangeWarning, refreshCometGuards } from "./comet-files.ts";
 import { autoSaveNow, autoSavePending } from "./autosave.ts";
@@ -589,6 +590,7 @@ export async function setWorkspace(folder: Folder | null): Promise<void> {
   await renderFilesEmpty();
   void gitPanel?.refresh();
   void renderIssuesTab();
+  assistantContextChanged();
 }
 
 /**

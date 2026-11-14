@@ -101,7 +101,8 @@ let askProject = false;
 /** 這一題上網查資料（設定裡允許時才出現這個選項）。 */
 let webSearch = false;
 let usage: AssistantUsage | null = null;
-let hasKey = false;
+/** 有沒有 API 金鑰；還沒問過原生端時是 null（不要先顯示「還沒有輸入金鑰」）。 */
+let hasKey: boolean | null = null;
 
 /** 設定裡開了 Claude API 助理（桌面版才有）。 */
 export function assistantEnabled(): boolean {
@@ -118,7 +119,7 @@ function blocked(): { message: string; action?: { label: string; run: () => void
   if (!assistantEnabled()) {
     return { message: t("Claude API 助理還沒開啟。"), action: { label: t("打開設定"), run: () => settingsDialog.open(t("Claude API 助理")) } };
   }
-  if (!hasKey) {
+  if (hasKey === false) {
     return { message: t("還沒有輸入 Claude API 金鑰。"), action: { label: t("打開設定"), run: () => settingsDialog.open(t("Claude API 助理")) } };
   }
   if (issueView.shownKey || app.active.wiki) {
@@ -499,7 +500,10 @@ async function confirmFirst(chars: number, model: ClaudeModel): Promise<boolean>
 }
 
 async function send(question: string, action: AssistantAction | null = null): Promise<void> {
-  if (!desktop || pending || blocked()) return;
+  if (!desktop || pending) return;
+  // 還沒問過有沒有金鑰（面板剛建立）：先問清楚再決定能不能送。
+  if (hasKey === null) await refreshStatus();
+  if (pending || blocked()) return;
   question = question.trim();
   if (!question) return;
   const sel = selection();
@@ -947,6 +951,8 @@ export function assistantPanel(create: boolean): HTMLElement | null {
     panel = build();
     applyFont();
     setRunning(false);
+    // 面板不一定是「切到助理」時才建立（啟動時右側欄還停在助理、用 ◨ 打開右側欄），建好就問金鑰與用量。
+    void refreshStatus();
   }
   return panel;
 }
@@ -959,6 +965,13 @@ export function assistantShown(): void {
   renderNotice();
   void refreshStatus();
   input.focus();
+}
+
+/** 專案換了（例如剛打開專案）：助理開著時更新「這次會送出的內容」與能不能送出，不會停在「請先開啟專案資料夾」。 */
+export function assistantContextChanged(): void {
+  if (!assistantOpen()) return;
+  renderChips();
+  renderNotice();
 }
 
 /** 打開（右側欄切到「助理」，收著就打開）或關閉（切到右側欄的別頁；沒有別頁就收起右側欄）。 */

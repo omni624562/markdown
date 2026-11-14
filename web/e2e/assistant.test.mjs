@@ -610,3 +610,35 @@ test("回答裡的遠端圖片一律不載入（就算關掉「封鎖遠端圖�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("已經有金鑰：啟動時右側欄還停在助理，或用 ◨ 打開右側欄，都不會顯示「還沒有輸入金鑰」", async () => {
+  const { page, context, errors } = await open({ desktop: desktop(ON) });
+  await openProject(page);
+  // 上次停在助理、右側欄開著：重新啟動後直接顯示助理（沒有經過「切到助理」）。
+  await page.evaluate(() => {
+    localStorage.setItem("md-editor:right-tab", "assistant");
+    localStorage.setItem("md-editor:outline-right", "shown");
+  });
+  await page.reload();
+  await openProject(page);
+  const panel = page.locator("#outline-right:not([hidden]) #assistant-panel:not([hidden])");
+  await panel.waitFor();
+  const noKey = panel.locator(".assistant-notice", { hasText: "還沒有輸入 Claude API 金鑰" });
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_key_status"));
+  await page.waitForTimeout(200);
+  assert.equal(await noKey.isVisible(), false, "啟動時不顯示「還沒有輸入金鑰」");
+  // 面板比專案早出來：專案打開後提示跟著更新，不會停在「請先開啟專案資料夾」。
+  assert.equal(await panel.locator(".assistant-notice").isVisible(), false, await panel.locator(".assistant-notice").textContent());
+  assert.equal(await panel.locator("textarea").isDisabled(), false, "可以輸入問題");
+  // 收起右側欄、重新啟動，再按 ◨ 打開：一樣。
+  await page.locator(".top-actions [data-command='toggle-outline-right']").click();
+  await page.locator("#outline-right").waitFor({ state: "hidden" });
+  await page.reload();
+  await openProject(page);
+  await page.locator(".top-actions [data-command='toggle-outline-right']").click();
+  await panel.waitFor();
+  await page.waitForTimeout(300);
+  assert.equal(await noKey.isVisible(), false, "用 ◨ 打開時也不顯示");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
