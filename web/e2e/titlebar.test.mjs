@@ -17,6 +17,10 @@ async function setup() {
   });
   const { page } = opened;
   await page.setViewportSize({ width: 1500, height: 600 });
+  // 起始頁沒有分頁列：寫一點內容讓分頁列出來。
+  await page.locator(".cm-content").focus();
+  await page.keyboard.insertText("# 筆記");
+  await page.locator("#tab-bar .tab").first().waitFor();
   if ((await page.locator(".topbar > .nav-toggle").getAttribute("aria-pressed")) !== "true") await page.click(".topbar > .nav-toggle");
   await page.locator('.topbar > .nav-toggle[aria-pressed="true"]').waitFor();
   if (!(await page.locator("#panel-files").isVisible())) await page.click("#side-tab-files");

@@ -34,7 +34,10 @@ test("寬視窗：滑鼠不在側邊欄上時，標題列（和文件分頁同�
   const { page, context, errors } = await open({ desktop: DESKTOP });
   await page.locator("#files-head").waitFor();
   await page.mouse.move(900, 500);
-  const tabs = await page.locator("#tab-bar").boundingBox();
+  // 側邊欄的第一列（和文件分頁同高；起始頁沒有分頁列，所以用側邊欄的上緣和那一列的高度量）。
+  const side = await page.locator(".sidebar").boundingBox();
+  const rowH = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tabbar-h")));
+  const tabs = { y: side.y, height: rowH + 1 };
   for (const id of ["tree-new-file", "tree-new-folder", "tree-refresh"]) {
     const { top } = await assertVisible(page, `#${id}`);
     assert.ok(top >= tabs.y && top < tabs.y + tabs.height, `${id} top ${top}，分頁列 ${JSON.stringify(tabs)}`);

@@ -92,7 +92,10 @@ test("已登入：拉取、推送可以按，「提交並推送」是主要按�
   const labels = await head.locator("button:not([hidden])").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
   assert.deepEqual(labels, ["Git 歷史（線圖）", "建立 Pull Request", "立刻檢查遠端"]);
   const top = await head.evaluate((el) => Math.round(el.getBoundingClientRect().top));
-  const tabs = await page.locator("#tab-bar").boundingBox();
+  // 側邊欄的第一列（和文件分頁同高；起始頁沒有分頁列，所以用側邊欄的上緣和那一列的高度量）。
+  const side = await page.locator(".sidebar").boundingBox();
+  const rowH = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tabbar-h")));
+  const tabs = { y: side.y, height: rowH + 1 };
   assert.ok(top >= tabs.y && top < tabs.y + tabs.height, `${top} / ${JSON.stringify(tabs)}`);
   const before = (await calls(page)).filter((c) => c.cmd === "git_fetch").length;
   await head.locator('button[aria-label="立刻檢查遠端"]').click();
