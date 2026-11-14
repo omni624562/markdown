@@ -425,6 +425,12 @@ kbd {
   }
   [data-panel-style="spaced"] .editor-pane,
   [data-panel-style="spaced"] .side-editor-pane { background: var(--bg); }
+  /* 起始頁沒有分頁列：中間那塊自己有上框線與圓角。 */
+  [data-panel-style="spaced"] .workspace:has(> .tab-bar.blank:not(.has-items)) > :is(.editor-pane, .preview-pane) {
+    border-top: 1px solid var(--panel-line);
+    border-top-left-radius: var(--panel-radius);
+    border-top-right-radius: var(--panel-radius);
+  }
   /* 分割：左右兩半是同一塊，中間一條細線。 */
   [data-panel-style="spaced"] .workspace[data-view="split"] > .editor-pane { border-right: 0; border-bottom-right-radius: 0; }
   [data-panel-style="spaced"] .workspace[data-view="split"] > :is(.preview-pane, .side-editor-pane),
@@ -1558,7 +1564,16 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 .tab.pinned .tab-name { max-width: 12em; }
 .tab-new { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 4px; color: var(--chrome-icon); }
 .tab-new:hover { color: var(--fg); }
-.tab-bar.blank:not(.has-items) > * { visibility: hidden; }
+/*
+ * 起始頁（只有一份還沒打字的空白文件，沒有別的分頁）：沒有分頁可以切換，分頁列整列拿掉，起始頁從最上面開始
+ * （編輯區、預覽佔滿原本分頁列那一列）。開始打字、開了檔案或工作項目後分頁列就回來。
+ */
+.tab-bar.blank:not(.has-items) { display: none; }
+.workspace:has(> .tab-bar.blank:not(.has-items)) {
+  grid-template-areas:
+    "activity sidebar editor splitter preview outline"
+    "activity sidebar editor splitter preview outline";
+}
 /* 有工作項目等分頁時，只藏起那份空白文件的分頁（見 outline.ts 的 markBlankTab）。 */
 .tab-bar.blank.has-items .tab.tab-blank { display: none; }
 /* 工作項目、Wiki 頁面等的分頁：排在文件後面（中間一條分隔線），圖示標出來源；預覽分頁的名稱斜體。 */

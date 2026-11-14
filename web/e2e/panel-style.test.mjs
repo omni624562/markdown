@@ -241,3 +241,33 @@ test("終端機：圓角區塊時面板是圓角的框，終端機放在框線�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("起始頁沒有分頁列：中間那塊從最上面開始、自己有上框線與圓角；開始打字後分頁列回來", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ outlineRight: false }) });
+  await page.locator("#files-head").waitFor();
+  await page.locator(".empty-state:not([hidden])").waitFor();
+  const look = () =>
+    page.evaluate(() => {
+      const box = (sel) => {
+        const el = document.querySelector(sel);
+        if (!el || !el.getClientRects().length) return null;
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom) };
+      };
+      const pane = [...document.querySelectorAll(".editor-pane, .preview-pane")].find((el) => el.getClientRects().length && getComputedStyle(el).display !== "none");
+      const s = getComputedStyle(pane);
+      return { tabBar: box(".tab-bar"), sidebar: box(".sidebar"), pane: box(`.${pane.classList[0]}`), radius: s.borderTopLeftRadius, border: s.borderTopWidth };
+    });
+  const start = await look();
+  assert.equal(start.tabBar, null, "起始頁沒有分頁列");
+  assert.equal(start.pane.top, start.sidebar.top, `中間那塊和側邊欄一起從最上面開始：${JSON.stringify(start)}`);
+  assert.deepEqual([start.radius, start.border], ["8px", "1px"], "圓角區塊：自己有上框線與圓角");
+  await page.locator(".cm-content").focus();
+  await page.keyboard.insertText("# 筆記");
+  await page.locator(".tab-bar .tab").first().waitFor();
+  const typed = await look();
+  assert.ok(typed.tabBar && typed.tabBar.top === start.sidebar.top, `分頁列回來：${JSON.stringify(typed)}`);
+  assert.ok(typed.pane.top >= typed.tabBar.bottom - 1, "內文在分頁列下面");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
