@@ -1,5 +1,7 @@
 /**
  * 拖曳開檔：把檔案拖進視窗就開啟（Markdown、文字檔、Word 文件、圖片）。
+ * 拖的是選取的文字（從預覽、編輯區、其他程式）時不管它：放到助理的輸入框、編輯區、搜尋框等可以輸入的地方，
+ * 由瀏覽器（編輯區由 CodeMirror）照常放進去；放在其他地方不做任何事（不會因為拖了一個連結而整個視窗被導走）。
  */
 import { readTextFile } from "../files.ts";
 import { t } from "../i18n.ts";
@@ -37,6 +39,10 @@ export function initFileDrop(): void {
   });
   window.addEventListener("dragover", (e) => e.preventDefault());
   window.addEventListener("drop", async (e) => {
+    if (!e.dataTransfer?.types.includes("Files")) {
+      if (!editable(e.target)) e.preventDefault();
+      return;
+    }
     e.preventDefault();
     dragDepth = 0;
     overlay.hidden = true;
@@ -62,4 +68,9 @@ export function initFileDrop(): void {
     app.openDocument(file.name, text, null);
     toast(t("已開啟「{name}」", { name: file.name }));
   });
+}
+
+/** 放開的地方可以輸入文字（輸入框、編輯區）：拖過來的文字交給它自己放進去。 */
+function editable(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest("input, textarea, [contenteditable=''], [contenteditable='true'], .cm-content");
 }
