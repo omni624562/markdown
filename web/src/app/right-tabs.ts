@@ -18,7 +18,12 @@ const TAB_KEY = "right-tab";
 const WIDTH_KEY = "outline-right-width";
 
 let saved: RightTab | null = parseRightTab(storage.load(TAB_KEY));
+/** 右側欄的第一列：左邊是分頁（`strip`），右邊是目前那一頁的按鈕（`stripActions`）。 */
+let head: HTMLElement | null = null;
 let strip: HTMLElement | null = null;
+let stripActions: HTMLElement | null = null;
+/** 搬到分頁列上的面板按鈕（面板 → 它原本在標題列的 `.side-actions`），移回左邊時放回去。 */
+const movedActions = new Map<HTMLElement, HTMLElement>();
 const buttons = new Map<RightTab, HTMLButtonElement>();
 /** 反向連結在右側欄自成一頁：這個盒子裝原本在大綱底下的反向連結（移回左邊時放回去）。 */
 let backlinksBox: HTMLElement | null = null;
@@ -83,6 +88,36 @@ function renderBadge(): void {
 }
 
 /** 分頁列（第一次用到才建立）：按鈕是 tab，左右鍵在分頁之間移動。 */
+function buildHead(): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "right-head";
+  strip = buildStrip();
+  stripActions = document.createElement("div");
+  stripActions.className = "right-tab-actions";
+  el.append(strip, stripActions);
+  return el;
+}
+
+/**
+ * 目前那一頁的按鈕（大綱的「全部收合」、Wiki 的重新整理）放在分頁列右邊，不另外佔一列；
+ * 面板在左邊的側邊欄、或換到別頁時，按鈕放回面板自己的標題列。
+ */
+function placeActions(panels: (HTMLElement | null)[], shown: HTMLElement | null): void {
+  for (const panel of panels) {
+    if (!panel) continue;
+    const own = panel.querySelector<HTMLElement>(":scope > .side-head");
+    const actions = movedActions.get(panel) ?? own?.querySelector<HTMLElement>(":scope > .side-actions");
+    if (!actions || !own) continue;
+    if (panel === shown) {
+      movedActions.set(panel, actions);
+      if (actions.parentElement !== stripActions) stripActions!.replaceChildren(actions);
+    } else if (actions.parentElement !== own) {
+      own.append(actions);
+      movedActions.delete(panel);
+    }
+  }
+}
+
 function buildStrip(): HTMLElement {
   const el = document.createElement("div");
   el.className = "right-tabs";
@@ -159,9 +194,9 @@ export function syncRightTabs(): void {
   const assistant = current === "assistant" || assistantPanel(false) ? assistantPanel(true) : null;
   if (assistant && assistant.parentElement !== right) right.append(assistant);
 
-  strip ??= buildStrip();
-  if (right.firstElementChild !== strip) right.prepend(strip);
-  strip.hidden = !available.length;
+  head ??= buildHead();
+  if (right.firstElementChild !== head) right.prepend(head);
+  head.hidden = !available.length;
   for (const [id, b] of buttons) {
     b.hidden = !available.includes(id);
     b.setAttribute("aria-selected", String(id === current));
@@ -174,6 +209,7 @@ export function syncRightTabs(): void {
     ["assistant", assistant],
   ];
   for (const [id, el] of panels) if (el) el.hidden = id !== current;
+  placeActions([outline, wiki], current === "outline" && outlineRight ? outline : current === "wiki" && wikiRight ? wiki : null);
   right.dataset.tab = current ?? "";
   renderBadge();
 }

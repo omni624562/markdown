@@ -293,12 +293,15 @@ kbd {
   background: var(--surface);
 }
 
-/* 右側欄（app/right-tabs.ts）：大綱、反向連結、Wiki、助理各是一頁，一次顯示一頁，分頁列在右上角那一塊
-   （窄視窗時在抽屜最上面）。面板的標題列只留按鈕（名稱就是分頁），大綱的標題列只剩「全部收合」。 */
-.outline-right .side-head { height: 28px; padding: 0 4px 0 8px; border-bottom: 1px solid var(--border); background: transparent; }
-.outline-right .side-head h2 { display: none; }
-.outline-right .side-head .side-actions .btn { width: 22px; height: 22px; min-height: 22px; }
-.outline-right .side-head .side-actions .btn .icon { width: 15px; height: 15px; }
+/* 右側欄（app/right-tabs.ts）：大綱、反向連結、Wiki、助理各是一頁，一次顯示一頁，分頁列是右側欄的第一列
+   （窄視窗時在抽屜最上面）。名稱就是分頁，所以面板自己的標題列不顯示；大綱的「全部收合」、Wiki 的重新整理這類按鈕
+   搬到分頁列的右邊（不另外佔一列）。 */
+.outline-right > .side-panel > .side-head { display: none; }
+.right-tab-actions { display: flex; flex: none; gap: 2px; align-items: center; margin-left: auto; }
+.right-tab-actions .side-actions { display: flex; gap: 2px; align-items: center; opacity: 1; }
+.right-tab-actions .btn.icon-only { width: 26px; height: 26px; min-height: 26px; color: var(--muted); }
+.right-tab-actions .btn.icon-only:hover { color: var(--fg); }
+.right-tab-actions .btn .icon { width: 15px; height: 15px; }
 .outline-right > .side-panel, .outline-right > .right-backlinks, .outline-right > .assistant-panel { flex: 1 1 0; min-height: 0; }
 .outline-right > .side-panel > .side-body { padding-top: 4px; }
 .outline-right > #panel-outline > .side-body { flex: 1 1 0; min-height: 48px; }
@@ -307,7 +310,8 @@ kbd {
 .right-backlinks .backlinks { margin: 0; padding: 0; border: 0; }
 .right-backlinks .backlinks > h3 { display: none; }
 .right-backlinks .side-empty { margin: 8px 4px; color: var(--muted); font-size: 13px; }
-.outline-right > .right-tabs { flex: none; box-sizing: border-box; height: var(--tabbar-h); padding: 0 6px; border-bottom: 1px solid var(--border); }
+.outline-right > .right-head { display: flex; flex: none; gap: 4px; align-items: center; box-sizing: border-box; height: var(--tabbar-h); padding: 0 6px; border-bottom: 1px solid var(--border); }
+.outline-right > .right-head[hidden] { display: none; }
 
 /* Wiki 面板移到右側時，圖示列上的 Wiki 圖示藏起來。 */
 /* Wiki 放在右側時，圖示列上的 Wiki 圖示照樣顯示（按一下打開或收起右側欄），不然右側欄收起來後就找不到 Wiki 了。 */

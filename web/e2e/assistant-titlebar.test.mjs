@@ -42,7 +42,7 @@ const geometry = (page) =>
       controls: box(".window-controls"),
       sideHead: box("#panel-files > .side-head"),
       sidebar: box(".sidebar"),
-      tabs: box("#outline-right > .right-tabs"),
+      tabs: box("#outline-right > .right-head"),
       right: box("#outline-right"),
       panel: box("#assistant-panel"),
       topbar: box(".topbar"),
@@ -179,7 +179,7 @@ test("視窗不夠寬：☰ ◧ 在左上角，◨ 在視窗按鈕左邊；助�
   const g = await geometry(page);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/narrow-open.png` });
   assert.equal(g.rightPosition, "fixed", "抽屜");
-  assert.equal(await page.locator("#outline-right > .right-tabs").isVisible(), true);
+  assert.equal(await page.locator("#outline-right > .right-head").isVisible(), true);
   assert.equal(g.corner, true);
   // 抽屜從標題列下面開始：◨ 和視窗按鈕沒有被蓋住，按 ◨ 可以收起抽屜。
   assert.ok(g.right.top >= g.topbar.bottom, `抽屜在標題列下面：${JSON.stringify([g.right, g.topbar])}`);
