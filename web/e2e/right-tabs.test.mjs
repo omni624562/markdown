@@ -67,8 +67,8 @@ test("分頁列在右側欄最上面：大綱、反向連結（有數字）、Wi
   assert.equal(await selected(page, "outline"), true, "預設是大綱");
   assert.equal(await page.locator("#outline-right #panel-outline").isVisible(), true);
   assert.equal(await page.locator("#outline-right #panel-wiki").isVisible(), false, "Wiki 那一頁藏著");
-  assert.equal(await page.locator("#panel-outline > .side-head h2").isVisible(), false, "標題列不重複寫名稱（分頁就是名稱）");
-  assert.equal(await page.locator("#panel-outline > .side-head .side-actions .btn").count(), 1, "大綱的「全部收合」還在標題列");
+  assert.equal(await page.locator("#panel-outline > .side-head").isVisible(), false, "大綱自己的標題列不顯示（分頁就是名稱）");
+  assert.equal(await page.locator("#outline-right .right-tab-actions .btn").count(), 1, "大綱的「全部收合」在分頁列右邊");
   // 反向連結自己一頁：清單在裡面，原本的小標題不重複顯示。
   await tab(page, "backlinks").click();
   assert.equal(await selected(page, "backlinks"), true);
@@ -78,8 +78,8 @@ test("分頁列在右側欄最上面：大綱、反向連結（有數字）、Wi
   // Wiki：切過去才讀頁面，標題列上的移到左邊、重新整理都在。
   await tab(page, "wiki").click();
   await page.locator('#outline-right .wiki-page[data-path="/IRIS專區"]').waitFor();
-  assert.equal(await page.locator("#panel-wiki > .side-head #wiki-dock").isVisible(), true);
-  assert.equal(await page.locator("#panel-wiki > .side-head #wiki-refresh").isVisible(), true);
+  assert.equal(await page.locator("#outline-right .right-tab-actions #wiki-dock").isVisible(), true);
+  assert.equal(await page.locator("#outline-right .right-tab-actions #wiki-refresh").isVisible(), true);
   // 重新載入：還是 Wiki。
   await page.reload();
   await page.locator('#outline-right .wiki-page[data-path="/IRIS專區"]').waitFor();
@@ -125,7 +125,51 @@ test("只有大綱在右側：兩個分頁（大綱、反向連結）；大綱�
   assert.equal(await page.locator(".top-actions").isVisible(), false, "右上角那塊整個藏起來");
   await page.click("#side-tab-outline");
   assert.equal(await page.locator("#sidebar #panel-outline > .side-head h2").textContent(), "大綱");
+  assert.equal(await page.locator("#sidebar #panel-outline > .side-head .side-actions .btn").count(), 1, "「全部收合」也回到大綱的標題列");
   assert.equal(await page.locator("#sidebar #panel-outline > .side-body #backlinks").count(), 1, "反向連結回到大綱底下");
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+test("大綱的「全部收合」、Wiki 的按鈕在分頁列的右邊，不另外佔一列；換到別頁時跟著換，大綱移回左邊時回到大綱的標題列", async () => {
+  const { page, context, errors } = await setup();
+  await tab(page, "outline").click();
+  const box = (sel) =>
+    page.evaluate((s) => {
+      const el = document.querySelector(s);
+      if (!el || !el.getClientRects().length) return null;
+      const r = el.getBoundingClientRect();
+      return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom) };
+    }, sel);
+  const collapse = '#outline-right .right-head .right-tab-actions button[aria-label="全部收合"]';
+  await page.locator(collapse).waitFor();
+  const [row, btn, panelHead, list, right] = await Promise.all(
+    [ "#outline-right > .right-head", collapse, "#panel-outline > .side-head", "#outline-list", "#outline-right"].map(box),
+  );
+  assert.ok(btn.top >= row.top && btn.bottom <= row.bottom, `按鈕在分頁列裡：${JSON.stringify({ row, btn })}`);
+  assert.ok(right.right - btn.right <= 12, `靠右：${JSON.stringify({ btn, right })}`);
+  assert.equal(panelHead, null, "大綱自己的標題列不顯示（不另外佔一列）");
+  assert.ok(list.top - row.bottom < 12, `清單緊接在分頁列下面：${JSON.stringify({ row, list })}`);
+  // 按下去照樣收合。
+  await page.click(collapse);
+  await page.locator('#outline-right .right-tab-actions button[aria-label="全部展開"]').waitFor();
+  assert.ok(await page.locator("#outline-list > li[hidden]").count() > 0);
+  // 換到反向連結：沒有大綱的按鈕；換到 Wiki：是 Wiki 的按鈕。
+  await tab(page, "backlinks").click();
+  assert.equal(await page.locator("#outline-right .right-tab-actions button:visible").count(), 0);
+  await tab(page, "wiki").click();
+  await page.locator("#outline-right .right-tab-actions #wiki-refresh").waitFor();
+  assert.equal(await page.locator("#outline-right .right-tab-actions [aria-label='全部展開']").count(), 0);
+  assert.equal(await box("#panel-wiki > .side-head"), null, "Wiki 自己的標題列也不顯示");
+  assert.deepEqual(errors, []);
+  await context.close();
+
+  // 大綱放在左邊：按鈕在大綱自己的標題列。
+  const left = await open({ desktop: desktop({ outlineRight: false }) });
+  await left.page.waitForSelector("#file-tree .tree-row");
+  await openFile(left.page, "COBALT");
+  await left.page.click("#side-tab-outline");
+  await left.page.locator("#panel-outline > .side-head .side-actions button").waitFor();
+  assert.deepEqual(left.errors, []);
+  await left.context.close();
 });

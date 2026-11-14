@@ -195,7 +195,7 @@ test("版面：助理是右側欄的一頁（分頁列只到右側欄左邊）�
   const box = await panel.boundingBox();
   const tabs = await page.locator("#tab-bar").boundingBox();
   // 助理在右側欄裡、在右側欄自己的分頁列下面；右側欄的分頁列和文件分頁在同一個高度，文件的分頁列在右側欄左邊結束；右側欄的分頁列選著「助理」。
-  const strip = await page.locator("#outline-right > .right-tabs").boundingBox();
+  const strip = await page.locator("#outline-right > .right-head").boundingBox();
   assert.ok(Math.abs(strip.y - tabs.y) <= 1 && Math.abs(strip.height - tabs.height) <= 1, `分頁列同高 ${JSON.stringify([strip, tabs])}`);
   assert.ok(box.y >= strip.y + strip.height - 1 && box.y < 100, `top ${strip.y} / ${box.y}`);
   assert.equal(await page.locator("#outline-right #assistant-panel").count(), 1, "助理在右側欄裡");
@@ -242,7 +242,7 @@ test("窄視窗：右側欄（助理）變成蓋在文件上的抽屜，按 Esc 
   const box = await drawer.boundingBox();
   assert.ok(box.x + box.width <= 760);
   // 抽屜最上面是分頁列（只有助理一頁）。
-  assert.equal(await page.locator('#outline-right > .right-tabs .right-tab[data-tab="assistant"]').isVisible(), true);
+  assert.equal(await page.locator('#outline-right .right-tabs .right-tab[data-tab="assistant"]').isVisible(), true);
   await panel.locator("textarea").press("Escape");
   await drawer.waitFor({ state: "hidden" });
   assert.deepEqual(errors, []);

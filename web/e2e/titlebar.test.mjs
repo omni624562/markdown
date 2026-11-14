@@ -39,7 +39,7 @@ const box = (page, sel) =>
 test("三欄的標題列在標題列下面、同一列；☰ 和圖示列對齊；圖示列從「檔案」開始、不放專案方塊，換面板或收起側邊欄時圖示不跳", async () => {
   const { page, context, errors } = await setup();
   const [menu, activity, topbar, head, tabs, rightTabs, sidebar, files] = await Promise.all(
-    ["#main-menu", ".activity-bar", ".topbar", "#panel-files > .side-head", ".tab-bar", "#outline-right > .right-tabs", ".sidebar", "#side-tab-files"].map((s) => box(page, s)),
+    ["#main-menu", ".activity-bar", ".topbar", "#panel-files > .side-head", ".tab-bar", "#outline-right > .right-head", ".sidebar", "#side-tab-files"].map((s) => box(page, s)),
   );
   const s = JSON.stringify({ menu, activity, topbar, head, tabs, rightTabs, sidebar, files });
   assert.ok(Math.abs(menu.right - activity.right) <= 1, `☰ 和圖示列同寬 ${s}`);
