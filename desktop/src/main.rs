@@ -245,6 +245,44 @@ fn window_control(window: Window, action: String) -> Result<bool, String> {
     window.is_maximized().map_err(|e| e.to_string())
 }
 
+/// 進入全螢幕前視窗是不是最大化（離開全螢幕時恢復）。
+static MAXIMIZED_BEFORE_FULLSCREEN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// 簡報的全螢幕（網頁的 `requestFullscreen` 在 Windows 上不可靠，改由這裡切換）。
+/// 最大化的無邊框視窗直接全螢幕時，視窗層（tao）仍把內容區算成「螢幕扣掉工作列」，下面會留一條工作列高的黑邊，
+/// 所以先還原成一般大小再全螢幕；陰影也先關掉，不然四周還有一圈邊框。離開時恢復原本的最大化與陰影。
+#[tauri::command]
+fn window_fullscreen(window: Window, on: bool) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
+    let run = || -> tauri::Result<()> {
+        if on == window.is_fullscreen()? {
+            return Ok(());
+        }
+        if on {
+            let maximized = window.is_maximized()?;
+            MAXIMIZED_BEFORE_FULLSCREEN.store(maximized, Ordering::Relaxed);
+            if maximized {
+                window.unmaximize()?;
+            }
+            if CUSTOM_TITLE_BAR {
+                let _ = window.set_shadow(false);
+            }
+            window.set_fullscreen(true)
+        } else {
+            window.set_fullscreen(false)?;
+            if CUSTOM_TITLE_BAR {
+                let _ = window.set_shadow(true);
+            }
+            if MAXIMIZED_BEFORE_FULLSCREEN.swap(false, Ordering::Relaxed) {
+                window.maximize()?;
+            }
+            Ok(())
+        }
+    };
+    run().map_err(|e| e.to_string())
+}
+
 /// 原生指令先經過整合功能的開關（見 `features`）：在設定關掉的功能，它的指令一律拒絕。
 fn with_features<R: tauri::Runtime>(
     handler: impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
@@ -311,6 +349,7 @@ fn main() {
             set_ui_zoom,
             custom_title_bar,
             window_control,
+            window_fullscreen,
             files::open_file,
             files::reopen_file,
             new_project::project_default_parent,

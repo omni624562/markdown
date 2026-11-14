@@ -417,6 +417,7 @@ export const ui: Record<string, Translation> = {
   "上一頁（←）": "Previous Slide (←)",
   "下一頁": "Next Slide",
   "下一頁（→ 或空白鍵）": "Next Slide (→ or Space)",
+  "（續）": " (cont.)",
   "結束簡報": "End Presentation",
   "結束簡報（Esc）": "End Presentation (Esc)",
   "匯出 PDF": "Export PDF",

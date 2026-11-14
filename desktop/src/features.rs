@@ -155,6 +155,7 @@ mod tests {
         "set_ui_zoom",
         "custom_title_bar",
         "window_control",
+        "window_fullscreen",
         "open_file",
         "reopen_file",
         "project_default_parent",
