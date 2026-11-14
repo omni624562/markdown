@@ -98,6 +98,7 @@ import { provideApp } from "./app/context.ts";
 import { initMainMenu } from "./app/main-menu.ts";
 import { initTitleSearch, renderTitleSearch } from "./app/title-search.ts";
 import { initPreviewDrag } from "./app/preview-drag.ts";
+import { initUndoKeys } from "./app/undo-keys.ts";
 import { closeSide, initSideBySide, refreshOtherPane, renderPaneHeads } from "./app/side-by-side.ts";
 import { initFileHistory } from "./app/file-history.ts";
 import { initStatusView } from "./app/status-view.ts";
@@ -2385,6 +2386,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-command]").forEach((btn) => 
 initMainMenu();
 initTitleSearch();
 initPreviewDrag();
+initUndoKeys();
 // 側邊欄圖示的提示附上快速鍵（例如「檔案（Ctrl+Shift+E）」）。網頁版不能在資料夾中搜尋，Ctrl+Shift+F 沒有作用，不寫。
 for (const [tab, id] of [
   ["#side-tab-files", "show-files"],
