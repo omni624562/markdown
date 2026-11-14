@@ -7,7 +7,7 @@
  * 只在 Markdown 文件、可以編輯、沒有在看差異時有。拖到助理的輸入區是把那段文字放進問題（帶著 text/plain）。
  * 即時預覽（編輯區）的把手在 app/live-drag.ts，搬移的規則（moveText）共用。
  */
-import { undo } from "@codemirror/commands";
+import { redo, undo } from "@codemirror/commands";
 import { type LineRange, moveBlock, moveListItem } from "../block-move.ts";
 import { t } from "../i18n.ts";
 import { parseSourcepos } from "../scroll-sync.ts";
@@ -257,5 +257,30 @@ export function initPreviewDrag(): void {
   document.addEventListener("dragend", () => {
     if (dragging) clear();
   });
+  document.addEventListener("keydown", undoOutsideEditor);
   initLiveDrag();
+}
+
+/**
+ * 焦點不在任何可以輸入的地方（剛拖完段落：把手在編輯區外面；或在「預覽」模式，沒有編輯區）時，
+ * Ctrl+Z 復原文件、Ctrl+Y／Ctrl+Shift+Z 重做，和在編輯區裡按一樣。不然拖完按 Ctrl+Z 什麼都不會發生。
+ */
+function undoOutsideEditor(e: KeyboardEvent): void {
+  if (e.defaultPrevented || e.altKey || !(e.ctrlKey || e.metaKey)) return;
+  const key = e.key.toLowerCase();
+  const isUndo = key === "z" && !e.shiftKey;
+  const isRedo = (key === "y" && !e.shiftKey) || (key === "z" && e.shiftKey);
+  if (!isUndo && !isRedo) return;
+  // 只管焦點在頁面本身、把手、預覽上的時候；輸入框、編輯區、對話框、選單裡的 Ctrl+Z 交給它們自己。
+  const active = document.activeElement;
+  const outside =
+    !active ||
+    active === document.body ||
+    (active instanceof HTMLElement && (active.classList.contains("preview-drag-handle") || !!active.closest("#preview-scroller")));
+  if (!outside || document.querySelector("dialog[open]")) return;
+  const view = app.editor.view;
+  if (view.state.readOnly) return;
+  if (!(isUndo ? undo(view) : redo(view))) return;
+  e.preventDefault();
+  app.renderNow();
 }
