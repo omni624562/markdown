@@ -130,6 +130,10 @@ test("圓角區塊：沒有右側欄時，分頁列一路到內文的右緣（�
 test("圓角區塊：窄視窗一律相連（側邊欄是抽屜）", async () => {
   const { page, context, errors } = await open({ desktop: desktop({ panelStyle: "spaced" }) });
   await page.setViewportSize({ width: 700, height: 800 });
+  // 起始頁沒有分頁列：寫一點內容讓分頁列出來。
+  await page.locator(".cm-content").focus();
+  await page.keyboard.insertText("# 筆記");
+  await page.locator("#tab-bar .tab").first().waitFor();
   await page.waitForTimeout(200);
   const style = await page.evaluate(() => {
     const ws = getComputedStyle(document.querySelector(".workspace"));

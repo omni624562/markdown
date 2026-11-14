@@ -54,10 +54,12 @@ const geometry = (page) =>
     };
   });
 
+/** 寫一點內容（起始頁沒有分頁列，打字後才出現）。 */
 async function start(page) {
-  await page.locator("#tab-bar").waitFor();
+  await page.locator(".cm-content").waitFor();
   await page.locator(".cm-content").focus();
   await page.keyboard.insertText("# 筆記\n\n內容");
+  await page.locator("#tab-bar .tab").first().waitFor();
   await page.locator(".window-close").waitFor();
 }
 

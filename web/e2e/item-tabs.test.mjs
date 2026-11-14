@@ -46,7 +46,7 @@ const desktop = {
 /** 看得到的分頁名稱。 */
 const tabs = (page) =>
   page.$$eval("#tab-bar .tab", (list) =>
-    list.filter((t) => getComputedStyle(t).display !== "none" && getComputedStyle(t).visibility !== "hidden").map((t) => t.textContent.trim()),
+    list.filter((t) => t.getClientRects().length > 0 && getComputedStyle(t).visibility !== "hidden").map((t) => t.textContent.trim()),
   );
 const heading = (page) => page.locator(".ado-hero h1").first().textContent();
 
