@@ -75,7 +75,7 @@ test("按捷徑：側邊欄換到工作項目或 Wiki 面板；側邊欄收起�
   assert.ok(await sidebarShown());
 
   // 收起側邊欄後再按捷徑：內容照樣開，側邊欄不會自己打開。
-  await page.click(".activity-toggle");
+  await page.click(".topbar > .nav-toggle");
   await page.waitForFunction(() => document.querySelector(".workspace").classList.contains("outline-hidden"));
   await workItem.click();
   await page.waitForFunction(() => document.querySelector(".activity-wiki-page")?.getAttribute("aria-current") === "page");

@@ -1,6 +1,6 @@
 /**
  * 側邊欄標題列的按鈕（新增檔案、新增資料夾、重新整理…）一直顯示，不用先把滑鼠移到側邊欄；
- * 寬視窗時標題列在最上面那一列，窄視窗在抽屜裡，兩邊都看得到。
+ * 寬視窗時標題列在側邊欄最上面、和文件分頁同一列，窄視窗在抽屜裡，兩邊都看得到。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -30,13 +30,14 @@ async function assertVisible(page, selector) {
   return state;
 }
 
-test("寬視窗：滑鼠不在側邊欄上時，標題列（在最上面那一列）的按鈕也看得到，滑鼠移上去變深", async () => {
+test("寬視窗：滑鼠不在側邊欄上時，標題列（和文件分頁同一列）的按鈕也看得到，滑鼠移上去變深", async () => {
   const { page, context, errors } = await open({ desktop: DESKTOP });
   await page.locator("#files-head").waitFor();
   await page.mouse.move(900, 500);
+  const tabs = await page.locator("#tab-bar").boundingBox();
   for (const id of ["tree-new-file", "tree-new-folder", "tree-refresh"]) {
     const { top } = await assertVisible(page, `#${id}`);
-    assert.ok(top < 40, `${id} top ${top}`);
+    assert.ok(top >= tabs.y && top < tabs.y + tabs.height, `${id} top ${top}，分頁列 ${JSON.stringify(tabs)}`);
   }
   const color = () => page.$eval("#tree-new-file", (el) => getComputedStyle(el).color);
   const before = await color();

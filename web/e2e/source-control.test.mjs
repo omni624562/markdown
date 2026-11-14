@@ -86,13 +86,14 @@ test("已登入：拉取、推送可以按，「提交並推送」是主要按�
   assert.ok(row.truncated);
   assert.ok(row.right <= row.panelRight, JSON.stringify(row));
 
-  // 只有圖示的按鈕在面板標題列（寬視窗時標題列在最上面那一列）。
+  // 只有圖示的按鈕在面板標題列（寬視窗時標題列和文件分頁同一列）。
   const head = page.locator("#panel-git .side-head .side-actions");
   assert.equal(await head.isVisible(), true);
   const labels = await head.locator("button:not([hidden])").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
   assert.deepEqual(labels, ["Git 歷史（線圖）", "建立 Pull Request", "立刻檢查遠端"]);
   const top = await head.evaluate((el) => Math.round(el.getBoundingClientRect().top));
-  assert.ok(top < 40, String(top));
+  const tabs = await page.locator("#tab-bar").boundingBox();
+  assert.ok(top >= tabs.y && top < tabs.y + tabs.height, `${top} / ${JSON.stringify(tabs)}`);
   const before = (await calls(page)).filter((c) => c.cmd === "git_fetch").length;
   await head.locator('button[aria-label="立刻檢查遠端"]').click();
   await page.waitForFunction((n) => window.__fake.calls.filter((c) => c.cmd === "git_fetch").length > n, before);

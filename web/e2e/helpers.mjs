@@ -142,7 +142,8 @@ export async function open({ desktop, page: path = "index.html", ready = ".cm-ed
 
 /** 把編輯器的內容換成 `text`。 */
 export async function setText(page, text) {
-  await page.click(".cm-content");
+  // 點第一行（左上角）：空白文件中間有「開始」頁的提示，點正中央可能點到提示而不是編輯區。
+  await page.click(".cm-content", { position: { x: 4, y: 4 } });
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Delete");
   await page.keyboard.insertText(text);

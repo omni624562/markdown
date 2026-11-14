@@ -41,7 +41,10 @@
   /* 放在右邊的大綱，寬度和左邊的側邊欄分開調整。 */
   --outline-right-width: 248px;
   --activity-width: 48px;
-  --topbar-h: 40px;
+  /* 標題列（☰ ◧ … ◨ 視窗按鈕）。 */
+  --topbar-h: 36px;
+  /* 三欄各自的標題列：側邊欄（專案名稱與按鈕）、文件分頁、右側欄（大綱、反向連結、助理），同一個高度。 */
+  --tabbar-h: 37px;
   --splitter-width: 9px;
   --control-h: 32px;
   --radius: 8px;
@@ -135,7 +138,7 @@ kbd {
 .btn[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .btn[aria-expanded="true"] { background: var(--surface); border-color: var(--border); }
 
-/* ---- 頂端列：分頁＋檢視切換＋選單 ---- */
+/* ---- 標題列：☰ ◧ ……（空白，可拖曳視窗）…… ◨ 視窗按鈕 ---- */
 .topbar {
   position: relative;
   display: flex;
@@ -147,8 +150,8 @@ kbd {
   background: var(--topbar-bg);
 }
 /*
- * 左上角：主選單（☰）在圖示列的正上方、寬度和圖示列對齊；側邊欄開關在圖示列最上面（寬視窗）。
- * 窄視窗時左上角是側邊欄開關（打開抽屜），主選單移到右上角。
+ * 左上角：主選單（☰）在圖示列的正上方、寬度和圖示列對齊，旁邊是左側欄開關（◧）；右上角是右側欄開關（◨）。
+ * 窄視窗時 ◧ 打開側邊欄的抽屜。
  */
 .nav-menu, .nav-toggle {
   display: grid;
@@ -164,20 +167,12 @@ kbd {
 .nav-menu .icon, .nav-toggle .icon { padding: 5px; box-sizing: content-box; border-radius: 6px; transition: background 0.12s, color 0.12s; }
 .nav-menu:hover .icon, .nav-toggle:hover .icon, .nav-menu[aria-expanded="true"] .icon { background: var(--active-line); color: var(--fg); }
 .nav-menu:focus-visible, .nav-toggle:focus-visible { outline-offset: -6px; }
+.nav-toggle { width: 34px; }
 .nav-toggle[aria-pressed="true"] { color: var(--fg); }
-/* 圖示列最上面的側邊欄開關，下面一條細線和面板的圖示分開。 */
-.activity-toggle .icon { width: 20px; height: 20px; }
-.activity-toggle[aria-pressed="true"] { color: var(--fg); }
-.activity-sep { flex: none; width: 24px; height: 1px; margin: 3px 0 5px; background: var(--border); }
-/* 寬視窗：☰ 和 ◧ 靠近一點（圖示中心相距 31px），看起來是同一組（選單與側邊欄開關），和下面的面板圖示分開。
-   只移動圖示，按得到的範圍與下面的圖示位置都不變。窄視窗時 ☰ 移到右上角、沒有 ◧，不用調。 */
-@media (min-width: 721px) {
-  .topbar > .nav-menu .icon { translate: 0 5px; }
-  .activity-toggle .icon { translate: 0 -9px; }
-}
-.topbar-side { display: none; flex: none; width: var(--outline-width); }
 /* ---- Windows 桌面版的標題列按鈕 ---- */
-.window-controls { display: flex; flex: none; align-self: stretch; margin-left: 8px; }
+.window-controls { display: flex; flex: none; align-self: stretch; }
+/* 右上角沒有右側欄開關時，視窗按鈕自己靠右。 */
+.top-actions[hidden] + .window-controls { margin-left: auto; }
 .window-btn {
   display: grid;
   place-items: center;
@@ -193,13 +188,8 @@ kbd {
 .window-btn.window-close:hover { background: #c42b1c; color: #fff; }
 .window-btn.window-close:active { background: #b22a1b; color: #fff; }
 .custom-titlebar .top-actions { padding-right: 0; }
-/* 拿掉系統標題列後，視窗靠頂端列拖曳；頂端列稍微高一點，比較好抓。 */
-.custom-titlebar { --topbar-h: 42px; }
+/* 拿掉系統標題列後，視窗靠標題列中間的空白拖曳。 */
 .custom-titlebar .topbar { user-select: none; }
-/*
- * 側邊欄開著時，分頁從內文的左邊開始。左右兩個側邊欄按鈕同一種樣子：開著時那一邊塗滿、圖示顏色深一點，不加底色。
- */
-.topbar.with-sidebar .topbar-side { display: block; }
 .workspace.narrow.outline-hidden .activity-bar { display: none; }
 .top-actions { display: flex; flex: none; gap: 4px; margin-left: auto; align-items: center; padding: 0 8px 0 12px; }
 .top-actions .btn.icon-only { color: var(--chrome-icon); }
@@ -219,41 +209,9 @@ kbd {
 .right-tab-label { overflow: hidden; text-overflow: ellipsis; }
 .right-tab-badge { display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--muted); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .right-tab-badge[hidden] { display: none; }
-/*
- * 側邊欄一路到頂（寬視窗）：頂端列左邊那塊（圖示列與側邊欄的正上方）和下面的欄同底色、同一條邊線，
- * 目前面板的標題列（例如檔案面板的專案名稱與按鈕）疊在那塊上（position: fixed，是搬上去，不是多一份），
- * 分頁只在內文上方。圖示列最上面不放專案方塊（檔案面板的標題列已經有專案名稱）。
- * 右邊的側欄開關、⋯、視窗按鈕也是同底色的一塊；右側欄開著時和右側欄同寬、連成一欄。
- */
+/* 寬視窗：專案名稱在檔案面板的標題列（側邊欄最上面），圖示列不放專案方塊。 */
 @media (min-width: 721px) {
-  /* 寬視窗：側邊欄開關在圖示列最上面，頂端列左上角只放主選單。 */
-  .topbar > .nav-toggle { display: none; }
-  /* 右上角沒有東西時（右側欄沒有分頁）整塊藏起來；Windows 的視窗按鈕和分頁之間用一條線分開。 */
-  .top-actions[hidden] + .window-controls { margin-left: auto; border-left: 1px solid var(--border); }
-  .nav-menu, .topbar.with-sidebar .topbar-side { position: relative; border-right: 1px solid var(--border); background: var(--surface); }
-  /* 蓋掉頂端列的底線，和下面的欄接在一起。 */
-  .nav-menu::after,
-  .topbar.with-sidebar .topbar-side::after,
-  .topbar.with-right .top-actions::after,
-  .topbar.with-right .window-controls::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; background: var(--surface); }
-  .workspace:not(.narrow):not(.outline-hidden) .sidebar > .side-panel:not([hidden]) > .side-head {
-    position: fixed;
-    z-index: 30;
-    top: 0;
-    left: calc(var(--activity-width) + 1px);
-    box-sizing: border-box;
-    width: calc(var(--outline-width) - 2px);
-    height: var(--topbar-h);
-  }
-  .workspace:not(.narrow):not(.outline-hidden) #folder-branch { margin-top: 8px; }
-  /* 專案名稱在檔案面板的標題列（側邊欄最上面），圖示列不再放專案方塊；只在某些面板藏起來的話，換面板時整排圖示會跳一格。 */
   .activity-bar .activity-project { display: none; }
-  .tab-bar { margin-right: 12px; }
-  .top-actions { position: relative; align-self: stretch; padding: 0 4px 0 8px; border-left: 1px solid var(--border); background: var(--surface); }
-  .top-actions .btn.icon-only:hover, .top-actions .btn.icon-only[aria-pressed="true"]:hover { border-color: transparent; background: var(--active-line); }
-  .window-controls { position: relative; margin-left: 0; background: var(--surface); }
-  .topbar.with-right .top-actions { box-sizing: border-box; width: var(--outline-right-width); padding-left: 6px; }
-  .custom-titlebar .topbar.with-right .top-actions { width: calc(var(--outline-right-width) - 3 * 46px); }
 }
 .segmented {
   display: inline-flex;
@@ -284,7 +242,11 @@ kbd {
 .workspace {
   position: relative;
   display: grid;
-  grid-template-areas: "activity sidebar editor splitter preview outline";
+  /* 第一列是文件分頁（橫跨編輯區、分隔線與預覽）；圖示列、側邊欄、右側欄從最上面開始，各自有標題列。 */
+  grid-template-areas:
+    "activity sidebar tabs tabs tabs outline"
+    "activity sidebar editor splitter preview outline";
+  grid-template-rows: var(--tabbar-h) minmax(0, 1fr);
   min-height: 0;
 }
 .workspace[data-view="preview"] .editor-pane,
@@ -317,7 +279,7 @@ kbd {
 .right-backlinks .backlinks { margin: 0; padding: 0; border: 0; }
 .right-backlinks .backlinks > h3 { display: none; }
 .right-backlinks .side-empty { margin: 8px 4px; color: var(--muted); font-size: 13px; }
-.outline-right > .right-tabs { flex: none; height: 36px; padding: 0 6px; border-bottom: 1px solid var(--border); }
+.outline-right > .right-tabs { flex: none; box-sizing: border-box; height: var(--tabbar-h); padding: 0 6px; border-bottom: 1px solid var(--border); }
 
 /* Wiki 面板移到右側時，圖示列上的 Wiki 圖示藏起來。 */
 /* Wiki 放在右側時，圖示列上的 Wiki 圖示照樣顯示（按一下打開或收起右側欄），不然右側欄收起來後就找不到 Wiki 了。 */
@@ -375,9 +337,8 @@ kbd {
 
 /*
  * 區塊樣式「圓角區塊、留間隔」（設定 → 版面 → 區塊樣式）：視窗底色淡一點，側邊欄、中間（分頁列＋內文）、右側欄
- * 各自是圓角的區塊，彼此留 4px，三塊的上緣對齊。左右兩塊和頂端列上那一段（面板標題列、右上角的按鈕）接成一塊，
- * 分頁列在中間那塊的最上面；沒有右側欄時，右上角的按鈕（與視窗按鈕）也在分頁列那一條裡。
- * 間隔上沒有記號，拖曳調整寬度的地方照樣在間隔上。窄視窗一律相連（側邊欄是抽屜）。
+ * 各自是圓角的區塊，彼此留 4px，三塊的上緣對齊，都從標題列下面開始。側邊欄的標題列、文件分頁、右側欄的分頁列
+ * 各在自己那塊的最上面，底線在同一條水平線上。間隔上沒有記號，拖曳調整寬度的地方照樣在間隔上。窄視窗一律相連（側邊欄是抽屜）。
  */
 @media (min-width: 721px) {
   [data-panel-style="spaced"] {
@@ -388,72 +349,31 @@ kbd {
     --panel-line: color-mix(in srgb, var(--border) 50%, var(--border-soft));
   }
   [data-panel-style="spaced"] body { background: var(--backdrop); }
-  [data-panel-style="spaced"] .topbar { padding-right: var(--panel-gap); border-bottom: 0; background: var(--backdrop); }
-  [data-panel-style="spaced"] .topbar > ::after { display: none; }
-  [data-panel-style="spaced"] .nav-menu { border-right: 0; background: transparent; }
+  /* 標題列和背景同色、沒有分隔線；下面的三塊（側邊欄、文件區、右側欄）各自是圓角區塊。 */
+  [data-panel-style="spaced"] .topbar { border-bottom: 0; background: var(--backdrop); }
   [data-panel-style="spaced"] .activity-bar { border-right: 0; background: transparent; }
   [data-panel-style="spaced"] .activity-project.comet .project-avatar::after { border-color: var(--backdrop); }
   [data-panel-style="spaced"] .statusbar { border-top: 0; background: var(--backdrop); }
-  [data-panel-style="spaced"] .workspace { padding: 0 var(--panel-gap) var(--panel-gap) 0; }
+  /* 側邊欄、右側欄有一圈框線，標題列在框線裡面；文件分頁的上框線算在分頁列裡，所以第一列多 1px，三條底線才對齊。 */
+  [data-panel-style="spaced"] .workspace { grid-template-rows: calc(var(--tabbar-h) + 1px) minmax(0, 1fr); padding: 0 var(--panel-gap) var(--panel-gap) 0; }
 
-  /* 左：面板標題列那一段＋側邊欄。 */
-  [data-panel-style="spaced"] .topbar.with-sidebar .topbar-side {
-    width: calc(var(--outline-width) - var(--panel-gap));
-    margin: var(--panel-gap) var(--panel-gap) 0 0;
-    border: 1px solid var(--panel-line);
-    border-bottom: 0;
-    border-radius: var(--panel-radius) var(--panel-radius) 0 0;
-    background: var(--backdrop);
-  }
-  [data-panel-style="spaced"] .workspace:not(.narrow):not(.outline-hidden) .sidebar > .side-panel:not([hidden]) > .side-head {
-    top: var(--panel-gap);
-    width: calc(var(--outline-width) - var(--panel-gap) - 2px);
-    height: calc(var(--topbar-h) - var(--panel-gap));
-  }
+  /* 左：側邊欄（標題列在它自己的最上面）。 */
   [data-panel-style="spaced"] .sidebar {
     margin-right: var(--panel-gap);
     border: 1px solid var(--panel-line);
-    border-top: 0;
-    border-radius: 0 0 var(--panel-radius) var(--panel-radius);
+    border-radius: var(--panel-radius);
     background: var(--backdrop);
   }
-
-  /* 右：右上角的按鈕那一段＋右側欄。 */
-  [data-panel-style="spaced"] .topbar.with-right .top-actions {
-    width: calc(var(--outline-right-width) - var(--panel-gap));
-    margin: var(--panel-gap) 0 0 var(--panel-gap);
-    border: 1px solid var(--panel-line);
-    border-bottom: 0;
-    border-radius: var(--panel-radius) var(--panel-radius) 0 0;
-    background: var(--backdrop);
-  }
-  /* 視窗按鈕那段多了右框線（1px），這段扣掉，兩段合起來才和下面的右側欄同寬。 */
-  [data-panel-style="spaced"].custom-titlebar .topbar.with-right .top-actions {
-    width: calc(var(--outline-right-width) - var(--panel-gap) - 3 * 46px - 1px);
-    border-right: 0;
-    border-top-right-radius: 0;
-  }
-  [data-panel-style="spaced"] .topbar.with-right .window-controls {
-    margin-top: var(--panel-gap);
-    border: solid var(--panel-line);
-    border-width: 1px 1px 0 0;
-    border-top-right-radius: var(--panel-radius);
-    background: var(--backdrop);
-  }
-  /* 往上 1px：第一個分區標題列上緣的線和分頁列底下的線在同一條水平線上。 */
+  /* 右：右側欄（分頁列在它自己的最上面）。 */
   [data-panel-style="spaced"] .outline-right {
-    margin-top: -1px;
     margin-left: var(--panel-gap);
     border: 1px solid var(--panel-line);
-    border-top: 0;
-    border-radius: 0 0 var(--panel-radius) var(--panel-radius);
+    border-radius: var(--panel-radius);
     background: var(--backdrop);
   }
   [data-panel-style="spaced"] .outline-right .side-head { background: transparent; }
-  /* 中間：分頁列在最上面（淡底，目前的分頁和內文同底色、接在一起），下面是內文。 */
+  /* 中間：文件分頁在最上面（淡底，目前的分頁和內文同底色、接在一起），下面是內文。 */
   [data-panel-style="spaced"] .tab-bar {
-    flex: 1 1 auto;
-    margin: var(--panel-gap) 0 0;
     border: 1px solid var(--panel-line);
     border-bottom: 0;
     border-radius: var(--panel-radius) var(--panel-radius) 0 0;
@@ -462,21 +382,6 @@ kbd {
     box-shadow: inset 0 -1px 0 var(--panel-line);
   }
   [data-panel-style="spaced"][data-tab-style="line"] .tab[aria-selected="true"] { box-shadow: inset 0 2px 0 var(--accent); }
-  /* 分頁列後面還有東西（右上角的按鈕、視窗按鈕）時，右端交給最後一個。 */
-  [data-panel-style="spaced"] .topbar:not(.with-right) .tab-bar:has(~ :not([hidden])) { border-right: 0; border-top-right-radius: 0; }
-  [data-panel-style="spaced"] .topbar:not(.with-right) :is(.top-actions, .window-controls) {
-    margin-top: var(--panel-gap);
-    border: solid var(--panel-line);
-    border-width: 1px 0 0;
-    background: var(--surface);
-    box-shadow: inset 0 -1px 0 var(--panel-line);
-  }
-  [data-panel-style="spaced"] .topbar:not(.with-right) > :last-child { border-right-width: 1px; border-top-right-radius: var(--panel-radius); }
-  [data-panel-style="spaced"] .window-close { border-top-right-radius: calc(var(--panel-radius) - 1px); }
-  /* 視窗按鈕離視窗邊緣留了間隔：滑到最上面、最右邊（視窗放到最大時）仍然按得到。 */
-  [data-panel-style="spaced"] .window-btn { position: relative; }
-  [data-panel-style="spaced"] .window-btn::after { content: ""; position: absolute; right: 0; bottom: 100%; left: 0; height: calc(var(--panel-gap) + 1px); }
-  [data-panel-style="spaced"] .window-close::after { right: calc(-1px - var(--panel-gap)); }
   [data-panel-style="spaced"] .editor-pane,
   [data-panel-style="spaced"] .preview-pane,
   [data-panel-style="spaced"] .side-editor-pane,
@@ -673,7 +578,7 @@ kbd {
 }
 .side-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .side-panel[hidden] { display: none; }
-.side-head { display: flex; flex: none; gap: 2px; align-items: center; height: 36px; padding: 0 6px 0 14px; }
+.side-head { display: flex; flex: none; gap: 2px; align-items: center; box-sizing: border-box; height: var(--tabbar-h); padding: 0 6px 0 14px; }
 .side-head h2 {
   flex: 1;
   overflow: hidden;
@@ -1229,12 +1134,6 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   .split-only { display: none !important; }
   .top-actions { padding: 0 6px; }
   .nav-menu, .nav-toggle { width: 44px; border-right: 0; }
-  /* 窄視窗：左上角是側邊欄開關（打開抽屜），主選單在右上角（視窗按鈕前面）；圖示列裡的開關不用。 */
-  .topbar > .nav-menu { order: 1; }
-  .topbar:has(> .top-actions[hidden]) > .nav-menu { margin-left: auto; }
-  /* ☰ 和視窗按鈕之間一條線隔開，不和關閉鈕相鄰。 */
-  .topbar > .window-controls { order: 2; border-left: 1px solid var(--border); }
-  .activity-toggle, .activity-sep { display: none; }
   /* 手機只顯示目前的分頁（用側邊抽屜或 Ctrl+P 切換其他文件）。 */
   .tab-bar .tabs { flex: 1 1 auto; }
   .tab-bar .tab:not([aria-selected="true"]) { display: none; }
@@ -1495,13 +1394,14 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 }
 
 /* ---- 分頁列 ---- */
-/* 頂端列是淺灰色，目前的分頁是白色並蓋住下面的分隔線，和編輯區連成一塊。 */
+/* 文件區的第一列：淺灰色，底下一條分隔線；目前的分頁是白色並蓋住那條線，和編輯區連成一塊。 */
 .tab-bar {
   display: flex;
-  flex: 0 1 auto;
+  grid-area: tabs;
   align-items: stretch;
   min-width: 0;
-  margin-bottom: -1px;
+  background: var(--topbar-bg);
+  box-shadow: inset 0 -1px 0 var(--topbar-border);
 }
 .tabs { display: flex; flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
@@ -3493,7 +3393,7 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 /* ---- 工作項目、GitHub issue 的唯讀檢視（蓋在編輯區與預覽上面） ---- */
 .issue-pane {
   grid-column: editor-start / preview-end;
-  grid-row: 1;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -4704,10 +4604,11 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 }
 .assistant-action-mode:hover { border-color: var(--subtle); color: var(--fg); }
 .assistant-dependents .quick-action-add { width: calc(100% - 24px); margin: 0 12px 12px; }
-/* 視窗不夠寬（900px 以下，app/workspace-ui.ts 的 drawerQuery）：右側欄（只會是助理）變成從右邊滑出來的抽屜，蓋在文件上（左邊有陰影），Esc 收起（app/right-tabs.ts 加 .right-drawer）。 */
+/* 視窗不夠寬（900px 以下，app/workspace-ui.ts 的 drawerQuery）：右側欄（只會是助理）變成從右邊滑出來的抽屜，蓋在文件上（左邊有陰影），Esc 收起（app/right-tabs.ts 加 .right-drawer）。
+   從標題列下面開始，不蓋住右側欄開關（◨）和視窗按鈕。 */
 .outline-right.right-drawer,
 [data-panel-style="spaced"] .outline-right.right-drawer {
-  position: fixed; top: 4px; right: 4px; bottom: 40px; z-index: 20;
+  position: fixed; top: calc(var(--topbar-h) + 4px); right: 4px; bottom: 40px; z-index: 20;
   width: min(var(--outline-right-width), calc(100vw - 8px)); margin: 0;
   border: 1px solid var(--panel-line, var(--border)); border-radius: var(--panel-radius, 8px);
   background: var(--surface);
