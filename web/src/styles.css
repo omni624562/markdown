@@ -1078,6 +1078,8 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 /* 指令面板：快速鍵固定寬度靠右，分類文字因此上下切齊 */
 .palette-columns .palette-keys { flex: none; width: 9.5rem; display: flex; justify-content: flex-end; }
 .palette-columns .palette-group { flex: none; max-width: none; text-align: right; }
+/* 快速開啟：說明（所在資料夾）是固定寬度、靠左的一欄，每一行從同一個位置開始，不會因為長短不同而對不齊。 */
+.palette-detail-col .palette-group { flex: 0 0 42%; max-width: none; text-align: left; }
 .palette-empty { justify-content: center; color: var(--muted); cursor: default !important; }
 .palette-hint { display: flex; gap: 4px; align-items: center; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 /* 快速開啟：開在視窗最上面，蓋住標題列中間的搜尋框（和按搜尋框打開的位置一樣）。 */
