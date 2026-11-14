@@ -4611,6 +4611,8 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 .assistant-diff .add { background: light-dark(#e7f6ec, #17311f); color: light-dark(#1f7a3f, #86efac); }
 /* 輸入框：上面是要送出的內容，中間打字，下緣是常用動作與送出。 */
 .assistant-input { flex: none; margin: 0 10px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); cursor: text; }
+/* 把選取的文字拖到輸入區上：框起來，表示放開就放進問題裡。 */
+.assistant-input.drop-target { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .assistant-input:focus-within { border-color: var(--accent); }
 .assistant-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 7px 8px 0; cursor: default; }
 .assistant-chips:empty { display: none; }

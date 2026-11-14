@@ -843,6 +843,7 @@ function build(): HTMLElement {
       void send(input.value);
     }
   });
+  acceptTextDrops(box);
   const bar = document.createElement("div");
   bar.className = "assistant-quick";
   for (const a of ASSISTANT_ACTIONS.filter((x) => x.group === "main")) {
@@ -965,6 +966,40 @@ export function assistantShown(): void {
   renderNotice();
   void refreshStatus();
   input.focus();
+}
+
+/**
+ * 把選取的文字（從預覽、編輯區、其他程式）拖到輸入區：放在游標的位置（還沒點過時接在最後），
+ * 整個輸入區都可以放，不用剛好對準輸入框；拖到上面時輸入區框起來。拖進來的是檔案時不管（交給拖曳開檔）。
+ */
+function acceptTextDrops(box: HTMLElement): void {
+  const isText = (e: DragEvent) => !!e.dataTransfer && !e.dataTransfer.types.includes("Files") && e.dataTransfer.types.includes("text/plain");
+  box.addEventListener("dragover", (e) => {
+    if (!isText(e) || input.disabled) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "copy";
+    box.classList.add("drop-target");
+  });
+  box.addEventListener("dragleave", (e) => {
+    if (!box.contains(e.relatedTarget as Node | null)) box.classList.remove("drop-target");
+  });
+  document.addEventListener("dragend", () => box.classList.remove("drop-target"));
+  box.addEventListener("drop", (e) => {
+    box.classList.remove("drop-target");
+    if (!isText(e) || input.disabled) return;
+    const text = e.dataTransfer!.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const focused = document.activeElement === input;
+    const from = focused ? input.selectionStart : input.value.length;
+    const to = focused ? input.selectionEnd : input.value.length;
+    // 前面已經有字時隔一個空白，免得黏在一起。
+    const gap = from > 0 && !/\s$/.test(input.value.slice(0, from)) ? " " : "";
+    input.setRangeText(gap + text, from, to, "end");
+    input.focus();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 /** 專案換了（例如剛打開專案）：助理開著時更新「這次會送出的內容」與能不能送出，不會停在「請先開啟專案資料夾」。 */
