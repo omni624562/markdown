@@ -141,6 +141,8 @@ export const main: Record<string, Translation> = {
   "輸入檔名切換分頁": "Type a file name to switch tabs",
   "找不到符合的檔案": "No matching files",
   "也可以：": "Also:",
+  "拖曳調整順序": "Drag to reorder",
+  "已調整順序": "Moved",
   "輸入工作項目的編號或標題": "Type a work item number or title",
   "問助理：「{q}」": "Ask the assistant: \"{q}\"",
   "送到右側欄的助理": "Sends it to the assistant in the right column",

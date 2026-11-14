@@ -1168,6 +1168,30 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 .drop-overlay strong { font-size: 20px; }
 .drop-overlay span { color: var(--muted); }
 
+/* ---- 預覽拖動段落調整順序（app/preview-drag.ts）：左邊的「⋮⋮」把手、放開位置的線、被拖的那一塊變淡 ---- */
+.preview-drag-handle {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 24px;
+  margin-top: -12px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: grab;
+}
+.preview-drag-handle:hover { background: var(--active-line); color: var(--fg); }
+.preview-drag-handle[hidden] { display: none; }
+.preview-drag-handle .icon { width: 16px; height: 16px; }
+.preview-drop-line { position: absolute; z-index: 5; height: 3px; margin-top: -1.5px; border-radius: 2px; background: var(--accent); pointer-events: none; }
+.preview-drop-line[hidden] { display: none; }
+#preview .drag-source { opacity: 0.35; }
+@media (pointer: coarse) { .preview-drag-handle { display: none; } }
+
 /* ---- 預覽中的 highlight.js 色彩（沿用編輯器語法色） ---- */
 .hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-meta .hljs-keyword { color: var(--syn-keyword); }
 .hljs-string, .hljs-regexp, .hljs-attr .hljs-string, .hljs-template-string { color: var(--syn-string); }
