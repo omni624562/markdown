@@ -2765,7 +2765,15 @@ button.git-info:disabled { cursor: default; }
 .slideshow { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); outline: none; }
 .slideshow[hidden] { display: none; }
 .slide-stage { display: flex; flex: 1; align-items: center; justify-content: center; min-height: 0; padding: 4vh 6vw; overflow: hidden; cursor: pointer; }
-.slideshow .slide { width: min(100%, 1400px); max-width: none; margin: 0; padding: 0; line-height: 1.5; cursor: auto; }
+/* 一行最多約 40 個字寬：字小的時候欄位也跟著窄，內容在畫面中間，不會擠在左半邊。 */
+.slideshow .slide { position: relative; width: min(100%, 40em); max-width: none; margin: 0; padding: 0; line-height: 1.5; cursor: auto; }
+.slideshow .slide .anchor { display: none; }
+/* 分頁時量高度的那一下不要閃出來。 */
+.slideshow.slide-measuring .slide { visibility: hidden; }
+/* 一塊就比一頁還高（很長的表格、程式碼）：從上面開始顯示，可以上下捲動。 */
+.slideshow.slide-tall .slide-stage { align-items: flex-start; overflow-y: auto; }
+/* 一段分成好幾頁時，後面頁面標題後的「（續）」。 */
+.slideshow .slide-cont { margin-left: 0.2em; color: var(--muted); font-size: 0.6em; font-weight: 500; }
 .slideshow .slide h1 { font-size: 2em; border: 0; }
 .slideshow .slide h2 { font-size: 1.6em; border: 0; }
 .slideshow .slide img { max-height: 70vh; }

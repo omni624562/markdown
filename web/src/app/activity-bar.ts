@@ -506,7 +506,11 @@ export async function startSlideshow(fromCursor: boolean): Promise<void> {
     toast(t("文件是空的，沒有可以播放的內容。"));
     return;
   }
-  slideshow ??= new Slideshow((href) => void app.followLink(href).catch(reportError));
+  slideshow ??= new Slideshow({
+    onLink: (href) => void app.followLink(href).catch(reportError),
+    // 桌面版用原生的視窗全螢幕（Windows 上網頁的全螢幕在最大化的視窗下面會留一條黑邊）。
+    fullscreen: desktop ? (on) => desktop!.windowFullscreen(on) : undefined,
+  });
   const line = app.editor.view.state.doc.lineAt(app.editor.view.state.selection.main.head).number;
   slideshow.open(slides, fromCursor ? slideAtLine(slides, line) : 0, () => app.editor.view.focus());
   if (slides.length === 1 && !app.editor.text.includes("\n---")) {

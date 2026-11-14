@@ -841,6 +841,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     customTitleBar: () => core.invoke<boolean>("custom_title_bar"),
     windowControl: (action: "minimize" | "toggle-maximize" | "close" | "drag" | "state") =>
       core.invoke<boolean>("window_control", { action }),
+    /** 視窗全螢幕（簡報用；最大化的視窗會先還原，離開時恢復）。 */
+    windowFullscreen: (on: boolean) => core.invoke<void>("window_fullscreen", { on }),
     /** 檔案所在的資料夾現在連得到嗎（網路磁碟斷線後偵測恢復用）。 */
     probePath: (path: string) =>
       route(
