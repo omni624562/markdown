@@ -1,6 +1,7 @@
 /**
- * 「預覽」模式的尋找（app/preview-find.ts）：Ctrl+F 在預覽上方打開尋找列（不是瀏覽器內建的那個），
- * 只找預覽的內容、標出符合的地方，Enter／Shift+Enter 跳下一個、上一個，Esc 關閉；預覽重畫後重新找。
+ * 「預覽」模式的尋找（app/preview-find.ts）：Ctrl+F 在預覽下緣打開尋找列（不是瀏覽器內建的那個；和編輯區的
+ * 「尋找與取代」同一個位置），只找預覽的內容、標出符合的地方，Enter／Shift+Enter 跳下一個、上一個；
+ * Esc（焦點在尋找列或預覽裡）、再按一次 Ctrl+F、離開預覽模式都會關閉；預覽重畫後重新找。
  * 其他模式的 Ctrl+F 照舊是編輯器的「尋找與取代」。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -24,12 +25,12 @@ const state = (page) =>
       count: bar?.querySelector(".issue-find-count").textContent ?? "",
       marks: all ? all.size : 0,
       current: range ? range.startContainer.parentElement.closest("p, h1, h2, summary")?.textContent : null,
-      visible: box ? box.top >= bar.getBoundingClientRect().bottom && box.bottom <= view.bottom : null,
+      visible: box ? box.top >= view.top && box.bottom <= bar.firstElementChild.getBoundingClientRect().top : null,
       focusInBar: !!bar?.contains(document.activeElement),
     };
   });
 
-test("預覽模式按 Ctrl+F：預覽上方出現尋找列，標出符合處，Enter 往下、Shift+Enter 往上，會捲到看得到的地方，Esc 關閉", async () => {
+test("預覽模式按 Ctrl+F：預覽下緣出現尋找列，標出符合處，Enter 往下、Shift+Enter 往上，會捲到看得到的地方，Esc 關閉", async () => {
   const { page, context, errors } = await open({ desktop: {} });
   await setText(page, DOC);
   await page.click('.statusbar [data-view="preview"]');
@@ -117,6 +118,97 @@ test("預覽重畫後重新找（留在原來的第幾個）；其他模式的 C
   await page.keyboard.press("Control+F");
   await page.locator(".cm-panels .find-panel").waitFor();
   assert.equal((await state(page)).open, false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("尋找列在預覽的下緣（和編輯區的尋找與取代同一個位置），關閉在最右邊；內容很短也在最下面", async () => {
+  const { page, context, errors } = await open({ desktop: {} });
+  await page.setViewportSize({ width: 1100, height: 600 });
+  const place = (row, pane, close) =>
+    page.evaluate(
+      ([row, pane, close]) => {
+        const r = document.querySelector(row).getBoundingClientRect();
+        const p = document.querySelector(pane).getBoundingClientRect();
+        const x = document.querySelector(close).getBoundingClientRect();
+        return { fromBottom: Math.round(p.bottom - r.bottom), fromLeft: Math.round(r.left - p.left), height: Math.round(r.height), closeFromRight: Math.round(p.right - x.right) };
+      },
+      [row, pane, close],
+    );
+  // 編輯區的尋找列在哪裡，預覽的就在哪裡。
+  await setText(page, DOC);
+  await page.keyboard.press("Control+F");
+  await page.locator(".cm-panels .find-panel").waitFor();
+  const editor = await place(".cm-panels .find-panel .find-row", ".editor-pane", '.find-panel [name="close"]');
+  await page.keyboard.press("Escape");
+  await page.click('.statusbar [data-view="preview"]');
+  await page.locator("#preview h2").waitFor();
+  await page.keyboard.press("Control+F");
+  await page.locator(".preview-find input").waitFor();
+  const long = await place(".preview-find-row", "#preview-scroller", ".preview-find-close");
+  assert.ok(long.fromBottom <= 1 && long.fromLeft <= 1, JSON.stringify(long));
+  assert.ok(Math.abs(long.closeFromRight - editor.closeFromRight) <= 4 && Math.abs(long.height - editor.height - 10) <= 4, `關閉都在最右邊 ${JSON.stringify({ long, editor })}`);
+  // 捲到最下面：最後一行沒有被尋找列蓋住。
+  const lastVisible = await page.evaluate(() => {
+    const s = document.querySelector("#preview-scroller");
+    s.scrollTop = s.scrollHeight;
+    const last = [...document.querySelectorAll("#preview > *")].at(-1).getBoundingClientRect();
+    return last.bottom <= document.querySelector(".preview-find-row").getBoundingClientRect().top + 1;
+  });
+  assert.equal(lastVisible, true);
+  await page.keyboard.press("Escape");
+  // 內容不到一頁：還是在預覽的最下面，不是跟在內容後面。
+  await page.click('.statusbar [data-view="live"]');
+  await setText(page, "# 筆記\n\n只有一行。\n");
+  await page.click('.statusbar [data-view="preview"]');
+  await page.keyboard.press("Control+F");
+  await page.locator(".preview-find input").waitFor();
+  const short = await place(".preview-find-row", "#preview-scroller", ".preview-find-close");
+  assert.ok(short.fromBottom <= 1, JSON.stringify(short));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("關閉的方式：在預覽點了內容之後按 Esc、焦點在尋找框時再按一次 Ctrl+F、離開預覽模式；編輯區的尋找列再按一次 Ctrl+F 也關閉", async () => {
+  const { page, context, errors } = await open({ desktop: {} });
+  await setText(page, "# 筆記\n\n蘋果一。\n\n蘋果二。\n");
+  const editorOpen = () => page.locator(".cm-panels .find-panel").count();
+  // 編輯區：焦點在尋找框時再按一次關閉，焦點回到編輯區；焦點在編輯區時按是把焦點移到尋找框。
+  await page.keyboard.press("Control+F");
+  await page.locator(".cm-panels .find-panel").waitFor();
+  await page.click(".cm-content", { position: { x: 4, y: 4 } });
+  await page.keyboard.press("Control+F");
+  assert.equal(await editorOpen(), 1, "焦點在編輯區：不關，移到尋找框");
+  assert.equal(await page.evaluate(() => !!document.activeElement.closest(".find-panel")), true);
+  await page.keyboard.press("Control+F");
+  assert.equal(await editorOpen(), 0);
+  assert.equal(await page.evaluate(() => !!document.activeElement.closest(".cm-content")), true, "焦點回到編輯區");
+
+  await page.click('.statusbar [data-view="preview"]');
+  await page.locator("#preview h1").waitFor();
+  const input = page.locator(".preview-find input");
+  await page.keyboard.press("Control+F");
+  await input.fill("蘋果");
+  // 在預覽點了內容（焦點離開尋找框）：Esc 照樣關閉。
+  await page.click("#preview p");
+  assert.equal((await state(page)).open, true, "點內容不會關");
+  await page.keyboard.press("Escape");
+  assert.deepEqual([(await state(page)).open, (await state(page)).marks], [false, 0]);
+  // 焦點不在尋找框時按 Ctrl+F：打開／移到尋找框；在尋找框裡再按一次：關閉。
+  await page.keyboard.press("Control+F");
+  await page.click("#preview p");
+  await page.keyboard.press("Control+F");
+  assert.deepEqual([(await state(page)).open, (await state(page)).focusInBar], [true, true]);
+  await page.keyboard.press("Control+F");
+  assert.equal((await state(page)).open, false);
+  // 離開預覽模式：自動關閉，切回來不會還留著。
+  await page.keyboard.press("Control+F");
+  await input.fill("蘋果");
+  await page.click('.statusbar [data-view="live"]');
+  await page.waitForFunction(() => document.querySelector(".preview-find").hidden);
+  await page.click('.statusbar [data-view="preview"]');
+  await page.locator("#preview h1").waitFor();
+  assert.deepEqual([(await state(page)).open, (await state(page)).marks], [false, 0]);
   assert.deepEqual(errors, []);
   await context.close();
 });

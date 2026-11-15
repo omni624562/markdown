@@ -1,7 +1,8 @@
 /**
  * 「預覽」模式的尋找（Ctrl+F）：預覽沒有編輯區，編輯器的「尋找與取代」沒地方顯示，不處理的話按鍵會落到
- * 瀏覽器核心手上，跳出它內建的尋找框（蓋在視窗按鈕上，連檔案樹、大綱的字都找）。這裡在預覽上方放一列
- * 尋找列：只找預覽的內容，標出所有符合的地方，Enter／Shift+Enter 跳下一個、上一個，Esc 關閉。
+ * 瀏覽器核心手上，跳出它內建的尋找框（蓋在視窗按鈕上，連檔案樹、大綱的字都找）。這裡在預覽下緣放一列
+ * 尋找列（和編輯區的「尋找與取代」同一個位置、同樣的排法）：只找預覽的內容，標出所有符合的地方，
+ * Enter／Shift+Enter 跳下一個、上一個；Esc（焦點在尋找列或預覽裡）、再按一次 Ctrl+F、離開「預覽」模式都會關閉。
  * 預覽不能編輯，所以沒有取代。用 CSS Custom Highlight API 標示，不改動預覽的 DOM。
  */
 import { formatKeys } from "../commands.ts";
@@ -47,20 +48,16 @@ function build(): HTMLElement {
   count = document.createElement("span");
   count.className = "issue-find-count";
   count.setAttribute("aria-live", "polite");
-  el.append(
-    input,
-    count,
-    button(t("上一個"), "arrow-up", () => step(-1), "Shift-Enter"),
-    button(t("下一個"), "arrow-down", () => step(1), "Enter"),
-    button(t("關閉尋找"), "x", closePreviewFind),
-  );
+  const close = button(t("關閉"), "x", closePreviewFind, "Escape");
+  close.classList.add("preview-find-close");
+  // 一列放在「預覽下緣」的容器裡（.preview-find 本身不佔高度，見 styles.css）。
+  const row = document.createElement("div");
+  row.className = "preview-find-row";
+  row.append(input, count, button(t("上一個"), "arrow-up", () => step(-1), "Shift-Enter"), button(t("下一個"), "arrow-down", () => step(1), "Enter"), close);
+  el.append(row);
   el.addEventListener("keydown", (e) => {
     if (e.isComposing) return;
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      closePreviewFind();
-    } else if (e.key === "Enter" && e.target === input) {
+    if (e.key === "Enter" && e.target === input) {
       e.preventDefault();
       step(e.shiftKey ? -1 : 1);
     }
@@ -160,16 +157,32 @@ function paint(reveal: boolean): void {
   // 捲到目前的符合處（被尋找列蓋住、或在可視範圍外時，放到中間）。
   const box = ranges[current].getBoundingClientRect();
   const view = app.previewScroller.getBoundingClientRect();
-  const covered = bar!.getBoundingClientRect().bottom;
-  if (box.top < covered + 8 || box.bottom > view.bottom - 40) {
+  const covered = bar!.firstElementChild!.getBoundingClientRect().top;
+  if (box.top < view.top + 8 || box.bottom > covered - 8) {
     app.previewScroller.scrollTop += box.top - view.top - view.height / 2;
   }
 }
 
-/** 打開尋找列；有選取一小段文字時先帶入。 */
+/**
+ * Esc 關閉：焦點在尋找列、預覽裡或頁面本身時（在預覽點了內容之後也算）。開著對話框、選單時是它們的 Esc。
+ */
+function onEscape(e: KeyboardEvent): void {
+  if (e.key !== "Escape" || e.defaultPrevented || e.isComposing) return;
+  if (document.querySelector("dialog[open], [popover]:popover-open:not(.toasts)")) return;
+  const active = document.activeElement;
+  const here = !active || active === document.body || bar!.contains(active) || app.previewScroller.contains(active);
+  if (!here) return;
+  e.preventDefault();
+  closePreviewFind();
+}
+
+/** 打開尋找列；有選取一小段文字時先帶入。已經開著、焦點也在尋找框裡時再按一次（Ctrl+F）是關閉。 */
 export function openPreviewFind(): void {
   bar ??= build();
+  if (!bar.hidden && document.activeElement === input) return closePreviewFind();
   bar.hidden = false;
+  app.previewScroller.classList.add("finding");
+  document.addEventListener("keydown", onEscape);
   const sel = getSelection();
   const selected = sel?.toString().trim();
   if (selected && !selected.includes("\n") && app.previewEl.contains(sel?.anchorNode ?? null)) input.value = selected;
@@ -183,7 +196,12 @@ export function openPreviewFind(): void {
   });
   observer.observe(app.previewEl, { childList: true, subtree: true, characterData: true });
   // 預覽的大小變了（視窗、側邊欄、分割線）：短線的位置重新算。
-  resize ??= new ResizeObserver(() => bar && !bar.hidden && matches.length && paint(false));
+  // 離開「預覽」模式（換模式、換到工作項目的分頁…）就關閉：回來時不留著上次的尋找列和標示。
+  resize ??= new ResizeObserver(() => {
+    if (!bar || bar.hidden) return;
+    if (app.view !== "preview" || !app.previewScroller.getClientRects().length) closePreviewFind();
+    else if (matches.length) paint(false);
+  });
   resize.observe(app.previewScroller);
 }
 
@@ -191,6 +209,8 @@ export function closePreviewFind(): void {
   if (!bar || bar.hidden) return;
   const focused = bar.contains(document.activeElement);
   bar.hidden = true;
+  app.previewScroller.classList.remove("finding");
+  document.removeEventListener("keydown", onEscape);
   observer?.disconnect();
   resize?.disconnect();
   clearTimeout(timer);

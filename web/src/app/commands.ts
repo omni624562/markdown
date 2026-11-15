@@ -36,7 +36,7 @@ import { settingsDialog, fixTerms, convertToTraditional, toggleSetting, changeFo
 import { issueSide, issueView } from "./wiki-edit.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
-import { openSearchPanel } from "@codemirror/search";
+import { closeSearchPanel, openSearchPanel, searchPanelOpen } from "@codemirror/search";
 import { openPreviewFind } from "./preview-find.ts";
 import { docName } from "./doc-names.ts";
 import { exportName } from "./export-target.ts";
@@ -53,6 +53,19 @@ const projectName = () => app.projectUi?.current?.label ?? app.workspaceRoot?.na
 
 
 export const commands = new Commands();
+/**
+ * 編輯區的「尋找與取代」：焦點已經在尋找列裡時再按一次（Ctrl+F）是關閉、焦點回到編輯區；
+ * 不然打開（已經開著就把焦點移到尋找框）。
+ */
+function toggleEditorFind(): void {
+  const view = app.editor.view;
+  const inPanel = !!document.activeElement?.closest(".cm-panels .find-panel");
+  if (searchPanelOpen(view.state) && inPanel && view.dom.contains(document.activeElement)) {
+    closeSearchPanel(view);
+    view.focus();
+  } else openSearchPanel(view);
+}
+
 const isMarkdown = () => app.cur.kind === "markdown" && app.view !== "preview";
 
 /** 插入一段範例區塊，並選取第 `line` 行（從 0 算起）的範例文字，直接打字就能取代。 */
@@ -745,7 +758,7 @@ export function initCommands(): void {
       run: () => {
         if (issueView.isOpen && (!issueSide || issueView.hasFocus)) issueView.openFind();
         else if (app.view === "preview" && !app.previewScroller.classList.contains("html-mode")) openPreviewFind();
-        else void openSearchPanel(app.editor.view);
+        else toggleEditorFind();
       },
     },
     {
