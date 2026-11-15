@@ -4732,6 +4732,27 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 /* 最下面一行小字：說明與本月費用。 */
 .assistant-foot { display: flex; flex: none; gap: 8px; justify-content: space-between; padding: 0 12px 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .assistant-foot > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+/* 「本月 已用 / 上限」是按鈕：按一下打開用量面板（app/assistant-usage.ts）。 */
+.assistant-usage { flex: none; padding: 0 2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.assistant-usage:hover { color: var(--fg); text-decoration: underline; }
+.assistant-usage[hidden] { display: none; }
+.usage-pop { width: min(320px, calc(100vw - 16px)); }
+.usage-pop h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.usage-pop h4 { margin: 12px 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.usage-grid { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; }
+.usage-grid dt { color: var(--muted); }
+.usage-grid dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.usage-grid dd small { margin-left: 6px; color: var(--muted); font-size: 11px; }
+.usage-days { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.usage-days li { display: grid; grid-template-columns: 3.2em 1fr 5.2em; gap: 8px; align-items: center; }
+.usage-days .usage-date { color: var(--muted); }
+.usage-days .usage-amount { font-variant-numeric: tabular-nums; text-align: right; }
+.usage-days .usage-zero { color: var(--subtle); }
+.usage-bar { height: 6px; border-radius: 3px; background: var(--active-line); overflow: hidden; }
+.usage-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.usage-notes { margin-top: 12px; color: var(--muted); font-size: 11.5px; line-height: 1.5; white-space: normal; }
+.usage-notes p { margin: 0 0 6px; }
+.usage-loading { margin: 0; color: var(--muted); }
 .assistant-usage.near { color: light-dark(#b45309, #fbbf24); font-weight: 600; }
 .assistant-dependents.is-off { opacity: 0.55; }
 .assistant-projects-title { margin: 10px 12px 0; font-size: 12.5px; }

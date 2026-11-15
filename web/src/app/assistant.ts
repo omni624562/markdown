@@ -6,6 +6,7 @@
  * 每個專案第一次送出前先確認要送什麼、大約多少錢；修改文件一律變成建議卡片，由使用者按「套用」。
  * API 金鑰只存在原生端，這裡只知道有沒有設定。
  */
+import { initUsagePanel } from "./assistant-usage.ts";
 import type { EditorView } from "@codemirror/view";
 import { render as renderMarkdown } from "../../pkg/md_wasm.js";
 import { blockRemoteImagesInHtml } from "../remote-images.ts";
@@ -267,7 +268,7 @@ function renderUsage(): void {
   usageEl.hidden = false;
   usageEl.textContent = t("本月 {used} / {limit}", { used: formatUsd(usage.usd), limit: `US$${Math.round(usage.limit)}` });
   usageEl.classList.toggle("near", usage.usd >= usage.limit * 0.8);
-  usageEl.title = t("這個月估計的費用與上限（在設定調整）");
+  usageEl.title = t("這個月估計的費用與上限（在設定調整）；按一下看每天的用量");
 }
 
 async function refreshStatus(): Promise<void> {
@@ -924,8 +925,12 @@ function build(): HTMLElement {
   const note = document.createElement("span");
   note.textContent = t("送到 Anthropic・修改要按「套用」");
   note.title = t("內容會送到 Anthropic（Claude API）。修改都要你按「套用」。");
-  usageEl = document.createElement("span");
-  usageEl.className = "assistant-usage";
+  // 按一下看今天、最近 7 天、上個月和每天的用量（app/assistant-usage.ts）。
+  const usageButton = document.createElement("button");
+  usageButton.type = "button";
+  usageButton.className = "assistant-usage";
+  initUsagePanel(usageButton);
+  usageEl = usageButton;
   foot.append(note, usageEl);
 
   aside.append(head, notice, log, box, foot);

@@ -236,6 +236,7 @@ mod tests {
         "assistant_key_set",
         "assistant_key_forget",
         "assistant_usage",
+        "assistant_usage_history",
         "assistant_send",
         "assistant_cancel",
         "app_version",

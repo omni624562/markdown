@@ -6,7 +6,7 @@
 //! - 費用依回傳的 token 數估計，記在設定資料夾的 `assistant-usage.json`（每個月重新計算）。
 //! - 回覆以 `assistant-run` 事件串流回傳；修改文件一律由前端的建議卡片讓使用者決定。
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -130,10 +130,43 @@ pub fn assistant_key_forget() {
 
 // ---- 用量 ----
 
-#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+/// 存在 `assistant-usage.json` 的用量。`month`／`usd` 是這個月的總額（上限用它判斷）；
+/// `days` 是每天的費用（選期間看用量時用），`months` 是已經過完的月份的總額。
+/// 舊版只有 `month`／`usd`：升級之前的那幾天沒有每日紀錄，只算在這個月的總額裡。
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone)]
 struct Stored {
     month: String,
     usd: f64,
+    #[serde(default)]
+    days: BTreeMap<String, f64>,
+    #[serde(default)]
+    months: BTreeMap<String, f64>,
+}
+
+/// 每日紀錄留幾天、每月總額留幾個月（舊的刪掉，檔案不會一直變大）。
+const KEEP_DAYS: usize = 400;
+const KEEP_MONTHS: usize = 36;
+
+impl Stored {
+    /// 記上一筆費用。`month`、`day` 是這台電腦現在的月份與日期。換月時把上個月的總額收進 `months`，這個月從 0 開始。
+    fn add(&mut self, month: &str, day: &str, usd: f64) {
+        if self.month != month {
+            if !self.month.is_empty() && self.usd > 0.0 {
+                self.months
+                    .insert(std::mem::take(&mut self.month), self.usd);
+            }
+            self.month = month.to_string();
+            self.usd = 0.0;
+        }
+        self.usd += usd;
+        *self.days.entry(day.to_string()).or_insert(0.0) += usd;
+        while self.days.len() > KEEP_DAYS {
+            self.days.pop_first();
+        }
+        while self.months.len() > KEEP_MONTHS {
+            self.months.pop_first();
+        }
+    }
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -144,8 +177,37 @@ pub struct Usage {
     limit: f64,
 }
 
+/// 選期間看用量：每天的費用、過去每個月的總額，和這個月的總額。日期、月份都是這台電腦的時區。
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageHistory {
+    today: String,
+    month: String,
+    /// 這個月的總額（包含還沒有每日紀錄的部分）。
+    usd: f64,
+    limit: f64,
+    days: Vec<DayUsage>,
+    months: Vec<MonthUsage>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct DayUsage {
+    date: String,
+    usd: f64,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct MonthUsage {
+    month: String,
+    usd: f64,
+}
+
 fn this_month() -> String {
     chrono::Local::now().format("%Y-%m").to_string()
+}
+
+fn today() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
 fn usage_path(app: &AppHandle) -> Option<PathBuf> {
@@ -156,27 +218,27 @@ fn usage_path(app: &AppHandle) -> Option<PathBuf> {
 }
 
 /// 這個月已經用掉的費用（換月份時從 0 開始）。
-fn used(stored: Option<Stored>, month: &str) -> f64 {
+fn used(stored: Option<&Stored>, month: &str) -> f64 {
     stored.filter(|s| s.month == month).map_or(0.0, |s| s.usd)
 }
 
-fn read_used(app: &AppHandle) -> f64 {
-    let stored = usage_path(app)
+fn read_stored(app: &AppHandle) -> Option<Stored> {
+    usage_path(app)
         .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str(&s).ok());
-    used(stored, &this_month())
+        .and_then(|s| serde_json::from_str(&s).ok())
+}
+
+fn read_used(app: &AppHandle) -> f64 {
+    used(read_stored(app).as_ref(), &this_month())
 }
 
 /// 加上這次的費用；回傳這個月的總額。
 fn add_used(app: &AppHandle, usd: f64) -> f64 {
     static LOCK: Mutex<()> = Mutex::new(());
     let _guard = LOCK.lock();
-    let total = read_used(app) + usd;
+    let mut stored = read_stored(app).unwrap_or_default();
+    stored.add(&this_month(), &today(), usd);
     if let Some(path) = usage_path(app) {
-        let stored = Stored {
-            month: this_month(),
-            usd: total,
-        };
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -184,7 +246,31 @@ fn add_used(app: &AppHandle, usd: f64) -> f64 {
             let _ = crate::files::write_atomic(&path, json.as_bytes());
         }
     }
-    total
+    stored.usd
+}
+
+/// 給畫面的用量紀錄。已經換月但還沒有新的用量時，檔案裡的 `month` 還是上個月：算進過去的月份，這個月是 0。
+fn history(stored: Stored, month: String, today: String, limit: f64) -> UsageHistory {
+    let mut months = stored.months.clone();
+    let usd = used(Some(&stored), &month);
+    if stored.month != month && !stored.month.is_empty() && stored.usd > 0.0 {
+        months.insert(stored.month.clone(), stored.usd);
+    }
+    UsageHistory {
+        today,
+        month,
+        usd,
+        limit,
+        days: stored
+            .days
+            .into_iter()
+            .map(|(date, usd)| DayUsage { date, usd })
+            .collect(),
+        months: months
+            .into_iter()
+            .map(|(month, usd)| MonthUsage { month, usd })
+            .collect(),
+    }
 }
 
 /// 設定裡的每月上限（美元）。
@@ -203,6 +289,17 @@ pub fn assistant_usage(app: AppHandle) -> Usage {
         usd: read_used(&app),
         limit: limit(&settings),
     }
+}
+
+#[tauri::command]
+pub fn assistant_usage_history(app: AppHandle) -> UsageHistory {
+    let settings = crate::settings::read_value(&app).unwrap_or_default();
+    history(
+        read_stored(&app).unwrap_or_default(),
+        this_month(),
+        today(),
+        limit(&settings),
+    )
 }
 
 // ---- 送出前的檢查 ----
@@ -683,15 +780,57 @@ mod tests {
 
     #[test]
     fn usage_resets_every_month() {
-        let s = || {
-            Some(Stored {
-                month: "2026-11".into(),
-                usd: 0.42,
-            })
+        let s = Stored {
+            month: "2026-11".into(),
+            usd: 0.42,
+            ..Default::default()
         };
-        assert_eq!(used(s(), "2026-11"), 0.42);
-        assert_eq!(used(s(), "2026-12"), 0.0);
+        assert_eq!(used(Some(&s), "2026-11"), 0.42);
+        assert_eq!(used(Some(&s), "2026-12"), 0.0);
         assert_eq!(used(None, "2026-11"), 0.0);
+    }
+
+    #[test]
+    fn usage_is_recorded_per_day_and_rolls_over_by_month() {
+        // 舊版的檔案只有這個月的總額。
+        let mut s: Stored = serde_json::from_str(r#"{"month":"2026-11","usd":1.5}"#).unwrap();
+        s.add("2026-11", "2026-11-29", 0.25);
+        s.add("2026-11", "2026-11-29", 0.25);
+        s.add("2026-11", "2026-11-30", 1.0);
+        assert_eq!(s.usd, 3.0);
+        assert_eq!(s.days["2026-11-29"], 0.5);
+        assert_eq!(s.days["2026-11-30"], 1.0);
+        // 換月：上個月的總額收起來，這個月從 0 開始；每日紀錄留著。
+        s.add("2026-12", "2026-12-01", 0.1);
+        assert_eq!((s.month.as_str(), s.usd), ("2026-12", 0.1));
+        assert_eq!(s.months["2026-11"], 3.0);
+        assert_eq!(s.days.len(), 3);
+
+        let h = history(s.clone(), "2026-12".into(), "2026-12-01".into(), 10.0);
+        assert_eq!(h.usd, 0.1);
+        assert_eq!(h.months.len(), 1);
+        assert_eq!(h.days.last().unwrap().date, "2026-12-01");
+        // 已經換月、還沒有新的用量：檔案裡還是上個月，算進過去的月份。
+        let h = history(s, "2027-01".into(), "2027-01-02".into(), 10.0);
+        assert_eq!(h.usd, 0.0);
+        assert_eq!(
+            h.months
+                .iter()
+                .map(|m| m.month.as_str())
+                .collect::<Vec<_>>(),
+            ["2026-11", "2026-12"]
+        );
+    }
+
+    #[test]
+    fn old_days_and_months_are_dropped() {
+        let mut s = Stored::default();
+        for i in 0..(KEEP_DAYS + 20) {
+            s.add("2026-11", &format!("day-{i:05}"), 0.01);
+        }
+        assert_eq!(s.days.len(), KEEP_DAYS);
+        assert!(s.days.contains_key(&format!("day-{:05}", KEEP_DAYS + 19)));
+        assert!(!s.days.contains_key("day-00000"));
     }
 
     #[test]
