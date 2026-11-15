@@ -434,6 +434,7 @@ export const ui: Record<string, Translation> = {
   "複製成 Markdown 文件": "Copy as Markdown Document",
   "開成一份可以編輯的 Markdown 分頁（修改不會回寫到伺服器）": "Open an editable Markdown tab (changes won't be saved back to the server)",
   "在內容中尋找": "Find in Content",
+  "在預覽中尋找": "Find in Preview",
   "關閉尋找": "Close Find",
   "工作項目內容": "Work Item Content",
   // SSH 連線對話框

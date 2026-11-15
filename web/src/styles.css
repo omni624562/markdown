@@ -3629,6 +3629,8 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-actions-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
 .issue-find[hidden] { display: none; }
+/* 「預覽」模式的尋找列（app/preview-find.ts）：黏在預覽上緣，捲動時不動。 */
+.preview-find { position: sticky; top: 0; z-index: 3; }
 .issue-find input {
   width: min(320px, 50%);
   height: 28px;
