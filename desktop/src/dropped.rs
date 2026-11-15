@@ -62,9 +62,49 @@ fn drop_id(json: &str) -> Option<String> {
     valid_id(id).then(|| id.to_string())
 }
 
-/// 登記事件失敗時的錯誤碼（拿不到路徑時顯示）。
+/// 收訊息這條管道的狀態（拿不到路徑時顯示，才知道卡在哪一步）。
 #[cfg_attr(not(windows), allow(dead_code))]
-static LISTEN_ERROR: Mutex<Option<String>> = Mutex::new(None);
+struct Listen {
+    /// `listen` 被呼叫了、`with_webview` 回報的錯誤、裡面的程式跑了、登記事件的結果。
+    called: bool,
+    dispatch: Option<String>,
+    ran: bool,
+    added: Option<Result<(), String>>,
+    /// 收到幾則訊息、其中幾則讀不出 JSON；最後一則不是拖放的訊息（前面一小段）。
+    messages: u32,
+    unreadable: u32,
+    last: String,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+static LISTEN: Mutex<Listen> = Mutex::new(Listen {
+    called: false,
+    dispatch: None,
+    ran: false,
+    added: None,
+    messages: 0,
+    unreadable: 0,
+    last: String::new(),
+});
+
+/// 沒收到這次拖放的訊息時，管道的狀態（一行字）。
+fn listen_state() -> String {
+    let l = LISTEN.lock();
+    let added = match &l.added {
+        None => "-".to_string(),
+        Some(Ok(())) => "ok".to_string(),
+        Some(Err(code)) => code.clone(),
+    };
+    let last: String = l.last.chars().take(60).collect();
+    format!(
+        "listen={}, dispatch={}, ran={}, added={added}, messages={}, unreadable={}, last={last}",
+        l.called,
+        l.dispatch.as_deref().unwrap_or("ok"),
+        l.ran,
+        l.messages,
+        l.unreadable,
+    )
+}
 
 /// 開始收主畫面送來的拖放訊息（只有 Windows 有作用）。
 pub fn listen(webview: &Webview) {
@@ -78,17 +118,23 @@ pub fn listen(webview: &Webview) {
         use windows_core::{Interface, PWSTR};
 
         let app = webview.app_handle().clone();
-        let _ = webview.with_webview(move |webview| {
+        LISTEN.lock().called = true;
+        let dispatched = webview.with_webview(move |webview| {
+            LISTEN.lock().ran = true;
             let handler = WebMessageReceivedEventHandler::create(Box::new(move |_, args| {
                 let Some(args) = args else { return Ok(()) };
                 // SAFETY: WebView2 的 COM 介面，在它自己的執行緒（這個事件的執行緒）上呼叫；
                 // 回傳的字串由 take_pwstr 接手釋放。
                 unsafe {
+                    LISTEN.lock().messages += 1;
                     let mut json = PWSTR::null();
                     if args.WebMessageAsJson(&mut json).is_err() {
+                        LISTEN.lock().unreadable += 1;
                         return Ok(());
                     }
-                    let Some(id) = drop_id(&take_pwstr(json)) else {
+                    let json = take_pwstr(json);
+                    let Some(id) = drop_id(&json) else {
+                        LISTEN.lock().last = json;
                         return Ok(());
                     };
                     // 每一步失敗的原因都記下來：拿不到路徑時前端會顯示，才知道是哪一步。
@@ -135,11 +181,12 @@ pub fn listen(webview: &Webview) {
                     .controller()
                     .CoreWebView2()
                     .and_then(|core| core.add_WebMessageReceived(&handler, &mut token));
-                if let Err(e) = added {
-                    *LISTEN_ERROR.lock() = Some(format!("{:#x}", e.code().0));
-                }
+                LISTEN.lock().added = Some(added.map_err(|e| format!("{:#x}", e.code().0)));
             }
         });
+        if let Err(e) = dispatched {
+            LISTEN.lock().dispatch = Some(e.to_string());
+        }
     }
     #[cfg(not(windows))]
     let _ = webview;
@@ -171,11 +218,10 @@ pub async fn dropped_file(
         Some(Ok(path)) => path,
         Some(Err(note)) => return Err(tr!("WebView2 沒有交出檔案的路徑（{note}）", note = note)),
         None => {
-            let listen = LISTEN_ERROR.lock().clone();
-            return Err(match listen {
-                Some(code) => tr!("沒辦法接收 WebView2 的訊息（{code}）", code = code),
-                None => tr!("沒有收到 WebView2 送來的檔案"),
-            });
+            return Err(tr!(
+                "沒有收到 WebView2 送來的檔案（{state}）",
+                state = listen_state()
+            ))
         }
     };
     // 資料夾：交給前端照原本的方式處理。
