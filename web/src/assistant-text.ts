@@ -403,3 +403,25 @@ export function replacementText(answer: string): string {
   const m = /^\s*```[\w-]*\n([\s\S]*?)\n```\s*$/.exec(answer);
   return (m ? m[1] : answer).trim();
 }
+
+/**
+ * 問題裡的網址所在的網域（小寫、不重複、最多 `max` 個）：助理「讀這個網頁」時只允許讀這幾個網域。
+ * 只認 http／https；沒有點的主機名稱（localhost）、IP 位址、帶連接埠的不算（Claude API 也不讀內部網路的位址）。
+ */
+export function urlHosts(text: string, max = 5): string[] {
+  const hosts: string[] = [];
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"'）〉」』】，。；、]+/gi)) {
+    let host: string;
+    try {
+      const url = new URL(m[0]);
+      if (url.port) continue;
+      host = url.hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    if (!/^[a-z0-9.-]+$/.test(host) || !host.includes(".") || /^[\d.]+$/.test(host) || /^[.-]|[.-]$/.test(host)) continue;
+    if (!hosts.includes(host)) hosts.push(host);
+    if (hosts.length >= max) break;
+  }
+  return hosts;
+}

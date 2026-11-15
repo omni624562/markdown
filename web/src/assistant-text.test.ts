@@ -19,6 +19,7 @@ import {
   systemPrompt,
   toggled,
   userContent,
+  urlHosts,
 } from "./assistant-text.ts";
 
 test("使用者的資料放在標籤裡，問題放最後", () => {
@@ -183,4 +184,12 @@ test("今日簡報：只列還沒完成的待辦，有截止日的依日期在�
     userContent("簡報", { doc: null, selection: "", tasks: { today: "2026-11-08 星期日", list: "- [ ] 寫週報" } }),
     "<today>2026-11-08 星期日</today>\n\n<tasks>\n- [ ] 寫週報\n</tasks>\n\n簡報",
   );
+});
+
+test("問題裡的網址取出網域：小寫、不重複、最多 5 個；內部位址與不是網址的不算", () => {
+  assert.deepEqual(urlHosts("整理 https://Example.test/news?id=1 和 http://docs.example.test/a。"), ["example.test", "docs.example.test"]);
+  assert.deepEqual(urlHosts("看這篇（https://example.test/文章）再看 https://example.test/b"), ["example.test"]);
+  assert.deepEqual(urlHosts("http://localhost:3000/ http://192.168.1.10/ https://example.test:8443/ ftp://example.test/x example.test"), []);
+  assert.deepEqual(urlHosts("沒有網址"), []);
+  assert.equal(urlHosts(Array.from({ length: 8 }, (_, i) => `https://s${i}.example.test/`).join(" ")).length, 5);
 });

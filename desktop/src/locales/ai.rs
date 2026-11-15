@@ -51,6 +51,7 @@ pub static EN: &[(&str, &str)] = &[
     ),
     ("內容太長（超過 {max} 字），請改送選取的段落", "The content is too long (over {max} characters). Send a selected passage instead."),
     ("請先在設定輸入 Claude API 金鑰", "Enter a Claude API key in Settings first."),
+    ("要讀的網址格式不正確", "The address to read is not valid."),
     ("這個月已經用了 US${spent}，到達上限 US${cap}；可以在設定調高上限", "You've used US${spent} this month and reached the US${cap} limit. You can raise the limit in Settings."),
     ("無法連線到 Claude API（{e}）", "Couldn't connect to the Claude API ({e})."),
     ("和 Claude API 的連線中斷了", "The connection to the Claude API was lost."),

@@ -250,7 +250,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     row("claudeModel", t("預設模型"), t("Haiku 最便宜、Opus 最強；側欄也可以臨時換"), model),
     row("assistantFontSize", t("字級"), t("助理側欄的字；焦點在助理裡時也可以按 Ctrl+= 或 Ctrl+- 調整"), font),
     row("claudeMonthlyLimit", t("每月上限"), t("這個月估計的費用到了上限就停止送出"), limitBox),
-    row("claudeWebSearch", t("允許上網查資料"), t("開啟後助理輸入框上方會有「上網查」，按了的那一題 Claude 才會上網搜尋；每次搜尋約 US$0.01"), web),
+    row("claudeWebSearch", t("允許上網查資料"), t("開啟後助理輸入框上方會有「上網查」，按了的那一題 Claude 才會上網搜尋（每次搜尋約 US$0.01）；問題裡有網址時，Claude 也會去讀那一頁（只算讀進來的內容的費用）"), web),
     projectsTitle,
     projects,
     projectsHint,

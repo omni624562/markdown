@@ -35,6 +35,7 @@ import {
   systemPrompt,
   toggled,
   userContent,
+  urlHosts,
 } from "../assistant-text.ts";
 import { type AssistantImage, type AssistantMessage, type AssistantRunEvent, type AssistantUsage, desktop } from "../desktop.ts";
 import { currentLang, t } from "../i18n.ts";
@@ -118,6 +119,8 @@ let includeDoc = true;
 let askProject = false;
 /** 這一題上網查資料（設定裡允許時才出現這個選項）。 */
 let webSearch = false;
+/** 這一題不要讀問題裡的網址（按了「讀網頁」標籤的 ×）；送出後恢復。 */
+let skipFetch = false;
 let usage: AssistantUsage | null = null;
 /** 有沒有 API 金鑰；還沒問過原生端時是 null（不要先顯示「還沒有輸入金鑰」）。 */
 let hasKey: boolean | null = null;
@@ -183,6 +186,8 @@ function chipsKey(): string {
     selection().text.length,
     askProject,
     webSearch,
+    skipFetch,
+    input ? urlHosts(input.value).join(" ") : "",
     app.settings.value.claudeWebSearch,
     !!app.workspaceRoot,
     attached.length,
@@ -228,6 +233,28 @@ function renderChips(): void {
       add.addEventListener("click", () => ((webSearch = true), renderChips(), input.focus()));
       items.push(add);
     }
+  }
+  // 問題裡有網址：Claude 會去讀那一頁（只讀問題裡那幾個網域）。設定沒開時提示可以去開。
+  const typedHosts = input ? urlHosts(input.value) : [];
+  if (typedHosts.length && app.settings.value.claudeWebSearch && !skipFetch) {
+    const label = typedHosts.length === 1 ? t("讀網頁：{host}", { host: typedHosts[0] }) : t("讀 {n} 個網站的網頁", { n: typedHosts.length });
+    chip(label, "link", () => ((skipFetch = true), renderChips()));
+    items.at(-1)!.title = t("Claude 會讀問題裡的網址（只讀這些網域）：{hosts}", { hosts: typedHosts.join(t("、")) });
+  } else if (typedHosts.length && app.settings.value.claudeWebSearch) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "assistant-chip assistant-chip-add";
+    add.append(icon("plus"), t("讀問題裡的網頁"));
+    add.addEventListener("click", () => ((skipFetch = false), renderChips(), input.focus()));
+    items.push(add);
+  } else if (typedHosts.length) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "assistant-chip assistant-chip-add";
+    add.title = t("在設定開啟「允許上網查資料」之後，Claude 才會讀問題裡的網址");
+    add.append(icon("settings"), t("讀網頁要先在設定開啟…"));
+    add.addEventListener("click", () => settingsDialog.open(t("Claude API 助理")));
+    items.push(add);
   }
   if (app.workspaceRoot) {
     if (askProject) chip(t("整個專案"), "folder-open", () => ((askProject = false), renderChips()));
@@ -641,7 +668,10 @@ async function send(question: string, action: AssistantAction | null = null): Pr
     if (documents.length) messages[0] = { ...messages[0], images: [...documents, ...(messages[0].images ?? [])] };
     // 上網查只用在一般問答，而且設定裡要允許。
     const web = webSearch && mode === "answer" && app.settings.value.claudeWebSearch;
-    await desktop.assistantSend(id, { model, system, messages, webSearch: web });
+    // 讀問題裡的網址：只看使用者打的問題（不是文件內容），也只用在一般問答。
+    const webFetch = mode === "answer" && !skipFetch && app.settings.value.claudeWebSearch ? urlHosts(question) : [];
+    skipFetch = false;
+    await desktop.assistantSend(id, { model, system, messages, webSearch: web, webFetch });
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }
@@ -1012,6 +1042,10 @@ function build(): HTMLElement {
   aside.append(head, notice, log, box, foot);
   // 滑鼠移進來時更新選取的字數；內容沒變不重畫（重畫會讓剛好按下去的標籤按鈕失效）。
   aside.addEventListener("pointerenter", () => {
+    if (chipsKey() !== shownChips) renderChips();
+  });
+  // 打字時問題裡出現或拿掉網址：更新「讀網頁」的標籤。
+  input.addEventListener("input", () => {
     if (chipsKey() !== shownChips) renderChips();
   });
   // 焦點在助理裡時，Ctrl+= / Ctrl+- / Ctrl+0 調整助理的字，不動編輯區的字級。

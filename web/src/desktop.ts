@@ -1081,7 +1081,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
     assistantKeyForget: () => core.invoke<void>("assistant_key_forget"),
     assistantUsage: () => core.invoke<AssistantUsage>("assistant_usage"),
     assistantUsageHistory: () => core.invoke<UsageHistory>("assistant_usage_history"),
-    assistantSend: (id: number, request: { model: string; system: string; messages: AssistantMessage[]; webSearch?: boolean }) =>
+    assistantSend: (id: number, request: { model: string; system: string; messages: AssistantMessage[]; webSearch?: boolean; webFetch?: string[] }) =>
       afterSettings(() => core.invoke<void>("assistant_send", { id, request })),
     assistantCancel: (id: number) => core.invoke<void>("assistant_cancel", { id }),
 
