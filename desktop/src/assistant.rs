@@ -36,6 +36,8 @@ struct Model {
     fallback: bool,
     /// 上網查資料的工具版本（Haiku 只能用基本版）。
     web_search: &'static str,
+    /// 讀指定網頁的工具版本（Haiku 用基本版）。
+    web_fetch: &'static str,
 }
 
 struct LongPrompt {
@@ -47,6 +49,11 @@ struct LongPrompt {
 /// 上網查資料：每次搜尋 US$0.01，一次回答最多查幾次。
 const SEARCH_USD: f64 = 0.01;
 const MAX_SEARCHES: u64 = 5;
+/// 讀指定網頁：一次回答最多讀幾頁、每頁最多放進多少 token（很長的網頁只取前面，費用才不會失控）、
+/// 一題最多幾個網域。讀網頁本身不另外收費，只算讀進來的內容的 token。
+const MAX_FETCHES: u64 = 3;
+const MAX_FETCH_TOKENS: u64 = 30_000;
+const MAX_FETCH_HOSTS: usize = 5;
 
 const MODELS: [Model; 3] = [
     Model {
@@ -62,6 +69,7 @@ const MODELS: [Model; 3] = [
         }),
         fallback: false,
         web_search: "web_search_20250305",
+        web_fetch: "web_fetch_20250910",
     },
     Model {
         id: "claude-sonnet-5-5",
@@ -71,6 +79,7 @@ const MODELS: [Model; 3] = [
         long_prompt: None,
         fallback: true,
         web_search: "web_search_20260209",
+        web_fetch: "web_fetch_20260209",
     },
     Model {
         id: "claude-opus-5-5",
@@ -80,6 +89,7 @@ const MODELS: [Model; 3] = [
         long_prompt: None,
         fallback: true,
         web_search: "web_search_20260209",
+        web_fetch: "web_fetch_20260209",
     },
 ];
 
@@ -418,6 +428,24 @@ pub struct SendRequest {
     /// 這一題允許上網查資料（設定也要開著才會生效）。
     #[serde(default)]
     web_search: bool,
+    /// 這一題要讀的網頁所在的網域（使用者在問題裡打的網址；設定也要開著才會生效）。
+    /// 只允許讀這幾個網域，文件內容裡夾帶的其他網址不會被讀。
+    #[serde(default)]
+    web_fetch: Vec<String>,
+}
+
+/// 網域的格式正確（小寫英數、連字號、點，至少有一個點），數量也在範圍內。
+fn valid_hosts(hosts: &[String]) -> bool {
+    hosts.len() <= MAX_FETCH_HOSTS
+        && hosts.iter().all(|h| {
+            !h.is_empty()
+                && h.len() <= 253
+                && h.contains('.')
+                && !h.starts_with(['.', '-'])
+                && !h.ends_with(['.', '-'])
+                && h.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+        })
 }
 
 /// 對話要從使用者開始、輪流、以使用者結束，內容不能空白。
@@ -429,7 +457,7 @@ fn valid_messages(messages: &[ChatMessage]) -> bool {
         })
 }
 
-fn request_body(m: &Model, req: &SendRequest, web: bool) -> serde_json::Value {
+fn request_body(m: &Model, req: &SendRequest, web: bool, fetch: &[String]) -> serde_json::Value {
     let messages: Vec<_> = req
         .messages
         .iter()
@@ -470,10 +498,23 @@ fn request_body(m: &Model, req: &SendRequest, web: bool) -> serde_json::Value {
     if m.fallback {
         body["fallbacks"] = serde_json::json!("default");
     }
+    let mut tools = Vec::new();
     if web {
-        body["tools"] = serde_json::json!([
+        tools.push(serde_json::json!(
             { "type": m.web_search, "name": "web_search", "max_uses": MAX_SEARCHES }
-        ]);
+        ));
+    }
+    if !fetch.is_empty() {
+        tools.push(serde_json::json!({
+            "type": m.web_fetch,
+            "name": "web_fetch",
+            "max_uses": MAX_FETCHES,
+            "max_content_tokens": MAX_FETCH_TOKENS,
+            "allowed_domains": fetch,
+        }));
+    }
+    if !tools.is_empty() {
+        body["tools"] = serde_json::Value::Array(tools);
     }
     body
 }
@@ -517,6 +558,8 @@ enum Sse {
         title: String,
     },
     Delta {
+        /// 最後的輸入 token（上網查、讀網頁讀進來的內容算在這裡；沒有就是 0）。
+        input: u64,
         output: u64,
         searches: u64,
         stop: Option<String>,
@@ -559,7 +602,24 @@ fn parse_sse(data: &str) -> Sse {
                 _ => Sse::Other,
             }
         }
+        // 讀進來的網頁：列在回答下面的來源裡。
+        Some("content_block_start")
+            if v["content_block"]["type"] == "web_fetch_tool_result"
+                && v["content_block"]["content"]["type"] == "web_fetch_result" =>
+        {
+            let c = &v["content_block"]["content"];
+            match c["url"].as_str() {
+                Some(url) if url.starts_with("https://") || url.starts_with("http://") => {
+                    Sse::Source {
+                        url: url.to_string(),
+                        title: c["content"]["title"].as_str().unwrap_or(url).to_string(),
+                    }
+                }
+                _ => Sse::Other,
+            }
+        }
         Some("message_delta") => Sse::Delta {
+            input: n(&v["usage"]["input_tokens"]),
             output: n(&v["usage"]["output_tokens"]),
             searches: n(&v["usage"]["server_tool_use"]["web_search_requests"]),
             stop: v["delta"]["stop_reason"].as_str().map(str::to_string),
@@ -668,7 +728,16 @@ pub fn assistant_send(
     }
     // 上網查資料要設定裡開著、這一題也勾了才會送出搜尋工具。
     let web = request.web_search && settings["claudeWebSearch"] == true;
-    let body = request_body(m, &request, web).to_string();
+    // 讀指定網頁也要設定裡開著「允許上網查資料」；網域格式不對就不送。
+    if !valid_hosts(&request.web_fetch) {
+        return Err(tr!("要讀的網址格式不正確"));
+    }
+    let fetch: &[String] = if settings["claudeWebSearch"] == true {
+        &request.web_fetch
+    } else {
+        &[]
+    };
+    let body = request_body(m, &request, web, fetch).to_string();
     let cancel = Arc::new(AtomicBool::new(false));
     runs.0.lock().insert(id, cancel.clone());
     std::thread::spawn(move || {
@@ -751,10 +820,12 @@ fn run(
                 let _ = app.emit("assistant-run", RunEvent::Source { id, url, title });
             }
             Sse::Delta {
+                input,
                 output,
                 searches,
                 stop: s,
             } => {
+                tokens.input = tokens.input.max(input);
                 tokens.output = tokens.output.max(output);
                 tokens.searches = tokens.searches.max(searches);
                 if s.is_some() {
@@ -919,21 +990,22 @@ mod tests {
                 images: vec![],
             }],
             web_search: false,
+            web_fetch: vec![],
         };
-        let body = request_body(model(&req.model).unwrap(), &req, false);
+        let body = request_body(model(&req.model).unwrap(), &req, false, &[]);
         assert_eq!(body["model"], "claude-sonnet-5-5");
         assert_eq!(body["stream"], true);
         assert_eq!(body["fallbacks"], "default");
         assert_eq!(body["messages"][0]["content"], "摘要");
         assert!(body.get("thinking").is_none() && body.get("temperature").is_none());
-        let haiku = request_body(model("claude-haiku-5-5").unwrap(), &req, false);
+        let haiku = request_body(model("claude-haiku-5-5").unwrap(), &req, false, &[]);
         assert!(haiku.get("fallbacks").is_none());
         // 沒開上網查資料時不送工具；開了依模型用對應的版本，最多查 5 次。
         assert!(body.get("tools").is_none());
-        let web = request_body(model(&req.model).unwrap(), &req, true);
+        let web = request_body(model(&req.model).unwrap(), &req, true, &[]);
         assert_eq!(web["tools"][0]["type"], "web_search_20260209");
         assert_eq!(web["tools"][0]["max_uses"], 5);
-        let haiku = request_body(model("claude-haiku-5-5").unwrap(), &req, true);
+        let haiku = request_body(model("claude-haiku-5-5").unwrap(), &req, true, &[]);
         assert_eq!(haiku["tools"][0]["type"], "web_search_20250305");
     }
 
@@ -953,8 +1025,9 @@ mod tests {
             system: String::new(),
             messages: vec![msg("user", vec![img("image/png", "iVBORw0KGgo=")])],
             web_search: false,
+            web_fetch: vec![],
         };
-        let body = request_body(model(&req.model).unwrap(), &req, false);
+        let body = request_body(model(&req.model).unwrap(), &req, false, &[]);
         let content = &body["messages"][0]["content"];
         assert_eq!(content[0]["type"], "image");
         assert_eq!(content[0]["source"]["media_type"], "image/png");
@@ -1003,8 +1076,9 @@ mod tests {
                 ],
             )],
             web_search: false,
+            web_fetch: vec![],
         };
-        let body = request_body(model("claude-sonnet-5-5").unwrap(), &req, false);
+        let body = request_body(model("claude-sonnet-5-5").unwrap(), &req, false, &[]);
         let content = &body["messages"][0]["content"];
         assert_eq!(content[0]["type"], "document");
         assert_eq!(content[0]["source"]["media_type"], "application/pdf");
@@ -1122,6 +1196,7 @@ mod tests {
                 r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":40}}"#
             ),
             Sse::Delta {
+                input: 0,
                 output: 40,
                 searches: 0,
                 stop: Some("end_turn".into())
@@ -1132,6 +1207,7 @@ mod tests {
                 r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":9,"server_tool_use":{"web_search_requests":2}}}"#
             ),
             Sse::Delta {
+                input: 0,
                 output: 9,
                 searches: 2,
                 stop: Some("end_turn".into())
@@ -1166,5 +1242,95 @@ mod tests {
     fn explains_errors() {
         assert!(status_message(401, "").contains("金鑰"));
         assert!(status_message(400, r#"{"error":{"message":"bad"}}"#).contains("bad"));
+    }
+    #[test]
+    fn web_fetch_is_limited_to_the_hosts_the_user_typed() {
+        let req = SendRequest {
+            model: "claude-sonnet-5-5".into(),
+            system: String::new(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "整理 https://example.test/news 的重點".into(),
+                images: vec![],
+            }],
+            web_search: false,
+            web_fetch: vec!["example.test".into()],
+        };
+        let hosts = req.web_fetch.clone();
+        let body = request_body(model(&req.model).unwrap(), &req, false, &hosts);
+        let tool = &body["tools"][0];
+        assert_eq!(tool["type"], "web_fetch_20260209");
+        assert_eq!(tool["name"], "web_fetch");
+        assert_eq!(tool["allowed_domains"], serde_json::json!(["example.test"]));
+        assert_eq!(tool["max_uses"], MAX_FETCHES);
+        assert_eq!(tool["max_content_tokens"], MAX_FETCH_TOKENS);
+        assert_eq!(body["tools"].as_array().unwrap().len(), 1);
+        // 和上網查一起用：兩個工具都送；Haiku 用基本版。
+        let both = request_body(model("claude-haiku-5-5").unwrap(), &req, true, &hosts);
+        assert_eq!(both["tools"][0]["name"], "web_search");
+        assert_eq!(both["tools"][1]["type"], "web_fetch_20250910");
+        // 沒有要讀的網頁：不送工具。
+        assert!(request_body(model(&req.model).unwrap(), &req, false, &[])
+            .get("tools")
+            .is_none());
+    }
+
+    #[test]
+    fn fetch_hosts_must_look_like_domains() {
+        let h = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(valid_hosts(&h(&[])));
+        assert!(valid_hosts(&h(&[
+            "example.test",
+            "docs.example.test",
+            "xn--fiq228c.tw"
+        ])));
+        for bad in [
+            "localhost",
+            "Example.test",
+            "example.test/path",
+            "exa mple.test",
+            ".example.test",
+            "example.test.",
+            "-a.test",
+            "a.test:8080",
+            "",
+        ] {
+            assert!(!valid_hosts(&h(&[bad])), "{bad}");
+        }
+        assert!(!valid_hosts(&h(&[
+            "a.test", "b.test", "c.test", "d.test", "e.test", "f.test"
+        ])));
+    }
+
+    #[test]
+    fn fetched_pages_are_sources_and_their_tokens_are_counted() {
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"content_block_start","index":2,"content_block":{"type":"web_fetch_tool_result","tool_use_id":"srvtoolu_1","content":{"type":"web_fetch_result","url":"https://example.test/news","content":{"type":"document","title":"最新消息","source":{"type":"text","media_type":"text/plain","data":"…"}}}}}"#
+            ),
+            Sse::Source {
+                url: "https://example.test/news".into(),
+                title: "最新消息".into(),
+            }
+        );
+        // 讀失敗（或網址不是網頁）：不算來源。
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"content_block_start","index":2,"content_block":{"type":"web_fetch_tool_result","tool_use_id":"srvtoolu_1","content":{"type":"web_fetch_tool_result_error","error_code":"url_not_accessible"}}}"#
+            ),
+            Sse::Other
+        );
+        // 讀進來的內容算在最後回報的輸入 token 裡。
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":25039,"output_tokens":931,"server_tool_use":{"web_fetch_requests":1}}}"#
+            ),
+            Sse::Delta {
+                input: 25039,
+                output: 931,
+                searches: 0,
+                stop: Some("end_turn".into()),
+            }
+        );
     }
 }
