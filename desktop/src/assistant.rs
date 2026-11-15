@@ -432,6 +432,9 @@ pub struct SendRequest {
     /// 只允許讀這幾個網域，文件內容裡夾帶的其他網址不會被讀。
     #[serde(default)]
     web_fetch: Vec<String>,
+    /// 這一題要深入思考（想得比較仔細；比較慢，思考用掉的輸出也要計費）。
+    #[serde(default)]
+    deep: bool,
 }
 
 /// 網域的格式正確（小寫英數、連字號、點，至少有一個點），數量也在範圍內。
@@ -491,7 +494,8 @@ fn request_body(m: &Model, req: &SendRequest, web: bool, fetch: &[String]) -> se
         "stream": true,
         // 同一份文件連續問好幾次時，前面相同的部分從快取讀取（比較便宜）。
         "cache_control": { "type": "ephemeral" },
-        "output_config": { "effort": "low" },
+        // 平常用最省的思考深度；按了「深入思考」的那一題才用高的。
+        "output_config": { "effort": if req.deep { "high" } else { "low" } },
         "system": req.system,
         "messages": messages,
     });
@@ -991,6 +995,7 @@ mod tests {
             }],
             web_search: false,
             web_fetch: vec![],
+            deep: false,
         };
         let body = request_body(model(&req.model).unwrap(), &req, false, &[]);
         assert_eq!(body["model"], "claude-sonnet-5-5");
@@ -1026,6 +1031,7 @@ mod tests {
             messages: vec![msg("user", vec![img("image/png", "iVBORw0KGgo=")])],
             web_search: false,
             web_fetch: vec![],
+            deep: false,
         };
         let body = request_body(model(&req.model).unwrap(), &req, false, &[]);
         let content = &body["messages"][0]["content"];
@@ -1077,6 +1083,7 @@ mod tests {
             )],
             web_search: false,
             web_fetch: vec![],
+            deep: false,
         };
         let body = request_body(model("claude-sonnet-5-5").unwrap(), &req, false, &[]);
         let content = &body["messages"][0]["content"];
@@ -1255,6 +1262,7 @@ mod tests {
             }],
             web_search: false,
             web_fetch: vec!["example.test".into()],
+            deep: false,
         };
         let hosts = req.web_fetch.clone();
         let body = request_body(model(&req.model).unwrap(), &req, false, &hosts);
@@ -1332,5 +1340,35 @@ mod tests {
                 stop: Some("end_turn".into()),
             }
         );
+    }
+    #[test]
+    fn deep_thinking_raises_the_effort_for_that_question() {
+        let req = |deep: bool| SendRequest {
+            model: "claude-sonnet-5-5".into(),
+            system: String::new(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "這個方案有什麼風險？".into(),
+                images: vec![],
+            }],
+            web_search: false,
+            web_fetch: vec![],
+            deep,
+        };
+        let m = model("claude-sonnet-5-5").unwrap();
+        assert_eq!(
+            request_body(m, &req(false), false, &[])["output_config"]["effort"],
+            "low"
+        );
+        assert_eq!(
+            request_body(m, &req(true), false, &[])["output_config"]["effort"],
+            "high"
+        );
+        // 三個模型都接受 high；不送 thinking 的設定（由模型自己決定要想多少）。
+        for id in ["claude-haiku-5-5", "claude-opus-5-5"] {
+            let body = request_body(model(id).unwrap(), &req(true), false, &[]);
+            assert_eq!(body["output_config"]["effort"], "high");
+            assert!(body.get("thinking").is_none());
+        }
     }
 }

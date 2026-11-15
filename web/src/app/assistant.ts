@@ -119,6 +119,8 @@ let includeDoc = true;
 let askProject = false;
 /** 這一題上網查資料（設定裡允許時才出現這個選項）。 */
 let webSearch = false;
+/** 深入思考：開著時每一題都想得比較仔細（比較慢、比較貴），按 × 關掉。 */
+let deepThinking = false;
 /** 這一題不要讀問題裡的網址（按了「讀網頁」標籤的 ×）；送出後恢復。 */
 let skipFetch = false;
 let usage: AssistantUsage | null = null;
@@ -186,6 +188,7 @@ function chipsKey(): string {
     selection().text.length,
     askProject,
     webSearch,
+    deepThinking,
     skipFetch,
     input ? urlHosts(input.value).join(" ") : "",
     app.settings.value.claudeWebSearch,
@@ -267,6 +270,19 @@ function renderChips(): void {
       add.addEventListener("click", () => ((askProject = true), renderChips(), input.focus()));
       items.push(add);
     }
+  }
+  // 深入思考：難題時打開，想得比較仔細；平常關著（快、便宜）。
+  if (deepThinking) {
+    chip(t("深入思考"), "brain", () => ((deepThinking = false), renderChips()));
+    items.at(-1)!.title = t("想得比較仔細，回答比較慢，費用也比較高（思考用掉的部分照輸出計費）。按 × 關掉");
+  } else {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "assistant-chip assistant-chip-add";
+    add.title = t("難題時打開：想得比較仔細，回答比較慢，費用也比較高（思考用掉的部分照輸出計費）");
+    add.append(icon("plus"), t("深入思考"));
+    add.addEventListener("click", () => ((deepThinking = true), renderChips(), input.focus()));
+    items.push(add);
   }
   const sel = selection().text;
   if (sel.trim()) chip(t("選取 {n} 字", { n: sel.length }), "text-cursor");
@@ -671,7 +687,7 @@ async function send(question: string, action: AssistantAction | null = null): Pr
     // 讀問題裡的網址：只看使用者打的問題（不是文件內容），也只用在一般問答。
     const webFetch = mode === "answer" && !skipFetch && app.settings.value.claudeWebSearch ? urlHosts(question) : [];
     skipFetch = false;
-    await desktop.assistantSend(id, { model, system, messages, webSearch: web, webFetch });
+    await desktop.assistantSend(id, { model, system, messages, webSearch: web, webFetch, deep: deepThinking });
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }
