@@ -2,7 +2,7 @@
  * 指令：指令面板（Ctrl+Shift+P）裡的所有指令與快捷鍵。
  */
 import { render as renderMarkdown, formatJson, formatAllTables, spacingPositions } from "../../pkg/md_wasm.js";
-import { Commands, type Command, fuzzyScore } from "../commands.ts";
+import { Commands, type Command, fuzzyScore, isMac } from "../commands.ts";
 import { desktop, displayPath, isRemote } from "../desktop.ts";
 import { openFile, stem, download } from "../files.ts";
 import { insertBlock, toggleWrap, insertLink, clearInlineFormat, toggleLineStyle } from "../format.ts";
@@ -38,6 +38,7 @@ import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { closeSearchPanel, openSearchPanel, searchPanelOpen } from "@codemirror/search";
 import { openPreviewFind } from "./preview-find.ts";
+import { undoDoc } from "./undo-keys.ts";
 import { docName } from "./doc-names.ts";
 import { exportName } from "./export-target.ts";
 import { reportIssue } from "./version-info.ts";
@@ -65,6 +66,10 @@ function toggleEditorFind(): void {
     view.focus();
   } else openSearchPanel(view);
 }
+
+/** 「復原」「重做」可以用：文件不是唯讀，而且看得到（目前的分頁不是工作項目之類的）。 */
+const canUndo = () =>
+  !app.editor.view.state.readOnly && (app.editor.view.dom.getClientRects().length > 0 || app.previewScroller.getClientRects().length > 0);
 
 const isMarkdown = () => app.cur.kind === "markdown" && app.view !== "preview";
 
@@ -666,6 +671,9 @@ export function initCommands(): void {
       when: () => app.cur.kind === "markdown",
       run: () => copyRich(),
     },
+    // 快速鍵只是顯示用（shownKeys）：按鍵本身由編輯區、輸入框各自處理，焦點在別處時見 undo-keys.ts。
+    { id: "undo", title: t("復原"), group: t("編輯"), icon: "undo-2", shownKeys: "Mod-z", when: canUndo, run: () => void undoDoc() },
+    { id: "redo", title: t("重做"), group: t("編輯"), icon: "redo-2", shownKeys: isMac ? "Mod-Shift-z" : "Mod-y", when: canUndo, run: () => void undoDoc(true) },
     {
       id: "fix-terms",
       title: t("修正兩國用語、錯字與標點（整份文件）"),

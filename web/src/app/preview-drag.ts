@@ -7,7 +7,6 @@
  * 只在 Markdown 文件、可以編輯、沒有在看差異時有。拖到助理的輸入區是把那段文字放進問題（帶著 text/plain）。
  * 即時預覽（編輯區）的把手在 app/live-drag.ts，搬移的規則（moveText）共用。
  */
-import { undo } from "@codemirror/commands";
 import { type LineRange, moveBlock, moveListItem } from "../block-move.ts";
 import { t } from "../i18n.ts";
 import { parseSourcepos } from "../scroll-sync.ts";
@@ -17,6 +16,7 @@ import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
 import { initLiveDrag } from "./live-drag.ts";
 import { outlineHeadings } from "./outline-list.ts";
+import { labelStep, undoDoc } from "./undo-keys.ts";
 
 export type DragKind = "section" | "item" | "block";
 type Kind = DragKind;
@@ -155,14 +155,14 @@ export function moveText(kind: DragKind, src: LineRange, heading: number, target
 
 /** 換成搬完的內容（一步就能復原），通知上有「復原」。 */
 export function commitMove(out: string): void {
-  app.editor.replaceAll(out, { userEvent: "move.block", isolate: true });
+  labelStep(t("調整順序"), () => app.editor.replaceAll(out, { userEvent: "move.block", isolate: true }));
   app.renderNow();
   movedToast();
 }
 
 /** 「已調整順序」的通知，上面有「復原」（在預覽、即時預覽拖動段落，或在大綱拖曳章節之後）。 */
 export function movedToast(): void {
-  toast(t("已調整順序"), { action: { label: t("復原"), run: () => void (undo(app.editor.view), app.renderNow()) } });
+  toast(t("已調整順序"), { action: { label: t("復原"), run: () => void undoDoc() } });
 }
 
 /** 「⋮⋮」把手（預覽、即時預覽各一個）。 */
