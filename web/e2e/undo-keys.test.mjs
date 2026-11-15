@@ -60,6 +60,13 @@ test("「預覽」模式在大綱拖曳章節：焦點留在大綱的標題上�
   await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "丙");
   assert.equal(await headings(page), "# 丙# 甲# 乙");
   assert.equal(await page.evaluate(() => !!document.activeElement?.closest("#outline-list")), true, "焦點在大綱上（和實際操作一樣）");
+  // 和在預覽拖動段落一樣跳出通知；按通知上的「復原」還原，再拖一次用 Ctrl+Z。
+  const undoBtn = page.locator(".toast", { hasText: "已調整順序" }).locator("button", { hasText: "復原" });
+  await undoBtn.click();
+  await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "甲");
+  assert.equal(await doc(page), DOC);
+  await link(page, "丙").dragTo(link(page, "甲"), { targetPosition: { x: 10, y: 2 } });
+  await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "丙");
   await page.keyboard.press("Control+Z");
   await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "甲");
   assert.equal(await doc(page), DOC);

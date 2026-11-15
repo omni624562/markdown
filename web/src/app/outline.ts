@@ -10,6 +10,7 @@ import { renderDocLanguage } from "./doc-language.ts";
 import { renderFileFormat } from "./file-format.ts";
 import { commands } from "./commands.ts";
 import { outlineHeadings, toggleOutline } from "./outline-list.ts";
+import { movedToast } from "./preview-drag.ts";
 
 
 let draggingSection: number | null = null;
@@ -215,6 +216,8 @@ export function initOutline(): void {
     const count = sectionRange(outlineHeadings, from, app.editor.view.state.doc.lines);
     const size = outlineHeadings.filter((h) => h.line >= count.first && h.line < count.end).length;
     applySectionMove(out, t.before > from ? t.before - size : t.before, false);
+    // 和在預覽拖動段落一樣：跳出通知，可以按「復原」。
+    movedToast();
   });
   app.outlineList.addEventListener("dragend", () => {
     clearDropMarks();
