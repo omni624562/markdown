@@ -28,6 +28,10 @@ npm run dev    # 開發伺服器，預設 http://localhost:5173
 
 自己編譯桌面版見 [desktop.md](desktop.md) 最後一段。版本號與更新紀錄的規則見 [VERSIONING.md](../VERSIONING.md)。
 
+## 網頁版放上 GitHub Pages
+
+在平板、手機的瀏覽器上試用網頁版時：到 GitHub 的 Actions →「Pages」→ Run workflow（選 `main`）。建置好之後網址是 `https://<帳號>.github.io/<儲存庫>/`。第一次要先到 Settings → Pages 把 Source 設成「GitHub Actions」。只有手動執行時才更新，發佈桌面版不會動到它。
+
 ## 架構
 
 ```
