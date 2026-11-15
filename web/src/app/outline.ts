@@ -11,6 +11,7 @@ import { renderFileFormat } from "./file-format.ts";
 import { commands } from "./commands.ts";
 import { outlineHeadings, toggleOutline } from "./outline-list.ts";
 import { movedToast } from "./preview-drag.ts";
+import { labelStep } from "./undo-keys.ts";
 
 
 let draggingSection: number | null = null;
@@ -19,7 +20,7 @@ let draggingSection: number | null = null;
 function applySectionMove(text: string | null, movedIndex: number, focusLink: boolean): void {
   if (text === null) return;
   if (app.review.active) app.review.finish();
-  app.editor.replaceAll(text, { userEvent: "move.section", isolate: true });
+  labelStep(t("調整順序"), () => app.editor.replaceAll(text, { userEvent: "move.section", isolate: true }));
   app.renderNow();
   const link = app.outlineList.querySelectorAll<HTMLAnchorElement>("a")[movedIndex];
   if (!link) return;
