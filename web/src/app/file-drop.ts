@@ -8,6 +8,7 @@ import { t } from "../i18n.ts";
 import { toast } from "../ui/toast.ts";
 import { imageFiles, insertImages } from "./image-paste.ts";
 import { dropOnWorkItem, overWorkItem } from "./work-item-attach.ts";
+import { overAssistantInput } from "./assistant.ts";
 import { app } from "./context.ts";
 import { importDocxData } from "./activity-bar.ts";
 import { reportError } from "./git-actions.ts";
@@ -28,8 +29,10 @@ export function initFileDrop(): void {
     overlay.hidden = false;
     // 拖到開著的工作項目上：放開是加入附件，不是開檔。
     const attach = overWorkItem(e.target);
-    if (title) title.textContent = attach ? t("放開以加入附件") : openText[0];
-    if (detail) detail.textContent = attach ? t("檔案會上傳成這個工作項目的附件") : openText[1];
+    // 拖到助理的輸入區上：放開是附到問題上（圖片、PDF）。
+    const ask = !attach && overAssistantInput(e.target);
+    if (title) title.textContent = attach ? t("放開以加入附件") : ask ? t("放開以附到問題上") : openText[0];
+    if (detail) detail.textContent = attach ? t("檔案會上傳成這個工作項目的附件") : ask ? t("圖片或 PDF 會和問題一起送給助理") : openText[1];
   });
   window.addEventListener("dragleave", () => {
     if (--dragDepth <= 0) {

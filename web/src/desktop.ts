@@ -700,7 +700,7 @@ export interface AssistantUsage {
 
 /** 附在問題裡的圖片（Base64，不含 `data:` 開頭）。 */
 export interface AssistantImage {
-  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "application/pdf";
   data: string;
 }
 
