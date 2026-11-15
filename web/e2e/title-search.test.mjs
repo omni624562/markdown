@@ -225,3 +225,62 @@ test("快速開啟的說明欄靠左對齊：每一行從同一個位置開始�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("打開前後是同一個搜尋框：搜尋列蓋在框上，放大鏡、文字位置與提示字一樣；窄視窗時以框為中心、不超出視窗", async () => {
+  const { page, context, errors } = await open({ desktop: desktop() });
+  const parts = () =>
+    page.evaluate(() => {
+      const rect = (el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, mid: r.top + r.height / 2 };
+      };
+      const box = document.querySelector("#title-search");
+      const text = box.querySelector(".title-search-text");
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const d = document.querySelector("dialog.palette[open]");
+      return {
+        box: rect(box),
+        boxIcon: rect(box.querySelector(".icon")),
+        boxText: { ...rect(range), label: text.textContent },
+        dialog: d && rect(d),
+        icon: d && rect(d.querySelector(".palette-search .icon")),
+        input: d && { ...rect(d.querySelector("input")), placeholder: d.querySelector("input").placeholder, font: getComputedStyle(d.querySelector("input")).fontSize },
+        boxFont: getComputedStyle(box).fontSize,
+      };
+    });
+  for (const width of [1280, 760]) {
+    await page.setViewportSize({ width, height: 700 });
+    await page.waitForFunction(() => document.querySelector("#title-search .title-search-text").textContent === "搜尋檔案，或問助理");
+    const before = await parts();
+    // 字靠左，緊接在放大鏡後面（和打開後輸入的位置一樣）。
+    assert.ok(before.boxText.left - before.boxIcon.right < 12, `字靠左 ${JSON.stringify(before)}`);
+    await page.click("#title-search");
+    await page.locator("dialog.palette[open] .palette-search").waitFor();
+    const after = await parts();
+    const msg = JSON.stringify({ width, before, after });
+    assert.equal(after.input.placeholder, before.boxText.label, "提示字和框裡的字一樣");
+    assert.equal(after.input.font, after.boxFont, "字的大小一樣");
+    assert.ok(Math.abs(after.icon.mid - before.boxIcon.mid) <= 1, `放大鏡同高 ${msg}`);
+    assert.ok(after.dialog.left <= before.box.left + 0.5 && after.dialog.right >= before.box.right - 0.5, `蓋住整個框 ${msg}`);
+    assert.ok(after.dialog.top <= before.box.top, `蓋住整個框 ${msg}`);
+    assert.ok(after.dialog.left >= 0 && after.dialog.right <= width, `不超出視窗 ${msg}`);
+    assert.ok(Math.abs((after.dialog.left + after.dialog.right) / 2 - (before.box.left + before.box.right) / 2) <= 1, `以框為中心 ${msg}`);
+    if (width === 1280) {
+      // 寬視窗：一樣寬，放大鏡和字都在原來的位置。
+      assert.ok(Math.abs(after.icon.left - before.boxIcon.left) <= 1, `放大鏡在原來的位置 ${msg}`);
+      assert.ok(Math.abs(after.input.left - before.boxText.left) <= 1, `字在原來的位置 ${msg}`);
+    }
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector("dialog.palette[open]"));
+  }
+  // 用 Ctrl+P 打開也一樣。
+  await page.setViewportSize({ width: 1280, height: 700 });
+  const box = await parts();
+  await page.keyboard.press("Control+P");
+  await page.locator("dialog.palette[open] .palette-search").waitFor();
+  const opened = await parts();
+  assert.ok(Math.abs(opened.icon.left - box.boxIcon.left) <= 1 && Math.abs(opened.icon.mid - box.boxIcon.mid) <= 1, JSON.stringify({ box, opened }));
+  assert.deepEqual(errors, []);
+  await context.close();
+});

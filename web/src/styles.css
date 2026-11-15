@@ -170,8 +170,9 @@ kbd {
 .nav-toggle { width: 34px; }
 .nav-toggle[aria-pressed="true"] { color: var(--fg); }
 /*
- * 標題列中間的搜尋框（app/title-search.ts）：在視窗正中間（不隨左右的按鈕偏移），寬度跟著視窗、最寬 460px，
- * 左右至少留 200px 給 ☰ ◧ 與 ◨、視窗按鈕。窄視窗時改成填滿 ◧ 和 ◨ 之間。
+ * 標題列中間的搜尋框（app/title-search.ts）：在視窗正中間（不隨左右的按鈕偏移），寬度跟著視窗、最寬 600px
+ * （和打開後的快速開啟一樣寬），左右至少留 200px 給 ☰ ◧ 與 ◨、視窗按鈕。窄視窗時改成填滿 ◧ 和 ◨ 之間。
+ * 字靠左、緊接在放大鏡後面，打開後的搜尋列（.palette-search）在同一個位置。
  */
 .title-search {
   position: absolute;
@@ -181,7 +182,7 @@ kbd {
   gap: 8px;
   align-items: center;
   box-sizing: border-box;
-  width: clamp(180px, calc(100vw - 400px), 460px);
+  width: clamp(180px, calc(100vw - 400px), 600px);
   height: 26px;
   padding: 0 4px 0 10px;
   transform: translate(-50%, -50%);
@@ -189,7 +190,8 @@ kbd {
   border-radius: 7px;
   background: color-mix(in srgb, var(--bg) 70%, transparent);
   color: var(--muted);
-  font: 12.5px var(--font-ui);
+  font: 13px var(--font-ui);
+  text-align: left;
   cursor: pointer;
 }
 .title-search:hover { border-color: var(--subtle); background: var(--bg); color: var(--fg); }
@@ -1092,8 +1094,15 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 .palette-detail-col .palette-group { flex: 0 0 42%; max-width: none; text-align: left; }
 .palette-empty { justify-content: center; color: var(--muted); cursor: default !important; }
 .palette-hint { display: flex; gap: 4px; align-items: center; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
-/* 快速開啟：開在視窗最上面，蓋住標題列中間的搜尋框（和按搜尋框打開的位置一樣）。 */
-.palette.palette-top { width: min(600px, calc(100vw - 16px)); margin-top: 4px; }
+/*
+ * 快速開啟：開在視窗最上面，搜尋列蓋住標題列中間的搜尋框（位置由 ui/picker.ts 對齊），樣子也一樣：
+ * 放大鏡、13px 的字、靠左。後面只稍微變暗、不模糊，看起來是搜尋框往下展開，不是另外跳出一個視窗。
+ */
+.palette.palette-top { width: min(600px, calc(100vw - 16px)); margin-top: 1px; border-radius: 10px; }
+.palette-top::backdrop { background: rgba(0, 0, 0, 0.16); backdrop-filter: none; }
+.palette-search { display: flex; flex: none; gap: 8px; align-items: center; height: 32px; padding: 0 10px; border-bottom: 1px solid var(--border); color: var(--muted); }
+.palette-search .icon { flex: none; width: 14px; height: 14px; }
+.palette .palette-search input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; font: 13px var(--font-ui); }
 /* 搜尋框下面「也可以：」那一列：按一下填入開頭的符號。 */
 .palette-tips { display: flex; flex: none; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .palette-tips[hidden] { display: none; }
