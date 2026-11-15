@@ -91,3 +91,34 @@ test("輸入框裡的 Ctrl+Z 是輸入框自己的：文件不變", async () => 
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("「☰」→「編輯」有看得到的復原、重做（標著快速鍵）；復原一大步時說明復原了什麼", async () => {
+  const { page, context, errors } = await setup();
+  await link(page, "甲").focus();
+  await page.keyboard.press("Alt+ArrowDown");
+  await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "乙");
+  // 從主選單復原。
+  await page.click("#main-menu");
+  await page.locator('[role="menu"] [role="menuitem"]', { hasText: "編輯" }).first().hover();
+  const undoItem = page.locator('[role="menuitem"]', { hasText: "復原" }).last();
+  await undoItem.waitFor();
+  assert.match(await undoItem.textContent(), /Ctrl\+Z/);
+  assert.match(await page.locator('[role="menuitem"]', { hasText: "重做" }).last().textContent(), /Ctrl\+Y/);
+  await undoItem.click();
+  await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "甲");
+  assert.equal(await doc(page), DOC);
+  await page.locator(".toast", { hasText: "已復原：調整順序" }).waitFor();
+  // 在編輯區裡按 Ctrl+Y 重做（編輯器自己處理的按鍵）：一樣說明。
+  await page.click(".cm-content", { position: { x: 4, y: 4 } });
+  await page.keyboard.press("Control+Y");
+  await page.locator(".toast", { hasText: "已重做：調整順序" }).waitFor();
+  assert.equal(await headings(page), "# 乙# 甲# 丙");
+  // 一般打字的復原不跳通知。
+  await page.keyboard.type("字");
+  await page.evaluate(() => document.querySelectorAll(".toast").forEach((t) => t.remove()));
+  await page.keyboard.press("Control+Z");
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator(".toast").count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
