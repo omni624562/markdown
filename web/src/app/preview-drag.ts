@@ -157,6 +157,11 @@ export function moveText(kind: DragKind, src: LineRange, heading: number, target
 export function commitMove(out: string): void {
   app.editor.replaceAll(out, { userEvent: "move.block", isolate: true });
   app.renderNow();
+  movedToast();
+}
+
+/** 「已調整順序」的通知，上面有「復原」（在預覽、即時預覽拖動段落，或在大綱拖曳章節之後）。 */
+export function movedToast(): void {
   toast(t("已調整順序"), { action: { label: t("復原"), run: () => void (undo(app.editor.view), app.renderNow()) } });
 }
 
