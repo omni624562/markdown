@@ -23,6 +23,7 @@ mod dav;
 // SSH 遠端資料夾放在 dav/ 底下（和 WebDAV 共用連線、輪詢與指令），保留 crate::ssh 的路徑。
 use dav::ssh;
 mod doc_index;
+mod dropped;
 mod features;
 mod files;
 mod fonts;
@@ -116,6 +117,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<Window> {
         .to_logical::<f64>(window.scale_factor()?);
     let main = window.add_child(webview, tauri::LogicalPosition::new(0.0, 0.0), size)?;
     webview_settings::harden(&main);
+    dropped::listen(&main);
     Ok(window)
 }
 
@@ -340,6 +342,7 @@ fn main() {
         .manage(pdf::PdfTarget::default())
         .manage(image_protocol::ImageRoots::default())
         .manage(window_state::Remembered::default())
+        .manage(dropped::Dropped::default())
         .register_asynchronous_uri_scheme_protocol(
             image_protocol::SCHEME,
             |ctx, request, responder| {
@@ -378,6 +381,7 @@ fn main() {
             window_fullscreen,
             files::open_file,
             files::reopen_file,
+            dropped::dropped_file,
             new_project::project_default_parent,
             new_project::pick_project_parent,
             new_project::create_project,

@@ -158,6 +158,7 @@ mod tests {
         "window_fullscreen",
         "open_file",
         "reopen_file",
+        "dropped_file",
         "project_default_parent",
         "pick_project_parent",
         "create_project",

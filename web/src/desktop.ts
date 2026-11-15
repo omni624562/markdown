@@ -808,6 +808,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
   return {
     startupTarget: () => core.invoke<StartupTarget | null>("startup_target"),
     openFile: () => core.invoke<DesktopFile | null>("open_file"),
+    /** 拖進視窗的檔案（依代號與順序）用原本的路徑開啟；拿不到路徑時是 null。 */
+    droppedFile: (id: string, index: number) => core.invoke<DesktopFile | null>("dropped_file", { id, index }),
     reopenFile: (path: string) =>
       route(
         path,
