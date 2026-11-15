@@ -280,6 +280,7 @@ pub async fn term_layout(
                 .window()
                 .add_child(builder, position, size)
                 .map_err(|e| tr!("無法建立終端機：{e}", e = e))?;
+            crate::webview_settings::harden(&v);
             let zoom = app.state::<TermView>().0.lock().zoom;
             if zoom != 1.0 {
                 let _ = v.set_zoom(zoom);

@@ -50,6 +50,7 @@ mod text_encoding;
 mod trust;
 mod update;
 mod watch;
+mod webview_settings;
 mod window_state;
 mod winhttp;
 mod workspace;
@@ -113,7 +114,8 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<Window> {
     let size = window
         .inner_size()?
         .to_logical::<f64>(window.scale_factor()?);
-    window.add_child(webview, tauri::LogicalPosition::new(0.0, 0.0), size)?;
+    let main = window.add_child(webview, tauri::LogicalPosition::new(0.0, 0.0), size)?;
+    webview_settings::harden(&main);
     Ok(window)
 }
 
