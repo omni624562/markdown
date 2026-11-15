@@ -79,6 +79,8 @@ let chips!: HTMLElement;
 let input!: HTMLTextAreaElement;
 let sendBtn!: HTMLButtonElement;
 let usageEl!: HTMLElement;
+let countBtn!: HTMLButtonElement;
+let countEl!: HTMLElement;
 let modelBtn!: HTMLButtonElement;
 let notice!: HTMLElement;
 let history: AssistantMessage[] = [];
@@ -589,7 +591,11 @@ async function confirmFirst(chars: number, model: ClaudeModel): Promise<boolean>
   return true;
 }
 
-async function send(question: string, action: AssistantAction | null = null): Promise<void> {
+/**
+ * 送出問題。`countOnly`：不送出，只問 Claude API 這一題準確的輸入 token 數與費用（內容一樣會送到 Anthropic，
+ * 所以前面的檢查與第一次的確認都照舊）。
+ */
+async function send(question: string, action: AssistantAction | null = null, countOnly = false): Promise<void> {
   if (!desktop || pending) return;
   // 還沒問過有沒有金鑰（面板剛建立）：先問清楚再決定能不能送。
   if (hasKey === null) await refreshStatus();
@@ -645,6 +651,21 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   const documents = pdfs.map(({ mediaType, data }) => ({ mediaType, data }));
   const pdfChars = pdfs.reduce((n, p) => n + p.pages * PDF_PAGE_CHARS, 0);
   if (!(await confirmFirst(content.length + system.length + images.length * IMAGE_CHARS + pdfChars, model))) return;
+  // 會改文件的動作不接續之前的對話（只看這一次的內容）。
+  const messages = conversation(mode === "answer" ? history : [], content);
+  if (images.length) messages[messages.length - 1] = { ...messages[messages.length - 1], images };
+  // PDF 附在這次對話的第一則訊息：之後接著問時前面的內容一樣，可以從快取讀取（比較便宜）。
+  if (documents.length) messages[0] = { ...messages[0], images: [...documents, ...(messages[0].images ?? [])] };
+  // 上網查只用在一般問答，而且設定裡要允許。
+  const web = webSearch && mode === "answer" && app.settings.value.claudeWebSearch;
+  // 讀問題裡的網址：只看使用者打的問題（不是文件內容），也只用在一般問答。
+  const webFetch = mode === "answer" && !skipFetch && app.settings.value.claudeWebSearch ? urlHosts(question) : [];
+  const request = { model, system, messages, webSearch: web, webFetch, deep: deepThinking };
+  if (countOnly) {
+    await showCount(request);
+    return;
+  }
+  countEl.hidden = true;
   const shown = action ? action.label() : question;
   const userBubble = bubble("user", shown);
   for (const pdf of pdfs) {
@@ -677,17 +698,8 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   input.value = "";
   setRunning(true);
   try {
-    // 會改文件的動作不接續之前的對話（只看這一次的內容）。
-    const messages = conversation(mode === "answer" ? history : [], content);
-    if (images.length) messages[messages.length - 1] = { ...messages[messages.length - 1], images };
-    // PDF 附在這次對話的第一則訊息：之後接著問時前面的內容一樣，可以從快取讀取（比較便宜）。
-    if (documents.length) messages[0] = { ...messages[0], images: [...documents, ...(messages[0].images ?? [])] };
-    // 上網查只用在一般問答，而且設定裡要允許。
-    const web = webSearch && mode === "answer" && app.settings.value.claudeWebSearch;
-    // 讀問題裡的網址：只看使用者打的問題（不是文件內容），也只用在一般問答。
-    const webFetch = mode === "answer" && !skipFetch && app.settings.value.claudeWebSearch ? urlHosts(question) : [];
     skipFetch = false;
-    await desktop.assistantSend(id, { model, system, messages, webSearch: web, webFetch, deep: deepThinking });
+    await desktop.assistantSend(id, request);
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }
@@ -755,6 +767,24 @@ function onRun(e: AssistantRunEvent): void {
   if (usage) usage = { ...usage, usd: e.monthUsd };
   renderUsage();
   setRunning(false);
+}
+
+/** 問 Claude API 這一題的輸入 token 數，顯示在輸入框上方；內容變了（打字、換附件）就收起來。 */
+async function showCount(request: Parameters<NonNullable<typeof desktop>["assistantCount"]>[0]): Promise<void> {
+  if (!desktop) return;
+  countEl.hidden = false;
+  countEl.classList.remove("error");
+  countEl.textContent = t("計算中…");
+  countBtn.disabled = true;
+  try {
+    const { tokens, usd } = await desktop.assistantCount(request);
+    countEl.textContent = t("這一題的輸入是 {n} 個 token，約 {usd}（回答的費用另計）", { n: tokens.toLocaleString(), usd: formatUsd(usd) });
+  } catch (e) {
+    countEl.classList.add("error");
+    countEl.textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    countBtn.disabled = false;
+  }
 }
 
 /** 檔案轉成 Base64（一次轉太長的陣列會超出引數上限，分段）。 */
@@ -1035,8 +1065,25 @@ function build(): HTMLElement {
     e.preventDefault();
     void attachFiles(files);
   });
-  bar.append(more, attach, fileInput, sendBtn);
-  box.append(chips, input, bar);
+  // 估算：送出前先看這一題準確的 token 數與費用。
+  countBtn = document.createElement("button");
+  countBtn.type = "button";
+  countBtn.className = "assistant-attach assistant-count-btn";
+  countBtn.title = t("估算這一題的 token 數與費用（內容會送到 Anthropic 計算，不產生回答、不收費）");
+  countBtn.setAttribute("aria-label", t("估算 token 數與費用"));
+  countBtn.append(icon("calculator"));
+  countBtn.addEventListener("click", () => {
+    if (!input.value.trim()) return void toast(t("先輸入問題，再估算"));
+    void send(input.value, null, true);
+  });
+  countEl = document.createElement("p");
+  countEl.className = "assistant-count";
+  countEl.setAttribute("role", "status");
+  countEl.hidden = true;
+  // 問題改了：剛才算的數字不準了，收起來。
+  input.addEventListener("input", () => (countEl.hidden = true));
+  bar.append(more, attach, countBtn, fileInput, sendBtn);
+  box.append(chips, countEl, input, bar);
   box.addEventListener("click", (e) => {
     if (e.target === box) input.focus();
   });

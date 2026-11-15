@@ -584,6 +584,7 @@ fn main() {
             assistant::assistant_usage,
             assistant::assistant_usage_history,
             assistant::assistant_send,
+            assistant::assistant_count,
             assistant::assistant_cancel,
             update::app_version,
             update::update_check,
