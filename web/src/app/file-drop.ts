@@ -98,7 +98,10 @@ async function openWithPath(files: File[], index: number): Promise<boolean> {
     return false;
   }
   const id = `drop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  host.postMessageWithAdditionalObjects({ omarkerDrop: id }, files);
+  // 訊息要是字串：Tauri 自己也在聽這個事件，而且排在前面；它只讀得懂字串，遇到物件會回報錯誤。
+  // 送物件時實測我們的處理常式登記成功卻一則訊息都收不到，推測是它回報錯誤之後 WebView2 就不再往下叫。
+  // 字串它讀得懂、當成看不懂的指令略過（只在主控台記一行）。
+  host.postMessageWithAdditionalObjects(`omarkerDrop:${id}`, files);
   const file = await desktop.droppedFile(id, index);
   if (!file) return false;
   app.openOpenedFile(fromDesktop(file));

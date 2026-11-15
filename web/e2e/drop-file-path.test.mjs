@@ -41,10 +41,10 @@ test("拖進來的檔案記得原本的路徑：存檔直接存回原處，不�
   await page.waitForFunction(() => document.querySelector("#tab-bar .tab[aria-selected=true] .tab-name")?.textContent === "status.sh");
   const posted = await page.evaluate(() => window.__posted);
   assert.equal(posted.length, 1);
-  assert.match(posted[0].msg.omarkerDrop, /^drop-[a-z0-9-]+$/);
+  assert.match(posted[0].msg, /^omarkerDrop:drop-[a-z0-9-]+$/);
   assert.deepEqual(posted[0].names, ["status.sh"]);
   const asked = (await calls(page)).find((c) => c.cmd === "dropped_file").args;
-  assert.deepEqual(asked, { id: posted[0].msg.omarkerDrop, index: 0 });
+  assert.deepEqual(asked, { id: posted[0].msg.slice("omarkerDrop:".length), index: 0 });
 
   // 改一個字再存檔：存回原本的路徑。
   await page.click(".cm-content");
