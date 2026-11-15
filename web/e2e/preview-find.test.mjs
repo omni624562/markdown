@@ -42,6 +42,30 @@ test("預覽模式按 Ctrl+F：預覽上方出現尋找列，標出符合處，E
   let s = await state(page);
   assert.deepEqual([s.count, s.marks, s.current], ["1／4", 4, "第一天搭地鐵到海雲台。"]);
   // 找不分大小寫；只找預覽的內容（檔案樹、大綱裡的字不算）。
+  // 捲軸上有短線標出符合處的位置（貼在預覽的右邊、由上到下），目前的那一個不同色。
+  const marks = () =>
+    page.evaluate(() => {
+      const el = document.querySelector(".preview-find-marks");
+      if (!el || el.hidden) return null;
+      const box = el.getBoundingClientRect();
+      const view = document.querySelector("#preview-scroller").getBoundingClientRect();
+      const lines = [...el.children];
+      return {
+        tops: lines.map((i) => parseFloat(i.style.top)),
+        current: lines.findIndex((i) => i.classList.contains("current")),
+        placed: Math.abs(box.right - view.right) <= 1 && box.top >= view.top && box.bottom <= view.bottom + 1,
+      };
+    });
+  let k = await marks();
+  assert.equal(k.tops.length, 3, "同一行的兩個符合處合併成一條");
+  assert.deepEqual([k.current, k.placed], [0, true]);
+  assert.ok(k.tops[0] < k.tops[1] && k.tops[1] < k.tops[2], String(k.tops));
+  // 點最後一條：跳到那個符合處（在收合的區塊裡）。
+  await page.locator(".preview-find-marks i").nth(2).click();
+  s = await state(page);
+  assert.deepEqual([s.count, s.visible], ["4／4", true]);
+  assert.equal(await input.evaluate((el) => el === document.activeElement), true, "焦點還在尋找框");
+  await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   s = await state(page);
   assert.equal(s.count, "2／4");
@@ -63,6 +87,7 @@ test("預覽模式按 Ctrl+F：預覽上方出現尋找列，標出符合處，E
   await page.keyboard.press("Escape");
   s = await state(page);
   assert.deepEqual([s.open, s.marks, s.focusInBar], [false, 0, false]);
+  assert.equal(await marks(), null, "關掉尋找列，捲軸上的短線也消失");
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -3845,6 +3845,11 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .find-marks { position: absolute; right: 0; z-index: 5; overflow: hidden; pointer-events: none; }
 .find-marks[hidden] { display: none; }
 .find-marks i { position: absolute; right: 2px; left: 2px; height: 2px; margin-top: -1px; border-radius: 1px; background: rgba(230, 150, 0, 0.9); }
+/* 短線本身可以點（跳到那個符合處）；上下各多 2px 比較好點，其他地方不擋捲軸。 */
+.find-marks i { pointer-events: auto; cursor: pointer; }
+.find-marks i::before { position: absolute; inset: -2px 0; content: ""; }
+/* 預覽的尋找列的短線：預覽整塊都會捲動，所以這一層固定在視窗上（位置由 app/preview-find.ts 設定）。 */
+.find-marks.preview-find-marks { position: fixed; right: auto; }
 .find-marks i.current { right: 0; left: 0; z-index: 1; height: 4px; margin-top: -2px; background: var(--accent); }
 ::highlight(issue-find) { background-color: rgba(255, 200, 0, 0.35); }
 ::highlight(issue-find-current) { background-color: rgba(255, 150, 0, 0.75); }

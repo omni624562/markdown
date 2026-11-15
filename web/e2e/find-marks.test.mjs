@@ -37,7 +37,7 @@ test("尋找時捲軸上標出符合處：位置照比例，目前的那一個�
   await page.waitForFunction(() => document.querySelectorAll(".cm-editor .find-marks i").length === 6);
   let m = await marks(page);
   assert.equal(m.atRightEdge && m.inside, true, JSON.stringify(m));
-  assert.equal(m.blocksMouse, false, "不擋捲軸的滑鼠操作");
+  assert.equal(m.blocksMouse, false, "短線以外的地方不擋捲軸的滑鼠操作");
   // 第 0、10、…、50 段：由上到下，大約在 0、1/6、…、5/6 的位置（還沒捲到的行高度是估的，留一點誤差）。
   m.ys.forEach((y, i) => assert.ok(Math.abs(y - i / 6) < 0.1 && (i === 0 || y > m.ys[i - 1]), `第 ${i} 條在 ${y}：${m.ys}`));
   await page.keyboard.press("Enter");
@@ -45,6 +45,12 @@ test("尋找時捲軸上標出符合處：位置照比例，目前的那一個�
   const first = (await marks(page)).current;
   await page.keyboard.press("Enter");
   await page.waitForFunction((prev) => [...document.querySelectorAll(".cm-editor .find-marks i")].findIndex((i) => i.classList.contains("current")) === prev + 1, first);
+  // 點第 5 條短線：跳到第 5 個符合處（第 40 段），捲到看得到的地方，焦點留在尋找框。
+  await page.locator(".cm-editor .find-marks i").nth(4).click();
+  await page.waitForFunction(() => [...document.querySelectorAll(".cm-editor .find-marks i")].findIndex((i) => i.classList.contains("current")) === 4);
+  assert.match(await page.locator(".find-panel").textContent(), /5／6/);
+  assert.equal(await page.locator(".cm-line", { hasText: "第 40 段" }).isVisible(), true);
+  assert.equal(await input.evaluate((el) => el === document.activeElement), true, "焦點還在尋找框");
   // 沒有符合處：不標。
   await input.fill("沒有這個字");
   await page.waitForFunction(() => document.querySelector(".cm-editor .find-marks").hidden);
