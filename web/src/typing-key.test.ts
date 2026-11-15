@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isTypingKey } from "./preview-hint.ts";
+import { isTypingKey } from "./typing-key.ts";
 
 const key = (k: string, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; altKey: boolean; isComposing: boolean }> = {}) => ({
   key: k,
