@@ -687,14 +687,13 @@ enum RunEvent {
 #[derive(Default)]
 pub struct AssistantRuns(Mutex<HashMap<u64, Arc<AtomicBool>>>);
 
-#[tauri::command]
-pub fn assistant_send(
-    app: AppHandle,
-    id: u64,
-    request: SendRequest,
-    runs: State<'_, AssistantRuns>,
-) -> Result<(), String> {
-    let settings = crate::settings::read_value(&app).unwrap_or_default();
+/// 送出（或估算）之前的檢查：功能開著、專案允許、內容與附件在範圍內、有金鑰、沒超過每月上限。
+/// 回傳模型、金鑰和要送給 Claude API 的要求。
+fn prepare(
+    app: &AppHandle,
+    request: &SendRequest,
+) -> Result<(&'static Model, String, serde_json::Value), String> {
+    let settings = crate::settings::read_value(app).unwrap_or_default();
     let root = app
         .try_state::<crate::workspace::Workspace>()
         .and_then(|w| w.root());
@@ -722,7 +721,7 @@ pub fn assistant_send(
         ));
     }
     let key = key().ok_or_else(|| tr!("請先在設定輸入 Claude API 金鑰"))?;
-    let (spent, cap) = (read_used(&app), limit(&settings));
+    let (spent, cap) = (read_used(app), limit(&settings));
     if spent >= cap {
         return Err(tr!(
             "這個月已經用了 US${spent}，到達上限 US${cap}；可以在設定調高上限",
@@ -741,7 +740,18 @@ pub fn assistant_send(
     } else {
         &[]
     };
-    let body = request_body(m, &request, web, fetch).to_string();
+    Ok((m, key, request_body(m, request, web, fetch)))
+}
+
+#[tauri::command]
+pub fn assistant_send(
+    app: AppHandle,
+    id: u64,
+    request: SendRequest,
+    runs: State<'_, AssistantRuns>,
+) -> Result<(), String> {
+    let (m, key, body) = prepare(&app, &request)?;
+    let body = body.to_string();
     let cancel = Arc::new(AtomicBool::new(false));
     runs.0.lock().insert(id, cancel.clone());
     std::thread::spawn(move || {
@@ -750,6 +760,69 @@ pub fn assistant_send(
         app.state::<AssistantRuns>().0.lock().remove(&id);
     });
     Ok(())
+}
+
+/// 這一題準確的輸入 token 數，和照它算出來的輸入費用（回答另計）。
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Count {
+    tokens: u64,
+    usd: f64,
+}
+
+/// 要給「計算 token」端點的要求：和送出的一樣，但只留它接受的欄位（模型、系統提示、訊息、工具）。
+fn count_body(body: &serde_json::Value) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for key in ["model", "system", "messages", "tools"] {
+        if let Some(v) = body.get(key) {
+            out.insert(key.to_string(), v.clone());
+        }
+    }
+    serde_json::Value::Object(out)
+}
+
+/// 輸入 `tokens` 個 token 的費用（不含回答）。
+fn input_cost(m: &Model, tokens: u64) -> f64 {
+    cost(
+        m,
+        &Tokens {
+            input: tokens,
+            ..Default::default()
+        },
+    )
+}
+
+/// 送出前先問 Claude API 這一題有多少輸入 token（不產生回答、不收費），估出比較準的費用。
+/// 內容會送到 Anthropic，所以和送出一樣要先通過所有檢查。
+#[tauri::command]
+pub async fn assistant_count(app: AppHandle, request: SendRequest) -> Result<Count, String> {
+    let (m, key, body) = prepare(&app, &request)?;
+    let body = count_body(&body).to_string();
+    let tokens = crate::io::blocking(move || -> Result<u64, String> {
+        let res = crate::update::agent()
+            .post(&format!("{API_URL}/count_tokens"))
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("x-api-key", &key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .send(body)
+            .map_err(|e| tr!("無法連線到 Claude API（{e}）", e = e))?;
+        let status = res.status().as_u16();
+        let text = res.into_body().read_to_string().unwrap_or_default();
+        if status != 200 {
+            return Err(status_message(status, &text));
+        }
+        serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| v["input_tokens"].as_u64())
+            .ok_or_else(|| tr!("Claude API 沒有回傳 token 數"))
+    })
+    .await?;
+    Ok(Count {
+        tokens,
+        usd: input_cost(m, tokens),
+    })
 }
 
 /// 送出並讀取串流；文字一段一段以事件送出，最後回傳結束的事件。
@@ -1370,5 +1443,40 @@ mod tests {
             assert_eq!(body["output_config"]["effort"], "high");
             assert!(body.get("thinking").is_none());
         }
+    }
+    #[test]
+    fn counting_sends_only_what_the_endpoint_accepts() {
+        let req = SendRequest {
+            model: "claude-haiku-5-5".into(),
+            system: "你是筆記助理".into(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "摘要這份文件".into(),
+                images: vec![],
+            }],
+            web_search: true,
+            web_fetch: vec![],
+            deep: true,
+        };
+        let m = model(&req.model).unwrap();
+        let body = count_body(&request_body(m, &req, true, &[]));
+        let mut keys: Vec<_> = body.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["messages", "model", "system", "tools"]);
+        assert_eq!(body["model"], "claude-haiku-5-5");
+        assert_eq!(body["tools"][0]["name"], "web_search");
+        // 沒有工具時不送 tools。
+        let plain = count_body(&request_body(m, &req, false, &[]));
+        assert!(plain.get("tools").is_none());
+    }
+
+    #[test]
+    fn input_cost_follows_the_models_price() {
+        let sonnet = model("claude-sonnet-5-5").unwrap();
+        assert!((input_cost(sonnet, 1_000_000) - 2.0).abs() < 1e-9);
+        // Haiku 超過 10 萬 token 的提示用較高的單價。
+        let haiku = model("claude-haiku-5-5").unwrap();
+        assert!((input_cost(haiku, 50_000) - 0.005).abs() < 1e-9);
+        assert!((input_cost(haiku, 200_000) - 0.1).abs() < 1e-9);
     }
 }

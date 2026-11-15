@@ -1085,6 +1085,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     assistantUsageHistory: () => core.invoke<UsageHistory>("assistant_usage_history"),
     assistantSend: (id: number, request: { model: string; system: string; messages: AssistantMessage[]; webSearch?: boolean; webFetch?: string[]; deep?: boolean }) =>
       afterSettings(() => core.invoke<void>("assistant_send", { id, request })),
+    /** 這一題準確的輸入 token 數與輸入費用（不產生回答）。 */
+    assistantCount: (request: { model: string; system: string; messages: AssistantMessage[]; webSearch?: boolean; webFetch?: string[]; deep?: boolean }) =>
+      afterSettings(() => core.invoke<{ tokens: number; usd: number }>("assistant_count", { request })),
     assistantCancel: (id: number) => core.invoke<void>("assistant_cancel", { id }),
 
     gitStatus: () => core.invoke<GitStatus>("git_status"),

@@ -239,6 +239,7 @@ mod tests {
         "assistant_usage",
         "assistant_usage_history",
         "assistant_send",
+        "assistant_count",
         "assistant_cancel",
         "app_version",
         "update_check",
