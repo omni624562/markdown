@@ -248,6 +248,17 @@ function renderChips(): void {
   chips.replaceChildren(...items);
 }
 
+/** 這台電腦現在的月份（`2026-11`），和原生端記用量用的一樣。 */
+function thisMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** 開著 app 跨月了：畫面上還是上個月的數字，重新讀一次（新的月份從 0 開始）。 */
+function refreshUsageIfNewMonth(): void {
+  if (panel && usage && usage.month !== thisMonth()) void refreshStatus();
+}
+
 function renderUsage(): void {
   if (!usage) {
     usageEl.hidden = true;
@@ -1045,6 +1056,9 @@ export function runAssistantAction(id: AssistantAction["id"]): void {
 export function initAssistant(): void {
   if (!desktop) return;
   void desktop.onAssistantRun(onRun);
+  // 視窗回到前面、回到這個分頁時檢查是不是換月了。
+  window.addEventListener("focus", refreshUsageIfNewMonth);
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refreshUsageIfNewMonth());
   // 切換分頁、選取文字時更新「這次會送出的內容」。
   let timer = 0;
   document.addEventListener("selectionchange", () => {

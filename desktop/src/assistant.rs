@@ -30,10 +30,18 @@ struct Model {
     input: f64,
     output: f64,
     cache_read: f64,
+    /// 長提示的價格：提示（輸入＋快取）超過這麼多 token 時，輸入、輸出改用這組單價。
+    long_prompt: Option<LongPrompt>,
     /// 拒絕回答時改用其他模型重試（伺服器端處理）。
     fallback: bool,
     /// 上網查資料的工具版本（Haiku 只能用基本版）。
     web_search: &'static str,
+}
+
+struct LongPrompt {
+    over: u64,
+    input: f64,
+    output: f64,
 }
 
 /// 上網查資料：每次搜尋 US$0.01，一次回答最多查幾次。
@@ -46,6 +54,12 @@ const MODELS: [Model; 3] = [
         input: 0.10,
         output: 0.50,
         cache_read: 0.01,
+        // 提示超過 10 萬 token 時是 US$0.50／US$2.50。
+        long_prompt: Some(LongPrompt {
+            over: 100_000,
+            input: 0.50,
+            output: 2.50,
+        }),
         fallback: false,
         web_search: "web_search_20250305",
     },
@@ -53,7 +67,8 @@ const MODELS: [Model; 3] = [
         id: "claude-sonnet-5-5",
         input: 2.0,
         output: 10.0,
-        cache_read: 0.20,
+        cache_read: 0.10,
+        long_prompt: None,
         fallback: true,
         web_search: "web_search_20260209",
     },
@@ -62,6 +77,7 @@ const MODELS: [Model; 3] = [
         input: 4.0,
         output: 20.0,
         cache_read: 0.20,
+        long_prompt: None,
         fallback: true,
         web_search: "web_search_20260209",
     },
@@ -356,10 +372,15 @@ struct Tokens {
 /// 估計的費用（美元）。寫入快取的部分是一般輸入的 1.25 倍。
 fn cost(m: &Model, t: &Tokens) -> f64 {
     let per = |n: u64, price: f64| n as f64 * price / 1_000_000.0;
-    per(t.input, m.input)
-        + per(t.cache_write, m.input * 1.25)
+    let prompt = t.input + t.cache_write + t.cache_read;
+    let (input, output) = match &m.long_prompt {
+        Some(l) if prompt > l.over => (l.input, l.output),
+        _ => (m.input, m.output),
+    };
+    per(t.input, input)
+        + per(t.cache_write, input * 1.25)
         + per(t.cache_read, m.cache_read)
-        + per(t.output, m.output)
+        + per(t.output, output)
         + t.searches as f64 * SEARCH_USD
 }
 
@@ -585,6 +606,8 @@ fn run(
             break;
         }
         let Ok(line) = line else {
+            // 連線中斷之前已經送出的提示、已經產生的回答照樣計費：記進用量，不然會少算。
+            add_used(app, cost(served, &tokens));
             return RunEvent::Error {
                 id,
                 message: tr!("和 Claude API 的連線中斷了"),
@@ -807,7 +830,7 @@ mod tests {
             output: 100_000,
             searches: 0,
         };
-        assert!((cost(sonnet, &t) - (2.0 + 0.2 + 1.0)).abs() < 1e-9);
+        assert!((cost(sonnet, &t) - (2.0 + 0.1 + 1.0)).abs() < 1e-9);
         // 每次搜尋 US$0.01。
         let t = Tokens {
             searches: 3,
@@ -819,6 +842,33 @@ mod tests {
             ..Default::default()
         };
         assert!((cost(sonnet, &t) - 2.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn haiku_long_prompts_cost_more() {
+        let haiku = model("claude-haiku-5-5").unwrap();
+        // 10 萬 token 以內：US$0.10／US$0.50。
+        let short = Tokens {
+            input: 100_000,
+            output: 1_000_000,
+            ..Default::default()
+        };
+        assert!((cost(haiku, &short) - (0.01 + 0.50)).abs() < 1e-9);
+        // 超過 10 萬（輸入加上快取一起算）：US$0.50／US$2.50。
+        let long = Tokens {
+            input: 60_000,
+            cache_read: 50_000,
+            output: 1_000_000,
+            ..Default::default()
+        };
+        assert!((cost(haiku, &long) - (0.03 + 0.0005 + 2.50)).abs() < 1e-9);
+        // 其他模型沒有長提示的價格。
+        let sonnet = model("claude-sonnet-5-5").unwrap();
+        let big = Tokens {
+            input: 500_000,
+            ..Default::default()
+        };
+        assert!((cost(sonnet, &big) - 1.0).abs() < 1e-9);
     }
 
     #[test]
