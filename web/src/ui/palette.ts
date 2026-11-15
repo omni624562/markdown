@@ -65,6 +65,10 @@ export class Palette {
       placeholder: t("輸入指令名稱，例如「匯出」「表格」「深色」"),
       empty: t("找不到符合的指令"),
       columns: true,
+      // 和快速開啟一樣，從標題列的搜尋框往下展開（位置、樣子一樣；前面的圖示換成指令的）。
+      top: true,
+      searchIcon: "command",
+      anchor: () => document.querySelector<HTMLElement>("#title-search"),
       query: (q) => paletteItems(commands.available(), q, recentCommandIds()),
       render: ({ c, section }) => {
         const keys = c.keys ?? c.shownKeys;
