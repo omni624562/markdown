@@ -6,6 +6,7 @@
  */
 import { formatKeys } from "../commands.ts";
 import { t } from "../i18n.ts";
+import { drawMarks, layoutMarks } from "../ui/find-marks.ts";
 import { type FindMatch, findMatches } from "../ui/issue-view.ts";
 import { icon } from "../ui/icons.ts";
 import { app } from "./context.ts";
@@ -18,6 +19,9 @@ let count: HTMLElement;
 let matches: FindMatch[] = [];
 let current = 0;
 let observer: MutationObserver | null = null;
+/** 疊在預覽的捲軸上、標出符合處位置的那一層（和編輯區的尋找一樣，見 ui/find-marks.ts）。 */
+let marksEl: HTMLElement | null = null;
+let resize: ResizeObserver | null = null;
 let timer = 0;
 
 function button(label: string, iconName: string, run: () => void, keys?: string): HTMLButtonElement {
@@ -103,6 +107,39 @@ function range(m: FindMatch): Range {
 function clearMarks(): void {
   highlights?.delete("issue-find");
   highlights?.delete("issue-find-current");
+  if (marksEl) marksEl.hidden = true;
+}
+
+/** 在捲軸上標出每個符合處的位置；點一條就跳到那個符合處。內容不到一頁（沒有捲軸）時不標。 */
+function paintScrollMarks(ranges: Range[]): void {
+  const scroller = app.previewScroller;
+  if (!marksEl) {
+    marksEl = document.createElement("div");
+    marksEl.className = "find-marks preview-find-marks";
+    marksEl.setAttribute("aria-hidden", "true");
+    document.body.append(marksEl);
+  }
+  if (scroller.scrollHeight <= scroller.clientHeight + 1 || !scroller.getClientRects().length) {
+    marksEl.hidden = true;
+    return;
+  }
+  const view = scroller.getBoundingClientRect();
+  // 佔位置的捲軸（Windows）兩頭各有一個和捲軸一樣寬的箭頭按鈕，軌道在中間。
+  const barWidth = scroller.offsetWidth - scroller.clientWidth;
+  const track = scroller.clientHeight - barWidth * 2;
+  const width = Math.max(barWidth, 10);
+  const tops = ranges.map((r) => r.getBoundingClientRect().top - view.top + scroller.scrollTop);
+  Object.assign(marksEl.style, {
+    top: `${view.top + scroller.clientTop + barWidth}px`,
+    left: `${view.right - width}px`,
+    height: `${track}px`,
+    width: `${width}px`,
+  });
+  marksEl.hidden = false;
+  drawMarks(marksEl, layoutMarks(tops, current, scroller.scrollHeight, track), (i) => {
+    current = i;
+    paint(true);
+  });
 }
 
 function paint(reveal: boolean): void {
@@ -118,6 +155,7 @@ function paint(reveal: boolean): void {
   const ranges = matches.map(range);
   highlights?.set("issue-find", new Highlight(...ranges));
   highlights?.set("issue-find-current", new Highlight(ranges[current]));
+  paintScrollMarks(ranges);
   if (!reveal) return;
   // 捲到目前的符合處（被尋找列蓋住、或在可視範圍外時，放到中間）。
   const box = ranges[current].getBoundingClientRect();
@@ -144,6 +182,9 @@ export function openPreviewFind(): void {
     timer = window.setTimeout(() => bar && !bar.hidden && search(true), 100);
   });
   observer.observe(app.previewEl, { childList: true, subtree: true, characterData: true });
+  // 預覽的大小變了（視窗、側邊欄、分割線）：短線的位置重新算。
+  resize ??= new ResizeObserver(() => bar && !bar.hidden && matches.length && paint(false));
+  resize.observe(app.previewScroller);
 }
 
 export function closePreviewFind(): void {
@@ -151,6 +192,7 @@ export function closePreviewFind(): void {
   const focused = bar.contains(document.activeElement);
   bar.hidden = true;
   observer?.disconnect();
+  resize?.disconnect();
   clearTimeout(timer);
   matches = [];
   clearMarks();
