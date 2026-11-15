@@ -4741,10 +4741,25 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 .assistant-foot { display: flex; flex: none; gap: 8px; justify-content: space-between; padding: 0 12px 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .assistant-foot > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 /* 「本月 已用 / 上限」是按鈕：按一下打開用量面板（app/assistant-usage.ts）。 */
-.assistant-usage { flex: none; padding: 0 2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
-.assistant-usage:hover { color: var(--fg); text-decoration: underline; }
-.assistant-usage[hidden] { display: none; }
+.assistant-usage, .assistant-batches { flex: none; padding: 0 2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.assistant-usage:hover, .assistant-batches:hover { color: var(--fg); text-decoration: underline; }
+.assistant-usage[hidden], .assistant-batches[hidden] { display: none; }
 .usage-pop { width: min(320px, calc(100vw - 16px)); }
+/* 助理的批次處理（app/assistant-batch.ts）：面板下方的「批次」按鈕、清單、送出的對話框。 */
+.assistant-batches { margin-left: auto; }
+.batch-pop { width: min(380px, calc(100vw - 16px)); overflow-y: auto; }
+.batch-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--border); }
+.batch-row:first-of-type { border-top: 0; padding-top: 0; }
+.batch-main { display: grid; flex: 1; gap: 2px; min-width: 0; font-size: 13px; }
+.batch-main strong { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.batch-main small, .batch-status { color: var(--muted); font-size: 12px; }
+.batch-row[data-state="processing"] .batch-status { color: var(--accent); }
+.batch-row .btn { flex: none; }
+.batch-pop > .btn { margin-top: 8px; }
+.batch-dialog { width: min(460px, calc(100vw - 32px)); }
+.batch-scope, .batch-cost { margin: 0; font-size: 13px; }
+.batch-scope.error { color: var(--danger, #dc2626); }
+.batch-cost:empty { display: none; }
 .usage-pop h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
 .usage-pop h4 { margin: 12px 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .usage-grid { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; }

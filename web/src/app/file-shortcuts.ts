@@ -5,6 +5,7 @@
  * 只有桌面版、本機的檔案可以；SSH、WebDAV 遠端資料夾的檔案不行（不列選單、拖不起來）。
  * 列在圖示列上的檔案也告訴原生端，之後就算很久沒開、不在「最近開啟」裡，按捷徑也開得了。
  */
+import { batchMenuItems } from "./assistant-batch.ts";
 import { type Entry, desktop, isRemote } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { basename, rebase } from "../paths.ts";
@@ -125,7 +126,7 @@ const dragData = (path: string | null): Record<string, string> | null => {
 export function initFileShortcuts(): void {
   // 檔案樹：檔案的右鍵選單、拖到圖示列（資料夾不行）。
   app.fileTree?.extend({
-    menuItems: (entry: Entry) => (entry.isDir ? [] : menuEntries(() => entry.path)),
+    menuItems: (entry: Entry) => (entry.isDir ? batchMenuItems(entry) : menuEntries(() => entry.path)),
     dragData: (entry: Entry) => (entry.isDir ? null : dragData(entry.path)),
   });
   // 文件的分頁：拖到圖示列。

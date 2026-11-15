@@ -16,6 +16,9 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+#[path = "assistant_batch.rs"]
+pub mod batch;
+
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const KEY_SERVICE: &str = "oMarker Claude API";
 const KEY_ID: &str = "api-key";

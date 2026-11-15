@@ -1,6 +1,35 @@
 //! AI 工具、終端機、MCP。
 
 pub static EN: &[(&str, &str)] = &[
+    ("找不到這個批次", "Couldn't find this batch."),
+    (
+        "這個資料夾裡沒有可以處理的文件",
+        "There are no documents to process in this folder.",
+    ),
+    (
+        "一次最多處理 {max} 份文件，請選小一點的資料夾",
+        "A batch can process at most {max} documents. Choose a smaller folder.",
+    ),
+    (
+        "結果的檔名不能用這個名稱",
+        "This name can't be used in the result file names.",
+    ),
+    (
+        "「{name}」是空的或太長（超過 {max} 字）",
+        "\"{name}\" is empty or too long (over {max} characters).",
+    ),
+    (
+        "內容加起來太長（超過 {max} 字），請選小一點的資料夾",
+        "The content is too long in total (over {max} characters). Choose a smaller folder.",
+    ),
+    (
+        "Claude API 沒有回傳批次的代號",
+        "The Claude API didn't return a batch ID.",
+    ),
+    (
+        "Claude API 的回應看不懂",
+        "Couldn't read the Claude API's response.",
+    ),
     ("Claude Code 回報錯誤（{reason}）", "Claude Code reported an error ({reason})"),
     ("未知", "unknown"),
     ("無法執行 {tool}：{e}", "Couldn't run {tool}: {e}"),

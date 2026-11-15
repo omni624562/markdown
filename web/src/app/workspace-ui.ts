@@ -1,6 +1,7 @@
 /**
  * 資料夾：開啟、切換專案、遠端資料夾（WebDAV、SSH），以及資料夾文件索引（待辦總覽、標籤、反向連結）。
  */
+import { batchFolderChanged } from "./assistant-batch.ts";
 import { parseDoc } from "../../pkg/md_wasm.js";
 import { formatKeys } from "../commands.ts";
 import { desktop, isRemote, displayPath, remoteId, type DavConnection, remoteRoot, type Folder, type Entry } from "../desktop.ts";
@@ -591,6 +592,7 @@ export async function setWorkspace(folder: Folder | null): Promise<void> {
   void gitPanel?.refresh();
   void renderIssuesTab();
   assistantContextChanged();
+  batchFolderChanged();
 }
 
 /**

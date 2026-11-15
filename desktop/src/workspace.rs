@@ -698,6 +698,38 @@ fn create_entry_now(
     create_in(&root, Path::new(parent), name, is_dir).map(|p| path_string(&p))
 }
 
+/// `path` 在工作區 `root` 裡面嗎？（符號連結、`..` 都算進去）回傳它實際的位置。
+pub(crate) fn inside(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    real_inside(root, path)
+}
+
+/// 在工作區的 `parent` 資料夾裡新增一個有內容的檔案 `<stem>.<ext>`；名稱已經有人用時加上編號
+/// （`<stem> 2.<ext>`），不覆寫既有的檔案。回傳新路徑。
+pub(crate) fn create_file_with(
+    root: &Path,
+    parent: &Path,
+    stem: &str,
+    ext: &str,
+    bytes: &[u8],
+) -> Result<PathBuf, String> {
+    for n in 1..=99 {
+        let name = if n == 1 {
+            format!("{stem}.{ext}")
+        } else {
+            format!("{stem} {n}.{ext}")
+        };
+        if parent.join(&name).exists() {
+            continue;
+        }
+        let path = create_in(root, parent, &name, false)?;
+        fs::write(&path, bytes).map_err(|e| {
+            crate::io::describe(&e, &tr!("無法建立「{name}」", name = display_name(&path)))
+        })?;
+        return Ok(path);
+    }
+    Err(tr!("「{name}」已經存在", name = format!("{stem}.{ext}")))
+}
+
 /// 在工作區 `root` 的 `parent` 資料夾裡新增檔案或資料夾，回傳新路徑。
 /// 不能新增名為 `.git` 的項目，也不能在 `.git` 裡新增（8.3 短檔名、符號連結也認得出來）。
 fn create_in(root: &Path, parent: &Path, name: &str, is_dir: bool) -> Result<PathBuf, String> {

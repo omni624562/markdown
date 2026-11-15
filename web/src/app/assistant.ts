@@ -6,6 +6,7 @@
  * 每個專案第一次送出前先確認要送什麼、大約多少錢；修改文件一律變成建議卡片，由使用者按「套用」。
  * API 金鑰只存在原生端，這裡只知道有沒有設定。
  */
+import { initAssistantBatch, initBatchButton } from "./assistant-batch.ts";
 import { initUsagePanel } from "./assistant-usage.ts";
 import { pdfPages } from "../pdf-pages.ts";
 import type { EditorView } from "@codemirror/view";
@@ -1119,7 +1120,12 @@ function build(): HTMLElement {
   usageButton.className = "assistant-usage";
   initUsagePanel(usageButton);
   usageEl = usageButton;
-  foot.append(note, usageEl);
+  // 送出過批次才顯示：進度與結果（app/assistant-batch.ts）。
+  const batchButton = document.createElement("button");
+  batchButton.type = "button";
+  batchButton.className = "assistant-batches";
+  initBatchButton(batchButton);
+  foot.append(note, batchButton, usageEl);
 
   aside.append(head, notice, log, box, foot);
   // 滑鼠移進來時更新選取的字數；內容沒變不重畫（重畫會讓剛好按下去的標籤按鈕失效）。
@@ -1265,6 +1271,8 @@ export function runAssistantAction(id: AssistantAction["id"]): void {
 }
 
 export function initAssistant(): void {
+  // 上次送出的批次：還在處理的問一次狀態，做完的領結果（面板沒打開也領）。
+  void initAssistantBatch();
   if (!desktop) return;
   void desktop.onAssistantRun(onRun);
   // 視窗回到前面、回到這個分頁時檢查是不是換月了。
