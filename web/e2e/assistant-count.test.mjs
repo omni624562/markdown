@@ -46,7 +46,8 @@ test("按計算機估算：顯示準確的 token 數與輸入費用，不送出�
   const sent = (await calls(page)).filter((c) => c.cmd === "assistant_count").map((c) => c.args.request);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].model, "claude-sonnet-5-5");
-  assert.match(sent[0].messages.at(-1).content, /第一天搭地鐵。[\s\S]*這個行程順嗎？$/);
+  assert.match(sent[0].messages.at(-1).doc.text, /第一天搭地鐵。/);
+  assert.equal(sent[0].messages.at(-1).content, "這個行程順嗎？");
   assert.equal((await calls(page)).filter((c) => c.cmd === "assistant_send").length, 0);
   assert.equal(await input.inputValue(), "這個行程順嗎？");
   assert.equal(await page.locator("#assistant-panel .assistant-user").count(), 0);

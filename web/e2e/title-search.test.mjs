@@ -126,7 +126,7 @@ test("「問助理：…」和 ? 開頭：打開右側欄的助理並送出問�
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
   const send = (await calls(page)).filter((c) => c.cmd === "assistant_send").at(-1).args.request;
   assert.match(send.messages.at(-1).content, /第一天去哪裡/);
-  assert.match(send.messages.at(-1).content, /第一天去海雲台/, "帶著目前的文件");
+  assert.match(send.messages.at(-1).doc.text, /第一天去海雲台/, "帶著目前的文件");
   // 一般搜尋最後一項也是「問助理」；沒連上 Azure DevOps 時沒有工作項目那一區，也不列 # 符號。
   await page.locator(".cm-content").focus();
   await page.keyboard.press("Control+P");

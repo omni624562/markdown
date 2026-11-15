@@ -4676,6 +4676,9 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 .assistant-answer > :first-child { margin-top: 0; }
 .assistant-answer > :last-child { margin-bottom: 0; }
 .assistant-cut { display: block; margin-top: 6px; color: var(--muted); }
+/* 回答裡的出處編號：按了跳到文件裡那一段（見 app/assistant-cites.ts）。 */
+.assistant-cite { min-width: 1.5em; margin: 0 1px; padding: 0 4px; font: inherit; font-size: 0.8em; line-height: 1.5; vertical-align: 0.15em; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 0; border-radius: 8px; cursor: pointer; }
+.assistant-cite:hover, .assistant-cite:focus-visible { color: var(--bg); background: var(--accent); }
 /* 回答下面的小圖示（複製、插入到游標處）。 */
 .assistant-tools { display: flex; gap: 2px; margin: 4px 0 0 -4px; }
 .assistant-tool { display: inline-grid; place-items: center; width: 26px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }

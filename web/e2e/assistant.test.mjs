@@ -96,7 +96,8 @@ test("改寫選取的文字：第一次先確認，回答變成建議卡片，�
   await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "assistant_send").length === 2);
   assert.equal(await page.locator("dialog.choice[open]").count(), 0);
   const second = (await sends(page))[1].request;
-  assert.match(second.messages[0].content, /<document name="[^"]+">\n下週我們要討論 NAS 的備份方式。\n<\/document>/);
+  // 一般問答：文件送成可以標出處的區塊（見 assistant-cites.test.mjs）。
+  assert.equal(second.messages[0].doc.text, "下週我們要討論 NAS 的備份方式。");
   assert.match(second.messages[0].content, /這份文件在講什麼？$/);
   await reply(page, "在講 **NAS 備份**。");
   const answer = panel.locator(".assistant-assistant").last();
