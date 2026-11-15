@@ -65,8 +65,8 @@ export function initFileDrop(): void {
     }
     // 桌面版（Windows）：問原生端這個檔案原本的路徑，和「開啟檔案」一樣開起來——存檔直接存回原處，
     // 另存新檔也從它所在的資料夾開始。拿不到路徑（其他平台、網頁版）才用檔案內容開成新文件。
-    const opened = await openWithPath(files, files.indexOf(file)).catch(() => false);
-    if (opened) return;
+    const opened = await openWithPath(files, files.indexOf(file)).catch((e) => String(e instanceof Error ? e.message : e));
+    if (opened === true) return;
     if (file.size > 20 * 1024 * 1024) {
       toast(t("檔案超過 20 MB，可能不是文字檔。"), { tone: "error" });
       return;
@@ -74,7 +74,9 @@ export function initFileDrop(): void {
     const text = await readTextFile(file).catch(reportError);
     if (text === undefined) return;
     app.openDocument(file.name, text, null);
-    toast(t("已開啟「{name}」", { name: file.name }));
+    // 應該拿得到原本的位置卻拿不到：說清楚（存檔會問要存到哪裡）和原因，不要默默變成新文件。
+    if (typeof opened === "string") toast(t("已開啟「{name}」，但拿不到它原本的位置（{why}）：存檔時要選位置", { name: file.name, why: opened }), { tone: "error", duration: 15000 });
+    else toast(t("已開啟「{name}」", { name: file.name }));
   });
 }
 
@@ -85,11 +87,16 @@ interface WebViewHost {
 
 /**
  * 依原本的路徑開啟拖進來的第 `index` 個檔案。把檔案物件交給原生端（它才問得到路徑），再請它開啟；
- * 回傳有沒有開成功。
+ * 回傳有沒有開成功；這個平台本來就沒有這個機制時是 false，應該拿得到卻失敗時丟出原因。
  */
 async function openWithPath(files: File[], index: number): Promise<boolean> {
   const host = (window as { chrome?: { webview?: WebViewHost } }).chrome?.webview;
-  if (!desktop || !host?.postMessageWithAdditionalObjects || index < 0) return false;
+  if (!desktop || index < 0) return false;
+  if (!host?.postMessageWithAdditionalObjects) {
+    // Windows 的桌面版應該要有；沒有就是 WebView2 太舊或管道被關掉。
+    if (/Windows/.test(navigator.userAgent)) throw new Error(host ? t("這個版本的 WebView2 不能交出檔案") : t("沒有 WebView2 的管道"));
+    return false;
+  }
   const id = `drop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   host.postMessageWithAdditionalObjects({ omarkerDrop: id }, files);
   const file = await desktop.droppedFile(id, index);

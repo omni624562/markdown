@@ -2,6 +2,19 @@
 
 pub static EN: &[(&str, &str)] = &[
     (
+        "WebView2 沒有交出檔案的路徑（{note}）",
+        "WebView2 didn't provide the file's path ({note})",
+    ),
+    (
+        "沒辦法接收 WebView2 的訊息（{code}）",
+        "Couldn't listen for WebView2 messages ({code})",
+    ),
+    (
+        "沒有收到 WebView2 送來的檔案",
+        "WebView2 didn't send the file",
+    ),
+    ("找不到「{path}」", "Couldn't find \"{path}\""),
+    (
         "「{name}」所在的資料夾和開啟時不同（可能被改名、搬移，或換成了連結），為了安全沒有讀寫。請重新從「開啟檔案」選取。",
         "The folder containing \"{name}\" has changed since the file was opened (it may have been renamed, moved or replaced with a link), so for safety it wasn't read or written. Select the file again with Open File.",
     ),
