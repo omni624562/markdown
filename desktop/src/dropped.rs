@@ -3,7 +3,7 @@
 //! 網頁拿到拖進來的檔案時只有檔名與內容，沒有路徑：開起來是「還沒存檔的新文件」，存檔要另存新檔，
 //! 而且找不到原本的資料夾。WebView2 可以讓網頁把檔案物件交給原生端
 //! （`chrome.webview.postMessageWithAdditionalObjects`），原生端再問出它的路徑。前端放下檔案時送一則
-//! `{ "omarkerDrop": "<代號>" }` 的訊息帶著那些檔案，這裡記下路徑；接著前端用 `dropped_file` 指令
+//! `omarkerDrop:<代號>` 的訊息帶著那些檔案，這裡記下路徑；接著前端用 `dropped_file` 指令
 //! 依代號與順序把檔案開起來（和「開啟檔案」一樣：記得路徑、加入允許清單、監看外部修改）。
 //!
 //! 路徑來自 WebView2 交出來的檔案物件，不是網頁給的字串，網頁沒辦法指定任意路徑。
@@ -58,7 +58,11 @@ fn valid_id(id: &str) -> bool {
 #[cfg_attr(not(windows), allow(dead_code))]
 fn drop_id(json: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
-    let id = v.as_object()?.get("omarkerDrop")?.as_str()?;
+    // 前端送的是字串 `omarkerDrop:<代號>`（原因見 app/file-drop.ts）；物件的寫法也認。
+    let id = match &v {
+        serde_json::Value::String(text) => text.strip_prefix("omarkerDrop:")?,
+        _ => v.as_object()?.get("omarkerDrop")?.as_str()?,
+    };
     valid_id(id).then(|| id.to_string())
 }
 
@@ -246,6 +250,9 @@ mod tests {
             drop_id(r#"{"omarkerDrop":"a1b2-c3"}"#),
             Some("a1b2-c3".into())
         );
+        assert_eq!(drop_id(r#""omarkerDrop:a1b2-c3""#), Some("a1b2-c3".into()));
+        assert_eq!(drop_id(r#""omarkerDrop:../x""#), None);
+        assert_eq!(drop_id(r#""other:a1b2""#), None);
         assert_eq!(drop_id(r#"{"omarkerDrop":"../x"}"#), None);
         assert_eq!(drop_id(r#"{"omarkerDrop":""}"#), None);
         assert_eq!(drop_id(r#"{"omarkerDrop":7}"#), None);
