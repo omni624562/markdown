@@ -578,6 +578,7 @@ fn main() {
             assistant::assistant_key_set,
             assistant::assistant_key_forget,
             assistant::assistant_usage,
+            assistant::assistant_usage_history,
             assistant::assistant_send,
             assistant::assistant_cancel,
             update::app_version,

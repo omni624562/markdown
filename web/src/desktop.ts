@@ -2,6 +2,7 @@
  * 桌面版（Tauri）專用的橋接：原生對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、AI 協作。
  * 在一般瀏覽器裡 `desktop` 為 null，其餘程式碼照常走網頁 API。
  */
+import type { UsageHistory } from "./usage-summary.ts";
 import type { DocInfo } from "./doc-index.ts";
 import type { FileRef } from "./links.ts";
 import { adoOnline } from "./ado-online.ts";
@@ -1079,6 +1080,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
     assistantKeySet: (key: string) => core.invoke<void>("assistant_key_set", { key }),
     assistantKeyForget: () => core.invoke<void>("assistant_key_forget"),
     assistantUsage: () => core.invoke<AssistantUsage>("assistant_usage"),
+    assistantUsageHistory: () => core.invoke<UsageHistory>("assistant_usage_history"),
     assistantSend: (id: number, request: { model: string; system: string; messages: AssistantMessage[]; webSearch?: boolean }) =>
       afterSettings(() => core.invoke<void>("assistant_send", { id, request })),
     assistantCancel: (id: number) => core.invoke<void>("assistant_cancel", { id }),
