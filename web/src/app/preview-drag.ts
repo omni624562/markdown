@@ -16,6 +16,7 @@ import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
 import { initLiveDrag } from "./live-drag.ts";
+import { initPreviewHint } from "./preview-hint.ts";
 import { outlineHeadings } from "./outline-list.ts";
 
 export type DragKind = "section" | "item" | "block";
@@ -263,4 +264,5 @@ export function initPreviewDrag(): void {
     if (dragging) clear();
   });
   initLiveDrag();
+  initPreviewHint();
 }
