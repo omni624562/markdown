@@ -7,6 +7,7 @@
  * API 金鑰只存在原生端，這裡只知道有沒有設定。
  */
 import { initUsagePanel } from "./assistant-usage.ts";
+import { pdfPages } from "../pdf-pages.ts";
 import type { EditorView } from "@codemirror/view";
 import { render as renderMarkdown } from "../../pkg/md_wasm.js";
 import { blockRemoteImagesInHtml } from "../remote-images.ts";
@@ -86,6 +87,22 @@ interface Attached extends AssistantImage {
   url: string;
 }
 let attached: Attached[] = [];
+/**
+ * 附上的 PDF。和圖片不同，送出之後不拿掉：之後的問題也帶著它（接著問同一份文件），
+ * 直到按 × 或開新對話。`pages` 是估計的頁數（估費用用）。
+ */
+interface AttachedPdf extends AssistantImage {
+  name: string;
+  bytes: number;
+  pages: number;
+}
+let pdfs: AttachedPdf[] = [];
+const PDF_TYPE = "application/pdf";
+const MAX_PDFS = 2;
+/** 所有 PDF 加起來的大小上限（Claude API 一個要求最多 32 MB，Base64 之後會變大三分之一）。 */
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+/** 估計費用時 PDF 一頁算多少字（文字加上頁面的影像，大約 2,500 token）。 */
+const PDF_PAGE_CHARS = 2500;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -226,6 +243,24 @@ function renderChips(): void {
   }
   const sel = selection().text;
   if (sel.trim()) chip(t("選取 {n} 字", { n: sel.length }), "text-cursor");
+  pdfs.forEach((pdf, i) => {
+    const el = document.createElement("span");
+    el.className = "assistant-chip assistant-chip-pdf";
+    el.title = t("之後的問題也會帶著這份 PDF，直到按 × 或開新對話");
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "assistant-chip-x";
+    x.title = t("不要送出");
+    x.setAttribute("aria-label", t("不要送出「{name}」", { name: pdf.name }));
+    x.append(icon("x"));
+    x.addEventListener("click", () => {
+      pdfs.splice(i, 1);
+      renderChips();
+    });
+    const size = Object.assign(document.createElement("small"), { textContent: t("約 {n} 頁", { n: pdf.pages }) });
+    el.append(icon("file-text"), pdf.name, size, x);
+    items.push(el);
+  });
   attached.forEach((img, i) => {
     const el = document.createElement("span");
     el.className = "assistant-chip assistant-chip-image";
@@ -564,9 +599,17 @@ async function send(question: string, action: AssistantAction | null = null): Pr
   const system = systemPrompt(mode, project);
   const model = app.settings.value.claudeModel;
   const images = attached.map(({ mediaType, data }) => ({ mediaType, data }));
-  if (!(await confirmFirst(content.length + system.length + images.length * IMAGE_CHARS, model))) return;
+  const documents = pdfs.map(({ mediaType, data }) => ({ mediaType, data }));
+  const pdfChars = pdfs.reduce((n, p) => n + p.pages * PDF_PAGE_CHARS, 0);
+  if (!(await confirmFirst(content.length + system.length + images.length * IMAGE_CHARS + pdfChars, model))) return;
   const shown = action ? action.label() : question;
   const userBubble = bubble("user", shown);
+  for (const pdf of pdfs) {
+    const s = document.createElement("small");
+    s.className = "assistant-scope";
+    s.textContent = t("附上 {name}", { name: pdf.name });
+    userBubble.append(s);
+  }
   for (const img of attached) {
     const thumb = document.createElement("img");
     thumb.className = "assistant-thumb";
@@ -594,6 +637,8 @@ async function send(question: string, action: AssistantAction | null = null): Pr
     // 會改文件的動作不接續之前的對話（只看這一次的內容）。
     const messages = conversation(mode === "answer" ? history : [], content);
     if (images.length) messages[messages.length - 1] = { ...messages[messages.length - 1], images };
+    // PDF 附在這次對話的第一則訊息：之後接著問時前面的內容一樣，可以從快取讀取（比較便宜）。
+    if (documents.length) messages[0] = { ...messages[0], images: [...documents, ...(messages[0].images ?? [])] };
     // 上網查只用在一般問答，而且設定裡要允許。
     const web = webSearch && mode === "answer" && app.settings.value.claudeWebSearch;
     await desktop.assistantSend(id, { model, system, messages, webSearch: web });
@@ -666,27 +711,56 @@ function onRun(e: AssistantRunEvent): void {
   setRunning(false);
 }
 
-/** 讀進要附上的圖片：格式、大小、張數不對時提示，不送出。 */
+/** 檔案轉成 Base64（一次轉太長的陣列會超出引數上限，分段）。 */
+function base64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/** 讀進要附上的 PDF：數量、大小不對時提示。回傳有沒有處理（是不是 PDF）。 */
+async function attachPdf(f: File): Promise<boolean> {
+  if (f.type !== PDF_TYPE && !/\.pdf$/i.test(f.name)) return false;
+  const name = f.name || t("文件.pdf");
+  if (pdfs.length >= MAX_PDFS) {
+    toast(t("一次最多附 {n} 份 PDF", { n: MAX_PDFS }));
+    return true;
+  }
+  if (pdfs.reduce((n, p) => n + p.bytes, 0) + f.size > MAX_PDF_BYTES) {
+    toast(t("「{name}」太大了：PDF 加起來最多 20 MB", { name }), { tone: "error" });
+    return true;
+  }
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  if (String.fromCharCode(...bytes.subarray(0, 5)) !== "%PDF-") {
+    toast(t("「{name}」不是 PDF 檔", { name }), { tone: "error" });
+    return true;
+  }
+  const first = pdfs.length === 0;
+  pdfs.push({ mediaType: PDF_TYPE, data: base64(bytes), name, bytes: f.size, pages: pdfPages(bytes) });
+  // 第一次附 PDF 時說明一次：會一直帶著、依頁數計費。
+  if (first) toast(t("PDF 會跟著之後的問題一起送出，依頁數計費（每頁大約 2,500 token）；不需要時按 × 拿掉。"), { duration: 8000 });
+  return true;
+}
+
+/** 讀進要附上的圖片或 PDF：格式、大小、張數不對時提示，不送出。 */
 async function attachFiles(files: File[]): Promise<void> {
   for (const f of files) {
+    if (await attachPdf(f)) continue;
     if (attached.length >= MAX_IMAGES) {
       toast(t("一次最多附 {n} 張圖片", { n: MAX_IMAGES }));
       break;
     }
     if (!(IMAGE_TYPES as readonly string[]).includes(f.type)) {
-      toast(t("「{name}」不是 PNG、JPEG、GIF 或 WebP 圖片", { name: f.name || t("圖片") }), { tone: "error" });
+      toast(t("「{name}」不是 PDF，也不是 PNG、JPEG、GIF 或 WebP 圖片", { name: f.name || t("圖片") }), { tone: "error" });
       continue;
     }
     if (f.size > MAX_IMAGE_BYTES) {
       toast(t("「{name}」超過 5 MB", { name: f.name || t("圖片") }), { tone: "error" });
       continue;
     }
-    const bytes = new Uint8Array(await f.arrayBuffer());
-    let bin = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     attached.push({
       mediaType: f.type as AssistantImage["mediaType"],
-      data: btoa(bin),
+      data: base64(new Uint8Array(await f.arrayBuffer())),
       name: f.name || t("貼上的圖片"),
       url: URL.createObjectURL(f),
     });
@@ -732,6 +806,8 @@ function newChat(): void {
   if (pending) stop();
   history = [];
   transcript = [];
+  pdfs = [];
+  renderChips();
   saveBtn.disabled = true;
   log.replaceChildren();
   input.focus();
@@ -893,7 +969,7 @@ function build(): HTMLElement {
   // 附圖片：按迴紋針選檔案，或直接在輸入框貼上。
   const fileInput = document.createElement("input");
   fileInput.type = "file";
-  fileInput.accept = IMAGE_TYPES.join(",");
+  fileInput.accept = [...IMAGE_TYPES, PDF_TYPE, ".pdf"].join(",");
   fileInput.multiple = true;
   fileInput.hidden = true;
   fileInput.addEventListener("change", () => {
@@ -903,12 +979,12 @@ function build(): HTMLElement {
   const attach = document.createElement("button");
   attach.type = "button";
   attach.className = "assistant-attach";
-  attach.title = t("附上圖片（也可以直接貼上）");
+  attach.title = t("附上圖片或 PDF（圖片可以直接貼上，檔案也可以拖進來）");
   attach.setAttribute("aria-label", attach.title);
   attach.append(icon("paperclip"));
   attach.addEventListener("click", () => fileInput.click());
   input.addEventListener("paste", (e) => {
-    const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/") || f.type === PDF_TYPE);
     if (!files.length) return;
     e.preventDefault();
     void attachFiles(files);
@@ -986,7 +1062,7 @@ export function assistantShown(): void {
 
 /**
  * 把選取的文字（從預覽、編輯區、其他程式）拖到輸入區：放在游標的位置（還沒點過時接在最後），
- * 整個輸入區都可以放，不用剛好對準輸入框；拖到上面時輸入區框起來。拖進來的是檔案時不管（交給拖曳開檔）。
+ * 整個輸入區都可以放，不用剛好對準輸入框；拖到上面時輸入區框起來。拖進來的是檔案（圖片、PDF）時附到問題上。
  */
 function acceptTextDrops(box: HTMLElement): void {
   const isText = (e: DragEvent) => !!e.dataTransfer && !e.dataTransfer.types.includes("Files") && e.dataTransfer.types.includes("text/plain");
@@ -1000,8 +1076,22 @@ function acceptTextDrops(box: HTMLElement): void {
     if (!box.contains(e.relatedTarget as Node | null)) box.classList.remove("drop-target");
   });
   document.addEventListener("dragend", () => box.classList.remove("drop-target"));
+  // 拖進來的是檔案（圖片、PDF）：附到問題上，不交給「拖曳開檔」。
+  const isFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files");
+  box.addEventListener("dragover", (e) => {
+    if (!isFiles(e) || input.disabled) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "copy";
+    box.classList.add("drop-target");
+  });
   box.addEventListener("drop", (e) => {
     box.classList.remove("drop-target");
+    if (isFiles(e) && !input.disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      void attachFiles([...(e.dataTransfer?.files ?? [])]);
+      return;
+    }
     if (!isText(e) || input.disabled) return;
     const text = e.dataTransfer!.getData("text/plain");
     if (!text) return;
@@ -1090,4 +1180,9 @@ export function openAssistantMore(): void {
 /** 設定改了金鑰之後（設定頁呼叫）。 */
 export function assistantKeyChanged(): void {
   if (panel) void refreshStatus();
+}
+
+/** 滑鼠（拖著檔案）在助理的輸入區上：放開是附到問題上，不是開檔（拖曳開檔的提示文字用）。 */
+export function overAssistantInput(target: EventTarget | null): boolean {
+  return !!panel && target instanceof Element && !!target.closest("#assistant-panel .assistant-input");
 }

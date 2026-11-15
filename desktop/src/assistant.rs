@@ -365,31 +365,48 @@ pub struct ChatImage {
 const MAX_IMAGES: usize = 4;
 const MAX_IMAGE_BASE64: usize = 7_000_000;
 const IMAGE_TYPES: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+/// PDF 也走附件（`images`）這個欄位，送出時是 `document` 區塊。單一 PDF 與整個要求的附件大小上限
+/// （Base64 之後；Claude API 一個要求最多 32 MB）。
+const PDF_TYPE: &str = "application/pdf";
+const MAX_PDF_BASE64: usize = 28_000_000;
+const MAX_ATTACHED_BASE64: usize = 30_000_000;
 
 #[derive(Deserialize, Debug)]
 pub struct ChatMessage {
     role: String,
     content: String,
-    /// 只有使用者的訊息能附圖片。
+    /// 只有使用者的訊息能附圖片或 PDF。
     #[serde(default)]
     images: Vec<ChatImage>,
 }
 
-/// 圖片的格式、大小、張數都在範圍內，而且只附在使用者的訊息。
+/// 附件（圖片、PDF）的格式、大小、數量都在範圍內，而且只附在使用者的訊息。
 fn valid_images(messages: &[ChatMessage]) -> bool {
-    messages.iter().all(|m| {
+    let each = messages.iter().all(|m| {
         m.images.is_empty()
             || (m.role == "user"
                 && m.images.len() <= MAX_IMAGES
                 && m.images.iter().all(|i| {
-                    IMAGE_TYPES.contains(&i.media_type.as_str())
-                        && !i.data.is_empty()
-                        && i.data.len() <= MAX_IMAGE_BASE64
+                    let max = if i.media_type == PDF_TYPE {
+                        MAX_PDF_BASE64
+                    } else if IMAGE_TYPES.contains(&i.media_type.as_str()) {
+                        MAX_IMAGE_BASE64
+                    } else {
+                        return false;
+                    };
+                    !i.data.is_empty()
+                        && i.data.len() <= max
                         && i.data.bytes().all(|b| {
                             b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'='
                         })
                 }))
-    })
+    });
+    let total: usize = messages
+        .iter()
+        .flat_map(|m| &m.images)
+        .map(|i| i.data.len())
+        .sum();
+    each && total <= MAX_ATTACHED_BASE64
 }
 
 #[derive(Deserialize, Debug)]
@@ -420,13 +437,18 @@ fn request_body(m: &Model, req: &SendRequest, web: bool) -> serde_json::Value {
             if msg.images.is_empty() {
                 return serde_json::json!({ "role": msg.role, "content": msg.content });
             }
-            // 圖片放在文字前面。
+            // 圖片、PDF 放在文字前面；PDF 是 `document` 區塊。
             let mut blocks: Vec<_> = msg
                 .images
                 .iter()
                 .map(|i| {
+                    let kind = if i.media_type == PDF_TYPE {
+                        "document"
+                    } else {
+                        "image"
+                    };
                     serde_json::json!({
-                        "type": "image",
+                        "type": kind,
                         "source": { "type": "base64", "media_type": i.media_type, "data": i.data },
                     })
                 })
@@ -957,6 +979,61 @@ mod tests {
             "user",
             (0..5).map(|_| img("image/png", "AAAA")).collect()
         )]));
+    }
+
+    #[test]
+    fn sends_pdfs_as_document_blocks() {
+        let att = |t: &str, data: &str| ChatImage {
+            media_type: t.into(),
+            data: data.into(),
+        };
+        let msg = |role: &str, images: Vec<ChatImage>| ChatMessage {
+            role: role.into(),
+            content: "這份合約的重點？".into(),
+            images,
+        };
+        let req = SendRequest {
+            model: "claude-sonnet-5-5".into(),
+            system: String::new(),
+            messages: vec![msg(
+                "user",
+                vec![
+                    att("application/pdf", "JVBERi0xLjQ="),
+                    att("image/png", "iVBORw0KGgo="),
+                ],
+            )],
+            web_search: false,
+        };
+        let body = request_body(model("claude-sonnet-5-5").unwrap(), &req, false);
+        let content = &body["messages"][0]["content"];
+        assert_eq!(content[0]["type"], "document");
+        assert_eq!(content[0]["source"]["media_type"], "application/pdf");
+        assert_eq!(content[0]["source"]["data"], "JVBERi0xLjQ=");
+        assert_eq!(content[1]["type"], "image");
+        assert_eq!(content[2]["type"], "text");
+        assert!(valid_images(&req.messages));
+        // PDF 可以比圖片大，但有自己的上限；只能附在使用者的訊息。
+        let big = "A".repeat(MAX_IMAGE_BASE64 + 4);
+        assert!(valid_images(&[msg(
+            "user",
+            vec![att("application/pdf", &big)]
+        )]));
+        assert!(!valid_images(&[msg("user", vec![att("image/png", &big)])]));
+        let too_big = "A".repeat(MAX_PDF_BASE64 + 4);
+        assert!(!valid_images(&[msg(
+            "user",
+            vec![att("application/pdf", &too_big)]
+        )]));
+        assert!(!valid_images(&[msg(
+            "assistant",
+            vec![att("application/pdf", "JVBERi0xLjQ=")]
+        )]));
+        // 所有附件加起來也有上限（一個要求最多 32 MB）。
+        let half = "A".repeat(MAX_ATTACHED_BASE64 / 2 + 4);
+        assert!(!valid_images(&[
+            msg("user", vec![att("application/pdf", &half)]),
+            msg("user", vec![att("application/pdf", &half)]),
+        ]));
     }
 
     #[test]
