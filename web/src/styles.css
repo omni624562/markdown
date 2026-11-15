@@ -937,8 +937,16 @@ button.start-tip:hover, button.start-tip:focus-visible { background: var(--activ
   color: var(--accent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
+/*
+ * 視窗不夠寬時只留圖示，但目前選到的那一個照樣顯示名稱：一眼看得出現在是哪個模式（其他的名稱在滑鼠提示裡）。
+ * 很窄的視窗（手機寬度）或在設定關掉「檢視切換顯示文字」時，全部只有圖示。
+ */
 @media (max-width: 960px) {
   .view-switch .label { display: none; }
+  body:not(.view-switch-icons) .view-switch button[aria-checked="true"] .label { display: inline; }
+}
+@media (max-width: 600px) {
+  body:not(.view-switch-icons) .view-switch button[aria-checked="true"] .label { display: none; }
 }
 .view-switch-icons .view-switch .label { display: none; }
 /* 工作項目、Wiki 頁面、Git 歷史蓋住編輯區時，檢視切換用不到（按了反而會關掉那個畫面）：拿掉，位置讓給內容的摘要。並排顯示時編輯區還在，照常顯示。 */
