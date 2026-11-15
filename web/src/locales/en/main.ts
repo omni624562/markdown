@@ -605,6 +605,9 @@ export const main: Record<string, Translation> = {
   // 拖曳開檔、啟動、外部修改
   "檔案超過 20 MB，可能不是文字檔。": "The file is larger than 20 MB and may not be a text file.",
   "已開啟「{name}」": "Opened \"{name}\".",
+  "已開啟「{name}」，但拿不到它原本的位置（{why}）：存檔時要選位置": "Opened \"{name}\", but couldn't get its original location ({why}). Saving will ask where to save it.",
+  "這個版本的 WebView2 不能交出檔案": "This version of WebView2 can't hand over files",
+  "沒有 WebView2 的管道": "The WebView2 channel isn't available",
   "設定檔有無法讀取的內容，相關選項已恢復成預設值。": "Some settings couldn't be read and were reset to their defaults.",
   "「{name}」已從磁碟刪除或移走。內容仍保留在分頁中，存檔會重新建立檔案。":
     "\"{name}\" was deleted or moved on disk. Its content is still in the tab; saving will recreate the file.",

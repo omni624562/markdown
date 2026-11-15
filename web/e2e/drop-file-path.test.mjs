@@ -75,3 +75,15 @@ test("拿不到路徑（原生端回傳 null、或沒有 WebView2 的管道）�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("應該拿得到路徑卻失敗：照舊開成新文件，但提示拿不到原本的位置與原因", async () => {
+  const { page, context, errors } = await open({ desktop: { dropped_file: { $error: "沒有收到 WebView2 送來的檔案" } } });
+  await page.evaluate(() => {
+    window.chrome = { ...(window.chrome ?? {}), webview: { postMessageWithAdditionalObjects: () => {} } };
+  });
+  await dropFile(page, "清單.md", "# 清單\n");
+  await page.locator(".toast", { hasText: "已開啟「清單.md」，但拿不到它原本的位置（沒有收到 WebView2 送來的檔案）：存檔時要選位置" }).waitFor();
+  assert.match(await page.locator(".cm-content").textContent(), /清單/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

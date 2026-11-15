@@ -24,27 +24,28 @@ const KEEP: usize = 8;
 #[cfg_attr(not(windows), allow(dead_code))]
 const MAX_FILES: usize = 32;
 
-/// 最近幾次拖放的檔案路徑（代號 → 依順序的路徑）。
+/// 最近幾次拖放的檔案路徑（代號 → 依順序的路徑，和拿不到路徑時的原因）。
 #[derive(Default)]
-pub struct Dropped(Mutex<VecDeque<(String, Vec<PathBuf>)>>);
+pub struct Dropped(Mutex<VecDeque<(String, Vec<PathBuf>, String)>>);
 
 impl Dropped {
     #[cfg_attr(not(windows), allow(dead_code))]
-    fn put(&self, id: String, paths: Vec<PathBuf>) {
+    fn put(&self, id: String, paths: Vec<PathBuf>, note: String) {
         let mut list = self.0.lock();
-        list.retain(|(k, _)| *k != id);
-        list.push_back((id, paths));
+        list.retain(|(k, _, _)| *k != id);
+        list.push_back((id, paths, note));
         while list.len() > KEEP {
             list.pop_front();
         }
     }
 
-    fn get(&self, id: &str, index: usize) -> Option<Option<PathBuf>> {
+    /// 這次拖放的第 `index` 個檔案的路徑；沒有的話是原因。還沒收到這次拖放的訊息時是 `None`。
+    fn get(&self, id: &str, index: usize) -> Option<Result<PathBuf, String>> {
         self.0
             .lock()
             .iter()
-            .find(|(k, _)| k == id)
-            .map(|(_, paths)| paths.get(index).cloned())
+            .find(|(k, _, _)| k == id)
+            .map(|(_, paths, note)| paths.get(index).cloned().ok_or_else(|| note.clone()))
     }
 }
 
@@ -60,6 +61,10 @@ fn drop_id(json: &str) -> Option<String> {
     let id = v.as_object()?.get("omarkerDrop")?.as_str()?;
     valid_id(id).then(|| id.to_string())
 }
+
+/// 登記事件失敗時的錯誤碼（拿不到路徑時顯示）。
+#[cfg_attr(not(windows), allow(dead_code))]
+static LISTEN_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 /// 開始收主畫面送來的拖放訊息（只有 Windows 有作用）。
 pub fn listen(webview: &Webview) {
@@ -86,35 +91,53 @@ pub fn listen(webview: &Webview) {
                     let Some(id) = drop_id(&take_pwstr(json)) else {
                         return Ok(());
                     };
+                    // 每一步失敗的原因都記下來：拿不到路徑時前端會顯示，才知道是哪一步。
                     let mut paths = Vec::new();
-                    if let Ok(objects) = args
+                    let note;
+                    match args
                         .cast::<ICoreWebView2WebMessageReceivedEventArgs2>()
                         .and_then(|a| a.AdditionalObjects())
                     {
-                        let mut count = 0u32;
-                        let _ = objects.Count(&mut count);
-                        for i in 0..count.min(MAX_FILES as u32) {
-                            let Ok(file) = objects
-                                .GetValueAtIndex(i)
-                                .and_then(|o| o.cast::<ICoreWebView2File>())
-                            else {
-                                continue;
-                            };
-                            let mut path = PWSTR::null();
-                            if file.Path(&mut path).is_ok() {
-                                paths.push(PathBuf::from(take_pwstr(path)));
+                        Ok(objects) => {
+                            let mut count = 0u32;
+                            let _ = objects.Count(&mut count);
+                            let mut seen = format!("objects={count}");
+                            for i in 0..count.min(MAX_FILES as u32) {
+                                let file = match objects
+                                    .GetValueAtIndex(i)
+                                    .and_then(|o| o.cast::<ICoreWebView2File>())
+                                {
+                                    Ok(file) => file,
+                                    Err(e) => {
+                                        seen = format!("{seen}, file[{i}]: {:#x}", e.code().0);
+                                        continue;
+                                    }
+                                };
+                                let mut path = PWSTR::null();
+                                match file.Path(&mut path) {
+                                    Ok(()) => paths.push(PathBuf::from(take_pwstr(path))),
+                                    Err(e) => {
+                                        seen = format!("{seen}, path[{i}]: {:#x}", e.code().0);
+                                    }
+                                }
                             }
+                            note = seen;
                         }
+                        Err(e) => note = format!("AdditionalObjects: {:#x}", e.code().0),
                     }
-                    app.state::<Dropped>().put(id, paths);
+                    app.state::<Dropped>().put(id, paths, note);
                 }
                 Ok(())
             }));
             // SAFETY: 同上；登記的事件處理常式跟著 webview 一起結束，不用另外移除。
             unsafe {
-                if let Ok(core) = webview.controller().CoreWebView2() {
-                    let mut token = 0i64;
-                    let _ = core.add_WebMessageReceived(&handler, &mut token);
+                let mut token = 0i64;
+                let added = webview
+                    .controller()
+                    .CoreWebView2()
+                    .and_then(|core| core.add_WebMessageReceived(&handler, &mut token));
+                if let Err(e) = added {
+                    *LISTEN_ERROR.lock() = Some(format!("{:#x}", e.code().0));
                 }
             }
         });
@@ -123,7 +146,8 @@ pub fn listen(webview: &Webview) {
     let _ = webview;
 }
 
-/// 開啟拖進來的第 `index` 個檔案（依原本的路徑）。拿不到路徑時回傳 `None`：前端改用檔案內容開成新文件。
+/// 開啟拖進來的第 `index` 個檔案（依原本的路徑）。這個平台沒有這個機制時回傳 `None`；
+/// 應該拿得到卻拿不到時回傳錯誤（寫明是哪一步），前端顯示原因後改用檔案內容開成新文件。
 /// 訊息和這個指令走不同的管道、先後不一定，所以最多等一下子。
 #[tauri::command]
 pub async fn dropped_file(
@@ -137,17 +161,30 @@ pub async fn dropped_file(
         return Ok(None);
     }
     let mut found = None;
-    for _ in 0..20 {
+    for _ in 0..40 {
         if let Some(path) = dropped.get(&id, index) {
-            found = path;
+            found = Some(path);
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let Some(path) = found else { return Ok(None) };
-    // 資料夾、已經不在的檔案：交給前端照原本的方式處理。
-    if !path.is_file() {
+    let path = match found {
+        Some(Ok(path)) => path,
+        Some(Err(note)) => return Err(tr!("WebView2 沒有交出檔案的路徑（{note}）", note = note)),
+        None => {
+            let listen = LISTEN_ERROR.lock().clone();
+            return Err(match listen {
+                Some(code) => tr!("沒辦法接收 WebView2 的訊息（{code}）", code = code),
+                None => tr!("沒有收到 WebView2 送來的檔案"),
+            });
+        }
+    };
+    // 資料夾：交給前端照原本的方式處理。
+    if path.is_dir() {
         return Ok(None);
+    }
+    if !path.is_file() {
+        return Err(tr!("找不到「{path}」", path = path.display().to_string()));
     }
     let opened = crate::files::read_in_background(&app, path.clone()).await?;
     trust.add_file(&app, &path);
@@ -181,13 +218,14 @@ mod tests {
                 PathBuf::from("C:/Users/me/a.md"),
                 PathBuf::from("C:/Users/me/b.md"),
             ],
+            "objects=2".into(),
         );
-        assert_eq!(d.get("a", 1), Some(Some(PathBuf::from("C:/Users/me/b.md"))));
-        // 這次拖放沒有第三個檔案；沒聽過的代號是還沒收到。
-        assert_eq!(d.get("a", 2), Some(None));
+        assert_eq!(d.get("a", 1), Some(Ok(PathBuf::from("C:/Users/me/b.md"))));
+        // 這次拖放沒有第三個檔案（回傳記下的原因）；沒聽過的代號是還沒收到。
+        assert_eq!(d.get("a", 2), Some(Err("objects=2".into())));
         assert_eq!(d.get("b", 0), None);
         for i in 0..KEEP {
-            d.put(format!("n{i}"), vec![]);
+            d.put(format!("n{i}"), vec![], String::new());
         }
         assert_eq!(d.get("a", 0), None, "太舊的丟掉");
     }
