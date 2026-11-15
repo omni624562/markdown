@@ -10,6 +10,7 @@ import type { SyntaxNode } from "@lezer/common";
 import type { LineRange } from "../block-move.ts";
 import { sectionRange } from "../sections.ts";
 import { app } from "./context.ts";
+import { watchDragHandle } from "./drag-hint.ts";
 import { outlineHeadings } from "./outline-list.ts";
 import { type DragKind, type DragTarget, commitMove, dragEnabled, makeHandle, moveText } from "./preview-drag.ts";
 
@@ -182,6 +183,7 @@ export function initLiveDrag(): void {
   marker.className = "preview-drop-line live-drop-line";
   marker.hidden = true;
   document.body.append(handle, marker);
+  watchDragHandle(handle);
 
   pane.addEventListener("mousemove", (e) => {
     if (dragging || e.buttons) return;

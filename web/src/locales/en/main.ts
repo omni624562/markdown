@@ -143,6 +143,7 @@ export const main: Record<string, Translation> = {
   "也可以：": "Also:",
   "拖曳調整順序": "Drag to reorder",
   "已調整順序": "Moved",
+  "拖這裡可以調整順序": "Drag here to reorder",
   "輸入工作項目的編號或標題": "Type a work item number or title",
   "問助理：「{q}」": "Ask the assistant: \"{q}\"",
   "送到右側欄的助理": "Sends it to the assistant in the right column",

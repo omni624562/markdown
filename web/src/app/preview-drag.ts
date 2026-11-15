@@ -15,6 +15,7 @@ import { moveSection, sectionRange } from "../sections.ts";
 import { icon } from "../ui/icons.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { watchDragHandle } from "./drag-hint.ts";
 import { initLiveDrag } from "./live-drag.ts";
 import { outlineHeadings } from "./outline-list.ts";
 
@@ -200,6 +201,7 @@ export function initPreviewDrag(): void {
   marker.className = "preview-drop-line";
   marker.hidden = true;
   scroller.append(handle, marker);
+  watchDragHandle(handle);
 
   scroller.addEventListener("mousemove", (e) => {
     if (dragging || e.buttons) return;
