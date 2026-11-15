@@ -34,6 +34,7 @@ import { formatKeys } from "./commands.ts";
 import { currentLang, t } from "./i18n.ts";
 import { cjkWords } from "./words.ts";
 import { focusMode, typewriterMode } from "./writing-modes.ts";
+import { findMarks } from "./ui/find-marks.ts";
 import { createFindPanel } from "./ui/find-panel.ts";
 
 /** 顏色全部走 CSS 變數，深淺色主題只要在 styles.css 切換變數即可。 */
@@ -196,6 +197,7 @@ export class Editor {
       highlightActiveLine(),
       highlightSelectionMatches(),
       search({ createPanel: createFindPanel }),
+      findMarks,
       EditorView.lineWrapping,
       EditorState.phrases.of(currentLang() === "en" ? {} : PHRASES),
       EditorView.contentAttributes.of({ "aria-label": t("文件內容"), spellcheck: "false" }),
