@@ -713,6 +713,28 @@ export interface AssistantMessage {
   doc?: { name: string; text: string };
 }
 
+/** 助理的一個批次（見 desktop/src/assistant_batch.rs）。 */
+export interface AssistantBatch {
+  id: string;
+  /** 送出的時間（`2026-11-15 21:30`）。 */
+  created: string;
+  folder: string;
+  action: string;
+  total: number;
+  state: "processing" | "done" | "canceled";
+  canceling: boolean;
+  /** 處理中：已經完成幾份。 */
+  finished: number;
+  /** 領完結果：寫了幾個檔案、幾份失敗、費用。 */
+  written: number;
+  failed: number;
+  usd: number;
+  /** 處理完了，但要先打開這個資料夾才能把結果寫回去。 */
+  needsFolder: string | null;
+  /** 這次檢查才剛領完結果。 */
+  justDone: boolean;
+}
+
 export type AssistantRunEvent =
   | { kind: "delta"; id: number; text: string }
   /** 上網查資料時回答引用的網頁。 */
@@ -1093,6 +1115,14 @@ function bridge(core: TauriCore, event: TauriEvent) {
     assistantCount: (request: { model: string; system: string; messages: AssistantMessage[]; webSearch?: boolean; webFetch?: string[]; deep?: boolean }) =>
       afterSettings(() => core.invoke<{ tokens: number; usd: number }>("assistant_count", { request })),
     assistantCancel: (id: number) => core.invoke<void>("assistant_cancel", { id }),
+    /** 把資料夾裡的文件送成一個批次（Message Batches；費用是平常的一半，結果之後才有）。 */
+    assistantBatchCreate: (request: { model: string; system: string; folder: string; action: string; suffix: string; items: { path: string; content: string }[] }) =>
+      afterSettings(() => core.invoke<AssistantBatch>("assistant_batch_create", { request })),
+    assistantBatchList: () => core.invoke<AssistantBatch[]>("assistant_batch_list"),
+    /** 問批次的狀態；處理完了就領結果、寫成原檔旁邊的新檔（`justDone`）。 */
+    assistantBatchCheck: (id: string) => core.invoke<AssistantBatch>("assistant_batch_check", { id }),
+    assistantBatchCancel: (id: string) => core.invoke<AssistantBatch>("assistant_batch_cancel", { id }),
+    assistantBatchRemove: (id: string) => core.invoke<void>("assistant_batch_remove", { id }),
 
     gitStatus: () => core.invoke<GitStatus>("git_status"),
     githubAccount: () => core.invoke<GitHubAccount | null>("github_account"),

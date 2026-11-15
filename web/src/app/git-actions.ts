@@ -1,6 +1,7 @@
 /**
  * Git：合併衝突、分支、Pull Request；GitHub Pages、Gist。
  */
+import { batchCommandReady, openBatchList, runBatchCommand } from "./assistant-batch.ts";
 import { ASSISTANT_ACTIONS } from "../assistant-text.ts";
 import { assistantEnabled, assistantOpen, openAssistantMore, runAssistantAction, toggleAssistant } from "./assistant.ts";
 import type { Command } from "../commands.ts";
@@ -289,6 +290,22 @@ export function initGitActions(): void {
         run: () => runAssistantAction(a.id),
       }),
     ),
+    {
+      id: "assistant-batch",
+      title: t("助理：批次處理資料夾…"),
+      group: t("AI 與終端機"),
+      icon: "sparkles",
+      when: batchCommandReady,
+      run: runBatchCommand,
+    },
+    {
+      id: "assistant-batches",
+      title: t("助理：批次的進度與結果"),
+      group: t("AI 與終端機"),
+      icon: "sparkles",
+      when: assistantEnabled,
+      run: openBatchList,
+    },
     {
       id: "assistant-custom",
       title: t("助理：自訂動作…"),
