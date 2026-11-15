@@ -6,12 +6,8 @@ pub static EN: &[(&str, &str)] = &[
         "WebView2 didn't provide the file's path ({note})",
     ),
     (
-        "沒辦法接收 WebView2 的訊息（{code}）",
-        "Couldn't listen for WebView2 messages ({code})",
-    ),
-    (
-        "沒有收到 WebView2 送來的檔案",
-        "WebView2 didn't send the file",
+        "沒有收到 WebView2 送來的檔案（{state}）",
+        "WebView2 didn't send the file ({state})",
     ),
     ("找不到「{path}」", "Couldn't find \"{path}\""),
     (
