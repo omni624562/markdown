@@ -37,6 +37,7 @@ import { issueSide, issueView } from "./wiki-edit.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
+import { openPreviewFind } from "./preview-find.ts";
 import { docName } from "./doc-names.ts";
 import { exportName } from "./export-target.ts";
 import { reportIssue } from "./version-info.ts";
@@ -740,10 +741,12 @@ export function initCommands(): void {
       group: t("編輯"),
       icon: "search",
       keys: "Mod-f",
-      when: () => app.view !== "preview",
-      // 工作項目開在主要區域時，在它的內容裡找字。
-      run: () =>
-        issueView.isOpen && (!issueSide || issueView.hasFocus) ? issueView.openFind() : void openSearchPanel(app.editor.view),
+      // 工作項目開在主要區域時，在它的內容裡找字；「預覽」模式沒有編輯區，在預覽的內容裡找（沒有取代）。
+      run: () => {
+        if (issueView.isOpen && (!issueSide || issueView.hasFocus)) issueView.openFind();
+        else if (app.view === "preview" && !app.previewScroller.classList.contains("html-mode")) openPreviewFind();
+        else void openSearchPanel(app.editor.view);
+      },
     },
     {
       id: "format-json",
