@@ -30,6 +30,8 @@ export interface PickerOptions<T> {
    * 樣子和標題列的搜尋框一樣。
    */
   top?: boolean;
+  /** `top` 的搜尋列前面的圖示（預設是放大鏡）。 */
+  searchIcon?: string;
   /**
    * 打開時對齊這個元素（標題列的搜尋框）：搜尋列蓋在它上面，放大鏡與文字在同一個位置，清單往下展開，
    * 看起來是搜尋框本身打開了。元素沒有顯示時照 `top` 的位置。
@@ -86,7 +88,7 @@ export class Picker<T> {
     document.body.append(this.#dialog);
     this.#input = this.#dialog.querySelector("input")!;
     this.#input.placeholder = opts.placeholder;
-    if (opts.top) this.#input.before(icon("search"));
+    if (opts.top) this.#input.before(icon(opts.searchIcon ?? "search"));
     this.#list = this.#dialog.querySelector("ul")!;
     this.#list.setAttribute("aria-label", opts.label);
     this.#tips = this.#dialog.querySelector(".palette-tips")!;

@@ -284,3 +284,29 @@ test("打開前後是同一個搜尋框：搜尋列蓋在框上，放大鏡、�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("指令面板（Ctrl+Shift+P）也從標題列的搜尋框往下展開：蓋在框上、圖示在同一個位置、背景不模糊", async () => {
+  const { page, context, errors } = await open({ desktop: desktop() });
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await page.waitForFunction(() => document.querySelector("#title-search .title-search-text").textContent !== "");
+  const rect = (sel) =>
+    page.evaluate((s) => {
+      const r = document.querySelector(s).getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, mid: r.top + r.height / 2 };
+    }, sel);
+  const box = await rect("#title-search");
+  const boxIcon = await rect("#title-search .icon");
+  await page.keyboard.press("Control+Shift+P");
+  await page.locator("dialog.palette-columns[open] .palette-search").waitFor();
+  const dialog = await rect("dialog.palette[open]");
+  const icon = await rect("dialog.palette[open] .palette-search .icon");
+  const msg = JSON.stringify({ box, boxIcon, dialog, icon });
+  assert.ok(dialog.left <= box.left + 0.5 && dialog.right >= box.right - 0.5 && dialog.top <= box.top, `蓋住整個框 ${msg}`);
+  assert.ok(Math.abs(icon.left - boxIcon.left) <= 1 && Math.abs(icon.mid - boxIcon.mid) <= 1, `圖示在原來的位置 ${msg}`);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("dialog.palette[open]"), "::backdrop").backdropFilter), "none");
+  // 照舊可以找指令、執行。
+  await input(page).fill("深色");
+  await page.locator("dialog[open] [role=option]").first().waitFor();
+  assert.deepEqual(errors, []);
+  await context.close();
+});
