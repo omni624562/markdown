@@ -3,7 +3,8 @@
  * 拖的是選取的文字（從預覽、編輯區、其他程式）時不管它：放到助理的輸入框、編輯區、搜尋框等可以輸入的地方，
  * 由瀏覽器（編輯區由 CodeMirror）照常放進去；放在其他地方不做任何事（不會因為拖了一個連結而整個視窗被導走）。
  */
-import { readTextFile } from "../files.ts";
+import { desktop } from "../desktop.ts";
+import { fromDesktop, readTextFile } from "../files.ts";
 import { t } from "../i18n.ts";
 import { toast } from "../ui/toast.ts";
 import { imageFiles, insertImages } from "./image-paste.ts";
@@ -62,6 +63,10 @@ export function initFileDrop(): void {
       await importDocxData(file.name, await file.arrayBuffer(), null).catch(reportError);
       return;
     }
+    // 桌面版（Windows）：問原生端這個檔案原本的路徑，和「開啟檔案」一樣開起來——存檔直接存回原處，
+    // 另存新檔也從它所在的資料夾開始。拿不到路徑（其他平台、網頁版）才用檔案內容開成新文件。
+    const opened = await openWithPath(files, files.indexOf(file)).catch(() => false);
+    if (opened) return;
     if (file.size > 20 * 1024 * 1024) {
       toast(t("檔案超過 20 MB，可能不是文字檔。"), { tone: "error" });
       return;
@@ -71,6 +76,26 @@ export function initFileDrop(): void {
     app.openDocument(file.name, text, null);
     toast(t("已開啟「{name}」", { name: file.name }));
   });
+}
+
+/** WebView2 把檔案物件交給原生端的管道（其他瀏覽器核心沒有）。 */
+interface WebViewHost {
+  postMessageWithAdditionalObjects?(message: unknown, objects: ArrayLike<File>): void;
+}
+
+/**
+ * 依原本的路徑開啟拖進來的第 `index` 個檔案。把檔案物件交給原生端（它才問得到路徑），再請它開啟；
+ * 回傳有沒有開成功。
+ */
+async function openWithPath(files: File[], index: number): Promise<boolean> {
+  const host = (window as { chrome?: { webview?: WebViewHost } }).chrome?.webview;
+  if (!desktop || !host?.postMessageWithAdditionalObjects || index < 0) return false;
+  const id = `drop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  host.postMessageWithAdditionalObjects({ omarkerDrop: id }, files);
+  const file = await desktop.droppedFile(id, index);
+  if (!file) return false;
+  app.openOpenedFile(fromDesktop(file));
+  return true;
 }
 
 /** 放開的地方可以輸入文字（輸入框、編輯區）：拖過來的文字交給它自己放進去。 */
