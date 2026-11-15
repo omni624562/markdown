@@ -31,6 +31,31 @@ test("工作項目的篩選：再按一次同一個下拉選單就關上", async
   await context.close();
 });
 
+/** 文件統計面板與字數按鈕當下的狀態（除錯用）。 */
+const popState = (page) =>
+  page.evaluate(() => {
+    const rect = (el) => {
+      const r = el.getBoundingClientRect();
+      return [r.left, r.top, r.right, r.bottom].map(Math.round);
+    };
+    const btn = document.querySelector("#status-stats");
+    const pop = document.querySelector(".stats-pop");
+    const b = btn.getBoundingClientRect();
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    const name = (el) => (el ? `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}.${el.className}` : "null");
+    return JSON.stringify({
+      expanded: btn.getAttribute("aria-expanded"),
+      popOpen: !!pop?.matches(":popover-open"),
+      button: rect(btn),
+      pop: pop && rect(pop),
+      atButtonCentre: name(hit),
+      focus: name(document.activeElement),
+      openPopovers: [...document.querySelectorAll("[popover]:popover-open")].map(name),
+      dialogs: [...document.querySelectorAll("dialog[open]")].map(name),
+      toasts: [...document.querySelectorAll(".toast")].map((t) => t.textContent),
+    });
+  });
+
 test("狀態列的文件統計：再按一次字數就關上", async () => {
   const { page, context, errors } = await open();
   await setText(page, "# 週報\n\n本週完成登入頁。\n");
@@ -40,7 +65,13 @@ test("狀態列的文件統計：再按一次字數就關上", async () => {
   await pop.waitFor();
   assert.equal(await stats.getAttribute("aria-expanded"), "true");
   await stats.click();
-  await page.waitForFunction(() => document.querySelector("#status-stats")?.getAttribute("aria-expanded") === "false");
+  await page
+    .waitForFunction(() => document.querySelector("#status-stats")?.getAttribute("aria-expanded") === "false", null, { timeout: 10_000 })
+    .catch(async (e) => {
+      // 在 CI 上偶爾等不到（本機重現不了）：把當時的狀態寫進錯誤訊息，下次失敗時才知道是面板沒關、
+      // 還是按到的不是字數（被面板或別的東西蓋住）。
+      throw new Error(`${e.message}\n${await popState(page)}`);
+    });
   assert.equal(await page.locator("[popover]:popover-open").count(), 0);
   assert.deepEqual(errors, []);
   await context.close();
