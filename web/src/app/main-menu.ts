@@ -42,6 +42,7 @@ export function initMainMenu(): void {
       items: ["show-git", "git-history", "git-commit", "git-sync", "git-branch-switch", "git-create-pr", "ado-publish", "-", "git-file-history", "git-open-web", "git-copy-link"],
     },
     "-",
+    { label: t("編輯"), icon: "pencil", items: ["undo", "redo", "-", "find"] },
     {
       label: t("匯入與匯出"),
       icon: "download",
