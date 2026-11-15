@@ -93,8 +93,7 @@ pub fn listen(webview: &Webview) {
                     };
                     // 每一步失敗的原因都記下來：拿不到路徑時前端會顯示，才知道是哪一步。
                     let mut paths = Vec::new();
-                    let note;
-                    match args
+                    let note = match args
                         .cast::<ICoreWebView2WebMessageReceivedEventArgs2>()
                         .and_then(|a| a.AdditionalObjects())
                     {
@@ -121,10 +120,10 @@ pub fn listen(webview: &Webview) {
                                     }
                                 }
                             }
-                            note = seen;
+                            seen
                         }
-                        Err(e) => note = format!("AdditionalObjects: {:#x}", e.code().0),
-                    }
+                        Err(e) => format!("AdditionalObjects: {:#x}", e.code().0),
+                    };
                     app.state::<Dropped>().put(id, paths, note);
                 }
                 Ok(())
