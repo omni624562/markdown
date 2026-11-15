@@ -110,3 +110,44 @@ test("拖完按 Ctrl+Z 復原、Ctrl+Y 重做（焦點不在編輯區也一樣�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("把手前幾次出現時旁邊有說明「拖這裡可以調整順序」，不擋滑鼠；拖過一次之後不再出現；大綱的標題游標是手形", async () => {
+  const { page, context, errors } = await open({ desktop: { load_settings: JSON.stringify({ outlineRight: true }) } });
+  await page.evaluate((text) => {
+    const content = document.querySelector(".cm-content");
+    const tile = content?.cmView ?? content?.cmTile;
+    const view = tile?.view ?? tile?.root?.view;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+  }, "# 甲\n\n第一段。\n\n第二段。\n\n# 乙\n\n第三段。\n");
+  await page.click('.statusbar [data-view="preview"]');
+  const para = (text) => page.locator("#preview p", { hasText: text });
+  await para("第一段").waitFor();
+  const hint = page.locator(".drag-hint:not([hidden])");
+  assert.equal(await hint.count(), 0);
+  await para("第一段").hover();
+  await hint.waitFor();
+  assert.equal(await hint.textContent(), "拖這裡可以調整順序");
+  const placed = await page.evaluate(() => {
+    const h = document.querySelector("#preview-scroller .preview-drag-handle").getBoundingClientRect();
+    const b = document.querySelector(".drag-hint");
+    const r = b.getBoundingClientRect();
+    return { above: r.bottom <= h.top, near: Math.abs(r.left - h.left) <= 4 && h.top - r.bottom <= 10, passthrough: getComputedStyle(b).pointerEvents === "none" };
+  });
+  assert.deepEqual(placed, { above: true, near: true, passthrough: true });
+  // 滑鼠離開預覽：把手和說明一起消失。
+  await page.mouse.move(5, 5);
+  await page.waitForFunction(() => !document.querySelector(".drag-hint:not([hidden])"));
+  // 拖過一次：之後把手出現也不再說明。
+  await para("第一段").hover();
+  const handle = page.locator("#preview-scroller .preview-drag-handle");
+  await handle.dragTo(para("第三段"), { targetPosition: { x: 20, y: 20 } });
+  await page.locator(".toast", { hasText: "已調整順序" }).waitFor();
+  await page.mouse.move(5, 5);
+  await para("第二段").hover();
+  await page.waitForTimeout(900);
+  assert.equal(await hint.count(), 0);
+  // 大綱：可以拖的標題游標是手形。
+  assert.equal(await page.locator("#outline-list a[data-index]").first().evaluate((a) => getComputedStyle(a).cursor), "grab");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

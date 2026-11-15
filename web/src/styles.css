@@ -769,6 +769,9 @@ kbd {
 }
 #outline-list a[style*="--level: 1"] { color: var(--fg); font-weight: 600; }
 #outline-list a:hover { background: var(--active-line); color: var(--fg); }
+/* 可以拖曳搬移章節的標題：游標是手形（按住時握起來），看得出能拖。 */
+#outline-list a[draggable="true"] { cursor: grab; }
+#outline-list a[draggable="true"]:active { cursor: grabbing; }
 #outline-list a[aria-current="location"] { background: var(--accent-soft); color: var(--accent); }
 /* 大綱拖曳重排章節：插入線畫在標題上緣或下緣。 */
 #outline-list li { position: relative; }
@@ -1210,6 +1213,9 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 /* 即時預覽的把手與放開位置的線放在 body 上，用畫面座標（app/live-drag.ts）。 */
 .preview-drag-handle.live-drag-handle, .preview-drop-line.live-drop-line { position: fixed; z-index: 30; }
 @media (pointer: coarse) { .preview-drag-handle { display: none; } }
+/* 拖動把手的說明（app/drag-hint.ts）：前幾次出現時顯示在把手上方，不擋滑鼠。 */
+.drag-hint { position: fixed; z-index: 40; padding: 4px 9px; border-radius: 6px; background: var(--fg); color: var(--bg); font: 12px var(--font-ui); white-space: nowrap; pointer-events: none; box-shadow: var(--shadow); }
+.drag-hint[hidden] { display: none; }
 
 /* ---- 預覽中的 highlight.js 色彩（沿用編輯器語法色） ---- */
 .hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-meta .hljs-keyword { color: var(--syn-keyword); }

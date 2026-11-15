@@ -152,6 +152,7 @@ export const main: Record<string, Translation> = {
   "輸入工作項目的編號或標題": "Type a work item number or title",
   "問助理：「{q}」": "Ask the assistant: \"{q}\"",
   "送到右側欄的助理": "Sends it to the assistant in the right column",
+  "拖這裡可以調整順序": "Drag here to reorder",
   "輸入要問助理的問題": "Type a question for the assistant",
   "搜尋分頁或指令": "Search tabs or commands",
   "搜尋檔案、工作項目，或問助理": "Search files, work items, or ask the assistant",
