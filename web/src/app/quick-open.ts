@@ -277,6 +277,7 @@ export const quickOpen = new Picker<QuickItem>({
     return t("找不到符合的檔案");
   },
   top: true,
+  anchor: () => document.querySelector<HTMLElement>("#title-search"),
   detailColumn: true,
   tips: quickTips,
   async query(q, more) {

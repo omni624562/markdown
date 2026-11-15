@@ -3,7 +3,8 @@
  * 快速開啟裡除了檔案、工作項目（`#`）、Wiki 頁面，這裡再加上兩種：
  * - `>` 開頭找指令（和指令面板同一份清單、同一份「最近使用」）。
  * - `?` 開頭問助理；一般搜尋時最後一項也是「問助理：…」（設定裡開了 Claude API 助理時）。
- * 框裡的字依目前能找的東西而定（沒連上 Azure DevOps 時不寫「工作項目」，助理沒開時不寫「問助理」）。
+ * 框裡的字依目前能找的東西而定（沒連上 Azure DevOps 時不寫「工作項目」，助理沒開時不寫「問助理」）；
+ * 打開後的搜尋列蓋在框上面（位置、放大鏡、字都一樣），清單往下展開。
  */
 import { formatKeys } from "../commands.ts";
 import { desktop } from "../desktop.ts";
@@ -40,6 +41,8 @@ export function renderTitleSearch(): void {
   const label = titleSearchLabel({ desktop: !!desktop, ado: !!app.ado?.account, assistant: assistantEnabled() });
   box.querySelector(".title-search-text")!.textContent = label;
   box.title = label;
+  // 打開後的搜尋列寫一樣的字，看起來是同一個搜尋框。
+  quickOpen.setPlaceholder(label);
 }
 
 export function initTitleSearch(): void {

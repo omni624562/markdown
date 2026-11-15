@@ -25,8 +25,16 @@ export interface PickerOptions<T> {
   columns?: boolean;
   /** 說明放在名稱下面一行（說明很長時，例如修改記錄）。 */
   stacked?: boolean;
-  /** 開在視窗最上面（蓋住標題列中間的搜尋框），不是畫面上方三分之一處。 */
+  /**
+   * 開在視窗最上面（蓋住標題列中間的搜尋框），不是畫面上方三分之一處。搜尋列前面有放大鏡，
+   * 樣子和標題列的搜尋框一樣。
+   */
   top?: boolean;
+  /**
+   * 打開時對齊這個元素（標題列的搜尋框）：搜尋列蓋在它上面，放大鏡與文字在同一個位置，清單往下展開，
+   * 看起來是搜尋框本身打開了。元素沒有顯示時照 `top` 的位置。
+   */
+  anchor?(): HTMLElement | null;
   /** 說明（所在資料夾等）是固定寬度、靠左的一欄，每一行從同一個位置開始（快速開啟）。 */
   detailColumn?: boolean;
   /**
@@ -68,15 +76,17 @@ export class Picker<T> {
     this.#dialog.setAttribute("aria-label", opts.label);
     const id = `picker-${Math.random().toString(36).slice(2, 8)}`;
     const tr = { select: t("選擇"), open: t("開啟"), close: t("關閉") };
+    const field = `<input type="text" role="combobox" aria-expanded="true" aria-controls="${id}"
+        aria-autocomplete="list" autocomplete="off" spellcheck="false" />`;
     this.#dialog.innerHTML = `
-      <input type="text" role="combobox" aria-expanded="true" aria-controls="${id}"
-        aria-autocomplete="list" autocomplete="off" spellcheck="false" />
+      ${opts.top ? `<div class="palette-search">${field}</div>` : field}
       <p class="palette-tips" hidden></p>
       <ul id="${id}" role="listbox"></ul>
       <p class="palette-hint"><kbd>↑</kbd><kbd>↓</kbd> ${tr.select}\u3000<kbd>Enter</kbd> ${tr.open}\u3000<kbd>Esc</kbd> ${tr.close}</p>`;
     document.body.append(this.#dialog);
     this.#input = this.#dialog.querySelector("input")!;
     this.#input.placeholder = opts.placeholder;
+    if (opts.top) this.#input.before(icon("search"));
     this.#list = this.#dialog.querySelector("ul")!;
     this.#list.setAttribute("aria-label", opts.label);
     this.#tips = this.#dialog.querySelector(".palette-tips")!;
@@ -99,6 +109,7 @@ export class Picker<T> {
       if (li) this.#run(Number(li.dataset.index));
     });
     this.#dialog.addEventListener("close", () => opts.closed?.());
+    if (opts.anchor) window.addEventListener("resize", () => this.#dialog.open && this.#place());
     // 點對話框外面（::backdrop）關閉。
     this.#dialog.addEventListener("click", (e) => {
       if (e.target === this.#dialog) this.#dialog.close();
@@ -111,7 +122,38 @@ export class Picker<T> {
     this.#renderTips();
     void this.#refresh();
     this.#dialog.showModal();
+    this.#place();
     this.#input.select();
+  }
+
+  /** 搜尋框沒有輸入時顯示的提示（例如依目前能找的東西改寫）。 */
+  setPlaceholder(text: string): void {
+    this.#input.placeholder = text;
+  }
+
+  /**
+   * 對齊 `anchor`：寬度至少和它一樣（一般是 600px），以它為中心、不超出視窗；
+   * 搜尋列的中線和它的中線同高，放大鏡與文字就在原來的位置。
+   */
+  #place(): void {
+    const style = this.#dialog.style;
+    const anchor = this.#opts.anchor?.();
+    if (!anchor?.getClientRects().length) {
+      style.removeProperty("inset");
+      style.removeProperty("margin");
+      style.removeProperty("width");
+      return;
+    }
+    const a = anchor.getBoundingClientRect();
+    const view = document.documentElement.clientWidth;
+    const width = Math.min(Math.max(a.width, 600), view - 16);
+    const left = Math.min(Math.max(a.left + a.width / 2 - width / 2, 8), view - 8 - width);
+    const row = this.#dialog.querySelector<HTMLElement>(".palette-search") ?? this.#input;
+    const offset = row.getBoundingClientRect().top - this.#dialog.getBoundingClientRect().top;
+    const top = Math.max(0, a.top + a.height / 2 - offset - row.offsetHeight / 2);
+    style.margin = "0";
+    style.inset = `${top}px auto auto ${left}px`;
+    style.width = `${width}px`;
   }
 
   #renderTips(): void {
