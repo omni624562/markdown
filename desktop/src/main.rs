@@ -50,6 +50,7 @@ mod text_encoding;
 mod trust;
 mod update;
 mod watch;
+mod window_state;
 mod winhttp;
 mod workspace;
 
@@ -77,8 +78,11 @@ pub fn track_file(app: &AppHandle, path: &Path) {
 ///
 /// 主畫面用子 webview 的方式放進視窗（隨視窗調整大小），終端機的 webview 之後才能疊在上面
 /// （見 `ai::view`）；Linux 上用一般的 webview 視窗時，加入第二個 webview 會被上下平分。
+///
+/// 有上次關閉時的大小與位置（見 `window_state`）就照樣還原：先不顯示、不最大化地建立，套用大小與位置，
+/// 要最大化的話在顯示之前最大化，才不會先閃一下一般大小。沒有紀錄時照設定檔（最大化）。
 fn create_main_window(app: &tauri::App) -> tauri::Result<Window> {
-    let config = app
+    let mut config = app
         .config()
         .app
         .windows
@@ -86,7 +90,22 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<Window> {
         .find(|w| w.label == "main")
         .cloned()
         .unwrap_or_default();
+    let saved = window_state::load(app.handle());
+    if saved.is_some() {
+        config.maximized = false;
+        config.visible = false;
+    }
     let window = tauri::window::WindowBuilder::from_config(app.handle(), &config)?.build()?;
+    if let Some(state) = saved {
+        if window_state::restore(&window, state) {
+            window.maximize()?;
+        }
+    }
+    let tracked = window.clone();
+    window.on_window_event(move |event| {
+        let was_maximized = MAXIMIZED_BEFORE_FULLSCREEN.load(std::sync::atomic::Ordering::Relaxed);
+        window_state::track(&tracked, event, was_maximized);
+    });
     let webview = tauri::webview::WebviewBuilder::from_config(&config)
         .auto_resize()
         .on_navigation(navigation::is_app_url)
@@ -318,6 +337,7 @@ fn main() {
         .manage(dav::Dav::default())
         .manage(pdf::PdfTarget::default())
         .manage(image_protocol::ImageRoots::default())
+        .manage(window_state::Remembered::default())
         .register_asynchronous_uri_scheme_protocol(
             image_protocol::SCHEME,
             |ctx, request, responder| {
@@ -338,6 +358,10 @@ fn main() {
                     window.set_decorations(false)?;
                     let _ = window.set_shadow(true);
                 }
+            }
+            // 還原上次的大小時視窗是先藏著建立的（見 `create_main_window`），都設定好了才顯示。
+            if let Some(window) = app.get_window("main") {
+                window.show()?;
             }
             Ok(())
         })
@@ -566,6 +590,7 @@ fn main() {
                 // 關閉 app 時，終端機裡的程式（含 Claude Code、Codex）一併結束。
                 app.state::<ai::term::Terminals>().kill_all();
                 ai::mcp::mcp_stop(app.state());
+                window_state::save(app);
             }
         });
 }
