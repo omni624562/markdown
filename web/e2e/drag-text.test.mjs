@@ -84,6 +84,22 @@ const selectIn = (page, root, text, select = true) =>
  */
 const pointIn = (page, root, text) => selectIn(page, root, text, false);
 
+/**
+ * 在編輯區選取 `text`，等 CodeMirror 自己的選取範圍也跟上再回傳座標。用程式設定畫面上的選取之後，
+ * CodeMirror 是收到 selectionchange 事件才更新（不是馬上）；它還沒更新時按下滑鼠，會被當成一般的點擊
+ * （選取被清掉、拖不起來）。電腦忙的時候滑鼠事件可能排在前面，所以要等。
+ */
+async function selectInEditor(page, text) {
+  const at = await selectIn(page, ".cm-content", text);
+  await page.waitForFunction(() => {
+    const content = document.querySelector(".cm-content");
+    const tile = content?.cmView ?? content?.cmTile;
+    const view = tile?.view ?? tile?.root?.view;
+    return !!view && !view.state.selection.main.empty;
+  });
+  return at;
+}
+
 async function drag(page, from, to) {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -115,7 +131,7 @@ test("從預覽選一段文字拖到助理的輸入區：放進問題裡，游�
 test("從編輯區（原始碼）選取拖到助理：放進問題裡，文件不變", async () => {
   const { page, context, errors } = await setup("editor");
   const before = await page.locator(".cm-content").textContent();
-  await drag(page, await selectIn(page, ".cm-content", "三個景點"), await center(page, "#assistant-panel textarea"));
+  await drag(page, await selectInEditor(page, "三個景點"), await center(page, "#assistant-panel textarea"));
   assert.equal(await page.locator("#assistant-panel textarea").inputValue(), "三個景點");
   assert.equal(await page.locator(".cm-content").textContent(), before, "文件沒有被搬走或改掉");
   assert.deepEqual(errors, []);
