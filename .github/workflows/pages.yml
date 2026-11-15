@@ -1,0 +1,81 @@
+# 把網頁版（web/dist）放上 GitHub Pages：https://<帳號>.github.io/<儲存庫>/
+# 手動執行（Actions → Pages → Run workflow，選 main）。用來在平板、手機的瀏覽器上試用網頁版。
+# 儲存庫要先在 Settings → Pages 把 Source 設成「GitHub Actions」。
+#
+# 建置步驟和 ci.yml 的 web 工作相同（wasm-pack、固定版本並核對檢查碼的 wasm-opt），只是不跑測試：
+# main 上的提交都已經通過 CI。
+name: Pages
+
+on:
+  workflow_dispatch:
+
+# 同時只部署一次；新的等舊的做完（不取消進行中的部署，免得網站停在半套的狀態）。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      WASM_PACK: "0.15.0"
+      BINARYEN_NPM: "117.0.0"
+      BINARYEN_NPM_SHA256: 5f2770ade768fef921b7bc42f415d299c3825d9b4a1569774f4b45305e32efd4
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown && rustup default stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/wasm-pack
+            target
+          key: wasm-${{ runner.os }}-${{ env.WASM_PACK }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: wasm-${{ runner.os }}-${{ env.WASM_PACK }}-
+      - run: command -v wasm-pack || cargo install wasm-pack --version "$WASM_PACK" --locked
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: 安裝 wasm-opt（固定版本的 binaryen，從 npm 安裝並核對檢查碼）
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p binaryen && cd binaryen
+          npm pack "binaryen@${BINARYEN_NPM}" --silent
+          echo "${BINARYEN_NPM_SHA256}  binaryen-${BINARYEN_NPM}.tgz" | sha256sum -c -
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock "./binaryen-${BINARYEN_NPM}.tgz"
+          ./node_modules/.bin/wasm-opt --version
+          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: npm run wasm
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # 只有這個工作能寫 Pages；id-token 用來證明部署來自這個 workflow。
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
