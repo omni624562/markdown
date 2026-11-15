@@ -3629,8 +3629,22 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-actions-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
 .issue-find { display: flex; flex: none; gap: 4px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
 .issue-find[hidden] { display: none; }
-/* 「預覽」模式的尋找列（app/preview-find.ts）：黏在預覽上緣，捲動時不動。 */
-.preview-find { position: sticky; top: 0; z-index: 3; }
+/*
+ * 「預覽」模式的尋找列（app/preview-find.ts）：在預覽的下緣，和編輯區的「尋找與取代」同一個位置、同樣的排法
+ * （尋找框、數量、上一個、下一個，關閉在最右邊）。.preview-find 是預覽裡的第一個元素、不佔高度，黏在
+ * 可視範圍的最下面（top: 100%）；裡面那一列往上疊，捲動時不動，內容再短也在最下面。
+ */
+.issue-find.preview-find { position: sticky; top: 100%; z-index: 3; display: block; height: 0; padding: 0; border: 0; }
+.issue-find.preview-find[hidden] { display: none; }
+.preview-find-row { position: absolute; right: 0; bottom: 0; left: 0; display: flex; gap: 2px; align-items: center; min-width: 0; padding: 6px 10px; border-top: 1px solid var(--border); background: var(--surface); font: 13px var(--font-ui); }
+.preview-find-row input { flex: 0 1 360px; width: auto; min-width: 140px; margin-right: 6px; }
+.preview-find-row .issue-find-count { flex: none; min-width: 64px; margin-right: 4px; white-space: nowrap; }
+.preview-find-row .btn.icon-only { flex: none; width: 26px; height: 26px; min-height: 0; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
+.preview-find-row .btn.icon-only:hover { background: var(--active-line); color: var(--fg); }
+.preview-find-row .btn.icon-only .icon { width: 16px; height: 16px; }
+.preview-find-row .preview-find-close { margin-left: auto; }
+/* 尋找列開著時，預覽最下面多留一列的高度，最後幾行不會被蓋住。 */
+.preview-pane.finding > #preview { margin-bottom: 41px; }
 .issue-find input {
   width: min(320px, 50%);
   height: 28px;
