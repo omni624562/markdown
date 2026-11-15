@@ -16,6 +16,7 @@
         "minWidth": 480,
         "minHeight": 400,
         "center": true,
+        "maximized": true,
         "dragDropEnabled": false,
         "create": false
       }
