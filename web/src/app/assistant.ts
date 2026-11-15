@@ -51,6 +51,8 @@ import { drawerQuery, indexedDocs, indexedTexts, openPath, setRightOutline } fro
 import { availableRightTabs, selectRightTab } from "./right-tabs.ts";
 import { app } from "./context.ts";
 import { cometLocked, unlockComet } from "./comet-files.ts";
+import { type Cite, appendMarks, citeMarks } from "../assistant-cites.ts";
+import { citesMarkdown, linkCites } from "./assistant-cites.ts";
 import { docName as tabName } from "./doc-names.ts";
 import { issueView } from "./wiki-edit.ts";
 import { settingsDialog } from "./settings-ui.ts";
@@ -69,6 +71,10 @@ interface Pending {
   question: string;
   /** 上網查資料時引用的網頁（網址 → 標題）。 */
   sources: Map<string, string>;
+  /** 回答根據的原文（文件裡的段落、PDF 的頁碼），照編號排。 */
+  cites: Cite[];
+  /** 沒有出處標記的回答（接著問時送回去的是這個，免得模型學著自己編標記）。 */
+  plain: string;
   /** 畫面上顯示的問題（動作名稱或使用者打的字），存成筆記時用。 */
   shown: string;
 }
@@ -387,7 +393,7 @@ function bubble(role: "user" | "assistant", text = ""): HTMLElement {
   return el;
 }
 
-function showAnswer(el: HTMLElement, text: string): void {
+function showAnswer(el: HTMLElement, text: string, cites: readonly Cite[] = []): void {
   const body = document.createElement("div");
   body.className = "markdown-body assistant-answer";
   // sourcepos：回答裡的程式碼區塊、表格對回原文（見 blockActions）。
@@ -396,6 +402,7 @@ function showAnswer(el: HTMLElement, text: string): void {
   body.innerHTML = blockRemoteImagesInHtml(renderMarkdown(text, { kind: "markdown", sourcepos: true }).html);
   // 這裡沒有「按一下載入」，提示只留原本的網址。
   for (const img of body.querySelectorAll<HTMLImageElement>("img.remote-blocked")) img.title = img.dataset.blockedSrc ?? "";
+  linkCites(body, cites);
   el.replaceChildren(body);
 }
 
@@ -644,16 +651,19 @@ async function send(question: string, action: AssistantAction | null = null, cou
     notes,
     tasks,
   };
-  const content = userContent(question, ctx);
+  // 一般問答：目前的文件送成可以標出處的區塊（回答會指出根據的是哪一段）；會改文件的動作照舊放在訊息裡。
+  const citeDoc = mode === "answer" && ctx.doc?.text.trim() ? ctx.doc : null;
+  const content = userContent(question, citeDoc ? { ...ctx, doc: null } : ctx);
   const system = systemPrompt(mode, project);
   const model = app.settings.value.claudeModel;
   const images = attached.map(({ mediaType, data }) => ({ mediaType, data }));
   const documents = pdfs.map(({ mediaType, data }) => ({ mediaType, data }));
   const pdfChars = pdfs.reduce((n, p) => n + p.pages * PDF_PAGE_CHARS, 0);
-  if (!(await confirmFirst(content.length + system.length + images.length * IMAGE_CHARS + pdfChars, model))) return;
+  if (!(await confirmFirst(content.length + (citeDoc?.text.length ?? 0) + system.length + images.length * IMAGE_CHARS + pdfChars, model))) return;
   // 會改文件的動作不接續之前的對話（只看這一次的內容）。
   const messages = conversation(mode === "answer" ? history : [], content);
   if (images.length) messages[messages.length - 1] = { ...messages[messages.length - 1], images };
+  if (citeDoc) messages[messages.length - 1] = { ...messages[messages.length - 1], doc: citeDoc };
   // PDF 附在這次對話的第一則訊息：之後接著問時前面的內容一樣，可以從快取讀取（比較便宜）。
   if (documents.length) messages[0] = { ...messages[0], images: [...documents, ...(messages[0].images ?? [])] };
   // 上網查只用在一般問答，而且設定裡要允許。
@@ -694,7 +704,7 @@ async function send(question: string, action: AssistantAction | null = null, cou
   answer.classList.add("loading");
   answer.textContent = t("思考中…");
   const id = nextId++;
-  pending = { id, answer, text: "", question, shown, sources: new Map(), mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
+  pending = { id, answer, text: "", question, shown, sources: new Map(), cites: [], plain: "", mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
   input.value = "";
   setRunning(true);
   try {
@@ -727,14 +737,21 @@ function onRun(e: AssistantRunEvent): void {
   if (!p || e.id !== p.id) return;
   if (e.kind === "delta") {
     p.text += e.text;
+    p.plain += e.text;
     p.answer.classList.remove("loading");
-    showAnswer(p.answer, p.text);
+    showAnswer(p.answer, p.text, p.cites);
     log.scrollTop = log.scrollHeight;
     return;
   }
   if (e.kind === "error") return fail(e.message);
   if (e.kind === "source") {
     p.sources.set(e.url, e.title);
+    return;
+  }
+  if (e.kind === "cite") {
+    // 剛剛那一段的出處：標記接在那一段後面。
+    p.text = appendMarks(p.text, citeMarks(p.cites, e.cites));
+    if (p.text.trim()) showAnswer(p.answer, p.text, p.cites);
     return;
   }
   pending = null;
@@ -744,12 +761,14 @@ function onRun(e: AssistantRunEvent): void {
     const heading = "**" + t("來源") + "**";
     p.text = [p.text.trimEnd(), heading, list.join("\n")].join("\n\n");
   }
+  // 根據的原文也列在最後；畫面上的編號按了會跳到那一段。
+  if (p.cites.length && p.text.trim()) p.text = [p.text.trimEnd(), citesMarkdown(p.cites)].join("\n\n");
   p.answer.classList.remove("loading");
   if (e.stop === "refusal" && !p.text.trim()) {
     p.answer.classList.add("error");
     p.answer.textContent = t("Claude 沒有回答這個要求。");
   } else {
-    showAnswer(p.answer, p.text || t("（沒有回答）"));
+    showAnswer(p.answer, p.text || t("（沒有回答）"), p.cites);
     if (e.stop === "max_tokens" || e.stop === "pause_turn") {
       const s = document.createElement("small");
       s.className = "assistant-cut";
@@ -761,7 +780,7 @@ function onRun(e: AssistantRunEvent): void {
     if (p.mode !== "answer" && p.text.trim()) suggestionCard(p.answer, p, p.text);
     else if (p.mode === "answer" && p.text.trim()) {
       answerActions(p.answer, p.text);
-      history = [...history, { role: "user" as const, content: p.question }, { role: "assistant" as const, content: p.text }].slice(-12);
+      history = [...history, { role: "user" as const, content: p.question }, { role: "assistant" as const, content: p.cites.length ? p.plain : p.text }].slice(-12);
     }
   }
   if (usage) usage = { ...usage, usd: e.monthUsd };
@@ -872,7 +891,7 @@ function stop(): void {
   const p = pending;
   pending = null;
   p.answer.classList.remove("loading");
-  if (p.text) showAnswer(p.answer, p.text);
+  if (p.text) showAnswer(p.answer, p.text, p.cites);
   else p.answer.textContent = t("已停止");
   setRunning(false);
   void refreshStatus();

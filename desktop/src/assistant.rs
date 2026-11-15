@@ -388,6 +388,24 @@ pub struct ChatMessage {
     /// 只有使用者的訊息能附圖片或 PDF。
     #[serde(default)]
     images: Vec<ChatImage>,
+    /// 目前的文件（一般問答）：送成可以標出處的 `document` 區塊，回答會指出根據的是哪一段。
+    #[serde(default)]
+    doc: Option<ChatDoc>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct ChatDoc {
+    name: String,
+    text: String,
+}
+
+/// 文件只附在使用者的訊息，內容不能空白。
+fn valid_docs(messages: &[ChatMessage]) -> bool {
+    messages.iter().all(|m| {
+        m.doc
+            .as_ref()
+            .is_none_or(|d| m.role == "user" && !d.text.trim().is_empty())
+    })
 }
 
 /// 附件（圖片、PDF）的格式、大小、數量都在範圍內，而且只附在使用者的訊息。
@@ -461,11 +479,12 @@ fn valid_messages(messages: &[ChatMessage]) -> bool {
 }
 
 fn request_body(m: &Model, req: &SendRequest, web: bool, fetch: &[String]) -> serde_json::Value {
+    let cite = req.messages.iter().any(|m| m.doc.is_some());
     let messages: Vec<_> = req
         .messages
         .iter()
         .map(|msg| {
-            if msg.images.is_empty() {
+            if msg.images.is_empty() && msg.doc.is_none() {
                 return serde_json::json!({ "role": msg.role, "content": msg.content });
             }
             // 圖片、PDF 放在文字前面；PDF 是 `document` 區塊。
@@ -473,17 +492,26 @@ fn request_body(m: &Model, req: &SendRequest, web: bool, fetch: &[String]) -> se
                 .images
                 .iter()
                 .map(|i| {
-                    let kind = if i.media_type == PDF_TYPE {
-                        "document"
-                    } else {
-                        "image"
-                    };
-                    serde_json::json!({
-                        "type": kind,
+                    let pdf = i.media_type == PDF_TYPE;
+                    let mut block = serde_json::json!({
+                        "type": if pdf { "document" } else { "image" },
                         "source": { "type": "base64", "media_type": i.media_type, "data": i.data },
-                    })
+                    });
+                    // 標出處要嘛每一份文件都開，要嘛都不開（API 的規定）。
+                    if pdf && cite {
+                        block["citations"] = serde_json::json!({ "enabled": true });
+                    }
+                    block
                 })
                 .collect();
+            if let Some(d) = &msg.doc {
+                blocks.push(serde_json::json!({
+                    "type": "document",
+                    "source": { "type": "text", "media_type": "text/plain", "data": d.text },
+                    "title": d.name,
+                    "citations": { "enabled": true },
+                }));
+            }
             blocks.push(serde_json::json!({ "type": "text", "text": msg.content }));
             serde_json::json!({ "role": msg.role, "content": blocks })
         })
@@ -515,6 +543,8 @@ fn request_body(m: &Model, req: &SendRequest, web: bool, fetch: &[String]) -> se
             "max_uses": MAX_FETCHES,
             "max_content_tokens": MAX_FETCH_TOKENS,
             "allowed_domains": fetch,
+            // 文件開了標出處，讀進來的網頁也要一起開（要嘛都開、要嘛都不開）。
+            "citations": { "enabled": cite },
         }));
     }
     if !tools.is_empty() {
@@ -561,6 +591,10 @@ enum Sse {
         url: String,
         title: String,
     },
+    /// 回答根據的是文件裡的哪一段（文字檔是第幾個字開始，PDF 是第幾頁）。
+    Cite(Cite),
+    /// 一段回答結束：這一段的出處接在它後面。
+    BlockStop,
     Delta {
         /// 最後的輸入 token（上網查、讀網頁讀進來的內容算在這裡；沒有就是 0）。
         input: u64,
@@ -570,6 +604,18 @@ enum Sse {
     },
     Error(String),
     Other,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Cite {
+    /// 引用的原文。
+    text: String,
+    /// 文件的名稱（PDF 沒有）。
+    title: Option<String>,
+    /// 文字檔：原文從第幾個字開始（找原文時的提示，文件改過就不準）。
+    start: Option<u64>,
+    /// PDF：第幾頁（從 1 開始）。
+    page: Option<u64>,
 }
 
 fn parse_sse(data: &str) -> Sse {
@@ -603,9 +649,26 @@ fn parse_sse(data: &str) -> Sse {
                         title: c["title"].as_str().unwrap_or(url).to_string(),
                     }
                 }
-                _ => Sse::Other,
+                _ => match (c["type"].as_str(), c["cited_text"].as_str()) {
+                    (Some(kind @ ("char_location" | "page_location")), Some(text))
+                        if !text.trim().is_empty() =>
+                    {
+                        Sse::Cite(Cite {
+                            text: text.to_string(),
+                            title: c["document_title"].as_str().map(str::to_string),
+                            start: c["start_char_index"]
+                                .as_u64()
+                                .filter(|_| kind == "char_location"),
+                            page: c["start_page_number"]
+                                .as_u64()
+                                .filter(|_| kind == "page_location"),
+                        })
+                    }
+                    _ => Sse::Other,
+                },
             }
         }
+        Some("content_block_stop") => Sse::BlockStop,
         // 讀進來的網頁：列在回答下面的來源裡。
         Some("content_block_start")
             if v["content_block"]["type"] == "web_fetch_tool_result"
@@ -670,6 +733,11 @@ enum RunEvent {
         url: String,
         title: String,
     },
+    /// 剛剛那一段回答根據的原文。
+    Cite {
+        id: u64,
+        cites: Vec<Cite>,
+    },
     #[serde(rename_all = "camelCase")]
     Done {
         id: u64,
@@ -703,6 +771,9 @@ fn prepare(
     if !valid_messages(&request.messages) {
         return Err(tr!("沒有要送出的內容"));
     }
+    if !valid_docs(&request.messages) {
+        return Err(tr!("沒有要送出的內容"));
+    }
     if !valid_images(&request.messages) {
         return Err(tr!(
             "圖片只能是 PNG、JPEG、GIF 或 WebP，每張不超過 5 MB，一次最多 4 張"
@@ -712,7 +783,9 @@ fn prepare(
         + request
             .messages
             .iter()
-            .map(|x| x.content.chars().count())
+            .map(|x| {
+                x.content.chars().count() + x.doc.as_ref().map_or(0, |d| d.text.chars().count())
+            })
             .sum::<usize>();
     if chars > MAX_INPUT_CHARS {
         return Err(tr!(
@@ -865,6 +938,7 @@ fn run(
     let mut tokens = Tokens::default();
     let mut served = m;
     let mut stop = None;
+    let mut cites = Vec::new();
     let reader = BufReader::new(res.into_body().into_reader());
     for line in reader.lines() {
         if cancel.load(Ordering::Relaxed) {
@@ -895,6 +969,12 @@ fn run(
             }
             Sse::Source { url, title } => {
                 let _ = app.emit("assistant-run", RunEvent::Source { id, url, title });
+            }
+            // 出處可能比那一段的文字先到：等那一段結束再送，標記才會接在句子後面。
+            Sse::Cite(c) => cites.push(c),
+            Sse::BlockStop if !cites.is_empty() => {
+                let cites = std::mem::take(&mut cites);
+                let _ = app.emit("assistant-run", RunEvent::Cite { id, cites });
             }
             Sse::Delta {
                 input,
@@ -1043,6 +1123,7 @@ mod tests {
             role: role.into(),
             content: content.into(),
             images: vec![],
+            doc: None,
         };
         assert!(valid_messages(&[m("user", "摘要")]));
         assert!(valid_messages(&[
@@ -1065,6 +1146,7 @@ mod tests {
                 role: "user".into(),
                 content: "摘要".into(),
                 images: vec![],
+                doc: None,
             }],
             web_search: false,
             web_fetch: vec![],
@@ -1097,6 +1179,7 @@ mod tests {
             role: role.into(),
             content: "這張圖在講什麼？".into(),
             images,
+            doc: None,
         };
         let req = SendRequest {
             model: "claude-haiku-5-5".into(),
@@ -1143,6 +1226,7 @@ mod tests {
             role: role.into(),
             content: "這份合約的重點？".into(),
             images,
+            doc: None,
         };
         let req = SendRequest {
             model: "claude-sonnet-5-5".into(),
@@ -1332,6 +1416,7 @@ mod tests {
                 role: "user".into(),
                 content: "整理 https://example.test/news 的重點".into(),
                 images: vec![],
+                doc: None,
             }],
             web_search: false,
             web_fetch: vec!["example.test".into()],
@@ -1423,6 +1508,7 @@ mod tests {
                 role: "user".into(),
                 content: "這個方案有什麼風險？".into(),
                 images: vec![],
+                doc: None,
             }],
             web_search: false,
             web_fetch: vec![],
@@ -1453,6 +1539,7 @@ mod tests {
                 role: "user".into(),
                 content: "摘要這份文件".into(),
                 images: vec![],
+                doc: None,
             }],
             web_search: true,
             web_fetch: vec![],
@@ -1478,5 +1565,113 @@ mod tests {
         let haiku = model("claude-haiku-5-5").unwrap();
         assert!((input_cost(haiku, 50_000) - 0.005).abs() < 1e-9);
         assert!((input_cost(haiku, 200_000) - 0.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_document_is_sent_as_a_citable_block_and_citations_are_all_or_none() {
+        let req = |doc: Option<ChatDoc>| SendRequest {
+            model: "claude-sonnet-5-5".into(),
+            system: String::new(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "幾點出發？".into(),
+                images: vec![ChatImage {
+                    media_type: "application/pdf".into(),
+                    data: "JVBERi0xLjQ=".into(),
+                }],
+                doc,
+            }],
+            web_search: false,
+            web_fetch: vec!["example.test".into()],
+            deep: false,
+        };
+        let m = model("claude-sonnet-5-5").unwrap();
+        let with = req(Some(ChatDoc {
+            name: "行程.md".into(),
+            text: "第一天早上八點出發。".into(),
+        }));
+        let body = request_body(m, &with, false, &with.web_fetch);
+        let content = &body["messages"][0]["content"];
+        // PDF、文件、問題；有文件時 PDF 和讀進來的網頁也一起開標出處。
+        assert_eq!(content[0]["citations"]["enabled"], true);
+        assert_eq!(
+            content[1],
+            serde_json::json!({
+                "type": "document",
+                "source": { "type": "text", "media_type": "text/plain", "data": "第一天早上八點出發。" },
+                "title": "行程.md",
+                "citations": { "enabled": true },
+            })
+        );
+        assert_eq!(content[2]["text"], "幾點出發？");
+        assert_eq!(body["tools"][0]["citations"]["enabled"], true);
+        assert!(valid_docs(&with.messages));
+        // 沒有文件：都不開。
+        let without = req(None);
+        let body = request_body(m, &without, false, &without.web_fetch);
+        assert!(body["messages"][0]["content"][0].get("citations").is_none());
+        assert_eq!(body["tools"][0]["citations"]["enabled"], false);
+        // 空白的文件、附在助理訊息的文件都不收。
+        let mut bad = req(Some(ChatDoc {
+            name: "空白.md".into(),
+            text: " \n".into(),
+        }));
+        assert!(!valid_docs(&bad.messages));
+        bad.messages[0].doc = Some(ChatDoc {
+            name: "行程.md".into(),
+            text: "內容".into(),
+        });
+        bad.messages[0].role = "assistant".into();
+        assert!(!valid_docs(&bad.messages));
+    }
+
+    #[test]
+    fn citations_of_the_document_are_parsed() {
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"content_block_delta","index":1,"delta":{"type":"citations_delta","citation":{"type":"char_location","cited_text":"第一天早上八點出發。","document_index":0,"document_title":"行程.md","start_char_index":12,"end_char_index":22}}}"#
+            ),
+            Sse::Cite(Cite {
+                text: "第一天早上八點出發。".into(),
+                title: Some("行程.md".into()),
+                start: Some(12),
+                page: None,
+            })
+        );
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"content_block_delta","index":1,"delta":{"type":"citations_delta","citation":{"type":"page_location","cited_text":"租期一年。","document_index":0,"document_title":null,"start_page_number":3,"end_page_number":4}}}"#
+            ),
+            Sse::Cite(Cite {
+                text: "租期一年。".into(),
+                title: None,
+                start: None,
+                page: Some(3),
+            })
+        );
+        // 沒有原文的不算。
+        assert_eq!(
+            parse_sse(
+                r#"{"type":"content_block_delta","index":1,"delta":{"type":"citations_delta","citation":{"type":"char_location","cited_text":"","document_index":0}}}"#
+            ),
+            Sse::Other
+        );
+        assert_eq!(
+            parse_sse(r#"{"type":"content_block_stop","index":1}"#),
+            Sse::BlockStop
+        );
+        assert_eq!(
+            serde_json::to_value(RunEvent::Cite {
+                id: 7,
+                cites: vec![Cite {
+                    text: "租期一年。".into(),
+                    title: None,
+                    start: None,
+                    page: Some(3),
+                }],
+            })
+            .unwrap(),
+            serde_json::json!({ "kind": "cite", "id": 7, "cites": [{ "text": "租期一年。", "title": null, "start": null, "page": 3 }] })
+        );
     }
 }

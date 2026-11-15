@@ -709,12 +709,16 @@ export interface AssistantMessage {
   content: string;
   /** 只有使用者的訊息能附圖片。 */
   images?: AssistantImage[];
+  /** 目前的文件（一般問答）：送成可以標出處的區塊，回答會指出根據的是哪一段。 */
+  doc?: { name: string; text: string };
 }
 
 export type AssistantRunEvent =
   | { kind: "delta"; id: number; text: string }
   /** 上網查資料時回答引用的網頁。 */
   | { kind: "source"; id: number; url: string; title: string }
+  /** 剛剛那一段回答根據的原文（文件裡的位置或 PDF 的頁碼）。 */
+  | { kind: "cite"; id: number; cites: { text: string; title: string | null; start: number | null; page: number | null }[] }
   | { kind: "done"; id: number; usd: number; monthUsd: number; stop: "max_tokens" | "refusal" | "pause_turn" | null }
   | { kind: "error"; id: number; message: string };
 
