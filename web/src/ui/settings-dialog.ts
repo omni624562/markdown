@@ -14,7 +14,6 @@ import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
 import { COMMON_KINDS, isCustomKind, kindColor, kindKey } from "../work-item-colors.ts";
 import { ACCENTS, DEFAULT_PALETTE, PALETTES, type PaletteId, accentColors, parseAccent } from "../palette.ts";
-import { REPO_URL } from "../repo.ts";
 import { WORK_ITEMS_VAR } from "../daily-notes.ts";
 
 type ThemePref = "system" | "light" | "dark";
@@ -50,7 +49,7 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
   previewWidth: [
     ["narrow", t("窄")],
     ["medium", t("中")],
-    ["wide", t("寬")],
+    ["wide", t("寬（預設）")],
   ],
   docFont: [
     ["sans", t("黑體（預設）")],
@@ -67,8 +66,8 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["150", "150%"],
   ],
   tabStyle: [
-    ["line", t("頂端一條線（原本）")],
-    ["card", t("卡片")],
+    ["line", t("頂端一條線")],
+    ["card", t("卡片（預設）")],
     ["underline", t("底線")],
   ],
   panelStyle: [
@@ -239,13 +238,6 @@ let commandTitle = (id: string): string => id;
 
 /** 「編輯」頁。 */
 const EDIT_GROUPS: Group[] = [
-  {
-    title: t("寫作模式"),
-    fields: [
-      { key: "focusMode", label: t("專注模式"), hint: t("淡化目前段落以外的文字") },
-      { key: "typewriterMode", label: t("打字機模式"), hint: t("游標所在的行保持在畫面中央") },
-    ],
-  },
   {
     title: t("輸入輔助"),
     fields: [
@@ -419,7 +411,7 @@ export class SettingsDialog {
     if (activityHooks) layoutPage.append(...this.#activityGroup(activityHooks));
     body.append(layoutPage);
 
-    const edit = this.#section(t("編輯"), "pen-line", t("寫作模式、輸入輔助與貼上"));
+    const edit = this.#section(t("編輯"), "pen-line", t("輸入輔助與貼上"));
     for (const g of EDIT_GROUPS) edit.append(...this.#group(g.title, this.#rows(g.fields)));
     body.append(edit);
 
@@ -801,7 +793,6 @@ export class SettingsDialog {
         ]),
         ...this.#group(t("意見回饋"), [
           this.#row("report", t("回報問題或建議"), t("在 GitHub 上留言（公開的頁面），會自動附上版本資訊"), link("report", t("回報"), () => about.report())),
-          this.#row("source", t("原始碼"), t("oMarker 以 MIT 授權開放原始碼"), link("source", "GitHub", () => about.openUrl(REPO_URL))),
         ]),
       );
     }

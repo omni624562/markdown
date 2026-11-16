@@ -78,8 +78,6 @@ export const common: Record<string, Translation> = {
   "狀態列右邊的「原始碼／即時預覽／分割／預覽」；關閉時只顯示圖示，名稱在滑鼠提示裡": "The Source / Live Preview / Split / Preview switch on the right of the status bar. When off, only icons are shown; names appear in tooltips.",
   "文件內容": "Document Content",
   "編輯區": "Editor",
-  "專注模式": "Focus Mode",
-  "打字機模式": "Typewriter Mode",
   "登出": "Sign Out",
   "用 GitHub 登入": "Sign In with GitHub",
   "上傳到 GitHub": "Upload to GitHub",

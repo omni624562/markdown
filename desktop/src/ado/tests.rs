@@ -1703,3 +1703,16 @@ fn filters_by_sprint_including_items_not_in_any_sprint() {
     let none = wiql_for("", &WorkItemFilter::default(), &[]).unwrap();
     assert!(!none.contains("IterationPath"));
 }
+
+#[test]
+fn reads_the_revision_from_new_and_old_servers() {
+    assert_eq!(
+        rev_of(&json!({"id": 1, "rev": 7, "fields": {"System.Rev": 7}})),
+        Some(7)
+    );
+    assert_eq!(
+        rev_of(&json!({"id": 1, "fields": {"System.Rev": 5}})),
+        Some(5)
+    );
+    assert_eq!(rev_of(&json!({"id": 1})), None);
+}

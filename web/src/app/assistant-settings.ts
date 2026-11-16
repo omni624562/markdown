@@ -9,7 +9,7 @@ import { t } from "../i18n.ts";
 import { ASSISTANT_ACTION_LIMITS, ASSISTANT_FONT_RANGE, type AssistantCustomAction, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { askText } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { assistantKeyChanged } from "./assistant.ts";
 import { app } from "./context.ts";
 
@@ -159,7 +159,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     if (!key) return;
     try {
       await d.assistantKeySet(key);
-      toast(t("已儲存 API 金鑰"), { tone: "success" });
+      announce(t("已儲存 API 金鑰"));
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), { tone: "error" });
     }

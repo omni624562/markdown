@@ -433,7 +433,7 @@ test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]]
   await context.close();
 });
 
-test("上網查資料：設定沒開時沒有這個選項；開了才出現，送出時這一題才帶上網搜尋，回答最後列出來源", async () => {
+test("上網查資料：設定沒開時「上網查」是灰色的，按了說明要到設定開啟；開了才能勾，送出時這一題才帶上網搜尋，回答最後列出來源", async () => {
   {
     const { page, context } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
     await openProject(page);
@@ -441,7 +441,15 @@ test("上網查資料：設定沒開時沒有這個選項；開了才出現，�
     await page.keyboard.press("Control+Shift+L");
     const panel = page.locator("#assistant-panel");
     await panel.waitFor();
-    assert.equal(await panel.getByRole("button", { name: "上網查" }).count(), 0);
+    // 看得到（灰色），按了不會勾選，只說明要到設定開啟，附「打開設定」。
+    const off = panel.locator(".assistant-chip-off", { hasText: "上網查" });
+    await off.waitFor();
+    await off.click();
+    const tip = page.locator(".toast", { hasText: "允許上網查資料" });
+    await tip.waitFor();
+    assert.equal(await panel.locator(".assistant-chip:not(.assistant-chip-add)", { hasText: "上網查" }).count(), 0, "沒有勾選");
+    await tip.getByRole("button", { name: "打開設定" }).click();
+    await page.locator("dialog[open]", { hasText: "允許上網查資料" }).waitFor();
     await context.close();
   }
   const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT], claudeWebSearch: true }) });
@@ -629,6 +637,31 @@ test("回答裡夾著一小塊 ```markdown 範例（說明比較多，不拿掉�
   await page.locator(".cm-content").click();
   await answer.locator(".assistant-block").first().getByRole("button", { name: "把這一塊插入到游標處" }).click();
   assert.equal(await docText(), table);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("標題列的助理按鈕：開了助理才出現，點一下打開、再點一下收起，用快捷鍵打開時也標成按下", async () => {
+  {
+    const { page, context } = await open({ desktop: desktop() });
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator("#top-assistant").isVisible(), false, "沒開助理：不顯示");
+    await context.close();
+  }
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  const button = page.locator("#top-assistant");
+  await button.waitFor();
+  const panel = page.locator("#assistant-panel");
+  await button.click();
+  await panel.waitFor();
+  assert.equal(await button.getAttribute("aria-pressed"), "true");
+  await button.click();
+  await page.waitForFunction(() => document.querySelector("#top-assistant")?.getAttribute("aria-pressed") === "false");
+  assert.equal(await panel.isVisible(), false);
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  await page.waitForFunction(() => document.querySelector("#top-assistant")?.getAttribute("aria-pressed") === "true");
   assert.deepEqual(errors, []);
   await context.close();
 });

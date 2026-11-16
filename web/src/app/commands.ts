@@ -32,7 +32,7 @@ import { viewsFor } from "../view-modes.ts";
 import { availableRightTabs } from "./right-tabs.ts";
 import { type TableEdit, inTable } from "../table.ts";
 import { exportPdf } from "./pdf-export.ts";
-import { settingsDialog, fixTerms, convertToTraditional, toggleSetting, changeFontSize } from "./settings-ui.ts";
+import { settingsDialog, fixTerms, convertToTraditional, changeFontSize } from "./settings-ui.ts";
 import { issueSide, issueView } from "./wiki-edit.ts";
 import { gitPanel } from "./work-item-updates.ts";
 import { foldAll, unfoldAll } from "@codemirror/language";
@@ -950,22 +950,6 @@ export function initCommands(): void {
         run: () => app.setView(mode),
       }),
     ),
-    {
-      id: "toggle-focus-mode",
-      title: t("專注模式（淡化其他段落）"),
-      group: t("檢視"),
-      icon: "focus",
-      when: () => app.view !== "preview",
-      run: () => toggleSetting("focusMode", t("專注模式")),
-    },
-    {
-      id: "toggle-typewriter-mode",
-      title: t("打字機模式（游標保持在畫面中央）"),
-      group: t("檢視"),
-      icon: "text-cursor",
-      when: () => app.view !== "preview",
-      run: () => toggleSetting("typewriterMode", t("打字機模式")),
-    },
     {
       id: "font-bigger",
       title: t("放大編輯區文字"),

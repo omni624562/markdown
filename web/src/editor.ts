@@ -33,7 +33,6 @@ import { type Formatter, newRow, nextCell, previousCell } from "./table.ts";
 import { formatKeys } from "./commands.ts";
 import { currentLang, t } from "./i18n.ts";
 import { cjkWords } from "./words.ts";
-import { focusMode, typewriterMode } from "./writing-modes.ts";
 import { findMarks } from "./ui/find-marks.ts";
 import { createFindPanel } from "./ui/find-panel.ts";
 
@@ -85,10 +84,6 @@ export interface EditorOptions {
   autoPairBrackets: boolean;
   /** 表格排版器；不需要自動對齊時傳入原樣回傳的函式。 */
   formatTable: Formatter;
-  /** 專注模式：淡化目前段落以外的文字。 */
-  focusMode?: boolean;
-  /** 打字機模式：游標所在行保持在畫面中央。 */
-  typewriterMode?: boolean;
   /** 即時預覽（只用在 Markdown）。 */
   livePreview?: boolean;
   /** 即時預覽的擴充（由呼叫端建立，需要圖片網址、表格轉換等）。 */
@@ -154,7 +149,6 @@ export class Editor {
   readonly view: EditorView;
   #language = new Compartment();
   #gutter = new Compartment();
-  #writing = new Compartment();
   #extensions: Extension[];
   #handlers: EditorHandlers;
   #kind: DocKind;
@@ -181,7 +175,6 @@ export class Editor {
     if (share) {
       this.#language = share.#language;
       this.#gutter = share.#gutter;
-      this.#writing = share.#writing;
       this.#extensions = share.#extensions;
       this.view = new EditorView({ parent, state: this.#createState(doc) });
       this.#watchScroll(handlers);
@@ -189,7 +182,6 @@ export class Editor {
     }
     this.#extensions = [
       this.#gutter.of(this.#gutterFor(options)),
-      this.#writing.of(this.#writingFor(options)),
       history(),
       drawSelection(),
       indentOnInput(),
@@ -247,10 +239,6 @@ export class Editor {
     return options.lineNumbers && !live ? [lineNumbers(), highlightActiveLineGutter()] : [];
   }
 
-  #writingFor(options: EditorOptions): Extension {
-    return [options.focusMode ? focusMode() : [], options.typewriterMode ? typewriterMode() : []];
-  }
-
   #languageFor(kind: DocKind): Extension {
     const common = placeholder(placeholderText(kind));
     const brackets = this.#options.autoPairBrackets ? bracketPairing() : [];
@@ -287,7 +275,6 @@ export class Editor {
     this.view.dispatch({
       effects: [
         this.#gutter.reconfigure(this.#gutterFor(this.#options)),
-        this.#writing.reconfigure(this.#writingFor(this.#options)),
         this.#language.reconfigure(this.#languageFor(this.#kind)),
       ],
     });
@@ -374,7 +361,6 @@ export class Editor {
     this.view.dispatch({
       effects: [
         this.#gutter.reconfigure(this.#gutterFor(this.#options)),
-        this.#writing.reconfigure(this.#writingFor(this.#options)),
         this.#language.reconfigure(this.#languageFor(kind)),
       ],
     });
@@ -394,7 +380,6 @@ export class Editor {
     this.view.dispatch({
       effects: [
         this.#gutter.reconfigure(this.#gutterFor(this.#options)),
-        this.#writing.reconfigure(this.#writingFor(this.#options)),
         this.#language.reconfigure(this.#languageFor(kind)),
       ],
     });

@@ -48,13 +48,6 @@ const DOC_FONT: Record<Settings["docFont"], string> = {
 };
 const DOC_LINE_HEIGHT: Record<Settings["docLineHeight"], string> = { compact: "1.6", normal: "1.8", relaxed: "2.1" };
 
-export function toggleSetting(key: "focusMode" | "typewriterMode", label: string): void {
-  const on = !app.settings.value[key];
-  app.settings.update({ [key]: on });
-  toast(on ? t("{label}已開啟", { label }) : t("{label}已關閉", { label }));
-  app.editor.view.focus();
-}
-
 export function changeFontSize(delta: number): void {
   const size = Math.min(FONT_SIZE_RANGE.max, Math.max(FONT_SIZE_RANGE.min, app.settings.value.editorFontSize + delta));
   if (size === app.settings.value.editorFontSize) {
@@ -103,14 +96,12 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
   // 並排編輯時兩邊的編輯器都要套用。
   const editors = app.editors;
   if (changed.some((k) => fontKeys.includes(k))) for (const ed of editors) ed.view.requestMeasure();
-  const editorKeys: (keyof Settings)[] = ["lineNumbers", "autoPairBrackets", "focusMode", "typewriterMode"];
+  const editorKeys: (keyof Settings)[] = ["lineNumbers", "autoPairBrackets"];
   if (changed.some((k) => editorKeys.includes(k))) {
     for (const ed of editors) {
       ed.configure({
         lineNumbers: s.lineNumbers,
         autoPairBrackets: s.autoPairBrackets,
-        focusMode: s.focusMode,
-        typewriterMode: s.typewriterMode,
       });
     }
   }

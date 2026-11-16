@@ -450,6 +450,7 @@ fn main() {
             ado::ado_publish,
             ado::ado_work_items,
             ado::ado_work_item,
+            ado::ado_work_item_rev,
             ado::ado_image,
             ado::ado_work_item_filters,
             ado::ado_work_item_scope,

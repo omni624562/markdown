@@ -16,7 +16,7 @@ import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { IssueView } from "../ui/issue-view.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { type WikiPageInfo, myChanges } from "../wiki-coedit.ts";
 import { isWikiShortcut } from "../wiki-shortcuts.ts";
 import { pageName, wikiMarkdown, wikiPageLink } from "../wiki-text.ts";
@@ -421,7 +421,7 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
     },
     insertLink: () => {
       insertAtCursor(wikiPageLink(title, webUrl));
-      toast(t("已插入「{name}」的連結", { name: title }));
+      announce(t("已插入「{name}」的連結", { name: title }));
     },
     // 頁名當成內容最上面的大標題（往下捲時標頭帶出頁名）；內文裡的「#編號」換成工作項目連結。
     decorate: (body) => {

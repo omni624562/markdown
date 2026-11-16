@@ -26,7 +26,7 @@ import { icon } from "../ui/icons.ts";
 import { HOSTKEY_DECLINED, SshDialog, jumpPasswordHost } from "../ui/ssh-dialog.ts";
 import { TagsPanel } from "../ui/tags-panel.ts";
 import { TasksPanel } from "../ui/tasks-panel.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { WebDavDialog } from "../ui/webdav-dialog.ts";
 import { WorkspaceIndex, type OpenDoc, type IndexedDoc } from "../workspace-index.ts";
 import { refreshActivityCommands } from "./activity-bar.ts";
@@ -671,7 +671,7 @@ export async function openPath(path: string, line?: number, column?: number): Pr
   // PDF 不在 oMarker 裡顯示：交給系統預設的程式。
   if (isPdfName(path) && desktop) {
     await desktop.openWithDefault(path);
-    toast(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
+    announce(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
     return;
   }
   const existing = app.tabForPath(path);
@@ -854,7 +854,7 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
     case "insert-link":
       // 相對於目前文件的 Markdown 連結（沒有文件時是完整路徑）；圖片用圖片語法。
       insertAtCursor((isImageName(entry.name) ? imageMarkdown : fileLink)(entry.path, app.cur.fileHandle?.path));
-      toast(t("已插入「{name}」的連結", { name: entry.name }));
+      announce(t("已插入「{name}」的連結", { name: entry.name }));
       break;
   }
 }

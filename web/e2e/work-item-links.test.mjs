@@ -66,7 +66,8 @@ test("加入關聯：沒有關聯時也有段落，選「上層」再找工作�
   const [sent] = await updates(page);
   assert.equal(sent.id, 42);
   assert.deepEqual(sent.change, { parent: 10, rev: 3 });
-  await page.locator(".toast", { hasText: "已把上層設成 User Story 10" }).waitFor();
+  // 結果在畫面上看得到：不跳通知，只給螢幕閱讀器念（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已把上層設成 User Story 10");
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -878,12 +878,18 @@ function showOnlyUnseen(on: boolean): void {
   void workItemsPanel?.refresh();
 }
 
+/** 上次畫出來的內容（只看這些／數字）：一樣就不重畫（背景檢查常常呼叫，重畫會閃一下）。 */
+let unseenShown = "";
+
 /** 清單上方的「指派給你的有 N 個新的或有更新・只看這些・全部標示為看過」。 */
 export function renderUnseenLine(): void {
   if (!workItemsPanel) return;
   const n = unseenItems().length;
   unseenLine.hidden = !onlyUnseen && !n;
   if (unseenLine.hidden) return;
+  const shown = `${onlyUnseen}|${n}`;
+  if (shown === unseenShown && unseenLine.childElementCount) return;
+  unseenShown = shown;
   const link = (text: string, run: () => void) => {
     const b = document.createElement("button");
     b.type = "button";

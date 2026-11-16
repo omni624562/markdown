@@ -83,10 +83,6 @@ export interface Settings {
   spellIgnore: string[];
   /** 貼上或拖進很大的圖片時，自動縮小並壓縮。 */
   imageCompress: boolean;
-  /** 專注模式：淡化目前段落以外的文字。 */
-  focusMode: boolean;
-  /** 打字機模式：游標所在行保持在畫面中央。 */
-  typewriterMode: boolean;
   /** 預覽與匯出的文字欄寬。 */
   previewWidth: "narrow" | "medium" | "wide";
   /** 即時預覽、預覽與 PDF 的內文字型（原始碼檢視用程式碼字型，表格才對得齊）。 */
@@ -186,13 +182,13 @@ export const QUICK_ACTION_LIMITS = { count: 20, name: 40, prompt: 2000 } as cons
 
 export const DEFAULTS: Readonly<Settings> = Object.freeze({
   editorFontSize: 15,
-  lineNumbers: true,
+  lineNumbers: false,
   autoPairBrackets: true,
   tableAutoFormat: true,
   smartPaste: true,
   fixedToolbar: false,
-  outlineRight: false,
-  viewSwitchLabels: true,
+  outlineRight: true,
+  viewSwitchLabels: false,
   // 預設封鎖：開啟別人給的文件時，對方的伺服器不會知道你的 IP 與開啟時間。按一下圖片就能載入。
   blockRemoteImages: true,
   autoSymbols: true,
@@ -206,14 +202,12 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   spellCheck: true,
   spellIgnore: [],
   imageCompress: true,
-  focusMode: false,
-  typewriterMode: false,
-  previewWidth: "medium",
+  previewWidth: "wide",
   docFont: "sans",
   docFontCustom: "",
   codeFont: "",
   docLineHeight: "normal",
-  tabStyle: "line",
+  tabStyle: "card",
   panelStyle: "spaced",
   uiScale: "100",
   math: true,
@@ -333,8 +327,6 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("termCheck");
   bool("spellCheck");
   bool("imageCompress");
-  bool("focusMode");
-  bool("typewriterMode");
   bool("math");
   bool("mermaid");
   bool("gitEnabled");

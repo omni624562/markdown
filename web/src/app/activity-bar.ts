@@ -30,7 +30,7 @@ import { sortByGroup } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
 import { Slideshow, splitSlides, slideAtLine } from "../ui/slideshow.ts";
 import type { SymbolPicker } from "../ui/symbol-picker.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { setupWindowControls } from "../ui/window-controls.ts";
 import { isFileShortcut, isWorkItemShortcut } from "../wiki-shortcuts.ts";
 import { aiFound } from "./ai-terminal.ts";
@@ -47,6 +47,7 @@ import { initPinCommands } from "./pin-commands.ts";
 import { initChatGpt } from "./chatgpt.ts";
 import { initTableCopy } from "./table-copy.ts";
 import { initAssistant } from "./assistant.ts";
+import { initAssistantButton } from "./assistant-button.ts";
 import { app } from "./context.ts";
 import { exportName } from "./export-target.ts";
 import { commands } from "./commands.ts";
@@ -658,11 +659,12 @@ export function insertToc(): void {
   if (text.includes(TOC_START)) {
     const next = updateToc(text, headings);
     if (next !== null) app.editor.replaceAll(next, { userEvent: "input.toc", isolate: true });
-    toast(next === null ? t("目錄已經是最新的。") : t("已更新目錄。"));
+    if (next === null) toast(t("目錄已經是最新的。"));
+    else announce(t("已更新目錄。"));
     return;
   }
   app.editor.exec(insertBlock(tocBlock(headings)));
-  toast(t("已插入目錄，存檔時會自動更新。"));
+  announce(t("已插入目錄，存檔時會自動更新。"));
 }
 
 type TemplateItem = Template & { custom: boolean };
@@ -778,6 +780,7 @@ export function initActivityBar(): void {
   initChatGpt();
   initTableCopy();
   initAssistant();
+  initAssistantButton();
   headingMenu = formatMenuButton("fmt-heading", t("標題"), "heading", ["h1", "h2", "h3"]);
   insertMenu = formatMenuButton("fmt-insert", t("插入"), "plus", [
     "table",

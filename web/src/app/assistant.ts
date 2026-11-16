@@ -47,7 +47,7 @@ import { ASSISTANT_FONT_RANGE, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFA
 import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { setupMenu } from "../ui/menu.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { openUrl } from "./activity-bar.ts";
 import { wikiTarget } from "../plugins/doc-links.ts";
 import { openWiki } from "./wiki-links.ts";
@@ -256,6 +256,19 @@ function renderChips(): void {
       add.addEventListener("click", () => ((webSearch = true), renderChips(), input.focus()));
       items.push(add);
     }
+  } else {
+    // 設定沒開：一樣看得到「上網查」（灰色），按了說明要到設定開啟（不然會以為沒有這個功能）。
+    const off = document.createElement("button");
+    off.type = "button";
+    off.className = "assistant-chip assistant-chip-add assistant-chip-off";
+    off.title = t("要先在設定開啟「允許上網查資料」");
+    off.append(icon("plus"), t("上網查"));
+    off.addEventListener("click", () =>
+      toast(t("上網查資料要先在設定開啟「允許上網查資料」（每次搜尋約 US$0.01）。"), {
+        action: { label: t("打開設定"), run: () => settingsDialog.open(t("Claude API 助理")) },
+      }),
+    );
+    items.push(off);
   }
   // 問題裡有網址：Claude 會去讀那一頁（只讀問題裡那幾個網域）。設定沒開時提示可以去開。
   const typedHosts = input ? urlHosts(input.value) : [];
@@ -484,7 +497,7 @@ function insertIntoDoc(text: string, where: "cursor" | "end"): void {
     scrollIntoView: true,
     userEvent: "input.ai",
   });
-  toast(where === "end" ? t("已加到文件最後（可以按 Ctrl+Z 復原）") : t("已插入（可以按 Ctrl+Z 復原）"), { tone: "success" });
+  announce(where === "end" ? t("已加到文件最後（可以按 Ctrl+Z 復原）") : t("已插入（可以按 Ctrl+Z 復原）"));
 }
 
 /** 回答下面的按鈕（圖示加文字）：複製、插入到游標處、加到文件最後。 */

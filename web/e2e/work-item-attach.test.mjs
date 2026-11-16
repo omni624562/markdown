@@ -57,7 +57,8 @@ test("附件：沒有附件也有「加入附件…」，選檔案上傳後掛�
   const [change] = await updates(page);
   assert.deepEqual(change.attachments, [URL]);
   assert.equal(change.rev, 3, "帶修訂版本");
-  await page.waitForSelector(".toast", { hasText: "已加入附件「log.txt」" });
+  // 結果在畫面上看得到：不跳通知，只給螢幕閱讀器念（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已加入附件「log.txt」");
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -77,7 +78,8 @@ test("附件：把檔案拖到工作項目上就加入附件，不會開成文�
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_update"));
   assert.equal((await calls(page)).filter((c) => c.cmd === "ado_attachment_upload").length, 2);
   assert.deepEqual((await updates(page))[0].attachments, [URL, URL]);
-  await page.waitForSelector(".toast", { hasText: "已加入 2 個附件" });
+  // 結果在畫面上看得到：不跳通知，只給螢幕閱讀器念（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已加入 2 個附件");
   assert.equal(await page.locator(".tab").count(), tabs, "沒有開成新的文件分頁");
   assert.deepEqual(errors, []);
   await context.close();

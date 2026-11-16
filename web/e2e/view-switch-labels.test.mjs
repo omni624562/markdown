@@ -14,7 +14,8 @@ const labels = (page) =>
   );
 
 test("寬視窗全部有名稱；不夠寬時只有目前的模式有名稱，換模式跟著換；很窄時只有圖示，狀態列不會超出視窗", async () => {
-  const { page, context, errors } = await open({ desktop: {} });
+  // 預設只顯示圖示：這裡測打開「檢視切換顯示文字」時。
+  const { page, context, errors } = await open({ desktop: { load_settings: JSON.stringify({ viewSwitchLabels: true }) } });
   await setText(page, "# 筆記\n\n內容。\n");
   // 起始頁不顯示檢視切換：等文件有內容、切換出現。
   await page.locator(".view-switch").waitFor();
