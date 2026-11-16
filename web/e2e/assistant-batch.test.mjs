@@ -31,10 +31,12 @@ const batch = (extra) => ({
   written: 0,
   failed: 0,
   usd: 0,
+  outputs: [],
   needsFolder: null,
   justDone: false,
   ...extra,
 });
+const OUT = [`${DIR}\\第一天.摘要.md`, `${DIR}\\第二天.摘要.md`];
 const desktop = (settings, extra) => ({
   load_settings: JSON.stringify(settings),
   startup_target: { kind: "folder", path: ROOT, name: "個人筆記" },
@@ -57,7 +59,8 @@ test("資料夾右鍵送出批次：顯示份數與費用，每份文件一則�
   const { page, context, errors } = await open({
     desktop: desktop(ON, {
       assistant_batch_create: batch(),
-      assistant_batch_check: [batch({ finished: 1 }), batch({ state: "done", finished: 2, written: 2, usd: 0.0123, justDone: true })],
+      assistant_batch_check: [batch({ finished: 1 }), batch({ state: "done", finished: 2, written: 2, usd: 0.0123, justDone: true, outputs: OUT })],
+      reopen_file: { path: OUT[0], name: "第一天.摘要.md", text: "- 八點集合\n", encoding: "utf-8" },
     }),
   });
   await openProject(page);
@@ -101,6 +104,19 @@ test("資料夾右鍵送出批次：顯示份數與費用，每份文件一則�
   await pop.locator(".batch-status", { hasText: "已完成：寫了 2 個檔案、US$0.01" }).waitFor();
   await page.locator(".toast", { hasText: "批次「摘要・行程」已完成：寫了 2 個檔案" }).waitFor();
   assert.equal(await button.textContent(), "批次");
+  // 結果檔：展開清單，不要的移到資源回收筒（清單跟著少一個），其他的可以打開來看。
+  const outputs = pop.locator(".batch-outputs");
+  assert.equal(await outputs.locator("summary").textContent(), "結果檔（2）");
+  await outputs.locator("summary").click();
+  await outputs.getByRole("button", { name: "把 第二天.摘要.md 移到資源回收筒" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "trash_entry"));
+  assert.deepEqual((await called(page, "trash_entry"))[0].args, { path: OUT[1] });
+  await pop.locator(".batch-outputs summary", { hasText: "結果檔（1）" }).waitFor();
+  assert.equal(await outputs.evaluate((el) => el.open), true, "刪掉一個之後清單還是展開的");
+  await outputs.getByRole("button", { name: "第一天.摘要.md", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("#tab-bar .tab[aria-selected=true] .tab-name")?.textContent === "第一天.摘要.md");
+  await button.click();
+  await pop.locator(".batch-row").waitFor();
   // 做完的可以移除；清單空了按鈕就收起來。
   await pop.getByRole("button", { name: "移除" }).click();
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_batch_remove"));

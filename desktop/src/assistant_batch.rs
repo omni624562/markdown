@@ -55,6 +55,9 @@ struct Batch {
     failed: u32,
     #[serde(default)]
     usd: f64,
+    /// 寫出來的結果檔（路徑）。
+    #[serde(default)]
+    outputs: Vec<String>,
 }
 
 /// 給畫面的批次。
@@ -72,6 +75,8 @@ pub struct BatchView {
     written: u32,
     failed: u32,
     usd: f64,
+    /// 寫出來的結果檔裡還在的（刪掉、搬走的不列）。
+    outputs: Vec<String>,
     /// 處理完了，但要先打開送出時的資料夾才能把結果寫回去。
     needs_folder: Option<String>,
     /// 這次檢查才剛領完結果（畫面據此通知、重新整理檔案清單）。
@@ -91,6 +96,12 @@ fn view(b: &Batch, needs_folder: bool, just_done: bool) -> BatchView {
         written: b.written,
         failed: b.failed,
         usd: b.usd,
+        outputs: b
+            .outputs
+            .iter()
+            .filter(|p| Path::new(p).is_file())
+            .cloned()
+            .collect(),
         needs_folder: needs_folder.then(|| b.root.clone()),
         just_done,
     }
@@ -335,6 +346,7 @@ pub async fn assistant_batch_create(
         written: 0,
         failed: 0,
         usd: 0.0,
+        outputs: Vec::new(),
     };
     let _guard = STORE.lock();
     let mut list = read_all(&app);
@@ -403,9 +415,9 @@ fn result_stem(source: &Path, suffix: &str) -> String {
     format!("{stem}.{suffix}")
 }
 
-/// 把結果寫成原檔旁邊的新檔，回傳寫了幾個、幾份失敗、費用。
-fn write_results(root: &Path, batch: &Batch, m: &Model, jsonl: &str) -> (u32, u32, f64) {
-    let (mut written, mut usd) = (0u32, 0.0);
+/// 把結果寫成原檔旁邊的新檔，回傳寫出來的檔案、幾份失敗、費用。
+fn write_results(root: &Path, batch: &Batch, m: &Model, jsonl: &str) -> (Vec<String>, u32, f64) {
+    let (mut written, mut usd) = (Vec::new(), 0.0);
     for line in jsonl.lines().filter_map(parse_line) {
         usd += cost(m, &line.tokens) * DISCOUNT;
         let (Some(text), Some(source)) = (line.text, batch.files.get(line.index)) else {
@@ -417,11 +429,13 @@ fn write_results(root: &Path, batch: &Batch, m: &Model, jsonl: &str) -> (u32, u3
         };
         let body = format!("{}\n", text.trim());
         let stem = result_stem(source, &batch.suffix);
-        if crate::workspace::create_file_with(root, parent, &stem, "md", body.as_bytes()).is_ok() {
-            written += 1;
+        if let Ok(path) =
+            crate::workspace::create_file_with(root, parent, &stem, "md", body.as_bytes())
+        {
+            written.push(crate::files::path_string(&path));
         }
     }
-    let failed = (batch.files.len() as u32).saturating_sub(written);
+    let failed = (batch.files.len() as u32).saturating_sub(written.len() as u32);
     (written, failed, usd)
 }
 
@@ -458,11 +472,12 @@ pub async fn assistant_batch_check(app: AppHandle, id: String) -> Result<BatchVi
     let m = model(&batch.model).ok_or_else(|| tr!("不支援這個模型"))?;
     let url = format!("{API_URL}/batches/{}/results", batch.id);
     let jsonl = crate::io::blocking(move || call(&url, &key, None)).await?;
-    let (written, failed, usd) = {
+    let (outputs, failed, usd) = {
         let (root, batch) = (root.clone(), batch.clone());
         crate::io::blocking(move || Ok(write_results(&root, &batch, m, &jsonl))).await?
     };
-    batch.written = written;
+    batch.written = outputs.len() as u32;
+    batch.outputs = outputs;
     batch.failed = failed;
     batch.usd = usd;
     batch.state = if batch.canceling && n("canceled") > 0 {
@@ -522,6 +537,7 @@ mod tests {
             written: 0,
             failed: 0,
             usd: 0.0,
+            outputs: Vec::new(),
         }
     }
 
@@ -638,7 +654,15 @@ mod tests {
         .join("\n");
         let m = model("claude-sonnet-5-5").unwrap();
         let (written, failed, usd) = write_results(&root, &batch, m, &jsonl);
-        assert_eq!((written, failed), (1, 1));
+        let second = folder.join("第一天.摘要 2.md");
+        assert_eq!(written, vec![crate::files::path_string(&second)]);
+        assert_eq!(failed, 1);
+        // 清單只列還在的結果檔。
+        batch.outputs = vec![
+            crate::files::path_string(&second),
+            crate::files::path_string(&folder.join("刪掉了.摘要.md")),
+        ];
+        assert_eq!(view(&batch, false, false).outputs, written);
         // 一百萬個輸入 token 平常是 US$2，批次是一半。
         assert!((usd - 1.0).abs() < 1e-9, "{usd}");
         assert_eq!(std::fs::read_to_string(&a).unwrap(), "原本的第一天");

@@ -729,6 +729,8 @@ export interface AssistantBatch {
   written: number;
   failed: number;
   usd: number;
+  /** 寫出來的結果檔裡還在的（路徑）。 */
+  outputs: string[];
   /** 處理完了，但要先打開這個資料夾才能把結果寫回去。 */
   needsFolder: string | null;
   /** 這次檢查才剛領完結果。 */
