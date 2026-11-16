@@ -1614,7 +1614,7 @@ pub async fn ado_work_item_states(
     .await
 }
 
-/// 狀態在流程裡的階段（工作板的欄位、狀態選單依這個排）：提議、進行中、已解決、已完成、已移除。
+/// 狀態在流程裡的階段（狀態選單依這個排）：提議、進行中、已解決、已完成、已移除。
 fn stage_of_category(category: &str) -> u8 {
     match category {
         "Proposed" => 0,

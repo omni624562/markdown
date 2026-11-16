@@ -2690,11 +2690,9 @@ button.git-info:disabled { cursor: default; }
 .wiki-filters { grid-template-columns: 1fr auto; }
 .wiki-filters .wiki-actions { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
 .wiki-filters .wiki-actions:not(:has(> :not([hidden]))) { display: none; }
-/* 常用的項目（Wiki、工作板的專案）：選單旁邊的星號，有設常用時星號填滿。 */
+/* 常用的項目（Wiki）：選單旁邊的星號，有設常用時星號填滿。 */
 .favorite-toggle { margin: 0; height: auto; min-height: 28px; }
 .favorite-toggle.active .icon { fill: currentColor; }
-.tb-project-row { display: flex; grid-column: 1 / -1; gap: 6px; align-items: stretch; min-width: 0; }
-.tb-project-row > select { flex: 1; min-width: 0; }
 /* 讀取失敗時錯誤訊息旁的「重試」。 */
 .load-retry { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; vertical-align: middle; }
 .load-retry .icon { width: 13px; height: 13px; }
@@ -4488,47 +4486,11 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 @keyframes issue-flash { 0%, 40% { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .issue-flash { animation: none; outline: 2px solid var(--accent); } }
 
-/* ---- Sprint 工作板（app/taskboard.ts）：卡片和工作項目清單同一種排法，區塊和工作項目內容的卡片一致 ---- */
-#board-host { display: flex; flex-direction: column; gap: 8px; padding: 4px 12px 12px; }
-#board-host .tb-filters { margin: 0; }
-#board-host .tb-filters select { grid-column: 1 / -1; }
-#board-host .tb-open { align-self: flex-start; }
-#board-host .workitems-status { margin: 0; }
-.issue-body:has(> .taskboard) { max-width: none; }
-.taskboard { --tb-parent: 240px; display: flex; flex-direction: column; gap: 10px; min-width: calc(var(--tb-parent) + var(--tb-columns) * 200px); font: 13px/1.4 var(--font-ui); }
-.taskboard .tb-row { display: grid; grid-template-columns: var(--tb-parent) repeat(var(--tb-columns), minmax(200px, 1fr)); border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-.taskboard .tb-head { position: sticky; top: 0; z-index: 1; background: var(--surface-raised, var(--active-line)); color: var(--muted); font-size: 12.5px; font-weight: 600; }
-.taskboard .tb-head > div { display: flex; align-items: center; gap: 0; padding: 7px 12px; }
-.taskboard .tb-count { margin-left: 6px; padding: 0 6px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 7%, transparent); font-size: 11px; font-weight: 500; line-height: 17px; }
-.taskboard .tb-parent { display: flex; align-items: flex-start; gap: 2px; padding: 8px 8px 8px 4px; border-right: 1px solid var(--border); border-radius: 8px 0 0 8px; background: color-mix(in srgb, var(--fg) 2%, transparent); }
-.taskboard .tb-toggle { flex: none; width: 24px; height: 24px; margin-top: 4px; color: var(--muted); transition: transform 0.12s; }
-.taskboard .tb-row.collapsed .tb-toggle { transform: rotate(-90deg); }
-.taskboard .tb-row.collapsed .tb-cell > .tb-card { display: none; }
-.taskboard .tb-row.collapsed .tb-cell { min-height: 0; padding-block: 4px; }
-.taskboard .tb-row.collapsed .tb-parent::after { content: attr(data-count); align-self: center; margin-left: auto; padding: 0 6px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--muted); font-size: 11px; line-height: 17px; }
-.taskboard .tb-orphans { padding: 6px 4px; color: var(--muted); font-size: 12.5px; }
-.taskboard .tb-cell { display: flex; flex-direction: column; gap: 6px; min-height: 56px; padding: 8px; }
-.taskboard .tb-cell + .tb-cell { border-left: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
-.taskboard .tb-cell.drop { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.taskboard .tb-card { --kind: var(--muted); display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 6px 10px; border: 1px solid var(--border); border-left: 3px solid var(--kind); border-radius: 6px; background: var(--bg); cursor: pointer; }
-.taskboard .tb-card:hover { background: var(--active-line); }
-.taskboard .tb-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.taskboard .tb-card.dragging { opacity: 0.5; }
-.taskboard .tb-parent-card { flex: 1; min-width: 0; }
-.taskboard .tb-parent-card .tb-title { font-weight: 600; }
-.taskboard .tb-title { overflow-wrap: anywhere; }
-.taskboard .tb-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 2px; color: var(--muted); font-size: 12px; }
-.taskboard .tb-avatar { width: 18px; height: 18px; font-size: 10px; }
-.taskboard .tb-hours { margin-left: auto; }
-.taskboard .tb-empty { padding: 24px; color: var(--muted); }
-
-/* 離線提示（工作項目、工作板、Wiki 面板上方；見 app/offline-banner.ts）。 */
+/* 離線提示（工作項目、Wiki 面板上方；見 app/offline-banner.ts）。 */
 .offline-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 12px 8px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border)); border-radius: var(--radius); background: color-mix(in srgb, var(--danger) 7%, var(--bg)); color: var(--fg); font-size: 12.5px; line-height: 1.5; }
 .offline-banner[hidden] { display: none; }
 .offline-banner > svg { flex: none; width: 16px; height: 16px; color: var(--danger); }
 .offline-banner > span { flex: 1 1 160px; }
-/* 離線時工作板的卡片不能拖曳（改狀態要連線）。 */
-body.ado-offline .tb-card { cursor: default; }
 
 /* 工作項目清單上方：指派給你的有幾個新的或有更新・只看這些・全部標示為看過（見 app/work-items-panel.ts）。 */
 /* 「有 N 個新的或有更新」：說明一行，下面一行是動作；不管側邊欄多寬都是這樣，拉寬拉窄不會跳來跳去。 */
@@ -4537,36 +4499,6 @@ body.ado-offline .tb-card { cursor: default; }
 .workitems-unseen > span { flex: 1 0 100%; }
 .workitems-unseen-action { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 .workitems-unseen-action:hover { text-decoration: underline; }
-
-/* 工作板的編輯：卡片右下的「改指派或工時」、上層項目下的「新增 Task」（滑鼠移上去才顯示；見 app/taskboard-edit.ts）。 */
-.taskboard .tb-parent { flex-wrap: wrap; }
-.taskboard .tb-add { flex-basis: 100%; justify-content: flex-start; margin: 4px 0 0 24px; opacity: 0; }
-.taskboard .tb-row:hover .tb-add, .taskboard .tb-add:focus-visible { opacity: 1; }
-.taskboard .tb-edit { width: 22px; height: 22px; min-width: 22px; margin-left: auto; padding: 0; opacity: 0; }
-.taskboard .tb-edit .icon { width: 13px; height: 13px; }
-.taskboard .tb-card:hover .tb-edit, .taskboard .tb-edit:focus-visible { opacity: 1; }
-/* 離線時不能改：不顯示編輯按鈕。 */
-body.ado-offline .taskboard .tb-edit, body.ado-offline .taskboard .tb-add { display: none; }
-.tb-edit-dialog { width: min(440px, calc(100vw - 32px)); }
-
-/* 工作板上方的容量：每個人剩下的時間與排了多少工作（見 app/taskboard.ts 的 capacityStrip）。 */
-.tb-capacity { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
-.tb-cap { display: inline-flex; gap: 6px; align-items: center; min-width: 0; color: var(--muted); }
-.tb-cap-name { color: var(--fg); white-space: nowrap; }
-.tb-cap-bar { position: relative; width: 64px; height: 6px; overflow: hidden; border-radius: 3px; background: color-mix(in srgb, var(--fg) 10%, transparent); }
-.tb-cap-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
-.tb-cap.over .tb-cap-bar > span { background: var(--danger); }
-.tb-cap.over .tb-cap-text { color: var(--danger); font-weight: 600; }
-
-/* 工作板側邊欄的兩個按鈕（開啟工作板、Backlog）與 Backlog 清單（見 app/taskboard-backlog.ts）。 */
-#board-host .tb-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-.tb-backlog { display: flex; flex-direction: column; gap: 6px; max-width: 880px; margin: 0; padding: 0; list-style: none; counter-reset: backlog; }
-.tb-backlog-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px 8px 12px; border: 1px solid var(--border); border-left: 3px solid var(--kind, var(--border)); border-radius: 8px; background: var(--bg); counter-increment: backlog; }
-.tb-backlog-item::before { content: counter(backlog); flex: none; min-width: 2ch; color: var(--muted); font-size: 12px; text-align: right; }
-.tb-backlog-main { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.tb-backlog-main:hover .tb-title { color: var(--accent); }
-.tb-backlog .tb-move { flex: none; }
-body.ado-offline .tb-backlog .tb-move { display: none; }
 
 /* COMET 專案（資料夾裡有 .comet.json）：名稱後面的小標籤，圖示列的專案方塊右下角加綠點。 */
 .comet-badge {

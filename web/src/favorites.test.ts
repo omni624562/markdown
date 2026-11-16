@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Choice, favoriteOptions, favoritesFirst, parseFavorites } from "./favorites.ts";
+import { type Choice, favoriteOptions, parseFavorites } from "./favorites.ts";
 
 const items: Choice[] = [
   ["a", "ALM"],
@@ -37,11 +37,7 @@ test("顯示全部：全部列出，最下面是「只顯示常用」", () => {
   assert.equal(o.toggle, "favorites");
 });
 
-test("常用的排前面；存下來的清單壞掉就當沒有", () => {
-  assert.deepEqual(
-    favoritesFirst(items, ["c"]).map(([v]) => v),
-    ["c", "a", "b", "d"],
-  );
+test("存下來的清單壞掉就當沒有", () => {
   assert.deepEqual(parseFavorites('["a",1,"b"]'), ["a", "b"]);
   assert.deepEqual(parseFavorites("{壞掉"), []);
   assert.deepEqual(parseFavorites(null), []);

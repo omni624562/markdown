@@ -55,8 +55,8 @@ test("Wiki 在右側：右側欄開著時圖示列沒有 Wiki；收起來時才�
   await tab.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => document.activeElement?.matches("#outline-right #panel-wiki input[type=search]")), true, "游標在 Wiki 的搜尋框");
   // 用方向鍵在圖示列移動時也跳過看不到的 Wiki 圖示。
-  // （排在 Wiki 前面的是看板；只放焦點不切換面板。）
-  await page.locator("#side-tab-board").focus();
+  // （排在 Wiki 前面的是工作項目；只放焦點不切換面板。）
+  await page.locator("#side-tab-workitems").focus();
   await page.keyboard.press("ArrowDown");
   assert.notEqual(await page.evaluate(() => document.activeElement?.id), "side-tab-wiki");
   // 收起右側欄：圖示又出現。
