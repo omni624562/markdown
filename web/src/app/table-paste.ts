@@ -54,8 +54,9 @@ export function smartPasteText(state: EditorState, html: string, plain: string):
       converted(t("已把 JSON 轉成表格。"), plain);
       return withBlankLines(state, from, to, format(json));
     }
-    const unwrapped = /^\s*(`{3,}|~{3,})/.test(plain) ? unwrapMarkdown(plain) : plain;
-    if (unwrapped !== plain.trim()) {
+    const fenced = /^\s*(`{3,}|~{3,})/.test(plain);
+    const unwrapped = fenced ? unwrapMarkdown(plain) : plain;
+    if (fenced && unwrapped !== plain.trim()) {
       converted(t("已拿掉外面的程式碼框，照 Markdown 貼上。"), plain);
       return unwrapped;
     }

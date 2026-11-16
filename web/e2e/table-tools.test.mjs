@@ -122,6 +122,40 @@ test("從試算表貼上 Tab 分隔的文字：變成表格；程式碼區塊裡
   await context.close();
 });
 
+test("貼上 JSON 物件陣列變成表格、包在 ```markdown 裡的文字拿掉外框；按「改回原樣」換回原本的文字", async () => {
+  const { page, context, errors } = await open();
+  await page.locator(".cm-content").focus();
+  const paste = (text) =>
+    page.locator(".cm-content").evaluate((el, t) => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", t);
+      el.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt }));
+    }, text);
+  const json = JSON.stringify([{ 編號: 1201, 標題: "登入頁跑版" }, { 編號: 1198, 標題: "匯出 PDF" }], null, 2);
+  await paste(json);
+  await page.locator(".toast", { hasText: "已把 JSON 轉成表格" }).waitFor();
+  assert.match(await docText(page), /^\| 編號\s*\| 標題\s*\|\n\| -+ \| -+ \|\n\| 1201 \| 登入頁跑版 \|\n\| 1198 \| 匯出 PDF\s*\|/);
+  // 改回原樣：換回原本的 JSON。
+  await page.locator(".toast", { hasText: "已把 JSON 轉成表格" }).getByRole("button", { name: "改回原樣" }).click();
+  await page.waitForFunction(() => document.querySelector(".cm-content .cm-line")?.textContent === "[");
+  assert.equal(await docText(page), json);
+
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Delete");
+  // （內容不用標題、粗體：即時預覽會把 # 和 ** 藏起來，畫面上的字就不是原文。）
+  await paste("```markdown\n第一天：台南\n\n第二天：高雄\n```");
+  await page.locator(".toast", { hasText: "已拿掉外面的程式碼框" }).waitFor();
+  assert.equal(await docText(page), "第一天：台南\n\n第二天：高雄");
+  // 程式碼區塊裡照原樣貼上。
+  await page.keyboard.press("Control+End");
+  await page.keyboard.insertText("\n\n```\n");
+  await paste('[{"a":1}]');
+  await page.waitForTimeout(200);
+  assert.match(await docText(page), /```\n\[\{"a":1\}\]/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("選取逗號分隔的幾行，右鍵「轉成表格」", async () => {
   const { page, context, errors } = await open();
   await splitWith(page, "名字,地點\n王小明,\"台北, 信義區\"\n李大同,台中");
