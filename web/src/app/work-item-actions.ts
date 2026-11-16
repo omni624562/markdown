@@ -6,7 +6,7 @@ import { t } from "../i18n.ts";
 import { timeAgo } from "../history-label.ts";
 import { issueFileName, stateTone, workItemMarkdown, workItemIdOf } from "../issue-doc.ts";
 import type { IssueFact } from "../ui/issue-view.ts";
-import { toast } from "../ui/toast.ts";
+import { announce } from "../ui/toast.ts";
 import { decorateAttachments } from "../ui/work-item-attachments.ts";
 import { decorateHistory } from "../ui/work-item-history-look.ts";
 import { decorateWorkItem, type SectionKind } from "../ui/work-item-look.ts";
@@ -58,7 +58,7 @@ function workItemEditing(item: AdoWorkItem): {
     document.querySelector(".issue-body .ado-hero")?.classList.add("busy");
     try {
       await desktop!.adoWorkItemUpdate(item.id, { ...change, rev: detail.rev });
-      toast(done, { tone: "success" });
+      announce(done);
       // 改了標題：重新開啟，分頁名稱也跟著換。
       // 其他的修改在背景重新讀取：畫面不清掉、不跳回最上面。
       if (change.title) showWorkItem({ ...item, title: change.title });
@@ -81,7 +81,7 @@ function workItemEditing(item: AdoWorkItem): {
     try {
       if (html === null) await desktop!.adoCommentDelete(item.project, item.id, commentId);
       else await desktop!.adoCommentUpdate(item.project, item.id, commentId, html);
-      toast(done, { tone: "success" });
+      announce(done);
       await issueView.reload();
       return true;
     } catch (e) {

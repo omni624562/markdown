@@ -47,7 +47,9 @@ test("改狀態：不清掉畫面、不跳回最上面，讀到之後狀態換�
   // 選單開著時往下捲（例如邊看說明邊改）。
   await scroll.evaluate((el) => (el.scrollTop = 400));
   await page.locator("#wi-edit-state-popover button", { hasText: "Resolved" }).click();
-  await page.locator(".toast", { hasText: "已把狀態改成「Resolved」" }).waitFor();
+  // 結果在畫面上看得到：不跳通知，只給螢幕閱讀器念（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已把狀態改成「Resolved」");
+  assert.equal(await page.locator(".toast", { hasText: "已把狀態改成" }).count(), 0, "不跳通知（畫面上就看得到新的狀態）");
   // 背景讀取中：畫面還在、沒有「讀取中…」、捲動位置不變。
   assert.equal(await page.locator(".issue-status", { hasText: "讀取中" }).count(), 0);
   assert.equal(await page.locator(".issue-body", { hasText: "第 80 段說明" }).count(), 1, "內容還在");

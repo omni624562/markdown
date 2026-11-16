@@ -46,7 +46,7 @@ import { ASSISTANT_FONT_RANGE, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFA
 import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { setupMenu } from "../ui/menu.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { openUrl } from "./activity-bar.ts";
 import { wikiTarget } from "../plugins/doc-links.ts";
 import { openWiki } from "./wiki-links.ts";
@@ -492,7 +492,7 @@ function insertIntoDoc(text: string, where: "cursor" | "end"): void {
     scrollIntoView: true,
     userEvent: "input.ai",
   });
-  toast(where === "end" ? t("已加到文件最後（可以按 Ctrl+Z 復原）") : t("已插入（可以按 Ctrl+Z 復原）"), { tone: "success" });
+  announce(where === "end" ? t("已加到文件最後（可以按 Ctrl+Z 復原）") : t("已插入（可以按 Ctrl+Z 復原）"));
 }
 
 /** 回答下面的按鈕（圖示加文字）：複製、插入到游標處、加到文件最後。 */

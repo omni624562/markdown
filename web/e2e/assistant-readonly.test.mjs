@@ -1,6 +1,6 @@
 /**
  * 助理的回答寫回文件：目前的文件是預設唯讀的 COMET 檔案時不寫，說明原因並附「仍要編輯」，
- * 不會顯示「已插入」卻什麼都沒改。先執行 `npm run build`，再 `npm run test:e2e`。
+ * 不會說「已插入」卻什麼都沒改。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -43,12 +43,13 @@ test("COMET 的 AGENTS.md 鎖著時：插入不會改文件，提示原因；按
 
   const toast = page.locator(".toast-error", { hasText: "預設唯讀" });
   await toast.waitFor();
-  assert.equal(await page.locator(".toast", { hasText: "已插入" }).count(), 0);
+  assert.equal(await page.evaluate(() => document.querySelector(".sr-only[role=status]")?.textContent ?? ""), "", "沒有說已插入");
   assert.doesNotMatch(await docText(), /新的規則/);
   await toast.getByRole("button", { name: "仍要編輯" }).click();
   await page.locator(".cm-editor .comet-note[data-locked='']").waitFor();
   await insert.click();
-  await page.locator(".toast", { hasText: "已插入" }).waitFor();
+  // 插入成功不跳通知（文件裡就看得到），只給螢幕閱讀器念。
+  await page.waitForFunction(() => document.querySelector(".sr-only[role=status]")?.textContent.includes("已插入"));
   assert.match(await docText(), /新的規則/);
   assert.deepEqual(errors, []);
   await context.close();
