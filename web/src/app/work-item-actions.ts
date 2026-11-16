@@ -181,6 +181,8 @@ export function showWorkItem(item: AdoWorkItem): void {
     title: item.title,
     webUrl: item.webUrl,
     fileName: issueFileName(`${item.kind} ${item.id}`, item.title),
+    // 切換分頁回來：只問修訂版本，和上次讀到的一樣就不重讀（相關項目的狀態另外改了不會發現，按「重新整理」）。
+    unchanged: async () => !!detail && detail.rev !== null && (await desktop!.adoWorkItemRev(item.id)) === detail.rev,
     load: async () => {
       const d = await desktop!.adoWorkItem(item.id);
       workItemLoaded(d);

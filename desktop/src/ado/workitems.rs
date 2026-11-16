@@ -1071,6 +1071,29 @@ pub async fn ado_work_item_scope(
     .await
 }
 
+/// 工作項目目前的修訂版本（只讀這一個欄位，很便宜）：切換分頁回來時，和上次讀到的比，沒變就不必重讀整份。
+#[tauri::command]
+pub async fn ado_work_item_rev(app: AppHandle, id: u64) -> Result<Option<u64>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let v = get(
+            &a.url,
+            &pat,
+            &format!("/_apis/wit/workitems/{id}?fields=System.Rev"),
+            &tr!("讀取工作項目"),
+        )?;
+        Ok(rev_of(&v))
+    })
+    .await
+}
+
+/// 回應裡的修訂版本：在最上層的 `rev`，舊版伺服器只放在欄位 `System.Rev`。
+pub(super) fn rev_of(v: &Value) -> Option<u64> {
+    v.get("rev")
+        .and_then(Value::as_u64)
+        .or_else(|| field(v, "System.Rev").and_then(Value::as_u64))
+}
+
 #[tauri::command]
 pub async fn ado_work_item(app: AppHandle, id: u64) -> Result<WorkItemDetail, String> {
     let (a, pat) = require(&app)?;

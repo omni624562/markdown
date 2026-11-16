@@ -1202,6 +1202,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 工作項目內文裡的圖片（要用權杖讀），回傳 data: 網址。 */
     adoImage: (url: string) => core.invoke<string>("ado_image", { url }),
     adoWorkItem: (id: number) => core.invoke<AdoWorkItemDetail>("ado_work_item", { id }),
+    /** 工作項目目前的修訂版本（只讀這個欄位）；讀不到時是 null。 */
+    adoWorkItemRev: (id: number) => core.invoke<number | null>("ado_work_item_rev", { id }),
     /** 依編號讀取工作項目（讀不到的略過）。 */
     adoWorkItemsByIds: (ids: number[]) => core.invoke<AdoWorkItem[]>("ado_work_items_by_ids", { ids }),
     /** 工作項目的上層項目（`links` 是 [項目, 上層]），「依上層項目分組」用。 */
