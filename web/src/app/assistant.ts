@@ -6,6 +6,7 @@
  * 每個專案第一次送出前先確認要送什麼、大約多少錢；修改文件一律變成建議卡片，由使用者按「套用」。
  * API 金鑰只存在原生端，這裡只知道有沒有設定。
  */
+import { loadChat, saveChat } from "../assistant-chat-store.ts";
 import { initAssistantBatch, initBatchButton } from "./assistant-batch.ts";
 import { initUsagePanel } from "./assistant-usage.ts";
 import { pdfPages } from "../pdf-pages.ts";
@@ -78,6 +79,10 @@ interface Pending {
   plain: string;
   /** 畫面上顯示的問題（動作名稱或使用者打的字），存成筆記時用。 */
   shown: string;
+  /** 重新產生、編輯問題時用：這一題的動作（一般問題是 null）、問題的泡泡、附的圖片。 */
+  action: AssistantAction | null;
+  userBubble: HTMLElement;
+  images: Attached[];
 }
 
 let panel: HTMLElement | null = null;
@@ -477,6 +482,51 @@ function insertIntoDoc(text: string, where: "cursor" | "end"): void {
 }
 
 /** 回答下面的按鈕（圖示加文字）：複製、插入到游標處、加到文件最後。 */
+/** 最近一次問答（一般問答）：可以重新產生回答，或把問題拿回輸入框改了再送。 */
+let last: Pending | null = null;
+
+/** 把最近一次問答從畫面、對話紀錄拿掉（重新產生、編輯問題之前）。 */
+function dropLast(): Pending | null {
+  const p = last;
+  if (!p || pending) return null;
+  last = null;
+  history = history.slice(0, -2);
+  transcript = transcript.slice(0, -1);
+  saveBtn.disabled = !transcript.length;
+  persistChat();
+  p.answer.remove();
+  p.userBubble.remove();
+  return p;
+}
+
+/** 最新的回答下面加「重新產生」，問題旁邊加「編輯」（只有最新的那一組有）。 */
+function offerRedo(p: Pending): void {
+  for (const old of log.querySelectorAll(".assistant-redo, .assistant-edit")) old.remove();
+  last = p;
+  const redo = toolButton(t("重新產生這個回答（會再送出一次、再計費一次）"), "refresh-cw", () => {
+    const q = dropLast();
+    if (!q) return;
+    attached = q.images;
+    renderChips();
+    void send(q.question, q.action);
+  }, t("重新產生"));
+  redo.classList.add("assistant-redo");
+  p.answer.querySelector(".assistant-tools")?.append(redo);
+  // 動作（摘要、審稿…）的問題是固定的提示，沒有東西可以改。
+  if (p.action) return;
+  const edit = toolButton(t("編輯這個問題再送出"), "pencil", () => {
+    const q = dropLast();
+    if (!q) return;
+    attached = q.images;
+    renderChips();
+    input.value = q.question;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+  });
+  edit.classList.add("assistant-edit");
+  p.userBubble.append(edit);
+}
+
 function answerActions(el: HTMLElement, text: string): void {
   const bar = document.createElement("div");
   bar.className = "assistant-tools";
@@ -692,6 +742,7 @@ async function send(question: string, action: AssistantAction | null = null, cou
     thumb.alt = img.name;
     userBubble.append(thumb);
   }
+  const sentImages = attached;
   attached = [];
   renderChips();
   if (notes) {
@@ -705,7 +756,7 @@ async function send(question: string, action: AssistantAction | null = null, cou
   answer.classList.add("loading");
   answer.textContent = t("思考中…");
   const id = nextId++;
-  pending = { id, answer, text: "", question, shown, sources: new Map(), cites: [], plain: "", mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
+  pending = { id, answer, text: "", question, shown, sources: new Map(), cites: [], plain: "", action, userBubble, images: sentImages, mode, mermaid: !!action?.mermaid, range: { from: sel.from, to: sel.to, original: sel.text } };
   input.value = "";
   setRunning(true);
   try {
@@ -781,9 +832,11 @@ function onRun(e: AssistantRunEvent): void {
     if (p.mode !== "answer" && p.text.trim()) suggestionCard(p.answer, p, p.text);
     else if (p.mode === "answer" && p.text.trim()) {
       answerActions(p.answer, p.text);
+      offerRedo(p);
       history = [...history, { role: "user" as const, content: p.question }, { role: "assistant" as const, content: p.cites.length ? p.plain : p.text }].slice(-12);
     }
   }
+  persistChat();
   if (usage) usage = { ...usage, usd: e.monthUsd };
   renderUsage();
   setRunning(false);
@@ -898,10 +951,50 @@ function stop(): void {
   void refreshStatus();
 }
 
+/** 目前這份對話是哪個專案的（對話跟著專案：切換專案時換成那個專案上次的對話）。 */
+let chatRoot: string | null = null;
+
+/** 記下這個專案的對話（重開程式、切回來時接著問）。 */
+function persistChat(): void {
+  if (chatRoot) saveChat(chatRoot, { history, transcript });
+}
+
+/** 專案換了（或面板剛建立）：換成這個專案上次的對話。 */
+function syncChat(): void {
+  const root = app.workspaceRoot?.path ?? null;
+  if (root === chatRoot || pending) return;
+  chatRoot = root;
+  history = [];
+  transcript = [];
+  last = null;
+  pdfs = [];
+  log.replaceChildren();
+  const saved = root ? loadChat(root) : null;
+  if (saved) {
+    history = saved.history;
+    transcript = saved.transcript;
+    const note = document.createElement("small");
+    note.className = "assistant-restored";
+    note.textContent = t("上次在這個專案的對話（按「新對話」重新開始）");
+    log.append(note);
+    for (const item of transcript) {
+      bubble("user", item.question);
+      const answer = bubble("assistant");
+      showAnswer(answer, item.answer);
+      answerActions(answer, item.answer);
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+  saveBtn.disabled = !transcript.length;
+  renderChips();
+}
+
 function newChat(): void {
   if (pending) stop();
   history = [];
   transcript = [];
+  persistChat();
+  last = null;
   pdfs = [];
   renderChips();
   saveBtn.disabled = true;
@@ -1175,6 +1268,7 @@ export function assistantPanel(create: boolean): HTMLElement | null {
 /** 助理這一頁顯示出來了（切到這頁、打開右側欄）：更新內容，游標放進輸入框。 */
 export function assistantShown(): void {
   if (!panel) return;
+  syncChat();
   renderModel();
   renderChips();
   renderNotice();
@@ -1233,6 +1327,7 @@ function acceptTextDrops(box: HTMLElement): void {
 /** 專案換了（例如剛打開專案）：助理開著時更新「這次會送出的內容」與能不能送出，不會停在「請先開啟專案資料夾」。 */
 export function assistantContextChanged(): void {
   if (!assistantOpen()) return;
+  syncChat();
   renderChips();
   renderNotice();
 }

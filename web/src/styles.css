@@ -4676,6 +4676,8 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 .assistant-answer > :first-child { margin-top: 0; }
 .assistant-answer > :last-child { margin-bottom: 0; }
 .assistant-cut { display: block; margin-top: 6px; color: var(--muted); }
+/* 接著上次的對話時，最上面的一行說明。 */
+.assistant-restored { display: block; margin: 0 0 4px; color: var(--muted); font-size: 11.5px; text-align: center; }
 /* 回答裡的出處編號：按了跳到文件裡那一段（見 app/assistant-cites.ts）。 */
 .assistant-cite { min-width: 1.5em; margin: 0 1px; padding: 0 4px; font: inherit; font-size: 0.8em; line-height: 1.5; vertical-align: 0.15em; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 0; border-radius: 8px; cursor: pointer; }
 .assistant-cite:hover, .assistant-cite:focus-visible { color: var(--bg); background: var(--accent); }
@@ -4687,6 +4689,10 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 /* 回答下面的按鈕：圖示加文字，不用猜是什麼。 */
 .assistant-tool.with-text { display: inline-flex; gap: 4px; width: auto; padding: 0 7px; font: inherit; font-size: 12px; white-space: nowrap; }
 .assistant-tools { flex-wrap: wrap; }
+/* 最新的問題旁邊的「編輯」：靠右、小小的，滑鼠移到問題上或用鍵盤走到時才明顯。 */
+.assistant-user { position: relative; }
+.assistant-edit { position: absolute; top: 2px; left: -30px; opacity: 0.55; }
+.assistant-user:hover .assistant-edit, .assistant-edit:focus-visible { opacity: 1; }
 /* 回答裡的程式碼區塊、表格：右上角的「複製」「插入」只拿那一塊。 */
 .assistant-block { position: relative; margin: 0 0 12px; }
 .assistant-block > pre, .assistant-block > table { margin-bottom: 0; }
