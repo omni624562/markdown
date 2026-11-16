@@ -581,6 +581,33 @@ test("回答寫回文件：按鈕有文字；插入到游標處、加到最後�
   await context.close();
 });
 
+test("回答整份包在 ```markdown 裡：照一般的 Markdown 排版顯示，插入時不帶外框", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".segmented [data-view=editor]").click();
+  const docText = () => page.evaluate(() => [...document.querySelectorAll(".cm-content .cm-line")].map((l) => l.textContent).join("\n"));
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.locator(".assistant-input textarea").fill("整理成筆記");
+  await panel.locator(".assistant-input textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  // 送出的系統提示要求不要整份包在程式碼區塊裡。
+  assert.match((await sends(page)).at(-1).request.system, /不要把整份回答包在程式碼區塊/);
+  const note = "# 旅遊筆記\n\n| 天 | 地點 |\n| --- | --- |\n| 1 | 台南 |";
+  await reply(page, "```markdown\n" + note + "\n```");
+  const answer = panel.locator(".assistant-assistant").last();
+  await answer.locator(".assistant-tools").waitFor();
+  // 排版過的標題與表格，不是一整塊程式碼。
+  assert.equal(await answer.locator(".assistant-answer h1").textContent(), "旅遊筆記");
+  assert.equal(await answer.locator(".assistant-answer > pre").count(), 0);
+  await answer.locator(".assistant-tools").getByRole("button", { name: "加到文件最後" }).click();
+  assert.equal(await docText(), note);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("回答裡的遠端圖片一律不載入（就算關掉「封鎖遠端圖片」）：被藏在文件裡的指示操控時，資料不會跟著圖片網址送出去", async () => {
   // 關掉「封鎖遠端圖片」：文件預覽會載入遠端圖片，但助理的回答照樣不載入。
   const { page, context, errors, external } = await open({ desktop: desktop({ ...ON, blockRemoteImages: false }) });
