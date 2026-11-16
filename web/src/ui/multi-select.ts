@@ -47,11 +47,18 @@ export class MultiSelect {
   #allBox: HTMLInputElement;
   #allText: HTMLSpanElement;
   #status: HTMLSpanElement;
+  #caption: HTMLDivElement;
   #options: [string, string][] = [];
   #value: string[] = [];
   /** 選單打開時勾選的（還沒套用）。 */
   #draft = new Set<string>();
   #o: MultiSelectOptions;
+
+  /** 換選單最上面的說明（空字串不顯示）。 */
+  setCaption(text: string): void {
+    this.#caption.textContent = text;
+    this.#caption.hidden = !text;
+  }
 
   constructor(o: MultiSelectOptions) {
     this.#o = o;
@@ -87,12 +94,10 @@ export class MultiSelect {
     foot.className = "multi-select-foot";
     this.#status = document.createElement("span");
     foot.append(this.#status);
-    if (o.caption) {
-      const caption = document.createElement("div");
-      caption.className = "multi-select-caption";
-      caption.textContent = o.caption;
-      this.#pop.append(caption);
-    }
+    this.#caption = document.createElement("div");
+    this.#caption.className = "multi-select-caption";
+    this.setCaption(o.caption ?? "");
+    this.#pop.append(this.#caption);
     this.#pop.append(this.#search, this.#allRow, this.#list, foot);
     if (o.single) {
       this.#pop.classList.add("single");

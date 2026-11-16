@@ -9,6 +9,8 @@ pub struct Team {
     pub(super) name: String,
     /// 專案的預設團隊。
     pub(super) default: bool,
+    /// 目前登入的人是這個團隊的成員。
+    pub(super) mine: bool,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -44,18 +46,35 @@ pub async fn ado_teams(app: AppHandle, project: String) -> Result<Vec<Team>, Str
             &format!("/_apis/projects/{p}/teams?$top=300"),
             &what,
         )?;
-        Ok(teams_of(&res, default.as_deref()))
+        // 自己所屬的團隊：讀不到（舊版伺服器）就當沒有，改用預設團隊。
+        let mine = get(
+            &a.url,
+            &pat,
+            &format!("/_apis/projects/{p}/teams?$mine=true&$top=300"),
+            &what,
+        )
+        .map(|v| team_ids(&v))
+        .unwrap_or_default();
+        Ok(teams_of(&res, default.as_deref(), &mine))
     })
     .await
 }
 
-pub(super) fn teams_of(res: &Value, default: Option<&str>) -> Vec<Team> {
+fn team_ids(res: &Value) -> Vec<String> {
+    values(res)
+        .iter()
+        .filter_map(|t| str_of(t, "id").map(str::to_string))
+        .collect()
+}
+
+pub(super) fn teams_of(res: &Value, default: Option<&str>, mine: &[String]) -> Vec<Team> {
     let mut list: Vec<Team> = values(res)
         .iter()
         .filter_map(|t| {
             let id = str_of(t, "id")?.to_string();
             Some(Team {
                 default: default.is_some_and(|d| d.eq_ignore_ascii_case(&id)),
+                mine: mine.iter().any(|m| m.eq_ignore_ascii_case(&id)),
                 name: str_of(t, "name")?.to_string(),
                 id,
             })

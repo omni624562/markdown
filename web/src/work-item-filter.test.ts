@@ -9,6 +9,7 @@ import {
   stateLabel,
   stateOptions,
   sprintOptions,
+  sprintTeam,
   statesFor,
   storedWorkItemFilter,
   workItemFilterKey,
@@ -128,4 +129,19 @@ test("Sprint 選單：新的在上面，標出本週、下一個、已結束與�
   assert.equal(none.current, null);
   assert.deepEqual(none.options[0], ["產品\\Sprint 1", "Sprint 1（1/5–1/18）"]);
   assert.deepEqual(sprintOptions([], "產品").options, [["產品", "沒有排進 Sprint（Backlog）"]]);
+});
+
+test("Sprint 依哪個團隊：設定指定的 → 自己所屬的 → 專案的預設團隊", () => {
+  const team = (name: string, d = false, mine = false) => ({ name, default: d, mine });
+  const teams = [team("產品團隊", true), team("前端"), team("Contoso", false, true), team("後端", false, true)];
+  const none = { adoDefaultProject: "", adoDefaultTeam: "" };
+  assert.equal(sprintTeam(teams, "產品", none)?.name, "Contoso");
+  // 設定裡這個專案指定了預設團隊：用它；指定的是別的專案就不算。
+  assert.equal(sprintTeam(teams, "產品", { adoDefaultProject: "產品", adoDefaultTeam: "前端" })?.name, "前端");
+  assert.equal(sprintTeam(teams, "產品", { adoDefaultProject: "別的", adoDefaultTeam: "前端" })?.name, "Contoso");
+  // 自己屬於好幾個團隊、其中一個是預設團隊：用預設團隊。
+  assert.equal(sprintTeam([team("前端", false, true), team("產品團隊", true, true)], "產品", none)?.name, "產品團隊");
+  // 讀不到自己所屬的團隊：用專案的預設團隊。
+  assert.equal(sprintTeam([team("前端"), team("產品團隊", true)], "產品", none)?.name, "產品團隊");
+  assert.equal(sprintTeam([], "產品", none), null);
 });

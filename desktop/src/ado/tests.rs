@@ -1151,10 +1151,17 @@ fn lists_teams_with_the_default_first() {
         {"id": "a1", "name": "IRIS"},
         {"id": "C", "name": "後端"}
     ]});
-    let teams = teams_of(&v, Some("A1"));
+    let teams = teams_of(&v, Some("A1"), &["c".to_string()]);
     let names: Vec<&str> = teams.iter().map(|t| t.name.as_str()).collect();
     assert_eq!(names, ["IRIS", "前端", "後端"]);
     assert!(teams[0].default);
+    // 自己所屬的團隊（編號大小寫不分）。
+    let mine: Vec<&str> = teams
+        .iter()
+        .filter(|t| t.mine)
+        .map(|t| t.name.as_str())
+        .collect();
+    assert_eq!(mine, ["後端"]);
 }
 
 #[test]

@@ -535,6 +535,8 @@ export interface AdoTeam {
   name: string;
   /** 專案的預設團隊。 */
   default: boolean;
+  /** 目前登入的人是這個團隊的成員（舊版伺服器讀不到時都是 false）。 */
+  mine: boolean;
 }
 
 /** 團隊選用的 Sprint。 */

@@ -23,6 +23,7 @@ import {
   fromStateChoice,
   type KindStates,
   sprintOptions,
+  sprintTeam,
   stateChoice,
   stateLabel,
   type StateOption,
@@ -209,17 +210,29 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     },
   });
   sprint.el.classList.add("workitems-sprint", "workitems-wide");
-  /** 同一個專案的 Sprint 只讀一次（預設團隊 → 團隊的 Sprint）。 */
-  const sprintLists = new Map<string, Promise<AdoTeamIteration[]>>();
+  /** 同一個專案的 Sprint 只讀一次（挑團隊 → 團隊的 Sprint；見 sprintTeam）。 */
+  const sprintLists = new Map<string, Promise<{ team: string | null; list: AdoTeamIteration[] }>>();
   const sprintsOf = (p: string) => {
     let list = sprintLists.get(p);
     if (!list) {
-      list = desktop!.adoTeams(p).then((teams) => (teams.length ? desktop!.adoTeamIterations(p, teams[0].id) : []));
+      list = desktop!.adoTeams(p).then(async (teams) => {
+        const team = sprintTeam(teams, p, app.settings.value);
+        return { team: team?.name ?? null, list: team ? await desktop!.adoTeamIterations(p, team.id) : [] };
+      });
       sprintLists.set(p, list);
       list.catch(() => sprintLists.delete(p));
     }
     return list;
   };
+  // 設定裡改了預設專案或團隊：Sprint 改依新的團隊重讀。
+  app.settings.subscribe((_, changed) => {
+    if (!changed.includes("adoDefaultProject") && !changed.includes("adoDefaultTeam")) return;
+    sprintLists.clear();
+    if (loaded) {
+      sprintTouched = false;
+      loadSprints();
+    }
+  });
   const loadSprints = () => {
     const only = f.projects.length === 1 ? f.projects[0] : null;
     sprint.hidden = !only;
@@ -232,11 +245,13 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     }
     sprintLoading = true;
     sprint.setOptions([]);
+    sprint.setCaption("");
     void sprintsOf(only)
-      .then((list) => {
+      .then(({ team, list }) => {
         if (f.projects.length !== 1 || f.projects[0] !== only) return;
         const { options, current } = sprintOptions(list, only);
         sprintLoading = false;
+        sprint.setCaption(team ? t("{team} 的 Sprint", { team }) : "");
         sprintCurrent = current;
         sprint.setOptions(options);
         if (!sprintTouched) {

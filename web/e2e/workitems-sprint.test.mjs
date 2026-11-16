@@ -1,6 +1,6 @@
 /**
- * 工作項目的 Sprint 篩選（app/work-items-panel.ts）：只選一個專案時，專案下面多一列 Sprint，預設是那個專案
- * 預設團隊目前的 Sprint（伺服器判斷）；可以多選，含「沒有排進 Sprint」；選了別的只在這次有效，重開回到本週；
+ * 工作項目的 Sprint 篩選（app/work-items-panel.ts）：只選一個專案時，專案下面多一列 Sprint，預設是自己所屬團隊
+ * 目前的 Sprint（伺服器判斷；不屬於任何團隊時用專案的預設團隊）；可以多選，含「沒有排進 Sprint」；選了別的只在這次有效，重開回到本週；
  * 沒選或選了好幾個專案時不顯示、不篩選。用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -18,8 +18,8 @@ const desktop = {
     $by: "project",
     values: {
       產品: [
-        { id: "team-1", name: "產品團隊", default: true },
-        { id: "team-2", name: "前端小組", default: false },
+        { id: "team-1", name: "產品團隊", default: true, mine: false },
+        { id: "team-2", name: "前端小組", default: false, mine: true },
       ],
     },
   },
@@ -85,10 +85,11 @@ test("只選一個專案時出現 Sprint：先顯示讀取中，預設本週；�
   await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "ado_work_items").some((c) => c.args.filter.iterations?.length));
   assert.deepEqual((await lists(page)).at(-1).iterations, ["產品\\Sprint 47"]);
   const asked = (await calls(page)).find((c) => c.cmd === "ado_team_iterations").args;
-  assert.deepEqual(asked, { project: "產品", team: "team-1" }, "用專案的預設團隊");
+  assert.deepEqual(asked, { project: "產品", team: "team-2" }, "用自己所屬的團隊，不是專案的預設團隊");
 
-  // 選單：新的在上面，最後是沒有排進 Sprint。
+  // 選單：上面標出是哪個團隊的 Sprint；新的在上面，最後是沒有排進 Sprint。
   await sprintButton(page).click();
+  assert.equal(await page.locator(".multi-select-pop:popover-open .multi-select-caption").textContent(), "前端小組 的 Sprint");
   const labels = await page.locator(".multi-select-pop:popover-open .multi-select-list .multi-select-item span").allTextContents();
   assert.deepEqual(labels, ["Sprint 48（下一個，11/24–12/7）", "Sprint 47（本週，11/10–11/23）", "Sprint 46（已結束，11/3–11/9）", "沒有排進 Sprint（Backlog）"]);
   await page.keyboard.press("Escape");
@@ -122,6 +123,20 @@ test("讀不到 Sprint（權限不足）：不顯示、不篩選，清單照常"
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_teams"));
   await sprintButton(page).waitFor({ state: "hidden" });
   assert.deepEqual((await lists(page)).at(-1).iterations, []);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("不屬於任何團隊（或舊版伺服器讀不到）：用專案的預設團隊", async () => {
+  const teams = [
+    { id: "team-1", name: "產品團隊", default: true, mine: false },
+    { id: "team-2", name: "前端小組", default: false, mine: false },
+  ];
+  const { page, context, errors } = await open({ desktop: { ...desktop, ado_teams: { $by: "project", values: { 產品: teams } } } });
+  await openList(page);
+  await onlyProject(page, "產品");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_team_iterations"));
+  assert.deepEqual((await calls(page)).find((c) => c.cmd === "ado_team_iterations").args, { project: "產品", team: "team-1" });
   assert.deepEqual(errors, []);
   await context.close();
 });
