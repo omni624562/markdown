@@ -1,8 +1,10 @@
 /**
  * 在 Windows 上真的啟動桌面版，檢查只有 WebView2 才走得到、一般測試（假的原生端）驗不到的路徑。
- * CI 的 windows 工作編譯完執行檔之後跑：`node smoke/windows-app.mjs <md-editor.exe 的路徑>`（在 web/ 底下）。
+ * CI 的 windows 工作編譯完執行檔之後跑：`node smoke/windows-app.mjs <執行檔的路徑>`（在 web/ 底下）。
  *
- * 做法：用環境變數請 WebView2 打開遠端偵錯的連接埠，Playwright 連上去（不另外下載瀏覽器）。檢查：
+ * 做法：另外編一份開了 `smoke-test` 功能的執行檔（除錯版，只多編主程式那一個套件），用環境變數請它打開 WebView2
+ * 遠端偵錯的連接埠，Playwright 連上去（不另外下載瀏覽器）。發佈的執行檔沒有這個功能：Tauri 自己設定瀏覽器的參數，
+ * WebView2 的環境變數不會生效，沒辦法從外面打開偵錯。檢查：
  * 1. 程式啟動、主畫面載入、命令列帶入的檔案開起來了；
  * 2. 「拖進來的檔案記得原本的路徑」這條管道：網頁把檔案物件交給原生端（`postMessageWithAdditionalObjects`），
  *    原生端問得出路徑、`dropped_file` 照那個路徑開啟。1.150.0～1.150.2 這裡是壞的（Tauri 自己的處理常式
@@ -32,7 +34,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const same = (a, b) => a.replace(/\//g, "\\").toLowerCase() === b.replace(/\//g, "\\").toLowerCase();
 
 const child = spawn(exe, [opened], {
-  env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}` },
+  // 這一份執行檔是用 `--features smoke-test` 編的，才認這個環境變數（發佈的執行檔沒有）。
+  env: { ...process.env, OMARKER_SMOKE_PORT: String(PORT) },
   stdio: "inherit",
 });
 let exited = null;

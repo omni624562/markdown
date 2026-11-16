@@ -179,6 +179,17 @@ jobs:
         working-directory: desktop
         run: cargo clippy --locked --all-targets -- -D warnings
 
+      # 真的把程式開起來，檢查只有 WebView2 才走得到的路徑（見 web/smoke/windows-app.mjs）。
+      # 這些路徑一般測試用假的原生端驗不到：1.150.0 的「拖進來的檔案記得路徑」就是發佈後才發現不能用。
+      # 用除錯版另外編一份開了 smoke-test 功能的執行檔（相依套件前面跑測試時已經編好，只多編主程式）：
+      # 發佈的執行檔不開遠端偵錯。
+      - name: 啟動程式檢查
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          (cd desktop && cargo build --locked --features smoke-test)
+          (cd web && node smoke/windows-app.mjs ../desktop/target/debug/md-editor.exe)
+
       - name: 建置日期
         shell: bash
         run: echo "MD_EDITOR_DATE=$(TZ=Asia/Taipei date +%Y-%m-%d)" >> "$GITHUB_ENV"
@@ -192,13 +203,6 @@ jobs:
           # 「用 GitHub 登入」用的 OAuth App Client ID（公開資訊）。程式內建 oMarker 的 Client ID；要換成別的 App 時在儲存庫的 Settings → Variables 設定。
           OMARKER_GITHUB_CLIENT_ID: ${{ vars.OMARKER_GITHUB_CLIENT_ID }}
         run: cargo build --release --locked
-
-      # 真的把程式開起來，檢查只有 WebView2 才走得到的路徑（見 web/smoke/windows-app.mjs）。
-      # 這些路徑一般測試用假的原生端驗不到：1.150.0 的「拖進來的檔案記得路徑」就是發佈後才發現不能用。
-      - name: 啟動程式檢查
-        working-directory: web
-        timeout-minutes: 5
-        run: node smoke/windows-app.mjs ../desktop/target/release/md-editor.exe
 
       # Cargo 套件名稱沿用 md-editor（避免動到設定與鑰匙圈等內部名稱），發佈時的檔名用 omarker.exe。
       - name: 改成發佈用的檔名
