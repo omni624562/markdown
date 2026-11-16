@@ -83,10 +83,6 @@ export interface Settings {
   spellIgnore: string[];
   /** 貼上或拖進很大的圖片時，自動縮小並壓縮。 */
   imageCompress: boolean;
-  /** 專注模式：淡化目前段落以外的文字。 */
-  focusMode: boolean;
-  /** 打字機模式：游標所在行保持在畫面中央。 */
-  typewriterMode: boolean;
   /** 預覽與匯出的文字欄寬。 */
   previewWidth: "narrow" | "medium" | "wide";
   /** 即時預覽、預覽與 PDF 的內文字型（原始碼檢視用程式碼字型，表格才對得齊）。 */
@@ -206,8 +202,6 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   spellCheck: true,
   spellIgnore: [],
   imageCompress: true,
-  focusMode: false,
-  typewriterMode: false,
   previewWidth: "medium",
   docFont: "sans",
   docFontCustom: "",
@@ -333,8 +327,6 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("termCheck");
   bool("spellCheck");
   bool("imageCompress");
-  bool("focusMode");
-  bool("typewriterMode");
   bool("math");
   bool("mermaid");
   bool("gitEnabled");

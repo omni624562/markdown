@@ -72,5 +72,4 @@
 | 符號 | Symbols |
 | 斜線指令 | slash commands |
 | 簡報模式 | Presentation Mode |
-| 專注模式／打字機模式 | Focus Mode／Typewriter Mode |
 | 檢查更新 | Check for Updates |

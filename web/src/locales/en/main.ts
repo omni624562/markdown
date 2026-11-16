@@ -343,8 +343,6 @@ export const main: Record<string, Translation> = {
   "即時預覽（在編輯區直接顯示排版）": "Live Preview (Formatted While Editing)",
   "分割（原始碼與預覽）": "Split (Source and Preview)",
   "只顯示預覽": "Preview Only",
-  "專注模式（淡化其他段落）": "Focus Mode (Dim Other Paragraphs)",
-  "打字機模式（游標保持在畫面中央）": "Typewriter Mode (Keep Cursor Centered)",
   "放大編輯區文字": "Increase Editor Font Size",
   "縮小編輯區文字": "Decrease Editor Font Size",
   "編輯區文字恢復預設大小": "Reset Editor Font Size",

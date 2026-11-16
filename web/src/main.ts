@@ -911,8 +911,6 @@ function editorOptions(): EditorOptions {
     lineNumbers: settings.value.lineNumbers,
     autoPairBrackets: settings.value.autoPairBrackets,
     formatTable: tableFormatter,
-    focusMode: settings.value.focusMode,
-    typewriterMode: settings.value.typewriterMode,
     live: [workItemChips, livePreview({
       imageUrl(src, view) {
         const pane = view ? paneOfView(view) : focusedPane;
