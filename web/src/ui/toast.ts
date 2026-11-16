@@ -102,3 +102,20 @@ export function toast(message: string, opts: ToastOptions = {}): { dismiss(): vo
   el.addEventListener("pointerleave", () => (timer = window.setTimeout(close, 2000)));
   return { dismiss: close };
 }
+
+/** 只給螢幕閱讀器的說明區（畫面上看不到）。 */
+const spoken = document.createElement("div");
+spoken.className = "sr-only";
+spoken.setAttribute("role", "status");
+spoken.setAttribute("aria-live", "polite");
+document.body.append(spoken);
+
+/**
+ * 結果在畫面上已經看得到的操作（例如改了工作項目的狀態、插入了連結）：不跳通知，只讓螢幕閱讀器念出來。
+ * 有「復原」等按鈕、或結果看不到的（複製、下載、背景完成）照樣用 {@link toast}。
+ */
+export function announce(message: string): void {
+  spoken.textContent = "";
+  // 換一個畫面再填：同一句連續出現時螢幕閱讀器也會再念一次。
+  requestAnimationFrame(() => (spoken.textContent = message));
+}

@@ -23,7 +23,8 @@ test("點 PDF：用預設的程式開啟；右鍵可以插入連結", async () =
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "open_with_default"));
   const calls = await page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "open_with_default" || c.cmd === "reopen_file").map((c) => [c.cmd, c.args.path]));
   assert.deepEqual(calls, [["open_with_default", at("報告.pdf")]]);
-  await page.locator(".toast", { hasText: "已用預設的程式開啟「報告.pdf」" }).waitFor();
+  // 結果在畫面上看得到：不跳通知，只給螢幕閱讀器念（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已用預設的程式開啟「報告.pdf」");
 
   // 先開 README，再從右鍵插入 PDF 的連結：路徑相對於 README。
   await row(page, "README.md").click();

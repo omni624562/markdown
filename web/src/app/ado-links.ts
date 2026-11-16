@@ -8,7 +8,7 @@ import { t } from "../i18n.ts";
 import { type RemoteLink, parseRemoteLink, findWikiPage } from "../remote-links.ts";
 import { icon } from "../ui/icons.ts";
 import { shortDate, type IssueSummary } from "../ui/issues-panel.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { pageName } from "../wiki-text.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { app } from "./context.ts";
@@ -154,7 +154,7 @@ function hidePreviewCard(): void {
 /** 插入 `[#123 標題](網址)` 到游標位置。 */
 export function insertIssueLink(item: Pick<IssueSummary, "id" | "title" | "webUrl">): void {
   insertAtCursor(workItemLink(item));
-  toast(t("已插入「#{id}」的連結", { id: item.id }));
+  announce(t("已插入「#{id}」的連結", { id: item.id }));
 }
 
 /** `root` 裡的連結滑鼠停一下顯示摘要卡片；`pick` 決定哪些連結要顯示、連到哪裡。 */

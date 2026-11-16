@@ -110,7 +110,8 @@ test("改了工作項目之後清單在背景更新：不先換上剛才的副�
   const before = await status.evaluate((el) => [el.textContent, el.getBoundingClientRect().height]);
   await page.locator("button#wi-edit-state").click();
   await page.locator("#wi-edit-state-popover button", { hasText: "Resolved" }).click();
-  await page.locator(".toast", { hasText: "已把狀態改成「Resolved」" }).waitFor();
+  // 結果在畫面上看得到：不跳通知，只給螢幕閱讀器念（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已把狀態改成「Resolved」");
   await page.waitForTimeout(300);
   assert.deepEqual(await status.evaluate((el) => [el.textContent, el.getBoundingClientRect().height]), before, "讀取中：那一行不變");
   await page.locator("#workitems-host .workitem", { hasText: "第一個" }).getByText("Resolved").waitFor();

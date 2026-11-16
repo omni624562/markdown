@@ -7,7 +7,7 @@ import { t } from "../i18n.ts";
 import { imageMarkdown } from "../image-markdown.ts";
 import { basename, dirname, relativePath } from "../paths.ts";
 import { openLightbox } from "../ui/lightbox.ts";
-import { toast } from "../ui/toast.ts";
+import { announce } from "../ui/toast.ts";
 import { app } from "./context.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { openItem } from "./item-tabs.ts";
@@ -39,7 +39,7 @@ export function showImage(path: string): Promise<void> {
     load: () => Promise.resolve(imageMarkdown(path, null).replace(/\]\(.*\)$/, `](${src})`)),
     insertLink: () => {
       insertAtCursor(imageMarkdown(path, app.cur.fileHandle?.path));
-      toast(t("已插入圖片「{name}」", { name }));
+      announce(t("已插入圖片「{name}」", { name }));
     },
     decorate: (body) => {
       body.classList.add("image-view");

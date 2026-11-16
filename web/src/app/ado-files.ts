@@ -12,7 +12,7 @@ import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import type { IssueSource } from "../ui/issue-view.ts";
 import { openLightbox } from "../ui/lightbox.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { recentEditor } from "../wiki-coedit.ts";
 import { isWikiShortcut } from "../wiki-shortcuts.ts";
 import { wikiPageLink, pageName, flattenPages } from "../wiki-text.ts";
@@ -123,7 +123,7 @@ export function showRepoFile(link: RepoFileLink): void {
     },
     insertLink: () => {
       insertAtCursor(wikiPageLink(link.name, webUrl));
-      toast(t("已插入「{name}」的連結", { name: link.name }));
+      announce(t("已插入「{name}」的連結", { name: link.name }));
     },
     // 檔案裡的相對連結：同一個儲存庫的文字檔在這裡切換，其他檔案用瀏覽器開。
     link: git
