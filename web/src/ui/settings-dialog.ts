@@ -48,7 +48,7 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
   previewWidth: [
     ["narrow", t("窄")],
     ["medium", t("中")],
-    ["wide", t("寬")],
+    ["wide", t("寬（預設）")],
   ],
   docFont: [
     ["sans", t("黑體（預設）")],
@@ -65,8 +65,8 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["150", "150%"],
   ],
   tabStyle: [
-    ["line", t("頂端一條線（原本）")],
-    ["card", t("卡片")],
+    ["line", t("頂端一條線")],
+    ["card", t("卡片（預設）")],
     ["underline", t("底線")],
   ],
   panelStyle: [
