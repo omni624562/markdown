@@ -57,28 +57,57 @@ export function initFileDrop(): void {
       await insertImages(images).catch(reportError);
       return;
     }
-    const file = files.find((f) => !images.includes(f));
-    if (!file) return;
-    if (/\.docx$/i.test(file.name)) {
-      await importDocxData(file.name, await file.arrayBuffer(), null).catch(reportError);
-      return;
-    }
-    // 桌面版（Windows）：問原生端這個檔案原本的路徑，和「開啟檔案」一樣開起來——存檔直接存回原處，
+    // 圖片以外的每一個檔案都開起來（一次太多時只開前面幾個）。
+    const docs = files.filter((f) => !images.includes(f));
+    if (!docs.length) return;
+    if (docs.length > MAX_DROPPED) toast(t("一次最多開啟 {max} 個檔案，其餘的沒有開啟。", { max: MAX_DROPPED }));
+    // 桌面版（Windows）：把檔案交給原生端問出原本的路徑，和「開啟檔案」一樣開起來——存檔直接存回原處，
     // 另存新檔也從它所在的資料夾開始。拿不到路徑（其他平台、網頁版）才用檔案內容開成新文件。
-    const opened = await openWithPath(files, files.indexOf(file)).catch((e) => String(e instanceof Error ? e.message : e));
-    if (opened === true) return;
-    if (file.size > 20 * 1024 * 1024) {
-      toast(t("檔案超過 20 MB，可能不是文字檔。"), { tone: "error" });
-      return;
+    let id: string | null = null;
+    let why: string | null = null;
+    try {
+      id = handOver(files);
+    } catch (e) {
+      why = message(e);
     }
-    const text = await readTextFile(file).catch(reportError);
-    if (text === undefined) return;
-    app.openDocument(file.name, text, null);
+    const opened: string[] = [];
+    for (const file of docs.slice(0, MAX_DROPPED)) {
+      if (/\.docx$/i.test(file.name)) {
+        await importDocxData(file.name, await file.arrayBuffer(), null).catch(reportError);
+        continue;
+      }
+      if (id) {
+        try {
+          const found = await desktop!.droppedFile(id, files.indexOf(file));
+          if (found) {
+            app.openOpenedFile(fromDesktop(found));
+            opened.push(file.name);
+            continue;
+          }
+        } catch (e) {
+          why = message(e);
+        }
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        toast(t("檔案超過 20 MB，可能不是文字檔。"), { tone: "error" });
+        continue;
+      }
+      const text = await readTextFile(file).catch(reportError);
+      if (text === undefined) continue;
+      app.openDocument(file.name, text, null);
+      opened.push(file.name);
+    }
+    if (!opened.length) return;
+    const what = opened.length === 1 ? t("已開啟「{name}」", { name: opened[0] }) : t("已開啟 {n} 個檔案", { n: opened.length });
     // 應該拿得到原本的位置卻拿不到：說清楚（存檔會問要存到哪裡）和原因，不要默默變成新文件。
-    if (typeof opened === "string") toast(t("已開啟「{name}」，但拿不到它原本的位置（{why}）：存檔時要選位置", { name: file.name, why: opened }), { tone: "error", duration: 15000 });
-    else toast(t("已開啟「{name}」", { name: file.name }));
+    if (why) toast(t("{what}，但拿不到原本的位置（{why}）：存檔時要選位置", { what, why }), { tone: "error", duration: 15000 });
+    else toast(what);
   });
 }
+
+/** 一次拖進來最多開幾個檔案。 */
+const MAX_DROPPED = 20;
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** WebView2 把檔案物件交給原生端的管道（其他瀏覽器核心沒有）。 */
 interface WebViewHost {
@@ -86,26 +115,23 @@ interface WebViewHost {
 }
 
 /**
- * 依原本的路徑開啟拖進來的第 `index` 個檔案。把檔案物件交給原生端（它才問得到路徑），再請它開啟；
- * 回傳有沒有開成功；這個平台本來就沒有這個機制時是 false，應該拿得到卻失敗時丟出原因。
+ * 把拖進來的檔案物件交給原生端（它才問得到路徑），回傳這次拖放的代號；之後用 `desktop.droppedFile(代號, 順序)`
+ * 依原本的路徑開啟。這個平台本來就沒有這個機制時回傳 null，應該有卻沒有時丟出原因。
  */
-async function openWithPath(files: File[], index: number): Promise<boolean> {
+function handOver(files: File[]): string | null {
   const host = (window as { chrome?: { webview?: WebViewHost } }).chrome?.webview;
-  if (!desktop || index < 0) return false;
+  if (!desktop) return null;
   if (!host?.postMessageWithAdditionalObjects) {
     // Windows 的桌面版應該要有；沒有就是 WebView2 太舊或管道被關掉。
     if (/Windows/.test(navigator.userAgent)) throw new Error(host ? t("這個版本的 WebView2 不能交出檔案") : t("沒有 WebView2 的管道"));
-    return false;
+    return null;
   }
   const id = `drop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  // 訊息要是字串：Tauri 自己也在聽這個事件，而且排在前面；它只讀得懂字串，遇到物件會回報錯誤。
-  // 送物件時實測我們的處理常式登記成功卻一則訊息都收不到，推測是它回報錯誤之後 WebView2 就不再往下叫。
+  // 訊息要是字串：Tauri 自己也在聽這個事件，而且排在前面；它只讀得懂字串，遇到物件會回報錯誤，
+  // WebView2 就不再往下叫我們的處理常式（送物件時登記成功卻一則訊息都收不到；改成字串就收到了）。
   // 字串它讀得懂、當成看不懂的指令略過（只在主控台記一行）。
   host.postMessageWithAdditionalObjects(`omarkerDrop:${id}`, files);
-  const file = await desktop.droppedFile(id, index);
-  if (!file) return false;
-  app.openOpenedFile(fromDesktop(file));
-  return true;
+  return id;
 }
 
 /** 放開的地方可以輸入文字（輸入框、編輯區）：拖過來的文字交給它自己放進去。 */
