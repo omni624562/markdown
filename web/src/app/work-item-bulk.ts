@@ -154,7 +154,7 @@ export function bulkEditWorkItems(items: AdoWorkItem[], done: () => void): void 
       done();
       forgetListCopies("wi-");
       void workItemsPanel?.refresh();
-      void issueView.refresh();
+      void issueView.reload();
       if (!failed.length) toast(t("已修改 {n} 個工作項目", { n: changed }), { tone: "success" });
       else
         toast(t("改好 {ok} 個，{fail} 個沒改成：{details}", { ok: changed, fail: failed.length, details: failed.join(t("；")) }), {

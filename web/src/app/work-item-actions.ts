@@ -60,8 +60,9 @@ function workItemEditing(item: AdoWorkItem): {
       await desktop!.adoWorkItemUpdate(item.id, { ...change, rev: detail.rev });
       toast(done, { tone: "success" });
       // 改了標題：重新開啟，分頁名稱也跟著換。
+      // 其他的修改在背景重新讀取：畫面不清掉、不跳回最上面。
       if (change.title) showWorkItem({ ...item, title: change.title });
-      else await issueView.refresh();
+      else await issueView.reload();
       forgetListCopies("wi-");
       void workItemsPanel?.refresh();
       return true;
@@ -81,7 +82,7 @@ function workItemEditing(item: AdoWorkItem): {
       if (html === null) await desktop!.adoCommentDelete(item.project, item.id, commentId);
       else await desktop!.adoCommentUpdate(item.project, item.id, commentId, html);
       toast(done, { tone: "success" });
-      await issueView.refresh();
+      await issueView.reload();
       return true;
     } catch (e) {
       reportError(e);
