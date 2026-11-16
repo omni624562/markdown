@@ -12,7 +12,7 @@ import { toast } from "../ui/toast.ts";
 import { assistantKeyChanged } from "./assistant.ts";
 import { app } from "./context.ts";
 
-function row(id: string, label: string, hint: string | undefined, control: HTMLElement): HTMLElement {
+function row(id: string, label: string, hint: string | undefined, control: HTMLElement, status?: HTMLElement): HTMLElement {
   const el = document.createElement("div");
   el.className = "settings-row";
   const text = document.createElement("div");
@@ -25,6 +25,8 @@ function row(id: string, label: string, hint: string | undefined, control: HTMLE
     h.textContent = hint;
     text.append(h);
   }
+  // 目前的狀態（已設定、本月已用多少）放在說明下面一行：不擠在右邊的按鈕、輸入框旁邊。
+  if (status) text.append(status);
   if (!control.id) control.id = `setting-${id}`;
   el.append(text, control);
   return el;
@@ -147,7 +149,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
   enabled.dataset.key = "claudeApiEnabled";
 
   const keyText = document.createElement("span");
-  keyText.className = "assistant-key-status";
+  keyText.className = "settings-status";
   const keyBox = document.createElement("span");
   keyBox.className = "setting-buttons";
   const change = button(t("輸入金鑰…"), async () => {
@@ -165,10 +167,11 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     await d.assistantKeyForget().catch(() => {});
     void refreshKey();
   });
-  keyBox.append(keyText, change, remove);
+  keyBox.append(change, remove);
   const refreshKey = async () => {
     const has = await d.assistantKeyStatus().catch(() => false);
-    keyText.textContent = has ? t("已存在 Windows 認證管理員") : t("還沒設定");
+    keyText.textContent = has ? t("已設定，存在 Windows 認證管理員") : t("還沒設定");
+    keyText.classList.toggle("ok", has);
     change.textContent = has ? t("更換…") : t("輸入金鑰…");
     remove.hidden = !has;
     assistantKeyChanged();
@@ -200,7 +203,12 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     else limit.value = String(s().claudeMonthlyLimit);
   });
   const used = document.createElement("small");
-  limitBox.append(document.createTextNode("US$"), limit, used);
+  used.className = "settings-status";
+  // 金額的單位放在輸入框裡面的左邊，和數字是一個欄位。
+  const money = document.createElement("span");
+  money.className = "settings-money";
+  money.append(Object.assign(document.createElement("span"), { textContent: "US$" }), limit);
+  limitBox.append(money);
   const refreshUsage = async () => {
     const u = await d.assistantUsage().catch(() => null);
     used.textContent = u ? t("本月已用 {usd}", { usd: formatUsd(u.usd) }) : "";
@@ -246,11 +254,11 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
   const dependents = document.createElement("div");
   dependents.className = "assistant-dependents";
   dependents.append(
-    row("assistant-key", t("API 金鑰"), t("在 Anthropic Console 建立；費用算在這把金鑰上"), keyBox),
+    row("assistant-key", t("API 金鑰"), t("在 Anthropic Console 建立；費用算在這把金鑰上"), keyBox, keyText),
     row("claudeModel", t("預設模型"), t("Haiku 最便宜、Opus 最強；側欄也可以臨時換"), model),
-    row("assistantFontSize", t("字級"), t("助理側欄的字；焦點在助理裡時也可以按 Ctrl+= 或 Ctrl+- 調整"), font),
-    row("claudeMonthlyLimit", t("每月上限"), t("這個月估計的費用到了上限就停止送出"), limitBox),
-    row("claudeWebSearch", t("允許上網查資料"), t("開啟後助理輸入框上方會有「上網查」，按了的那一題 Claude 才會上網搜尋（每次搜尋約 US$0.01）；問題裡有網址時，Claude 也會去讀那一頁（只算讀進來的內容的費用）"), web),
+    row("assistantFontSize", t("字級"), t("助理側欄的字；在助理裡也可以按 Ctrl+=、Ctrl+-"), font),
+    row("claudeMonthlyLimit", t("每月上限"), t("這個月估計的費用到了上限就停止送出"), limitBox, used),
+    row("claudeWebSearch", t("允許上網查資料"), t("按「上網查」的那一題才搜尋（每次約 US$0.01）；也會讀問題裡的網址"), web),
     projectsTitle,
     projects,
     projectsHint,
