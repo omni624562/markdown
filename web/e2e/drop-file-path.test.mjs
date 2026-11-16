@@ -82,8 +82,47 @@ test("應該拿得到路徑卻失敗：照舊開成新文件，但提示拿不�
     window.chrome = { ...(window.chrome ?? {}), webview: { postMessageWithAdditionalObjects: () => {} } };
   });
   await dropFile(page, "清單.md", "# 清單\n");
-  await page.locator(".toast", { hasText: "已開啟「清單.md」，但拿不到它原本的位置（沒有收到 WebView2 送來的檔案）：存檔時要選位置" }).waitFor();
+  await page.locator(".toast", { hasText: "已開啟「清單.md」，但拿不到原本的位置（沒有收到 WebView2 送來的檔案）：存檔時要選位置" }).waitFor();
   assert.match(await page.locator(".cm-content").textContent(), /清單/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("一次拖好幾個檔案：每一個都開起來；有路徑的照路徑開，圖片以外的都算", async () => {
+  const OTHER = `${DIR}\\notes.md`;
+  const { page, context, errors } = await open({
+    desktop: {
+      dropped_file: {
+        $by: "index",
+        values: {
+          0: { path: PATH, name: "status.sh", text: TEXT, encoding: "utf-8" },
+          1: { path: OTHER, name: "notes.md", text: "# 筆記\n", encoding: "utf-8" },
+        },
+      },
+    },
+  });
+  await page.evaluate(() => {
+    window.__posted = [];
+    window.chrome = { ...(window.chrome ?? {}), webview: { postMessageWithAdditionalObjects: (msg, files) => window.__posted.push({ msg, names: [...files].map((f) => f.name) }) } };
+  });
+  const data = await page.evaluateHandle(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(["#!/bin/sh\n"], "status.sh", { type: "text/plain" }));
+    dt.items.add(new File(["# 筆記\n"], "notes.md", { type: "text/markdown" }));
+    dt.items.add(new File(["沒有路徑的檔案\n"], "臨時.txt", { type: "text/plain" }));
+    return dt;
+  });
+  await page.dispatchEvent(".editor-pane", "dragenter", { dataTransfer: data });
+  await page.dispatchEvent(".editor-pane", "drop", { dataTransfer: data });
+  await page.locator(".toast", { hasText: "已開啟 3 個檔案" }).waitFor();
+  const tabs = await page.locator("#tab-bar .tab .tab-name").allTextContents();
+  for (const name of ["status.sh", "notes.md", "臨時.txt"]) assert.ok(tabs.includes(name), `${name}：${tabs.join()}`);
+  // 檔案只交給原生端一次；每個檔案各問一次路徑。
+  const posted = await page.evaluate(() => window.__posted);
+  assert.equal(posted.length, 1);
+  assert.deepEqual(posted[0].names, ["status.sh", "notes.md", "臨時.txt"]);
+  const asked = (await calls(page)).filter((c) => c.cmd === "dropped_file").map((c) => c.args.index);
+  assert.deepEqual(asked, [0, 1, 2]);
   assert.deepEqual(errors, []);
   await context.close();
 });
