@@ -27,6 +27,11 @@ const desktop = {
   ado_team_iterations: {
     $delay: 300,
     value: [
+      sprint(41, "2026-09-29T00:00:00Z", "2026-10-05T00:00:00Z"),
+      sprint(42, "2026-10-06T00:00:00Z", "2026-10-12T00:00:00Z"),
+      sprint(43, "2026-10-13T00:00:00Z", "2026-10-19T00:00:00Z"),
+      sprint(44, "2026-10-20T00:00:00Z", "2026-10-26T00:00:00Z"),
+      sprint(45, "2026-10-27T00:00:00Z", "2026-11-02T00:00:00Z"),
       sprint(46, "2026-11-03T00:00:00Z", "2026-11-09T00:00:00Z"),
       sprint(47, "2026-11-10T00:00:00Z", "2026-11-23T00:00:00Z", true),
       sprint(48, "2026-11-24T00:00:00Z", "2026-12-07T00:00:00Z"),
@@ -90,18 +95,41 @@ test("只選一個專案時出現 Sprint：先顯示讀取中，預設本週；�
   // 選單：上面標出是哪個團隊的 Sprint；新的在上面，最後是沒有排進 Sprint。
   await sprintButton(page).click();
   assert.equal(await page.locator(".multi-select-pop:popover-open .multi-select-caption").textContent(), "前端小組 的 Sprint");
-  // 名稱、狀態、日期分三欄，各欄上下對齊。
-  const rows = await page.locator(".multi-select-pop:popover-open .multi-select-list .multi-select-item").evaluateAll((items) =>
-    items.map((row) => [...row.querySelectorAll(":scope > span")].map((s) => s.textContent)),
-  );
-  assert.deepEqual(rows, [
-    ["Sprint 48", "下一個", "11/24–12/7"],
-    ["Sprint 47", "本週", "11/10–11/23"],
-    ["Sprint 46", "已結束", "11/3–11/9"],
-    ["沒有排進 Sprint（Backlog）"],
+  // 分「目前與之後」「已結束」兩組；名稱旁邊標本週、下一個，日期靠右；本週那一列底色標出；沒有滑鼠提示。
+  const pop = page.locator(".multi-select-pop:popover-open");
+  const visibleRows = () =>
+    pop.locator(".multi-select-list").evaluate((list) =>
+      [...list.children]
+        .filter((el) => el.getClientRects().length)
+        .map((el) =>
+          el.classList.contains("multi-select-item")
+            ? [el.querySelector(".multi-select-name")?.textContent ?? el.textContent, el.querySelector(".multi-select-aside")?.textContent ?? ""].join(" | ")
+            : `[${el.textContent}]`,
+        ),
+    );
+  assert.deepEqual(await visibleRows(), [
+    "[目前與之後]",
+    "Sprint 48下一個 | 11/24 – 12/7",
+    "Sprint 47本週 | 11/10 – 11/23",
+    "[已結束6]",
+    "Sprint 46 | 11/3 – 11/9",
+    "Sprint 45 | 10/27 – 11/2",
+    "Sprint 44 | 10/20 – 10/26",
+    "[顯示更早的 3 個]",
+    "沒有排進 Sprint（Backlog）只選這個 | ",
   ]);
-  const lefts = await page.locator(".multi-select-pop:popover-open .multi-select-col-3").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
-  assert.equal(new Set(lefts).size, 1, `日期對齊：${lefts}`);
+  assert.equal(await pop.locator(".multi-select-item.current .multi-select-name").textContent(), "Sprint 47本週");
+  assert.equal(await pop.locator(".multi-select-item.rich[title]").count(), 0, "沒有重複的滑鼠提示");
+  const rights = await pop.locator(".multi-select-aside").evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().right)));
+  assert.equal(new Set(rights).size, 1, `日期靠右對齊：${rights}`);
+  // 打字找時收起來的也找得到；清掉後再按「顯示更早的」展開。
+  await pop.locator(".multi-select-search").fill("Sprint 42");
+  assert.equal(await pop.locator(".multi-select-item", { hasText: "Sprint 42" }).isVisible(), true);
+  assert.equal(await pop.locator(".multi-select-group").first().isVisible(), false, "找的時候不顯示組名");
+  await pop.locator(".multi-select-search").fill("");
+  assert.equal(await pop.locator(".multi-select-item", { hasText: "Sprint 42" }).isVisible(), false);
+  await pop.getByRole("button", { name: "顯示更早的 3 個" }).click();
+  assert.equal(await pop.locator(".multi-select-item", { hasText: "Sprint 42" }).isVisible(), true);
   // 選單和按鈕左右對齊（按鈕夠寬時不會比按鈕寬）。
   const edges = await page.evaluate(() => {
     const b = document.querySelector('#workitems-host .multi-select[aria-label^="Sprint："]').getBoundingClientRect();

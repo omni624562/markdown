@@ -119,27 +119,47 @@ const day = (iso: string) => {
 /**
  * Sprint 選單的選項：新的在上面，標出本週（伺服器判斷的「目前」）、下一個、已結束與起訖日期；
  * 最後一項是「沒有排進 Sprint」（值是專案本身的路徑）。`current` 是本週的 Sprint 路徑（沒有時是 null）。
- * `columns`：選單裡分三欄對齊的名稱、狀態、日期（按鈕上還是寫成一行的 `options`）。
+ * `items`：選單裡的樣子（按鈕上還是寫成一行的 `options`）：分「目前與之後」「已結束」兩組（沒有本週時不分組），
+ * 名稱旁邊標本週、下一個，日期靠右。
  */
 export function sprintOptions(
   list: readonly SprintInfo[],
   project: string,
-): { options: [string, string][]; current: string | null; columns: Map<string, [string, string, string]> } {
+): { options: [string, string][]; current: string | null; items: Map<string, SprintItem> } {
   const sorted = [...list];
   const at = sorted.findIndex((s) => s.current);
-  const columns = new Map<string, [string, string, string]>();
+  const items = new Map<string, SprintItem>();
   const options = sorted
     .map((s, i): [string, string] => {
       const dates = s.start && s.finish ? `${day(s.start)}–${day(s.finish)}` : "";
       const when = at < 0 ? null : i === at ? t("本週") : i === at + 1 ? t("下一個") : i < at ? t("已結束") : null;
-      columns.set(s.path, [s.name, when ?? "", dates]);
+      items.set(s.path, {
+        name: s.name,
+        ...(i === at || i === at + 1 ? { note: when! } : {}),
+        ...(i === at ? { current: true } : {}),
+        ...(dates ? { aside: dates.replace("–", " – ") } : {}),
+        ...(at < 0 ? {} : { group: i < at ? SPRINT_PAST() : SPRINT_NOW() }),
+      });
       const note = [when, dates].filter(Boolean).join(t("，"));
       return [s.path, note ? t("{name}（{note}）", { name: s.name, note }) : s.name];
     })
     .reverse();
   options.push([project, t("沒有排進 Sprint（Backlog）")]);
-  return { options, current: at < 0 ? null : sorted[at].path, columns };
+  return { options, current: at < 0 ? null : sorted[at].path, items };
 }
+
+/** Sprint 選單裡的一項（和 ui/multi-select.ts 的 RichItem 一樣）。 */
+export interface SprintItem {
+  name: string;
+  note?: string;
+  current?: boolean;
+  aside?: string;
+  group?: string;
+}
+
+/** Sprint 選單的兩組。 */
+export const SPRINT_NOW = () => t("目前與之後");
+export const SPRINT_PAST = () => t("已結束");
 
 /**
  * Sprint 篩選依哪個團隊的 Sprint（每個團隊選用的 Sprint 不同，例如預設團隊是 Sprint 25、自己的團隊是 Sprint 103）：
