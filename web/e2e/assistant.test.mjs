@@ -608,6 +608,31 @@ test("回答整份包在 ```markdown 裡：照一般的 Markdown 排版顯示，
   await context.close();
 });
 
+test("回答裡夾著一小塊 ```markdown 範例（說明比較多，不拿掉外框）：那一塊的「插入」插入的是裡面的內容", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".segmented [data-view=editor]").click();
+  const docText = () => page.evaluate(() => [...document.querySelectorAll(".cm-content .cm-line")].map((l) => l.textContent).join("\n"));
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.locator(".assistant-input textarea").fill("表格怎麼寫");
+  await panel.locator(".assistant-input textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const table = "| 天 | 地點 |\n| --- | --- |\n| 1 | 台南 |";
+  await reply(page, "表格用直線分欄。\n\n第二行是分隔列。\n\n第一行是標題。\n\n例如：\n\n```markdown\n" + table + "\n```\n\n對齊可以用冒號。\n\n欄寬不用一樣。");
+  const answer = panel.locator(".assistant-assistant").last();
+  await answer.locator(".assistant-block").first().waitFor();
+  // 說明比區塊多：照原樣顯示成程式碼區塊。
+  assert.equal(await answer.locator(".assistant-answer pre").count(), 1);
+  await page.locator(".cm-content").click();
+  await answer.locator(".assistant-block").first().getByRole("button", { name: "把這一塊插入到游標處" }).click();
+  assert.equal(await docText(), table);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("回答裡的遠端圖片一律不載入（就算關掉「封鎖遠端圖片」）：被藏在文件裡的指示操控時，資料不會跟著圖片網址送出去", async () => {
   // 關掉「封鎖遠端圖片」：文件預覽會載入遠端圖片，但助理的回答照樣不載入。
   const { page, context, errors, external } = await open({ desktop: desktop({ ...ON, blockRemoteImages: false }) });

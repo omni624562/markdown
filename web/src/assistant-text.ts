@@ -413,12 +413,12 @@ function looksLikeMarkdown(text: string): boolean {
   );
 }
 
-/** 前後最多幾行說明（「以下是整理好的筆記：」）還算「整份包起來」。 */
+/** 前後有幾行說明（「以下是整理好的筆記：」）一定還算「整份包起來」；更多時要區塊佔大部分才算。 */
 const WRAP_NOTE_LINES = 2;
 
 /**
  * 回答整份包在 ```markdown（或 ```md）程式碼區塊裡時拿掉外框，照一般的 Markdown 顯示、複製、插入；
- * 前後可以有一兩行說明。沒標語言的區塊只在整份回答就是這一塊、內容又明顯是 Markdown 時才拿掉。
+ * 前後可以有說明：一兩行一定可以，更多時區塊的內容要至少是說明的兩倍（區塊是回答的主體）。沒標語言的區塊只在整份回答就是這一塊、內容又明顯是 Markdown 時才拿掉。
  * 還沒收到結尾的外框（回答還在傳）也先拿掉開頭那一行，傳的時候就看得到排版。其他情況原樣回傳。
  */
 export function unwrapMarkdown(answer: string): string {
@@ -433,7 +433,7 @@ export function unwrapMarkdown(answer: string): string {
   const named = lang === "markdown" || lang === "md";
   if (!named && lang) return answer;
   const before = filled(0, start);
-  if (before > (named ? WRAP_NOTE_LINES : 0)) return answer;
+  if (!named && before) return answer;
   const close = new RegExp(`^ {0,3}\\${fence[0]}{${fence.length},}[ \t]*$`);
   let end = -1;
   for (let i = lines.length - 1; i > start; i--) {
@@ -443,8 +443,10 @@ export function unwrapMarkdown(answer: string): string {
     }
   }
   const after = end < 0 ? 0 : filled(end + 1, lines.length);
-  if (after > (named ? WRAP_NOTE_LINES : 0)) return answer;
+  if (!named && after) return answer;
   const inner = lines.slice(start + 1, end < 0 ? undefined : end).join("\n");
+  const notes = before + after;
+  if (notes > WRAP_NOTE_LINES && filled(start + 1, end < 0 ? lines.length : end) < notes * 2) return answer;
   if (!named && (end < 0 || !looksLikeMarkdown(inner))) return answer;
   return [...lines.slice(0, start), inner, ...(end < 0 ? [] : lines.slice(end + 1))].join("\n").trim();
 }

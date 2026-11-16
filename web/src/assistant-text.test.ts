@@ -216,5 +216,9 @@ test("回答整份包在 ```markdown 裡：拿掉外框；程式碼、其他語�
   assert.equal(unwrapMarkdown(ts), ts);
   const mixed = "第一段\n\n第二段\n\n第三段\n\n```markdown\n# 範例\n```";
   assert.equal(unwrapMarkdown(mixed), mixed);
+  // 說明比較多（前後共四行），但區塊是回答的主體：一樣拿掉外框。
+  const note = ["# 旅遊筆記", "", "## 第一天", "- 台南", "- 安平", "## 第二天", "- 高雄", "- 旗津", "## 第三天", "- 回台北"].join("\n");
+  const long = "整理好了，\n可以直接貼進文件裡用。\n\n```markdown\n" + note + "\n```\n\n日期請再確認。\n需要英文版再跟我說。";
+  assert.equal(unwrapMarkdown(long), "整理好了，\n可以直接貼進文件裡用。\n\n" + note + "\n\n日期請再確認。\n需要英文版再跟我說。");
   assert.equal(unwrapMarkdown("沒有程式碼區塊"), "沒有程式碼區塊");
 });
