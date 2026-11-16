@@ -90,8 +90,25 @@ test("只選一個專案時出現 Sprint：先顯示讀取中，預設本週；�
   // 選單：上面標出是哪個團隊的 Sprint；新的在上面，最後是沒有排進 Sprint。
   await sprintButton(page).click();
   assert.equal(await page.locator(".multi-select-pop:popover-open .multi-select-caption").textContent(), "前端小組 的 Sprint");
-  const labels = await page.locator(".multi-select-pop:popover-open .multi-select-list .multi-select-item span").allTextContents();
-  assert.deepEqual(labels, ["Sprint 48（下一個，11/24–12/7）", "Sprint 47（本週，11/10–11/23）", "Sprint 46（已結束，11/3–11/9）", "沒有排進 Sprint（Backlog）"]);
+  // 名稱、狀態、日期分三欄，各欄上下對齊。
+  const rows = await page.locator(".multi-select-pop:popover-open .multi-select-list .multi-select-item").evaluateAll((items) =>
+    items.map((row) => [...row.querySelectorAll(":scope > span")].map((s) => s.textContent)),
+  );
+  assert.deepEqual(rows, [
+    ["Sprint 48", "下一個", "11/24–12/7"],
+    ["Sprint 47", "本週", "11/10–11/23"],
+    ["Sprint 46", "已結束", "11/3–11/9"],
+    ["沒有排進 Sprint（Backlog）"],
+  ]);
+  const lefts = await page.locator(".multi-select-pop:popover-open .multi-select-col-3").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
+  assert.equal(new Set(lefts).size, 1, `日期對齊：${lefts}`);
+  // 選單和按鈕左右對齊（按鈕夠寬時不會比按鈕寬）。
+  const edges = await page.evaluate(() => {
+    const b = document.querySelector('#workitems-host .multi-select[aria-label^="Sprint："]').getBoundingClientRect();
+    const p = document.querySelector(".multi-select-pop:popover-open").getBoundingClientRect();
+    return { b: [b.left, b.right], p: [p.left, p.right] };
+  });
+  assert.equal(Math.round(edges.p[0]), Math.round(edges.b[0]), JSON.stringify(edges));
   await page.keyboard.press("Escape");
   // 多選：加上上一個 Sprint 與沒有排進 Sprint。
   const before = (await lists(page)).length;

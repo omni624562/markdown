@@ -2676,6 +2676,16 @@ button.git-info:disabled { cursor: default; }
 .multi-select-item input { flex: none; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .multi-select-item > span { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* 「全部」：和下面的選項隔開，字粗一點。 */
+/* 分欄的選項（Sprint：名稱、狀態、日期）：每一列用 subgrid，各欄上下對齊。 */
+/* 「只選這個」浮在列的右邊（不佔一欄），選單才不會比按鈕寬。 */
+.multi-select-list.columns { display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); column-gap: 10px; align-content: start; }
+.multi-select-list.columns > .multi-select-item { position: relative; display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
+.multi-select-list.columns .multi-select-only { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); background: var(--active-line); }
+.multi-select-list.columns .multi-select-only:hover { background: var(--accent-soft); }
+.multi-select-list.columns > .multi-select-item[hidden] { display: none; }
+.multi-select-list.columns .multi-select-col-all { grid-column: span 3; }
+.multi-select-item > .multi-select-col-2 { color: var(--muted); font-size: 12px; }
+.multi-select-item > .multi-select-col-3 { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .multi-select-all { margin: 4px 4px 0; padding-bottom: 2px; border-bottom: 1px solid var(--border); border-radius: 5px 5px 0 0; font-weight: 600; }
 /* 「只選這個」：滑鼠移上去（或鍵盤移到那一列）才出現。 */
 .multi-select-only { flex: none; padding: 1px 6px; border: 0; border-radius: 4px; background: none; color: var(--accent); font: 12px var(--font-ui); cursor: pointer; opacity: 0; }
