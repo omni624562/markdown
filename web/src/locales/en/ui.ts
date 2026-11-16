@@ -478,7 +478,6 @@ export const ui: Record<string, Translation> = {
   "請在這裡描述問題或建議，以及怎麼操作會發生。這裡是公開的頁面，請不要貼上公司的文件內容、帳號、內部網址，或含有這些資料的截圖。":
     "Describe the problem or suggestion here, and the steps that lead to it. This page is public: please don't paste company documents, accounts, internal URLs, or screenshots that contain them.",
   "回報": "Report",
-  "oMarker 以 MIT 授權開放原始碼": "oMarker is open source under the MIT License",
   "分頁": "Tabs",
   "資料夾與專案": "Folders and Projects",
   "匯入與匯出": "Import and Export",

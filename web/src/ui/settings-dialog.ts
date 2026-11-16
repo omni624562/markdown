@@ -14,7 +14,6 @@ import { icon } from "./icons.ts";
 import { toast } from "./toast.ts";
 import { COMMON_KINDS, isCustomKind, kindColor, kindKey } from "../work-item-colors.ts";
 import { ACCENTS, DEFAULT_PALETTE, PALETTES, type PaletteId, accentColors, parseAccent } from "../palette.ts";
-import { REPO_URL } from "../repo.ts";
 import { WORK_ITEMS_VAR } from "../daily-notes.ts";
 
 type ThemePref = "system" | "light" | "dark";
@@ -799,7 +798,6 @@ export class SettingsDialog {
         ]),
         ...this.#group(t("意見回饋"), [
           this.#row("report", t("回報問題或建議"), t("在 GitHub 上留言（公開的頁面），會自動附上版本資訊"), link("report", t("回報"), () => about.report())),
-          this.#row("source", t("原始碼"), t("oMarker 以 MIT 授權開放原始碼"), link("source", "GitHub", () => about.openUrl(REPO_URL))),
         ]),
       );
     }
