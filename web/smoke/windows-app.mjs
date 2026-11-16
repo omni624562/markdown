@@ -108,7 +108,12 @@ try {
     input.style.cssText = "position:fixed;left:0;top:0;opacity:0.01";
     document.body.append(input);
   });
-  await page.setInputFiles("#smoke-file", dropped);
+  // 直接用 CDP 指定磁碟上的檔案。Playwright 的 setInputFiles 對 connectOverCDP 連上的瀏覽器會把檔案內容
+  // 傳過去再造一個檔案物件，那種物件沒有路徑（WebView2 會說「不是磁碟上的檔案」）。
+  const cdp = await page.context().newCDPSession(page);
+  const { root } = await cdp.send("DOM.getDocument");
+  const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "#smoke-file" });
+  await cdp.send("DOM.setFileInputFiles", { files: [dropped], nodeId });
   const result = await page.evaluate(async () => {
     const file = document.querySelector("#smoke-file").files[0];
     const host = window.chrome?.webview;
