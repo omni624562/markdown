@@ -33,6 +33,9 @@ test("在預覽裡打字：提示不能編輯，按按鈕切到即時預覽、�
   await hint(page).locator("button", { hasText: "切換到即時預覽" }).click();
   await page.waitForFunction(() => document.querySelector('.statusbar [data-view="live"]').getAttribute("aria-checked") === "true");
   assert.equal(await page.evaluate(() => !!document.activeElement?.closest(".cm-content")), true, "焦點在編輯區，可以直接打字");
+  // 剛才那一則提示按了按鈕之後會收起來（有淡出的動畫）：等它收完，下面才分得出有沒有「新的」提示。
+  // 電腦忙的時候動畫還沒跑完，舊的那一則會被算進去（CI 上偶爾失敗：1 !== 0）。
+  await hint(page).waitFor({ state: "detached" });
   // 其他模式打字不提示。
   await page.keyboard.type("字");
   await page.waitForTimeout(150);

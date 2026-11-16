@@ -89,6 +89,7 @@ export class HtmlPreview {
       const win = this.el.contentWindow;
       const doc = this.el.contentDocument;
       if (!win || !doc) return;
+      this.#fit();
       win.scrollTo(this.#scroll.x, this.#scroll.y);
       doc.addEventListener("click", (e) => {
         const a = (e.target as Element).closest?.("a[href]");
@@ -102,6 +103,37 @@ export class HtmlPreview {
       });
     });
     parent.append(this.el);
+    // 預覽區的大小變了（調整視窗、切換分割、轉動平板）：重新算要不要縮小。
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.#fit()).observe(parent);
+  }
+
+  /**
+   * 網頁比預覽區寬（固定寬度的版面，例如簡報、為大螢幕設計的頁面）時整頁縮小到看得到全寬，
+   * 像手機瀏覽器開桌面版網頁那樣；不然右邊會被切掉，在平板、分割檢視裡尤其明顯。
+   * 版面會跟著寬度變大的網頁（用 vw 之類的單位）怎麼放大都裝不下，就照原樣顯示。
+   */
+  #fit(): void {
+    const el = this.el;
+    const reset = () => {
+      el.style.width = el.style.height = el.style.transform = el.style.transformOrigin = "";
+      delete el.dataset.scale;
+    };
+    reset();
+    const doc = el.contentDocument;
+    if (el.hidden || !doc?.documentElement) return;
+    const width = el.clientWidth;
+    const height = el.clientHeight;
+    const needed = () => Math.max(doc.documentElement.scrollWidth, doc.body?.scrollWidth ?? 0);
+    const need = needed();
+    // 只多一點點（捲軸、邊框的誤差）不縮；縮太小也看不清楚，最多縮到四分之一。
+    if (!width || !height || need <= width * 1.05) return;
+    const scale = Math.max(0.25, width / need);
+    el.style.width = `${width / scale}px`;
+    el.style.height = `${height / scale}px`;
+    el.style.transformOrigin = "0 0";
+    el.style.transform = `scale(${scale})`;
+    el.dataset.scale = scale.toFixed(3);
+    if (needed() > (width / scale) * 1.02 && scale > 0.25) reset();
   }
 
   get shown(): boolean {
