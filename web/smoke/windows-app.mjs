@@ -60,10 +60,13 @@ function diagnose() {
     }
   };
   const ps = (script) => run(`powershell -NoProfile -Command "${script}"`);
+  // 主要的瀏覽器處理程序（沒有 --type= 的那一個）完整的命令列：看偵錯連接埠的參數有沒有帶到。
+  const browser = ps("Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedgewebview2.exe' -and $_.CommandLine -notmatch '--type=' } | ForEach-Object { $_.CommandLine } | Out-String");
   return [
     `程式還在執行：${exited === null}`,
-    `連接埠 ${PORT}：${ps(`Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue | Format-Table -AutoSize LocalAddress,State,OwningProcess | Out-String`)}`,
-    `處理程序：${ps("Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'md-editor|msedgewebview2' } | ForEach-Object { $_.Name + ' ' + $_.CommandLine.Substring(0, [Math]::Min(400, $_.CommandLine.Length)) } | Out-String")}`,
+    `命令列有 --remote-debugging-port：${browser.includes("--remote-debugging-port")}`,
+    `瀏覽器處理程序的命令列：${browser}`,
+    `在聽的連接埠：${ps("Get-NetTCPConnection -State Listen | Where-Object { (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName -match 'msedgewebview2|md-editor' } | Format-Table -AutoSize LocalAddress,LocalPort,OwningProcess | Out-String")}`,
     `視窗：${ps("Get-Process md-editor -ErrorAction SilentlyContinue | Format-Table -AutoSize Id,MainWindowTitle,Responding | Out-String")}`,
   ].join("\n");
 }
