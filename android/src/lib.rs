@@ -10,13 +10,13 @@
 #[macro_use]
 #[path = "../../desktop/src/i18n.rs"]
 mod i18n;
-#[path = "../../desktop/src/locales/mod.rs"]
-mod locales;
+#[path = "../../desktop/src/assistant.rs"]
+mod assistant;
 #[path = "../../desktop/src/io.rs"]
 #[allow(dead_code)]
 mod io;
-#[path = "../../desktop/src/assistant.rs"]
-mod assistant;
+#[path = "../../desktop/src/locales/mod.rs"]
+mod locales;
 mod platform;
 pub(crate) use platform::{files, git, secrets, settings, update, workspace};
 
@@ -185,6 +185,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_assistant_works_without_a_project_folder() {
+        // Android 版沒有專案資料夾：開了助理就能送，關著不行。
+        let on = serde_json::json!({ "claudeApiEnabled": true });
+        assert!(assistant::check(&on, None, None).is_ok());
+        assert!(assistant::check(&serde_json::json!({}), None, None).is_err());
+    }
 
     #[test]
     fn only_content_uris_are_accepted() {
