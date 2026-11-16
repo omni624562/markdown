@@ -70,6 +70,9 @@ test("斜線指令：方向鍵調整大小，Enter 插入", async () => {
   await page.keyboard.type("/表格");
   // 等自動完成選到「表格」再按 Enter（電腦慢時清單還沒依打的字篩好，選到的會是別的指令）。
   await page.locator('.cm-tooltip-autocomplete li[aria-selected="true"]', { hasText: "表格" }).waitFor();
+  // CodeMirror 的自動完成在清單（重新）出現後的 75 毫秒內不接受 Enter（`interactionDelay`，避免邊打字邊誤選）：
+  // 那段時間按 Enter 只會關掉清單、不套用指令。清單一出現就按的話剛好落在裡面，所以等它過了再按。
+  await page.waitForTimeout(200);
   await page.keyboard.press("Enter");
   await picker(page).waitFor();
   await page.waitForFunction(() => document.activeElement?.classList.contains("table-picker-grid"));
