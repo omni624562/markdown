@@ -433,7 +433,7 @@ test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]]
   await context.close();
 });
 
-test("上網查資料：設定沒開時沒有這個選項；開了才出現，送出時這一題才帶上網搜尋，回答最後列出來源", async () => {
+test("上網查資料：設定沒開時「上網查」是灰色的，按了說明要到設定開啟；開了才能勾，送出時這一題才帶上網搜尋，回答最後列出來源", async () => {
   {
     const { page, context } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
     await openProject(page);
@@ -441,7 +441,15 @@ test("上網查資料：設定沒開時沒有這個選項；開了才出現，�
     await page.keyboard.press("Control+Shift+L");
     const panel = page.locator("#assistant-panel");
     await panel.waitFor();
-    assert.equal(await panel.getByRole("button", { name: "上網查" }).count(), 0);
+    // 看得到（灰色），按了不會勾選，只說明要到設定開啟，附「打開設定」。
+    const off = panel.locator(".assistant-chip-off", { hasText: "上網查" });
+    await off.waitFor();
+    await off.click();
+    const tip = page.locator(".toast", { hasText: "允許上網查資料" });
+    await tip.waitFor();
+    assert.equal(await panel.locator(".assistant-chip:not(.assistant-chip-add)", { hasText: "上網查" }).count(), 0, "沒有勾選");
+    await tip.getByRole("button", { name: "打開設定" }).click();
+    await page.locator("dialog[open]", { hasText: "允許上網查資料" }).waitFor();
     await context.close();
   }
   const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT], claudeWebSearch: true }) });
