@@ -153,7 +153,7 @@ export function bulkEditWorkItems(items: AdoWorkItem[], done: () => void): void 
       dialog.close();
       done();
       forgetListCopies("wi-");
-      void workItemsPanel?.refresh();
+      void workItemsPanel?.refresh(true);
       void issueView.reload();
       if (!failed.length) toast(t("已修改 {n} 個工作項目", { n: changed }), { tone: "success" });
       else

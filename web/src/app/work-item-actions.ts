@@ -64,7 +64,7 @@ function workItemEditing(item: AdoWorkItem): {
       if (change.title) showWorkItem({ ...item, title: change.title });
       else await issueView.reload();
       forgetListCopies("wi-");
-      void workItemsPanel?.refresh();
+      void workItemsPanel?.refresh(true);
       return true;
     } catch (e) {
       reportError(e);

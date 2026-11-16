@@ -128,7 +128,7 @@ export function createWorkItemDialog(draft: { title?: string; description?: stri
         storage.save("wi-create-assign", assignBox.checked ? "1" : "0");
         dialog.close();
         forgetListCopies("wi-");
-        void workItemsPanel?.refresh();
+        void workItemsPanel?.refresh(true);
         created?.(w);
         toast(t("已建立 {kind} {id}「{title}」", { kind: w.kind, id: w.id, title: w.title }), {
           tone: "success",

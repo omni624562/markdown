@@ -59,3 +59,32 @@ test("清單上方：有幾個新的或有更新，只看這些；開過就少�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("重新整理清單：上方那一行字和「有幾個新的」不會先清掉再出現（看起來像整個重刷）", async () => {
+  const mine = [item(1, "第一個"), item(2, "第二個"), item(3, "第三個")];
+  const { page, context, errors } = await open({
+    desktop: {
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      // 之後的讀取慢一點：看得出讀取中畫面有沒有變。
+      ado_work_items: [mine, { $delay: 600, value: mine }],
+    },
+  });
+  await page.evaluate(() => localStorage.setItem("md-editor:workitem-seen", "{}"));
+  await page.reload();
+  await page.locator("#side-tab-workitems").click();
+  const line = page.locator(".workitems-unseen");
+  await line.getByText("有 3 個新的或有更新").waitFor();
+  const status = page.locator("#workitems-host .workitems-status");
+  await status.getByText("3 個指派給你").waitFor();
+  const before = await status.textContent();
+  // 記下「有幾個新的」那一列的按鈕：沒變就不重畫，按鈕還是同一個。
+  await line.getByRole("button", { name: "只看這些" }).evaluate((b) => (b.dataset.mark = "same"));
+  await page.locator("#workitems-refresh").click();
+  await page.waitForTimeout(200);
+  assert.equal(await status.textContent(), before, "讀取中：那一行字不換成「讀取中…」");
+  assert.equal(await status.evaluate((el) => el.classList.contains("updating")), true, "只淡一點表示正在更新");
+  await page.waitForFunction(() => !document.querySelector("#workitems-host .workitems-status")?.classList.contains("updating"));
+  assert.equal(await line.locator('[data-mark="same"]').count(), 1, "「有幾個新的」那一列沒有重畫");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

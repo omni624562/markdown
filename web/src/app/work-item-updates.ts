@@ -116,7 +116,7 @@ export async function pollWorkItems(): Promise<void> {
     noteWorkItems(await withOfflineCopy(key, fetch, first ? () => window.setTimeout(() => void pollWorkItems(), 0) : undefined, true), true);
     notifyNewWorkItems();
     // 面板上是同一份清單時，有新的或更新的項目就一起更新清單。
-    if (before && signature() !== before && app.isDefaultFilter() && workItemsPanel?.showingList) void workItemsPanel.refresh();
+    if (before && signature() !== before && app.isDefaultFilter() && workItemsPanel?.showingList) void workItemsPanel.refresh(true);
     else workItemsPanel?.refreshMarks();
   } catch {
     // 網路斷了就等下次再檢查。

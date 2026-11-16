@@ -413,8 +413,12 @@ export class IssuesPanel<T extends IssueSummary> {
     const seq = ++this.#seq;
     const search = this.#input.value.trim();
     if (!quiet) {
-      this.#status.textContent = t("讀取中…");
-      this.#status.title = "";
+      // 已經有清單時不換掉上面那一行字（換成「讀取中…」再換回來看起來像整個重刷）：只淡一點表示正在更新。
+      if (this.#items.length) this.#status.classList.add("updating");
+      else {
+        this.#status.textContent = t("讀取中…");
+        this.#status.title = "";
+      }
     }
     try {
       const items = await this.#h.list(search, () => {
@@ -423,6 +427,7 @@ export class IssuesPanel<T extends IssueSummary> {
       });
       if (seq !== this.#seq) return;
       this.#failed = false;
+      this.#status.classList.remove("updating");
       this.#status.textContent = this.#h.status(items.length, search);
       // 側邊欄窄時文字會截短，滑鼠移上去看完整的。
       this.#status.title = this.#status.textContent;
@@ -434,6 +439,7 @@ export class IssuesPanel<T extends IssueSummary> {
       this.#render();
     } catch (e) {
       if (seq !== this.#seq) return;
+      this.#status.classList.remove("updating");
       // 下次打開面板時再試一次。
       this.#loaded = false;
       this.#failed = true;
