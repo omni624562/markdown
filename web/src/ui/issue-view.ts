@@ -706,6 +706,40 @@ export class IssueView {
     }
   }
 
+  /**
+   * 改了內容之後（例如換了工作項目的狀態）在背景重新讀取：畫面留著、捲動位置不變，讀到之後只換掉有變的內容，
+   * 不會先清掉變成「讀取中…」。讀取失敗時上方顯示錯誤與「重試」，內容照舊。
+   */
+  async reload(): Promise<void> {
+    const source = this.#source;
+    if (!source) return;
+    const seq = ++this.#seq;
+    try {
+      const md = await source.load();
+      if (seq !== this.#seq) return;
+      this.#cache.delete(source.key);
+      this.#cache.set(source.key, md);
+      this.#stale.hidden = true;
+      this.#failed = false;
+      this.#display(md, true);
+      this.#h.offline?.save(source, md);
+    } catch (e) {
+      if (seq !== this.#seq) return;
+      const message = e instanceof Error ? e.message : String(e);
+      this.#stale.textContent = t("顯示的是之前讀到的內容，這次更新失敗：{message}", { message });
+      this.#stale.classList.add("issue-error");
+      this.#stale.classList.remove("updating");
+      this.#stale.hidden = false;
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-small load-retry";
+      retry.append(icon("refresh-cw"), t("重試"));
+      retry.addEventListener("click", () => void this.reload());
+      this.#stale.append(retry);
+      this.#failed = true;
+    }
+  }
+
   /** 顯示內容；`keepScroll`：背景更新時留在原本的位置，否則回到記住的位置（或最上面）。 */
   #display(md: string, keepScroll = false): void {
     const top = this.#scroll.scrollTop;
