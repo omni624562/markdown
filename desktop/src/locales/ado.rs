@@ -79,8 +79,6 @@ pub static EN: &[(&str, &str)] = &[
     ("連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）", "Couldn't reach the Azure DevOps server. Check your network or VPN connection ({e})."),
     ("以「{name}」登入", "Signed in as \"{name}\""),
     ("工時要是 0 或正數", "Hours must be 0 or a positive number"),
-    ("讀取容量", "Reading capacity"),
-    ("查詢 Backlog", "Querying the backlog"),
     ("Azure DevOps Server 2022 或雲端版", "Azure DevOps Server 2022 or Azure DevOps Services"),
     ("TFS 2017 或更舊", "TFS 2017 or older"),
     ("伺服器版本", "Server version"),
@@ -131,8 +129,6 @@ pub static EN: &[(&str, &str)] = &[
     ("刪除工作項目", "Deleting the work item"),
     ("你沒有刪除這個工作項目的權限（需要「刪除和還原工作項目」權限，請找專案管理員）", "You don't have permission to delete this work item (the \"Delete and restore work items\" permission is required; ask a project administrator)."),
     ("這個伺服器不支援修改或刪除留言（需要 Azure DevOps Server 2020 以上）", "This server doesn't support editing or deleting comments (Azure DevOps Server 2020 or later is required)."),
-    ("讀取團隊設定", "Load team settings"),
-    ("查詢工作板", "Query the taskboard"),
     ("更換 Azure DevOps 伺服器", "Change Azure DevOps Server"),
     ("要把 Azure DevOps 伺服器從「{from}」換成「{to}」嗎？換了之後，個人存取權杖和下載、推送時的 Windows 登入資訊都會送到新的伺服器。只有在你自己要換伺服器時才選「是」。", "Change the Azure DevOps server from \"{from}\" to \"{to}\"? Your personal access token, and your Windows sign-in when cloning or pushing, will then be sent to the new server. Choose Yes only if you are changing the server yourself."),
 ];

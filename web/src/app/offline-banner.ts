@@ -1,5 +1,5 @@
 /**
- * 離線提示：連線檢查判斷連不到 Azure DevOps 時，工作項目、工作板、Wiki 面板上方顯示一條提示與「重試」；
+ * 離線提示：連線檢查判斷連不到 Azure DevOps 時，工作項目、Wiki 面板上方顯示一條提示與「重試」；
  * 恢復連線時忘掉剛讀到的副本，重新讀取畫面上的內容。
  */
 import { adoOnline } from "../ado-online.ts";
@@ -42,7 +42,7 @@ function reload(): void {
 }
 
 export function initOfflineBanner(): void {
-  for (const id of ["panel-workitems", "panel-board", "panel-wiki"]) {
+  for (const id of ["panel-workitems", "panel-wiki"]) {
     const b = document.createElement("div");
     b.className = "offline-banner";
     b.setAttribute("role", "status");

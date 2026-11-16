@@ -35,8 +35,7 @@ import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
 import { forgetListCopies, keepFreshness, withOfflineCopy } from "./offline-copies.ts";
-import { favoriteProjects, favoriteWikis } from "./favorite-lists.ts";
-import { favoritesFirst } from "../favorites.ts";
+import { favoriteWikis } from "./favorite-lists.ts";
 import { app } from "./context.ts";
 import { openWikiRecent } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
@@ -336,8 +335,7 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
         kind.setOptions(pairs(kinds));
         stateSets = sets ?? [];
         refreshStates();
-        // 常用的專案（工作板、Wiki 旁的星號勾選）排在前面。
-        project.setOptions(favoritesFirst(pairs(projects), favoriteProjects.load()));
+        project.setOptions(pairs(projects));
       })
       .catch(() => (loaded = false));
   };
@@ -826,7 +824,7 @@ export async function renderIssuesTab(): Promise<void> {
 
 /** 連線到 Azure DevOps 後才顯示「工作項目」「Wiki」圖示。 */
 export function renderAdoTab(): void {
-  for (const panel of ["workitems", "board", "wiki"] as const) {
+  for (const panel of ["workitems", "wiki"] as const) {
     const tab = app.$(`#side-tab-${panel}`);
     tab.hidden = !app.ado?.account;
     if (tab.hidden) panelUnavailable(panel);

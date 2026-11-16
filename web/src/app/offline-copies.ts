@@ -49,7 +49,7 @@ export async function offlineImage(key: string, fetch: () => Promise<string>): P
   }
 }
 
-/** 清單的副本（Wiki、頁面樹、工作項目、工作板）：存在本機的離線資料夾。 */
+/** 清單的副本（Wiki、頁面樹、工作項目）：存在本機的離線資料夾。 */
 const copies = new CopyCache({
   get: async (key) => (desktop ? desktop.offlineGet(`list:${key}`) : null),
   put: async (key, raw) => void (await desktop?.offlinePut(`list:${key}`, raw, false)),
