@@ -1232,6 +1232,7 @@ export const ui: Record<string, Translation> = {
   "結果檔（{n}）": "Result files ({n})",
   "開啟 {path}": "Open {path}",
   "把 {name} 移到資源回收筒": "Move {name} to the Recycle Bin",
+  "上次在這個專案的對話（按「新對話」重新開始）": "Your last conversation in this project (click New Chat to start over)",
   "重新產生這個回答（會再送出一次、再計費一次）": "Regenerate this answer (sends the question again and is billed again)",
   "重新產生": "Regenerate",
   "編輯這個問題再送出": "Edit this question and send it again",
