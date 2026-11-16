@@ -573,6 +573,8 @@ export interface AdoWorkItemFilter {
   projects: string[];
   /** 區域路徑（包含底下的區域）。 */
   areas: string[];
+  /** Sprint（反覆項目）路徑，剛好在那個 Sprint 的；專案本身的路徑是「沒有排進 Sprint」。不會存起來：每次打開都回到本週的 Sprint。 */
+  iterations: string[];
 }
 
 /** 改過某個檔案的提交。 */

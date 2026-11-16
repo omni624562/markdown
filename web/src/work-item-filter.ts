@@ -51,6 +51,7 @@ export const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {
   kinds: [],
   projects: [],
   areas: [],
+  iterations: [],
 };
 
 /** 讀回存起來的篩選條件；舊版存的是單一的 kind、project、area，沒有 states。 */
@@ -66,6 +67,8 @@ export function parseWorkItemFilter(raw: string | null): AdoWorkItemFilter {
       kinds: choiceList(v.kinds ?? v.kind),
       projects,
       areas: projects.length ? choiceList(v.areas ?? v.area) : [],
+      // Sprint 不讀回來：每次打開都從本週的 Sprint 開始（見 sprintOptions）。
+      iterations: [],
     };
   } catch {
     return { ...DEFAULT_WORK_ITEM_FILTER };
@@ -81,14 +84,55 @@ export function isDefaultWorkItemFilter(f: AdoWorkItemFilter): boolean {
     !f.states.length &&
     !f.kinds.length &&
     !f.projects.length &&
-    !f.areas.length
+    !f.areas.length &&
+    !f.iterations.length
   );
 }
 
 /** 離線副本的鍵：沒有指定狀態時和以前一樣（不含 `states`），升級後還找得到以前存的副本。 */
 export function workItemFilterKey(f: AdoWorkItemFilter): string {
-  const { states, ...rest } = f;
-  return JSON.stringify(states.length ? { ...rest, states } : rest);
+  const { states, iterations, ...rest } = f;
+  return JSON.stringify({ ...rest, ...(states.length ? { states } : {}), ...(iterations.length ? { iterations } : {}) });
+}
+
+/** 存起來的篩選條件（Sprint 不存）。 */
+export function storedWorkItemFilter(f: AdoWorkItemFilter): string {
+  const { iterations: _, ...rest } = f;
+  return JSON.stringify(rest);
+}
+
+/** 團隊的一個 Sprint（後端 `ado_team_iterations`）。 */
+export interface SprintInfo {
+  path: string;
+  name: string;
+  start: string | null;
+  finish: string | null;
+  current: boolean;
+}
+
+/** `2026-11-10T00:00:00Z` → `11/10`（只看日期，不換時區：Azure DevOps 存的是那一天的 0 點）。 */
+const day = (iso: string) => {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${Number(m[1])}/${Number(m[2])}` : "";
+};
+
+/**
+ * Sprint 選單的選項：新的在上面，標出本週（伺服器判斷的「目前」）、下一個、已結束與起訖日期；
+ * 最後一項是「沒有排進 Sprint」（值是專案本身的路徑）。`current` 是本週的 Sprint 路徑（沒有時是 null）。
+ */
+export function sprintOptions(list: readonly SprintInfo[], project: string): { options: [string, string][]; current: string | null } {
+  const sorted = [...list];
+  const at = sorted.findIndex((s) => s.current);
+  const options = sorted
+    .map((s, i): [string, string] => {
+      const dates = s.start && s.finish ? `${day(s.start)}–${day(s.finish)}` : "";
+      const when = at < 0 ? null : i === at ? t("本週") : i === at + 1 ? t("下一個") : i < at ? t("已結束") : null;
+      const note = [when, dates].filter(Boolean).join(t("，"));
+      return [s.path, note ? t("{name}（{note}）", { name: s.name, note }) : s.name];
+    })
+    .reverse();
+  options.push([project, t("沒有排進 Sprint（Backlog）")]);
+  return { options, current: at < 0 ? null : sorted[at].path };
 }
 
 /** 讀不到狀態清單時的兩個選項（值不會和狀態名稱撞在一起）。 */
