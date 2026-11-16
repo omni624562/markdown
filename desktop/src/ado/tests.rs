@@ -1178,49 +1178,6 @@ fn orders_team_iterations_by_start_date() {
 }
 
 #[test]
-fn board_query_uses_the_team_area() {
-    let scope = json!({"field": {"referenceName": "System.AreaPath"}, "values": [
-        {"value": "P\\IRIS", "includeChildren": true},
-        {"value": "P\\共用", "includeChildren": false}
-    ]});
-    let q = board_wiql("P", "P\\Sprint 102", Some(&scope));
-    assert!(
-        q.contains("[System.IterationPath] = 'P\\Sprint 102'"),
-        "{q}"
-    );
-    assert!(
-        q.contains("([System.AreaPath] UNDER 'P\\IRIS' OR [System.AreaPath] = 'P\\共用')"),
-        "{q}"
-    );
-    assert!(q.contains("<> 'Removed'"));
-    // 欄位名稱怪怪的（可能被竄改）：改用區域路徑。
-    let odd = json!({"field": {"referenceName": "X] OR 1=1 --"}, "values": [{"value": "v"}]});
-    assert!(board_wiql("P", "I", Some(&odd)).contains("[System.AreaPath] = 'v'"));
-    // 名稱裡的單引號要跳脫。
-    assert!(board_wiql("P", "it's", None).contains("'it''s'"));
-}
-
-#[test]
-fn reads_board_items_with_parent_and_hours() {
-    let v = json!({"id": 1936947, "rev": 4, "fields": {
-        "System.Title": "提供SRE監控", "System.State": "New", "System.WorkItemType": "Task",
-        "System.TeamProject": "P", "System.AssignedTo": {"displayName": "張志明"},
-        "Microsoft.VSTS.Scheduling.RemainingWork": 6.5, "Microsoft.VSTS.Scheduling.CompletedWork": 1
-    }, "relations": [
-        {"rel": "System.LinkTypes.Related", "url": "https://ado.test/c/_apis/wit/workItems/5"},
-        {"rel": "System.LinkTypes.Hierarchy-Reverse", "url": "https://ado.test/c/_apis/wit/workItems/1931940"}
-    ]});
-    let b = board_item_of("https://ado.test/c", &v).unwrap();
-    assert_eq!(b.item.id, 1936947);
-    assert_eq!(b.parent, Some(1931940));
-    assert_eq!(b.rev, Some(4));
-    assert_eq!(
-        (b.remaining, b.completed, b.original),
-        (Some(6.5), Some(1.0), None)
-    );
-}
-
-#[test]
 fn change_assigns_someone_and_sets_hours() {
     let change = WorkItemChange {
         assigned_to: Some("CORP\\hua".into()),
@@ -1378,54 +1335,6 @@ fn api_version_maps_to_server_release() {
     assert!(diagnose::server_of("6.0").contains("2020"));
     assert!(diagnose::server_of("4.1").contains("2018"));
     assert!(diagnose::server_of("2.0").contains("2017"));
-}
-
-#[test]
-fn reads_capacity_from_old_and_new_servers() {
-    let old = json!({ "value": [{
-        "teamMember": { "displayName": "王小明" },
-        "activities": [{ "capacityPerDay": 4.0, "name": "Development" }, { "capacityPerDay": 2.0, "name": "Testing" }],
-        "daysOff": [{ "start": "2026-11-03T00:00:00Z", "end": "2026-11-04T00:00:00Z" }]
-    }]});
-    let team =
-        json!({ "daysOff": [{ "start": "2026-11-05T00:00:00Z", "end": "2026-11-05T00:00:00Z" }] });
-    let c = capacity_of(&old, Some(&team));
-    assert_eq!(c.members.len(), 1);
-    assert_eq!(c.members[0].per_day, 6.0);
-    assert_eq!(c.members[0].days_off.len(), 1);
-    assert_eq!(c.team_days_off.len(), 1);
-    let new = json!({ "teamMembers": [{ "teamMember": { "displayName": "李大同" }, "activities": [], "daysOff": [] }] });
-    let c = capacity_of(&new, None);
-    assert_eq!(c.members[0].name, "李大同");
-    assert_eq!(c.members[0].per_day, 0.0);
-    assert!(c.team_days_off.is_empty());
-}
-
-#[test]
-fn backlog_query_and_iteration() {
-    let scope = json!({ "field": { "referenceName": "System.AreaPath" }, "values": [{ "value": "產品\\前端", "includeChildren": true }] });
-    let q = backlog_wiql(
-        "產品",
-        "產品",
-        Some(&scope),
-        Some("Microsoft.VSTS.Common.StackRank"),
-    );
-    assert!(q.contains("[System.IterationPath] = '產品'"));
-    assert!(q.contains("IN GROUP 'Microsoft.RequirementCategory'"));
-    assert!(q.contains("[System.AreaPath] UNDER '產品\\前端'"));
-    assert!(q.ends_with("ORDER BY [Microsoft.VSTS.Common.StackRank]"));
-    assert!(backlog_wiql("P", "P", None, None).ends_with("ORDER BY [System.Id]"));
-    // 分類節點的路徑換成 WIQL 用的；沒有路徑時用名稱，再沒有就用專案名稱。
-    let s = json!({ "backlogIteration": { "name": "產品", "path": "\\產品\\Iteration\\發行 1" } });
-    assert_eq!(backlog_iteration_of(&s, "產品"), "產品\\發行 1");
-    assert_eq!(
-        backlog_iteration_of(
-            &json!({ "backlogIteration": { "name": "產品", "path": "" } }),
-            "x"
-        ),
-        "產品"
-    );
-    assert_eq!(backlog_iteration_of(&Value::Null, "產品"), "產品");
 }
 
 #[test]

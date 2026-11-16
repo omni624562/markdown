@@ -38,8 +38,6 @@ export interface IssueSource {
   fileName: string;
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
-  /** `false`：不要先顯示離線副本（例如畫面要靠 `load` 讀到的資料才畫得出來的工作板）。 */
-  copyFirst?: boolean;
   /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
   crumbs?: { label: string; open?(): void }[];
   insertLink(): void;
@@ -632,7 +630,7 @@ export class IssueView {
     this.#stale.hidden = true;
     let loading: HTMLElement | null = null;
     // 這次執行還沒讀過：有離線副本就先顯示副本（不用等伺服器），讀到再換上新的。
-    const copy = cached === undefined && quiet && source.copyFirst !== false ? await this.#h.offline?.load(source).catch(() => null) : null;
+    const copy = cached === undefined && quiet ? await this.#h.offline?.load(source).catch(() => null) : null;
     if (seq !== this.#seq) return;
     if (cached !== undefined) {
       this.#display(cached);
@@ -656,8 +654,7 @@ export class IssueView {
       this.#cache.set(source.key, md);
       if (this.#cache.size > CACHE_LIMIT) this.#cache.delete(this.#cache.keys().next().value!);
       if (copy) this.#stale.hidden = true;
-      // 先顯示的是快取或副本時，內容一樣也要重畫：畫面調整（工作板、留言工具等）要靠這次讀到的資料，
-      // 例如再開一次工作板，先顯示的快取還沒有卡片的資料，只是一張表格。
+      // 先顯示的是快取或副本時，內容一樣也要重畫：畫面調整（留言工具等）要靠這次讀到的資料。
       const early = cached !== undefined || !!copy;
       if (md !== this.#markdown || loading || (early && source.decorate)) this.#display(md, early);
       // 內容沒變也要更新摘要（例如「更新於幾分鐘前」）。
@@ -718,7 +715,7 @@ export class IssueView {
   }
 
   #decorate(): void {
-    // 畫面調整（工作板、留言工具等）出錯時內容照常顯示，不要被當成「讀取失敗」整個藏起來。
+    // 畫面調整（留言工具等）出錯時內容照常顯示，不要被當成「讀取失敗」整個藏起來。
     try {
       this.#source?.decorate?.(this.#body);
     } catch (e) {

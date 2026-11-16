@@ -1,5 +1,5 @@
 /**
- * 只列常用項目的下拉選單（Wiki、工作板的專案）：旁邊的星號按鈕勾選常用的；
+ * 只列常用項目的下拉選單（Wiki）：旁邊的星號按鈕勾選常用的；
  * 有常用時選單只列常用的，最下面「顯示全部（N）」暫時列出全部，再選「只顯示常用」回來。
  */
 import { type Choice, SHOW_ALL, SHOW_FAVORITES, favoriteOptions } from "../favorites.ts";
