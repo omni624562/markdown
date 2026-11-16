@@ -60,3 +60,34 @@ export function textToTable(text: string): string | null {
   const rows = delimitedRows(text, text.includes("\t") ? "\t" : ",");
   return rows ? rowsToTable(rows) : null;
 }
+
+/** 一次最多轉幾列 JSON（太大的資料不適合放進文件裡的表格）。 */
+const JSON_MAX_ROWS = 500;
+
+/** JSON 的值放進儲存格：字串照寫、null 空白、物件與陣列寫成 JSON；換行改成空白（表格一列只能一行）。 */
+function cellOf(v: unknown): string {
+  const s = v === null || v === undefined ? "" : typeof v === "string" ? v : typeof v === "object" ? JSON.stringify(v) : String(v);
+  return s.replace(/\r?\n/g, " ");
+}
+
+/**
+ * 貼上的純文字是 JSON 物件陣列（API 回應、資料庫工具匯出）時轉成 Markdown 表格：欄位是所有物件的鍵，
+ * 照第一次出現的順序；沒有那個鍵的格子留空。不是物件陣列、是空陣列、超過 {@link JSON_MAX_ROWS} 列時回傳 null。
+ */
+export function jsonTable(plain: string): string | null {
+  const text = plain.trim();
+  if (!text.startsWith("[")) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(data) || !data.length || data.length > JSON_MAX_ROWS) return null;
+  if (!data.every((r) => r !== null && typeof r === "object" && !Array.isArray(r))) return null;
+  const rows = data as Record<string, unknown>[];
+  const keys: string[] = [];
+  for (const r of rows) for (const k of Object.keys(r)) if (!keys.includes(k)) keys.push(k);
+  if (!keys.length) return null;
+  return rowsToTable([keys, ...rows.map((r) => keys.map((k) => cellOf(r[k])))]);
+}
