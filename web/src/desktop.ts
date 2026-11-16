@@ -2,6 +2,7 @@
  * 桌面版（Tauri）專用的橋接：原生對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、AI 協作。
  * 在一般瀏覽器裡 `desktop` 為 null，其餘程式碼照常走網頁 API。
  */
+import { isMobileApp } from "./platform.ts";
 import type { UsageHistory } from "./usage-summary.ts";
 import type { DocInfo } from "./doc-index.ts";
 import type { FileRef } from "./links.ts";
@@ -1419,5 +1420,6 @@ function offlineAware(core: TauriCore): TauriCore {
   };
 }
 
+// Android 版也有 `window.__TAURI__`，但沒有桌面版的原生指令：當成網頁版（見 platform.ts）。
 export const desktop: Desktop | null =
-  typeof window !== "undefined" && window.__TAURI__ ? bridge(offlineAware(window.__TAURI__.core), window.__TAURI__.event) : null;
+  typeof window !== "undefined" && window.__TAURI__ && !isMobileApp ? bridge(offlineAware(window.__TAURI__.core), window.__TAURI__.event) : null;
