@@ -10,7 +10,7 @@
  *
  * 沒辦法模擬真的滑鼠拖放，所以檔案物件是從 `<input type="file">` 來的；交給原生端之後走的路一樣。
  */
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -47,7 +47,25 @@ async function connect() {
       await sleep(1000);
     }
   }
-  throw new Error("等了 90 秒還連不上 WebView2 的遠端偵錯連接埠");
+  throw new Error(`等了 90 秒還連不上 WebView2 的遠端偵錯連接埠\n${diagnose()}`);
+}
+
+/** 連不上時的狀況：連接埠有沒有人在聽、WebView2 的處理程序與它們的命令列（看參數有沒有帶到）。 */
+function diagnose() {
+  const run = (cmd) => {
+    try {
+      return execSync(cmd, { encoding: "utf8", timeout: 30_000 }).trim() || "（沒有輸出）";
+    } catch (e) {
+      return `（失敗：${e.message.split("\n")[0]}）`;
+    }
+  };
+  const ps = (script) => run(`powershell -NoProfile -Command "${script}"`);
+  return [
+    `程式還在執行：${exited === null}`,
+    `連接埠 ${PORT}：${ps(`Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue | Format-Table -AutoSize LocalAddress,State,OwningProcess | Out-String`)}`,
+    `處理程序：${ps("Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'md-editor|msedgewebview2' } | ForEach-Object { $_.Name + ' ' + $_.CommandLine.Substring(0, [Math]::Min(400, $_.CommandLine.Length)) } | Out-String")}`,
+    `視窗：${ps("Get-Process md-editor -ErrorAction SilentlyContinue | Format-Table -AutoSize Id,MainWindowTitle,Responding | Out-String")}`,
+  ].join("\n");
 }
 
 /** 主畫面那一頁（另一頁是終端機）。 */
