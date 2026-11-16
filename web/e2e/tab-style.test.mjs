@@ -27,10 +27,11 @@ async function pick(page, value) {
   await page.keyboard.press("Escape");
 }
 
-test("分頁樣式：原本頂端一條線；卡片離頂端 5px、圓角外框、沒有線；底線在下緣", async () => {
+test("分頁樣式：預設是卡片；頂端一條線；卡片離頂端 5px、圓角外框、沒有線；底線在下緣", async () => {
   const { page, context, errors } = await open();
   await setText(page, "# 標題");
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.tabStyle), "line");
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.tabStyle), "card");
+  await pick(page, "line");
   const line = await look(page);
   assert.equal(line.gap, "0px");
   // 頂端一條強調色的線：預設的圓角區塊是 2px（相連時 3px）。

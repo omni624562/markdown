@@ -13,7 +13,8 @@ const SHOTS = process.env.SHOTS;
 const desktop = (settings = {}) => ({
   startup_target: { kind: "folder", path: ROOT, name: "個人筆記" },
   list_dir: { $by: "path", values: { [ROOT]: [{ name: "筆記.md", path: `${ROOT}\\筆記.md`, isDir: false }] } },
-  load_settings: JSON.stringify({ claudeApiEnabled: true, assistantProjects: [ROOT], ...settings }),
+  // 大綱放在左邊（預設在右邊）：右側欄只有助理，測右側欄只有一個分頁、沒有分頁時的樣子。
+  load_settings: JSON.stringify({ claudeApiEnabled: true, assistantProjects: [ROOT], outlineRight: false, ...settings }),
   assistant_key_status: true,
   assistant_usage: { month: "2026-11", usd: 0.42, limit: 10 },
   custom_title_bar: true,
@@ -120,7 +121,7 @@ test("寬視窗：標題列只有 ☰ ◧ 與 ◨、視窗按鈕；側邊欄、�
 });
 
 test("右側欄沒東西可放（助理的設定關閉、大綱在左邊）時，右上角沒有那塊", async () => {
-  const { page, context, errors } = await open({ desktop: { ...desktop(), load_settings: JSON.stringify({}) } });
+  const { page, context, errors } = await open({ desktop: { ...desktop(), load_settings: JSON.stringify({ outlineRight: false }) } });
   await start(page);
   assert.equal(await page.locator(".top-actions").isVisible(), false);
   const g = await geometry(page);

@@ -136,12 +136,12 @@ test("1.118 的頂端列樣式已經拿掉：設定檔裡留著的 topbarStyle �
   assert.ok(!("topbarStyle" in settings));
 });
 
-test("分頁樣式：預設是原本的頂端線；只接受三種樣式", () => {
-  assert.equal(DEFAULTS.tabStyle, "line");
-  assert.equal(sanitize({ tabStyle: "card" }).settings.tabStyle, "card");
+test("分頁樣式：預設是卡片；只接受三種樣式", () => {
+  assert.equal(DEFAULTS.tabStyle, "card");
+  assert.equal(sanitize({ tabStyle: "line" }).settings.tabStyle, "line");
   assert.equal(sanitize({ tabStyle: "underline" }).settings.tabStyle, "underline");
   const bad = sanitize({ tabStyle: "round" });
-  assert.equal(bad.settings.tabStyle, "line");
+  assert.equal(bad.settings.tabStyle, "card");
   assert.equal(bad.problems, 1);
 });
 
@@ -175,4 +175,11 @@ test("助理的自訂動作：名稱、提示詞不能空白，回答怎麼用�
   assert.deepEqual(settings.assistantActions, [{ name: "會議紀錄", prompt: "整理成會議紀錄", mode: "insert" }]);
   assert.ok(problems > 0);
   assert.deepEqual(sanitize({}).settings.assistantActions, []);
+});
+
+test("預設值：文字欄寬寬、大綱在右邊、檢視切換只顯示圖示、不顯示行號", () => {
+  assert.equal(DEFAULTS.previewWidth, "wide");
+  assert.equal(DEFAULTS.outlineRight, true);
+  assert.equal(DEFAULTS.viewSwitchLabels, false);
+  assert.equal(DEFAULTS.lineNumbers, false);
 });
