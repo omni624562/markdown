@@ -69,3 +69,47 @@ test("網頁檔的預覽：拿掉 <link>（preconnect、dns-prefetch、外部 CS
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("網頁比預覽區寬（固定寬度的簡報）：整頁縮小到看得到全寬；一般的網頁、跟著寬度變大的網頁照原樣", async () => {
+  const deck =
+    '<!doctype html><html><head><style>body { margin: 0; } .slide { width: 1920px; height: 1080px; background: #103; color: #fff; font-size: 150px; white-space: nowrap; }</style></head>' +
+    '<body><div class="slide">從需求到可驗證交付<span id="end" style="float:right">尾</span></div></body></html>';
+  const { page, context, errors } = await open({ desktop: { startup_target: { kind: "file", path: "/notes/簡報.html", name: "簡報.html", text: deck, encoding: "utf-8" } } });
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.locator("#tab-bar .tab", { hasText: "簡報.html" }).waitFor();
+  await page.locator('button[data-view="preview"]').click();
+  const frame = page.locator("iframe.html-preview");
+  await page.frameLocator("iframe.html-preview").locator("#end").waitFor();
+  await page.waitForFunction(() => !!document.querySelector("iframe.html-preview").dataset.scale);
+  const fit = await frame.evaluate((el) => {
+    const pane = el.parentElement.getBoundingClientRect();
+    const shown = el.getBoundingClientRect();
+    const end = el.contentDocument.querySelector("#end").getBoundingClientRect();
+    const scale = Number(el.dataset.scale);
+    return { scale, paneWidth: pane.width, shownWidth: shown.width, endRight: end.right * scale, inner: el.contentWindow.innerWidth, scrollX: el.parentElement.scrollWidth - el.parentElement.clientWidth };
+  });
+  assert.ok(fit.scale < 1 && fit.scale > 0.25, JSON.stringify(fit));
+  assert.ok(Math.abs(fit.shownWidth - fit.paneWidth) <= 4, `縮小之後剛好是預覽區的寬度：${JSON.stringify(fit)}`);
+  assert.ok(fit.endRight <= fit.paneWidth + 1, `最右邊的字看得到：${JSON.stringify(fit)}`);
+  assert.ok(fit.inner >= 1900, `網頁裡看到的寬度是它需要的寬度：${JSON.stringify(fit)}`);
+  assert.ok(fit.scrollX <= 1, `預覽區不會多出橫向捲軸：${JSON.stringify(fit)}`);
+  // 視窗變寬到裝得下：恢復原樣。
+  await page.setViewportSize({ width: 2400, height: 900 });
+  await page.waitForFunction(() => !document.querySelector("iframe.html-preview").dataset.scale);
+
+  // 一般（會跟著寬度排版）的網頁不縮；怎麼放大都裝不下的（用 vw）也照原樣。
+  await page.setViewportSize({ width: 1000, height: 700 });
+  for (const html of [HTML, '<!doctype html><html><body style="margin:0"><div style="width:150vw;height:50px">很寬</div></body></html>']) {
+    await page.evaluate((text) => {
+      const content = document.querySelector(".cm-content");
+      const tile = content.cmView ?? content.cmTile;
+      const view = tile.view ?? tile.root.view;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+    }, html);
+    await page.waitForFunction((text) => document.querySelector("iframe.html-preview").srcdoc.includes(text.slice(-40)), html);
+    await page.waitForTimeout(300);
+    assert.equal(await frame.evaluate((el) => el.dataset.scale ?? ""), "", html.slice(0, 60));
+  }
+  assert.deepEqual(errors, []);
+  await context.close();
+});
