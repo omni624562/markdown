@@ -56,10 +56,18 @@ const popState = (page) =>
     });
   });
 
+/**
+ * 等狀態列不再變動再去按它。編輯之後過一下子，字數旁邊的存檔狀態會多出「 · 草稿已自動保存」，
+ * 整排往旁邊擠；如果剛好發生在按下和放開之間，放開時滑鼠已經不在字數上，這一下就不算
+ * （click 事件落在外層，實測：pointerdown 在 #status-stats、click 在 .status-items）。
+ */
+const settled = (page) => page.waitForFunction(() => document.querySelector("#status-save .save-state-label")?.textContent.includes("草稿已自動保存"));
+
 test("狀態列的文件統計：再按一次字數就關上", async () => {
   const { page, context, errors } = await open();
   await setText(page, "# 週報\n\n本週完成登入頁。\n");
   const stats = page.locator("#status-stats");
+  await settled(page);
   await stats.click();
   const pop = page.locator(".stats-pop:popover-open");
   await pop.waitFor();
@@ -81,6 +89,7 @@ test("狀態列的文件統計：內容變多（設了字數目標）後面板�
   const { page, context, errors } = await open();
   await setText(page, "# 週報\n\n本週完成登入頁。\n");
   const stats = page.locator("#status-stats");
+  await settled(page);
   await stats.click();
   await page.locator(".stats-pop:popover-open").waitFor();
   // 設了目標之後多出進度列：面板要重新放，不能往下長、蓋住狀態列的字數。

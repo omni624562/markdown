@@ -559,7 +559,7 @@ test("回答寫回文件：按鈕有文字；插入到游標處、加到最後�
   await reply(page, "範例如下：\n\n```js\nconsole.log(1);\n```\n\n| 欄 | 值 |\n| --- | --- |\n| 甲 | 1 |\n\n以上。");
   const answer = panel.locator(".assistant-assistant").last();
   await answer.locator(".assistant-tools").waitFor();
-  assert.deepEqual(await answer.locator(".assistant-tools .assistant-tool").allTextContents(), ["複製", "插入", "加到最後"]);
+  assert.deepEqual(await answer.locator(".assistant-tools .assistant-tool").allTextContents(), ["複製", "插入", "加到最後", "重新產生"]);
   assert.equal(await answer.locator(".assistant-block").count(), 2);
 
   // 游標放在「第一段」的中間：插入的內容前後空一行，自成段落。
