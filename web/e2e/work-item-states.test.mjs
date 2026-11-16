@@ -81,7 +81,7 @@ test("選了專案、類型：狀態只列那個專案、類型用得到的；�
   const { page, context, errors } = await open({ desktop });
   await page.click("#side-tab-workitems");
   await page.locator("#workitems-host .workitem-title", { hasText: "工作 1" }).waitFor();
-  // 篩選列的順序：專案（最上面一整列），人（選了專案時旁邊是區域），類型、狀態。
+  // 篩選列的順序：專案（最上面一整列），只選一個專案時是 Sprint，人（選了專案時旁邊是區域），類型、狀態。
   const labels = () =>
     page
       .locator("#workitems-host .workitems-filters .multi-select:not([hidden])")
@@ -110,7 +110,8 @@ test("選了專案、類型：狀態只列那個專案、類型用得到的；�
     return list;
   };
   // 收起選單的當下就套用（不用等 toggle 事件）：選了專案，旁邊馬上出現區域。
-  assert.deepEqual(await pick("專案", "維運"), ["專案", "人", "區域", "類型", "狀態"]);
+  // 只選一個專案：專案下面多一列 Sprint（先顯示讀取中，見 workitems-sprint.test.mjs）。
+  assert.deepEqual(await pick("專案", "維運"), ["專案", "Sprint", "人", "區域", "類型", "狀態"]);
   assert.deepEqual(await stateRows(), ["✓To Do", "✓Doing", " Done"]);
   await pick("專案", "產品");
   await pick("類型", "Bug");

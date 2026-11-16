@@ -1,6 +1,6 @@
 [package]
 name = "md-desktop"
-version = "1.151.0"
+version = "1.155.1"
 edition = "2021"
 license = "MIT"
 description = "oMarker（Markdown 編輯器）桌面版（Tauri）"
@@ -84,6 +84,8 @@ gtk = "0.18.2"
 # 預設把前端打包進執行檔；開發時用 `cargo run --no-default-features` 改連 Vite 開發伺服器。
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+# CI 的啟動檢查用（web/smoke/windows-app.mjs）：可以用環境變數打開 WebView2 的遠端偵錯連接埠。發佈的執行檔不開這個功能。
+smoke-test = []
 
 [profile.release]
 lto = true

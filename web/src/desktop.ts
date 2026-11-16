@@ -7,7 +7,6 @@ import type { UsageHistory } from "./usage-summary.ts";
 import type { DocInfo } from "./doc-index.ts";
 import type { FileRef } from "./links.ts";
 import { adoOnline } from "./ado-online.ts";
-import type { CapacityData } from "./taskboard-model.ts";
 import { t } from "./i18n.ts";
 import type { WikiPageInfo } from "./wiki-coedit.ts";
 import type { Iteration } from "./work-item-fields.ts";
@@ -461,7 +460,7 @@ export interface AdoLinkChange {
   id: number;
 }
 
-/** 團隊成員（指派時選人用）。 */
+/** 團隊成員（留言 @ 人用）。 */
 export interface AdoTeamMember {
   name: string;
   /** 帳號：指派時送這個。 */
@@ -537,6 +536,8 @@ export interface AdoTeam {
   name: string;
   /** 專案的預設團隊。 */
   default: boolean;
+  /** 目前登入的人是這個團隊的成員（舊版伺服器讀不到時都是 false）。 */
+  mine: boolean;
 }
 
 /** 團隊選用的 Sprint。 */
@@ -549,15 +550,6 @@ export interface AdoTeamIteration {
   finish: string | null;
   /** 目前的 Sprint。 */
   current: boolean;
-}
-
-/** 工作板上的工作項目：多了上層項目的編號、修訂版本與工時。 */
-export interface AdoBoardItem extends AdoWorkItem {
-  rev: number | null;
-  parent: number | null;
-  remaining: number | null;
-  completed: number | null;
-  original: number | null;
 }
 
 /** 工作項目清單的篩選條件。 */
@@ -574,6 +566,8 @@ export interface AdoWorkItemFilter {
   projects: string[];
   /** 區域路徑（包含底下的區域）。 */
   areas: string[];
+  /** Sprint（反覆項目）路徑，剛好在那個 Sprint 的；專案本身的路徑是「沒有排進 Sprint」。不會存起來：每次打開都回到本週的 Sprint。 */
+  iterations: string[];
 }
 
 /** 改過某個檔案的提交。 */
@@ -730,6 +724,8 @@ export interface AssistantBatch {
   written: number;
   failed: number;
   usd: number;
+  /** 寫出來的結果檔裡還在的（路徑）。 */
+  outputs: string[];
   /** 處理完了，但要先打開這個資料夾才能把結果寫回去。 */
   needsFolder: string | null;
   /** 這次檢查才剛領完結果。 */
@@ -1252,21 +1248,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<void>("ado_comment_delete", { project, id, commentId }),
     /** 專案的團隊（預設團隊排第一個）。 */
     adoTeams: (project: string) => core.invoke<AdoTeam[]>("ado_teams", { project }),
-    /** 團隊的成員（依名稱排）。 */
-    adoTeamMembers: (project: string, team: string) => core.invoke<AdoTeamMember[]>("ado_team_members", { project, team }),
     /** 專案預設團隊的成員（留言 @ 人時先列出）。 */
     adoProjectMembers: (project: string) => core.invoke<AdoTeamMember[]>("ado_project_members", { project }),
     /** 用伺服器的身分搜尋找人（找得到團隊以外的人）。 */
     adoSearchPeople: (query: string) => core.invoke<AdoTeamMember[]>("ado_search_people", { query }),
-    /** 團隊在某個 Sprint 的容量（成員每天的工時、休假）。`iteration` 是 Sprint 的 id。 */
-    adoCapacity: (project: string, team: string, iteration: string) =>
-      core.invoke<CapacityData>("ado_capacity", { project, team, iteration }),
     /** 團隊選用的 Sprint（依開始日期排）。 */
     adoTeamIterations: (project: string, team: string) => core.invoke<AdoTeamIteration[]>("ado_team_iterations", { project, team }),
-    /** 團隊在某個 Sprint 裡的工作項目（工作板）。 */
-    adoBoard: (project: string, team: string, iteration: string) => core.invoke<AdoBoardItem[]>("ado_board", { project, team, iteration }),
-    /** 團隊的 Backlog：還沒排進 Sprint 的需求類工作項目，依 Backlog 的順序。 */
-    adoBacklog: (project: string, team: string) => core.invoke<AdoBoardItem[]>("ado_backlog", { project, team }),
     /** 專案的反覆項目（Sprint），第一個是專案本身。 */
     adoIterations: (project: string) => core.invoke<Iteration[]>("ado_iterations", { project }),
     adoWikis: () => core.invoke<AdoWiki[]>("ado_wikis"),

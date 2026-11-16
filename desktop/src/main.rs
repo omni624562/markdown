@@ -112,6 +112,16 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<Window> {
         .auto_resize()
         .on_navigation(navigation::is_app_url)
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
+    // 只有 CI 的啟動檢查用的那一份（`--features smoke-test`）才打開 WebView2 的遠端偵錯連接埠；
+    // 發佈的執行檔沒有這段程式。Tauri 自己設定了瀏覽器的參數，所以 WebView2 的環境變數
+    // （WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS）不會生效，只能從這裡加。前面那一段是 Tauri 預設的參數。
+    #[cfg(feature = "smoke-test")]
+    let webview = match std::env::var("OMARKER_SMOKE_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
+        Some(port) => webview.additional_browser_args(&format!(
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
+        )),
+        None => webview,
+    };
     let size = window
         .inner_size()?
         .to_logical::<f64>(window.scale_factor()?);
@@ -458,11 +468,8 @@ fn main() {
             ado::ado_work_item_history,
             ado::ado_ping,
             ado::ado_check,
-            ado::ado_team_members,
             ado::ado_project_members,
             ado::ado_search_people,
-            ado::ado_capacity,
-            ado::ado_backlog,
             ado::ado_diagnostics_save,
             ado::ado_repo_text,
             ado::ado_attachment_text,
@@ -474,7 +481,6 @@ fn main() {
             ado::ado_comment_delete,
             ado::ado_teams,
             ado::ado_team_iterations,
-            ado::ado_board,
             ado::ado_iterations,
             notify::notify_work_items,
             ado::ado_work_item_create,

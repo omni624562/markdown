@@ -212,6 +212,9 @@ pub struct WorkItemFilter {
     pub projects: Vec<String>,
     /// 區域路徑（例如 `產品\前端`），包含底下的區域；空的是不限。
     pub areas: Vec<String>,
+    /// 反覆項目（Sprint）路徑（例如 `產品\Sprint 47`），只算剛好在那個 Sprint 的；空的是不限。
+    /// 專案本身的路徑（例如 `產品`）是「沒有排進 Sprint」。
+    pub iterations: Vec<String>,
 }
 
 impl Default for WorkItemFilter {
@@ -224,6 +227,7 @@ impl Default for WorkItemFilter {
             kinds: vec![],
             projects: vec![],
             areas: vec![],
+            iterations: vec![],
         }
     }
 }
@@ -305,6 +309,10 @@ fn conditions(search: &str, f: &WorkItemFilter, content: &[&str], p: &str) -> Ve
         .collect();
     if !areas.is_empty() {
         cond.push(format!("({})", areas.join(" OR ")));
+    }
+    // 用「等於」不用 UNDER：專案本身的路徑代表「沒有排進 Sprint」，UNDER 會把整個專案都算進去。
+    if let Some(iterations) = any_of(&f.iterations) {
+        cond.push(format!("{p}[System.IterationPath] IN ({iterations})"));
     }
     if !q.is_empty() {
         let mut any = vec![format!("{p}[System.Title] CONTAINS {}", wiql_string(q))];
@@ -1606,7 +1614,7 @@ pub async fn ado_work_item_states(
     .await
 }
 
-/// 狀態在流程裡的階段（工作板的欄位、狀態選單依這個排）：提議、進行中、已解決、已完成、已移除。
+/// 狀態在流程裡的階段（狀態選單依這個排）：提議、進行中、已解決、已完成、已移除。
 fn stage_of_category(category: &str) -> u8 {
     match category {
         "Proposed" => 0,

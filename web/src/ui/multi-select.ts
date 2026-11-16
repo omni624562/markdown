@@ -31,8 +31,28 @@ export interface MultiSelectOptions {
   live?: boolean;
   /** 選單最上面的一行說明（例如「顯示哪些最上層頁面」）。 */
   caption?: string;
+  /**
+   * 選單裡選項的樣子另外決定（例如 Sprint：名稱旁邊標「本週」、日期靠右、分組）；回傳 null 的照一般的寫法。
+   * 按鈕上照樣用選項的文字；這種選項不顯示滑鼠提示（內容都看得到了）。
+   */
+  rich?: (value: string) => RichItem | null;
+  /** 這一組平常只列前 `keep` 個（勾著的一定列出），下面「顯示更早的 N 個」展開；打字找時全部都找。 */
+  fold?: { group: string; keep: number };
   /** 按鈕上的文字另外決定（例如狀態勾了所有還沒結束的，寫「進行中」）；回傳 null 時照一般的寫法。 */
   summary?(values: string[]): string | null;
+}
+
+/** 選單裡一個選項的樣子（見 {@link MultiSelectOptions.rich}）。 */
+export interface RichItem {
+  name: string;
+  /** 名稱後面的小字（例如「本週」「下一個」）。 */
+  note?: string;
+  /** 目前的那一個（例如本週的 Sprint）：底色標出，名稱粗體。 */
+  current?: boolean;
+  /** 靠右的小字（例如日期）。 */
+  aside?: string;
+  /** 分組的名稱：和上一個選項不同時，上面加一行組名。 */
+  group?: string;
 }
 
 /** 選項多到這個數目時，上面多一個搜尋框。 */
@@ -47,11 +67,18 @@ export class MultiSelect {
   #allBox: HTMLInputElement;
   #allText: HTMLSpanElement;
   #status: HTMLSpanElement;
+  #caption: HTMLDivElement;
   #options: [string, string][] = [];
   #value: string[] = [];
   /** 選單打開時勾選的（還沒套用）。 */
   #draft = new Set<string>();
   #o: MultiSelectOptions;
+
+  /** 換選單最上面的說明（空字串不顯示）。 */
+  setCaption(text: string): void {
+    this.#caption.textContent = text;
+    this.#caption.hidden = !text;
+  }
 
   constructor(o: MultiSelectOptions) {
     this.#o = o;
@@ -87,12 +114,10 @@ export class MultiSelect {
     foot.className = "multi-select-foot";
     this.#status = document.createElement("span");
     foot.append(this.#status);
-    if (o.caption) {
-      const caption = document.createElement("div");
-      caption.className = "multi-select-caption";
-      caption.textContent = o.caption;
-      this.#pop.append(caption);
-    }
+    this.#caption = document.createElement("div");
+    this.#caption.className = "multi-select-caption";
+    this.setCaption(o.caption ?? "");
+    this.#pop.append(this.#caption);
     this.#pop.append(this.#search, this.#allRow, this.#list, foot);
     if (o.single) {
       this.#pop.classList.add("single");
@@ -172,7 +197,8 @@ export class MultiSelect {
       ...all.map(([v, text]) => {
         const row = document.createElement("label");
         row.className = "multi-select-item";
-        row.title = text;
+        const rich = this.#o.rich?.(v) ?? null;
+        if (!rich) row.title = text;
         row.dataset.text = text.toLowerCase();
         const box = document.createElement("input");
         box.type = this.#o.single ? "radio" : "checkbox";
@@ -181,6 +207,24 @@ export class MultiSelect {
         box.checked = this.#draft.has(v);
         const name = document.createElement("span");
         name.textContent = text;
+        const aside = document.createElement("span");
+        if (rich) {
+          row.classList.add("rich");
+          row.classList.toggle("current", !!rich.current);
+          row.dataset.group = rich.group ?? "";
+          name.className = "multi-select-name";
+          name.textContent = rich.name;
+          if (rich.note) {
+            const note = document.createElement("small");
+            note.className = "multi-select-note";
+            note.textContent = rich.note;
+            name.append(note);
+          }
+          aside.className = "multi-select-aside";
+          aside.textContent = rich.aside ?? "";
+        }
+        const parts = [name];
+        const tail = rich?.aside ? [aside] : [];
         if (this.#o.single) {
           // 單選：點了就套用並關上（點已經選的那個也一樣關上）。
           row.addEventListener("click", (e) => {
@@ -192,7 +236,7 @@ export class MultiSelect {
             this.#render();
             this.#o.onChange(this.value);
           });
-          row.append(box, name);
+          row.append(box, ...parts, ...tail);
           return row;
         }
         box.addEventListener("change", () => {
@@ -215,10 +259,11 @@ export class MultiSelect {
           for (const b of this.#boxes()) b.checked = b.value === v;
           this.#sync();
         });
-        row.append(box, name, only);
+        row.append(box, ...parts, only, ...tail);
         return row;
       }),
     );
+    if (this.#o.rich) this.#decorate();
     this.#search.value = "";
     this.#search.hidden = all.length < SEARCH_FROM;
     this.#filter();
@@ -230,6 +275,52 @@ export class MultiSelect {
     Object.assign(this.#pop.style, { left: `${p.left}px`, top: `${p.top}px`, right: "auto", bottom: "auto", maxHeight: `${p.maxHeight}px` });
     const first = this.#o.single ? this.#list.querySelector<HTMLInputElement>("input:checked") : this.#allBox;
     (this.#search.hidden ? first : this.#search)?.focus();
+  }
+
+  /** 分組的組名、收起來的選項與「顯示更早的 N 個」、分組之後沒有分組的選項上面的分隔線。 */
+  #decorate(): void {
+    const rows = [...this.#list.querySelectorAll<HTMLElement>(".multi-select-item")];
+    const fold = this.#o.fold;
+    let prev: string | undefined;
+    let inFold = 0;
+    const folded: HTMLElement[] = [];
+    const count = (g: string) => rows.filter((r) => r.dataset.group === g).length;
+    for (const row of rows) {
+      const g = row.dataset.group;
+      if (g && g !== prev) {
+        const head = document.createElement("div");
+        head.className = "multi-select-group";
+        head.textContent = g;
+        if (fold?.group === g) {
+          const n = document.createElement("span");
+          n.textContent = String(count(g));
+          head.append(n);
+        }
+        row.before(head);
+      } else if (!g && prev) row.classList.add("multi-select-sep");
+      if (fold && g === fold.group) {
+        inFold++;
+        const box = row.querySelector<HTMLInputElement>("input")!;
+        if (inFold > fold.keep && !box.checked) {
+          row.classList.add("folded");
+          folded.push(row);
+        }
+      }
+      prev = g || undefined;
+    }
+    if (!folded.length) return;
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "multi-select-more";
+    more.textContent = t("顯示更早的 {n} 個", { n: folded.length });
+    more.addEventListener("click", (e) => {
+      e.preventDefault();
+      for (const r of folded) r.classList.remove("folded");
+      more.remove();
+      this.#search.focus();
+    });
+    const last = rows.filter((r) => r.dataset.group === fold!.group).at(-1)!;
+    last.after(more);
   }
 
   #boxes(): HTMLInputElement[] {
@@ -277,6 +368,8 @@ export class MultiSelect {
     }
     // 沒有打字找時就是「全部」（數字是選項的個數，不是工作項目的個數，寫出來反而容易誤會）。
     this.#allText.textContent = q ? t("全部符合的（{n}）", { n: shown }) : t("全部");
+    // 打字找時收起來的也一起找，組名與「顯示更早」先藏起來。
+    this.#list.classList.toggle("searching", !!q);
     this.#sync();
   }
 

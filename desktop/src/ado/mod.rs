@@ -17,22 +17,22 @@ use crate::confirm::Question;
 use crate::git::{AdoCred, Identity};
 
 mod access;
-mod board;
 mod diagnose;
 mod files;
 mod repos;
 mod search;
+mod teams;
 #[cfg(test)]
 mod tests;
 mod wiki;
 mod workitems;
 
 pub use access::*;
-pub use board::*;
 pub use diagnose::*;
 pub use files::*;
 pub use repos::*;
 pub use search::*;
+pub use teams::*;
 pub use wiki::*;
 pub use workitems::*;
 

@@ -6,6 +6,7 @@
  * 每個專案第一次送出前先確認要送什麼、大約多少錢；修改文件一律變成建議卡片，由使用者按「套用」。
  * API 金鑰只存在原生端，這裡只知道有沒有設定。
  */
+import { loadChat, saveChat } from "../assistant-chat-store.ts";
 import { initAssistantBatch, initBatchButton } from "./assistant-batch.ts";
 import { initUsagePanel } from "./assistant-usage.ts";
 import { pdfPages } from "../pdf-pages.ts";
@@ -33,6 +34,7 @@ import {
   insertPadding,
   mermaidBlock,
   replacementText,
+  unwrapMarkdown,
   systemPrompt,
   toggled,
   userContent,
@@ -492,6 +494,7 @@ function dropLast(): Pending | null {
   history = history.slice(0, -2);
   transcript = transcript.slice(0, -1);
   saveBtn.disabled = !transcript.length;
+  persistChat();
   p.answer.remove();
   p.userBubble.remove();
   return p;
@@ -537,9 +540,13 @@ function answerActions(el: HTMLElement, text: string): void {
   blockActions(el, text);
 }
 
+/** 語言標成 markdown／md 的程式碼區塊（開頭那一行）。 */
+const MD_FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*(markdown|md)[ \t]*\n/i;
+
 /**
  * 回答裡的程式碼區塊、表格、流程圖：右上角各有「複製」「插入」，只拿那一塊。
- * 用預覽的 `data-sourcepos` 對回原文：複製程式碼只複製內容，插入時連同 ``` 一起插入（保留 Markdown）。
+ * 用預覽的 `data-sourcepos` 對回原文：複製程式碼只複製內容，插入時連同 ``` 一起插入（保留 Markdown）；
+ * 標成 markdown 的區塊插入裡面的內容。
  */
 function blockActions(el: HTMLElement, text: string): void {
   const lines = text.split("\n");
@@ -559,7 +566,8 @@ function blockActions(el: HTMLElement, text: string): void {
     tools.className = "assistant-block-tools";
     tools.append(
       toolButton(isCode ? t("複製程式碼") : t("複製表格"), "copy", () => void copy(content), t("複製")),
-      toolButton(t("把這一塊插入到游標處"), "clipboard-paste", () => insertIntoDoc(source, "cursor"), t("插入")),
+      // Markdown 的區塊（```markdown）插入的是裡面的內容：要的是那份筆記，不是一個程式碼區塊。
+      toolButton(t("把這一塊插入到游標處"), "clipboard-paste", () => insertIntoDoc(isCode && MD_FENCE.test(source) ? content : source, "cursor"), t("插入")),
     );
     wrap.append(tools, block);
   }
@@ -789,7 +797,7 @@ function onRun(e: AssistantRunEvent): void {
     p.text += e.text;
     p.plain += e.text;
     p.answer.classList.remove("loading");
-    showAnswer(p.answer, p.text, p.cites);
+    showAnswer(p.answer, unwrapMarkdown(p.text), p.cites);
     log.scrollTop = log.scrollHeight;
     return;
   }
@@ -801,10 +809,12 @@ function onRun(e: AssistantRunEvent): void {
   if (e.kind === "cite") {
     // 剛剛那一段的出處：標記接在那一段後面。
     p.text = appendMarks(p.text, citeMarks(p.cites, e.cites));
-    if (p.text.trim()) showAnswer(p.answer, p.text, p.cites);
+    if (p.text.trim()) showAnswer(p.answer, unwrapMarkdown(p.text), p.cites);
     return;
   }
   pending = null;
+  // 整份回答包在 ```markdown 裡：拿掉外框，照一般的 Markdown 顯示、複製、插入（見 unwrapMarkdown）。
+  if (p.mode === "answer") p.text = unwrapMarkdown(p.text);
   // 引用的網頁列在回答最後（也會跟著存成筆記、插入文件）。
   if (p.sources.size && p.text.trim()) {
     const list = [...p.sources].map(([url, title]) => `- [${title.replace(/[[\]]/g, "")}](${url})`);
@@ -834,6 +844,7 @@ function onRun(e: AssistantRunEvent): void {
       history = [...history, { role: "user" as const, content: p.question }, { role: "assistant" as const, content: p.cites.length ? p.plain : p.text }].slice(-12);
     }
   }
+  persistChat();
   if (usage) usage = { ...usage, usd: e.monthUsd };
   renderUsage();
   setRunning(false);
@@ -948,10 +959,51 @@ function stop(): void {
   void refreshStatus();
 }
 
+/** 目前這份對話是哪個專案的（對話跟著專案：切換專案時換成那個專案上次的對話）。 */
+let chatRoot: string | null = null;
+
+/** 記下這個專案的對話（重開程式、切回來時接著問）。 */
+function persistChat(): void {
+  if (chatRoot) saveChat(chatRoot, { history, transcript });
+}
+
+/** 專案換了（或面板剛建立）：換成這個專案上次的對話。 */
+function syncChat(): void {
+  const root = app.workspaceRoot?.path ?? null;
+  if (root === chatRoot || pending) return;
+  chatRoot = root;
+  history = [];
+  transcript = [];
+  last = null;
+  pdfs = [];
+  log.replaceChildren();
+  const saved = root ? loadChat(root) : null;
+  if (saved) {
+    history = saved.history;
+    transcript = saved.transcript;
+    const note = document.createElement("small");
+    note.className = "assistant-restored";
+    note.textContent = t("上次在這個專案的對話（按「新對話」重新開始）");
+    log.append(note);
+    for (const item of transcript) {
+      bubble("user", item.question);
+      const answer = bubble("assistant");
+      // 以前存的對話也一樣拿掉整份回答的外框。
+      const text = unwrapMarkdown(item.answer);
+      showAnswer(answer, text);
+      answerActions(answer, text);
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+  saveBtn.disabled = !transcript.length;
+  renderChips();
+}
+
 function newChat(): void {
   if (pending) stop();
   history = [];
   transcript = [];
+  persistChat();
   last = null;
   pdfs = [];
   renderChips();
@@ -1226,6 +1278,7 @@ export function assistantPanel(create: boolean): HTMLElement | null {
 /** 助理這一頁顯示出來了（切到這頁、打開右側欄）：更新內容，游標放進輸入框。 */
 export function assistantShown(): void {
   if (!panel) return;
+  syncChat();
   renderModel();
   renderChips();
   renderNotice();
@@ -1284,6 +1337,7 @@ function acceptTextDrops(box: HTMLElement): void {
 /** 專案換了（例如剛打開專案）：助理開著時更新「這次會送出的內容」與能不能送出，不會停在「請先開啟專案資料夾」。 */
 export function assistantContextChanged(): void {
   if (!assistantOpen()) return;
+  syncChat();
   renderChips();
   renderNotice();
 }

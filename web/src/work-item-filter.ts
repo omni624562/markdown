@@ -51,6 +51,7 @@ export const DEFAULT_WORK_ITEM_FILTER: AdoWorkItemFilter = {
   kinds: [],
   projects: [],
   areas: [],
+  iterations: [],
 };
 
 /** 讀回存起來的篩選條件；舊版存的是單一的 kind、project、area，沒有 states。 */
@@ -66,6 +67,8 @@ export function parseWorkItemFilter(raw: string | null): AdoWorkItemFilter {
       kinds: choiceList(v.kinds ?? v.kind),
       projects,
       areas: projects.length ? choiceList(v.areas ?? v.area) : [],
+      // Sprint 不讀回來：每次打開都從本週的 Sprint 開始（見 sprintOptions）。
+      iterations: [],
     };
   } catch {
     return { ...DEFAULT_WORK_ITEM_FILTER };
@@ -81,14 +84,95 @@ export function isDefaultWorkItemFilter(f: AdoWorkItemFilter): boolean {
     !f.states.length &&
     !f.kinds.length &&
     !f.projects.length &&
-    !f.areas.length
+    !f.areas.length &&
+    !f.iterations.length
   );
 }
 
 /** 離線副本的鍵：沒有指定狀態時和以前一樣（不含 `states`），升級後還找得到以前存的副本。 */
 export function workItemFilterKey(f: AdoWorkItemFilter): string {
-  const { states, ...rest } = f;
-  return JSON.stringify(states.length ? { ...rest, states } : rest);
+  const { states, iterations, ...rest } = f;
+  return JSON.stringify({ ...rest, ...(states.length ? { states } : {}), ...(iterations.length ? { iterations } : {}) });
+}
+
+/** 存起來的篩選條件（Sprint 不存）。 */
+export function storedWorkItemFilter(f: AdoWorkItemFilter): string {
+  const { iterations: _, ...rest } = f;
+  return JSON.stringify(rest);
+}
+
+/** 團隊的一個 Sprint（後端 `ado_team_iterations`）。 */
+export interface SprintInfo {
+  path: string;
+  name: string;
+  start: string | null;
+  finish: string | null;
+  current: boolean;
+}
+
+/** `2026-11-10T00:00:00Z` → `11/10`（只看日期，不換時區：Azure DevOps 存的是那一天的 0 點）。 */
+const day = (iso: string) => {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${Number(m[1])}/${Number(m[2])}` : "";
+};
+
+/**
+ * Sprint 選單的選項：新的在上面，標出本週（伺服器判斷的「目前」）、下一個、已結束與起訖日期；
+ * 最後一項是「沒有排進 Sprint」（值是專案本身的路徑）。`current` 是本週的 Sprint 路徑（沒有時是 null）。
+ * `items`：選單裡的樣子（按鈕上還是寫成一行的 `options`）：分「目前與之後」「已結束」兩組（沒有本週時不分組），
+ * 名稱旁邊標本週、下一個，日期靠右。
+ */
+export function sprintOptions(
+  list: readonly SprintInfo[],
+  project: string,
+): { options: [string, string][]; current: string | null; items: Map<string, SprintItem> } {
+  const sorted = [...list];
+  const at = sorted.findIndex((s) => s.current);
+  const items = new Map<string, SprintItem>();
+  const options = sorted
+    .map((s, i): [string, string] => {
+      const dates = s.start && s.finish ? `${day(s.start)}–${day(s.finish)}` : "";
+      const when = at < 0 ? null : i === at ? t("本週") : i === at + 1 ? t("下一個") : i < at ? t("已結束") : null;
+      items.set(s.path, {
+        name: s.name,
+        ...(i === at || i === at + 1 ? { note: when! } : {}),
+        ...(i === at ? { current: true } : {}),
+        ...(dates ? { aside: dates.replace("–", " – ") } : {}),
+        ...(at < 0 ? {} : { group: i < at ? SPRINT_PAST() : SPRINT_NOW() }),
+      });
+      const note = [when, dates].filter(Boolean).join(t("，"));
+      return [s.path, note ? t("{name}（{note}）", { name: s.name, note }) : s.name];
+    })
+    .reverse();
+  options.push([project, t("沒有排進 Sprint（Backlog）")]);
+  return { options, current: at < 0 ? null : sorted[at].path, items };
+}
+
+/** Sprint 選單裡的一項（和 ui/multi-select.ts 的 RichItem 一樣）。 */
+export interface SprintItem {
+  name: string;
+  note?: string;
+  current?: boolean;
+  aside?: string;
+  group?: string;
+}
+
+/** Sprint 選單的兩組。 */
+export const SPRINT_NOW = () => t("目前與之後");
+export const SPRINT_PAST = () => t("已結束");
+
+/**
+ * Sprint 篩選依哪個團隊的 Sprint（每個團隊選用的 Sprint 不同，例如預設團隊是 Sprint 25、自己的團隊是 Sprint 103）：
+ * 設定裡這個專案指定的預設團隊 → 自己所屬的團隊（屬於好幾個時先挑專案的預設團隊）→ 專案的預設團隊。
+ */
+export function sprintTeam<T extends { name: string; default: boolean; mine: boolean }>(
+  teams: readonly T[],
+  project: string,
+  settings: { adoDefaultProject: string; adoDefaultTeam: string },
+): T | null {
+  const named = settings.adoDefaultTeam && settings.adoDefaultProject === project ? teams.find((x) => x.name === settings.adoDefaultTeam) : undefined;
+  const mine = teams.filter((x) => x.mine);
+  return named ?? mine.find((x) => x.default) ?? mine[0] ?? teams.find((x) => x.default) ?? teams[0] ?? null;
 }
 
 /** 讀不到狀態清單時的兩個選項（值不會和狀態名稱撞在一起）。 */

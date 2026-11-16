@@ -177,7 +177,7 @@ test("設定：Claude API 助理自成一頁，不在 AI 協作那一頁", async
   const card = dialog.locator("#assistant-settings");
   await card.waitFor();
   assert.ok(await card.isVisible());
-  assert.match(await card.textContent(), /已存在 Windows 認證管理員/);
+  assert.match(await card.textContent(), /已設定，存在 Windows 認證管理員/);
   assert.equal(await card.locator('[data-key="claudeApiEnabled"]').isChecked(), true);
   assert.deepEqual(errors, []);
   await context.close();
@@ -577,6 +577,58 @@ test("回答寫回文件：按鈕有文字；插入到游標處、加到最後�
   const end = await docText();
   assert.ok(end.startsWith(after + "\n\n範例如下："), end);
   assert.ok(end.endsWith("以上。"), end);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("回答整份包在 ```markdown 裡：照一般的 Markdown 排版顯示，插入時不帶外框", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".segmented [data-view=editor]").click();
+  const docText = () => page.evaluate(() => [...document.querySelectorAll(".cm-content .cm-line")].map((l) => l.textContent).join("\n"));
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.locator(".assistant-input textarea").fill("整理成筆記");
+  await panel.locator(".assistant-input textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  // 送出的系統提示要求不要整份包在程式碼區塊裡。
+  assert.match((await sends(page)).at(-1).request.system, /不要把整份回答包在程式碼區塊/);
+  const note = "# 旅遊筆記\n\n| 天 | 地點 |\n| --- | --- |\n| 1 | 台南 |";
+  await reply(page, "```markdown\n" + note + "\n```");
+  const answer = panel.locator(".assistant-assistant").last();
+  await answer.locator(".assistant-tools").waitFor();
+  // 排版過的標題與表格，不是一整塊程式碼。
+  assert.equal(await answer.locator(".assistant-answer h1").textContent(), "旅遊筆記");
+  assert.equal(await answer.locator(".assistant-answer > pre").count(), 0);
+  await answer.locator(".assistant-tools").getByRole("button", { name: "加到文件最後" }).click();
+  assert.equal(await docText(), note);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("回答裡夾著一小塊 ```markdown 範例（說明比較多，不拿掉外框）：那一塊的「插入」插入的是裡面的內容", async () => {
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  await page.keyboard.press("Control+N");
+  await page.locator(".cm-content").waitFor({ state: "visible" });
+  await page.locator(".segmented [data-view=editor]").click();
+  const docText = () => page.evaluate(() => [...document.querySelectorAll(".cm-content .cm-line")].map((l) => l.textContent).join("\n"));
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.locator(".assistant-input textarea").fill("表格怎麼寫");
+  await panel.locator(".assistant-input textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const table = "| 天 | 地點 |\n| --- | --- |\n| 1 | 台南 |";
+  await reply(page, "表格用直線分欄。\n\n第二行是分隔列。\n\n第一行是標題。\n\n例如：\n\n```markdown\n" + table + "\n```\n\n對齊可以用冒號。\n\n欄寬不用一樣。");
+  const answer = panel.locator(".assistant-assistant").last();
+  await answer.locator(".assistant-block").first().waitFor();
+  // 說明比區塊多：照原樣顯示成程式碼區塊。
+  assert.equal(await answer.locator(".assistant-answer pre").count(), 1);
+  await page.locator(".cm-content").click();
+  await answer.locator(".assistant-block").first().getByRole("button", { name: "把這一塊插入到游標處" }).click();
+  assert.equal(await docText(), table);
   assert.deepEqual(errors, []);
   await context.close();
 });

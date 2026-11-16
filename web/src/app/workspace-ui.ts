@@ -38,7 +38,6 @@ import { wikiPanel, workItemsPanel, issuesPanel, renderIssuesTab } from "./work-
 import type { Doc, SidePanel } from "../main.ts";
 import { renderFilesHeadPins } from "./pin-commands.ts";
 import { app } from "./context.ts";
-import { boardPanelShown } from "./taskboard.ts";
 import { repoNoteEl } from "./repo-sources.ts";
 import { docName } from "./doc-names.ts";
 import { renameFileShortcuts } from "./file-shortcuts.ts";
@@ -334,7 +333,7 @@ export function panelAvailable(panel: SidePanel): void {
 export function showPanel(panel: SidePanel, reveal = true, focusInput = false): void {
   const requested = panel;
   if (panel === "git" && app.$("#side-tab-git").hidden) panel = "files";
-  if ((panel === "workitems" || panel === "board" || panel === "wiki") && app.$(`#side-tab-${panel}`).hidden) panel = "files";
+  if ((panel === "workitems" || panel === "wiki") && app.$(`#side-tab-${panel}`).hidden) panel = "files";
   if (panel === "issues" && app.$("#side-tab-issues").hidden) panel = "files";
   // 不能用而改開檔案時不記住（下次啟動仍然開原本要的面板）。
   pendingPanel = panel === requested ? null : requested;
@@ -372,7 +371,6 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
   if (reveal && !app.outlineShown) app.setOutline(true);
   if (panel === "outline") updateActiveHeading();
   if (panel === "workitems") workItemsPanel?.shown();
-  if (panel === "board") boardPanelShown();
   if (panel === "wiki") wikiPanel?.shown();
   if (panel === "issues") issuesPanel?.shown();
   if (panel === "search" && app.searchStale) {

@@ -106,7 +106,6 @@ import { autoSaveNow, autoSavePending, exclusiveSave, resumeAutoSave, scheduleDi
 import { forgetOutlineCollapse, initOutlineList, renderOutline } from "./app/outline-list.ts";
 import { workItemChips, workItemChipsPlugin } from "./app/work-item-chips.ts";
 import { forgetChangeNotice, reloadDoc, startDesktop } from "./app/desktop-startup.ts";
-import { initTaskboard } from "./app/taskboard.ts";
 import { renderStartRecent } from "./app/recent-files.ts";
 import { initErrorHandling } from "./app/error-handling.ts";
 import { refreshRepoNotes, repoSources } from "./app/repo-sources.ts";
@@ -1618,8 +1617,8 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-export type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "board" | "wiki" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "board", "wiki", "git"];
+export type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "wiki" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "wiki", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
 /** 前幾版的「Azure DevOps」面板（裡面切換工作項目與 Wiki）；現在拆成「工作項目」「Wiki」兩個面板。 */
 const LEGACY_ADO_PANEL = "ado";
@@ -1865,7 +1864,6 @@ const showAssignee = () => !(workItemFilter.role === "assigned" && workItemFilte
 let loadWorkItemFilterOptions = (): void => {};
 
 initWorkItemsPanel();
-initTaskboard();
 initAdoStatus();
 
 /** 最近一次「指派給你、還沒結束」的清單（背景檢查或面板的預設清單）。 */

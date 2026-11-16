@@ -1,6 +1,6 @@
 /**
  * 視覺小地方：預覽的待辦看得清楚、即時預覽的程式碼區塊不露出圍欄、⋯ →「外觀」標出目前的明暗、
- * 即時預覽與 Wiki、工作板與專案總覽的圖示不一樣。先執行 `npm run build`，再 `npm run test:e2e`。
+ * 即時預覽與 Wiki 的圖示不一樣。先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -135,16 +135,10 @@ test("⋯ →「外觀」：明暗的跟隨系統／淺色／深色標出目前�
   await context.close();
 });
 
-test("圖示：即時預覽和 Wiki 不同、工作板和專案總覽不同", async () => {
+test("圖示：即時預覽和 Wiki 不同", async () => {
   const { page, context, errors } = await open({ desktop: {} });
   const svg = (locator) => locator.locator("svg").first().evaluate((el) => el.innerHTML);
   assert.notEqual(await svg(page.locator('button[data-view="live"]')), await svg(page.locator("#side-tab-wiki")));
-  // 專案總覽：指令面板裡的圖示。
-  await page.keyboard.press("Control+Shift+P");
-  await page.locator("dialog[open] input").first().fill("專案總覽");
-  const overview = page.locator("dialog[open] li", { hasText: "專案總覽" }).first();
-  await overview.waitFor();
-  assert.notEqual(await svg(overview), await svg(page.locator("#side-tab-board")));
   assert.deepEqual(errors, []);
   await context.close();
 });

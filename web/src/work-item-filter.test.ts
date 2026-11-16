@@ -8,7 +8,10 @@ import {
   stateChoice,
   stateLabel,
   stateOptions,
+  sprintOptions,
+  sprintTeam,
   statesFor,
+  storedWorkItemFilter,
   workItemFilterKey,
 } from "./work-item-filter.ts";
 
@@ -84,4 +87,67 @@ test("狀態只列選的專案、類型用得到的；同名只列一次，依�
   assert.deepEqual(names(["B"], ["Bug"]), ["To Do", "Doing", "Done"]);
   // 選的專案還沒讀到：沒有狀態（選單改列「進行中」「已結束」）。
   assert.deepEqual(names(["C"], []), []);
+});
+
+test("Sprint 不存起來：每次打開都從本週開始；離線副本的鍵分得出不同的 Sprint", () => {
+  const picked = f({ projects: ["產品"], iterations: ["產品\\Sprint 46"] });
+  const stored = storedWorkItemFilter(picked);
+  assert.ok(!stored.includes("iterations"), stored);
+  assert.deepEqual(parseWorkItemFilter(stored).iterations, []);
+  assert.deepEqual(parseWorkItemFilter('{"projects":["產品"],"iterations":["產品\\\\Sprint 46"]}').iterations, []);
+  assert.notEqual(workItemFilterKey(picked), workItemFilterKey(f({ projects: ["產品"] })));
+  // 沒選 Sprint 時和以前的鍵一樣（升級後還找得到以前存的離線副本）。
+  assert.equal(workItemFilterKey(f()), JSON.stringify({ role: "assigned", person: "@me", state: "open", kinds: [], projects: [], areas: [] }));
+  assert.ok(!isDefaultWorkItemFilter(f({ iterations: ["產品"] })));
+});
+
+test("Sprint 選單：新的在上面，標出本週、下一個、已結束與日期；最後是沒有排進 Sprint", () => {
+  const sprint = (n: number, start: string | null, finish: string | null, current = false) => ({ path: `產品\\Sprint ${n}`, name: `Sprint ${n}`, start, finish, current });
+  const list = [
+    sprint(45, "2026-10-27T00:00:00Z", "2026-11-02T00:00:00Z"),
+    sprint(46, "2026-11-03T00:00:00Z", "2026-11-09T00:00:00Z"),
+    sprint(47, "2026-11-10T00:00:00Z", "2026-11-23T00:00:00Z", true),
+    sprint(48, "2026-11-24T00:00:00Z", "2026-12-07T00:00:00Z"),
+    sprint(49, null, null),
+  ];
+  const { options, current, items } = sprintOptions(list, "產品");
+  assert.equal(current, "產品\\Sprint 47");
+  // 選單裡：分「目前與之後」「已結束」兩組，名稱旁邊標本週、下一個，日期靠右；「沒有排進 Sprint」不分組。
+  assert.deepEqual(items.get("產品\\Sprint 47"), { name: "Sprint 47", note: "本週", current: true, aside: "11/10 – 11/23", group: "目前與之後" });
+  assert.deepEqual(items.get("產品\\Sprint 48"), { name: "Sprint 48", note: "下一個", aside: "11/24 – 12/7", group: "目前與之後" });
+  assert.deepEqual(items.get("產品\\Sprint 46"), { name: "Sprint 46", aside: "11/3 – 11/9", group: "已結束" });
+  assert.deepEqual(items.get("產品\\Sprint 49"), { name: "Sprint 49", group: "目前與之後" });
+  assert.equal(items.get("產品"), undefined);
+  assert.deepEqual(
+    options.map(([, label]) => label),
+    [
+      "Sprint 49",
+      "Sprint 48（下一個，11/24–12/7）",
+      "Sprint 47（本週，11/10–11/23）",
+      "Sprint 46（已結束，11/3–11/9）",
+      "Sprint 45（已結束，10/27–11/2）",
+      "沒有排進 Sprint（Backlog）",
+    ],
+  );
+  assert.deepEqual(options.at(-1), ["產品", "沒有排進 Sprint（Backlog）"]);
+  // 團隊沒有設定日期（沒有「目前」）：沒有預設值，只有名字與日期。
+  const none = sprintOptions([sprint(1, "2026-01-05T00:00:00Z", "2026-01-18T00:00:00Z")], "產品");
+  assert.equal(none.current, null);
+  assert.deepEqual(none.options[0], ["產品\\Sprint 1", "Sprint 1（1/5–1/18）"]);
+  assert.deepEqual(sprintOptions([], "產品").options, [["產品", "沒有排進 Sprint（Backlog）"]]);
+});
+
+test("Sprint 依哪個團隊：設定指定的 → 自己所屬的 → 專案的預設團隊", () => {
+  const team = (name: string, d = false, mine = false) => ({ name, default: d, mine });
+  const teams = [team("產品團隊", true), team("前端"), team("Contoso", false, true), team("後端", false, true)];
+  const none = { adoDefaultProject: "", adoDefaultTeam: "" };
+  assert.equal(sprintTeam(teams, "產品", none)?.name, "Contoso");
+  // 設定裡這個專案指定了預設團隊：用它；指定的是別的專案就不算。
+  assert.equal(sprintTeam(teams, "產品", { adoDefaultProject: "產品", adoDefaultTeam: "前端" })?.name, "前端");
+  assert.equal(sprintTeam(teams, "產品", { adoDefaultProject: "別的", adoDefaultTeam: "前端" })?.name, "Contoso");
+  // 自己屬於好幾個團隊、其中一個是預設團隊：用預設團隊。
+  assert.equal(sprintTeam([team("前端", false, true), team("產品團隊", true, true)], "產品", none)?.name, "產品團隊");
+  // 讀不到自己所屬的團隊：用專案的預設團隊。
+  assert.equal(sprintTeam([team("前端"), team("產品團隊", true)], "產品", none)?.name, "產品團隊");
+  assert.equal(sprintTeam([], "產品", none), null);
 });
