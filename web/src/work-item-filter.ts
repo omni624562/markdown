@@ -135,6 +135,20 @@ export function sprintOptions(list: readonly SprintInfo[], project: string): { o
   return { options, current: at < 0 ? null : sorted[at].path };
 }
 
+/**
+ * Sprint 篩選依哪個團隊的 Sprint（每個團隊選用的 Sprint 不同，例如預設團隊是 Sprint 25、自己的團隊是 Sprint 103）：
+ * 設定裡這個專案指定的預設團隊 → 自己所屬的團隊（屬於好幾個時先挑專案的預設團隊）→ 專案的預設團隊。
+ */
+export function sprintTeam<T extends { name: string; default: boolean; mine: boolean }>(
+  teams: readonly T[],
+  project: string,
+  settings: { adoDefaultProject: string; adoDefaultTeam: string },
+): T | null {
+  const named = settings.adoDefaultTeam && settings.adoDefaultProject === project ? teams.find((x) => x.name === settings.adoDefaultTeam) : undefined;
+  const mine = teams.filter((x) => x.mine);
+  return named ?? mine.find((x) => x.default) ?? mine[0] ?? teams.find((x) => x.default) ?? teams[0] ?? null;
+}
+
 /** 讀不到狀態清單時的兩個選項（值不會和狀態名稱撞在一起）。 */
 const OPEN = ":open";
 const CLOSED = ":closed";
