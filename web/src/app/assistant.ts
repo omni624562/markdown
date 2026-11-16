@@ -6,6 +6,7 @@
  * 每個專案第一次送出前先確認要送什麼、大約多少錢；修改文件一律變成建議卡片，由使用者按「套用」。
  * API 金鑰只存在原生端，這裡只知道有沒有設定。
  */
+import { loadChat, saveChat } from "../assistant-chat-store.ts";
 import { initAssistantBatch, initBatchButton } from "./assistant-batch.ts";
 import { initUsagePanel } from "./assistant-usage.ts";
 import { pdfPages } from "../pdf-pages.ts";
@@ -492,6 +493,7 @@ function dropLast(): Pending | null {
   history = history.slice(0, -2);
   transcript = transcript.slice(0, -1);
   saveBtn.disabled = !transcript.length;
+  persistChat();
   p.answer.remove();
   p.userBubble.remove();
   return p;
@@ -834,6 +836,7 @@ function onRun(e: AssistantRunEvent): void {
       history = [...history, { role: "user" as const, content: p.question }, { role: "assistant" as const, content: p.cites.length ? p.plain : p.text }].slice(-12);
     }
   }
+  persistChat();
   if (usage) usage = { ...usage, usd: e.monthUsd };
   renderUsage();
   setRunning(false);
@@ -948,10 +951,49 @@ function stop(): void {
   void refreshStatus();
 }
 
+/** 目前這份對話是哪個專案的（對話跟著專案：切換專案時換成那個專案上次的對話）。 */
+let chatRoot: string | null = null;
+
+/** 記下這個專案的對話（重開程式、切回來時接著問）。 */
+function persistChat(): void {
+  if (chatRoot) saveChat(chatRoot, { history, transcript });
+}
+
+/** 專案換了（或面板剛建立）：換成這個專案上次的對話。 */
+function syncChat(): void {
+  const root = app.workspaceRoot?.path ?? null;
+  if (root === chatRoot || pending) return;
+  chatRoot = root;
+  history = [];
+  transcript = [];
+  last = null;
+  pdfs = [];
+  log.replaceChildren();
+  const saved = root ? loadChat(root) : null;
+  if (saved) {
+    history = saved.history;
+    transcript = saved.transcript;
+    const note = document.createElement("small");
+    note.className = "assistant-restored";
+    note.textContent = t("上次在這個專案的對話（按「新對話」重新開始）");
+    log.append(note);
+    for (const item of transcript) {
+      bubble("user", item.question);
+      const answer = bubble("assistant");
+      showAnswer(answer, item.answer);
+      answerActions(answer, item.answer);
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+  saveBtn.disabled = !transcript.length;
+  renderChips();
+}
+
 function newChat(): void {
   if (pending) stop();
   history = [];
   transcript = [];
+  persistChat();
   last = null;
   pdfs = [];
   renderChips();
@@ -1226,6 +1268,7 @@ export function assistantPanel(create: boolean): HTMLElement | null {
 /** 助理這一頁顯示出來了（切到這頁、打開右側欄）：更新內容，游標放進輸入框。 */
 export function assistantShown(): void {
   if (!panel) return;
+  syncChat();
   renderModel();
   renderChips();
   renderNotice();
@@ -1284,6 +1327,7 @@ function acceptTextDrops(box: HTMLElement): void {
 /** 專案換了（例如剛打開專案）：助理開著時更新「這次會送出的內容」與能不能送出，不會停在「請先開啟專案資料夾」。 */
 export function assistantContextChanged(): void {
   if (!assistantOpen()) return;
+  syncChat();
   renderChips();
   renderNotice();
 }
