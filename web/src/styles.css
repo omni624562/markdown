@@ -4813,3 +4813,6 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .wi-progress-legend button[aria-pressed="true"] { border-color: var(--border); background: var(--surface); color: var(--fg); font-weight: 600; }
 .wi-progress-legend .ado-state-dot { width: 8px; height: 8px; }
 .wi-progress-hours { margin-top: 6px; color: var(--muted); font-size: 12px; }
+
+/* 只給螢幕閱讀器（畫面上看不到）；見 ui/toast.ts 的 announce。 */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
