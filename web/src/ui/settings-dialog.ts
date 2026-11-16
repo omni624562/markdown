@@ -237,13 +237,6 @@ let commandTitle = (id: string): string => id;
 /** 「編輯」頁。 */
 const EDIT_GROUPS: Group[] = [
   {
-    title: t("寫作模式"),
-    fields: [
-      { key: "focusMode", label: t("專注模式"), hint: t("淡化目前段落以外的文字") },
-      { key: "typewriterMode", label: t("打字機模式"), hint: t("游標所在的行保持在畫面中央") },
-    ],
-  },
-  {
     title: t("輸入輔助"),
     fields: [
       { key: "autoPairBrackets", label: t("自動補上右括號與引號"), hint: t("包含全形「」『』（）《》【】") },
@@ -416,7 +409,7 @@ export class SettingsDialog {
     if (activityHooks) layoutPage.append(...this.#activityGroup(activityHooks));
     body.append(layoutPage);
 
-    const edit = this.#section(t("編輯"), "pen-line", t("寫作模式、輸入輔助與貼上"));
+    const edit = this.#section(t("編輯"), "pen-line", t("輸入輔助與貼上"));
     for (const g of EDIT_GROUPS) edit.append(...this.#group(g.title, this.#rows(g.fields)));
     body.append(edit);
 
