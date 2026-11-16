@@ -540,9 +540,13 @@ function answerActions(el: HTMLElement, text: string): void {
   blockActions(el, text);
 }
 
+/** 語言標成 markdown／md 的程式碼區塊（開頭那一行）。 */
+const MD_FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*(markdown|md)[ \t]*\n/i;
+
 /**
  * 回答裡的程式碼區塊、表格、流程圖：右上角各有「複製」「插入」，只拿那一塊。
- * 用預覽的 `data-sourcepos` 對回原文：複製程式碼只複製內容，插入時連同 ``` 一起插入（保留 Markdown）。
+ * 用預覽的 `data-sourcepos` 對回原文：複製程式碼只複製內容，插入時連同 ``` 一起插入（保留 Markdown）；
+ * 標成 markdown 的區塊插入裡面的內容。
  */
 function blockActions(el: HTMLElement, text: string): void {
   const lines = text.split("\n");
@@ -562,7 +566,8 @@ function blockActions(el: HTMLElement, text: string): void {
     tools.className = "assistant-block-tools";
     tools.append(
       toolButton(isCode ? t("複製程式碼") : t("複製表格"), "copy", () => void copy(content), t("複製")),
-      toolButton(t("把這一塊插入到游標處"), "clipboard-paste", () => insertIntoDoc(source, "cursor"), t("插入")),
+      // Markdown 的區塊（```markdown）插入的是裡面的內容：要的是那份筆記，不是一個程式碼區塊。
+      toolButton(t("把這一塊插入到游標處"), "clipboard-paste", () => insertIntoDoc(isCode && MD_FENCE.test(source) ? content : source, "cursor"), t("插入")),
     );
     wrap.append(tools, block);
   }
