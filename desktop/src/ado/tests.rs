@@ -1762,3 +1762,28 @@ fn comment_api_versions_follow_what_the_server_accepted_last_time() {
     assert_eq!(comment_versions(Some(true)), &[(COMMENTS_API, true)]);
     assert_eq!(comment_versions(Some(false)), &[(COMMENTS_API_OLD, false)]);
 }
+
+#[test]
+fn filters_by_sprint_including_items_not_in_any_sprint() {
+    let f = WorkItemFilter {
+        projects: vec!["Contoso".into()],
+        iterations: vec![
+            "Contoso\\Sprint 47".into(),
+            "Contoso".into(),
+            "Contoso\\Sprint 47".into(),
+        ],
+        ..Default::default()
+    };
+    let q = wiql_for("", &f, &[]).unwrap();
+    // 剛好在那個 Sprint（不含底下的），專案本身的路徑是「沒有排進 Sprint」；重複的只算一次。
+    assert!(
+        q.contains("[System.IterationPath] IN ('Contoso\\Sprint 47', 'Contoso')"),
+        "{q}"
+    );
+    assert!(!q.contains("IterationPath] UNDER"), "{q}");
+    let children = children_wiql(&[1], "", &f, &[]);
+    assert!(children.contains("[Target].[System.IterationPath] IN ("));
+    // 沒選 Sprint：不加條件。
+    let none = wiql_for("", &WorkItemFilter::default(), &[]).unwrap();
+    assert!(!none.contains("IterationPath"));
+}

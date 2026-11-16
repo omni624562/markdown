@@ -5,7 +5,7 @@ import { leaves, progressOf } from "../work-item-progress.ts";
 import { progressBar, progressByHours, progressNumbers, progressTooltip, setProgressByHours } from "../ui/progress-bar.ts";
 import { workItemLink } from "../ado-text.ts";
 import { setBounded } from "../bounded.ts";
-import { type AdoWorkItem, desktop, type AdoWorkItemFilter, type AdoWiki } from "../desktop.ts";
+import { type AdoTeamIteration, type AdoWorkItem, desktop, type AdoWorkItemFilter, type AdoWiki } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { issueFileName, githubIssueMarkdown } from "../issue-doc.ts";
 import * as storage from "../storage.ts";
@@ -18,7 +18,19 @@ import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isFil
 import { kindKey } from "../work-item-colors.ts";
 import { pageName, wikiPageLink, wikiPageUrl, flattenPages, pageFromGitPath } from "../wiki-text.ts";
 import { areaGroups, areaTrees, kindCounts, parentTree, type TreeNode } from "../workitem-groups.ts";
-import { DEFAULT_WORK_ITEM_FILTER, fromStateChoice, type KindStates, stateChoice, stateLabel, type StateOption, stateOptions, statesFor, workItemFilterKey } from "../work-item-filter.ts";
+import {
+  DEFAULT_WORK_ITEM_FILTER,
+  fromStateChoice,
+  type KindStates,
+  sprintOptions,
+  stateChoice,
+  stateLabel,
+  type StateOption,
+  stateOptions,
+  statesFor,
+  storedWorkItemFilter,
+  workItemFilterKey,
+} from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
 import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
@@ -75,13 +87,15 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
       f.kinds.length > 0,
       f.projects.length > 0,
       f.areas.length > 0,
+      // Sprint 的預設是本週的 Sprint：選的不是那一個才算改過。
+      !(f.iterations.length === (sprintCurrent ? 1 : 0) && (!sprintCurrent || f.iterations[0] === sprintCurrent)),
     ];
     // 和預設不一樣的條件，按鈕用強調色。
-    [person, state, kind, project, area].forEach((m, i) => m.el.classList.toggle("chosen", set[i]));
+    [person, state, kind, project, area, sprint].forEach((m, i) => m.el.classList.toggle("chosen", set[i]));
     clear.hidden = !set.some(Boolean);
   };
   const changed = () => {
-    storage.save("workitem-filter", JSON.stringify(app.workItemFilter));
+    storage.save("workitem-filter", storedWorkItemFilter(app.workItemFilter));
     renderState();
     void workItemsPanel?.refresh();
   };
@@ -178,6 +192,77 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     },
   });
   area.el.classList.add("workitems-area");
+  // Sprint：只選一個專案時出現（專案下面一整列：名字常常比較長）。預設是那個專案預設團隊目前的 Sprint
+  // （和 Azure DevOps 的 Sprint 頁面一樣由伺服器判斷），每次打開都回到本週：選了別的只在這次有效，不存起來。
+  /** 這次打開之後手動改過 Sprint（改過就不再自動換成本週的）；換專案時重來。 */
+  let sprintTouched = false;
+  /** 本週的 Sprint 路徑（讀到之前、或團隊沒有設定日期時是 null）。 */
+  let sprintCurrent: string | null = null;
+  let sprintLoading = false;
+  const sprint = new MultiSelect({
+    label: t("Sprint"),
+    all: t("所有 Sprint"),
+    summary: () => (sprintLoading ? t("Sprint 讀取中…") : null),
+    onChange: (v) => {
+      sprintTouched = true;
+      f.iterations = v;
+      changed();
+    },
+  });
+  sprint.el.classList.add("workitems-sprint", "workitems-wide");
+  /** 同一個專案的 Sprint 只讀一次（預設團隊 → 團隊的 Sprint）。 */
+  const sprintLists = new Map<string, Promise<AdoTeamIteration[]>>();
+  const sprintsOf = (p: string) => {
+    let list = sprintLists.get(p);
+    if (!list) {
+      list = desktop!.adoTeams(p).then((teams) => (teams.length ? desktop!.adoTeamIterations(p, teams[0].id) : []));
+      sprintLists.set(p, list);
+      list.catch(() => sprintLists.delete(p));
+    }
+    return list;
+  };
+  const loadSprints = () => {
+    const only = f.projects.length === 1 ? f.projects[0] : null;
+    sprint.hidden = !only;
+    sprintCurrent = null;
+    if (!only || !desktop) {
+      // 沒選或選了好幾個專案：Sprint 是各專案自己定義的，不篩選。
+      f.iterations = [];
+      sprint.value = [];
+      return;
+    }
+    sprintLoading = true;
+    sprint.setOptions([]);
+    void sprintsOf(only)
+      .then((list) => {
+        if (f.projects.length !== 1 || f.projects[0] !== only) return;
+        const { options, current } = sprintOptions(list, only);
+        sprintLoading = false;
+        sprintCurrent = current;
+        sprint.setOptions(options);
+        if (!sprintTouched) {
+          const next = current ? [current] : [];
+          const same = next.join("\n") === f.iterations.join("\n");
+          f.iterations = next;
+          sprint.value = next;
+          if (!same) changed();
+          else renderState();
+        } else {
+          sprint.value = f.iterations;
+          renderState();
+        }
+      })
+      .catch(() => {
+        // 讀不到（權限不足、舊版伺服器）：不顯示 Sprint，也不篩選。
+        if (f.projects[0] !== only) return;
+        sprintLoading = false;
+        sprint.hidden = true;
+        if (f.iterations.length) {
+          f.iterations = [];
+          changed();
+        }
+      });
+  };
   const project = new MultiSelect({
     label: t("專案"),
     all: t("所有專案"),
@@ -186,7 +271,9 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
       // 區域跟著專案：留下還在選的專案底下的區域。
       f.areas = f.areas.filter((a) => v.some((p) => a === p || a.startsWith(`${p}\\`)));
       area.value = f.areas;
+      sprintTouched = false;
       loadScope();
+      loadSprints();
       refreshStates();
       changed();
     },
@@ -242,6 +329,7 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     if (loaded || !desktop) return;
     loaded = true;
     loadScope();
+    loadSprints();
     void desktop
       .adoWorkItemFilters()
       .then(({ projects, kinds, stateSets: sets }) => {
@@ -263,7 +351,9 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     kind.value = [];
     project.value = [];
     area.value = [];
+    sprintTouched = false;
     loadScope();
+    loadSprints();
     refreshStates();
     changed();
   };
@@ -272,7 +362,8 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
   const top = document.createElement("div");
   top.className = "workitems-filter-top";
   top.append(project.el, clear);
-  bar.append(top, person.el, area.el, name, kind.el, state.el, searchBox, people);
+  sprint.hidden = f.projects.length !== 1;
+  bar.append(top, sprint.el, person.el, area.el, name, kind.el, state.el, searchBox, people);
   renderState();
   return {
     filters: bar,
