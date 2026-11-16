@@ -16,6 +16,7 @@ import {
   listed,
   mermaidBlock,
   replacementText,
+  unwrapMarkdown,
   systemPrompt,
   toggled,
   userContent,
@@ -192,4 +193,28 @@ test("問題裡的網址取出網域：小寫、不重複、最多 5 個；內�
   assert.deepEqual(urlHosts("http://localhost:3000/ http://192.168.1.10/ https://example.test:8443/ ftp://example.test/x example.test"), []);
   assert.deepEqual(urlHosts("沒有網址"), []);
   assert.equal(urlHosts(Array.from({ length: 8 }, (_, i) => `https://s${i}.example.test/`).join(" ")).length, 5);
+});
+
+test("回答整份包在 ```markdown 裡：拿掉外框；程式碼、其他語言、前後有很多說明的不動", () => {
+  const md = "# 旅遊筆記\n\n| 天 | 地點 |\n|---|---|\n| 1 | 台南 |";
+  assert.equal(unwrapMarkdown("```markdown\n" + md + "\n```"), md);
+  assert.equal(unwrapMarkdown("\n```md\n" + md + "\n```\n"), md);
+  // 外層用四個反引號、裡面有 ```mermaid：照樣只拿掉最外層。
+  const nested = "# 流程\n\n```mermaid\ngraph TD; A-->B\n```";
+  assert.equal(unwrapMarkdown("````markdown\n" + nested + "\n````"), nested);
+  // 前後一兩行說明：留著，只拿掉外框。
+  assert.equal(unwrapMarkdown("以下是整理好的筆記：\n\n```markdown\n" + md + "\n```\n\n需要再調整再跟我說。"), "以下是整理好的筆記：\n\n" + md + "\n\n需要再調整再跟我說。");
+  // 還在傳、還沒有結尾的外框：先拿掉開頭那一行。
+  assert.equal(unwrapMarkdown("```markdown\n# 旅遊筆記\n\n- 第一天"), "# 旅遊筆記\n\n- 第一天");
+  // 沒標語言：整份就是這一塊、內容明顯是 Markdown 才拿掉。
+  assert.equal(unwrapMarkdown("```\n" + md + "\n```"), md);
+  const plain = "```\nnpm run build\n```";
+  assert.equal(unwrapMarkdown(plain), plain);
+  assert.equal(unwrapMarkdown("說明\n```\n" + md + "\n```"), "說明\n```\n" + md + "\n```");
+  // 其他語言、回答裡夾著的程式碼、說明太多：不動。
+  const ts = "```ts\nconst a = 1;\n```";
+  assert.equal(unwrapMarkdown(ts), ts);
+  const mixed = "第一段\n\n第二段\n\n第三段\n\n```markdown\n# 範例\n```";
+  assert.equal(unwrapMarkdown(mixed), mixed);
+  assert.equal(unwrapMarkdown("沒有程式碼區塊"), "沒有程式碼區塊");
 });

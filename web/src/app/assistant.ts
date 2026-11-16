@@ -34,6 +34,7 @@ import {
   insertPadding,
   mermaidBlock,
   replacementText,
+  unwrapMarkdown,
   systemPrompt,
   toggled,
   userContent,
@@ -791,7 +792,7 @@ function onRun(e: AssistantRunEvent): void {
     p.text += e.text;
     p.plain += e.text;
     p.answer.classList.remove("loading");
-    showAnswer(p.answer, p.text, p.cites);
+    showAnswer(p.answer, unwrapMarkdown(p.text), p.cites);
     log.scrollTop = log.scrollHeight;
     return;
   }
@@ -803,10 +804,12 @@ function onRun(e: AssistantRunEvent): void {
   if (e.kind === "cite") {
     // 剛剛那一段的出處：標記接在那一段後面。
     p.text = appendMarks(p.text, citeMarks(p.cites, e.cites));
-    if (p.text.trim()) showAnswer(p.answer, p.text, p.cites);
+    if (p.text.trim()) showAnswer(p.answer, unwrapMarkdown(p.text), p.cites);
     return;
   }
   pending = null;
+  // 整份回答包在 ```markdown 裡：拿掉外框，照一般的 Markdown 顯示、複製、插入（見 unwrapMarkdown）。
+  if (p.mode === "answer") p.text = unwrapMarkdown(p.text);
   // 引用的網頁列在回答最後（也會跟著存成筆記、插入文件）。
   if (p.sources.size && p.text.trim()) {
     const list = [...p.sources].map(([url, title]) => `- [${title.replace(/[[\]]/g, "")}](${url})`);
@@ -980,8 +983,10 @@ function syncChat(): void {
     for (const item of transcript) {
       bubble("user", item.question);
       const answer = bubble("assistant");
-      showAnswer(answer, item.answer);
-      answerActions(answer, item.answer);
+      // 以前存的對話也一樣拿掉整份回答的外框。
+      const text = unwrapMarkdown(item.answer);
+      showAnswer(answer, text);
+      answerActions(answer, text);
     }
     log.scrollTop = log.scrollHeight;
   }
