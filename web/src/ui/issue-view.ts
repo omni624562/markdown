@@ -36,6 +36,11 @@ export interface IssueSource {
   webUrl: string;
   /** 「複製成 Markdown 文件」的檔名。 */
   fileName: string;
+  /**
+   * 上次讀到之後伺服器上的內容沒變（例如工作項目只問修訂版本，很便宜）：切換分頁回來時用，
+   * 沒變就直接顯示記住的內容，不必整份重讀、重畫。沒有這個的來源每次都重讀。
+   */
+  unchanged?(): Promise<boolean>;
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
   /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
@@ -193,6 +198,11 @@ export class IssueView {
   #failed = false;
   /** 看過的內容（key → Markdown），最近看的放最後面。 */
   #cache = new Map<string, string>();
+  /**
+   * 這次執行裡讀到過內容的來源：切換分頁回來時先問 `unchanged`（工作項目一次要讀好幾個請求，
+   * 分頁多、來回切換時伺服器慢就會卡），沒變就不重讀。按「重新整理」照樣重讀。
+   */
+  #loaded = new WeakSet<IssueSource>();
   /** 顯示的是之前讀到的內容、這次更新失敗時的提示。 */
   #stale: HTMLElement;
   #backBtn: HTMLButtonElement;
@@ -614,14 +624,14 @@ export class IssueView {
     this.#workspace.classList.add("issue-open");
     this.#closeFind();
     this.#pane.focus();
-    await this.refresh(true);
+    await this.refresh(true, true);
   }
 
   /**
    * 向伺服器重新讀取內容。`quiet`：看過的內容先顯示出來，背景讀取，有變動才重畫（捲動位置不變）；
-   * 否則先清掉、顯示「讀取中…」（按「重新整理」時）。
+   * 否則先清掉、顯示「讀取中…」（按「重新整理」時）。`reuse`：開啟（切換分頁回來）時，同一個來源剛剛讀過就不再讀。
    */
-  async refresh(quiet = false): Promise<void> {
+  async refresh(quiet = false, reuse = false): Promise<void> {
     const source = this.#source;
     if (!source) return;
     const seq = ++this.#seq;
@@ -634,6 +644,12 @@ export class IssueView {
     if (seq !== this.#seq) return;
     if (cached !== undefined) {
       this.#display(cached);
+      // 同一個來源讀過（內容與畫面調整要用的資料都還在），伺服器上又沒變：不用再讀、不用重畫。
+      if (reuse && source.unchanged && this.#loaded.has(source)) {
+        const same = await source.unchanged().catch(() => false);
+        if (seq !== this.#seq) return;
+        if (same) return;
+      }
     } else if (copy) {
       this.#display(copy.markdown);
       this.#stale.classList.remove("issue-error");
@@ -650,6 +666,7 @@ export class IssueView {
     try {
       const md = await source.load();
       if (seq !== this.#seq) return;
+      this.#loaded.add(source);
       this.#cache.delete(source.key);
       this.#cache.set(source.key, md);
       if (this.#cache.size > CACHE_LIMIT) this.#cache.delete(this.#cache.keys().next().value!);
