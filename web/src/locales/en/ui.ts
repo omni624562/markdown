@@ -1080,6 +1080,8 @@ export const ui: Record<string, Translation> = {
   "已略過": "Skipped",
   "思考中…": "Thinking…",
   "打開設定": "Open Settings",
+  "要先在設定開啟「允許上網查資料」": "Turn on “Allow web search” in Settings first",
+  "上網查資料要先在設定開啟「允許上網查資料」（每次搜尋約 US$0.01）。": "To search the web, turn on “Allow web search” in Settings first (about US$0.01 per search).",
   "摘要": "Summarize",
   "改寫": "Rewrite",
   "新專案預設不允許。Azure DevOps 下載的儲存庫就算打開也不會送出。": "New projects aren't allowed by default. Repositories downloaded from Azure DevOps are never sent, even if turned on.",
