@@ -1184,6 +1184,8 @@ export const ui: Record<string, Translation> = {
   "沒有排進 Sprint（Backlog）": "Not in a sprint (Backlog)",
   "所有 Sprint": "All sprints",
   "Sprint 讀取中…": "Loading sprints…",
+  "目前與之後": "Current and upcoming",
+  "顯示更早的 {n} 個": "Show {n} earlier",
   "{team} 的 Sprint": "Sprints of {team}",
   "已設定，存在 Windows 認證管理員": "Set up; stored in Windows Credential Manager",
   "按「上網查」的那一題才搜尋（每次約 US$0.01）；也會讀問題裡的網址": "Searches only when you click \"Web search\" (about US$0.01 each); also reads URLs in your question",

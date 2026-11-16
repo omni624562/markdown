@@ -110,12 +110,14 @@ test("Sprint 選單：新的在上面，標出本週、下一個、已結束與�
     sprint(48, "2026-11-24T00:00:00Z", "2026-12-07T00:00:00Z"),
     sprint(49, null, null),
   ];
-  const { options, current, columns } = sprintOptions(list, "產品");
+  const { options, current, items } = sprintOptions(list, "產品");
   assert.equal(current, "產品\\Sprint 47");
-  // 選單裡分欄：名稱、狀態、日期；沒有的是空字串，「沒有排進 Sprint」不分欄。
-  assert.deepEqual(columns.get("產品\\Sprint 47"), ["Sprint 47", "本週", "11/10–11/23"]);
-  assert.deepEqual(columns.get("產品\\Sprint 49"), ["Sprint 49", "", ""]);
-  assert.equal(columns.get("產品"), undefined);
+  // 選單裡：分「目前與之後」「已結束」兩組，名稱旁邊標本週、下一個，日期靠右；「沒有排進 Sprint」不分組。
+  assert.deepEqual(items.get("產品\\Sprint 47"), { name: "Sprint 47", note: "本週", current: true, aside: "11/10 – 11/23", group: "目前與之後" });
+  assert.deepEqual(items.get("產品\\Sprint 48"), { name: "Sprint 48", note: "下一個", aside: "11/24 – 12/7", group: "目前與之後" });
+  assert.deepEqual(items.get("產品\\Sprint 46"), { name: "Sprint 46", aside: "11/3 – 11/9", group: "已結束" });
+  assert.deepEqual(items.get("產品\\Sprint 49"), { name: "Sprint 49", group: "目前與之後" });
+  assert.equal(items.get("產品"), undefined);
   assert.deepEqual(
     options.map(([, label]) => label),
     [

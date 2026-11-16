@@ -23,6 +23,8 @@ import {
   fromStateChoice,
   type KindStates,
   sprintOptions,
+  type SprintItem,
+  SPRINT_PAST,
   sprintTeam,
   stateChoice,
   stateLabel,
@@ -199,12 +201,14 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
   /** 本週的 Sprint 路徑（讀到之前、或團隊沒有設定日期時是 null）。 */
   let sprintCurrent: string | null = null;
   let sprintLoading = false;
-  /** 選單裡分欄顯示的名稱、狀態、日期（見 sprintOptions）。 */
-  let sprintColumns = new Map<string, [string, string, string]>();
+  /** 選單裡的樣子：分組、本週、日期（見 sprintOptions）。 */
+  let sprintItems = new Map<string, SprintItem>();
   const sprint = new MultiSelect({
     label: t("Sprint"),
     all: t("所有 Sprint"),
-    columns: (v) => sprintColumns.get(v) ?? null,
+    rich: (v) => sprintItems.get(v) ?? null,
+    // 已結束的平常只列最近 3 個。
+    fold: { group: SPRINT_PAST(), keep: 3 },
     summary: () => (sprintLoading ? t("Sprint 讀取中…") : null),
     onChange: (v) => {
       sprintTouched = true;
@@ -252,8 +256,8 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     void sprintsOf(only)
       .then(({ team, list }) => {
         if (f.projects.length !== 1 || f.projects[0] !== only) return;
-        const { options, current, columns } = sprintOptions(list, only);
-        sprintColumns = columns;
+        const { options, current, items } = sprintOptions(list, only);
+        sprintItems = items;
         sprintLoading = false;
         sprint.setCaption(team ? t("{team} 的 Sprint", { team }) : "");
         sprintCurrent = current;
