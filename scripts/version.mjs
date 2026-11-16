@@ -30,6 +30,9 @@ const SOURCES = [
   ["desktop/Cargo.lock", /^name = "md-text"\nversion = "([^"]+)"/m],
   ["desktop/Cargo.lock", /^name = "md-core"\nversion = "([^"]+)"/m],
   ["desktop/Cargo.lock", /^name = "md-docx"\nversion = "([^"]+)"/m],
+  ["android/Cargo.toml", /^version = "([^"]+)"/m],
+  ["android/Cargo.lock", /^name = "md-android"\nversion = "([^"]+)"/m],
+  ["android/tauri.conf.json", /^ {2}"version": "([^"]+)"/m],
   ["Cargo.toml", /^\[workspace\.package\][^[]*?^version = "([^"]+)"/ms],
   ["Cargo.lock", /^name = "md-core"\nversion = "([^"]+)"/m],
   ["Cargo.lock", /^name = "md-cli"\nversion = "([^"]+)"/m],
@@ -42,7 +45,7 @@ const SOURCES = [
 ];
 
 /** 改到這些路徑才算改了程式（文件、測試腳本、CI 設定不用改版本號）。 */
-const APP_PATHS = /^(web\/(src|public|index\.html|package\.json)|desktop\/(src|icons|Cargo\.toml|tauri\.conf\.json|capabilities|build\.rs)|crates\/)/;
+const APP_PATHS = /^(web\/(src|public|index\.html|package\.json)|desktop\/(src|icons|Cargo\.toml|tauri\.conf\.json|capabilities|build\.rs)|android\/(src|Cargo\.toml|tauri\.conf\.json|capabilities|build\.rs|gen\/android\/app\/src)|crates\/)/;
 
 /** 相依套件的清單與鎖定檔（npm 的 web/，cargo 的根目錄、crates/ 與 desktop/）。 */
 const DEPENDENCY_FILES = /^(web\/package(-lock)?\.json|(desktop\/)?Cargo\.(toml|lock)|crates\/[^/]+\/Cargo\.toml)$/;

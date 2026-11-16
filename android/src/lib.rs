@@ -14,9 +14,12 @@ struct Files(Option<PluginHandle<Wry>>);
 
 fn files_plugin() -> TauriPlugin<Wry> {
     PluginBuilder::new("files")
+        // 讓前端知道這是 Android 版（見 web/src/platform.ts）：不靠瀏覽器的識別字串猜。
+        .js_init_script("window.__OMARKER_ANDROID__ = true;".to_string())
         .setup(|app, _api| {
             #[cfg(target_os = "android")]
-            let handle = Some(_api.register_android_plugin("io.github.omni624562.omarker", "FilesPlugin")?);
+            let handle =
+                Some(_api.register_android_plugin("io.github.omni624562.omarker", "FilesPlugin")?);
             #[cfg(not(target_os = "android"))]
             let handle = None;
             app.manage(Files(handle));
@@ -34,13 +37,22 @@ async fn call<T: DeserializeOwned + Send + 'static>(
     let Some(handle) = files.0.clone() else {
         return Err("只有 Android 版能用系統的檔案選擇器".into());
     };
-    tauri::async_runtime::spawn_blocking(move || {
-        handle
-            .run_mobile_plugin::<T>(command, payload)
-            .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    #[cfg(mobile)]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            handle
+                .run_mobile_plugin::<T>(command, payload)
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    // 在桌面上編譯（跑測試、開發）時沒有 Kotlin 那一側。
+    #[cfg(not(mobile))]
+    {
+        let _ = (handle, command, payload);
+        Err("只有 Android 版能用系統的檔案選擇器".into())
+    }
 }
 
 /// 選到的檔案；使用者取消時 `uri` 是空的。
@@ -137,7 +149,9 @@ mod tests {
 
     #[test]
     fn only_content_uris_are_accepted() {
-        assert!(check_uri("content://com.android.providers.downloads.documents/document/42").is_ok());
+        assert!(
+            check_uri("content://com.android.providers.downloads.documents/document/42").is_ok()
+        );
         assert!(check_uri("file:///sdcard/a.md").is_err());
         assert!(check_uri("/sdcard/a.md").is_err());
         assert!(check_uri("").is_err());
@@ -147,7 +161,8 @@ mod tests {
     fn a_cancelled_pick_has_no_uri() {
         let p: Picked = serde_json::from_str(r#"{"uri":null}"#).unwrap();
         assert!(p.uri.is_none());
-        let p: Picked = serde_json::from_str(r#"{"uri":"content://x/1","name":"筆記.md"}"#).unwrap();
+        let p: Picked =
+            serde_json::from_str(r#"{"uri":"content://x/1","name":"筆記.md"}"#).unwrap();
         assert_eq!(p.name, "筆記.md");
     }
 }

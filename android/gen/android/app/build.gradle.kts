@@ -14,7 +14,25 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// 簽章用的金鑰：CI 會寫出 keystore.properties（見 .github/workflows/android.yml）；沒有這個檔案時不簽章。
+val keystoreProperties = Properties().apply {
+    val propFile = rootProject.file("keystore.properties")
+    if (propFile.exists()) {
+        propFile.inputStream().use { load(it) }
+    }
+}
+
 android {
+    signingConfigs {
+        if (keystoreProperties.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("password")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("password")
+            }
+        }
+    }
     compileSdk = 37
     namespace = "io.github.omni624562.omarker"
     defaultConfig {
@@ -39,6 +57,7 @@ android {
             }
         }
         getByName("release") {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             optimization {
                enable = true
             }
