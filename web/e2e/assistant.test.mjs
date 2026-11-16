@@ -633,6 +633,31 @@ test("回答裡夾著一小塊 ```markdown 範例（說明比較多，不拿掉�
   await context.close();
 });
 
+test("標題列的助理按鈕：開了助理才出現，點一下打開、再點一下收起，用快捷鍵打開時也標成按下", async () => {
+  {
+    const { page, context } = await open({ desktop: desktop() });
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator("#top-assistant").isVisible(), false, "沒開助理：不顯示");
+    await context.close();
+  }
+  const { page, context, errors } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
+  await openProject(page);
+  const button = page.locator("#top-assistant");
+  await button.waitFor();
+  const panel = page.locator("#assistant-panel");
+  await button.click();
+  await panel.waitFor();
+  assert.equal(await button.getAttribute("aria-pressed"), "true");
+  await button.click();
+  await page.waitForFunction(() => document.querySelector("#top-assistant")?.getAttribute("aria-pressed") === "false");
+  assert.equal(await panel.isVisible(), false);
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+Shift+L");
+  await page.waitForFunction(() => document.querySelector("#top-assistant")?.getAttribute("aria-pressed") === "true");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("回答裡的遠端圖片一律不載入（就算關掉「封鎖遠端圖片」）：被藏在文件裡的指示操控時，資料不會跟著圖片網址送出去", async () => {
   // 關掉「封鎖遠端圖片」：文件預覽會載入遠端圖片，但助理的回答照樣不載入。
   const { page, context, errors, external } = await open({ desktop: desktop({ ...ON, blockRemoteImages: false }) });
