@@ -31,6 +31,8 @@ export interface MultiSelectOptions {
   live?: boolean;
   /** 選單最上面的一行說明（例如「顯示哪些最上層頁面」）。 */
   caption?: string;
+  /** 選單裡把選項分成幾欄對齊（例如 Sprint 的名稱、狀態、日期）；回傳 null 的選項整列一欄。按鈕上照樣用選項的文字。 */
+  columns?: (value: string) => readonly string[] | null;
   /** 按鈕上的文字另外決定（例如狀態勾了所有還沒結束的，寫「進行中」）；回傳 null 時照一般的寫法。 */
   summary?(values: string[]): string | null;
 }
@@ -90,6 +92,7 @@ export class MultiSelect {
     this.#list = document.createElement("div");
     this.#list.className = "multi-select-list";
     this.#list.role = "group";
+    if (o.columns) this.#list.classList.add("columns");
     const foot = document.createElement("div");
     foot.className = "multi-select-foot";
     this.#status = document.createElement("span");
@@ -186,6 +189,16 @@ export class MultiSelect {
         box.checked = this.#draft.has(v);
         const name = document.createElement("span");
         name.textContent = text;
+        const cols = this.#o.columns?.(v);
+        const parts = cols
+          ? cols.map((c, i) => {
+              const s = document.createElement("span");
+              s.className = `multi-select-col multi-select-col-${i + 1}`;
+              s.textContent = c;
+              return s;
+            })
+          : [name];
+        if (this.#o.columns && !cols) name.className = "multi-select-col-all";
         if (this.#o.single) {
           // 單選：點了就套用並關上（點已經選的那個也一樣關上）。
           row.addEventListener("click", (e) => {
@@ -197,7 +210,7 @@ export class MultiSelect {
             this.#render();
             this.#o.onChange(this.value);
           });
-          row.append(box, name);
+          row.append(box, ...parts);
           return row;
         }
         box.addEventListener("change", () => {
@@ -220,7 +233,7 @@ export class MultiSelect {
           for (const b of this.#boxes()) b.checked = b.value === v;
           this.#sync();
         });
-        row.append(box, name, only);
+        row.append(box, ...parts, only);
         return row;
       }),
     );

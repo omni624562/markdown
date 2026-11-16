@@ -119,20 +119,26 @@ const day = (iso: string) => {
 /**
  * Sprint 選單的選項：新的在上面，標出本週（伺服器判斷的「目前」）、下一個、已結束與起訖日期；
  * 最後一項是「沒有排進 Sprint」（值是專案本身的路徑）。`current` 是本週的 Sprint 路徑（沒有時是 null）。
+ * `columns`：選單裡分三欄對齊的名稱、狀態、日期（按鈕上還是寫成一行的 `options`）。
  */
-export function sprintOptions(list: readonly SprintInfo[], project: string): { options: [string, string][]; current: string | null } {
+export function sprintOptions(
+  list: readonly SprintInfo[],
+  project: string,
+): { options: [string, string][]; current: string | null; columns: Map<string, [string, string, string]> } {
   const sorted = [...list];
   const at = sorted.findIndex((s) => s.current);
+  const columns = new Map<string, [string, string, string]>();
   const options = sorted
     .map((s, i): [string, string] => {
       const dates = s.start && s.finish ? `${day(s.start)}–${day(s.finish)}` : "";
       const when = at < 0 ? null : i === at ? t("本週") : i === at + 1 ? t("下一個") : i < at ? t("已結束") : null;
+      columns.set(s.path, [s.name, when ?? "", dates]);
       const note = [when, dates].filter(Boolean).join(t("，"));
       return [s.path, note ? t("{name}（{note}）", { name: s.name, note }) : s.name];
     })
     .reverse();
   options.push([project, t("沒有排進 Sprint（Backlog）")]);
-  return { options, current: at < 0 ? null : sorted[at].path };
+  return { options, current: at < 0 ? null : sorted[at].path, columns };
 }
 
 /**

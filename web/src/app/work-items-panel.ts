@@ -199,9 +199,12 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
   /** 本週的 Sprint 路徑（讀到之前、或團隊沒有設定日期時是 null）。 */
   let sprintCurrent: string | null = null;
   let sprintLoading = false;
+  /** 選單裡分欄顯示的名稱、狀態、日期（見 sprintOptions）。 */
+  let sprintColumns = new Map<string, [string, string, string]>();
   const sprint = new MultiSelect({
     label: t("Sprint"),
     all: t("所有 Sprint"),
+    columns: (v) => sprintColumns.get(v) ?? null,
     summary: () => (sprintLoading ? t("Sprint 讀取中…") : null),
     onChange: (v) => {
       sprintTouched = true;
@@ -249,7 +252,8 @@ function workItemFilterBar(): { filters: HTMLElement; placeSearch(input: HTMLInp
     void sprintsOf(only)
       .then(({ team, list }) => {
         if (f.projects.length !== 1 || f.projects[0] !== only) return;
-        const { options, current } = sprintOptions(list, only);
+        const { options, current, columns } = sprintOptions(list, only);
+        sprintColumns = columns;
         sprintLoading = false;
         sprint.setCaption(team ? t("{team} 的 Sprint", { team }) : "");
         sprintCurrent = current;
