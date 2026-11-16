@@ -47,6 +47,7 @@ import { initPinCommands } from "./pin-commands.ts";
 import { initChatGpt } from "./chatgpt.ts";
 import { initTableCopy } from "./table-copy.ts";
 import { initAssistant } from "./assistant.ts";
+import { initAssistantButton } from "./assistant-button.ts";
 import { app } from "./context.ts";
 import { exportName } from "./export-target.ts";
 import { commands } from "./commands.ts";
@@ -778,6 +779,7 @@ export function initActivityBar(): void {
   initChatGpt();
   initTableCopy();
   initAssistant();
+  initAssistantButton();
   headingMenu = formatMenuButton("fmt-heading", t("標題"), "heading", ["h1", "h2", "h3"]);
   insertMenu = formatMenuButton("fmt-insert", t("插入"), "plus", [
     "table",

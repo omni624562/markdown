@@ -224,6 +224,8 @@ kbd {
 .top-actions { display: flex; flex: none; gap: 4px; margin-left: auto; align-items: center; padding: 0 8px 0 12px; }
 .top-actions .btn.icon-only { color: var(--chrome-icon); }
 .top-actions .btn.icon-only:hover { color: var(--fg); }
+/* 助理按鈕（app/assistant-button.ts）：助理開著時用強調色。 */
+.top-actions .top-assistant[aria-pressed="true"] { color: var(--accent); }
 .top-actions .btn.icon-only[aria-pressed="true"] { background: transparent; color: var(--fg); }
 .top-actions .btn.icon-only[aria-pressed="true"]:hover { background: var(--surface); }
 /* 右上角那一塊的開關永遠在最右邊（緊鄰視窗按鈕）。 */
