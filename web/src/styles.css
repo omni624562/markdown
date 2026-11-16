@@ -2478,7 +2478,8 @@ button.git-info:disabled { cursor: default; }
 .workitems-statusrow { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 /* 「N 個…」佔剩下的寬度，至少留得下數字（「100…」）；再窄就換排列方式選單的文字截短。 */
 .workitems-statusrow .workitems-status { flex: 1 1 0; min-width: 3em; }
-.workitems-statusrow .workitems-status:not(.from-copy) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 一行，太長截短（滑鼠移上去看完整的）；連不上伺服器、有「重試」時才可以換行。剛讀過的副本「…更新中」也是一行，高度不變、清單不跳。 */
+.workitems-statusrow .workitems-status:not(:has(.load-retry)) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .workitems-tools { display: inline-flex; flex: 0 1 auto; gap: 2px; align-items: center; min-width: 0; }
 .workitems-fold, .workitems-order { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
 .workitems-fold[hidden], .workitems-order[hidden] { display: none; }

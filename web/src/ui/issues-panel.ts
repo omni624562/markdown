@@ -426,6 +426,9 @@ export class IssuesPanel<T extends IssueSummary> {
         if (seq === this.#seq) void this.refresh(true);
       });
       if (seq !== this.#seq) return;
+      // 背景更新、清單已經有內容：先回來的是剛才讀過的副本（「…的資料，更新中…」）就不換上，等新的讀完再換。
+      // 換上副本時那一行會多一段說明（窄的時候變兩行），新的讀完又變回一行，清單上下跳一下。
+      if (quiet && this.#items.length && freshnessOf(items)?.state === "updating") return;
       this.#failed = false;
       this.#status.classList.remove("updating");
       this.#status.textContent = this.#h.status(items.length, search);
