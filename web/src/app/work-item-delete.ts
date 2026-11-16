@@ -67,7 +67,7 @@ export async function deleteWorkItem(
   const left = barShortcuts.filter((s) => !isWorkItemShortcut(s) || s.workItem !== item.id);
   if (left.length !== barShortcuts.length) setBarShortcuts(left);
   forgetListCopies("wi-");
-  void workItemsPanel?.refresh();
+  void workItemsPanel?.refresh(true);
   if (refreshShown && issueView.shownKey?.startsWith("ado:")) void issueView.refresh(true);
   return true;
 }
