@@ -177,7 +177,7 @@ test("設定：Claude API 助理自成一頁，不在 AI 協作那一頁", async
   const card = dialog.locator("#assistant-settings");
   await card.waitFor();
   assert.ok(await card.isVisible());
-  assert.match(await card.textContent(), /已存在 Windows 認證管理員/);
+  assert.match(await card.textContent(), /已設定，存在 Windows 認證管理員/);
   assert.equal(await card.locator('[data-key="claudeApiEnabled"]').isChecked(), true);
   assert.deepEqual(errors, []);
   await context.close();

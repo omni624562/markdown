@@ -4791,7 +4791,19 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 .assistant-dependents.is-off { opacity: 0.55; }
 .assistant-projects-title { margin: 10px 12px 0; font-size: 12.5px; }
 .assistant-projects-hint { display: block; margin: 0 12px 10px; color: var(--muted); }
-.assistant-key-status { color: var(--muted); font-size: 12px; }
+/* 設定列的狀態（說明下面一行）：已設定好的是強調色加勾。 */
+.settings-row .settings-status { color: var(--muted); font-size: 12.5px; }
+.settings-row .settings-status:empty { display: none; }
+.settings-row .settings-status.ok { color: var(--accent); font-weight: 600; }
+.settings-row .settings-status.ok::before { content: "✓ "; }
+/* 金額：單位和數字在同一個框裡。 */
+.settings-money { display: inline-flex; align-items: center; height: 32px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); }
+.settings-money > span { padding: 0 2px 0 10px; color: var(--muted); font-size: 13px; }
+.settings-row .settings-money input[type="number"] { width: 64px; height: 30px; padding: 0 8px 0 2px; border: 0; background: none; text-align: right; }
+.settings-row .settings-money input[type="number"]:focus-visible { outline: none; }
+.settings-money:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 助理設定裡的下拉選單一樣寬，右邊對齊成一條線。 */
+.assistant-dependents .settings-row > select { width: 200px; }
 /* 自訂動作：名稱、回答怎麼用、刪除一列，下面是提示詞。 */
 .assistant-actions-list { margin: 0 12px 8px; }
 .assistant-actions-list .quick-action { grid-template-columns: 1fr auto auto; align-items: start; }
