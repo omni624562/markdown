@@ -4,7 +4,7 @@
  * 不會因為清除 WebView 快取而遺失。
  */
 import { validKeys } from "./commands.ts";
-import { desktop } from "./desktop.ts";
+import { desktop, native } from "./desktop.ts";
 import { cleanFontName } from "./fonts.ts";
 import { t } from "./i18n.ts";
 import * as storage from "./storage.ts";
@@ -616,6 +616,10 @@ export class SettingsStore {
         })
         .catch((e) => console.error("儲存設定失敗", e)); // i18n-ignore（開發者主控台）
     }
-    else storage.save("settings", json);
+    else {
+      storage.save("settings", json);
+      // Android 版：設定存在網頁的儲存空間，另外交一份給原生端（助理送出前要看開關與每月上限）。
+      if (native) void native.saveSettings(json).catch(() => {});
+    }
   }
 }

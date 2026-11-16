@@ -16,6 +16,8 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+// 批次處理要讀寫整個資料夾：Android 版（直接編譯這個檔案，見 android/src/lib.rs）沒有。
+#[cfg(not(mobile))]
 #[path = "assistant_batch.rs"]
 pub mod batch;
 
@@ -343,6 +345,10 @@ fn check(
 ) -> Result<(), String> {
     if settings["claudeApiEnabled"] != true {
         return Err(tr!("請先在設定開啟「Claude API 助理」"));
+    }
+    // Android 版沒有專案資料夾：不分專案，開了助理就能用（見 android/src/lib.rs）。
+    if cfg!(mobile) {
+        return Ok(());
     }
     let Some(root) = root else {
         return Err(tr!("請先開啟允許 AI 的專案資料夾"));

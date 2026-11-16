@@ -16,6 +16,11 @@ tauri-build = { version = "2.7.3", features = [] }
 tauri = { version = "2.12.4", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Claude API 助理（直接編譯桌面版的 desktop/src/assistant.rs）用到的，版本和桌面版一樣。
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+parking_lot = "0.13"
+# 憑證用內建的根憑證（Android 上沒有桌面版的系統驗證方式）。
+ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }
 
 [profile.release]
 lto = true

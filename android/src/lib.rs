@@ -5,6 +5,21 @@
 //! 檔案的讀寫在 Kotlin 那邊（`gen/android/app/src/main/java/.../FilesPlugin.kt`）：Android 的檔案是
 //! `content://` 開頭的位置，只能透過系統的 ContentResolver 存取。這裡的指令只是把前端的要求轉過去。
 
+// ---- Claude API 助理：直接編譯桌面版的程式（desktop/src/assistant.rs），平台相關的部分在 platform.rs ----
+
+#[macro_use]
+#[path = "../../desktop/src/i18n.rs"]
+mod i18n;
+#[path = "../../desktop/src/locales/mod.rs"]
+mod locales;
+#[path = "../../desktop/src/io.rs"]
+#[allow(dead_code)]
+mod io;
+#[path = "../../desktop/src/assistant.rs"]
+mod assistant;
+mod platform;
+pub(crate) use platform::{files, git, secrets, settings, update, workspace};
+
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tauri::plugin::{Builder as PluginBuilder, PluginHandle, TauriPlugin};
 use tauri::{Manager, State, Wry};
@@ -129,15 +144,39 @@ async fn mobile_write_file(
     .await
 }
 
+/// 前端改了設定時交一份過來（Android 版的設定存在網頁的儲存空間，原生端讀不到）。
+#[tauri::command]
+fn save_settings(json: String) -> Result<bool, String> {
+    settings::save(&json)?;
+    Ok(true)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(files_plugin())
+        .manage(assistant::AssistantRuns::default())
+        .setup(|app| {
+            if let Ok(dir) = app.path().app_data_dir() {
+                platform::set_data_dir(dir);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             mobile_pick_file,
             mobile_create_file,
             mobile_read_file,
             mobile_write_file,
+            save_settings,
+            i18n::set_language,
+            assistant::assistant_key_status,
+            assistant::assistant_key_set,
+            assistant::assistant_key_forget,
+            assistant::assistant_usage,
+            assistant::assistant_usage_history,
+            assistant::assistant_send,
+            assistant::assistant_count,
+            assistant::assistant_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("啟動 oMarker 失敗");

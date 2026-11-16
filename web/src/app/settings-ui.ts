@@ -2,7 +2,7 @@
  * 設定：套用設定、字型大小、簡體轉繁體、設定對話框。
  */
 import { assistantSettings } from "./assistant-settings.ts";
-import { desktop } from "../desktop.ts";
+import { desktop, native } from "../desktop.ts";
 import { fontStack } from "../fonts.ts";
 import { t, currentLang } from "../i18n.ts";
 import { refreshLivePreview } from "../live-preview.ts";
@@ -251,7 +251,10 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
           chatgptDesktop: chatgptDesktopFound,
           assistant: assistantSettings,
         }
-      : null,
+      : native
+        ? // Android 版：原生端只有 Claude API 助理。
+          { available: async () => ({ claude: null, codex: null }), copyRegistration: async () => {}, assistant: assistantSettings, assistantOnly: true }
+        : null,
     app.updater
       ? {
           async version() {

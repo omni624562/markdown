@@ -40,7 +40,8 @@ import {
   userContent,
   urlHosts,
 } from "../assistant-text.ts";
-import { type AssistantImage, type AssistantMessage, type AssistantRunEvent, type AssistantUsage, desktop } from "../desktop.ts";
+import { type AssistantImage, type AssistantMessage, type AssistantRunEvent, type AssistantUsage, desktop, native } from "../desktop.ts";
+import { isMobileApp } from "../platform.ts";
 import { currentLang, t } from "../i18n.ts";
 import { ASSISTANT_FONT_RANGE, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { choose } from "../ui/choice.ts";
@@ -139,12 +140,14 @@ let deepThinking = false;
 /** 這一題不要讀問題裡的網址（按了「讀網頁」標籤的 ×）；送出後恢復。 */
 let skipFetch = false;
 let usage: AssistantUsage | null = null;
+/** Android 版記「已經確認過送出」用的名字（沒有專案資料夾）。 */
+const MOBILE_SCOPE = "android";
 /** 有沒有 API 金鑰；還沒問過原生端時是 null（不要先顯示「還沒有輸入金鑰」）。 */
 let hasKey: boolean | null = null;
 
-/** 設定裡開了 Claude API 助理（桌面版才有）。 */
+/** 設定裡開了 Claude API 助理（桌面版與 Android 版才有；送出走原生端，見 `native`）。 */
 export function assistantEnabled(): boolean {
-  return !!desktop && app.settings.value.claudeApiEnabled;
+  return !!native && app.settings.value.claudeApiEnabled;
 }
 
 /** 助理現在看得到：是右側欄選的那一頁，而且右側欄開著（app/right-tabs.ts 管顯示）。 */
@@ -163,6 +166,8 @@ function blocked(): { message: string; action?: { label: string; run: () => void
   if (issueView.shownKey || app.active.wiki) {
     return { message: t("這裡是 Azure DevOps／GitHub 的內容，不會送給 AI。") };
   }
+  // Android 版沒有專案資料夾：不分專案，開了助理、有金鑰就能用。
+  if (isMobileApp) return null;
   const root = app.workspaceRoot?.path;
   if (!root) return { message: t("請先開啟專案資料夾；助理只在允許 AI 的專案裡使用。") };
   if (!listed(app.settings.value.assistantProjects, root)) {
@@ -365,8 +370,8 @@ function renderUsage(): void {
 }
 
 async function refreshStatus(): Promise<void> {
-  if (!desktop) return;
-  [hasKey, usage] = await Promise.all([desktop.assistantKeyStatus().catch(() => false), desktop.assistantUsage().catch(() => null)]);
+  if (!native) return;
+  [hasKey, usage] = await Promise.all([native.assistantKeyStatus().catch(() => false), native.assistantUsage().catch(() => null)]);
   renderUsage();
   renderNotice();
 }
@@ -635,7 +640,8 @@ function suggestionCard(el: HTMLElement, p: Pending, text: string): void {
 
 /** 第一次在這個專案送出：說明要送什麼、大約多少錢。 */
 async function confirmFirst(chars: number, model: ClaudeModel): Promise<boolean> {
-  const root = app.workspaceRoot!.path;
+  // Android 版沒有專案資料夾：第一次送出問過一次就好。
+  const root = app.workspaceRoot?.path ?? MOBILE_SCOPE;
   if (listed(app.settings.value.assistantConfirmed, root)) return true;
   const what = [includeDoc ? docName() : null, selection().text.trim() ? t("選取的文字") : null, t("你的問題")].filter(Boolean).join(t("、"));
   const choice = await choose(
@@ -660,7 +666,7 @@ async function confirmFirst(chars: number, model: ClaudeModel): Promise<boolean>
  * 所以前面的檢查與第一次的確認都照舊）。
  */
 async function send(question: string, action: AssistantAction | null = null, countOnly = false): Promise<void> {
-  if (!desktop || pending) return;
+  if (!native || pending) return;
   // 還沒問過有沒有金鑰（面板剛建立）：先問清楚再決定能不能送。
   if (hasKey === null) await refreshStatus();
   if (pending || blocked()) return;
@@ -767,7 +773,7 @@ async function send(question: string, action: AssistantAction | null = null, cou
   setRunning(true);
   try {
     skipFetch = false;
-    await desktop.assistantSend(id, request);
+    await native.assistantSend(id, request);
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }
@@ -851,14 +857,14 @@ function onRun(e: AssistantRunEvent): void {
 }
 
 /** 問 Claude API 這一題的輸入 token 數，顯示在輸入框上方；內容變了（打字、換附件）就收起來。 */
-async function showCount(request: Parameters<NonNullable<typeof desktop>["assistantCount"]>[0]): Promise<void> {
-  if (!desktop) return;
+async function showCount(request: Parameters<NonNullable<typeof native>["assistantCount"]>[0]): Promise<void> {
+  if (!native) return;
   countEl.hidden = false;
   countEl.classList.remove("error");
   countEl.textContent = t("計算中…");
   countBtn.disabled = true;
   try {
-    const { tokens, usd } = await desktop.assistantCount(request);
+    const { tokens, usd } = await native.assistantCount(request);
     countEl.textContent = t("這一題的輸入是 {n} 個 token，約 {usd}（回答的費用另計）", { n: tokens.toLocaleString(), usd: formatUsd(usd) });
   } catch (e) {
     countEl.classList.add("error");
@@ -949,7 +955,7 @@ async function saveNote(): Promise<void> {
 
 function stop(): void {
   if (!pending) return;
-  void desktop?.assistantCancel(pending.id);
+  void native?.assistantCancel(pending.id);
   const p = pending;
   pending = null;
   p.answer.classList.remove("loading");
@@ -1265,7 +1271,7 @@ function build(): HTMLElement {
 export function assistantPanel(create: true): HTMLElement;
 export function assistantPanel(create: boolean): HTMLElement | null;
 export function assistantPanel(create: boolean): HTMLElement | null {
-  if (!panel && create && desktop) {
+  if (!panel && create && native) {
     panel = build();
     applyFont();
     setRunning(false);
@@ -1344,7 +1350,7 @@ export function assistantContextChanged(): void {
 
 /** 打開（右側欄切到「助理」，收著就打開）或關閉（切到右側欄的別頁；沒有別頁就收起右側欄）。 */
 export function toggleAssistant(open = !assistantOpen()): void {
-  if (!desktop || !assistantEnabled()) return;
+  if (!native || !assistantEnabled()) return;
   if (open) {
     if (!app.rightOutlineShown) setRightOutline(true);
     selectRightTab("assistant");
@@ -1378,8 +1384,8 @@ export function runAssistantAction(id: AssistantAction["id"]): void {
 export function initAssistant(): void {
   // 上次送出的批次：還在處理的問一次狀態，做完的領結果（面板沒打開也領）。
   void initAssistantBatch();
-  if (!desktop) return;
-  void desktop.onAssistantRun(onRun);
+  if (!native) return;
+  void native.onAssistantRun(onRun);
   // 視窗回到前面、回到這個分頁時檢查是不是換月了。
   window.addEventListener("focus", refreshUsageIfNewMonth);
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refreshUsageIfNewMonth());

@@ -38,6 +38,8 @@ export interface AiHooks {
   chatgptDesktop?(): boolean;
   /** 「Claude API 助理」那一頁的說明與內容（見 app/assistant-settings.ts）。 */
   assistant?(): { desc: string; content: HTMLElement[] } | null;
+  /** 只有 Claude API 助理（Android 版）：沒有 AI 協作（Claude Code、Codex）。 */
+  assistantOnly?: boolean;
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
@@ -558,7 +560,7 @@ export class SettingsDialog {
         () => this.#control("chatgptSend"),
       ),
     ]);
-    if (!this.#ai) {
+    if (!this.#ai || this.#ai.assistantOnly) {
       const p = document.createElement("p");
       p.className = "settings-note";
       p.textContent = t("AI 協作（Claude Code／Codex）需要桌面版。");
@@ -693,7 +695,7 @@ export class SettingsDialog {
       desktopOpt.disabled = !found && gpt.value !== "desktop";
       desktopOpt.textContent = found ? t("ChatGPT 桌面版") : t("ChatGPT 桌面版（未偵測到）");
     }
-    if (!this.#ai) return;
+    if (!this.#ai || this.#ai.assistantOnly) return;
     const sel = this.#dialog.querySelector<HTMLSelectElement>("select[data-key=aiTool]");
     try {
       const found = await this.#ai.available();
