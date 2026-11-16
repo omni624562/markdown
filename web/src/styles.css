@@ -4755,6 +4755,11 @@ body.ado-offline .tb-backlog .tb-move { display: none; }
 .batch-main small, .batch-status { color: var(--muted); font-size: 12px; }
 .batch-row[data-state="processing"] .batch-status { color: var(--accent); }
 .batch-row .btn { flex: none; }
+.batch-outputs { margin-top: 4px; font-size: 12px; }
+.batch-outputs summary { color: var(--muted); cursor: pointer; }
+.batch-output { display: flex; gap: 4px; align-items: center; min-width: 0; }
+.batch-output-name { flex: 1; min-width: 0; padding: 2px 4px; overflow: hidden; border: 0; border-radius: 4px; background: none; color: var(--fg); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.batch-output-name:hover { background: var(--hover, var(--active-line)); }
 .batch-pop > .btn { margin-top: 8px; }
 .batch-dialog { width: min(460px, calc(100vw - 32px)); }
 .batch-scope, .batch-cost { margin: 0; font-size: 13px; }

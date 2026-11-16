@@ -13,12 +13,13 @@ import { BATCH_MAX_FILES, batchActions, batchEstimateUsd, batchFiles, batchSuffi
 import { ASSISTANT_ACTIONS, type AssistantAction, customActions, formatUsd, listed, systemPrompt, userContent } from "../assistant-text.ts";
 import { type AssistantBatch, desktop, type Entry, isRemote } from "../desktop.ts";
 import { t } from "../i18n.ts";
+import { icon } from "../ui/icons.ts";
 import { placeMenu } from "../ui/menu-place.ts";
 import { wasOpenOnPress } from "../ui/popover-toggle.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
 import { assistantEnabled, assistantKeyChanged, toggleAssistant } from "./assistant.ts";
-import { indexedDocs, indexedTexts } from "./workspace-ui.ts";
+import { indexedDocs, indexedTexts, openPath } from "./workspace-ui.ts";
 
 /** 還在處理的批次多久問一次狀態。 */
 const POLL_MS = 60_000;
@@ -222,6 +223,7 @@ function renderList(): void {
       el("small", "", t("{n} 份文件・{when}", { n: b.total, when: b.created })),
       el("span", "batch-status", statusText(b)),
     );
+    if (b.outputs?.length) main.append(outputsList(b));
     const act = el("button", "btn btn-small", b.state === "processing" ? t("取消") : t("移除"));
     act.type = "button";
     act.disabled = b.state === "processing" && b.canceling;
@@ -237,6 +239,55 @@ function renderList(): void {
   refresh.addEventListener("click", () => void checkAll());
   pop.replaceChildren(head, ...(rows.length ? rows : [empty]), ...(batches.some((b) => b.state === "processing") ? [refresh] : []));
   place();
+}
+
+/** 展開著結果檔清單的批次（重畫清單時保持展開）。 */
+const expanded = new Set<string>();
+
+/** 做完的批次寫出來的結果檔：可以打開來看，不要的移到資源回收筒。 */
+function outputsList(b: AssistantBatch): HTMLElement {
+  const box = el("details", "batch-outputs");
+  box.open = expanded.has(b.id);
+  box.addEventListener("toggle", () => {
+    if (box.open) expanded.add(b.id);
+    else expanded.delete(b.id);
+    place();
+  });
+  box.append(el("summary", "", t("結果檔（{n}）", { n: b.outputs.length })));
+  for (const path of b.outputs) {
+    const row = el("div", "batch-output");
+    const open = el("button", "batch-output-name", baseName(path));
+    open.type = "button";
+    open.title = t("開啟 {path}", { path });
+    open.addEventListener("click", () => {
+      pop?.hidePopover();
+      void openPath(path).catch((e) => toast(message(e), { tone: "error" }));
+    });
+    const trash = el("button", "assistant-tool");
+    trash.type = "button";
+    trash.title = t("移到資源回收筒");
+    trash.setAttribute("aria-label", t("把 {name} 移到資源回收筒", { name: baseName(path) }));
+    trash.append(icon("trash"));
+    trash.addEventListener("click", () => void discard(b, path));
+    row.append(open, trash);
+    box.append(row);
+  }
+  return box;
+}
+
+/** 不要的結果檔移到資源回收筒（救得回來），並從清單拿掉。 */
+async function discard(b: AssistantBatch, path: string): Promise<void> {
+  try {
+    await desktop!.trashEntry(path);
+  } catch (e) {
+    toast(message(e), { tone: "error" });
+    return;
+  }
+  upsert({ ...b, outputs: b.outputs.filter((p) => p !== path) });
+  const root = app.workspaceRoot?.path;
+  app.fileListCache = null;
+  app.indexStale = true;
+  if (root) void app.fileTree?.refresh([root]);
 }
 
 function place(): void {
