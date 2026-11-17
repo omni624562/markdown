@@ -9,6 +9,7 @@
 import { loadChat, saveChat } from "../assistant-chat-store.ts";
 import { initAssistantBatch, initBatchButton } from "./assistant-batch.ts";
 import { initUsagePanel } from "./assistant-usage.ts";
+import { initPhoneComposer, type PhoneToggle } from "./assistant-phone.ts";
 import { pdfPages } from "../pdf-pages.ts";
 import type { EditorView } from "@codemirror/view";
 import { render as renderMarkdown } from "../../pkg/md_wasm.js";
@@ -1073,6 +1074,27 @@ export function changeAssistantFont(delta: number): void {
   app.settings.update({ assistantFontSize: size });
 }
 
+/** 手機「＋」選單裡的開關：和電腦版輸入框上方的標籤是同一組狀態。 */
+function phoneToggles(): PhoneToggle[] {
+  const toggle = (label: string, hint: string, iconName: string, on: boolean, set: (v: boolean) => void): PhoneToggle => ({
+    label,
+    hint,
+    icon: iconName,
+    on,
+    set: (v) => (set(v), renderChips()),
+  });
+  const list = [toggle(t("目前的文件"), docName(), "file-text", includeDoc, (v) => (includeDoc = v))];
+  const web = toggle(t("上網查"), t("讓 Claude 上網搜尋（每次搜尋約 US$0.01）"), "globe", webSearch, (v) => (webSearch = v));
+  if (!app.settings.value.claudeWebSearch) {
+    web.hint = t("要先在設定開啟「允許上網查資料」");
+    web.blocked = () => settingsDialog.open(t("Claude API 助理"));
+  }
+  list.push(web);
+  if (app.workspaceRoot) list.push(toggle(t("問整個專案"), t("從專案裡找相關的筆記一起送出，回答會標出處"), "folder-open", askProject, (v) => (askProject = v)));
+  list.push(toggle(t("深入思考"), t("想得比較仔細，回答比較慢，費用也比較高"), "brain", deepThinking, (v) => (deepThinking = v)));
+  return list;
+}
+
 function build(): HTMLElement {
   const aside = document.createElement("aside");
   aside.className = "assistant-panel";
@@ -1252,6 +1274,23 @@ function build(): HTMLElement {
   foot.append(note, batchButton, usageEl);
 
   aside.append(head, notice, log, box, foot);
+  // 手機版面：輸入框只留「＋」與送出，其他收進「＋」選單（app/assistant-phone.ts）。
+  if (isMobileApp) {
+    initPhoneComposer({
+      log,
+      bar,
+      actions: () => ({
+        main: ASSISTANT_ACTIONS.filter((x) => x.group === "main"),
+        more: [...ASSISTANT_ACTIONS.filter((x) => x.group === "write"), ...customActions(app.settings.value.assistantActions)],
+      }),
+      run: (a) => void send(a.prompt(), a),
+      toggles: phoneToggles,
+      attach: () => fileInput.click(),
+      count: () => countBtn.click(),
+      manageActions: () => settingsDialog.open(t("Claude API 助理")),
+      usage: () => usageEl.textContent ?? "",
+    });
+  }
   // 滑鼠移進來時更新選取的字數；內容沒變不重畫（重畫會讓剛好按下去的標籤按鈕失效）。
   aside.addEventListener("pointerenter", () => {
     if (chipsKey() !== shownChips) renderChips();

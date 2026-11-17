@@ -140,3 +140,44 @@ test("手機：設定先列出分類，點進去是那一頁；「←」與返�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("手機：助理的輸入框只有標籤、「＋」與送出；常用動作在對話區，其他在「＋」選單", async () => {
+  const { page: p, context, errors } = await open({
+    android: { assistant_key_status: true, assistant_usage: { month: "2026-11", usd: 0.27, limit: 100 } },
+    viewport: { width: 412, height: 915 },
+    settings: { claudeApiEnabled: true, claudeWebSearch: true },
+  });
+  await p.click(".phone-fab");
+  await p.click('#phone-bar [aria-label="助理"]');
+  const panel = p.locator("#assistant-panel");
+  await panel.locator("textarea").waitFor();
+  const visible = (sel) => panel.locator(`${sel}:visible`).count();
+  assert.equal(await visible(".assistant-chip-add"), 0, "沒打開的選項不佔位置");
+  assert.equal(await visible(".assistant-quick button"), 2, "下緣只有「＋」與送出");
+  assert.equal(await visible(".assistant-foot"), 0);
+  assert.deepEqual(await panel.locator(".assistant-suggest button").allTextContents(), ["摘要", "改寫", "翻譯", "審稿", "更多…"]);
+  const font = await panel.locator("textarea").evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
+  assert.ok(font >= 17, `輸入的字：${font}px`);
+
+  // 「＋」：打開上網查，輸入框上方出現「上網查 ✕」。
+  await p.click(".assistant-plus");
+  const sheet = p.locator(".assistant-sheet[open]");
+  await sheet.waitFor();
+  assert.match(await sheet.locator(".assistant-sheet-usage").textContent(), /US\$0\.27/);
+  await sheet.locator(".phone-row:has-text('上網查')").click();
+  await p.keyboard.press("Escape");
+  await sheet.waitFor({ state: "detached" });
+  assert.equal(await visible(".assistant-chip:has-text('上網查')"), 1);
+  // 「更多…」：全部的寫作動作。
+  await panel.locator(".assistant-suggest button:has-text('更多…')").click();
+  assert.ok(await sheet.locator(".phone-row:has-text('轉成流程圖')").isVisible());
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("電腦版的助理輸入框不變：沒有「＋」與對話區的大按鈕", async () => {
+  const { page: p, context, errors } = await open({ desktop: { assistant_key_status: true }, settings: { claudeApiEnabled: true } });
+  assert.equal(await p.locator(".assistant-plus, .assistant-suggest").count(), 0, "電腦版不建立手機的元件");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

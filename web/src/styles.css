@@ -4952,6 +4952,41 @@ body.phone .assistant-foot { justify-content: flex-end; }
 body.phone .assistant-head { height: 54px; padding: 0 8px; }
 body.phone .assistant-head h2 { font-size: 17px; }
 body.phone .assistant-head h2 .icon { width: 18px; height: 18px; }
+/* 輸入框（app/assistant-phone.ts）：只留打開的標籤、輸入的地方、「＋」與送出；常用動作在對話區、其他在「＋」選單。 */
+.assistant-plus, .assistant-suggest { display: none; }
+body.phone .assistant-foot { display: none; }
+body.phone .assistant-input { margin: 0 10px calc(8px + env(safe-area-inset-bottom)); border-radius: 22px; }
+body.phone .assistant-chips { gap: 6px; padding: 10px 12px 0; }
+body.phone .assistant-chip { gap: 6px; padding: 4px 4px 4px 10px; border-radius: 14px; font-size: 13.5px; }
+body.phone .assistant-chip:not(:has(.assistant-chip-x)) { padding-right: 10px; }
+body.phone .assistant-chip .icon { width: 15px; height: 15px; }
+body.phone .assistant-chip-x { width: 26px; height: 26px; border-radius: 13px; }
+body.phone .assistant-chip-x .icon { width: 14px; height: 14px; }
+body.phone .assistant-chip-add { display: none; }
+body.phone .assistant-input textarea { min-height: 48px; padding: 10px 14px 6px; font-size: max(17px, var(--assistant-font, 13px)); }
+body.phone .assistant-quick { gap: 8px; padding: 4px 8px 8px; }
+body.phone .assistant-quick > :not(.assistant-plus, .assistant-send) { display: none; }
+body.phone .assistant-quick .assistant-plus { display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface-raised); color: var(--fg); }
+body.phone .assistant-plus .icon { width: 22px; height: 22px; }
+body.phone .assistant-quick .assistant-send { width: 42px; height: 42px; margin-left: auto; border-radius: 50%; }
+body.phone .assistant-send .icon { width: 20px; height: 20px; }
+/* 還沒開始對話：常用動作排成大按鈕，貼在輸入框上方。 */
+body.phone .assistant-log:empty + .assistant-suggest { display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 0 16px 16px; }
+body.phone .assistant-log:empty { flex: 1; }
+.assistant-suggest p { margin: 0; color: var(--muted); font-size: 14px; }
+.assistant-suggest div { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.assistant-suggest button { min-height: 44px; padding: 0 18px; border: 1px solid var(--border-strong); border-radius: 22px; background: var(--surface-raised); color: var(--fg); font: 16px var(--font-ui); }
+.assistant-suggest button:active { background: var(--active-line); }
+/* 「＋」選單：每一列一個圖示、名稱與一行說明；開關在右邊。 */
+.assistant-sheet { max-height: 85dvh; overflow: auto; }
+.assistant-sheet .phone-row { height: auto; min-height: 56px; padding-block: 8px; }
+.assistant-sheet .phone-row > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.assistant-sheet .phone-row small { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-sheet .phone-row .switch { flex: none; pointer-events: none; }
+.assistant-sheet .phone-row.is-off { opacity: 0.6; }
+.assistant-sheet .assistant-sheet-back { font-weight: 600; border-bottom: 1px solid var(--border); }
+.assistant-sheet-usage { margin: 6px 24px 0; color: var(--muted); font-size: 13px; }
+.assistant-sheet-usage:empty { display: none; }
 
 /* ---- 手機的設定（ui/settings-phone.ts）----
  * 像 Android 的設定 App：第一層是分類清單（名稱下面一行小字），點進去是那一頁，左上角「←」回來。 */

@@ -1323,6 +1323,18 @@ export const ui: Record<string, Translation> = {
   "登入 Windows 時自動開啟 oMarker，縮在右下角的系統匣，在背景檢查工作項目與 Wiki；也可以在工作管理員的「啟動應用程式」停用":
     "Opens oMarker in the notification area when you sign in to Windows, checking work items and Wiki in the background. You can also turn it off under Startup apps in Task Manager.",
   "關閉設定": "Close settings",
+  // app/assistant-phone.ts
+  "問這份文件，或選一個：": "Ask about this document, or pick one:",
+  "更多…": "More…",
+  "附加檔案或圖片": "Attach a file or image",
+  "圖片或 PDF": "Images or PDFs",
+  "目前的文件": "Current document",
+  "寫作動作": "Writing actions",
+  "摘要、改寫、翻譯、轉成表格…": "Summarize, rewrite, translate, make a table…",
+  "估算這次的費用": "Estimate the cost",
+  "送出前算 token 數，不產生回答、不收費": "Counts tokens before sending; no answer, no charge",
+  "附加檔案、上網查、深入思考…": "Attach files, web search, deep thinking…",
+  "想得比較仔細，回答比較慢，費用也比較高": "Thinks more carefully; slower and costs more",
   // ui/settings-phone.ts
   "回到設定分類": "Back to settings",
 };
