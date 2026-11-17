@@ -34,6 +34,8 @@ test("助理輸入框：下緣只有「＋」與送出；常用動作在對話�
 
   await panel.locator("#assistant-plus").click();
   const menu = page.locator("#assistant-plus-popover");
+  // 選單打開時才填項目：等第一項出現再讀。
+  await menu.getByRole("menuitem", { name: "附加圖片或 PDF…" }).waitFor();
   const items = await menu.getByRole("menuitem").allTextContents();
   assert.ok(items.some((s) => s.includes("附加圖片或 PDF")), items.join("|"));
   assert.ok(items.some((s) => s.includes("估算這一題的費用")), items.join("|"));
