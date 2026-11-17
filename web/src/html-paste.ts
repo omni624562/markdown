@@ -74,6 +74,9 @@ function cell(content: string): string {
  * `keepImages`：保留相對路徑與 data: 圖片（匯入 Word 時圖片已經存好或內嵌）；
  * 貼上時只保留網路圖片。
  */
+/** 文字裡的網址（拆開時留下網址本身：奇數位置是網址）。 */
+const URL_IN_TEXT = /(https?:\/\/[^\s<>"'）」]+)/;
+
 function createService(keepImages = false): TurndownService {
   const td = new TurndownService({
     headingStyle: "atx",
@@ -85,6 +88,14 @@ function createService(keepImages = false): TurndownService {
   });
   td.remove([...DROP]);
   td.remove((node) => node.nodeName.toLowerCase() === "svg");
+  // 文字裡的網址照原樣留著，不跳脫 `_`、`*` 等符號：跳脫了就變成 `\_apis`，網址壞掉
+  // （連到伺服器上的附件、Wiki 時認不出來，只能用瀏覽器開、下載）。預覽會自動把網址變成連結。
+  const escapeMarkdown = td.escape.bind(td);
+  td.escape = (text: string) =>
+    text
+      .split(URL_IN_TEXT)
+      .map((part, i) => (i % 2 ? part : escapeMarkdown(part)))
+      .join("");
 
   // Google 文件把整段內容包在 <b style="font-weight:normal" id="docs-internal-guid-…"> 裡。
   td.addRule("google-docs-wrapper", {

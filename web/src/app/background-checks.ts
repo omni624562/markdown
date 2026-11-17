@@ -11,6 +11,7 @@
 import { nextDelay } from "../background-schedule.ts";
 import { desktop } from "../desktop.ts";
 import { app } from "./context.ts";
+import { reportError } from "./git-actions.ts";
 import { itemTabs, selectItem, shownItem } from "./item-tabs.ts";
 import { forgetListCopies } from "./offline-copies.ts";
 import { issueView } from "./wiki-edit.ts";
@@ -61,8 +62,10 @@ function schedule(): void {
 export function initBackgroundChecks(): void {
   if (!desktop) return;
   schedule();
-  app.settings.subscribe((_s, changed) => {
+  app.settings.subscribe((s, changed) => {
     if (changed.includes("backgroundCheck")) schedule();
+    // 開機時自動啟動：寫進（或拿掉）Windows 的「啟動」清單。
+    if (changed.includes("launchAtLogin")) void desktop!.setLaunchAtLogin(s.launchAtLogin).catch(reportError);
   });
   void desktop.onTrayCheck(() => checkAll(true));
   void desktop.onNotificationUpdate(() => app.updater?.fromNotification());

@@ -2034,6 +2034,7 @@ function activate(doc: Doc): void {
   if (autoSavePending()) void autoSaveNow();
   if (review.active) review.finish();
   if (docs.includes(active)) stash();
+  const from = active.id;
   active = doc;
   paneDocs[focusedPane] = doc;
   ({ kind: cur.kind, name: cur.fileName, handle: cur.fileHandle, baseline: cur.baseline, fileBacked: cur.fileBacked } = doc);
@@ -2051,7 +2052,7 @@ function activate(doc: Doc): void {
       });
   }
   editorTopLine = 1;
-  preview.clear();
+  preview.switchDoc(from, doc.id);
   previewScroller.scrollTop = 0;
   buildFormatBar();
   persistSession();

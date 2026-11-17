@@ -416,6 +416,11 @@ export class SettingsDialog {
                 label: t("關閉視窗時縮到系統匣"),
                 hint: t("按 ✕ 不結束程式，在右下角的系統匣繼續檢查工作項目、Wiki 頁面與新版本；要結束請在系統匣的圖示按右鍵選「結束」"),
               },
+              {
+                key: "launchAtLogin",
+                label: t("開機時自動啟動"),
+                hint: t("登入 Windows 時自動開啟 oMarker，縮在右下角的系統匣，在背景檢查工作項目與 Wiki；也可以在工作管理員的「啟動應用程式」停用"),
+              },
               { key: "backgroundCheck", label: t("背景檢查間隔"), hint: t("多久檢查一次你的工作項目與開著的 Wiki 頁面；oMarker 的新版本另外在「關於 → 更新」設定") },
             ]),
           )

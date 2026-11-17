@@ -74,6 +74,8 @@ export interface Settings {
   adoNotify: boolean;
   /** 桌面版：按關閉時縮到系統匣，繼續在背景檢查工作項目與新版本（要結束從系統匣的選單）。預設開啟。 */
   closeToTray: boolean;
+  /** 桌面版：登入 Windows 時自動啟動 oMarker（縮在系統匣，在背景檢查）。預設關閉。 */
+  launchAtLogin: boolean;
   /** 背景檢查工作項目與開著的 Wiki 頁面的間隔（分鐘），最短 10 分鐘。 */
   backgroundCheck: BackgroundCheck;
   /** 檢查 oMarker 新版本的間隔（小時）：每 12 小時、每天（預設）、每週。 */
@@ -208,6 +210,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   autoSave: true,
   adoNotify: true,
   closeToTray: true,
+  launchAtLogin: false,
   backgroundCheck: "10",
   updateCheck: "24",
   workItemColors: {},
@@ -341,6 +344,7 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("autoSave");
   bool("adoNotify");
   bool("closeToTray");
+  bool("launchAtLogin");
   if ("backgroundCheck" in input) {
     const v = String(input.backgroundCheck);
     if ((BACKGROUND_CHECKS as readonly string[]).includes(v)) out.backgroundCheck = v as BackgroundCheck;
