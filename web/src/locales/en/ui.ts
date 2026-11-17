@@ -1303,8 +1303,8 @@ export const ui: Record<string, Translation> = {
   "有新版本就通知你，下載前會先詢問": "Lets you know about new versions; asks before downloading",
   "多久檢查一次新版本": "Check for new versions",
   "新版本不急，預設每天檢查一次": "New versions aren't urgent; checks once a day by default",
-  "左邊還有 {n} 個分頁": "{n} more tabs on the left",
-  "右邊還有 {n} 個分頁": "{n} more tabs on the right",
+  "往左捲動分頁": "Scroll tabs left",
+  "往右捲動分頁": "Scroll tabs right",
   "開機時自動啟動": "Start oMarker when I sign in",
   "登入 Windows 時自動開啟 oMarker，縮在右下角的系統匣，在背景檢查工作項目與 Wiki；也可以在工作管理員的「啟動應用程式」停用":
     "Opens oMarker in the notification area when you sign in to Windows, checking work items and Wiki in the background. You can also turn it off under Startup apps in Task Manager.",
