@@ -4952,3 +4952,67 @@ body.phone .assistant-foot { justify-content: flex-end; }
 body.phone .assistant-head { height: 54px; padding: 0 8px; }
 body.phone .assistant-head h2 { font-size: 17px; }
 body.phone .assistant-head h2 .icon { width: 18px; height: 18px; }
+
+/* ---- 手機的設定（ui/settings-phone.ts）----
+ * 像 Android 的設定 App：第一層是分類清單（名稱下面一行小字），點進去是那一頁，左上角「←」回來。 */
+.settings-back, .settings-tab-desc { display: none; }
+body.phone .settings header { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; padding: 8px 12px 8px 6px; }
+body.phone .settings-back { display: inline-flex; width: 40px; height: 40px; color: var(--fg); }
+body.phone .settings-back .icon { width: 22px; height: 22px; }
+body.phone .settings h2 { font-size: 19px; }
+body.phone .settings-close { display: none; }
+body.phone .settings .settings-search { grid-column: 1 / -1; width: auto; max-width: none; height: 40px; margin: 4px 6px 6px 10px; padding: 0 16px; border-radius: 20px; font-size: 15px; }
+body.phone .settings[data-phone-view="page"] .settings-search { display: none; }
+body.phone .settings .phone-hide, body.phone .settings .phone-empty { display: none !important; }
+body.phone .settings-layout { display: flex; flex-direction: column; }
+body.phone .settings[data-phone-view="list"] .settings-body,
+body.phone .settings:not([data-phone-view="list"]) .settings-nav { display: none; }
+body.phone .settings[data-phone-view="list"] .settings-nav {
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 0 24px;
+  overflow: auto;
+  border: 0;
+  background: var(--bg);
+}
+body.phone .settings[data-phone-view="list"] .settings-nav button {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  align-items: center;
+  min-width: 0;
+  max-width: none;
+  padding: 12px 18px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+}
+body.phone .settings[data-phone-view="list"] .settings-nav button .icon {
+  grid-row: 1 / 3;
+  box-sizing: content-box;
+  width: 20px;
+  height: 20px;
+  padding: 10px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+body.phone .settings[data-phone-view="list"] .settings-nav button:active { background: var(--active-line); }
+body.phone .settings-tab-desc { display: block; overflow: hidden; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+/* 頁面裡：標題已經在上方列，不再重複；選項不用卡片框，一列一列排，像手機的設定。 */
+body.phone .settings section > h3, body.phone .settings section > .settings-desc { display: none; }
+body.phone .settings-body { padding: 0 0 32px; background: var(--bg); }
+body.phone .settings section { max-width: none; }
+body.phone .settings-group { margin-top: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+body.phone .settings-group-title { margin: 18px 18px 2px; color: var(--accent); font-size: 13px; }
+body.phone .settings-row { min-height: 56px; padding: 12px 18px; }
+body.phone .settings-row + .settings-row { border-top: 0; }
+body.phone .settings-row label { font-size: 16px; font-weight: 400; }
+body.phone .settings-row small { font-size: 13px; }
+body.phone .settings-row select { height: 40px; font-size: 15px; }
+body.phone .settings[data-phone-view="search"] section > h3 { display: block; margin: 18px 18px 0; font-size: 15px; }

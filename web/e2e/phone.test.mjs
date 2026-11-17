@@ -106,3 +106,37 @@ test("手機：很寬的表格、很長的第一行不會把整個畫面撐寬",
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("手機：設定先列出分類，點進去是那一頁；「←」與返回鍵一層一層退回去，手機用不到的選項不顯示", async () => {
+  const { page: p, context, errors } = await openPhone();
+  await p.click(".phone-fab");
+  await p.click('#phone-bar [aria-label="更多"]');
+  await p.click("#phone-sheet [data-cmd=settings]");
+  const dialog = p.locator("dialog[open].settings");
+  await dialog.waitFor();
+  const visibleTabs = () => dialog.locator("[role=tab]:visible .settings-tab-name").allTextContents();
+  const tabs = await visibleTabs();
+  assert.ok(tabs.includes("外觀") && tabs.includes("關於"), tabs.join("、"));
+  assert.ok(!tabs.includes("AI 協作"), "Claude Code／Codex 要電腦版，手機不列");
+  assert.equal(await dialog.locator(".settings-body").isVisible(), false, "第一層只有分類清單");
+  assert.match(await dialog.locator("[role=tab]:has-text('外觀') .settings-tab-desc").textContent(), /明暗|配色/);
+
+  await dialog.locator("[role=tab]:has-text('版面')").click();
+  assert.equal(await dialog.locator("h2").textContent(), "版面");
+  const labels = await dialog.locator("section:visible .settings-row:visible label").allTextContents();
+  assert.ok(labels.includes("行距"), labels.join("、"));
+  for (const hidden of ["分頁樣式", "大綱放在右邊", "固定顯示格式工具列"]) assert.ok(!labels.includes(hidden), hidden);
+
+  // 返回鍵：頁面 → 分類清單 → 關閉設定（回到編輯畫面，不是首頁）。
+  await p.goBack();
+  assert.equal(await dialog.locator("h2").textContent(), "設定");
+  assert.ok(await dialog.locator("[role=tab]:has-text('外觀')").isVisible());
+  await dialog.locator("[role=tab]:has-text('外觀')").click();
+  await dialog.locator(".settings-back").click();
+  assert.ok(await dialog.locator("[role=tab]:has-text('外觀')").isVisible(), "「←」回到分類清單");
+  await p.goBack();
+  await p.waitForSelector("dialog.settings[open]", { state: "detached" });
+  assert.ok(await p.locator("#phone-bar").isVisible(), "還在編輯畫面");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
