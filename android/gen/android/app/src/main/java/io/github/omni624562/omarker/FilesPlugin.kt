@@ -91,6 +91,19 @@ class FilesPlugin(private val activity: Activity) : Plugin(activity) {
     }
     out.put("uri", uri.toString())
     out.put("name", displayName(uri))
+    // 開檔時馬上把內容讀出來：有些來源（例如 OneDrive）只在選檔的當下給權限，不讓 App 記住，
+    // 之後再讀會被拒絕。存檔對話框（新的空檔案）不必讀。
+    if (invoke.getArgs().optBoolean("read", false)) {
+      try {
+        val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        if (bytes != null) {
+          out.put("data", Base64.encodeToString(bytes, Base64.NO_WRAP))
+          out.put("modified", lastModified(uri))
+        }
+      } catch (ex: Exception) {
+        out.put("error", ex.message ?: "無法讀取檔案")
+      }
+    }
     invoke.resolve(out)
   }
 

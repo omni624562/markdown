@@ -6,6 +6,7 @@
  * 和瀏覽器的一樣有 `getFile()`、`createWritable()`：網頁版原本的開檔、存回原檔、另存新檔、偵測外部修改
  * 都照原來的程式走，不必另外寫一套。
  */
+import { t } from "./i18n.ts";
 import { isMobileApp } from "./platform.ts";
 
 /** 位元組轉 Base64（分段處理，避免大檔案超過函式參數上限）。 */
@@ -29,6 +30,26 @@ interface Invoke {
 interface Picked {
   uri: string | null;
   name: string;
+  /** 開檔時原生端當下讀出來的內容（Base64）；讀不到時是 `error`。 */
+  data?: string;
+  modified?: number;
+  error?: string;
+}
+
+/** 來源不讓 oMarker 讀寫（Android 的 SecurityException，例如 OneDrive 只在選檔當下給權限）。 */
+function denied(message: string): boolean {
+  return /denying access|Permission Denial|SecurityException|permission/i.test(message);
+}
+
+/** 原生端的錯誤換成看得懂的說明：被來源拒絕時說明原因與怎麼辦。 */
+function explain(e: unknown, action: "read" | "write", name: string): Error {
+  const message = e instanceof Error ? e.message : String(e);
+  if (!denied(message)) return e instanceof Error ? e : new Error(message);
+  return new Error(
+    action === "read"
+      ? t("「{name}」所在的位置（例如 OneDrive）不讓 oMarker 讀取。請在那個 App 裡把檔案設成離線可用，或先下載到手機再開啟。", { name })
+      : t("「{name}」所在的位置（例如 OneDrive）不讓 oMarker 寫回去。內容還在 oMarker 裡，請用「另存新檔」存到手機或其他位置。", { name }),
+  );
 }
 
 const invoke: Invoke = (cmd, args) => (window as unknown as { __TAURI__: { core: { invoke: Invoke } } }).__TAURI__.core.invoke(cmd, args);
@@ -37,14 +58,23 @@ const invoke: Invoke = (cmd, args) => (window as unknown as { __TAURI__: { core:
 const aborted = () => new DOMException("The user aborted a request.", "AbortError");
 
 /** 選到的位置包成檔案控制代碼。 */
-function handleOf(uri: string, name: string) {
+function handleOf(uri: string, name: string, first?: { data: string; modified?: number }) {
   let current = name;
+  // 開檔時已經讀到的內容：第一次 getFile() 直接用（有些來源之後就不讓讀了）。
+  let initial = first;
   return {
     get name() {
       return current;
     },
     async getFile(): Promise<File> {
-      const f = await invoke<{ data: string; name: string; modified: number }>("mobile_read_file", { uri });
+      if (initial) {
+        const { data, modified } = initial;
+        initial = undefined;
+        return new File([base64ToBytes(data) as BlobPart], current, { lastModified: modified || 0 });
+      }
+      const f = await invoke<{ data: string; name: string; modified: number }>("mobile_read_file", { uri }).catch((e: unknown) => {
+        throw explain(e, "read", current);
+      });
       if (f.name) current = f.name;
       return new File([base64ToBytes(f.data) as BlobPart], current, { lastModified: f.modified || 0 });
     },
@@ -61,7 +91,9 @@ function handleOf(uri: string, name: string) {
             all.set(p, at);
             at += p.length;
           }
-          await invoke("mobile_write_file", { uri, data: bytesToBase64(all) });
+          await invoke("mobile_write_file", { uri, data: bytesToBase64(all) }).catch((e: unknown) => {
+            throw explain(e, "write", current);
+          });
         },
       };
     },
@@ -105,9 +137,10 @@ export function installMobileFiles(): void {
     showSaveFilePicker?: (opts?: { suggestedName?: string }) => Promise<unknown>;
   };
   w.showOpenFilePicker = async () => {
-    const picked = await invoke<Picked>("mobile_pick_file");
+    const picked = await invoke<Picked>("mobile_pick_file", { read: true });
     if (!picked.uri) throw aborted();
-    return [handleOf(picked.uri, picked.name)];
+    if (picked.error) throw explain(new Error(picked.error), "read", picked.name);
+    return [handleOf(picked.uri, picked.name, picked.data !== undefined ? { data: picked.data, modified: picked.modified } : undefined)];
   };
   w.showSaveFilePicker = (opts) => createFile(opts?.suggestedName ?? "");
 }

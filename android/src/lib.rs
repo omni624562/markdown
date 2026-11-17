@@ -70,12 +70,20 @@ async fn call<T: DeserializeOwned + Send + 'static>(
     }
 }
 
-/// 選到的檔案；使用者取消時 `uri` 是空的。
+/// 選到的檔案；使用者取消時 `uri` 是空的。開檔時（`read`）原生端當下就讀出內容：
+/// 有些來源（例如 OneDrive）只在選檔的當下給權限，之後再讀會被拒絕。
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Picked {
     uri: Option<String>,
     #[serde(default)]
     name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    data: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modified: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -105,8 +113,13 @@ fn check_uri(uri: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn mobile_pick_file(files: State<'_, Files>) -> Result<Picked, String> {
-    call(&files, "pickFile", ()).await
+async fn mobile_pick_file(files: State<'_, Files>, read: Option<bool>) -> Result<Picked, String> {
+    call(
+        &files,
+        "pickFile",
+        serde_json::json!({ "read": read.unwrap_or(false) }),
+    )
+    .await
 }
 
 #[tauri::command]

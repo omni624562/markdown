@@ -1297,4 +1297,7 @@ export const ui: Record<string, Translation> = {
   "列印": "Print",
   "問助理…": "Ask the assistant…",
   "關閉助理": "Close the assistant",
+  // mobile-files.ts
+  "「{name}」所在的位置（例如 OneDrive）不讓 oMarker 讀取。請在那個 App 裡把檔案設成離線可用，或先下載到手機再開啟。": "The place where “{name}” is stored (for example OneDrive) doesn't let oMarker read it. Make the file available offline in that app, or download it to your phone first.",
+  "「{name}」所在的位置（例如 OneDrive）不讓 oMarker 寫回去。內容還在 oMarker 裡，請用「另存新檔」存到手機或其他位置。": "The place where “{name}” is stored (for example OneDrive) doesn't let oMarker write to it. Your text is still in oMarker; use Save As to save it on your phone or elsewhere.",
 };
