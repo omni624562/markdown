@@ -277,6 +277,13 @@ export class Preview {
   }
 
   /** 換文件時清空，避免錯誤狀態下殘留上一份文件的畫面。 */
+  /** 畫面被換掉了（例如切換分頁時換上別的畫面）：忘掉之前畫的，下次整個重畫，不動現在的畫面。 */
+  forget(): void {
+    this.#last = null;
+    this.#stale = true;
+    this.#keys = null;
+  }
+
   clear(): void {
     this.#root.replaceChildren();
     this.#last = null;

@@ -388,6 +388,32 @@ pub async fn ado_wiki_page(
     .await
 }
 
+/// Wiki 頁面目前的版本（ETag），不讀內容：切換回開著的 Wiki 分頁、背景檢查時，
+/// 用它判斷頁面有沒有被改過，沒改就不用再讀整頁、重畫。
+#[tauri::command]
+pub async fn ado_wiki_page_etag(
+    app: AppHandle,
+    project_id: String,
+    wiki_id: String,
+    path: String,
+    version: Option<String>,
+) -> Result<Option<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let api = wiki_pages_path(&project_id, &wiki_id, &path, version.as_deref());
+        let (_, etag) = read_with_etag(
+            crate::update::agent()
+                .get(&format!("{}{api}&api-version={API_VERSION}", a.url))
+                .header("Authorization", &basic(&pat))
+                .header("Accept", "application/json")
+                .call(),
+            &tr!("讀取 Wiki 頁面"),
+        )?;
+        Ok(etag)
+    })
+    .await
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WikiPageInfo {

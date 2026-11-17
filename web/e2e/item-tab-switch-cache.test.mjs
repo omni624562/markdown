@@ -101,3 +101,66 @@ test("從捲到下面的工作項目切到另一個：標頭不會閃出新分�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("切換回工作項目分頁：直接換上之前畫好的畫面，不重畫（內容長、分頁多時才不會卡）", async () => {
+  const { page, context, errors } = await open({
+    desktop: {
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      ado_work_items: [[A, B]],
+      ado_work_item: { $by: "id", values: { 41: A, 42: B } },
+      ado_work_item_rev: 3,
+    },
+  });
+  await openById(page, 41, "修正登入的說明");
+  // 在畫好的畫面上做記號：重畫的話記號就不見了。
+  await page.evaluate(() => (document.querySelector(".issue-body .ado-hero").__kept = true));
+  await openById(page, 42, "匯出 PDF的說明");
+  await page.locator('#tab-bar [data-id]', { hasText: "修正登入" }).click();
+  await page.locator(".issue-body", { hasText: "修正登入的說明" }).waitFor();
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.querySelector(".issue-body .ado-hero")?.__kept), true, "是同一個畫面，沒有重畫");
+  // 標頭的類型標籤也一起換回來。
+  assert.match(await page.textContent(".issue-head .issue-meta"), /Task/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("切換回 Wiki 分頁：只問頁面的版本（ETag），沒被改過就不重讀、不重畫；改過才重讀", async () => {
+  const WIKI = { id: "w1", name: "Contoso.wiki", project: "Contoso", projectId: "p1", code: false, repositoryId: "r1", mappedPath: "/", version: "wikiMaster", webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki" };
+  const pages = [{ path: "/首頁", id: 1, children: [] }, { path: "/規格", id: 2, children: [] }];
+  const page = (content, etag) => ({ content, webUrl: null, etag });
+  const { page: p, context, errors } = await open({
+    desktop: {
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      ado_wikis: [[WIKI]],
+      ado_wiki_pages: [pages],
+      ado_wiki_page: { $by: "path", values: { "/首頁": page("# 首頁\n\n歡迎", "v1"), "/規格": page("# 規格\n\n內容", "s1") } },
+      // 來回切兩次（問四次版本）都沒變；之後有人改了「首頁」。
+      ado_wiki_page_etag: [
+        ...Array(4).fill({ $by: "path", values: { "/首頁": "v1", "/規格": "s1" } }),
+        { $by: "path", values: { "/首頁": "v2", "/規格": "s1" } },
+      ],
+    },
+  });
+  await p.click("#side-tab-wiki");
+  await p.click('#wiki-host .wiki-page[data-path="/首頁"]');
+  await p.locator(".issue-body", { hasText: "歡迎" }).waitFor();
+  await p.evaluate(() => (document.querySelector(".issue-body h1").__kept = true));
+  await p.click('#wiki-host .wiki-page[data-path="/規格"]');
+  await p.locator(".issue-body", { hasText: "內容" }).waitFor();
+  const reads = async () => (await calls(p)).filter((c) => c.cmd === "ado_wiki_page" && c.args.path === "/首頁").length;
+  const before = await reads();
+  for (let i = 0; i < 2; i++) {
+    await p.locator("#tab-bar [data-id]", { hasText: "首頁" }).click();
+    await p.locator(".issue-body", { hasText: "歡迎" }).waitFor();
+    await p.waitForTimeout(200);
+    assert.equal(await p.evaluate(() => document.querySelector(".issue-body h1")?.__kept), true, "換上之前畫好的畫面");
+    await p.locator("#tab-bar [data-id]", { hasText: "規格" }).click();
+    await p.locator(".issue-body", { hasText: "內容" }).waitFor();
+  }
+  assert.equal(await reads(), before, "版本沒變：沒有再讀整頁");
+  await p.locator("#tab-bar [data-id]", { hasText: "首頁" }).click();
+  await p.waitForFunction((n) => window.__fake.calls.filter((c) => c.cmd === "ado_wiki_page" && c.args.path === "/首頁").length > n, before);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
