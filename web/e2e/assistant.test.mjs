@@ -65,7 +65,7 @@ test("改寫選取的文字：第一次先確認，回答變成建議卡片，�
   const chips = await panel.locator(".assistant-chip").allTextContents();
   assert.ok(chips.some((c) => /選取 \d+ 字/.test(c)), chips.join("|"));
 
-  await panel.locator(".assistant-quick button", { hasText: "改寫" }).click();
+  await panel.locator(".assistant-suggest button", { hasText: "改寫" }).click();
   const confirm = page.locator("dialog.choice[open]");
   await confirm.waitFor();
   assert.match(await confirm.textContent(), /Anthropic/);
@@ -274,8 +274,12 @@ test("自訂動作：設定頁新增，出現在「更多」選單的「自訂�
   await panel.locator(".assistant-card").waitFor();
 
   // 設定頁：看得到這個動作，新增一個之後選單也跟著有。
-  await panel.locator("#assistant-write").click();
-  await menu.getByRole("menuitem", { name: "管理自訂動作…" }).click();
+  // 對話開始後，常用動作收起來；全部的動作在「＋」選單的「寫作動作」。
+  assert.equal(await panel.locator(".assistant-suggest").isVisible(), false);
+  await panel.locator("#assistant-plus").click();
+  await page.locator("#assistant-plus-popover").getByRole("menuitem", { name: "寫作動作" }).click();
+  assert.ok(await page.getByRole("menuitem", { name: "整理成會議紀錄" }).isVisible());
+  await page.getByRole("menuitem", { name: "管理自訂動作…" }).click();
   const dialog = page.locator("dialog.settings[open]");
   const list = dialog.locator(".assistant-actions-list .quick-action");
   await list.first().waitFor();
@@ -415,8 +419,9 @@ test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]]
   await page.keyboard.press("Control+Shift+L");
   const panel = page.locator("#assistant-panel");
   await panel.waitFor();
-  await panel.getByRole("button", { name: "問整個專案" }).click();
-  await panel.locator(".assistant-chip:not(.assistant-chip-add)", { hasText: "整個專案" }).waitFor();
+  await panel.locator("#assistant-plus").click();
+  await page.locator("#assistant-plus-popover").getByRole("menuitemradio", { name: "問整個專案" }).click();
+  await panel.locator(".assistant-chip", { hasText: "整個專案" }).waitFor();
   await panel.locator("textarea").fill("NAS 備份怎麼做？");
   await panel.locator("textarea").press("Enter");
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
@@ -433,7 +438,7 @@ test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]]
   await context.close();
 });
 
-test("上網查資料：設定沒開時「上網查」是灰色的，按了說明要到設定開啟；開了才能勾，送出時這一題才帶上網搜尋，回答最後列出來源", async () => {
+test("上網查資料：設定沒開時「＋」選單的「上網查」註明要先開啟，按了說明要到設定開啟；開了才能勾，送出時這一題才帶上網搜尋，回答最後列出來源", async () => {
   {
     const { page, context } = await open({ desktop: desktop({ ...ON, assistantConfirmed: [ROOT] }) });
     await openProject(page);
@@ -442,12 +447,12 @@ test("上網查資料：設定沒開時「上網查」是灰色的，按了說�
     const panel = page.locator("#assistant-panel");
     await panel.waitFor();
     // 看得到（灰色），按了不會勾選，只說明要到設定開啟，附「打開設定」。
-    const off = panel.locator(".assistant-chip-off", { hasText: "上網查" });
-    await off.waitFor();
+    await panel.locator("#assistant-plus").click();
+    const off = page.locator("#assistant-plus-popover").getByRole("menuitem", { name: "上網查（要先在設定開啟）" });
     await off.click();
     const tip = page.locator(".toast", { hasText: "允許上網查資料" });
     await tip.waitFor();
-    assert.equal(await panel.locator(".assistant-chip:not(.assistant-chip-add)", { hasText: "上網查" }).count(), 0, "沒有勾選");
+    assert.equal(await panel.locator(".assistant-chip", { hasText: "上網查" }).count(), 0, "沒有勾選");
     await tip.getByRole("button", { name: "打開設定" }).click();
     await page.locator("dialog[open]", { hasText: "允許上網查資料" }).waitFor();
     await context.close();
@@ -468,8 +473,9 @@ test("上網查資料：設定沒開時「上網查」是灰色的，按了說�
   await reply(page, "你好！");
   await panel.locator(".assistant-tools").waitFor();
 
-  await panel.getByRole("button", { name: "上網查" }).click();
-  await panel.locator(".assistant-chip:not(.assistant-chip-add)", { hasText: "上網查" }).waitFor();
+  await panel.locator("#assistant-plus").click();
+  await page.locator("#assistant-plus-popover").getByRole("menuitemradio", { name: "上網查" }).click();
+  await panel.locator(".assistant-chip", { hasText: "上網查" }).waitFor();
   await panel.locator("textarea").fill("NAS 硬碟要選哪一種？");
   await panel.locator("textarea").press("Enter");
   await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "assistant_send").length === 2);

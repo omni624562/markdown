@@ -88,7 +88,7 @@ test("動作（摘要）的回答可以重新產生，但沒有「編輯」", as
   await page.locator(".cm-content").focus();
   await page.keyboard.insertText("# 行程\n\n第一天搭地鐵。\n");
   await page.keyboard.press("Control+Shift+L");
-  await page.locator("#assistant-panel .assistant-quick button", { hasText: "摘要" }).click();
+  await page.locator("#assistant-panel .assistant-suggest button", { hasText: "摘要" }).click();
   await sent(page, 1);
   await reply(page, 1, "- 搭地鐵");
   await page.locator("#assistant-panel .assistant-redo").waitFor();
