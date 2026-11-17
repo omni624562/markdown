@@ -1303,4 +1303,6 @@ export const ui: Record<string, Translation> = {
   "有新版本就通知你，下載前會先詢問": "Lets you know about new versions; asks before downloading",
   "多久檢查一次新版本": "Check for new versions",
   "新版本不急，預設每天檢查一次": "New versions aren't urgent; checks once a day by default",
+  "左邊還有 {n} 個分頁": "{n} more tabs on the left",
+  "右邊還有 {n} 個分頁": "{n} more tabs on the right",
 };

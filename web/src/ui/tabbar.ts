@@ -56,6 +56,10 @@ export class TabBar {
   /** 分頁太多、放不下時出現的「所有分頁」按鈕與清單。 */
   #more: HTMLButtonElement;
   #moreMenu: HTMLDivElement;
+  /** 左右兩邊捲到看不見的分頁有幾個（「‹ 2」「3 ›」）：按一下只列出那幾個。 */
+  #hiddenLeft: HTMLButtonElement;
+  #hiddenRight: HTMLButtonElement;
+  #overflowFrame = 0;
   #tabs: TabInfo[] = [];
   #activeId = "";
 
@@ -96,10 +100,21 @@ export class TabBar {
       else return;
       e.preventDefault();
     });
-    el.replaceChildren(this.#list, this.#more, add);
-    // 分頁變多、視窗變窄時，判斷要不要顯示「所有分頁」按鈕與兩側的淡出提示。
-    new ResizeObserver(() => this.#updateOverflow()).observe(this.#list);
-    this.#list.addEventListener("scroll", () => this.#updateOverflow(), { passive: true });
+    const hidden = (side: "left" | "right") => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `btn tab-hidden tab-hidden-${side}`;
+      b.setAttribute("aria-haspopup", "menu");
+      b.hidden = true;
+      b.addEventListener("click", () => this.#openMore(this.#hiddenTabs(side), b));
+      return b;
+    };
+    this.#hiddenLeft = hidden("left");
+    this.#hiddenRight = hidden("right");
+    el.replaceChildren(this.#hiddenLeft, this.#list, this.#hiddenRight, this.#more, add);
+    // 分頁變多、視窗變窄時，判斷要不要顯示「所有分頁」按鈕、兩邊藏著幾個與兩側的淡出提示。
+    new ResizeObserver(() => this.#scheduleOverflow()).observe(this.#list);
+    this.#list.addEventListener("scroll", () => this.#scheduleOverflow(), { passive: true });
     // 分頁很多時用滑鼠滾輪左右捲動（捲軸隱藏起來比較乾淨）。
     this.#list.addEventListener(
       "wheel",
@@ -279,19 +294,47 @@ export class TabBar {
     group.append(main, sep, side, close);
   }
 
+  /** 捲動時每個畫面只算一次（要量每個分頁的位置）。 */
+  #scheduleOverflow(): void {
+    if (!this.#overflowFrame) this.#overflowFrame = requestAnimationFrame(() => ((this.#overflowFrame = 0), this.#updateOverflow()));
+  }
+
   #updateOverflow(): void {
     const list = this.#list;
     const overflow = list.scrollWidth > list.clientWidth + 1;
     this.#more.hidden = !overflow;
     list.classList.toggle("more-left", overflow && list.scrollLeft > 1);
     list.classList.toggle("more-right", overflow && list.scrollLeft + list.clientWidth < list.scrollWidth - 1);
+    for (const side of ["left", "right"] as const) {
+      const button = side === "left" ? this.#hiddenLeft : this.#hiddenRight;
+      const n = overflow ? this.#hiddenTabs(side).length : 0;
+      button.hidden = n === 0;
+      if (!n) continue;
+      button.replaceChildren(...(side === "left" ? [icon("chevron-left"), String(n)] : [String(n), icon("chevron-right")]));
+      const label = side === "left" ? t("左邊還有 {n} 個分頁", { n }) : t("右邊還有 {n} 個分頁", { n });
+      button.title = label;
+      button.setAttribute("aria-label", label);
+    }
   }
 
-  /** 列出所有分頁（目前的打勾、未存檔的加圓點），點一下切換過去。 */
-  #openMore(): void {
+  /** 捲到左邊或右邊、大半看不見的分頁（依分頁列上的順序）。 */
+  #hiddenTabs(side: "left" | "right"): TabInfo[] {
+    const box = this.#list.getBoundingClientRect();
+    const ids = [...this.#list.querySelectorAll<HTMLElement>("[role=tab]")]
+      .filter((tab) => {
+        const r = tab.getBoundingClientRect();
+        const middle = r.left + r.width / 2;
+        return side === "left" ? middle < box.left : middle > box.right;
+      })
+      .map((tab) => tab.dataset.id);
+    return this.#tabs.filter((tab) => ids.includes(tab.id));
+  }
+
+  /** 列出分頁（目前的打勾、未存檔的加圓點），點一下切換過去，並把它捲進畫面。預設列出全部。 */
+  #openMore(list: TabInfo[] = this.#tabs, anchor: HTMLElement = this.#more): void {
     const menu = this.#moreMenu;
     menu.replaceChildren(
-      ...this.#tabs.map((t) => {
+      ...list.map((t) => {
         const item = document.createElement("button");
         item.type = "button";
         item.role = "menuitemradio";
@@ -304,13 +347,14 @@ export class TabBar {
         item.addEventListener("click", () => {
           menu.hidePopover();
           this.#handlers.select(t.id);
+          this.#list.querySelector<HTMLElement>(`[data-id="${CSS.escape(t.id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
         });
         return item;
       }),
     );
     menu.showPopover();
     const { width, height } = menu.getBoundingClientRect();
-    const p = placeMenu(this.#more.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight }, "below");
+    const p = placeMenu(anchor.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight }, "below");
     Object.assign(menu.style, { left: `${p.left}px`, top: `${p.top}px`, right: "auto", bottom: "auto", maxHeight: `${p.maxHeight}px` });
     menu.querySelector<HTMLElement>("[aria-checked=true]")?.focus();
   }
