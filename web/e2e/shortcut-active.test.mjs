@@ -87,3 +87,34 @@ test("開著的捷徑是右下角的小圓點，圖示列上只有面板有左�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("工作項目、Wiki 頁面的分頁也能拖到圖示列，變成捷徑（和側邊欄清單一樣）", async () => {
+  const WIKI = { id: "w1", name: "Contoso.wiki", project: "Contoso", projectId: "p1", code: false, repositoryId: "r1", mappedPath: "/", version: "wikiMaster", webUrl: "https://ado.test/c/Contoso/_wiki/wikis/Contoso.wiki" };
+  const { page, context, errors } = await open({
+    desktop: {
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      ado_work_items: [[ITEM]],
+      ado_work_item: ITEM,
+      ado_wikis: [[WIKI]],
+      ado_wiki_pages: [[{ path: "/轉接客服", id: 1, children: [] }]],
+      ado_wiki_page: { content: "# 轉接客服\n\n說明", webUrl: null, etag: "v1" },
+    },
+  });
+  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem("md-editor:wiki-shortcuts") ?? "[]"));
+  await page.keyboard.press("Control+P");
+  await page.locator("dialog[open] input").first().fill(`#${ITEM.id}`);
+  await page.locator("dialog[open] [role=option]").first().waitFor();
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".ado-hero h1");
+  await page.locator("#tab-bar [data-id]", { hasText: "訂單明細" }).dragTo(page.locator(".activity-bar"), { targetPosition: { x: 24, y: 600 } });
+  await page.waitForFunction(() => (JSON.parse(localStorage.getItem("md-editor:wiki-shortcuts") ?? "[]")).length === 1);
+  assert.deepEqual(await saved(), [{ workItem: ITEM.id, kind: "Feature", title: ITEM.title }]);
+  await page.click("#side-tab-wiki");
+  await page.click('#wiki-host .wiki-page[data-path="/轉接客服"]');
+  await page.locator(".issue-body", { hasText: "說明" }).waitFor();
+  await page.locator("#tab-bar [data-id]", { hasText: "轉接客服" }).dragTo(page.locator(".activity-bar"), { targetPosition: { x: 24, y: 600 } });
+  await page.waitForFunction(() => (JSON.parse(localStorage.getItem("md-editor:wiki-shortcuts") ?? "[]")).length === 2);
+  assert.ok((await saved()).some((s) => s.wiki === "w1" && s.path === "/轉接客服"));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
