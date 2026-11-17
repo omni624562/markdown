@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fenceLanguage, isReadableFileName, parseRepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
+import { fenceLanguage, isImageName, isReadableFileName, parseImageLink, parseRepoFileLink, repoFileUrl, resolveRepoPath } from "./repo-links.ts";
 
 const base = "https://tfs.corp/tfs/DC";
 
@@ -49,4 +49,35 @@ test("檔名與上色語言", () => {
   assert.equal(fenceLanguage("a.yml"), "yaml");
   assert.equal(fenceLanguage("a.txt"), "");
   assert.equal(fenceLanguage("a.py"), "py");
+});
+
+test("連到伺服器上的圖片：附件、Git 網頁網址、API 網址都認得；文字檔與別的伺服器不算", () => {
+  assert.deepEqual(parseImageLink(`${base}/_apis/wit/attachments/1f2e?fileName=S07%20%E7%95%AB%E9%9D%A2.png`, base), {
+    kind: "attachment",
+    url: `${base}/_apis/wit/attachments/1f2e?fileName=S07%20%E7%95%AB%E9%9D%A2.png`,
+    name: "S07 畫面.png",
+  });
+  assert.deepEqual(parseImageLink(`${base}/%E7%94%A2%E5%93%81/_git/docs?path=%2Fimg%2FS08.jpg&version=GBmain`, base), {
+    kind: "git",
+    project: "產品",
+    repo: "docs",
+    path: "/img/S08.jpg",
+    version: "main",
+    versionType: "branch",
+    name: "S08.jpg",
+  });
+  assert.deepEqual(parseImageLink(`${base}/Contoso/_apis/git/repositories/9a8b/items?path=/.attachments/S07-123.png&download=false`, base), {
+    kind: "git",
+    project: "Contoso",
+    repo: "9a8b",
+    path: "/.attachments/S07-123.png",
+    version: null,
+    versionType: null,
+    name: "S07-123.png",
+  });
+  assert.equal(parseImageLink(`${base}/P/_git/docs?path=/a.md`, base), null);
+  assert.equal(parseImageLink(`${base}/P/_git/docs?path=/a.svg`, base), null, "SVG 不算");
+  assert.equal(parseImageLink(`https://other/tfs/DC/P/_git/docs?path=/a.png`, base), null);
+  assert.equal(parseRepoFileLink(`${base}/P/_apis/git/repositories/r/items?path=/a.png`, base), null);
+  assert.equal(isImageName("S07.PNG"), true);
 });

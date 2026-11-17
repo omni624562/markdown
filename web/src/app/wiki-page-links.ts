@@ -2,15 +2,16 @@
  * Wiki 頁面內文裡的相對連結（`子頁面`、`../其他頁面`、`設定.json`）：一律在 oMarker 裡開，不交給瀏覽器。
  * - 指到頁面：開那一頁。用這一頁所屬 Wiki 的頁面樹找，不受左側面板目前選哪個 Wiki 影響。
  * - 指到 Wiki 儲存庫裡的文字檔（例如 .json、.yaml）：開成唯讀分頁。
+ * - 指到圖片（`/.attachments/…`）：在 oMarker 裡放大檢視。
  * - 都找不到：提示，不開瀏覽器（相對路徑交給瀏覽器只會開到一個不存在的網址）。
  */
-import type { AdoWiki } from "../desktop.ts";
+import { type AdoWiki, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
-import { isMarkdownName, isReadableFileName } from "../repo-links.ts";
+import { isImageName, isMarkdownName, isReadableFileName } from "../repo-links.ts";
 import { toast } from "../ui/toast.ts";
 import { flattenPages, imageRepoPath, resolvePageLink } from "../wiki-text.ts";
 import { wikiPageTree } from "./ado-links.ts";
-import { showRepoFile } from "./ado-files.ts";
+import { showImage, showRepoFile } from "./ado-files.ts";
 import { reportError } from "./git-actions.ts";
 import { wikiPanel } from "./work-items-panel.ts";
 import { showWikiPage } from "./wiki-edit.ts";
@@ -39,6 +40,13 @@ function openPage(wiki: AdoWiki, path: string): void {
 export function followWikiLink(wiki: AdoWiki, current: string, href: string): boolean {
   const raw = href.trim();
   if (!raw || raw.startsWith("#") || EXTERNAL.test(raw)) return false;
+  // Wiki 裡的圖片（`/.attachments/…`、相對於這一頁的圖片）：在 oMarker 裡放大檢視，不必先找頁面。
+  const image = imageRepoPath(raw, current, wiki.mappedPath);
+  const imageName = image?.slice(image.lastIndexOf("/") + 1) ?? "";
+  if (image && isImageName(imageName) && desktop) {
+    showImage(decoded(imageName), desktop.adoWikiImage(wiki, image));
+    return true;
+  }
   // 左側面板顯示的就是這個 Wiki：直接用它的頁面樹（最新的）。
   if (wikiPanel?.wiki?.id === wiki.id) {
     const target = resolvePageLink(raw, current, flattenPages(wikiPanel.pages));

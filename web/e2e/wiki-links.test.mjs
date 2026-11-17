@@ -178,3 +178,47 @@ test("網址只寫頁面編號、頁面樹裡又沒有編號（有些伺服器�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Wiki 頁面裡連到圖片（附件、儲存庫的圖片網址）：在 oMarker 裡放大檢視，不開瀏覽器", async () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const IMAGES = [
+    "# 預期結果畫面",
+    "",
+    "- 申請中畫面：[查看 S07 原圖](/.attachments/S07-1.png)。",
+    "- 補件畫面：[查看 S08 原圖](http://ado/c/Contoso/_apis/git/repositories/r1/items?path=%2F.attachments%2FS08-2.png&download=false)。",
+    "- [附件的圖](https://ado.test/c/_apis/wit/attachments/9f8e?fileName=S09.png)",
+    "",
+  ].join("\n");
+  const { page: p, context, errors } = await open({
+    desktop: {
+      ...desktop,
+      ado_wiki_page: { $by: "path", values: { ...desktop.ado_wiki_page.values, "/IRIS專區/COBALT": page(IMAGES) } },
+      ado_wiki_image: PNG,
+      ado_image: PNG,
+    },
+  });
+  await p.click("#side-tab-wiki");
+  await p.locator("#wiki-host li", { has: p.locator('.wiki-page[data-path="/IRIS專區"]') }).locator(".wiki-toggle").first().click();
+  await p.click('#wiki-host .wiki-page[data-path="/IRIS專區/COBALT"]');
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "預期結果畫面");
+
+  const viewed = async (text) => {
+    await clickLink(p, text);
+    await p.waitForSelector(".lightbox[open] img");
+    assert.equal(await p.getAttribute(".lightbox[open] img", "src"), PNG);
+    await p.keyboard.press("Escape");
+    await p.waitForSelector(".lightbox[open]", { state: "detached" }).catch(() => p.waitForSelector(".lightbox:not([open])", { state: "attached" }));
+  };
+  await viewed("查看 S07 原圖");
+  await viewed("查看 S08 原圖");
+  await viewed("附件的圖");
+  const reads = (await calls(p)).filter((c) => c.cmd === "ado_wiki_image").map((c) => [c.args.repositoryId, c.args.path]);
+  assert.deepEqual(reads, [
+    ["r1", "/.attachments/S07-1.png"],
+    ["r1", "/.attachments/S08-2.png"],
+  ]);
+  assert.equal((await calls(p)).find((c) => c.cmd === "ado_image").args.url, "https://ado.test/c/_apis/wit/attachments/9f8e?fileName=S09.png");
+  assert.deepEqual(await externals(p), []);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
