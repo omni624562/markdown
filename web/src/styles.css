@@ -1463,6 +1463,18 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   .settings-nav button { flex: none; }
   .settings-body { padding: 18px 16px 24px; }
   .settings-row { flex-wrap: wrap; }
+  /* 開關固定在右邊，說明文字自己換行（不要被擠到開關下面）。 */
+  .settings-row:has(> .switch:last-child) { flex-wrap: nowrap; gap: 14px; }
+  /* 手機：設定佔滿整個畫面；分類改成圖示在上、名稱在下的一列，可以左右捲。 */
+  .settings { width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; }
+  .settings header { gap: 10px; padding: 10px 12px 10px 16px; }
+  .settings-nav { gap: 2px; padding: 6px 8px; scrollbar-width: none; }
+  .settings-nav button { flex-direction: column; gap: 3px; min-width: 60px; max-width: 84px; padding: 6px 8px; font-size: 12px; line-height: 1.25; text-align: center; }
+  .settings-nav button .icon { width: 19px; height: 19px; }
+}
+/* 只用觸控（手機、平板沒接鍵盤滑鼠）：快速鍵的提示用不到。 */
+@media (hover: none) and (pointer: coarse) {
+  .start-page kbd, .start-tips .keyboard-only { display: none; }
 }
 .switch {
   flex: none;

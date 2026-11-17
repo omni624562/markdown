@@ -4,7 +4,8 @@
   "version": "1.151.0",
   "identifier": "io.github.omni624562.omarker",
   "build": {
-    "frontendDist": "../web/dist"
+    "frontendDist": "../web/dist",
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "../web" }
   },
   "app": {
     "withGlobalTauri": true,

@@ -498,6 +498,8 @@ export class SettingsDialog {
         t.setAttribute("aria-selected", String(j === i));
         t.tabIndex = j === i ? 0 : -1;
       });
+      // 手機上分類排成一列可以左右捲：選到的那個捲進畫面裡。
+      tabs[i]?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
       body.scrollTop = 0;
     };
     nav.addEventListener("keydown", (e) => {
