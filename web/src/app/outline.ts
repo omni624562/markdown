@@ -53,10 +53,21 @@ function viewHeading(id: string): HTMLElement | null {
   return app.outlineView?.body?.querySelector<HTMLElement>(`#${CSS.escape(id)}`) ?? null;
 }
 
-/** 大綱標示目前閱讀到的段落。 */
+let activeFrame = 0;
+
+/**
+ * 大綱標示目前閱讀到的段落。等到下一個畫面才量（同一個畫面裡呼叫幾次都只量一次）：
+ * 剛換上內容就量標題的位置，會逼瀏覽器把整份長文件排版一次（切換分頁、打開長的 Wiki 時多花好幾百毫秒）。
+ */
 export function updateActiveHeading(): void {
+  if (!activeFrame) activeFrame = requestAnimationFrame(() => ((activeFrame = 0), markActiveHeading()));
+}
+
+function markActiveHeading(): void {
   const links = [...app.outlineList.querySelectorAll<HTMLAnchorElement>("a")];
   if (!links.length) return;
+  // 大綱沒有顯示（預設是收著的）：不必量位置，也不必捲動大綱。打開大綱時會再標示一次。
+  if (!app.outlineList.getClientRects().length) return;
   let active: HTMLAnchorElement | undefined;
   if (app.outlineView) {
     const top = (app.outlineView.body?.parentElement?.getBoundingClientRect().top ?? 0) + 48;
