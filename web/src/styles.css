@@ -1531,6 +1531,9 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 .tab-hidden[hidden] { display: none; }
 .tab-hidden .icon { width: 14px; height: 14px; }
 .tab-hidden:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+/* 拖曳分頁改順序：放開的位置畫一條直線。 */
+.tabs .drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+.tabs .drop-after { box-shadow: inset -3px 0 0 var(--accent); }
 .tab-more-menu { max-width: min(420px, 90vw); }
 .tab-more-menu span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab {
