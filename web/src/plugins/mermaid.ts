@@ -41,9 +41,29 @@ async function loadMermaid(block: boolean): Promise<Mermaid> {
 let seq = 0;
 const cache = new Map<string, string>();
 
+/**
+ * 目前是不是深色：記下來，明暗、配色或系統設定改了才重新判斷。每張流程圖都問一次的話，
+ * 每次都要重算整頁的樣式（流程圖多的文件每次重畫多花好幾十毫秒）。
+ */
+let dark: boolean | null = null;
+let watcher: MutationObserver | null = null;
+function darkNow(): boolean {
+  // 剛改了明暗或配色、馬上重畫時，觀察者的通知還沒送到：先看有沒有還沒處理的改動。
+  if (watcher?.takeRecords().length) dark = null;
+  if (dark === null) {
+    dark = isDark();
+    if (!watcher && typeof document !== "undefined") {
+      watcher = new MutationObserver(() => (dark = null));
+      watcher.observe(document.documentElement, { attributes: true });
+      matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => (dark = null));
+    }
+  }
+  return dark;
+}
+
 /** 目前流程圖的配色（跟著深淺色主題）；主題改變時要重畫。 */
 export function mermaidTheme(): "dark" | "default" {
-  return isDark() ? "dark" : "default";
+  return darkNow() ? "dark" : "default";
 }
 
 /** 目前是否封鎖遠端圖片（設定「封鎖遠端圖片」，由主程式提供）。 */
