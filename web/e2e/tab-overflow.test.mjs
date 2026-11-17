@@ -41,3 +41,26 @@ test("分頁很多：每個最窄 140px，放不下時左右捲動，目前的�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("拖曳分頁改順序：放到另一個分頁的左半邊就排到它前面，重新整理後順序還在", async () => {
+  const { page, context, errors } = await open();
+  await page.locator(".cm-content").waitFor();
+  for (const name of ["甲", "乙", "丙"]) {
+    await page.locator(".cm-content").focus();
+    await page.keyboard.insertText(`# ${name}`);
+    if (name !== "丙") await page.keyboard.press("Control+Alt+N");
+  }
+  const names = () => page.$$eval("#tab-bar .tab .tab-name", (l) => l.map((n) => n.textContent.trim()));
+  // 還沒存檔的文件用第一行當分頁名稱（打字後一下子才換）。
+  await page.waitForFunction(() => [...document.querySelectorAll("#tab-bar .tab .tab-name")].map((n) => n.textContent.trim()).join() === "甲,乙,丙");
+  const first = page.locator("#tab-bar .tab").first();
+  const box = await first.boundingBox();
+  await page.locator("#tab-bar .tab", { hasText: "丙" }).dragTo(first, { targetPosition: { x: 8, y: box.height / 2 } });
+  await page.waitForFunction(() => document.querySelector("#tab-bar .tab .tab-name")?.textContent.trim() === "丙");
+  assert.deepEqual(await names(), ["丙", "甲", "乙"]);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll("#tab-bar .tab").length === 3);
+  assert.deepEqual(await names(), ["丙", "甲", "乙"], "重新整理後順序還在");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

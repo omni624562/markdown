@@ -10,6 +10,7 @@ import {
   SAVED_ITEM_TABS_LIMIT,
   type SavedItemTab,
   arrangeTabs,
+  reorderTabs,
   itemTabText,
   neighborAfterClose,
   parseSavedItemTabs,
@@ -83,6 +84,17 @@ function persist(): void {
     .slice(0, SAVED_ITEM_TABS_LIMIT)
     .map(({ key, name, title, origin, ref, after, pinned }) => ({ key, name, title, origin, ref, after, pinned }));
   storage.save("item-tabs", JSON.stringify(saved));
+}
+
+/** 拖曳分頁改順序（文件與工作項目、Wiki 頁面的分頁都可以）。 */
+export function moveTab(drag: string, target: string, before: boolean): void {
+  const next = reorderTabs(app.docs, itemTabs, drag, target, before);
+  if (!next) return;
+  app.docs = next.docs.map((id) => app.docs.find((d) => d.id === id)!);
+  const byId = new Map(itemTabs.map((tab) => [tab.id, tab]));
+  itemTabs.splice(0, itemTabs.length, ...next.items.map(({ id, after }) => Object.assign(byId.get(id)!, { after })));
+  app.persistSession();
+  changed();
 }
 
 function changed(): void {

@@ -4,6 +4,9 @@ import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
 
+/** 拖曳分頁時帶的分頁 id（分頁列自己用來改順序）。 */
+export const TAB_REORDER_TYPE = "application/x-omarker-tab";
+
 export interface TabInfo {
   id: string;
   name: string;
@@ -43,6 +46,8 @@ export interface TabBarHandlers {
   dragData?(id: string): Record<string, string> | null;
   /** 並排中的分頁（合成一個「左｜右」的分頁）右邊的 ×：取消並排。 */
   unpair?(): void;
+  /** 拖曳分頁改順序：把 `drag` 放到 `target` 的前面（`before`）或後面。 */
+  reorder?(drag: string, target: string, before: boolean): void;
 }
 
 /**
@@ -57,6 +62,8 @@ export class TabBar {
   #more: HTMLButtonElement;
   #moreMenu: HTMLDivElement;
   #tabs: TabInfo[] = [];
+  /** 正在拖曳的分頁（拖到分頁列上的其他位置就改順序）。 */
+  #dragging: string | null = null;
   #activeId = "";
 
   constructor(el: HTMLElement, handlers: TabBarHandlers) {
@@ -112,6 +119,33 @@ export class TabBar {
       { passive: false },
     );
 
+    // 拖曳分頁改順序：放開的位置在分頁的左半邊就放到它前面，右半邊放到它後面（畫一條直線標出位置）。
+    const dropAt = (e: DragEvent): { target: string; before: boolean; el: HTMLElement } | null => {
+      if (!this.#dragging || !this.#handlers.reorder) return null;
+      const el = (e.target as HTMLElement).closest<HTMLElement>("[role=tab][data-id]");
+      if (!el || el.dataset.id === this.#dragging) return null;
+      const r = el.getBoundingClientRect();
+      return { target: el.dataset.id!, before: e.clientX < r.left + r.width / 2, el };
+    };
+    this.#list.addEventListener("dragover", (e) => {
+      const at = dropAt(e);
+      this.#markDrop(at?.el ?? null, at?.before ?? false);
+      if (!at) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "move";
+    });
+    this.#list.addEventListener("dragleave", (e) => {
+      if (!this.#list.contains(e.relatedTarget as Node)) this.#markDrop(null, false);
+    });
+    this.#list.addEventListener("drop", (e) => {
+      const at = dropAt(e);
+      const drag = this.#dragging;
+      this.#endReorder();
+      if (!at || !drag) return;
+      e.preventDefault();
+      this.#handlers.reorder!(drag, at.target, at.before);
+    });
+
     this.#list.addEventListener("keydown", (e) => {
       const tabs = [...this.#list.querySelectorAll<HTMLElement>("[role=tab]")];
       const i = tabs.indexOf(document.activeElement as HTMLElement);
@@ -140,7 +174,7 @@ export class TabBar {
    * 建立之後再加上的功能（各自的模組加上去，例如左側圖示列的檔案捷徑、拖到編輯區並排）。
    * 好幾個模組都提供拖曳資料時合在一起。
    */
-  extend(more: Pick<TabBarHandlers, "dragData">): void {
+  extend(more: Partial<Pick<TabBarHandlers, "dragData" | "reorder">>): void {
     const prev = this.#handlers.dragData;
     const next = more.dragData;
     const dragData =
@@ -213,16 +247,21 @@ export class TabBar {
           else this.#handlers.menu(info.id, at);
         });
         tab.addEventListener("click", () => this.#handlers.select(info.id, "pointer"));
-        tab.draggable = !!this.#handlers.dragData?.(info.id);
+        const data = this.#handlers.dragData?.(info.id);
+        tab.draggable = !!data || !!this.#handlers.reorder;
         tab.addEventListener("dragstart", (e) => {
           const data = e.dataTransfer && this.#handlers.dragData?.(info.id);
-          if (!data) {
+          if (!e.dataTransfer || (!data && !this.#handlers.reorder)) {
             e.preventDefault();
             return;
           }
-          e.dataTransfer!.effectAllowed = "copy";
-          for (const [type, value] of Object.entries(data)) e.dataTransfer!.setData(type, value);
+          this.#dragging = info.id;
+          // 拖到分頁列上是改順序（移動）；拖到別的地方（圖示列、編輯區）照原本的用法（複製）。
+          e.dataTransfer.effectAllowed = "copyMove";
+          e.dataTransfer.setData(TAB_REORDER_TYPE, info.id);
+          for (const [type, value] of Object.entries(data ?? {})) e.dataTransfer.setData(type, value);
         });
+        tab.addEventListener("dragend", () => this.#endReorder());
         tab.addEventListener("dblclick", (e) => {
           if ((e.target as HTMLElement).closest(".tab-close")) return;
           if (!info.item) this.startRename(info.id);
@@ -242,6 +281,16 @@ export class TabBar {
     if (focused) this.#focusTab(focused);
     this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
     this.#updateOverflow();
+  }
+
+  #markDrop(el: HTMLElement | null, before: boolean): void {
+    for (const tab of this.#list.querySelectorAll(".drop-before, .drop-after")) tab.classList.remove("drop-before", "drop-after");
+    el?.classList.add(before ? "drop-before" : "drop-after");
+  }
+
+  #endReorder(): void {
+    this.#dragging = null;
+    this.#markDrop(null, false);
   }
 
   /** 讓目前畫面上這個 id 的分頁取得焦點（重畫後元素已經換掉，不能用舊的）。 */
