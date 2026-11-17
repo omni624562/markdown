@@ -1,4 +1,4 @@
-import type { PreviewPlugin, Queryable } from "../preview.ts";
+import type { PreviewPlugin } from "../preview.ts";
 import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 import { blockRemoteInMermaid, blockRemoteInSvg } from "../remote-images.ts";
@@ -111,40 +111,55 @@ function diagramTools(svg: string, actions: DiagramActions): HTMLElement {
  * 預覽中的圖加上工具列（匯出的 HTML、PDF 不加）。
  */
 export function mermaidPlugin(enabled: () => boolean, actions?: DiagramActions): PreviewPlugin {
-  const replace = async (root: Queryable, keepAttrs: boolean) => {
-    const blocks = [...root.querySelectorAll<HTMLElement>("pre > code.language-mermaid")];
-    for (const code of blocks) {
-      const pre = code.parentElement!;
-      const figure = document.createElement("figure");
-      figure.className = "mermaid-diagram";
-      if (keepAttrs && pre.dataset.sourcepos) figure.dataset.sourcepos = pre.dataset.sourcepos;
-      try {
-        const svg = await renderMermaid(code.textContent ?? "");
-        figure.innerHTML = svg;
-        if (keepAttrs && actions) {
-          figure.classList.add("has-tools");
-          figure.title = t("按一下放大");
-          figure.append(diagramTools(svg, actions));
-          figure.addEventListener("click", () => actions.open(svg));
-        }
-      } catch (e) {
-        figure.classList.add("mermaid-error");
-        figure.textContent = t("流程圖語法錯誤：{message}", { message: e instanceof Error ? e.message : String(e) });
+  /** 畫好（或畫失敗）之後填進圖框。 */
+  const fill = async (figure: HTMLElement, source: string, withTools: boolean) => {
+    try {
+      const svg = await renderMermaid(source);
+      figure.innerHTML = svg;
+      if (withTools && actions) {
+        figure.classList.add("has-tools");
+        figure.title = t("按一下放大");
+        figure.append(diagramTools(svg, actions));
+        figure.addEventListener("click", () => actions.open(svg));
       }
-      // 等待期間預覽可能已經重新渲染，原本的區塊不在頁面上就不處理。
-      if (!keepAttrs || pre.isConnected) pre.replaceWith(figure);
+    } catch (e) {
+      figure.classList.add("mermaid-error");
+      figure.textContent = t("流程圖語法錯誤：{message}", { message: e instanceof Error ? e.message : String(e) });
     }
+  };
+  const frameOf = (pre: HTMLElement, keepAttrs: boolean) => {
+    const figure = document.createElement("figure");
+    figure.className = "mermaid-diagram";
+    if (keepAttrs && pre.dataset.sourcepos) figure.dataset.sourcepos = pre.dataset.sourcepos;
+    return figure;
   };
 
   return {
     name: "mermaid",
-    async apply(_root, scope) {
+    apply(_root, scope) {
       if (!enabled() || !scope.querySelector("code.language-mermaid")) return;
-      await replace(scope, true);
+      // 預覽：先「同步」把程式碼區塊換成圖框（程式碼先留在框裡），畫好再填進去。
+      // 預覽記得畫面上有哪些節點，下次打字只換改到的段落；之後才換掉節點的話，下次會以為畫面被動過而整個重建
+      // （文件裡有流程圖時每打一個字就整頁重畫）。
+      const jobs: Promise<void>[] = [];
+      for (const code of scope.querySelectorAll<HTMLElement>("pre > code.language-mermaid")) {
+        const pre = code.parentElement!;
+        const figure = frameOf(pre, true);
+        figure.classList.add("mermaid-pending");
+        pre.replaceWith(figure);
+        figure.append(pre);
+        jobs.push(fill(figure, code.textContent ?? "", true).then(() => figure.classList.remove("mermaid-pending")));
+      }
+      return Promise.all(jobs).then(() => undefined);
     },
     async exportTransform(root) {
       if (!enabled() || !root.querySelector("code.language-mermaid")) return;
-      await replace(root, false);
+      for (const code of [...root.querySelectorAll<HTMLElement>("pre > code.language-mermaid")]) {
+        const pre = code.parentElement!;
+        const figure = frameOf(pre, false);
+        await fill(figure, code.textContent ?? "", false);
+        pre.replaceWith(figure);
+      }
     },
   };
 }
