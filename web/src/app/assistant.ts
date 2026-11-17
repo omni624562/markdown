@@ -9,7 +9,8 @@
 import { loadChat, saveChat } from "../assistant-chat-store.ts";
 import { initAssistantBatch, initBatchButton } from "./assistant-batch.ts";
 import { initUsagePanel } from "./assistant-usage.ts";
-import { initPhoneComposer, type PhoneToggle } from "./assistant-phone.ts";
+import { type ComposerParts, type ComposerToggle, initComposer } from "./assistant-composer.ts";
+import { initPhoneSheet } from "./assistant-phone.ts";
 import { pdfPages } from "../pdf-pages.ts";
 import type { EditorView } from "@codemirror/view";
 import { render as renderMarkdown } from "../../pkg/md_wasm.js";
@@ -94,7 +95,8 @@ let chips!: HTMLElement;
 let input!: HTMLTextAreaElement;
 let sendBtn!: HTMLButtonElement;
 let usageEl!: HTMLElement;
-let countBtn!: HTMLButtonElement;
+/** 正在估算 token 數（估算完才能再按）。 */
+let counting = false;
 let countEl!: HTMLElement;
 let modelBtn!: HTMLButtonElement;
 let notice!: HTMLElement;
@@ -237,40 +239,9 @@ function renderChips(): void {
     }
     items.push(el);
   };
+  // 沒打開的選項不佔位置：在「＋」選單裡打開（app/assistant-composer.ts）。
   if (includeDoc) chip(docName(), "file-text", () => ((includeDoc = false), renderChips()));
-  else {
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "assistant-chip assistant-chip-add";
-    add.append(icon("plus"), t("加入目前的文件"));
-    add.addEventListener("click", () => ((includeDoc = true), renderChips()));
-    items.push(add);
-  }
-  if (app.settings.value.claudeWebSearch) {
-    if (webSearch) chip(t("上網查"), "globe", () => ((webSearch = false), renderChips()));
-    else {
-      const add = document.createElement("button");
-      add.type = "button";
-      add.className = "assistant-chip assistant-chip-add";
-      add.title = t("讓 Claude 上網搜尋（每次搜尋約 US$0.01）");
-      add.append(icon("plus"), t("上網查"));
-      add.addEventListener("click", () => ((webSearch = true), renderChips(), input.focus()));
-      items.push(add);
-    }
-  } else {
-    // 設定沒開：一樣看得到「上網查」（灰色），按了說明要到設定開啟（不然會以為沒有這個功能）。
-    const off = document.createElement("button");
-    off.type = "button";
-    off.className = "assistant-chip assistant-chip-add assistant-chip-off";
-    off.title = t("要先在設定開啟「允許上網查資料」");
-    off.append(icon("plus"), t("上網查"));
-    off.addEventListener("click", () =>
-      toast(t("上網查資料要先在設定開啟「允許上網查資料」（每次搜尋約 US$0.01）。"), {
-        action: { label: t("打開設定"), run: () => settingsDialog.open(t("Claude API 助理")) },
-      }),
-    );
-    items.push(off);
-  }
+  if (webSearch && app.settings.value.claudeWebSearch) chip(t("上網查"), "globe", () => ((webSearch = false), renderChips()));
   // 問題裡有網址：Claude 會去讀那一頁（只讀問題裡那幾個網域）。設定沒開時提示可以去開。
   const typedHosts = input ? urlHosts(input.value) : [];
   if (typedHosts.length && app.settings.value.claudeWebSearch && !skipFetch) {
@@ -293,30 +264,11 @@ function renderChips(): void {
     add.addEventListener("click", () => settingsDialog.open(t("Claude API 助理")));
     items.push(add);
   }
-  if (app.workspaceRoot) {
-    if (askProject) chip(t("整個專案"), "folder-open", () => ((askProject = false), renderChips()));
-    else {
-      const add = document.createElement("button");
-      add.type = "button";
-      add.className = "assistant-chip assistant-chip-add";
-      add.title = t("從專案裡找相關的筆記一起送出，回答會標出處");
-      add.append(icon("plus"), t("問整個專案"));
-      add.addEventListener("click", () => ((askProject = true), renderChips(), input.focus()));
-      items.push(add);
-    }
-  }
+  if (askProject && app.workspaceRoot) chip(t("整個專案"), "folder-open", () => ((askProject = false), renderChips()));
   // 深入思考：難題時打開，想得比較仔細；平常關著（快、便宜）。
   if (deepThinking) {
     chip(t("深入思考"), "brain", () => ((deepThinking = false), renderChips()));
     items.at(-1)!.title = t("想得比較仔細，回答比較慢，費用也比較高（思考用掉的部分照輸出計費）。按 × 關掉");
-  } else {
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "assistant-chip assistant-chip-add";
-    add.title = t("難題時打開：想得比較仔細，回答比較慢，費用也比較高（思考用掉的部分照輸出計費）");
-    add.append(icon("plus"), t("深入思考"));
-    add.addEventListener("click", () => ((deepThinking = true), renderChips(), input.focus()));
-    items.push(add);
   }
   const sel = selection().text;
   if (sel.trim()) chip(t("選取 {n} 字", { n: sel.length }), "text-cursor");
@@ -395,7 +347,7 @@ function renderNotice(): void {
   notice.hidden = !b;
   sendBtn.disabled = !!b || !!pending;
   input.disabled = !!b;
-  for (const q of panel!.querySelectorAll<HTMLButtonElement>(".assistant-quick button")) q.disabled = !!b || !!pending;
+  for (const q of panel!.querySelectorAll<HTMLButtonElement>(".assistant-quick button, .assistant-suggest button")) q.disabled = !!b || !!pending;
   if (!b) return notice.replaceChildren();
   const p = document.createElement("p");
   p.textContent = b.message;
@@ -876,7 +828,7 @@ async function showCount(request: Parameters<NonNullable<typeof native>["assista
   countEl.hidden = false;
   countEl.classList.remove("error");
   countEl.textContent = t("計算中…");
-  countBtn.disabled = true;
+  counting = true;
   try {
     const { tokens, usd } = await native.assistantCount(request);
     countEl.textContent = t("這一題的輸入是 {n} 個 token，約 {usd}（回答的費用另計）", { n: tokens.toLocaleString(), usd: formatUsd(usd) });
@@ -884,7 +836,7 @@ async function showCount(request: Parameters<NonNullable<typeof native>["assista
     countEl.classList.add("error");
     countEl.textContent = e instanceof Error ? e.message : String(e);
   } finally {
-    countBtn.disabled = false;
+    counting = false;
   }
 }
 
@@ -1074,20 +1026,24 @@ export function changeAssistantFont(delta: number): void {
   app.settings.update({ assistantFontSize: size });
 }
 
-/** 手機「＋」選單裡的開關：和電腦版輸入框上方的標籤是同一組狀態。 */
-function phoneToggles(): PhoneToggle[] {
-  const toggle = (label: string, hint: string, iconName: string, on: boolean, set: (v: boolean) => void): PhoneToggle => ({
+/** 「＋」選單裡的開關：和輸入框上方的標籤是同一組狀態。 */
+function composerToggles(): ComposerToggle[] {
+  const toggle = (label: string, hint: string, iconName: string, on: boolean, set: (v: boolean) => void): ComposerToggle => ({
     label,
     hint,
     icon: iconName,
     on,
-    set: (v) => (set(v), renderChips()),
+    set: (v) => (set(v), renderChips(), input.focus()),
   });
   const list = [toggle(t("目前的文件"), docName(), "file-text", includeDoc, (v) => (includeDoc = v))];
   const web = toggle(t("上網查"), t("讓 Claude 上網搜尋（每次搜尋約 US$0.01）"), "globe", webSearch, (v) => (webSearch = v));
+  // 設定沒開：一樣列出來（不然會以為沒有這個功能），按了說明要到設定開啟。
   if (!app.settings.value.claudeWebSearch) {
     web.hint = t("要先在設定開啟「允許上網查資料」");
-    web.blocked = () => settingsDialog.open(t("Claude API 助理"));
+    web.blocked = () =>
+      toast(t("上網查資料要先在設定開啟「允許上網查資料」（每次搜尋約 US$0.01）。"), {
+        action: { label: t("打開設定"), run: () => settingsDialog.open(t("Claude API 助理")) },
+      });
   }
   list.push(web);
   if (app.workspaceRoot) list.push(toggle(t("問整個專案"), t("從專案裡找相關的筆記一起送出，回答會標出處"), "folder-open", askProject, (v) => (askProject = v)));
@@ -1154,7 +1110,7 @@ function build(): HTMLElement {
     if (/^https?:\/\//.test(a.href)) openUrl(a.href);
   });
 
-  // 輸入框：上面是這次會送出的內容（小標籤），下緣是常用動作與送出。
+  // 輸入框：上面是這次會送出的內容（打開的選項），下緣是「＋」與送出。
   const box = document.createElement("div");
   box.className = "assistant-input";
   chips = document.createElement("div");
@@ -1173,36 +1129,9 @@ function build(): HTMLElement {
     }
   });
   acceptTextDrops(box);
+  // 下緣只有「＋」（附加、估算、開關、寫作動作）與送出；常用動作在對話區還是空的時候排在上方（app/assistant-composer.ts）。
   const bar = document.createElement("div");
   bar.className = "assistant-quick";
-  for (const a of ASSISTANT_ACTIONS.filter((x) => x.group === "main")) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = a.label();
-    b.title = a.needsSelection ? t("先選取文字") : a.prompt();
-    b.addEventListener("click", () => void send(a.prompt(), a));
-    bar.append(b);
-  }
-  // 其他動作放在「更多」選單（轉成簡報、流程圖、表格、待辦、續寫、換語氣），下面是設定裡的自訂動作。
-  const more = document.createElement("button");
-  more.type = "button";
-  more.id = "assistant-write";
-  more.className = "assistant-more";
-  more.append(t("更多"), icon("chevron-down"));
-  more.title = t("更多寫作動作");
-  const item = (a: AssistantAction) => ({
-    label: a.needsSelection ? t("{name}（選取的文字）", { name: a.label() }) : a.label(),
-    run: () => void send(a.prompt(), a),
-  });
-  setupMenu(more, null, () => {
-    const custom = customActions(app.settings.value.assistantActions);
-    return [
-      ...ASSISTANT_ACTIONS.filter((x) => x.group === "write").map(item),
-      "-",
-      ...(custom.length ? [{ heading: t("自訂動作") }, ...custom.map(item)] : []),
-      { label: custom.length ? t("管理自訂動作…") : t("新增自訂動作…"), icon: "settings", run: () => settingsDialog.open(t("Claude API 助理")) },
-    ];
-  });
   sendBtn = document.createElement("button");
   sendBtn.type = "button";
   sendBtn.className = "btn icon-only btn-primary assistant-send";
@@ -1217,37 +1146,25 @@ function build(): HTMLElement {
     void attachFiles([...(fileInput.files ?? [])]);
     fileInput.value = "";
   });
-  const attach = document.createElement("button");
-  attach.type = "button";
-  attach.className = "assistant-attach";
-  attach.title = t("附上圖片或 PDF（圖片可以直接貼上，檔案也可以拖進來）");
-  attach.setAttribute("aria-label", attach.title);
-  attach.append(icon("paperclip"));
-  attach.addEventListener("click", () => fileInput.click());
   input.addEventListener("paste", (e) => {
     const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/") || f.type === PDF_TYPE);
     if (!files.length) return;
     e.preventDefault();
     void attachFiles(files);
   });
-  // 估算：送出前先看這一題準確的 token 數與費用。
-  countBtn = document.createElement("button");
-  countBtn.type = "button";
-  countBtn.className = "assistant-attach assistant-count-btn";
-  countBtn.title = t("估算這一題的 token 數與費用（內容會送到 Anthropic 計算，不產生回答、不收費）");
-  countBtn.setAttribute("aria-label", t("估算 token 數與費用"));
-  countBtn.append(icon("calculator"));
-  countBtn.addEventListener("click", () => {
+  // 估算：送出前先看這一題準確的 token 數與費用（「＋」選單；估算中不能再按）。
+  const count = () => {
+    if (counting) return;
     if (!input.value.trim()) return void toast(t("先輸入問題，再估算"));
     void send(input.value, null, true);
-  });
+  };
   countEl = document.createElement("p");
   countEl.className = "assistant-count";
   countEl.setAttribute("role", "status");
   countEl.hidden = true;
   // 問題改了：剛才算的數字不準了，收起來。
   input.addEventListener("input", () => (countEl.hidden = true));
-  bar.append(more, attach, countBtn, fileInput, sendBtn);
+  bar.append(fileInput, sendBtn);
   box.append(chips, countEl, input, bar);
   box.addEventListener("click", (e) => {
     if (e.target === box) input.focus();
@@ -1274,23 +1191,22 @@ function build(): HTMLElement {
   foot.append(note, batchButton, usageEl);
 
   aside.append(head, notice, log, box, foot);
-  // 手機版面：輸入框只留「＋」與送出，其他收進「＋」選單（app/assistant-phone.ts）。
-  if (isMobileApp) {
-    initPhoneComposer({
-      log,
-      bar,
-      actions: () => ({
-        main: ASSISTANT_ACTIONS.filter((x) => x.group === "main"),
-        more: [...ASSISTANT_ACTIONS.filter((x) => x.group === "write"), ...customActions(app.settings.value.assistantActions)],
-      }),
-      run: (a) => void send(a.prompt(), a),
-      toggles: phoneToggles,
-      attach: () => fileInput.click(),
-      count: () => countBtn.click(),
-      manageActions: () => settingsDialog.open(t("Claude API 助理")),
-      usage: () => usageEl.textContent ?? "",
-    });
-  }
+  const parts: ComposerParts = {
+    log,
+    bar,
+    actions: () => ({
+      main: ASSISTANT_ACTIONS.filter((x) => x.group === "main"),
+      more: [...ASSISTANT_ACTIONS.filter((x) => x.group === "write"), ...customActions(app.settings.value.assistantActions)],
+    }),
+    run: (a) => void send(a.prompt(), a),
+    toggles: composerToggles,
+    attach: () => fileInput.click(),
+    count,
+    manageActions: () => settingsDialog.open(t("Claude API 助理")),
+  };
+  const { plus, more } = initComposer(parts);
+  // 手機版面：「＋」與「更多…」改成從下面拉起來的選單（app/assistant-phone.ts）。
+  if (isMobileApp) initPhoneSheet({ ...parts, usage: () => usageEl.textContent ?? "" }, plus, more);
   // 滑鼠移進來時更新選取的字數；內容沒變不重畫（重畫會讓剛好按下去的標籤按鈕失效）。
   aside.addEventListener("pointerenter", () => {
     if (chipsKey() !== shownChips) renderChips();

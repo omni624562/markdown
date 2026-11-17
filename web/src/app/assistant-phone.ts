@@ -1,49 +1,18 @@
 /**
- * 手機版面（`body.phone`）的助理輸入框：只留「目前的文件」標籤、輸入的地方、「＋」與送出。
+ * 手機版面（`body.phone`）的助理：「＋」與「更多…」的選單改成從下面拉起來（電腦版是一般的選單，見 app/assistant-composer.ts）。
  *
- * - 摘要、改寫、翻譯、審稿：還沒開始對話時，在對話區下方顯示成大按鈕（`.assistant-suggest`）。
- * - 「＋」從下面拉起選單：附加檔案、目前的文件／上網查／問整個專案／深入思考的開關、寫作動作、估算費用與本月用量。
- * - 輸入框上方只顯示打開的選項（例如「上網查 ✕」），沒打開的不佔位置（樣式在 styles.css 的「手機的助理」）。
+ * - 「＋」：附加檔案、目前的文件／上網查／問整個專案／深入思考的開關（名稱下面一行說明）、寫作動作、估算費用與本月用量。
+ * - 「寫作動作」「更多…」：全部的動作一列一列，最上面「←」回到「＋」選單。
  *
- * 電腦版、平板不顯示這些元件，輸入框維持原樣。
+ * 螢幕寬的時候（平板）照電腦版：按鈕照常打開一般的選單。
  */
-import type { AssistantAction } from "../assistant-text.ts";
+import { type ComposerParts, actionLabel } from "./assistant-composer.ts";
 import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 
-/** 「＋」選單裡的開關。 */
-export interface PhoneToggle {
-  label: string;
-  hint: string;
-  icon: string;
-  on: boolean;
-  set(on: boolean): void;
-  /** 現在不能打開（例如設定沒開）：按了執行這個（說明要去哪裡開）。 */
-  blocked?: () => void;
-}
+const isPhone = () => document.body.classList.contains("phone");
 
-export interface PhoneComposerParts {
-  log: HTMLElement;
-  bar: HTMLElement;
-  /** 主要動作（摘要、改寫…）與「更多」裡的動作（寫作、自訂）。 */
-  actions(): { main: AssistantAction[]; more: AssistantAction[] };
-  run(action: AssistantAction): void;
-  toggles(): PhoneToggle[];
-  attach(): void;
-  count(): void;
-  manageActions(): void;
-  usage(): string;
-}
-
-function button(className: string, ...children: (Node | string)[]): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = className;
-  b.append(...children);
-  return b;
-}
-
-export function initPhoneComposer(p: PhoneComposerParts): void {
+export function initPhoneSheet(p: ComposerParts & { usage(): string }, plus: HTMLButtonElement, more: HTMLButtonElement): void {
   const sheet = document.createElement("dialog");
   sheet.className = "phone-sheet assistant-sheet";
   sheet.addEventListener("click", (e) => {
@@ -51,20 +20,22 @@ export function initPhoneComposer(p: PhoneComposerParts): void {
   });
   document.body.append(sheet);
 
-  const actionLabel = (a: AssistantAction) => (a.needsSelection ? t("{name}（選取的文字）", { name: a.label() }) : a.label());
   const close = (then: () => void) => () => {
     sheet.close();
     then();
   };
-
-  const row = (iconName: string, label: string, hint: string | null, run: () => void) => {
+  const row = (iconName: string, label: string, hint: string | null | undefined, run: () => void) => {
     const text = document.createElement("span");
     text.append(label);
     if (hint) text.append(Object.assign(document.createElement("small"), { textContent: hint }));
-    const b = button("phone-row", icon(iconName), text);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "phone-row";
+    b.append(icon(iconName), text);
     b.addEventListener("click", run);
     return b;
   };
+  const grab = () => Object.assign(document.createElement("div"), { className: "phone-grab" });
 
   const renderMain = () => {
     const rows: HTMLElement[] = [row("paperclip", t("附加檔案或圖片"), t("圖片或 PDF"), close(p.attach))];
@@ -89,50 +60,38 @@ export function initPhoneComposer(p: PhoneComposerParts): void {
       rows.push(r);
     }
     rows.push(
-      row("pen-line", t("寫作動作"), t("摘要、改寫、翻譯、轉成表格…"), renderMore),
+      row("pen-line", t("寫作動作"), t("摘要、改寫、翻譯、轉成表格…"), () => renderMore(true)),
       row("calculator", t("估算這次的費用"), t("送出前算 token 數，不產生回答、不收費"), close(p.count)),
     );
     const usage = document.createElement("p");
     usage.className = "assistant-sheet-usage";
     usage.textContent = p.usage();
-    sheet.replaceChildren(Object.assign(document.createElement("div"), { className: "phone-grab" }), ...rows, usage);
+    sheet.replaceChildren(grab(), ...rows, usage);
   };
 
-  /** 「寫作動作」：全部的動作一列一列，最上面「←」回到「＋」選單。 */
-  const renderMore = () => {
-    const { main, more } = p.actions();
-    const back = row("arrow-left", t("寫作動作"), null, renderMain);
-    back.classList.add("assistant-sheet-back");
-    const rows = [...main, ...more].map((a) => row(a.group === "custom" ? "wand-sparkles" : "sparkles", actionLabel(a), null, close(() => p.run(a))));
+  /** 全部的寫作動作；`back`：從「＋」選單進來，最上面可以回去。 */
+  const renderMore = (back: boolean) => {
+    const { main, more: rest } = p.actions();
+    const head = row("arrow-left", t("寫作動作"), null, back ? renderMain : () => sheet.close());
+    head.classList.add("assistant-sheet-back");
+    const rows = [...main, ...rest].map((a) => row(a.group === "custom" ? "wand-sparkles" : "sparkles", actionLabel(a), null, close(() => p.run(a))));
     rows.push(row("settings", t("管理自訂動作…"), null, close(p.manageActions)));
-    sheet.replaceChildren(Object.assign(document.createElement("div"), { className: "phone-grab" }), back, ...rows);
+    sheet.replaceChildren(grab(), head, ...rows);
   };
 
-  const plus = button("assistant-plus", icon("plus"));
-  plus.title = t("附加檔案、上網查、深入思考…");
-  plus.setAttribute("aria-label", plus.title);
-  plus.addEventListener("click", () => {
-    renderMain();
-    sheet.showModal();
-  });
-  p.bar.prepend(plus);
-
-  // 還沒開始對話：常用動作排成大按鈕（對話區是空的才顯示，見 styles.css）。
-  const suggest = document.createElement("div");
-  suggest.className = "assistant-suggest";
-  const hint = Object.assign(document.createElement("p"), { textContent: t("問這份文件，或選一個：") });
-  const list = document.createElement("div");
-  for (const a of p.actions().main) {
-    const b = button("", a.label());
-    b.addEventListener("click", () => p.run(a));
-    list.append(b);
-  }
-  const more = button("", t("更多…"));
-  more.addEventListener("click", () => {
-    renderMore();
-    sheet.showModal();
-  });
-  list.append(more);
-  suggest.append(hint, list);
-  p.log.after(suggest);
+  // 手機版面時攔下按鈕原本的選單（取消點擊的預設動作，Popover 就不會打開），改成拉起來的選單。
+  const intercept = (button: HTMLButtonElement, render: () => void) =>
+    button.addEventListener(
+      "click",
+      (e) => {
+        if (!isPhone()) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        render();
+        sheet.showModal();
+      },
+      { capture: true },
+    );
+  intercept(plus, renderMain);
+  intercept(more, () => renderMore(false));
 }

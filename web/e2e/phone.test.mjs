@@ -175,9 +175,9 @@ test("手機：助理的輸入框只有標籤、「＋」與送出；常用動�
   await context.close();
 });
 
-test("電腦版的助理輸入框不變：沒有「＋」與對話區的大按鈕", async () => {
+test("電腦版的「＋」是一般的選單，不是從下面拉起來的", async () => {
   const { page: p, context, errors } = await open({ desktop: { assistant_key_status: true }, settings: { claudeApiEnabled: true } });
-  assert.equal(await p.locator(".assistant-plus, .assistant-suggest").count(), 0, "電腦版不建立手機的元件");
+  assert.equal(await p.locator(".assistant-sheet").count(), 0, "電腦版不建立手機的選單");
   assert.deepEqual(errors, []);
   await context.close();
 });

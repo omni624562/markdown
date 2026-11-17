@@ -7,6 +7,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { calls, open } from "./helpers.mjs";
 
+/** 「＋」選單的「估算這一題的費用」。 */
+const plusMenu = (page, name) => ({
+  click: async () => {
+    await page.locator("#assistant-plus").click();
+    await page.locator("#assistant-plus-popover").getByRole("menuitem", { name }).click();
+  },
+});
+
 const ROOT = "C:\\Users\\me\\Documents\\旅遊";
 const desktop = (extra) => ({
   startup_target: { kind: "folder", path: ROOT, name: "旅遊" },
@@ -30,8 +38,7 @@ const count = (page) => page.locator("#assistant-panel .assistant-count:not([hid
 test("按計算機估算：顯示準確的 token 數與輸入費用，不送出問題；問題改了就收起來；沒輸入時提示", async () => {
   const { page, context, errors } = await setup({ assistant_count: { tokens: 12345, usd: 0.0247 } });
   const input = page.locator("#assistant-panel textarea");
-  const button = page.locator("#assistant-panel .assistant-count-btn");
-  assert.match(await button.getAttribute("title"), /內容會送到 Anthropic 計算.*不收費/);
+  const button = plusMenu(page, "估算這一題的費用");
   // 沒輸入：提示，不問原生端。
   await button.click();
   await page.locator(".toast", { hasText: "先輸入問題" }).waitFor();
@@ -68,10 +75,12 @@ test("按計算機估算：顯示準確的 token 數與輸入費用，不送出�
 test("估算失敗：在同一個位置顯示原因，按鈕可以再按", async () => {
   const { page, context } = await setup({ assistant_count: { $error: "這個月已經用了 US$10.00，到達上限 US$10.00；可以在設定調高上限" } });
   await page.locator("#assistant-panel textarea").fill("這個行程順嗎？");
-  const button = page.locator("#assistant-panel .assistant-count-btn");
+  const button = plusMenu(page, "估算這一題的費用");
   await button.click();
   await page.waitForFunction(() => /到達上限/.test(document.querySelector("#assistant-panel .assistant-count").textContent));
   assert.equal(await count(page).evaluate((el) => el.classList.contains("error")), true);
-  assert.equal(await button.isDisabled(), false);
+  // 可以再估算一次。
+  await button.click();
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "assistant_count").length === 2);
   await context.close();
 });
