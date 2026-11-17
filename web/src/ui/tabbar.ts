@@ -61,9 +61,9 @@ export class TabBar {
   /** 分頁太多、放不下時出現的「所有分頁」按鈕與清單。 */
   #more: HTMLButtonElement;
   #moreMenu: HTMLDivElement;
-  /** 左右兩邊捲到看不見的分頁有幾個（「‹ 2」「3 ›」）：按一下只列出那幾個。 */
-  #hiddenLeft: HTMLButtonElement;
-  #hiddenRight: HTMLButtonElement;
+  /** 分頁放不下時兩端的「‹」「›」：按一下捲一個分頁，按住一直捲；捲到底的那一邊變灰。 */
+  #scrollLeft: HTMLButtonElement;
+  #scrollRight: HTMLButtonElement;
   #overflowFrame = 0;
   /** 上次捲進畫面的分頁（換了分頁才再捲）。 */
   #shownActive = "";
@@ -109,19 +109,38 @@ export class TabBar {
       else return;
       e.preventDefault();
     });
-    const hidden = (side: "left" | "right") => {
+    const arrow = (side: "left" | "right") => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = `btn tab-hidden tab-hidden-${side}`;
-      b.setAttribute("aria-haspopup", "menu");
+      b.className = `btn icon-only tab-scroll tab-scroll-${side}`;
+      const label = side === "left" ? t("往左捲動分頁") : t("往右捲動分頁");
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      b.append(icon(side === "left" ? "chevron-left" : "chevron-right"));
       b.hidden = true;
-      b.addEventListener("click", () => this.#openMore(this.#hiddenTabs(side), b));
+      // 按一下捲一個分頁；按住不放就一直捲（像瀏覽器的分頁列）。
+      let repeat = 0;
+      const stop = () => {
+        clearTimeout(repeat);
+        repeat = 0;
+      };
+      b.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        this.#scrollByTab(side);
+        const again = (delay: number) => (repeat = window.setTimeout(() => (this.#scrollByTab(side), again(120)), delay));
+        again(400);
+      });
+      for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, stop);
+      // 用鍵盤（Enter、空白鍵）按的也捲一個。
+      b.addEventListener("click", (e) => {
+        if (e.detail === 0) this.#scrollByTab(side);
+      });
       return b;
     };
-    this.#hiddenLeft = hidden("left");
-    this.#hiddenRight = hidden("right");
-    el.replaceChildren(this.#hiddenLeft, this.#list, this.#hiddenRight, this.#more, add);
-    // 分頁變多、視窗變窄時，判斷要不要顯示「所有分頁」按鈕、兩邊藏著幾個與兩側的淡出提示。
+    this.#scrollLeft = arrow("left");
+    this.#scrollRight = arrow("right");
+    el.replaceChildren(this.#scrollLeft, this.#list, this.#scrollRight, this.#more, add);
+    // 分頁變多、視窗變窄時，判斷要不要顯示「所有分頁」按鈕、兩端的箭頭與兩側的淡出提示。
     new ResizeObserver(() => this.#scheduleOverflow()).observe(this.#list);
     this.#list.addEventListener("scroll", () => this.#scheduleOverflow(), { passive: true });
     // 分頁很多時用滑鼠滾輪左右捲動（捲軸隱藏起來比較乾淨）。
@@ -364,32 +383,34 @@ export class TabBar {
     this.#more.hidden = !overflow;
     list.classList.toggle("more-left", overflow && list.scrollLeft > 1);
     list.classList.toggle("more-right", overflow && list.scrollLeft + list.clientWidth < list.scrollWidth - 1);
-    for (const side of ["left", "right"] as const) {
-      const button = side === "left" ? this.#hiddenLeft : this.#hiddenRight;
-      const n = overflow ? this.#hiddenTabs(side).length : 0;
-      button.hidden = n === 0;
-      if (!n) continue;
-      button.replaceChildren(...(side === "left" ? [icon("chevron-left"), String(n)] : [String(n), icon("chevron-right")]));
-      const label = side === "left" ? t("左邊還有 {n} 個分頁", { n }) : t("右邊還有 {n} 個分頁", { n });
-      button.title = label;
-      button.setAttribute("aria-label", label);
+    const atStart = list.scrollLeft <= 1;
+    const atEnd = list.scrollLeft + list.clientWidth >= list.scrollWidth - 1;
+    this.#scrollLeft.hidden = this.#scrollRight.hidden = !overflow;
+    this.#scrollLeft.disabled = atStart;
+    this.#scrollRight.disabled = atEnd;
+  }
+
+  /** 往左或往右捲一個分頁：把下一個（還沒完全看到的）分頁整個捲進畫面。 */
+  #scrollByTab(side: "left" | "right"): void {
+    const list = this.#list;
+    const box = list.getBoundingClientRect();
+    const tabs = [...list.querySelectorAll<HTMLElement>("[role=tab]")];
+    // 邊緣那個只被切掉一點點的分頁不算：捲到它的前一個，每按一下都看得到一個新的分頁。
+    if (side === "left") {
+      const cut = tabs.filter((tab) => tab.getBoundingClientRect().left < box.left - 1);
+      let prev = cut.pop();
+      if (prev && box.left - prev.getBoundingClientRect().left < prev.offsetWidth / 2) prev = cut.pop() ?? prev;
+      list.scrollLeft = prev ? list.scrollLeft + (prev.getBoundingClientRect().left - box.left) : 0;
+    } else {
+      const cut = tabs.filter((tab) => tab.getBoundingClientRect().right > box.right + 1);
+      let next = cut.shift();
+      if (next && next.getBoundingClientRect().right - box.right < next.offsetWidth / 2) next = cut.shift() ?? next;
+      list.scrollLeft = next ? list.scrollLeft + (next.getBoundingClientRect().right - box.right) : list.scrollWidth;
     }
+    this.#updateOverflow();
   }
 
-  /** 捲到左邊或右邊、大半看不見的分頁（依分頁列上的順序）。 */
-  #hiddenTabs(side: "left" | "right"): TabInfo[] {
-    const box = this.#list.getBoundingClientRect();
-    const ids = [...this.#list.querySelectorAll<HTMLElement>("[role=tab]")]
-      .filter((tab) => {
-        const r = tab.getBoundingClientRect();
-        const middle = r.left + r.width / 2;
-        return side === "left" ? middle < box.left : middle > box.right;
-      })
-      .map((tab) => tab.dataset.id);
-    return this.#tabs.filter((tab) => ids.includes(tab.id));
-  }
-
-  /** 列出分頁（目前的打勾、未存檔的加圓點），點一下切換過去，並把它捲進畫面。預設列出全部。 */
+  /** 列出所有分頁（目前的打勾、未存檔的加圓點），點一下切換過去，並把它捲進畫面。 */
   #openMore(list: TabInfo[] = this.#tabs, anchor: HTMLElement = this.#more): void {
     const menu = this.#moreMenu;
     menu.replaceChildren(
