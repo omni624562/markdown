@@ -147,3 +147,15 @@ test("一開始按 Ctrl+N：分頁和視窗標題都是「未命名」（不是�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("工作項目蓋著空白文件時開檔：點一次就看到檔案（沿用空白分頁也收起工作項目）", async () => {
+  const file = { path: "C:\\Users\\me\\產品\\AGENTS.md", name: "AGENTS.md", text: "# 給協作者的規則\n", encoding: "utf-8" };
+  const { page, context, errors } = await open({ desktop: { ...desktop, open_file: file } });
+  await openItem(page);
+  await page.keyboard.press("Control+O");
+  await page.waitForFunction(() => document.querySelector("#editor .cm-content")?.textContent.includes("給協作者的規則"));
+  await page.waitForSelector(".ado-hero h1", { state: "hidden" });
+  assert.ok(await page.locator("#editor .cm-content").isVisible(), "檔案在前景，不必再點一次");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
