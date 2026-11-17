@@ -1306,4 +1306,5 @@ export const ui: Record<string, Translation> = {
   "開機時自動啟動": "Start oMarker when I sign in",
   "登入 Windows 時自動開啟 oMarker，縮在右下角的系統匣，在背景檢查工作項目與 Wiki；也可以在工作管理員的「啟動應用程式」停用":
     "Opens oMarker in the notification area when you sign in to Windows, checking work items and Wiki in the background. You can also turn it off under Startup apps in Task Manager.",
+  "關閉設定": "Close settings",
 };

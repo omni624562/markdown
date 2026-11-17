@@ -1365,6 +1365,8 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   background: var(--surface-raised);
 }
 .settings h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
+.settings-close { flex: none; width: 34px; height: 34px; color: var(--fg); }
+.settings-close .icon { width: 20px; height: 20px; }
 .settings-layout { display: grid; flex: 1; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
 .settings-nav {
   display: flex;
