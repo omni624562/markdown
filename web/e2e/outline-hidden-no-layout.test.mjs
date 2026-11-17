@@ -27,7 +27,7 @@ test("大綱收著時：換文件不捲動大綱；打開大綱時才標示目�
       return orig.apply(this, args);
     };
   });
-  await page.keyboard.press("Control+N");
+  await page.keyboard.press("Control+Alt+N");
   await setText(page, doc("乙"));
   await page.keyboard.press("Control+End");
   await page.waitForTimeout(300);
