@@ -84,3 +84,36 @@ test("分頁很多：左邊顯示「‹ 幾個」，按一下只列出左邊藏�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("分頁很多：滑鼠滾輪捲得到最前面與最後面，重畫分頁列（例如打字）也不會被拉回目前的分頁", async () => {
+  const { page, context, errors } = await open();
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await page.locator(".cm-content").waitFor();
+  for (let i = 0; i < 14; i++) {
+    await page.locator(".cm-content").focus();
+    await page.keyboard.insertText(`# 會議紀錄 ${i + 1}`);
+    await page.keyboard.press("Control+Alt+N");
+  }
+  await page.waitForFunction(() => document.querySelectorAll("#tab-bar .tab").length >= 15);
+  const scroll = () => page.evaluate(() => {
+    const l = document.querySelector("#tab-bar .tabs");
+    return { left: l.scrollLeft, max: l.scrollWidth - l.clientWidth };
+  });
+  const box = await page.locator("#tab-bar .tabs").boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let i = 0; i < 20; i++) await page.mouse.wheel(0, -100);
+  await page.waitForFunction(() => document.querySelector("#tab-bar .tabs").scrollLeft === 0);
+  // 在目前的文件打字：分頁列重畫（未存檔的圓點），捲動位置不變。
+  await page.locator(".cm-content").focus();
+  await page.keyboard.insertText("內容");
+  await page.waitForTimeout(300);
+  assert.equal((await scroll()).left, 0, "還在最前面");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let i = 0; i < 30; i++) await page.mouse.wheel(0, 100);
+  await page.waitForFunction(() => {
+    const l = document.querySelector("#tab-bar .tabs");
+    return l.scrollLeft >= l.scrollWidth - l.clientWidth - 1;
+  });
+  assert.deepEqual(errors, []);
+  await context.close();
+});

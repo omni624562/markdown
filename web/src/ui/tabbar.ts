@@ -60,6 +60,8 @@ export class TabBar {
   #hiddenLeft: HTMLButtonElement;
   #hiddenRight: HTMLButtonElement;
   #overflowFrame = 0;
+  /** 上次捲進畫面的分頁（換了分頁才再捲）。 */
+  #shownActive = "";
   #tabs: TabInfo[] = [];
   #activeId = "";
 
@@ -122,7 +124,8 @@ export class TabBar {
         if (e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
         if (this.#list.scrollWidth <= this.#list.clientWidth) return;
         e.preventDefault();
-        this.#list.scrollLeft += e.deltaY;
+        // 以「行」為單位的滾輪（有些滑鼠、設定）換算成像素。
+        this.#list.scrollLeft += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
       },
       { passive: false },
     );
@@ -253,9 +256,16 @@ export class TabBar {
     if (pair) this.#pair(els, pair);
     // 重畫時整個換掉分頁元素：原本焦點在分頁上（例如用方向鍵切換）就放回同一個分頁，不要掉到 body。
     const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("#tab-bar [role=tab]")?.dataset.id;
+    // 換了分頁才把它捲進畫面。其他時候重畫（存檔狀態、背景更新…）維持使用者捲到的位置：
+    // 不然用滑鼠滾輪捲到最前面或最後面時，一重畫又被拉回目前的分頁，怎麼捲都到不了。
+    // 換掉分頁元素的那一下內容是空的，捲動位置會歸零：先記下來。
+    const scroll = this.#list.scrollLeft;
     this.#list.replaceChildren(...els);
     if (focused) this.#focusTab(focused);
-    this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (activeId !== this.#shownActive) {
+      this.#shownActive = activeId;
+      this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } else this.#list.scrollLeft = scroll;
     this.#updateOverflow();
   }
 
