@@ -10,7 +10,17 @@ export type MenuEntry =
   | string
   | "-"
   /** 一般動作（沒給 `checked`）或可勾選的項目；`when` 回傳 false 時不列出。 */
-  | { label: string; icon?: string; checked?: () => boolean; when?: () => boolean; run(): void; /** 危險的動作（刪除）：紅字。 */ danger?: boolean }
+  | {
+      label: string;
+      icon?: string;
+      checked?: () => boolean;
+      when?: () => boolean;
+      run(): void;
+      /** 危險的動作（刪除）：紅字。 */
+      danger?: boolean;
+      /** 開關：按了不關掉選單，打勾跟著換（可以連續切換好幾個）。 */
+      keepOpen?: boolean;
+    }
   /** 子選單：滑鼠移上去、點一下或按 → 展開。 */
   | { label: string; icon?: string; items: MenuEntry[] }
   /** 一區的小標題（不能點）。 */
@@ -302,10 +312,16 @@ export function setupMenu(button: HTMLButtonElement, commands: Commands | null, 
         if (entry.danger) item.classList.add("menu-danger");
         if (entry.icon) item.append(leadIcon(entry.icon));
         item.append(Object.assign(document.createElement("span"), { textContent: entry.label }));
-        if (checked) item.append(icon("check"));
+        const check = icon("check");
+        if (checked) item.append(check);
         item.addEventListener("click", () => {
-          root.hidePopover();
+          if (!entry.keepOpen) root.hidePopover();
           entry.run();
+          if (!entry.keepOpen) return;
+          const now = !!entry.checked?.();
+          item.setAttribute("aria-checked", String(now));
+          if (now) item.append(check);
+          else check.remove();
         });
       }
       // 滑鼠移到其他項目時收起已展開的子選單。

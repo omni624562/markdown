@@ -115,6 +115,8 @@ interface AttachedPdf extends AssistantImage {
   pages: number;
 }
 let pdfs: AttachedPdf[] = [];
+/** 剛附上、還沒送出過的 PDF 數（只附檔案、沒打字也能送出；之前送過的 PDF 會一直帶著，不算）。 */
+let newPdfs = 0;
 const PDF_TYPE = "application/pdf";
 const MAX_PDFS = 2;
 /** 所有 PDF 加起來的大小上限（Claude API 一個要求最多 32 MB，Base64 之後會變大三分之一）。 */
@@ -278,6 +280,7 @@ function renderChips(): void {
     x.append(icon("x"));
     x.addEventListener("click", () => {
       pdfs.splice(i, 1);
+      newPdfs = Math.min(newPdfs, pdfs.length);
       renderChips();
     });
     const size = Object.assign(document.createElement("small"), { textContent: t("約 {n} 頁", { n: pdf.pages }) });
@@ -630,6 +633,8 @@ async function send(question: string, action: AssistantAction | null = null, cou
   if (hasKey === null) await refreshStatus();
   if (pending || blocked()) return;
   question = question.trim();
+  // 只附了圖片或 PDF、沒打字：照樣送出，請 Claude 看附上的檔案。
+  if (!question && !action && (attached.length || newPdfs)) question = t("請看附上的檔案。");
   if (!question) return;
   const sel = selection();
   if (action?.needsSelection && !sel.text.trim()) {
@@ -698,6 +703,7 @@ async function send(question: string, action: AssistantAction | null = null, cou
     return;
   }
   countEl.hidden = true;
+  newPdfs = 0;
   const shown = action ? action.label() : question;
   const userBubble = bubble("user", shown);
   for (const pdf of pdfs) {
@@ -859,6 +865,7 @@ async function attachPdf(f: File): Promise<boolean> {
   }
   const first = pdfs.length === 0;
   pdfs.push({ mediaType: PDF_TYPE, data: base64(bytes), name, bytes: f.size, pages: pdfPages(bytes) });
+  newPdfs++;
   // 第一次附 PDF 時說明一次：會一直帶著、依頁數計費。
   if (first) toast(t("PDF 會跟著之後的問題一起送出，依頁數計費（每頁大約 2,500 token）；不需要時按 × 拿掉。"), { duration: 8000 });
   return true;
@@ -941,6 +948,7 @@ function syncChat(): void {
   transcript = [];
   last = null;
   pdfs = [];
+  newPdfs = 0;
   log.replaceChildren();
   const saved = root ? loadChat(root) : null;
   if (saved) {
@@ -971,6 +979,7 @@ function newChat(): void {
   persistChat();
   last = null;
   pdfs = [];
+  newPdfs = 0;
   renderChips();
   saveBtn.disabled = true;
   log.replaceChildren();
@@ -1025,7 +1034,7 @@ function composerToggles(): ComposerToggle[] {
     label,
     icon: iconName,
     on,
-    set: (v) => (set(v), renderChips(), input.focus()),
+    set: (v) => (set(v), renderChips()),
   });
   const list = [toggle(t("目前的文件"), "file-text", includeDoc, (v) => (includeDoc = v))];
   const web = toggle(t("上網查"), "globe", webSearch, (v) => (webSearch = v));

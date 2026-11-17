@@ -1165,6 +1165,7 @@ export const ui: Record<string, Translation> = {
   "整理成表格": "Make a Table",
   "更多寫作動作": "More writing actions",
   // app/assistant-composer.ts
+  "請看附上的檔案。": "Please look at the attached files.",
   "附加檔案、上網查、深入思考、寫作動作…": "Attach files, web search, deep thinking, writing actions…",
   "附加圖片或 PDF…": "Attach Images or PDFs…",
   "估算這一題的費用": "Estimate the Cost",
