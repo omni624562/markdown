@@ -8,6 +8,13 @@ import { desktop, native } from "./desktop.ts";
 import { cleanFontName } from "./fonts.ts";
 import { t } from "./i18n.ts";
 import * as storage from "./storage.ts";
+
+/** 背景檢查的間隔（分鐘）。最短 10 分鐘：很多人一起用時，伺服器的負擔才不會太大。 */
+export const BACKGROUND_CHECKS = ["10", "15", "30", "60"] as const;
+export type BackgroundCheck = (typeof BACKGROUND_CHECKS)[number];
+/** 檢查 oMarker 新版本的間隔（小時）：新版本不急，比工作項目久得多。 */
+export const UPDATE_CHECKS = ["12", "24", "168"] as const;
+export type UpdateCheck = (typeof UPDATE_CHECKS)[number];
 import { cleanFolder } from "./daily-notes.ts";
 import { TEMPLATE_LIMITS, type Template } from "./templates.ts";
 import { sanitizeKindColors } from "./work-item-colors.ts";
@@ -63,8 +70,16 @@ export interface Settings {
   blockRemoteImages: boolean;
   /** 桌面版：已經存過的檔案，停止打字一下子後自動存回磁碟。 */
   autoSave: boolean;
-  /** 新指派給我的工作項目：oMarker 在背景時跳出系統通知。 */
+  /** 新指派給我、或我的工作項目有更新：oMarker 在背景時跳出系統通知。 */
   adoNotify: boolean;
+  /** 桌面版：按關閉時縮到系統匣，繼續在背景檢查工作項目與新版本（要結束從系統匣的選單）。預設開啟。 */
+  closeToTray: boolean;
+  /** 桌面版：登入 Windows 時自動啟動 oMarker（縮在系統匣，在背景檢查）。預設關閉。 */
+  launchAtLogin: boolean;
+  /** 背景檢查工作項目與開著的 Wiki 頁面的間隔（分鐘），最短 10 分鐘。 */
+  backgroundCheck: BackgroundCheck;
+  /** 檢查 oMarker 新版本的間隔（小時）：每 12 小時、每天（預設）、每週。 */
+  updateCheck: UpdateCheck;
   /** 工作項目類型的自訂顏色（類型名稱 → `#rrggbb`）；沒列到的用預設顏色（見 work-item-colors.ts）。 */
   workItemColors: Record<string, string>;
   /** 設定 COMET 時先選的 Azure DevOps 專案（空字串是不指定：用上次選的）。 */
@@ -194,6 +209,10 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   autoSymbols: true,
   autoSave: true,
   adoNotify: true,
+  closeToTray: true,
+  launchAtLogin: false,
+  backgroundCheck: "10",
+  updateCheck: "24",
   workItemColors: {},
   adoDefaultProject: "",
   adoDefaultTeam: "",
@@ -324,6 +343,18 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("autoSymbols");
   bool("autoSave");
   bool("adoNotify");
+  bool("closeToTray");
+  bool("launchAtLogin");
+  if ("backgroundCheck" in input) {
+    const v = String(input.backgroundCheck);
+    if ((BACKGROUND_CHECKS as readonly string[]).includes(v)) out.backgroundCheck = v as BackgroundCheck;
+    else problems++;
+  }
+  if ("updateCheck" in input) {
+    const v = String(input.updateCheck);
+    if ((UPDATE_CHECKS as readonly string[]).includes(v)) out.updateCheck = v as UpdateCheck;
+    else problems++;
+  }
   bool("termCheck");
   bool("spellCheck");
   bool("imageCompress");

@@ -46,7 +46,10 @@ impl Feature {
             || command == "create_workflow"
         {
             Some(Feature::Git)
-        } else if command.starts_with("ado_") || command == "notify_work_items" {
+        } else if command.starts_with("ado_")
+            || command == "notify_work_items"
+            || command == "notify_wiki_pages"
+        {
             Some(Feature::Ado)
         } else if command.starts_with("dav_") || command.starts_with("ssh_") {
             Some(Feature::Remote)
@@ -148,6 +151,8 @@ mod tests {
     /// 新增原生指令時，要歸到某一項功能（`Feature::of`），或明確加進這裡。
     const ALWAYS: &[&str] = &[
         "startup_target",
+        "notify_app_update",
+        "set_launch_at_login",
         "probe_path",
         "open_external",
         "open_with_default",

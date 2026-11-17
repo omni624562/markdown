@@ -41,6 +41,41 @@ export function arrangeTabs(docs: readonly { id: string; pinned?: boolean }[], i
 }
 
 /**
+ * 用拖曳改分頁的順序：把 `drag` 放到 `target` 的前面（`before`）或後面。
+ * 回傳文件的新順序（id）與項目分頁的新順序和各自接在哪個文件後面；不能這樣放時回傳 null。
+ * 固定的分頁和一般的分頁分開排：拖到另一區的位置不算（固定或取消固定請用右鍵選單）。
+ */
+export function reorderTabs(
+  docs: readonly { id: string; pinned?: boolean }[],
+  items: readonly ItemPlacing[],
+  drag: string,
+  target: string,
+  before: boolean,
+): { docs: string[]; items: { id: string; after: string | null }[] } | null {
+  if (drag === target) return null;
+  const pinned = (id: string) => !!(docs.find((d) => d.id === id)?.pinned ?? items.find((i) => i.id === id)?.pinned);
+  if (pinned(drag) !== pinned(target)) return null;
+  const order = arrangeTabs(docs, items).filter((id) => id !== drag);
+  const at = order.indexOf(target);
+  if (at < 0) return null;
+  order.splice(before ? at : at + 1, 0, drag);
+  const docIds = new Set(docs.map((d) => d.id));
+  // 固定的文件一定排在固定的項目前面：固定區裡文件與項目的相對位置不變，只換同一種之間的順序。
+  const newDocs = order.filter((id) => docIds.has(id));
+  let anchor: string | null = null;
+  const newItems: { id: string; after: string | null }[] = [];
+  for (const id of order) {
+    if (docIds.has(id)) {
+      if (!pinned(id)) anchor = id;
+      continue;
+    }
+    const item = items.find((i) => i.id === id)!;
+    newItems.push({ id, after: item.pinned ? item.after : anchor });
+  }
+  return { docs: newDocs, items: newItems };
+}
+
+/**
  * 新的項目分頁放在目前分頁的右邊：回傳接在哪個文件後面，與插在項目清單的哪個位置。
  * `current` 是目前的分頁（文件或項目的 id）。
  */

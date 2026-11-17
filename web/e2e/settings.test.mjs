@@ -173,7 +173,7 @@ test("設定（桌面版）：在設定連上 Azure DevOps 後，才出現工作
   await page.click("#setting-ado-connect");
   await section.locator(".settings-group-title", { hasText: "工作項目" }).waitFor();
   const labels = await visibleLabels(page);
-  for (const label of ["帳號", "新指派給我時通知", "工作項目類型的顏色"]) assert.ok(labels.includes(label), labels.join("、"));
+  for (const label of ["帳號", "新指派或有更新時通知", "工作項目類型的顏色"]) assert.ok(labels.includes(label), labels.join("、"));
   assert.ok(!labels.includes("伺服器網址"));
   // 搜尋再清掉：依狀態藏起來的網址與權杖欄位不會跑出來。
   await page.fill("dialog[open] .settings-search", "權杖");
@@ -240,6 +240,18 @@ test("設定（手機寬度）：佔滿整個畫面、開關留在右邊不被�
   await last.click();
   const tab = await last.boundingBox();
   assert.ok(tab.x >= 0 && tab.x + tab.width <= 412 + 1, JSON.stringify(tab));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("設定改了就套用：右上角只有關閉（✕），沒有「完成」", async () => {
+  const { page, context, errors } = await open();
+  await runCommand(page, "設定");
+  const dialog = page.locator("dialog[open].settings");
+  await dialog.waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "完成" }).count(), 0);
+  await dialog.getByRole("button", { name: "關閉設定" }).click();
+  await dialog.waitFor({ state: "detached" });
   assert.deepEqual(errors, []);
   await context.close();
 });

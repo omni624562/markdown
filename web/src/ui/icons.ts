@@ -385,12 +385,19 @@ const ICONS: Record<string, IconNode> = {
   x: X,
 };
 
+/** 做好的圖示：之後直接複製（大資料夾一次要上千個圖示，每次重新組 SVG 很慢）。 */
+const built = new Map<string, SVGElement>();
+
 export function icon(name: string): SVGElement {
-  const node = ICONS[name];
-  if (!node) throw new Error(`未知的圖示：${name}`); // i18n-ignore：開發用的錯誤
-  const svg = createElement(node, { width: 18, height: 18, "aria-hidden": "true", "stroke-width": 1.75 });
-  svg.classList.add("icon");
-  return svg;
+  let svg = built.get(name);
+  if (!svg) {
+    const node = ICONS[name];
+    if (!node) throw new Error(`未知的圖示：${name}`); // i18n-ignore：開發用的錯誤
+    svg = createElement(node, { width: 18, height: 18, "aria-hidden": "true", "stroke-width": 1.75 });
+    svg.classList.add("icon");
+    built.set(name, svg);
+  }
+  return svg.cloneNode(true) as SVGElement;
 }
 
 /** 把 HTML 中的 `<i data-icon="名稱"></i>` 換成 SVG 圖示。 */

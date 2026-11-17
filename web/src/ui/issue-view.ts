@@ -41,6 +41,10 @@ export interface IssueSource {
    * 沒變就直接顯示記住的內容，不必整份重讀、重畫。沒有這個的來源每次都重讀。
    */
   unchanged?(): Promise<boolean>;
+  /**
+   * 背景檢查用：伺服器上的版本和上次讀到的不同時回傳新的版本（同一個版本只通知一次），一樣或還沒讀過時回傳 null。
+   */
+  newerVersion?(): Promise<string | null>;
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
   /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
@@ -82,8 +86,15 @@ export interface IssueFact {
 export interface IssueViewHooks {
   /** 畫面調整（`decorate`）出錯：內容照常顯示，錯誤已經記進錯誤紀錄；這裡負責提示。 */
   decorateFailed?(message: string): void;
-  /** 把 Markdown 顯示在 `into`（預覽同一套流程：移除原始 HTML、程式碼上色、圖片處理）。 */
-  render(markdown: string, into: HTMLElement): void;
+  /**
+   * 把 Markdown 顯示在 `into`（預覽同一套流程：移除原始 HTML、程式碼上色、圖片處理）。
+   * 回傳的東西（例如大綱的標題）跟著畫好的畫面一起留著，切換回來直接換上畫面時交給 `restored`。
+   */
+  render(markdown: string, into: HTMLElement): unknown;
+  /** 切換分頁回來時直接換上之前畫好的畫面（沒有重畫）：`data` 是當時 `render` 回傳的東西。 */
+  restored?(into: HTMLElement, data: unknown): void;
+  /** 畫面整個換掉了（換上留著的畫面，或換到別的分頁）：畫的那一套要忘掉之前的畫面，下次整個重畫。 */
+  detached?(): void;
   /** 內容裡的網址（連到工作項目、Wiki 頁面的可以在 oMarker 裡開）。 */
   open(url: string): void;
   /** 「在瀏覽器開啟」：一定用瀏覽器開（`open` 會把這個項目自己的網址又開在 oMarker 裡）。 */
@@ -174,6 +185,8 @@ export interface IssueViewState {
 const HISTORY_LIMIT = 50;
 /** 記住最近看過幾份內容（上一頁、下一頁、重新開啟時先顯示，背景再更新）。 */
 const CACHE_LIMIT = 30;
+/** 留著畫好畫面的分頁數（畫面佔記憶體，比內容的快取少）。 */
+const DOM_LIMIT = 12;
 
 export class IssueView {
   #workspace: HTMLElement;
@@ -198,6 +211,12 @@ export class IssueView {
   #failed = false;
   /** 看過的內容（key → Markdown），最近看的放最後面。 */
   #cache = new Map<string, string>();
+  /**
+   * 最近幾個分頁畫好的畫面（內容、標頭的類型標籤、`render` 回傳的東西）：切換回來時直接換上，
+   * 不用重畫 Markdown、流程圖與圖片（分頁多、內容長時切換才不會卡）。內容有變才重畫。
+   */
+  #dom = new Map<string, { md: string; nodes: Node[]; meta: Node[]; data: unknown }>();
+  #rendered: unknown = undefined;
   /**
    * 這次執行裡讀到過內容的來源：切換分頁回來時先問 `unchanged`（工作項目一次要讀好幾個請求，
    * 分頁多、來回切換時伺服器慢就會卡），沒變就不重讀。按「重新整理」照樣重讀。
@@ -365,16 +384,9 @@ export class IssueView {
 
     this.#scroll = document.createElement("div");
     this.#scroll.className = "issue-scroll";
-    let frame = 0;
-    this.#scroll.addEventListener(
-      "scroll",
-      () => {
-        if (!frame) frame = requestAnimationFrame(() => ((frame = 0), this.#updateHeroHead()));
-      },
-      { passive: true },
-    );
+    this.#scroll.addEventListener("scroll", () => this.#scheduleHeroHead(), { passive: true });
     // 視窗或側邊欄的寬度改變時，標頭的類型標籤重新對齊標題。
-    new ResizeObserver(() => this.#updateHeroHead()).observe(this.#scroll);
+    new ResizeObserver(() => this.#scheduleHeroHead()).observe(this.#scroll);
     this.#body = document.createElement("article");
     this.#body.className = "markdown-body issue-body";
     this.#stale = document.createElement("p");
@@ -506,6 +518,11 @@ export class IssueView {
     return inside;
   }
 
+  /** 顯示中的項目（沒有開著時是 null）。 */
+  get source(): IssueSource | null {
+    return this.#source;
+  }
+
   /** 目前分頁的狀態（切換到別的分頁前存下）；沒有開著時回傳 null。 */
   snapshot(): IssueViewState | null {
     if (!this.#source) return null;
@@ -600,6 +617,8 @@ export class IssueView {
   }
 
   async #open(source: IssueSource): Promise<void> {
+    // 換到別的項目：把這一個畫好的畫面留起來，等一下切回來直接換上。
+    if (this.#source && this.#source.key !== source.key) this.#keepDom();
     this.#source = source;
     this.#h.opened(source);
     this.#h.facts?.([]);
@@ -607,7 +626,10 @@ export class IssueView {
     this.#pane.dataset.source = source.origin.kind;
     this.#browseBtn.hidden = !source.webUrl;
     this.#pane.dataset.sourceName = source.origin.text;
+    // 換內容時標頭的標題直接藏起來，不要淡出：淡出的那一下已經換成新分頁的標題，看起來像閃了一下。
+    this.#pane.classList.add("issue-switching");
     this.#pane.classList.remove("issue-hero", "issue-page-hero", "issue-scrolled", "issue-title-away");
+    requestAnimationFrame(() => requestAnimationFrame(() => this.#pane.classList.remove("issue-switching")));
     this.#label.replaceChildren(...this.#crumbs(source));
     // 來源只用一個圖示標示（狀態列和上方的色條也標了來源與「唯讀」），位置一列放完。
     const origin = document.createElement("span");
@@ -642,8 +664,10 @@ export class IssueView {
     // 這次執行還沒讀過：有離線副本就先顯示副本（不用等伺服器），讀到再換上新的。
     const copy = cached === undefined && quiet ? await this.#h.offline?.load(source).catch(() => null) : null;
     if (seq !== this.#seq) return;
+    let restored = false;
     if (cached !== undefined) {
-      this.#display(cached);
+      restored = reuse && this.#restoreDom(cached);
+      if (!restored) this.#display(cached);
       // 同一個來源讀過（內容與畫面調整要用的資料都還在），伺服器上又沒變：不用再讀、不用重畫。
       if (reuse && source.unchanged && this.#loaded.has(source)) {
         const same = await source.unchanged().catch(() => false);
@@ -673,7 +697,8 @@ export class IssueView {
       if (copy) this.#stale.hidden = true;
       // 先顯示的是快取或副本時，內容一樣也要重畫：畫面調整（留言工具等）要靠這次讀到的資料。
       const early = cached !== undefined || !!copy;
-      if (md !== this.#markdown || loading || (early && source.decorate)) this.#display(md, early);
+      // 換上的是留著的畫面：畫面調整用的資料和當時一樣，內容沒變就不用重畫。
+      if (md !== this.#markdown || loading || (early && !restored && source.decorate)) this.#display(md, early);
       // 內容沒變也要更新摘要（例如「更新於幾分鐘前」）。
       else this.#h.facts?.(source.facts?.() ?? []);
       this.#h.offline?.save(source, md);
@@ -741,10 +766,45 @@ export class IssueView {
   }
 
   /** 顯示內容；`keepScroll`：背景更新時留在原本的位置，否則回到記住的位置（或最上面）。 */
+  #keepDom(): void {
+    const key = this.#source?.key;
+    if (!key || !this.#markdown || !this.#body.firstChild) return;
+    this.#dom.delete(key);
+    this.#dom.set(key, { md: this.#markdown, nodes: [...this.#body.childNodes], meta: [...this.#meta.childNodes], data: this.#rendered });
+    if (this.#dom.size > DOM_LIMIT) this.#dom.delete(this.#dom.keys().next().value!);
+    this.#body.replaceChildren();
+    this.#meta.replaceChildren();
+    this.#markdown = "";
+    this.#h.detached?.();
+  }
+
+  /** 換上留著的畫面（內容和那時一樣才換）；換上了回傳 true。 */
+  #restoreDom(md: string): boolean {
+    const key = this.#source?.key;
+    const kept = key ? this.#dom.get(key) : undefined;
+    if (!kept || kept.md !== md) return false;
+    this.#dom.delete(key!);
+    this.#h.detached?.();
+    this.#markdown = md;
+    this.#rendered = kept.data;
+    this.#body.replaceChildren(...kept.nodes);
+    this.#meta.replaceChildren(...kept.meta);
+    this.#h.restored?.(this.#body, kept.data);
+    const page = !this.#meta.firstChild && !!this.#body.querySelector(":scope > h1.page-hero");
+    this.#pane.classList.toggle("issue-hero", !!this.#meta.firstChild || page);
+    this.#pane.classList.toggle("issue-page-hero", page);
+    this.#h.facts?.(this.#source?.facts?.() ?? []);
+    this.#scroll.scrollTop = this.#restoreScroll ?? 0;
+    this.#restoreScroll = null;
+    this.#scheduleHeroHead();
+    if (!this.#find.hidden) this.#search();
+    return true;
+  }
+
   #display(md: string, keepScroll = false): void {
     const top = this.#scroll.scrollTop;
     this.#markdown = md;
-    this.#h.render(md, this.#body);
+    this.#rendered = this.#h.render(md, this.#body);
     this.#decorate();
     this.#h.facts?.(this.#source?.facts?.() ?? []);
     this.#scroll.scrollTop = keepScroll ? top : (this.#restoreScroll ?? 0);
@@ -759,8 +819,10 @@ export class IssueView {
 
   /** 用已經讀到的內容重畫（主題或設定改變時，不用重新向伺服器讀取）。 */
   rerender(): void {
+    // 主題、設定改了：留著的畫面都不能用了。
+    this.#dom.clear();
     if (this.isOpen && this.#markdown) {
-      this.#h.render(this.#markdown, this.#body);
+      this.#rendered = this.#h.render(this.#markdown, this.#body);
       this.#decorate();
     }
   }
@@ -781,13 +843,22 @@ export class IssueView {
     const page = !kind && !!this.#body.querySelector(":scope > h1.page-hero");
     this.#pane.classList.toggle("issue-hero", !!kind || page);
     this.#pane.classList.toggle("issue-page-hero", page);
-    this.#updateHeroHead();
+    this.#scheduleHeroHead();
   }
 
   /**
    * 標頭的類型標籤往右推到和內容的標題對齊（內容置中、寬度有上限）；
    * 捲動時：內容捲到標頭下面就畫出分隔線，看不到標題時標頭顯示標題。
    */
+  #heroFrame = 0;
+  /**
+   * 下一個畫面再量位置、調整標頭：剛換上內容就量會逼瀏覽器把整份長內容排版一次，
+   * 接著其他改動又讓它重排一次（長的工作項目、Wiki 打開時多花好幾百毫秒）。同一個畫面裡只量一次。
+   */
+  #scheduleHeroHead(): void {
+    if (!this.#heroFrame) this.#heroFrame = requestAnimationFrame(() => ((this.#heroFrame = 0), this.#updateHeroHead()));
+  }
+
   #updateHeroHead(): void {
     const hero = this.#pane.classList.contains("issue-hero");
     const h1 = hero ? this.#body.querySelector<HTMLElement>(".ado-hero h1, :scope > h1.page-hero") : null;
@@ -798,7 +869,10 @@ export class IssueView {
       heading.style.paddingLeft = indent ? `${indent}px` : "";
     } else heading.style.paddingLeft = "";
     this.#pane.classList.toggle("issue-scrolled", hero && this.#scroll.scrollTop > 2);
-    const away = !!h1 && h1.getBoundingClientRect().bottom <= this.#scroll.getBoundingClientRect().top + 2;
+    // 還沒排版（切換分頁時窗格先藏著、內容剛換上）量到的位置都是 0，會被當成「捲過標題」而閃一下：
+    // 標題要真的有大小、內容也真的捲動過才算。
+    const box = h1?.getBoundingClientRect();
+    const away = !!box && box.height > 0 && this.#scroll.scrollTop > 0 && box.bottom <= this.#scroll.getBoundingClientRect().top + 2;
     this.#pane.classList.toggle("issue-title-away", away);
   }
 

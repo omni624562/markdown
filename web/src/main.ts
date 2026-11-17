@@ -2034,6 +2034,7 @@ function activate(doc: Doc): void {
   if (autoSavePending()) void autoSaveNow();
   if (review.active) review.finish();
   if (docs.includes(active)) stash();
+  const from = active.id;
   active = doc;
   paneDocs[focusedPane] = doc;
   ({ kind: cur.kind, name: cur.fileName, handle: cur.fileHandle, baseline: cur.baseline, fileBacked: cur.fileBacked } = doc);
@@ -2051,7 +2052,7 @@ function activate(doc: Doc): void {
       });
   }
   editorTopLine = 1;
-  preview.clear();
+  preview.switchDoc(from, doc.id);
   previewScroller.scrollTop = 0;
   buildFormatBar();
   persistSession();
@@ -2225,7 +2226,9 @@ function openDocument(
   // 沒動過的範例文件也直接換掉，免得每次開檔都多一個「未命名」分頁。
   // 編輯中的 Wiki 頁面（空白的也一樣）不沿用：沿用了會帶著 Wiki 的資訊，Ctrl+S 把檔案的內容存回 Wiki。
   const untouched = !cur.fileBacked && !active.wiki && (editor.text === "" || (editor.text === sample && !active.dirty));
+  // 沿用的空白分頁也一樣收起蓋在上面的工作項目、Git 歷史（addTab 換分頁時本來就會），不然要點兩次才看得到。
   if (!untouched) addTab(makeDoc({ name, kind: docKind ?? kindFromFileName(name) }));
+  else activate(active);
   if (review.active) review.finish();
   cur.fileHandle = handle;
   cur.kind = docKind ?? kindFromFileName(name);

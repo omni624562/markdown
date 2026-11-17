@@ -1340,6 +1340,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 搬移頁面或調整順序（`newPath` 和 `path` 一樣時只調整順序；`newOrder` 從 0 算起，是搬完之後的位置）。 */
     adoWikiMove: (w: AdoWiki, path: string, newPath: string, newOrder?: number) =>
       core.invoke<void>("ado_wiki_move", { projectId: w.projectId, wikiId: w.id, path, newPath, newOrder: newOrder ?? null }),
+    /** Wiki 頁面目前的版本（ETag），不讀內容（判斷頁面有沒有被改過）。 */
+    adoWikiPageEtag: (w: AdoWiki, path: string) =>
+      core.invoke<string | null>("ado_wiki_page_etag", { projectId: w.projectId, wikiId: w.id, path, version: w.code ? w.version : null }),
     /** Wiki 頁面目前的版本與最後修改的人（不讀內容）。 */
     adoWikiPageInfo: (w: { projectId: string; wikiId: string; repositoryId?: string; path: string }) =>
       core.invoke<WikiPageInfo>("ado_wiki_page_info", {
@@ -1369,7 +1372,17 @@ function bridge(core: TauriCore, event: TauriEvent) {
     updateInstall: () => core.invoke<void>("update_install"),
     updateRestart: () => core.invoke<void>("update_restart"),
     /** 「新指派給你」的系統通知（Windows）。 */
-    notifyWorkItems: (items: { id: number; title: string; kind: string }[]) => core.invoke<void>("notify_work_items", { items }),
+    notifyWorkItems: (items: { id: number; title: string; kind: string; updated?: boolean }[]) => core.invoke<void>("notify_work_items", { items }),
+    /** 有新版本時的系統通知；點一下送出 `notification-update`。 */
+    notifyAppUpdate: (version: string) => core.invoke<void>("notify_app_update", { version }),
+    onNotificationUpdate: (fn: () => void) => event.listen("notification-update", () => fn()),
+    /** 登入 Windows 時自動啟動 oMarker（寫在目前使用者的「啟動」清單）。 */
+    setLaunchAtLogin: (on: boolean) => core.invoke<void>("set_launch_at_login", { on }),
+    /** 系統匣選單的「立即檢查」。 */
+    onTrayCheck: (fn: () => void) => event.listen("tray-check", () => fn()),
+    /** 開著的 Wiki 分頁被改了的系統通知（頁名）；點一下送出 `notification-wiki`。 */
+    notifyWikiPages: (pages: string[]) => core.invoke<void>("notify_wiki_pages", { pages }),
+    onNotificationWiki: (fn: () => void) => event.listen("notification-wiki", () => fn()),
     /** 點了通知：`id` 是要打開的工作項目（0 是打開清單）。 */
     onNotificationOpen: (fn: (id: number) => void) => event.listen<number>("notification-open", (e) => fn(e.payload)),
     onUpdateProgress: (fn: (p: { downloaded: number; total: number }) => void) =>

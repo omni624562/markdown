@@ -46,6 +46,17 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["stable", t("穩定版（建議）")],
     ["early", t("搶先版")],
   ],
+  updateCheck: [
+    ["12", t("每 12 小時")],
+    ["24", t("每天（預設）")],
+    ["168", t("每週")],
+  ],
+  backgroundCheck: [
+    ["10", t("每 10 分鐘（預設）")],
+    ["15", t("每 15 分鐘")],
+    ["30", t("每 30 分鐘")],
+    ["60", t("每小時")],
+  ],
   previewWidth: [
     ["narrow", t("窄")],
     ["medium", t("中")],
@@ -331,10 +342,13 @@ export class SettingsDialog {
     const h = document.createElement("h2");
     h.id = "settings-title";
     h.textContent = t("設定");
+    // 改了就套用、存起來，沒有「確定」這一步：右上角只放關閉（「完成」會讓人以為要按了才會存）。
     const close = document.createElement("button");
     close.type = "button";
-    close.className = "btn btn-primary btn-small";
-    close.textContent = t("完成");
+    close.className = "btn icon-only settings-close";
+    close.title = t("關閉設定");
+    close.setAttribute("aria-label", t("關閉設定"));
+    close.append(icon("x"));
     close.addEventListener("click", () => d.close());
     // 選項不少：可以直接搜尋（比對名稱與說明）。
     const search = document.createElement("input");
@@ -394,6 +408,25 @@ export class SettingsDialog {
               { key: "gitEnabled", label: t("Git 與 GitHub"), hint: t("關掉後不顯示，也不能使用；切換後會重新載入介面") },
               { key: "adoEnabled", label: "Azure DevOps", hint: t("工作項目、Wiki 與儲存庫") },
               { key: "remoteEnabled", label: t("遠端資料夾（WebDAV、SSH）") },
+            ]),
+          )
+        : []),
+      // 常駐與背景檢查（桌面版）：關閉視窗後仍在系統匣檢查工作項目與新版本（app/background-checks.ts）。
+      ...(desktop
+        ? this.#group(
+            t("背景執行"),
+            this.#rows([
+              {
+                key: "closeToTray",
+                label: t("關閉視窗時縮到系統匣"),
+                hint: t("按 ✕ 不結束程式，在右下角的系統匣繼續檢查工作項目、Wiki 頁面與新版本；要結束請在系統匣的圖示按右鍵選「結束」"),
+              },
+              {
+                key: "launchAtLogin",
+                label: t("開機時自動啟動"),
+                hint: t("登入 Windows 時自動開啟 oMarker，縮在右下角的系統匣，在背景檢查工作項目與 Wiki；也可以在工作管理員的「啟動應用程式」停用"),
+              },
+              { key: "backgroundCheck", label: t("背景檢查間隔"), hint: t("多久檢查一次你的工作項目與開著的 Wiki 頁面；oMarker 的新版本另外在「關於 → 更新」設定") },
             ]),
           )
         : []),
@@ -758,7 +791,8 @@ export class SettingsDialog {
       section.append(
         ...this.#group(t("更新"), [
           versionRow,
-          this.#row("autoUpdate", t("自動檢查更新"), t("每天檢查一次，下載前會先詢問"), () => this.#control("autoUpdate")),
+          this.#row("autoUpdate", t("自動檢查更新"), t("有新版本就通知你，下載前會先詢問"), () => this.#control("autoUpdate")),
+          this.#row("updateCheck", t("多久檢查一次新版本"), t("新版本不急，預設每天檢查一次"), () => this.#control("updateCheck")),
           this.#row("updateChannel", t("更新管道"), t("穩定版是確認過的版本；搶先版是每次修改後的最新版，比較快拿到新功能，也比較可能有問題"), () =>
             this.#control("updateChannel"),
           ),
@@ -1276,8 +1310,8 @@ export class SettingsDialog {
     });
     const notifyRow = this.#row(
       "adoNotify",
-      t("新指派給我時通知"),
-      t("oMarker 在背景或縮小時，有新的工作項目指派給你就跳出 Windows 通知，點一下就開啟它"),
+      t("新指派或有更新時通知"),
+      t("oMarker 在背景、縮小或在系統匣時，有新的工作項目指派給你、或你的工作項目被別人改了，就跳出 Windows 通知，點一下就開啟它"),
       () => this.#control("adoNotify"),
     );
     // 權限檢查：逐項列出權杖能做什麼，缺的告訴使用者怎麼補。

@@ -124,28 +124,42 @@ export async function pollWorkItems(): Promise<void> {
     polling = false;
   }
 }
-/** 通知過的工作項目（同一個只通知一次）。 */
-const notifiedWorkItems = new Set<number>(
+/**
+ * 通知過的工作項目：新指派的記編號，有更新的記「編號@更新時間」，同一個項目的同一次更新只通知一次。
+ * 舊版只記編號（數字），讀進來當成新指派的紀錄。
+ */
+const notifiedWorkItems = new Set<string>(
   (() => {
     try {
       const v = JSON.parse(storage.load("wi-notified") ?? "[]") as unknown;
-      return Array.isArray(v) ? v.filter((n): n is number => typeof n === "number") : [];
+      return Array.isArray(v) ? v.filter((n) => typeof n === "number" || typeof n === "string").map(String) : [];
     } catch {
       return [];
     }
   })(),
 );
 
-/** 新指派給你、還沒看過也還沒通知過的工作項目：oMarker 在背景時跳出系統通知。 */
+/** 這個工作項目這一次要不要通知：新指派的看編號，有更新的看編號加更新時間。 */
+export function noticeKey(w: { id: number; changed: string | null }, mark: "new" | "updated"): string {
+  return mark === "new" ? String(w.id) : `${w.id}@${w.changed ?? ""}`;
+}
+
+/** 新指派給你、或你的工作項目有更新（還沒看過也還沒通知過）：oMarker 在背景時跳出系統通知。 */
 function notifyNewWorkItems(): void {
   if (!desktop || !app.settings.value.adoNotify) return;
-  const fresh = app.pollItems.filter((w) => markOf(workItemSeen, w) === "new" && !notifiedWorkItems.has(w.id));
+  const fresh = app.pollItems.flatMap((w) => {
+    const mark = markOf(workItemSeen, w);
+    if (!mark) return [];
+    const key = noticeKey(w, mark);
+    return notifiedWorkItems.has(key) ? [] : [{ w, mark, key }];
+  });
   if (!fresh.length) return;
-  for (const w of fresh) notifiedWorkItems.add(w.id);
+  for (const f of fresh) notifiedWorkItems.add(f.key);
   storage.save("wi-notified", JSON.stringify([...notifiedWorkItems].slice(-300)));
   // 正在用 oMarker 時，側邊欄圖示上的數字就夠了。
   if (!document.hidden && document.hasFocus()) return;
-  void desktop.notifyWorkItems(fresh.map((w) => ({ id: w.id, title: w.title, kind: w.kind }))).catch(() => {});
+  const items = fresh.map(({ w, mark }) => ({ id: w.id, title: w.title, kind: w.kind, updated: mark === "updated" }));
+  void desktop.notifyWorkItems(items).catch(() => {});
 }
 
 /** 打開「工作項目」或「Wiki」面板。 */
@@ -196,7 +210,7 @@ export function initWorkItemUpdates(): void {
       else showAdo("workitems");
     });
   }
-  window.setInterval(() => void pollWorkItems(), 5 * 60_000);
+  // 定時檢查交給 app/background-checks.ts（照設定的間隔，視窗藏到系統匣也繼續）。
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) void pollWorkItems();
   });

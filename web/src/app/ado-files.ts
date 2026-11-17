@@ -6,7 +6,7 @@ import { desktop, type AdoWiki } from "../desktop.ts";
 import { timeAgo } from "../history-label.ts";
 import { t, currentLang } from "../i18n.ts";
 import type { PreviewPlugin } from "../preview.ts";
-import { resolveRepoPath, parseRepoFileLink, type RepoFileLink, repoFileUrl, isMarkdownName, fenceLanguage, isReadableFileName } from "../repo-links.ts";
+import { resolveRepoPath, parseImageLink, parseRepoFileLink, type RepoFileLink, repoFileUrl, isMarkdownName, fenceLanguage, isReadableFileName } from "../repo-links.ts";
 import { saveDraft } from "../session.ts";
 import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
@@ -62,10 +62,7 @@ export function openAttachment(href: string): boolean {
   if (kind === "text") {
     showRepoFile({ kind: "attachment", url: link.url, name: link.name });
   } else if (kind === "image") {
-    void desktop!
-      .adoImage(link.url)
-      .then((src) => openLightbox(src, link.name))
-      .catch(reportError);
+    showImage(link.name, desktop!.adoImage(link.url));
   } else if (kind === "save") {
     toast(t("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP 與 Word、Excel、PowerPoint 文件。需要的話請用「另存新檔」，確認來源可信再開啟。", { name: link.name }), {
       tone: "error",
@@ -89,13 +86,30 @@ export function saveAttachment(href: string): void {
     .catch(reportError);
 }
 
-/** 連到連線中伺服器上、可以閱讀的儲存庫檔案或附件時，在主要區域開啟並回傳 true。 */
+/**
+ * 連到連線中伺服器上、可以閱讀的儲存庫檔案或附件時，在主要區域開啟並回傳 true；
+ * 連到伺服器上的圖片（附件、儲存庫或 Wiki 裡的圖片）在 oMarker 裡放大檢視，不開瀏覽器。
+ */
 export function openRepoFileLink(href: string): boolean {
   const base = app.ado?.account?.url;
-  const link = desktop && base ? parseRepoFileLink(href, base) : null;
+  if (!desktop || !base) return false;
+  const image = parseImageLink(href, base);
+  if (image) {
+    showImage(
+      image.name,
+      image.kind === "attachment" ? desktop.adoImage(image.url) : desktop.adoRepoImage(image.project, image.repo, image.path, image.version),
+    );
+    return true;
+  }
+  const link = parseRepoFileLink(href, base);
   if (!link) return false;
   showRepoFile(link);
   return true;
+}
+
+/** 讀到圖片就放大檢視；讀不到時說明原因。 */
+export function showImage(name: string, load: Promise<string>): void {
+  void load.then((src) => openLightbox(src, name)).catch(reportError);
 }
 
 /** 在主要區域閱讀儲存庫裡的文字檔或附件：Markdown 照常排版，其他文字檔當成程式碼上色。 */

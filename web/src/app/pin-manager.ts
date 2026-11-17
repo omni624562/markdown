@@ -46,8 +46,9 @@ export function openPinManager(): void {
   body.className = "pin-manager-body";
   const close = document.createElement("button");
   close.type = "button";
-  close.className = "btn btn-primary";
-  close.textContent = t("完成");
+  // 勾了就套用：按鈕只是關閉，不是「確定」（和設定一樣，不要讓人以為要按了才會存）。
+  close.className = "btn";
+  close.textContent = t("關閉");
   const actions = document.createElement("div");
   actions.className = "choice-actions";
   actions.append(close);

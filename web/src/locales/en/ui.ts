@@ -78,7 +78,6 @@ export const ui: Record<string, Translation> = {
     "Stable is a version that has been checked; Early Access is the newest build after every change, with new features sooner but more likely to have problems.",
   "穩定版（建議）": "Stable (recommended)",
   "搶先版": "Early Access",
-  "每天檢查一次，下載前會先詢問": "Checks once a day and asks before downloading.",
   "重設": "Reset",
   "所有設定": "All Settings",
   "使用你自己安裝並登入的 Claude Code 或 Codex。編輯器不會儲存帳號或金鑰；AI 提出的修改一律先標示差異，由你決定是否套用。":
@@ -754,7 +753,6 @@ export const ui: Record<string, Translation> = {
   "{label}・{time} 更新": "{label} · updated {time}",
   "Azure DevOps：保留離線的頁面…": "Azure DevOps: Pages Kept Offline…",
   "網路恢復或切回這個視窗時會自動再試一次。": "It will try again automatically when the network is back or you return to this window.",
-  "新指派給我時通知": "Notify Me of New Assignments",
   "工作項目類型的顏色": "Work Item Type Colors",
   "不指定（用上次選的）": "Not set (use the last one chosen)",
   "專案的預設團隊": "Project's default team",
@@ -765,7 +763,6 @@ export const ui: Record<string, Translation> = {
   "分頁的圖示、工作項目的類型標籤、左側圖示列的捷徑都用這個顏色；點色塊可以換": "Used for tab icons, the type label on work items, and shortcuts on the left bar. Click a swatch to change it",
   "所有類型恢復預設顏色": "Restore default colors for all types",
   "恢復「{kind}」的預設顏色": "Restore the default color for \"{kind}\"",
-  "oMarker 在背景或縮小時，有新的工作項目指派給你就跳出 Windows 通知，點一下就開啟它": "When oMarker is in the background or minimized, show a Windows notification when a work item is newly assigned to you. Click it to open the item.",
   "修改紀錄": "History",
   "修改紀錄：誰、什麼時候改了這一頁，改了什麼": "History: who changed this page, when, and what they changed",
   "篩選：已隱藏 {n} 個最上層頁面": ["Filter: {n} top-level page hidden", "Filter: {n} top-level pages hidden"],
@@ -1300,4 +1297,30 @@ export const ui: Record<string, Translation> = {
   // mobile-files.ts
   "「{name}」所在的位置（例如 OneDrive）不讓 oMarker 讀取。請在那個 App 裡把檔案設成離線可用，或先下載到手機再開啟。": "The place where “{name}” is stored (for example OneDrive) doesn't let oMarker read it. Make the file available offline in that app, or download it to your phone first.",
   "「{name}」所在的位置（例如 OneDrive）不讓 oMarker 寫回去。內容還在 oMarker 裡，請用「另存新檔」存到手機或其他位置。": "The place where “{name}” is stored (for example OneDrive) doesn't let oMarker write to it. Your text is still in oMarker; use Save As to save it on your phone or elsewhere.",
+  // 背景執行（settings-dialog.ts、app/background-checks.ts）
+  "每 10 分鐘（預設）": "Every 10 minutes (default)",
+  "每 15 分鐘": "Every 15 minutes",
+  "每 30 分鐘": "Every 30 minutes",
+  "背景執行": "Run in background",
+  "關閉視窗時縮到系統匣": "Keep running in the notification area when closed",
+  "背景檢查間隔": "Background check interval",
+  "新指派或有更新時通知": "Notify me of new or updated work items",
+  "oMarker 在背景、縮小或在系統匣時，有新的工作項目指派給你、或你的工作項目被別人改了，就跳出 Windows 通知，點一下就開啟它":
+    "When oMarker is in the background, minimized or in the notification area, show a Windows notification when a work item is assigned to you or someone changes one of yours. Click it to open the item.",
+  "每 12 小時": "Every 12 hours",
+  "每天（預設）": "Every day (default)",
+  "每週": "Every week",
+  "按 ✕ 不結束程式，在右下角的系統匣繼續檢查工作項目、Wiki 頁面與新版本；要結束請在系統匣的圖示按右鍵選「結束」":
+    "Closing the window keeps oMarker in the notification area, still checking work items, Wiki pages and new versions. To quit, right-click its icon there and choose Quit.",
+  "多久檢查一次你的工作項目與開著的 Wiki 頁面；oMarker 的新版本另外在「關於 → 更新」設定":
+    "How often to check your work items and open Wiki pages. New versions of oMarker are set separately under About → Updates.",
+  "有新版本就通知你，下載前會先詢問": "Lets you know about new versions; asks before downloading",
+  "多久檢查一次新版本": "Check for new versions",
+  "新版本不急，預設每天檢查一次": "New versions aren't urgent; checks once a day by default",
+  "往左捲動分頁": "Scroll tabs left",
+  "往右捲動分頁": "Scroll tabs right",
+  "開機時自動啟動": "Start oMarker when I sign in",
+  "登入 Windows 時自動開啟 oMarker，縮在右下角的系統匣，在背景檢查工作項目與 Wiki；也可以在工作管理員的「啟動應用程式」停用":
+    "Opens oMarker in the notification area when you sign in to Windows, checking work items and Wiki in the background. You can also turn it off under Startup apps in Task Manager.",
+  "關閉設定": "Close settings",
 };

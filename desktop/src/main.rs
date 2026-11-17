@@ -39,6 +39,7 @@ mod images;
 mod io;
 mod lexical;
 mod locales;
+mod login;
 mod navigation;
 mod new_project;
 mod notify;
@@ -48,6 +49,7 @@ mod projects;
 mod secrets;
 mod settings;
 mod text_encoding;
+mod tray;
 mod trust;
 mod update;
 mod watch;
@@ -107,6 +109,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<Window> {
     window.on_window_event(move |event| {
         let was_maximized = MAXIMIZED_BEFORE_FULLSCREEN.load(std::sync::atomic::Ordering::Relaxed);
         window_state::track(&tracked, event, was_maximized);
+        tray::on_window_event(&tracked, event);
     });
     let webview = tauri::webview::WebviewBuilder::from_config(&config)
         .auto_resize()
@@ -179,11 +182,7 @@ async fn resolve_target(app: &AppHandle, path: PathBuf) -> Result<StartupTarget,
 /// 已經開著編輯器時再開一次 exe（例如在檔案總管雙擊另一個 .md）：
 /// 不開新視窗，把路徑交給原本的視窗開成新分頁。
 fn on_second_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
-    if let Some(w) = app.get_window("main") {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
-    }
+    tray::show_main(app);
     let Some(path) = path_arg(
         args.into_iter().skip(1).map(OsString::from),
         Path::new(&cwd),
@@ -367,6 +366,7 @@ fn main() {
             history::maintain(app.handle());
             std::thread::spawn(update::remove_leftovers);
             create_main_window(app)?;
+            tray::create(app.handle())?;
             if CUSTOM_TITLE_BAR {
                 if let Some(window) = app.get_window("main") {
                     // 拿掉標題列後仍保留視窗陰影與可拖曳調整大小的邊框。
@@ -374,9 +374,18 @@ fn main() {
                     let _ = window.set_shadow(true);
                 }
             }
+            let settings = settings::read_value(app.handle());
+            login::refresh(settings.as_ref());
+            // 開機自動啟動（`--tray`）而且設定要常駐：直接縮在系統匣，不跳出視窗。
+            let quiet = login::started_in_tray(std::env::args_os())
+                && tray::close_to_tray(settings.as_ref());
             // 還原上次的大小時視窗是先藏著建立的（見 `create_main_window`），都設定好了才顯示。
             if let Some(window) = app.get_window("main") {
-                window.show()?;
+                if quiet {
+                    window.hide()?;
+                } else {
+                    window.show()?;
+                }
             }
             Ok(())
         })
@@ -484,10 +493,12 @@ fn main() {
             ado::ado_team_iterations,
             ado::ado_iterations,
             notify::notify_work_items,
+            notify::notify_wiki_pages,
             ado::ado_work_item_create,
             ado::ado_work_item_delete,
             ado::ado_wiki_save,
             ado::ado_wiki_page_info,
+            ado::ado_wiki_page_etag,
             ado::ado_wiki_history,
             ado::ado_wiki_recent,
             ado::ado_wiki_sources,
@@ -598,6 +609,8 @@ fn main() {
             assistant::batch::assistant_batch_check,
             assistant::batch::assistant_batch_cancel,
             assistant::batch::assistant_batch_remove,
+            notify::notify_app_update,
+            login::set_launch_at_login,
             update::app_version,
             update::update_check,
             update::update_install,

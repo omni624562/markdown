@@ -4,6 +4,9 @@ import { containWheel } from "./contain-wheel.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
 
+/** 拖曳分頁時帶的分頁 id（分頁列自己用來改順序）。 */
+export const TAB_REORDER_TYPE = "application/x-omarker-tab";
+
 export interface TabInfo {
   id: string;
   name: string;
@@ -43,6 +46,8 @@ export interface TabBarHandlers {
   dragData?(id: string): Record<string, string> | null;
   /** 並排中的分頁（合成一個「左｜右」的分頁）右邊的 ×：取消並排。 */
   unpair?(): void;
+  /** 拖曳分頁改順序：把 `drag` 放到 `target` 的前面（`before`）或後面。 */
+  reorder?(drag: string, target: string, before: boolean): void;
 }
 
 /**
@@ -56,7 +61,15 @@ export class TabBar {
   /** 分頁太多、放不下時出現的「所有分頁」按鈕與清單。 */
   #more: HTMLButtonElement;
   #moreMenu: HTMLDivElement;
+  /** 分頁放不下時兩端的「‹」「›」：按一下捲一個分頁，按住一直捲；捲到底的那一邊變灰。 */
+  #scrollLeft: HTMLButtonElement;
+  #scrollRight: HTMLButtonElement;
+  #overflowFrame = 0;
+  /** 上次捲進畫面的分頁（換了分頁才再捲）。 */
+  #shownActive = "";
   #tabs: TabInfo[] = [];
+  /** 正在拖曳的分頁（拖到分頁列上的其他位置就改順序）。 */
+  #dragging: string | null = null;
   #activeId = "";
 
   constructor(el: HTMLElement, handlers: TabBarHandlers) {
@@ -96,10 +109,40 @@ export class TabBar {
       else return;
       e.preventDefault();
     });
-    el.replaceChildren(this.#list, this.#more, add);
-    // 分頁變多、視窗變窄時，判斷要不要顯示「所有分頁」按鈕與兩側的淡出提示。
-    new ResizeObserver(() => this.#updateOverflow()).observe(this.#list);
-    this.#list.addEventListener("scroll", () => this.#updateOverflow(), { passive: true });
+    const arrow = (side: "left" | "right") => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `btn icon-only tab-scroll tab-scroll-${side}`;
+      const label = side === "left" ? t("往左捲動分頁") : t("往右捲動分頁");
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      b.append(icon(side === "left" ? "chevron-left" : "chevron-right"));
+      b.hidden = true;
+      // 按一下捲一個分頁；按住不放就一直捲（像瀏覽器的分頁列）。
+      let repeat = 0;
+      const stop = () => {
+        clearTimeout(repeat);
+        repeat = 0;
+      };
+      b.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        this.#scrollByTab(side);
+        const again = (delay: number) => (repeat = window.setTimeout(() => (this.#scrollByTab(side), again(120)), delay));
+        again(400);
+      });
+      for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, stop);
+      // 用鍵盤（Enter、空白鍵）按的也捲一個。
+      b.addEventListener("click", (e) => {
+        if (e.detail === 0) this.#scrollByTab(side);
+      });
+      return b;
+    };
+    this.#scrollLeft = arrow("left");
+    this.#scrollRight = arrow("right");
+    el.replaceChildren(this.#scrollLeft, this.#list, this.#scrollRight, this.#more, add);
+    // 分頁變多、視窗變窄時，判斷要不要顯示「所有分頁」按鈕、兩端的箭頭與兩側的淡出提示。
+    new ResizeObserver(() => this.#scheduleOverflow()).observe(this.#list);
+    this.#list.addEventListener("scroll", () => this.#scheduleOverflow(), { passive: true });
     // 分頁很多時用滑鼠滾輪左右捲動（捲軸隱藏起來比較乾淨）。
     this.#list.addEventListener(
       "wheel",
@@ -107,10 +150,38 @@ export class TabBar {
         if (e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
         if (this.#list.scrollWidth <= this.#list.clientWidth) return;
         e.preventDefault();
-        this.#list.scrollLeft += e.deltaY;
+        // 以「行」為單位的滾輪（有些滑鼠、設定）換算成像素。
+        this.#list.scrollLeft += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
       },
       { passive: false },
     );
+
+    // 拖曳分頁改順序：放開的位置在分頁的左半邊就放到它前面，右半邊放到它後面（畫一條直線標出位置）。
+    const dropAt = (e: DragEvent): { target: string; before: boolean; el: HTMLElement } | null => {
+      if (!this.#dragging || !this.#handlers.reorder) return null;
+      const el = (e.target as HTMLElement).closest<HTMLElement>("[role=tab][data-id]");
+      if (!el || el.dataset.id === this.#dragging) return null;
+      const r = el.getBoundingClientRect();
+      return { target: el.dataset.id!, before: e.clientX < r.left + r.width / 2, el };
+    };
+    this.#list.addEventListener("dragover", (e) => {
+      const at = dropAt(e);
+      this.#markDrop(at?.el ?? null, at?.before ?? false);
+      if (!at) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "move";
+    });
+    this.#list.addEventListener("dragleave", (e) => {
+      if (!this.#list.contains(e.relatedTarget as Node)) this.#markDrop(null, false);
+    });
+    this.#list.addEventListener("drop", (e) => {
+      const at = dropAt(e);
+      const drag = this.#dragging;
+      this.#endReorder();
+      if (!at || !drag) return;
+      e.preventDefault();
+      this.#handlers.reorder!(drag, at.target, at.before);
+    });
 
     this.#list.addEventListener("keydown", (e) => {
       const tabs = [...this.#list.querySelectorAll<HTMLElement>("[role=tab]")];
@@ -140,7 +211,7 @@ export class TabBar {
    * 建立之後再加上的功能（各自的模組加上去，例如左側圖示列的檔案捷徑、拖到編輯區並排）。
    * 好幾個模組都提供拖曳資料時合在一起。
    */
-  extend(more: Pick<TabBarHandlers, "dragData">): void {
+  extend(more: Partial<Pick<TabBarHandlers, "dragData" | "reorder">>): void {
     const prev = this.#handlers.dragData;
     const next = more.dragData;
     const dragData =
@@ -213,16 +284,21 @@ export class TabBar {
           else this.#handlers.menu(info.id, at);
         });
         tab.addEventListener("click", () => this.#handlers.select(info.id, "pointer"));
-        tab.draggable = !!this.#handlers.dragData?.(info.id);
+        const data = this.#handlers.dragData?.(info.id);
+        tab.draggable = !!data || !!this.#handlers.reorder;
         tab.addEventListener("dragstart", (e) => {
           const data = e.dataTransfer && this.#handlers.dragData?.(info.id);
-          if (!data) {
+          if (!e.dataTransfer || (!data && !this.#handlers.reorder)) {
             e.preventDefault();
             return;
           }
-          e.dataTransfer!.effectAllowed = "copy";
-          for (const [type, value] of Object.entries(data)) e.dataTransfer!.setData(type, value);
+          this.#dragging = info.id;
+          // 拖到分頁列上是改順序（移動）；拖到別的地方（圖示列、編輯區）照原本的用法（複製）。
+          e.dataTransfer.effectAllowed = "copyMove";
+          e.dataTransfer.setData(TAB_REORDER_TYPE, info.id);
+          for (const [type, value] of Object.entries(data ?? {})) e.dataTransfer.setData(type, value);
         });
+        tab.addEventListener("dragend", () => this.#endReorder());
         tab.addEventListener("dblclick", (e) => {
           if ((e.target as HTMLElement).closest(".tab-close")) return;
           if (!info.item) this.startRename(info.id);
@@ -238,10 +314,27 @@ export class TabBar {
     if (pair) this.#pair(els, pair);
     // 重畫時整個換掉分頁元素：原本焦點在分頁上（例如用方向鍵切換）就放回同一個分頁，不要掉到 body。
     const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("#tab-bar [role=tab]")?.dataset.id;
+    // 換了分頁才把它捲進畫面。其他時候重畫（存檔狀態、背景更新…）維持使用者捲到的位置：
+    // 不然用滑鼠滾輪捲到最前面或最後面時，一重畫又被拉回目前的分頁，怎麼捲都到不了。
+    // 換掉分頁元素的那一下內容是空的，捲動位置會歸零：先記下來。
+    const scroll = this.#list.scrollLeft;
     this.#list.replaceChildren(...els);
     if (focused) this.#focusTab(focused);
-    this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (activeId !== this.#shownActive) {
+      this.#shownActive = activeId;
+      this.#list.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } else this.#list.scrollLeft = scroll;
     this.#updateOverflow();
+  }
+
+  #markDrop(el: HTMLElement | null, before: boolean): void {
+    for (const tab of this.#list.querySelectorAll(".drop-before, .drop-after")) tab.classList.remove("drop-before", "drop-after");
+    el?.classList.add(before ? "drop-before" : "drop-after");
+  }
+
+  #endReorder(): void {
+    this.#dragging = null;
+    this.#markDrop(null, false);
   }
 
   /** 讓目前畫面上這個 id 的分頁取得焦點（重畫後元素已經換掉，不能用舊的）。 */
@@ -279,19 +372,49 @@ export class TabBar {
     group.append(main, sep, side, close);
   }
 
+  /** 捲動時每個畫面只算一次（要量每個分頁的位置）。 */
+  #scheduleOverflow(): void {
+    if (!this.#overflowFrame) this.#overflowFrame = requestAnimationFrame(() => ((this.#overflowFrame = 0), this.#updateOverflow()));
+  }
+
   #updateOverflow(): void {
     const list = this.#list;
     const overflow = list.scrollWidth > list.clientWidth + 1;
     this.#more.hidden = !overflow;
     list.classList.toggle("more-left", overflow && list.scrollLeft > 1);
     list.classList.toggle("more-right", overflow && list.scrollLeft + list.clientWidth < list.scrollWidth - 1);
+    const atStart = list.scrollLeft <= 1;
+    const atEnd = list.scrollLeft + list.clientWidth >= list.scrollWidth - 1;
+    this.#scrollLeft.hidden = this.#scrollRight.hidden = !overflow;
+    this.#scrollLeft.disabled = atStart;
+    this.#scrollRight.disabled = atEnd;
   }
 
-  /** 列出所有分頁（目前的打勾、未存檔的加圓點），點一下切換過去。 */
-  #openMore(): void {
+  /** 往左或往右捲一個分頁：把下一個（還沒完全看到的）分頁整個捲進畫面。 */
+  #scrollByTab(side: "left" | "right"): void {
+    const list = this.#list;
+    const box = list.getBoundingClientRect();
+    const tabs = [...list.querySelectorAll<HTMLElement>("[role=tab]")];
+    // 邊緣那個只被切掉一點點的分頁不算：捲到它的前一個，每按一下都看得到一個新的分頁。
+    if (side === "left") {
+      const cut = tabs.filter((tab) => tab.getBoundingClientRect().left < box.left - 1);
+      let prev = cut.pop();
+      if (prev && box.left - prev.getBoundingClientRect().left < prev.offsetWidth / 2) prev = cut.pop() ?? prev;
+      list.scrollLeft = prev ? list.scrollLeft + (prev.getBoundingClientRect().left - box.left) : 0;
+    } else {
+      const cut = tabs.filter((tab) => tab.getBoundingClientRect().right > box.right + 1);
+      let next = cut.shift();
+      if (next && next.getBoundingClientRect().right - box.right < next.offsetWidth / 2) next = cut.shift() ?? next;
+      list.scrollLeft = next ? list.scrollLeft + (next.getBoundingClientRect().right - box.right) : list.scrollWidth;
+    }
+    this.#updateOverflow();
+  }
+
+  /** 列出所有分頁（目前的打勾、未存檔的加圓點），點一下切換過去，並把它捲進畫面。 */
+  #openMore(list: TabInfo[] = this.#tabs, anchor: HTMLElement = this.#more): void {
     const menu = this.#moreMenu;
     menu.replaceChildren(
-      ...this.#tabs.map((t) => {
+      ...list.map((t) => {
         const item = document.createElement("button");
         item.type = "button";
         item.role = "menuitemradio";
@@ -304,13 +427,14 @@ export class TabBar {
         item.addEventListener("click", () => {
           menu.hidePopover();
           this.#handlers.select(t.id);
+          this.#list.querySelector<HTMLElement>(`[data-id="${CSS.escape(t.id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
         });
         return item;
       }),
     );
     menu.showPopover();
     const { width, height } = menu.getBoundingClientRect();
-    const p = placeMenu(this.#more.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight }, "below");
+    const p = placeMenu(anchor.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight }, "below");
     Object.assign(menu.style, { left: `${p.left}px`, top: `${p.top}px`, right: "auto", bottom: "auto", maxHeight: `${p.maxHeight}px` });
     menu.querySelector<HTMLElement>("[aria-checked=true]")?.focus();
   }

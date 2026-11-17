@@ -82,3 +82,11 @@ test("可收合區塊保留 <details>／<summary>，裡面照常轉成 Markdown"
   );
   assert.match(htmlToMarkdown('<details open><summary>x</summary><p>y</p></details>'), /^<details open>\n<summary>x<\/summary>\n\ny\n\n<\/details>$/);
 });
+
+test("文字裡的網址照原樣留著（不跳脫 _），連結才不會壞掉", () => {
+  const url = "https://ado.test/tfs/DC/0a1b/_apis/wit/attachments/9f8e?fileName=COMET_1953533_shared-report_r1.md";
+  const md = htmlToMarkdown(`<div>報告已發布：${url}</div>`);
+  assert.equal(md, `報告已發布：${url}`);
+  // 網址以外的文字照常跳脫。
+  assert.equal(htmlToMarkdown("<div>a_b_c *星號*</div>"), "a\\_b\\_c \\*星號\\*");
+});

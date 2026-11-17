@@ -1365,6 +1365,8 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   background: var(--surface-raised);
 }
 .settings h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
+.settings-close { flex: none; width: 34px; height: 34px; color: var(--fg); }
+.settings-close .icon { width: 20px; height: 20px; }
 .settings-layout { display: grid; flex: 1; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
 .settings-nav {
   display: flex;
@@ -1524,6 +1526,14 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 .tabs.more-left.more-right { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
 .tab-more { flex: none; align-self: center; width: 28px !important; min-height: 28px; margin-left: 2px; color: var(--chrome-icon); }
 .tab-more:hover { color: var(--fg); }
+/* 分頁放不下時兩端的「‹」「›」：捲到底的那一邊變灰。 */
+.tab-scroll { flex: none; align-self: center; width: 26px !important; min-height: 28px; color: var(--chrome-icon); }
+.tab-scroll:hover:not(:disabled) { color: var(--fg); }
+.tab-scroll:disabled { opacity: 0.35; cursor: default; }
+.tab-scroll[hidden] { display: none; }
+/* 拖曳分頁改順序：放開的位置畫一條直線。 */
+.tabs .drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+.tabs .drop-after { box-shadow: inset -3px 0 0 var(--accent); }
 .tab-more-menu { max-width: min(420px, 90vw); }
 .tab-more-menu span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab {
@@ -3652,6 +3662,7 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-pane.issue-hero .issue-meta { flex: none; margin: 0; }
 .issue-pane.issue-hero .issue-head .issue-title { min-width: 0; font-size: 14px; opacity: 0; visibility: hidden; transition: opacity 0.15s, visibility 0.15s; }
 .issue-pane.issue-title-away .issue-head .issue-title { opacity: 1; visibility: visible; }
+.issue-pane.issue-switching > .issue-head, .issue-pane.issue-switching .issue-head .issue-title { transition: none; }
 .issue-pane.issue-scrolled > .issue-head { border-bottom-color: var(--border); }
 .issue-pane.issue-hero .issue-body { padding-top: 4px; }
 @media (prefers-reduced-motion: reduce) {
