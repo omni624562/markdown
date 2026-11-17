@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type ItemPlacing, arrangeTabs, itemTabText, neighborAfterClose, parseSavedItemTabs, placeNewItem } from "./item-tabs.ts";
+import { type ItemPlacing, arrangeTabs, reorderTabs, itemTabText, neighborAfterClose, parseSavedItemTabs, placeNewItem } from "./item-tabs.ts";
 
 test("關掉分頁後切到右邊那一個，最右邊時切到左邊", () => {
   assert.equal(neighborAfterClose(["a", "b", "c"], "b"), "c");
@@ -89,4 +89,25 @@ test("分頁上的字：工作項目加編號與類型，Wiki 頁面提示完整
   // 不知道 Wiki 名稱時只列路徑；沒有對應的捷徑（GitHub issue、附件）維持原樣。
   assert.equal(itemTabText("A", "x", { wiki: "w1", wikiName: "", path: "/A" }).title, "A");
   assert.deepEqual(itemTabText("#3 問題", "GitHub：#3", null), { name: "#3 問題", title: "GitHub：#3" });
+});
+
+test("拖曳改分頁順序：文件與項目分頁都能移動，項目分頁跟著放到的位置改接在前面的文件後面", () => {
+  const docs = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  const items = [{ id: "x", after: "a", pinned: false }];
+  // 原本：a x b c
+  assert.deepEqual(arrangeTabs(docs, items), ["a", "x", "b", "c"]);
+  // 把 c 拖到 a 前面：c a x b
+  const r1 = reorderTabs(docs, items, "c", "a", true)!;
+  assert.deepEqual(r1.docs, ["c", "a", "b"]);
+  assert.deepEqual(arrangeTabs(r1.docs.map((id) => ({ id })), r1.items.map((i) => ({ ...i, pinned: false }))), ["c", "a", "x", "b"]);
+  // 把項目 x 拖到 c 後面：a b c x
+  const r2 = reorderTabs(docs, items, "x", "c", false)!;
+  assert.deepEqual(r2.items, [{ id: "x", after: "c" }]);
+  assert.deepEqual(arrangeTabs(r2.docs.map((id) => ({ id })), r2.items.map((i) => ({ ...i, pinned: false }))), ["a", "b", "c", "x"]);
+  // 把項目 x 拖到最前面：x a b c（接在「最前面」）。
+  const r3 = reorderTabs(docs, items, "x", "a", true)!;
+  assert.deepEqual(r3.items, [{ id: "x", after: null }]);
+  // 拖到自己、拖過固定與一般的界線：不動。
+  assert.equal(reorderTabs(docs, items, "a", "a", true), null);
+  assert.equal(reorderTabs([{ id: "p", pinned: true }, ...docs], items, "a", "p", true), null);
 });

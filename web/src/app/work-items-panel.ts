@@ -40,7 +40,7 @@ import { pingAdo } from "./ado-status.ts";
 import { forgetListCopies, keepFreshness, withOfflineCopy } from "./offline-copies.ts";
 import { favoriteWikis } from "./favorite-lists.ts";
 import { app } from "./context.ts";
-import { findItemTab } from "./item-tabs.ts";
+import { findItemTab, moveTab } from "./item-tabs.ts";
 import { openWikiRecent } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
@@ -1039,6 +1039,8 @@ export function initWorkItemsPanel(): void {
       const ref = findItemTab(id)?.ref;
       return ref ? { [SHORTCUT_DRAG_TYPE]: JSON.stringify(ref) } : null;
     },
+    // 在分頁列上拖曳分頁：改順序。
+    reorder: moveTab,
   });
   wikiPanel = desktop
     ? new WikiPanel<AdoWiki>(app.$("#wiki-host"), {
