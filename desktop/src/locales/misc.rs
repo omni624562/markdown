@@ -9,6 +9,10 @@ pub static EN: &[(&str, &str)] = &[
         "It checks work items and new versions at the interval you set. To quit, right-click the oMarker icon in the notification area and choose Quit.",
     ),
     ("開啟 oMarker", "Open oMarker"),
+    (
+        "無法設定開機時自動啟動",
+        "Couldn't set oMarker to start when you sign in.",
+    ),
     ("立即檢查", "Check now"),
     ("結束", "Quit"),
     ("找不到這個版本", "Couldn't find this version."),
