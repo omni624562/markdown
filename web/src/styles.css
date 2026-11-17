@@ -4928,3 +4928,13 @@ body.phone #phone-home:not([hidden]) {
 
 /* 助理：蓋住整個畫面（✦ 或返回鍵關閉）。 */
 body.phone .outline-right:not([hidden]) { position: fixed; inset: 0; z-index: 45; width: auto; max-width: none; border: 0; }
+/* 手機的助理：只有一頁，不需要右側欄的分頁；「←」關閉；字的大小在設定裡調，標題列不放 A↓A↑；說明小字拿掉，只留本月費用。 */
+body.phone .outline-right > .right-head { display: none; }
+body.phone .outline-right .assistant-title-text { display: inline; }
+body.phone .assistant-head .assistant-font, body.phone .assistant-note { display: none; }
+.phone-back { display: none; }
+body.phone .assistant-head .phone-back { display: grid; width: 40px; height: 40px; margin-left: -6px; }
+body.phone .assistant-foot { justify-content: flex-end; }
+body.phone .assistant-head { height: 54px; padding: 0 8px; }
+body.phone .assistant-head h2 { font-size: 17px; }
+body.phone .assistant-head h2 .icon { width: 18px; height: 18px; }

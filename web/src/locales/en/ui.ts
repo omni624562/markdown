@@ -1295,4 +1295,6 @@ export const ui: Record<string, Translation> = {
   "最近": "Recent",
   "回到文件清單": "Back to documents",
   "列印": "Print",
+  "問助理…": "Ask the assistant…",
+  "關閉助理": "Close the assistant",
 };

@@ -1045,10 +1045,10 @@ function renderModel(): void {
   modelBtn.setAttribute("aria-label", modelBtn.title);
 }
 
-function headButton(label: string, iconName: string, run: () => void): HTMLButtonElement {
+function headButton(label: string, iconName: string, run: () => void, extra = ""): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = "btn icon-only";
+  b.className = `btn icon-only ${extra}`.trim();
   b.title = label;
   b.setAttribute("aria-label", label);
   b.append(icon(iconName));
@@ -1111,8 +1111,8 @@ function build(): HTMLElement {
     title,
     modelBtn,
     spacer,
-    headButton(t("縮小助理的字（Ctrl+-）"), "a-arrow-down", () => changeAssistantFont(-1)),
-    headButton(t("放大助理的字（Ctrl+=）"), "a-arrow-up", () => changeAssistantFont(1)),
+    headButton(t("縮小助理的字（Ctrl+-）"), "a-arrow-down", () => changeAssistantFont(-1), "assistant-font"),
+    headButton(t("放大助理的字（Ctrl+=）"), "a-arrow-up", () => changeAssistantFont(1), "assistant-font"),
     saveBtn,
     headButton(t("新對話"), "message-square-plus", newChat),
   );
@@ -1140,11 +1140,12 @@ function build(): HTMLElement {
   chips.setAttribute("aria-label", t("這次會送給 Claude 的內容"));
   input = document.createElement("textarea");
   input.rows = 2;
-  input.placeholder = t("問助理…（Enter 送出、Shift+Enter 換行）");
+  // 手機、平板的螢幕鍵盤：Enter 是換行，用右下角的按鈕送出（不提快速鍵）。
+  input.placeholder = isMobileApp ? t("問助理…") : t("問助理…（Enter 送出、Shift+Enter 換行）");
   input.setAttribute("aria-label", t("問助理"));
   input.addEventListener("keydown", (e) => {
     // 注音、倉頡選字時的 Enter 不是送出。
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229 && !isMobileApp) {
       e.preventDefault();
       void send(input.value);
     }
@@ -1234,6 +1235,7 @@ function build(): HTMLElement {
   const foot = document.createElement("div");
   foot.className = "assistant-foot";
   const note = document.createElement("span");
+  note.className = "assistant-note";
   note.textContent = t("送到 Anthropic・修改要按「套用」");
   note.title = t("內容會送到 Anthropic（Claude API）。修改都要你按「套用」。");
   // 按一下看今天、最近 7 天、上個月和每天的用量（app/assistant-usage.ts）。

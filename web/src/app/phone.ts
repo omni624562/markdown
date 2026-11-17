@@ -381,11 +381,17 @@ export function initPhone(): void {
   editorHost.addEventListener("focusout", () => document.body.classList.remove("phone-typing"));
   // 還沒存檔的文件用第一行當名稱：打字時上方列跟著換。
   editorHost.addEventListener("input", () => active && syncBar());
-  // 助理在手機上蓋住整個畫面：返回鍵關閉它，不是回到首頁。
+  // 助理在手機上蓋住整個畫面：返回鍵關閉它，不是回到首頁；標題列最左邊補一個「←」。
   new MutationObserver(() => {
     if (!active) return;
+    const head = document.querySelector(".assistant-head");
+    if (head && !head.querySelector(".phone-back")) {
+      const back = iconButton("arrow-left", t("關閉助理"), () => (history.state?.phoneAssistant ? history.back() : toggleAssistant(false)));
+      back.classList.add("phone-back");
+      head.prepend(back);
+    }
     if (assistantOpen() && !history.state?.phoneAssistant) history.pushState({ phoneDoc: true, phoneAssistant: true }, "");
-  }).observe(document.getElementById("outline-right")!, { attributes: true, attributeFilter: ["hidden"] });
+  }).observe(document.getElementById("outline-right")!, { attributes: true, attributeFilter: ["hidden"], childList: true });
   window.addEventListener("popstate", () => {
     if (!active) return;
     if (!history.state?.phoneAssistant && assistantOpen()) toggleAssistant(false);

@@ -56,3 +56,36 @@ test("手機：「編輯／預覽」切換；「⋮」從下面拉起選單，�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("手機：助理蓋住整個畫面，「←」或返回鍵關閉；Enter 是換行，不提快速鍵", async () => {
+  const { page: p, context, errors } = await open({
+    android: { assistant_key_status: true, assistant_usage: { month: "2026-11", usd: 0, limit: 10 } },
+    viewport: { width: 412, height: 915 },
+    settings: { claudeApiEnabled: true },
+  });
+  await p.click(".phone-fab");
+  await p.click('#phone-bar [aria-label="助理"]');
+  const panel = p.locator("#assistant-panel");
+  await panel.waitFor();
+  const box = await p.locator("#outline-right").boundingBox();
+  assert.ok(box.width >= 411 && box.height >= 914, `助理佔滿畫面：${JSON.stringify(box)}`);
+  assert.equal(await p.locator("#outline-right > .right-head").isVisible(), false, "只有一頁，不顯示右側欄的分頁");
+  const input = panel.locator("textarea");
+  assert.equal(await input.getAttribute("placeholder"), "問助理…");
+  await input.fill("第一行");
+  await input.press("Enter");
+  await input.type("第二行");
+  assert.equal(await input.inputValue(), "第一行\n第二行");
+  await p.click('.assistant-head [aria-label="關閉助理"]');
+  await p.waitForSelector("#outline-right", { state: "hidden" });
+  assert.ok(await p.locator("#phone-bar").isVisible(), "回到文件，不是首頁");
+  assert.equal(await p.locator("#phone-home").isVisible(), false);
+  // 再打開一次，用返回鍵關閉。
+  await p.click('#phone-bar [aria-label="助理"]');
+  await panel.waitFor();
+  await p.goBack();
+  await p.waitForSelector("#outline-right", { state: "hidden" });
+  assert.equal(await p.locator("#phone-home").isVisible(), false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
