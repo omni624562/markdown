@@ -63,6 +63,9 @@ function nodeKey(node: Node): string {
   return `${node.nodeName}\u0000${node.textContent ?? ""}`;
 }
 
+/** 留著畫面的文件數（畫面佔記憶體）。 */
+const SAVED_DOCS = 8;
+
 export class Preview {
   #root: HTMLElement;
   #plugins: PreviewPlugin[];
@@ -76,6 +79,11 @@ export class Preview {
    */
   #nodes: Node[] = [];
   #pos: (string | null)[] = [];
+  /**
+   * 切換文件時留下的畫面（每份文件一份）：切回來直接換上，再照常比對，只更新改過的段落，
+   * 不用整份重新解析、重畫流程圖（長文件並排顯示時切換分頁才不會卡）。設定或主題改了就全部丟掉。
+   */
+  #saved = new Map<string, { nodes: Node[]; keys: string[]; pos: (string | null)[]; last: RenderResult | null }>();
 
   constructor(root: HTMLElement, plugins: PreviewPlugin[] = []) {
     this.#root = root;
@@ -274,6 +282,31 @@ export class Preview {
   /** 下次更新時整個重建（例如換了主題，流程圖要重畫；沒改動的段落也要重新處理）。 */
   invalidate(): void {
     this.#keys = null;
+    this.#saved.clear();
+  }
+
+  /**
+   * 從 `from` 這份文件換到 `to`：留下現在的畫面（之後切回 `from` 時用），換上 `to` 留著的畫面；
+   * 沒有留著的就清空，下次更新時整個畫。換上之後照常呼叫 `update`，內容沒變就幾乎不用做事。
+   */
+  switchDoc(from: string | null, to: string): void {
+    if (from && from !== to && this.#keys && !this.#stale && this.#root.firstChild) {
+      this.#saved.delete(from);
+      this.#saved.set(from, { nodes: [...this.#root.childNodes], keys: this.#keys, pos: this.#pos, last: this.#last });
+      if (this.#saved.size > SAVED_DOCS) this.#saved.delete(this.#saved.keys().next().value!);
+    }
+    const kept = this.#saved.get(to);
+    this.#saved.delete(to);
+    if (!kept) {
+      this.#reset();
+      return;
+    }
+    this.#root.replaceChildren(...kept.nodes);
+    this.#nodes = [...kept.nodes];
+    this.#keys = kept.keys;
+    this.#pos = kept.pos;
+    this.#last = kept.last;
+    this.#stale = false;
   }
 
   /** 換文件時清空，避免錯誤狀態下殘留上一份文件的畫面。 */
@@ -285,6 +318,11 @@ export class Preview {
   }
 
   clear(): void {
+    this.#saved.clear();
+    this.#reset();
+  }
+
+  #reset(): void {
     this.#root.replaceChildren();
     this.#last = null;
     this.#stale = true;
