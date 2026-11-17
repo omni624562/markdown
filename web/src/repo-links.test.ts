@@ -75,6 +75,10 @@ test("連到伺服器上的圖片：附件、Git 網頁網址、API 網址都認
     versionType: null,
     name: "S07-123.png",
   });
+  // 附件網址前面帶專案的編號、檔名是中文（工作項目、Wiki 裡常見的寫法）。
+  const named = parseImageLink(`http://tfs/tfs/DC/0a1b2c3d-0000-4000-8000-000000000001/_apis/wit/attachments/9f8e7d6c-0000-4000-8000-000000000002?fileName=%E9%A0%90%E6%9C%9F%E7%95%AB%E9%9D%A2_%E7%94%B3%E8%AB%8B%E4%B8%AD.png`, base);
+  assert.equal(named?.kind, "attachment");
+  assert.equal(named?.name, "預期畫面_申請中.png");
   assert.equal(parseImageLink(`${base}/P/_git/docs?path=/a.md`, base), null);
   assert.equal(parseImageLink(`${base}/P/_git/docs?path=/a.svg`, base), null, "SVG 不算");
   assert.equal(parseImageLink(`https://other/tfs/DC/P/_git/docs?path=/a.png`, base), null);
