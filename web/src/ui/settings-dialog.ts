@@ -340,10 +340,13 @@ export class SettingsDialog {
     const h = document.createElement("h2");
     h.id = "settings-title";
     h.textContent = t("設定");
+    // 改了就套用、存起來，沒有「確定」這一步：右上角只放關閉（「完成」會讓人以為要按了才會存）。
     const close = document.createElement("button");
     close.type = "button";
-    close.className = "btn btn-primary btn-small";
-    close.textContent = t("完成");
+    close.className = "btn icon-only settings-close";
+    close.title = t("關閉設定");
+    close.setAttribute("aria-label", t("關閉設定"));
+    close.append(icon("x"));
     close.addEventListener("click", () => d.close());
     // 選項不少：可以直接搜尋（比對名稱與說明）。
     const search = document.createElement("input");

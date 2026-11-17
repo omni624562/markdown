@@ -193,7 +193,7 @@ test("「☰」→「釘選常用指令…」：勾選要放的位置；已經�
   await head("open-in-codex").uncheck();
   await page.waitForFunction(() => !document.querySelector("#files-head .head-pin[data-command='open-in-codex']"));
   assert.equal(await head("switch-project").isDisabled(), false);
-  await dialog.getByRole("button", { name: "完成" }).click();
+  await dialog.getByRole("button", { name: "關閉" }).click();
   await dialog.waitFor({ state: "detached" });
   assert.deepEqual(errors, []);
   await context.close();

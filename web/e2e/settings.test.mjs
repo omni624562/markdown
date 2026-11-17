@@ -220,3 +220,15 @@ test("設定（桌面版）：在系統的確認對話框拒絕開啟 AI 協作�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("設定改了就套用：右上角只有關閉（✕），沒有「完成」", async () => {
+  const { page, context, errors } = await open();
+  await runCommand(page, "設定");
+  const dialog = page.locator("dialog[open].settings");
+  await dialog.waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "完成" }).count(), 0);
+  await dialog.getByRole("button", { name: "關閉設定" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
