@@ -40,6 +40,7 @@ import { pingAdo } from "./ado-status.ts";
 import { forgetListCopies, keepFreshness, withOfflineCopy } from "./offline-copies.ts";
 import { favoriteWikis } from "./favorite-lists.ts";
 import { app } from "./context.ts";
+import { findItemTab } from "./item-tabs.ts";
 import { openWikiRecent } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
@@ -1032,6 +1033,13 @@ export function initWorkItemsPanel(): void {
   });
   renderBarShortcuts();
   initFileShortcuts();
+  // 工作項目、Wiki 頁面的分頁：和側邊欄清單一樣，拖到圖示列就變成捷徑。
+  app.tabBar.extend({
+    dragData: (id) => {
+      const ref = findItemTab(id)?.ref;
+      return ref ? { [SHORTCUT_DRAG_TYPE]: JSON.stringify(ref) } : null;
+    },
+  });
   wikiPanel = desktop
     ? new WikiPanel<AdoWiki>(app.$("#wiki-host"), {
         // 有副本就先顯示（不用等伺服器），背景讀完再換上新的。
