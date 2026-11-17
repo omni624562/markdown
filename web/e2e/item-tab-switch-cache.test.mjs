@@ -66,3 +66,38 @@ test("工作項目分頁來回切換：修訂版本沒變就不重讀；變了�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("從捲到下面的工作項目切到另一個：標頭不會閃出新分頁的標題（淡出的動畫不帶到新分頁）", async () => {
+  const long = { ...A, description: `<p>${"很長的說明。".repeat(40)}</p>`.repeat(30) };
+  const { page, context, errors } = await open({
+    desktop: {
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      ado_work_items: [[long, B]],
+      ado_work_item: { $by: "id", values: { 41: long, 42: B } },
+      ado_work_item_rev: 3,
+    },
+  });
+  await openById(page, 42, "匯出 PDF的說明");
+  await openById(page, 41, "很長的說明");
+  // 捲到下面：標頭帶出標題。
+  await page.evaluate(() => document.querySelector(".issue-pane .issue-scroll").scrollBy(0, 2000));
+  await page.waitForSelector(".issue-pane.issue-title-away");
+  await page.waitForTimeout(300);
+  // 切到另一個分頁：之後每一個畫面都記下標頭標題的不透明度。
+  await page.evaluate(() => {
+    window.__seen = [];
+    const title = document.querySelector(".issue-pane .issue-head .issue-title");
+    const tick = () => {
+      window.__seen.push([title.textContent, Number(getComputedStyle(title).opacity), getComputedStyle(title).visibility]);
+      if (window.__seen.length < 30) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.locator('#tab-bar [data-id]', { hasText: "匯出 PDF" }).click();
+  await page.locator(".issue-body", { hasText: "匯出 PDF的說明" }).waitFor();
+  await page.waitForTimeout(600);
+  const flashes = (await page.evaluate(() => window.__seen)).filter(([text, opacity, vis]) => text.includes("匯出 PDF") && opacity > 0 && vis === "visible");
+  assert.deepEqual(flashes, [], "新分頁的標題沒有出現在標頭");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

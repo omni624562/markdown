@@ -3640,6 +3640,7 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .issue-pane.issue-hero .issue-meta { flex: none; margin: 0; }
 .issue-pane.issue-hero .issue-head .issue-title { min-width: 0; font-size: 14px; opacity: 0; visibility: hidden; transition: opacity 0.15s, visibility 0.15s; }
 .issue-pane.issue-title-away .issue-head .issue-title { opacity: 1; visibility: visible; }
+.issue-pane.issue-switching > .issue-head, .issue-pane.issue-switching .issue-head .issue-title { transition: none; }
 .issue-pane.issue-scrolled > .issue-head { border-bottom-color: var(--border); }
 .issue-pane.issue-hero .issue-body { padding-top: 4px; }
 @media (prefers-reduced-motion: reduce) {
