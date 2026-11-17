@@ -151,6 +151,28 @@ fn save_settings(json: String) -> Result<bool, String> {
     Ok(true)
 }
 
+/// 設定的「關於」顯示的版本。Android 版沒有自動更新，也沒有 CI 的流水號。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppVersion {
+    version: &'static str,
+    build: Option<u64>,
+    commit: Option<&'static str>,
+    date: Option<&'static str>,
+    updatable: bool,
+}
+
+#[tauri::command]
+fn app_version() -> AppVersion {
+    AppVersion {
+        version: env!("OMARKER_VERSION"),
+        build: None,
+        commit: None,
+        date: None,
+        updatable: false,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -168,6 +190,7 @@ pub fn run() {
             mobile_read_file,
             mobile_write_file,
             save_settings,
+            app_version,
             i18n::set_language,
             assistant::assistant_key_status,
             assistant::assistant_key_set,
@@ -192,6 +215,13 @@ mod tests {
         let on = serde_json::json!({ "claudeApiEnabled": true });
         assert!(assistant::check(&on, None, None).is_ok());
         assert!(assistant::check(&serde_json::json!({}), None, None).is_err());
+    }
+
+    #[test]
+    fn the_version_follows_the_desktop_app() {
+        let v = app_version();
+        assert!(v.version.split('.').count() == 3 && !v.updatable);
+        assert_ne!(v.version, "0.0.0");
     }
 
     #[test]
