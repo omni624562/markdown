@@ -45,6 +45,8 @@ pub static EN: &[(&str, &str)] = &[
     ("有 {n} 個工作項目新指派給你", "{n} work items were newly assigned to you"),
     ("你的工作項目有更新：{kind} {id}", "Your work item was updated: {kind} {id}"),
     ("你有 {n} 個工作項目有更新", "{n} of your work items were updated"),
+    ("Wiki 頁面有更新", "A Wiki page was updated"),
+    ("有 {n} 個 Wiki 頁面有更新", "{n} Wiki pages were updated"),
     (
         "有 {n} 個工作項目是新指派或有更新",
         "{n} work items are newly assigned or updated",

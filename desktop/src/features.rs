@@ -46,7 +46,10 @@ impl Feature {
             || command == "create_workflow"
         {
             Some(Feature::Git)
-        } else if command.starts_with("ado_") || command == "notify_work_items" {
+        } else if command.starts_with("ado_")
+            || command == "notify_work_items"
+            || command == "notify_wiki_pages"
+        {
             Some(Feature::Ado)
         } else if command.starts_with("dav_") || command.starts_with("ssh_") {
             Some(Feature::Remote)

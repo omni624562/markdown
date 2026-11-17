@@ -1,5 +1,5 @@
 /**
- * 自動更新（桌面版免安裝 exe）：照設定的「背景檢查間隔」檢查 GitHub 上的最新版，有新版時詢問使用者
+ * 自動更新（桌面版免安裝 exe）：照設定的「多久檢查一次新版本」（預設每天）檢查 GitHub 上的最新版，有新版時詢問使用者
  * （oMarker 在背景或系統匣時跳出系統通知，點一下回來看），
  * 下載並核對簽章與檢查碼後取代執行檔，重新啟動即完成更新。
  * 更新視窗會列出這一版改了什麼；重新啟動後第一次開啟時，再說明一次已經更新了哪些內容。
@@ -125,7 +125,7 @@ export class Updater {
   async backgroundCheck(now = false): Promise<void> {
     if (!this.#settings.value.autoUpdate || this.#state.kind !== "idle") return;
     const last = Number(storage.load("update-checked")) || 0;
-    const interval = Number(this.#settings.value.backgroundCheck) * 60_000;
+    const interval = Number(this.#settings.value.updateCheck) * 60 * 60_000;
     // 計時器不會剛好準時：差一分鐘以內也算到了。
     if (!now && Date.now() - last < interval - 60_000) return;
     try {

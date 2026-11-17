@@ -44,6 +44,11 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["stable", t("穩定版（建議）")],
     ["early", t("搶先版")],
   ],
+  updateCheck: [
+    ["12", t("每 12 小時")],
+    ["24", t("每天（預設）")],
+    ["168", t("每週")],
+  ],
   backgroundCheck: [
     ["10", t("每 10 分鐘（預設）")],
     ["15", t("每 15 分鐘")],
@@ -409,9 +414,9 @@ export class SettingsDialog {
               {
                 key: "closeToTray",
                 label: t("關閉視窗時縮到系統匣"),
-                hint: t("按 ✕ 不結束程式，在右下角的系統匣繼續檢查工作項目與新版本；要結束請在系統匣的圖示按右鍵選「結束」"),
+                hint: t("按 ✕ 不結束程式，在右下角的系統匣繼續檢查工作項目、Wiki 頁面與新版本；要結束請在系統匣的圖示按右鍵選「結束」"),
               },
-              { key: "backgroundCheck", label: t("背景檢查間隔"), hint: t("多久檢查一次你的工作項目與 oMarker 的新版本") },
+              { key: "backgroundCheck", label: t("背景檢查間隔"), hint: t("多久檢查一次你的工作項目與開著的 Wiki 頁面；oMarker 的新版本另外在「關於 → 更新」設定") },
             ]),
           )
         : []),
@@ -774,7 +779,8 @@ export class SettingsDialog {
       section.append(
         ...this.#group(t("更新"), [
           versionRow,
-          this.#row("autoUpdate", t("自動檢查更新"), t("照「背景檢查間隔」檢查，有新版本就通知你，下載前會先詢問"), () => this.#control("autoUpdate")),
+          this.#row("autoUpdate", t("自動檢查更新"), t("有新版本就通知你，下載前會先詢問"), () => this.#control("autoUpdate")),
+          this.#row("updateCheck", t("多久檢查一次新版本"), t("新版本不急，預設每天檢查一次"), () => this.#control("updateCheck")),
           this.#row("updateChannel", t("更新管道"), t("穩定版是確認過的版本；搶先版是每次修改後的最新版，比較快拿到新功能，也比較可能有問題"), () =>
             this.#control("updateChannel"),
           ),

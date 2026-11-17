@@ -483,6 +483,7 @@ fn main() {
             ado::ado_team_iterations,
             ado::ado_iterations,
             notify::notify_work_items,
+            notify::notify_wiki_pages,
             ado::ado_work_item_create,
             ado::ado_work_item_delete,
             ado::ado_wiki_save,

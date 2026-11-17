@@ -1289,12 +1289,18 @@ export const ui: Record<string, Translation> = {
   "每 30 分鐘": "Every 30 minutes",
   "背景執行": "Run in background",
   "關閉視窗時縮到系統匣": "Keep running in the notification area when closed",
-  "按 ✕ 不結束程式，在右下角的系統匣繼續檢查工作項目與新版本；要結束請在系統匣的圖示按右鍵選「結束」":
-    "Closing the window keeps oMarker in the notification area, still checking work items and new versions. To quit, right-click its icon there and choose Quit.",
   "背景檢查間隔": "Background check interval",
-  "多久檢查一次你的工作項目與 oMarker 的新版本": "How often to check your work items and new versions of oMarker",
-  "照「背景檢查間隔」檢查，有新版本就通知你，下載前會先詢問": "Checks at the background check interval and lets you know about new versions; asks before downloading",
   "新指派或有更新時通知": "Notify me of new or updated work items",
   "oMarker 在背景、縮小或在系統匣時，有新的工作項目指派給你、或你的工作項目被別人改了，就跳出 Windows 通知，點一下就開啟它":
     "When oMarker is in the background, minimized or in the notification area, show a Windows notification when a work item is assigned to you or someone changes one of yours. Click it to open the item.",
+  "每 12 小時": "Every 12 hours",
+  "每天（預設）": "Every day (default)",
+  "每週": "Every week",
+  "按 ✕ 不結束程式，在右下角的系統匣繼續檢查工作項目、Wiki 頁面與新版本；要結束請在系統匣的圖示按右鍵選「結束」":
+    "Closing the window keeps oMarker in the notification area, still checking work items, Wiki pages and new versions. To quit, right-click its icon there and choose Quit.",
+  "多久檢查一次你的工作項目與開著的 Wiki 頁面；oMarker 的新版本另外在「關於 → 更新」設定":
+    "How often to check your work items and open Wiki pages. New versions of oMarker are set separately under About → Updates.",
+  "有新版本就通知你，下載前會先詢問": "Lets you know about new versions; asks before downloading",
+  "多久檢查一次新版本": "Check for new versions",
+  "新版本不急，預設每天檢查一次": "New versions aren't urgent; checks once a day by default",
 };
