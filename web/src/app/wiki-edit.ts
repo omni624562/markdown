@@ -376,6 +376,7 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
     return;
   }
   let webUrl = wiki.webUrl ?? "";
+  let etag: string | null = null;
   const title = pageName(path);
   offlineRefs.set(`wiki:${wiki.id}:${path}`, { type: "wiki", wiki, path });
   void showIssue({
@@ -417,8 +418,11 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
       app.wikiPage = { wiki, path };
       const page = await desktop!.adoWikiPage(wiki, path);
       webUrl = page.webUrl ?? webUrl;
+      etag = page.etag;
       return wikiMarkdown(page.content);
     },
+    // 切換回來時只問版本（ETag，不讀內容）：沒被改過就不用再讀整頁、重畫。
+    unchanged: async () => !!etag && (await desktop!.adoWikiPageEtag(wiki, path)) === etag,
     insertLink: () => {
       insertAtCursor(wikiPageLink(title, webUrl));
       announce(t("已插入「{name}」的連結", { name: title }));
@@ -506,7 +510,16 @@ export function initWikiEdit(): void {
         into.dataset.outlineScroll = "1";
         into.parentElement?.addEventListener("scroll", () => app.outlineView && updateActiveHeading(), { passive: true });
       }
+      return result.headings;
     },
+    // 切換分頁回來、直接換上之前畫好的畫面：大綱換成那一頁的標題。
+    restored(into, headings) {
+      if (!app.outlineView || !Array.isArray(headings)) return;
+      app.outlineView = { ...app.outlineView, headings, body: into };
+      renderOutline(headings);
+      updateActiveHeading();
+    },
+    detached: () => issuePreview?.forget(),
     // 連到 Azure DevOps 工作項目、Wiki 頁面的網址在 oMarker 裡開（網址寫法和連線設定不同也認得），其他用瀏覽器。
     open: (url) =>
       void openRemoteLink(url)
