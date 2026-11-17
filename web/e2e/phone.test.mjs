@@ -89,3 +89,20 @@ test("手機：助理蓋住整個畫面，「←」或返回鍵關閉；Enter �
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("手機：很寬的表格、很長的第一行不會把整個畫面撐寬", async () => {
+  const { page: p, context, errors } = await open({ android: true, viewport: { width: 412, height: 915 } });
+  await p.click(".phone-fab");
+  await p.click("#editor .cm-content");
+  const long = "很長的說明".repeat(12);
+  await p.keyboard.insertText(`${long}\n\n| 面向 | 建議 |\n| --- | --- |\n| 持股水位 | ${long} |\n`);
+  await p.click(".phone-seg button:has-text('預覽')");
+  await p.waitForSelector("#preview table");
+  for (const view of ["預覽", "編輯"]) {
+    await p.click(`.phone-seg button:has-text('${view}')`);
+    const widths = await p.evaluate(() => [document.documentElement.scrollWidth, document.body.scrollWidth, document.querySelector("#phone-bar").getBoundingClientRect().width]);
+    assert.deepEqual(widths, [412, 412, 412], view);
+  }
+  assert.deepEqual(errors, []);
+  await context.close();
+});

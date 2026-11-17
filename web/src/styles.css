@@ -4831,11 +4831,14 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 
 /* ---- 手機（Android 版、螢幕窄；app/phone.ts）：像筆記 App，不是縮小的電腦版 ---- */
 #phone-bar, #phone-fmt, #phone-home { display: none; }
-body.phone { --editor-font-size: 17px; font-size: 15px; }
+body.phone { grid-template-columns: minmax(0, 1fr); --editor-font-size: 17px; font-size: 15px; }
 body.phone :is(.topbar, .statusbar, .activity-bar, .sidebar, .tab-bar, .splitter, .side-editor-pane, #format-bar) { display: none !important; }
 body.phone .workspace { grid-template-areas: "editor" !important; grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; }
 body.phone .preview-pane { grid-area: editor; }
 body.phone .cm-content { padding-bottom: 72px; }
+/* 手機的螢幕窄：左右留白縮小，上面不必空那麼多。 */
+body.phone .cm-editor.cm-lp { --lp-pad: 18px; }
+body.phone .cm-editor.cm-lp .cm-content { padding-top: 16px; }
 body.phone .markdown-body { padding: 8px 22px 72px; font-size: 17px; line-height: 1.75; }
 
 /* 上方：← 文件名稱 ✦ ⋮，下面是「編輯／預覽」。 */
