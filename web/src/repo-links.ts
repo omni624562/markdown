@@ -41,36 +41,58 @@ function decode(s: string): string {
 
 const VERSION_TYPES = { GB: "branch", GT: "tag", GC: "commit" } as const;
 
+/** 可以在 oMarker 裡放大檢視的圖片（副檔名；SVG 可能帶指令碼，不算）。 */
+export function isImageName(name: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp)$/i.test(name);
+}
+
 /**
  * `href` 是不是連線中那台伺服器（`base` 是集合的網址）上、可以閱讀的儲存庫檔案或附件。
  * 網址的寫法可以和連線設定不同（http／https、埠號、只寫電腦名稱）；附件的網址改用連線設定的伺服器。
  */
 export function parseRepoFileLink(href: string, base: string): RepoFileLink | null {
+  return serverFileLink(href, base, isReadableFileName);
+}
+
+/**
+ * 連到伺服器上的圖片：工作項目的附件、儲存庫（含 Wiki 的儲存庫）裡的圖片，
+ * 包括 Git 的網頁網址（`/_git/儲存庫?path=…`）與 API 的網址（`/_apis/git/repositories/…/items?path=…`）。
+ */
+export function parseImageLink(href: string, base: string): RepoFileLink | null {
+  return serverFileLink(href, base, isImageName);
+}
+
+function serverFileLink(href: string, base: string, accept: (name: string) => boolean): RepoFileLink | null {
   const at = underServer(href, base);
   if (!at) return null;
   const { rest, params: query } = at;
   const attachment = /^(?:\/[^/]+)?\/_apis\/wit\/attachments\/[^/]+$/i.exec(rest);
   if (attachment) {
     const name = query.get("fileName") ?? "";
-    return name && isReadableFileName(name) ? { kind: "attachment", url: `${at.root}${rest}${at.search}`, name } : null;
+    return name && accept(name) ? { kind: "attachment", url: `${at.root}${rest}${at.search}`, name } : null;
   }
   // `/專案/_git/儲存庫?path=/docs/a.md&version=GBmain`；舊版也可能省略專案（和儲存庫同名）。
-  const git = /^(?:\/([^/]+))?\/_git\/([^/]+)\/?$/i.exec(rest);
+  // `/專案/_apis/git/repositories/儲存庫/items?path=/.attachments/a.png`：Wiki 附件的網址常是這種。
+  const git =
+    /^(?:\/([^/]+))?\/_git\/([^/]+)\/?$/i.exec(rest) ?? /^(?:\/([^/]+))?\/_apis\/git\/repositories\/([^/]+)\/items\/?$/i.exec(rest);
   if (!git) return null;
   const rawPath = query.get("path");
   if (!rawPath) return null;
   const path = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
   const name = path.slice(path.lastIndexOf("/") + 1);
-  if (!isReadableFileName(name)) return null;
+  if (!accept(name)) return null;
   const repo = decode(git[2]);
-  const version = query.get("version");
-  const type = version ? VERSION_TYPES[version.slice(0, 2).toUpperCase() as keyof typeof VERSION_TYPES] : undefined;
+  const version = query.get("version") ?? query.get("versionDescriptor.version");
+  const prefixed = version ? VERSION_TYPES[version.slice(0, 2).toUpperCase() as keyof typeof VERSION_TYPES] : undefined;
+  // API 網址的版本不加 GB／GT／GC，當成分支。
+  const api = !/_git/i.test(rest);
+  const type = api ? (version ? "branch" : undefined) : prefixed;
   return {
     kind: "git",
     project: git[1] ? decode(git[1]) : repo,
     repo,
     path,
-    version: version && type ? version.slice(2) : null,
+    version: version && type ? (api ? version : version.slice(2)) : null,
     versionType: type ?? null,
     name,
   };
