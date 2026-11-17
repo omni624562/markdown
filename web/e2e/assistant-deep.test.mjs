@@ -1,5 +1,5 @@
 /**
- * 助理的「深入思考」開關（app/assistant.ts）：平常關著（快、便宜）；按輸入框上方的「＋ 深入思考」打開，
+ * 助理的「深入思考」開關（app/assistant.ts）：平常關著（快、便宜）；在輸入框的「＋」選單打開，
  * 之後送出的問題都帶著 deep，直到按標籤上的 × 關掉。
  * 用假的原生端（見 helpers.mjs）。先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -34,15 +34,17 @@ test("深入思考：預設關著；打開後送出的問題帶著 deep，標籤
   await page.keyboard.insertText("# 行程\n");
   await page.keyboard.press("Control+Shift+L");
   await page.locator("#assistant-panel textarea").waitFor();
-  const add = page.locator("#assistant-panel .assistant-chip-add", { hasText: "深入思考" });
-  await add.waitFor();
-  assert.match(await add.getAttribute("title"), /比較慢.*費用也比較高/);
+  // 關著的時候輸入框上方沒有標籤，在「＋」選單裡打開。
+  const on = page.locator("#assistant-panel .assistant-chip", { hasText: "深入思考" });
+  assert.equal(await on.count(), 0);
   assert.equal((await ask(page, "這個行程順嗎？", 1)).deep, false);
 
-  await add.click();
-  const on = page.locator("#assistant-panel .assistant-chip:not(.assistant-chip-add)", { hasText: "深入思考" });
+  await page.locator("#assistant-plus").click();
+  const item = page.locator("#assistant-plus-popover").getByRole("menuitemradio", { name: "深入思考" });
+  assert.equal(await item.getAttribute("aria-checked"), "false");
+  await item.click();
   await on.waitFor();
-  assert.equal(await add.count(), 0, "同一個選項不會出現兩次");
+  assert.match(await on.getAttribute("title"), /比較慢.*費用也比較高/);
   assert.equal(await page.locator("#assistant-panel textarea").evaluate((el) => el === document.activeElement), true, "焦點回到輸入框");
   assert.equal((await ask(page, "有什麼風險？", 2)).deep, true);
   // 開著的時候下一題也是。
@@ -50,7 +52,7 @@ test("深入思考：預設關著；打開後送出的問題帶著 deep，標籤
   assert.equal((await ask(page, "還有嗎？", 3)).deep, true);
 
   await on.locator(".assistant-chip-x").click();
-  await add.waitFor();
+  await on.waitFor({ state: "detached" });
   assert.equal((await ask(page, "謝謝", 4)).deep, false);
   assert.deepEqual(errors, []);
   await context.close();
