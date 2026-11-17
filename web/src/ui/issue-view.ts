@@ -607,7 +607,10 @@ export class IssueView {
     this.#pane.dataset.source = source.origin.kind;
     this.#browseBtn.hidden = !source.webUrl;
     this.#pane.dataset.sourceName = source.origin.text;
+    // 換內容時標頭的標題直接藏起來，不要淡出：淡出的那一下已經換成新分頁的標題，看起來像閃了一下。
+    this.#pane.classList.add("issue-switching");
     this.#pane.classList.remove("issue-hero", "issue-page-hero", "issue-scrolled", "issue-title-away");
+    requestAnimationFrame(() => requestAnimationFrame(() => this.#pane.classList.remove("issue-switching")));
     this.#label.replaceChildren(...this.#crumbs(source));
     // 來源只用一個圖示標示（狀態列和上方的色條也標了來源與「唯讀」），位置一列放完。
     const origin = document.createElement("span");
@@ -798,7 +801,10 @@ export class IssueView {
       heading.style.paddingLeft = indent ? `${indent}px` : "";
     } else heading.style.paddingLeft = "";
     this.#pane.classList.toggle("issue-scrolled", hero && this.#scroll.scrollTop > 2);
-    const away = !!h1 && h1.getBoundingClientRect().bottom <= this.#scroll.getBoundingClientRect().top + 2;
+    // 還沒排版（切換分頁時窗格先藏著、內容剛換上）量到的位置都是 0，會被當成「捲過標題」而閃一下：
+    // 標題要真的有大小、內容也真的捲動過才算。
+    const box = h1?.getBoundingClientRect();
+    const away = !!box && box.height > 0 && this.#scroll.scrollTop > 0 && box.bottom <= this.#scroll.getBoundingClientRect().top + 2;
     this.#pane.classList.toggle("issue-title-away", away);
   }
 
