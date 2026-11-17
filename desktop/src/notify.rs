@@ -160,6 +160,29 @@ pub async fn notify_work_items(app: AppHandle, items: Vec<NoticeItem>) -> Result
     crate::io::blocking(move || imp::show(&app, &title, &body, "notification-open", open)).await
 }
 
+/// Wiki 頁面通知的標題與內文：一頁時寫出頁名，好幾頁時列出前兩頁。
+pub fn wiki_notice_text(pages: &[String]) -> Option<(String, String)> {
+    let first = pages.first()?;
+    if pages.len() == 1 {
+        return Some((tr!("Wiki 頁面有更新"), first.clone()));
+    }
+    let names: Vec<&str> = pages.iter().take(2).map(String::as_str).collect();
+    let more = if pages.len() > 2 { "…" } else { "" };
+    Some((
+        tr!("有 {n} 個 Wiki 頁面有更新", n = pages.len()),
+        format!("{}{more}", names.join(&tr!("、"))),
+    ))
+}
+
+/// 開著的 Wiki 分頁被別人改了：跳出通知，點一下回到 oMarker 打開那一頁（`notification-wiki`）。
+#[tauri::command]
+pub async fn notify_wiki_pages(app: AppHandle, pages: Vec<String>) -> Result<(), String> {
+    let Some((title, body)) = wiki_notice_text(&pages) else {
+        return Ok(());
+    };
+    crate::io::blocking(move || imp::show(&app, &title, &body, "notification-wiki", 0)).await
+}
+
 /// 有新版本時的通知；點一下回到 oMarker，看這一版改了什麼、更新。
 #[tauri::command]
 pub async fn notify_app_update(app: AppHandle, version: String) -> Result<(), String> {
@@ -188,6 +211,19 @@ mod tests {
             kind: "Bug".into(),
             updated: false,
         }
+    }
+
+    #[test]
+    fn writes_wiki_notice_text() {
+        assert_eq!(wiki_notice_text(&[]), None);
+        assert_eq!(
+            wiki_notice_text(&["安裝說明".into()]),
+            Some(("Wiki 頁面有更新".into(), "安裝說明".into()))
+        );
+        assert_eq!(
+            wiki_notice_text(&["甲".into(), "乙".into(), "丙".into()]),
+            Some(("有 3 個 Wiki 頁面有更新".into(), "甲、乙…".into()))
+        );
     }
 
     #[test]

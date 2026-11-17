@@ -1377,6 +1377,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     onNotificationUpdate: (fn: () => void) => event.listen("notification-update", () => fn()),
     /** 系統匣選單的「立即檢查」。 */
     onTrayCheck: (fn: () => void) => event.listen("tray-check", () => fn()),
+    /** 開著的 Wiki 分頁被改了的系統通知（頁名）；點一下送出 `notification-wiki`。 */
+    notifyWikiPages: (pages: string[]) => core.invoke<void>("notify_wiki_pages", { pages }),
+    onNotificationWiki: (fn: () => void) => event.listen("notification-wiki", () => fn()),
     /** 點了通知：`id` 是要打開的工作項目（0 是打開清單）。 */
     onNotificationOpen: (fn: (id: number) => void) => event.listen<number>("notification-open", (e) => fn(e.payload)),
     onUpdateProgress: (fn: (p: { downloaded: number; total: number }) => void) =>

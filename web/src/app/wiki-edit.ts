@@ -423,6 +423,11 @@ export function showWikiPage(wiki: AdoWiki, path: string): void {
     },
     // 切換回來時只問版本（ETag，不讀內容）：沒被改過就不用再讀整頁、重畫。
     unchanged: async () => !!etag && (await desktop!.adoWikiPageEtag(wiki, path)) === etag,
+    newerVersion: async () => {
+      if (!etag) return null;
+      const now = await desktop!.adoWikiPageEtag(wiki, path);
+      return now && now !== etag ? now : null;
+    },
     insertLink: () => {
       insertAtCursor(wikiPageLink(title, webUrl));
       announce(t("已插入「{name}」的連結", { name: title }));

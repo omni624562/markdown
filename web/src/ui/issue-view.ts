@@ -41,6 +41,10 @@ export interface IssueSource {
    * 沒變就直接顯示記住的內容，不必整份重讀、重畫。沒有這個的來源每次都重讀。
    */
   unchanged?(): Promise<boolean>;
+  /**
+   * 背景檢查用：伺服器上的版本和上次讀到的不同時回傳新的版本（同一個版本只通知一次），一樣或還沒讀過時回傳 null。
+   */
+  newerVersion?(): Promise<string | null>;
   /** 讀取內容（Markdown）。 */
   load(): Promise<string>;
   /** 標頭上的位置（例如 Wiki 頁面的上層頁面），點一下切換過去；`open` 沒給的只顯示文字。 */
@@ -519,6 +523,11 @@ export class IssueView {
     const inside = this.isOpen && Date.now() - this.#clickedInside < 30_000;
     this.#clickedInside = 0;
     return inside;
+  }
+
+  /** 顯示中的項目（沒有開著時是 null）。 */
+  get source(): IssueSource | null {
+    return this.#source;
   }
 
   /** 目前分頁的狀態（切換到別的分頁前存下）；沒有開著時回傳 null。 */
