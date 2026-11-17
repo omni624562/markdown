@@ -97,3 +97,23 @@ test("留言：伺服器不支援編輯（TFS 2019，留言沒有編號）時不
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("留言裡直接貼的附件網址（檔名有底線）：在 oMarker 裡開，不下載、不開瀏覽器", async () => {
+  const url = "https://ado.test/c/0a1b2c3d/_apis/wit/attachments/9f8e7d6c?fileName=COMET_1953533_shared-report_r1.md";
+  const { page, context, errors } = await open({
+    desktop: {
+      ...desktop,
+      ado_work_item: { ...DETAIL, comments: [{ id: 9, author: "李大同", created: "2026-11-17T01:00:00Z", text: `<div>報告已發布：${url}</div>` }] },
+      ado_attachment_text: "# 報告\n\n內容",
+    },
+  });
+  await openItem(page);
+  const link = page.locator(".ado-comment a", { hasText: "attachments" });
+  assert.equal(await link.textContent(), url, "網址照原樣顯示，沒有多出 \\");
+  await link.click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_attachment_text"));
+  assert.equal((await calls(page)).find((c) => c.cmd === "ado_attachment_text").args.url, url);
+  assert.deepEqual((await calls(page)).filter((c) => /open_external|attachment_open|attachment_save/.test(c.cmd)), []);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
