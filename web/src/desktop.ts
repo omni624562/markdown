@@ -1368,7 +1368,12 @@ function bridge(core: TauriCore, event: TauriEvent) {
     updateInstall: () => core.invoke<void>("update_install"),
     updateRestart: () => core.invoke<void>("update_restart"),
     /** 「新指派給你」的系統通知（Windows）。 */
-    notifyWorkItems: (items: { id: number; title: string; kind: string }[]) => core.invoke<void>("notify_work_items", { items }),
+    notifyWorkItems: (items: { id: number; title: string; kind: string; updated?: boolean }[]) => core.invoke<void>("notify_work_items", { items }),
+    /** 有新版本時的系統通知；點一下送出 `notification-update`。 */
+    notifyAppUpdate: (version: string) => core.invoke<void>("notify_app_update", { version }),
+    onNotificationUpdate: (fn: () => void) => event.listen("notification-update", () => fn()),
+    /** 系統匣選單的「立即檢查」。 */
+    onTrayCheck: (fn: () => void) => event.listen("tray-check", () => fn()),
     /** 點了通知：`id` 是要打開的工作項目（0 是打開清單）。 */
     onNotificationOpen: (fn: (id: number) => void) => event.listen<number>("notification-open", (e) => fn(e.payload)),
     onUpdateProgress: (fn: (p: { downloaded: number; total: number }) => void) =>

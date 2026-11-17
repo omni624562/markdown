@@ -1,6 +1,16 @@
 //! 其他：圖片、PDF、版本記錄、設定等。
 
 pub static EN: &[(&str, &str)] = &[
+    ("oMarker {version} 可以更新了", "oMarker {version} is available"),
+    ("點一下看這一版改了什麼", "Click to see what's new"),
+    ("oMarker 還在背景執行", "oMarker is still running"),
+    (
+        "會照設定的間隔檢查工作項目與新版本。要結束請在右下角的 oMarker 圖示按右鍵，選「結束」。",
+        "It checks work items and new versions at the interval you set. To quit, right-click the oMarker icon in the notification area and choose Quit.",
+    ),
+    ("開啟 oMarker", "Open oMarker"),
+    ("立即檢查", "Check now"),
+    ("結束", "Quit"),
     ("找不到這個版本", "Couldn't find this version."),
     (
         "無法查看這個檔案的版本紀錄",

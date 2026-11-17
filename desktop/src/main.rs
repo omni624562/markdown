@@ -48,6 +48,7 @@ mod projects;
 mod secrets;
 mod settings;
 mod text_encoding;
+mod tray;
 mod trust;
 mod update;
 mod watch;
@@ -107,6 +108,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<Window> {
     window.on_window_event(move |event| {
         let was_maximized = MAXIMIZED_BEFORE_FULLSCREEN.load(std::sync::atomic::Ordering::Relaxed);
         window_state::track(&tracked, event, was_maximized);
+        tray::on_window_event(&tracked, event);
     });
     let webview = tauri::webview::WebviewBuilder::from_config(&config)
         .auto_resize()
@@ -179,11 +181,7 @@ async fn resolve_target(app: &AppHandle, path: PathBuf) -> Result<StartupTarget,
 /// 已經開著編輯器時再開一次 exe（例如在檔案總管雙擊另一個 .md）：
 /// 不開新視窗，把路徑交給原本的視窗開成新分頁。
 fn on_second_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
-    if let Some(w) = app.get_window("main") {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
-    }
+    tray::show_main(app);
     let Some(path) = path_arg(
         args.into_iter().skip(1).map(OsString::from),
         Path::new(&cwd),
@@ -367,6 +365,7 @@ fn main() {
             history::maintain(app.handle());
             std::thread::spawn(update::remove_leftovers);
             create_main_window(app)?;
+            tray::create(app.handle())?;
             if CUSTOM_TITLE_BAR {
                 if let Some(window) = app.get_window("main") {
                     // 拿掉標題列後仍保留視窗陰影與可拖曳調整大小的邊框。
@@ -598,6 +597,7 @@ fn main() {
             assistant::batch::assistant_batch_check,
             assistant::batch::assistant_batch_cancel,
             assistant::batch::assistant_batch_remove,
+            notify::notify_app_update,
             update::app_version,
             update::update_check,
             update::update_install,
