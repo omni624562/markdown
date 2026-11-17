@@ -152,6 +152,7 @@ mod tests {
     const ALWAYS: &[&str] = &[
         "startup_target",
         "notify_app_update",
+        "set_launch_at_login",
         "probe_path",
         "open_external",
         "open_with_default",

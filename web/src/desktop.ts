@@ -1375,6 +1375,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 有新版本時的系統通知；點一下送出 `notification-update`。 */
     notifyAppUpdate: (version: string) => core.invoke<void>("notify_app_update", { version }),
     onNotificationUpdate: (fn: () => void) => event.listen("notification-update", () => fn()),
+    /** 登入 Windows 時自動啟動 oMarker（寫在目前使用者的「啟動」清單）。 */
+    setLaunchAtLogin: (on: boolean) => core.invoke<void>("set_launch_at_login", { on }),
     /** 系統匣選單的「立即檢查」。 */
     onTrayCheck: (fn: () => void) => event.listen("tray-check", () => fn()),
     /** 開著的 Wiki 分頁被改了的系統通知（頁名）；點一下送出 `notification-wiki`。 */

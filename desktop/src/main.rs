@@ -39,6 +39,7 @@ mod images;
 mod io;
 mod lexical;
 mod locales;
+mod login;
 mod navigation;
 mod new_project;
 mod notify;
@@ -373,9 +374,18 @@ fn main() {
                     let _ = window.set_shadow(true);
                 }
             }
+            let settings = settings::read_value(app.handle());
+            login::refresh(settings.as_ref());
+            // 開機自動啟動（`--tray`）而且設定要常駐：直接縮在系統匣，不跳出視窗。
+            let quiet = login::started_in_tray(std::env::args_os())
+                && tray::close_to_tray(settings.as_ref());
             // 還原上次的大小時視窗是先藏著建立的（見 `create_main_window`），都設定好了才顯示。
             if let Some(window) = app.get_window("main") {
-                window.show()?;
+                if quiet {
+                    window.hide()?;
+                } else {
+                    window.show()?;
+                }
             }
             Ok(())
         })
@@ -600,6 +610,7 @@ fn main() {
             assistant::batch::assistant_batch_cancel,
             assistant::batch::assistant_batch_remove,
             notify::notify_app_update,
+            login::set_launch_at_login,
             update::app_version,
             update::update_check,
             update::update_install,

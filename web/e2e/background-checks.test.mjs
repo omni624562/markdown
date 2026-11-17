@@ -86,3 +86,19 @@ test("開著的 Wiki 分頁被別人改了：背景檢查只問版本，在背�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("設定：開機時自動啟動（預設關閉），打開就寫進 Windows 的啟動清單，關掉就拿掉", async () => {
+  const { page, context, errors } = await open({ desktop });
+  await page.keyboard.press("Control+,");
+  await page.locator("dialog[open].settings").waitFor();
+  const toggle = page.locator("#setting-launchAtLogin");
+  assert.equal(await toggle.isChecked(), false);
+  await toggle.click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "set_launch_at_login"));
+  assert.deepEqual((await calls(page)).filter((c) => c.cmd === "set_launch_at_login").map((c) => c.args.on), [true]);
+  await toggle.click();
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "set_launch_at_login").length === 2);
+  assert.deepEqual((await calls(page)).filter((c) => c.cmd === "set_launch_at_login").map((c) => c.args.on), [true, false]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
