@@ -43,6 +43,12 @@ pub static EN: &[(&str, &str)] = &[
     ("讀取 Wiki 頁面", "Loading the wiki page"),
     ("新指派給你：{kind} {id}", "Newly assigned to you: {kind} {id}"),
     ("有 {n} 個工作項目新指派給你", "{n} work items were newly assigned to you"),
+    ("你的工作項目有更新：{kind} {id}", "Your work item was updated: {kind} {id}"),
+    ("你有 {n} 個工作項目有更新", "{n} of your work items were updated"),
+    (
+        "有 {n} 個工作項目是新指派或有更新",
+        "{n} work items are newly assigned or updated",
+    ),
     ("請輸入標題", "Enter a title."),
     ("標題最多 {n} 個字", "The title can be at most {n} characters."),
     ("優先順序要是 1 到 4", "The priority must be 1 to 4."),

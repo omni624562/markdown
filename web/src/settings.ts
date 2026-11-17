@@ -8,6 +8,10 @@ import { desktop } from "./desktop.ts";
 import { cleanFontName } from "./fonts.ts";
 import { t } from "./i18n.ts";
 import * as storage from "./storage.ts";
+
+/** 背景檢查的間隔（分鐘）。最短 10 分鐘：很多人一起用時，伺服器的負擔才不會太大。 */
+export const BACKGROUND_CHECKS = ["10", "15", "30", "60"] as const;
+export type BackgroundCheck = (typeof BACKGROUND_CHECKS)[number];
 import { cleanFolder } from "./daily-notes.ts";
 import { TEMPLATE_LIMITS, type Template } from "./templates.ts";
 import { sanitizeKindColors } from "./work-item-colors.ts";
@@ -63,8 +67,12 @@ export interface Settings {
   blockRemoteImages: boolean;
   /** 桌面版：已經存過的檔案，停止打字一下子後自動存回磁碟。 */
   autoSave: boolean;
-  /** 新指派給我的工作項目：oMarker 在背景時跳出系統通知。 */
+  /** 新指派給我、或我的工作項目有更新：oMarker 在背景時跳出系統通知。 */
   adoNotify: boolean;
+  /** 桌面版：按關閉時縮到系統匣，繼續在背景檢查工作項目與新版本（要結束從系統匣的選單）。預設開啟。 */
+  closeToTray: boolean;
+  /** 背景檢查工作項目與新版本的間隔（分鐘），最短 10 分鐘。 */
+  backgroundCheck: BackgroundCheck;
   /** 工作項目類型的自訂顏色（類型名稱 → `#rrggbb`）；沒列到的用預設顏色（見 work-item-colors.ts）。 */
   workItemColors: Record<string, string>;
   /** 設定 COMET 時先選的 Azure DevOps 專案（空字串是不指定：用上次選的）。 */
@@ -194,6 +202,8 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   autoSymbols: true,
   autoSave: true,
   adoNotify: true,
+  closeToTray: true,
+  backgroundCheck: "10",
   workItemColors: {},
   adoDefaultProject: "",
   adoDefaultTeam: "",
@@ -324,6 +334,12 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   bool("autoSymbols");
   bool("autoSave");
   bool("adoNotify");
+  bool("closeToTray");
+  if ("backgroundCheck" in input) {
+    const v = String(input.backgroundCheck);
+    if ((BACKGROUND_CHECKS as readonly string[]).includes(v)) out.backgroundCheck = v as BackgroundCheck;
+    else problems++;
+  }
   bool("termCheck");
   bool("spellCheck");
   bool("imageCompress");

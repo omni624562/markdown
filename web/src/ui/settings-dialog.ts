@@ -44,6 +44,12 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["stable", t("穩定版（建議）")],
     ["early", t("搶先版")],
   ],
+  backgroundCheck: [
+    ["10", t("每 10 分鐘（預設）")],
+    ["15", t("每 15 分鐘")],
+    ["30", t("每 30 分鐘")],
+    ["60", t("每小時")],
+  ],
   previewWidth: [
     ["narrow", t("窄")],
     ["medium", t("中")],
@@ -392,6 +398,20 @@ export class SettingsDialog {
               { key: "gitEnabled", label: t("Git 與 GitHub"), hint: t("關掉後不顯示，也不能使用；切換後會重新載入介面") },
               { key: "adoEnabled", label: "Azure DevOps", hint: t("工作項目、Wiki 與儲存庫") },
               { key: "remoteEnabled", label: t("遠端資料夾（WebDAV、SSH）") },
+            ]),
+          )
+        : []),
+      // 常駐與背景檢查（桌面版）：關閉視窗後仍在系統匣檢查工作項目與新版本（app/background-checks.ts）。
+      ...(desktop
+        ? this.#group(
+            t("背景執行"),
+            this.#rows([
+              {
+                key: "closeToTray",
+                label: t("關閉視窗時縮到系統匣"),
+                hint: t("按 ✕ 不結束程式，在右下角的系統匣繼續檢查工作項目與新版本；要結束請在系統匣的圖示按右鍵選「結束」"),
+              },
+              { key: "backgroundCheck", label: t("背景檢查間隔"), hint: t("多久檢查一次你的工作項目與 oMarker 的新版本") },
             ]),
           )
         : []),
@@ -754,7 +774,7 @@ export class SettingsDialog {
       section.append(
         ...this.#group(t("更新"), [
           versionRow,
-          this.#row("autoUpdate", t("自動檢查更新"), t("每天檢查一次，下載前會先詢問"), () => this.#control("autoUpdate")),
+          this.#row("autoUpdate", t("自動檢查更新"), t("照「背景檢查間隔」檢查，有新版本就通知你，下載前會先詢問"), () => this.#control("autoUpdate")),
           this.#row("updateChannel", t("更新管道"), t("穩定版是確認過的版本；搶先版是每次修改後的最新版，比較快拿到新功能，也比較可能有問題"), () =>
             this.#control("updateChannel"),
           ),
@@ -1272,8 +1292,8 @@ export class SettingsDialog {
     });
     const notifyRow = this.#row(
       "adoNotify",
-      t("新指派給我時通知"),
-      t("oMarker 在背景或縮小時，有新的工作項目指派給你就跳出 Windows 通知，點一下就開啟它"),
+      t("新指派或有更新時通知"),
+      t("oMarker 在背景、縮小或在系統匣時，有新的工作項目指派給你、或你的工作項目被別人改了，就跳出 Windows 通知，點一下就開啟它"),
       () => this.#control("adoNotify"),
     );
     // 權限檢查：逐項列出權杖能做什麼，缺的告訴使用者怎麼補。

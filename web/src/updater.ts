@@ -1,5 +1,6 @@
 /**
- * 自動更新（桌面版免安裝 exe）：每天檢查一次 GitHub 上的最新版，有新版時詢問使用者，
+ * 自動更新（桌面版免安裝 exe）：照設定的「背景檢查間隔」檢查 GitHub 上的最新版，有新版時詢問使用者
+ * （oMarker 在背景或系統匣時跳出系統通知，點一下回來看），
  * 下載並核對簽章與檢查碼後取代執行檔，重新啟動即完成更新。
  * 更新視窗會列出這一版改了什麼；重新啟動後第一次開啟時，再說明一次已經更新了哪些內容。
  */
@@ -11,7 +12,6 @@ import * as storage from "./storage.ts";
 import { showRelease } from "./ui/release-dialog.ts";
 import { toast } from "./ui/toast.ts";
 
-const CHECK_INTERVAL = 20 * 60 * 60 * 1000;
 const FIRST_CHECK_DELAY = 8000;
 /** 手動檢查超過這個時間還沒結果，就說明還在連線（公司網路可能要等比較久）。 */
 const SLOW_CHECK = 3000;
@@ -60,9 +60,8 @@ export class Updater {
       this.#setState({ ...this.#state, percent: Math.floor((downloaded / total) * 100) });
     });
     this.#welcome().catch((e) => console.warn("無法顯示更新說明", e)); // i18n-ignore（開發者主控台）
-    setTimeout(() => void this.#autoCheck(), FIRST_CHECK_DELAY);
-    // 長時間開著的話，每隔一段時間再檢查。
-    setInterval(() => void this.#autoCheck(), 60 * 60 * 1000);
+    setTimeout(() => void this.backgroundCheck(), FIRST_CHECK_DELAY);
+    // 之後由 app/background-checks.ts 照設定的間隔呼叫 backgroundCheck()。
   }
 
   version(): Promise<AppVersion> {
@@ -119,15 +118,29 @@ export class Updater {
     });
   }
 
-  async #autoCheck(): Promise<void> {
+  /**
+   * 背景檢查（啟動後、照設定的間隔、系統匣的「立即檢查」）：距離上次檢查不到一個間隔就不再問（`now` 例外）。
+   * 有新版時，oMarker 在前景就顯示提示，在背景或系統匣就跳出系統通知（同一版只通知一次）。
+   */
+  async backgroundCheck(now = false): Promise<void> {
     if (!this.#settings.value.autoUpdate || this.#state.kind !== "idle") return;
     const last = Number(storage.load("update-checked")) || 0;
-    if (Date.now() - last < CHECK_INTERVAL) return;
+    const interval = Number(this.#settings.value.backgroundCheck) * 60_000;
+    // 計時器不會剛好準時：差一分鐘以內也算到了。
+    if (!now && Date.now() - last < interval - 60_000) return;
     try {
       const { latest } = await this.#d.updateCheck();
       storage.save("update-checked", String(Date.now()));
       if (!latest || String(latest.build) === storage.load("update-skipped")) return;
-      // 自動檢查不直接跳出視窗打斷工作，先用通知提醒。
+      if (document.hidden || !document.hasFocus()) {
+        if (storage.load("update-notified") === String(latest.build)) return;
+        storage.save("update-notified", String(latest.build));
+        void this.#d.notifyAppUpdate(latest.version).catch(() => {});
+        return;
+      }
+      // 自動檢查不直接跳出視窗打斷工作，先用通知提醒；同一版只提醒一次（每 10 分鐘檢查也不會一直跳）。
+      if (storage.load("update-toasted") === String(latest.build)) return;
+      storage.save("update-toasted", String(latest.build));
       const text = latest.notes
         ? t("有新版本 {version}：{notes}", { version: latest.version, notes: latest.notes })
         : t("有新版本 {version}", { version: latest.version });
@@ -185,6 +198,11 @@ export class Updater {
   }
 
   /** 列出新版改了什麼，詢問要不要更新。 */
+  /** 從「有新版本」的系統通知回來：直接問要不要更新（和手動檢查一樣）。 */
+  fromNotification(): void {
+    void this.check();
+  }
+
   async #offer(m: UpdateManifest): Promise<void> {
     const size = `${(m.size / 1024 / 1024).toFixed(1)} MB`;
     const choice = await showRelease({

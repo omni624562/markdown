@@ -148,6 +148,7 @@ mod tests {
     /// 新增原生指令時，要歸到某一項功能（`Feature::of`），或明確加進這裡。
     const ALWAYS: &[&str] = &[
         "startup_target",
+        "notify_app_update",
         "probe_path",
         "open_external",
         "open_with_default",

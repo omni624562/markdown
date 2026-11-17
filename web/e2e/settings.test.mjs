@@ -173,7 +173,7 @@ test("設定（桌面版）：在設定連上 Azure DevOps 後，才出現工作
   await page.click("#setting-ado-connect");
   await section.locator(".settings-group-title", { hasText: "工作項目" }).waitFor();
   const labels = await visibleLabels(page);
-  for (const label of ["帳號", "新指派給我時通知", "工作項目類型的顏色"]) assert.ok(labels.includes(label), labels.join("、"));
+  for (const label of ["帳號", "新指派或有更新時通知", "工作項目類型的顏色"]) assert.ok(labels.includes(label), labels.join("、"));
   assert.ok(!labels.includes("伺服器網址"));
   // 搜尋再清掉：依狀態藏起來的網址與權杖欄位不會跑出來。
   await page.fill("dialog[open] .settings-search", "權杖");
