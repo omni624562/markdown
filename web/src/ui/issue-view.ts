@@ -384,16 +384,9 @@ export class IssueView {
 
     this.#scroll = document.createElement("div");
     this.#scroll.className = "issue-scroll";
-    let frame = 0;
-    this.#scroll.addEventListener(
-      "scroll",
-      () => {
-        if (!frame) frame = requestAnimationFrame(() => ((frame = 0), this.#updateHeroHead()));
-      },
-      { passive: true },
-    );
+    this.#scroll.addEventListener("scroll", () => this.#scheduleHeroHead(), { passive: true });
     // 視窗或側邊欄的寬度改變時，標頭的類型標籤重新對齊標題。
-    new ResizeObserver(() => this.#updateHeroHead()).observe(this.#scroll);
+    new ResizeObserver(() => this.#scheduleHeroHead()).observe(this.#scroll);
     this.#body = document.createElement("article");
     this.#body.className = "markdown-body issue-body";
     this.#stale = document.createElement("p");
@@ -803,7 +796,7 @@ export class IssueView {
     this.#h.facts?.(this.#source?.facts?.() ?? []);
     this.#scroll.scrollTop = this.#restoreScroll ?? 0;
     this.#restoreScroll = null;
-    this.#updateHeroHead();
+    this.#scheduleHeroHead();
     if (!this.#find.hidden) this.#search();
     return true;
   }
@@ -850,13 +843,22 @@ export class IssueView {
     const page = !kind && !!this.#body.querySelector(":scope > h1.page-hero");
     this.#pane.classList.toggle("issue-hero", !!kind || page);
     this.#pane.classList.toggle("issue-page-hero", page);
-    this.#updateHeroHead();
+    this.#scheduleHeroHead();
   }
 
   /**
    * 標頭的類型標籤往右推到和內容的標題對齊（內容置中、寬度有上限）；
    * 捲動時：內容捲到標頭下面就畫出分隔線，看不到標題時標頭顯示標題。
    */
+  #heroFrame = 0;
+  /**
+   * 下一個畫面再量位置、調整標頭：剛換上內容就量會逼瀏覽器把整份長內容排版一次，
+   * 接著其他改動又讓它重排一次（長的工作項目、Wiki 打開時多花好幾百毫秒）。同一個畫面裡只量一次。
+   */
+  #scheduleHeroHead(): void {
+    if (!this.#heroFrame) this.#heroFrame = requestAnimationFrame(() => ((this.#heroFrame = 0), this.#updateHeroHead()));
+  }
+
   #updateHeroHead(): void {
     const hero = this.#pane.classList.contains("issue-hero");
     const h1 = hero ? this.#body.querySelector<HTMLElement>(".ado-hero h1, :scope > h1.page-hero") : null;
