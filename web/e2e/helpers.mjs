@@ -115,9 +115,11 @@ function fakeTauri(respond) {
  * `desktop` 是假原生端的回應（指令名稱 → 回傳值，或依序回傳的陣列）；不給就是網頁版。
  * `page: "terminal.html"` 開終端機的頁面（桌面版的終端機 webview），等 `ready` 選到的元素出現。
  */
-export async function open({ desktop, page: path = "index.html", ready = ".cm-editor .cm-content" } = {}) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "zh-TW" });
-  if (desktop) await context.addInitScript(fakeTauri, desktop);
+export async function open({ desktop, android, viewport = { width: 1280, height: 800 }, page: path = "index.html", ready = ".cm-editor .cm-content" } = {}) {
+  const context = await browser.newContext({ viewport, locale: "zh-TW" });
+  // Android 版：有 `window.__TAURI__`，但原生端只有助理等少數指令（見 platform.ts）。
+  if (android) await context.addInitScript(() => (window.__OMARKER_ANDROID__ = true));
+  if (desktop || android) await context.addInitScript(fakeTauri, desktop ?? (android === true ? {} : android));
   const page = await context.newPage();
   const errors = [];
   const external = [];

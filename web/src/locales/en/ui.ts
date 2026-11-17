@@ -1286,4 +1286,13 @@ export const ui: Record<string, Translation> = {
   "助理：自訂動作…": "Assistant: Custom Actions…",
   "模型：{name}（按一下換）": "Model: {name} (click to change)",
   "送到 Anthropic・修改要按「套用」": "Sent to Anthropic · changes need Apply",
+  // app/phone.ts
+  "未存檔": "Unsaved",
+  "找不到符合的文件": "No matching documents",
+  "還沒有文件。按「新增」開始寫，或開啟手機裡的檔案。": "No documents yet. Tap Add to start writing, or open a file on your phone.",
+  "搜尋文件": "Search documents",
+  "從範本新增": "From template",
+  "最近": "Recent",
+  "回到文件清單": "Back to documents",
+  "列印": "Print",
 };
