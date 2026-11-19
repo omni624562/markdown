@@ -2942,6 +2942,10 @@ button.git-info:disabled { cursor: default; }
 .release-notes ul { margin: 0 0 6px; padding-left: 1.3em; }
 .release-notes p { margin: 8px 0; }
 .settings-row small.settings-ready { color: var(--accent); font-weight: 600; }
+/* 下載新版的進度（設定 → 關於 → 更新）。 */
+.settings-progress { width: min(260px, 100%); height: 4px; margin-top: 6px; overflow: hidden; border-radius: 2px; background: var(--active-line); }
+.settings-progress i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+.settings-progress[hidden] { display: none; }
 
 /* ==== 一致的表單與對話框外觀（和設定視窗同一套標準） ====
  * 輸入框、下拉選單、勾選框、對話框的間距與圓角統一；下拉選單和勾選框不用系統預設的樣子。 */
