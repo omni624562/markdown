@@ -43,8 +43,19 @@ test("專案總覽：刪除要輸入資料夾名稱；勾選後資料夾移到�
   assert.match(await dialog.locator(".pd-note").textContent(), /都會移到資源回收筒/);
   await dialog.locator("input[name=confirm]").fill(" cobalt ");
   assert.equal(await submit.isDisabled(), false);
+  // 滑鼠移上去還是紅底白字（以前一般按鈕的 hover 把底色換成淺色，整個變白）。
+  const bg = () => submit.evaluate((b) => getComputedStyle(b).backgroundColor);
+  const before = await bg();
+  await submit.hover();
+  const after = await bg();
+  // color-mix 算出來的顏色是 color(srgb 0~1 …)，其他是 rgb(0~255 …)。
+  const scale = after.startsWith("color(") ? 255 : 1;
+  const [r, g, b] = after.match(/[\d.]+/g).map((n) => Number(n) * scale);
+  assert.ok(r > 120 && g < 100 && b < 100, `hover 時的底色：${after}（原本 ${before}）`);
   await submit.click();
-  await page.locator(".toast", { hasText: "已刪除專案「鈷藍計畫」，資料夾移到資源回收筒了" }).waitFor();
+  await dialog.waitFor({ state: "detached" });
+  // 不另外跳「已刪除」的通知。
+  assert.equal(await page.locator(".toast").count(), 0);
   assert.deepEqual((await calls(page)).filter((c) => c.cmd === "project_delete").map((c) => c.args), [
     { path: "C:\\work\\cobalt", trashFolder: true },
   ]);
@@ -87,7 +98,9 @@ test("「☰」→「專案」→「刪除專案…」刪除目前的專案：�
   // 不分大小寫。
   await dialog.locator("input[name=confirm]").fill("NOTES");
   await dialog.getByRole("button", { name: "刪除" }).click();
-  await page.locator(".toast", { hasText: "已把「notes」從專案清單移除" }).waitFor();
+  await dialog.waitFor({ state: "detached" });
+  // 不跳「已刪除」或「已關閉」的通知。
+  assert.deepEqual(await page.locator(".toast").allTextContents(), []);
   const order = (await calls(page)).map((c) => c.cmd);
   assert.ok(order.includes("close_folder"));
   assert.ok(order.lastIndexOf("close_folder") < order.indexOf("project_delete"));

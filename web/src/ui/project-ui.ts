@@ -26,7 +26,7 @@ export interface ProjectHooks {
   aiAppInstalled(app: AiApp): boolean;
   /** 關閉目前的專案。 */
   close(): void;
-  /** 關閉目前的專案，等關好（刪除目前的專案前）。 */
+  /** 關閉目前的專案，等關好（刪除目前的專案前；不顯示「已關閉」的通知）。 */
   closeAndWait(): Promise<void>;
   remotes(): Promise<DavConnection[]>;
   openRemote(c: DavConnection): void;
@@ -473,13 +473,8 @@ export class ProjectUi {
           if (here) await this.#h.closeAndWait();
           await this.#d.projectDelete(p.path, trash.checked);
           dialog.close();
+          // 不另外跳「已刪除」的通知：提示窗關掉、清單上少了這個專案就看得出來。
           if (trash.checked) forgetProjectSession(p.path);
-          toast(
-            trash.checked
-              ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label })
-              : t("已把「{name}」從專案清單移除", { name: p.label }),
-            { tone: "success" },
-          );
         } catch (err) {
           error.textContent = message(err);
           error.hidden = false;

@@ -1655,7 +1655,7 @@ const projectUi = desktop
       newProject: () => void commands.run("new-project").catch(reportError),
       aiAppInstalled: aiAppPresent,
       close: () => void commands.run("close-folder").catch(reportError),
-      closeAndWait: () => closeProject(),
+      closeAndWait: () => closeProject(true),
       remotes: () => (features.remote ? desktop!.davConnections() : Promise.resolve([])),
       openRemote: (c) => void openRemote(c).catch(reportError),
       changed: () => void renderProjectName().then(renderFilesEmpty),

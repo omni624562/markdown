@@ -171,8 +171,6 @@ export const ui: Record<string, Translation> = {
   "資料夾和裡面的檔案都不會動，之後再開啟這個資料夾就會重新加入。": "The folder and its files stay as they are; opening the folder again adds it back.",
   "這是目前開著的專案，會先關閉。": "This is the open project; it will be closed first.",
   "這個專案有還沒存檔的分頁，刪除後就找不到了。": "This project has unsaved tabs; they will be gone after deleting.",
-  "已刪除專案「{name}」，資料夾移到資源回收筒了": "Deleted project \"{name}\" and moved its folder to the Recycle Bin",
-  "已把「{name}」從專案清單移除": "Removed \"{name}\" from the project list",
   // app/new-project.ts
   "新專案…": "New Project…",
   "新專案": "New Project",
