@@ -3222,6 +3222,12 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .choice.project-delete .pd-note.warn { color: var(--danger); }
 .project-delete .pd-type span { font-weight: 400; }
 .project-delete .btn-danger:not(:disabled) { border-color: var(--danger); background: var(--danger); color: #fff; }
+/* 滑鼠移上去：一般按鈕的 hover 會把底色換成淺色（字還是白的，看起來整個變白），刪除按鈕改成深一點的紅。 */
+.project-delete .btn-danger:not(:disabled):hover, .project-delete .btn-danger:not(:disabled):focus-visible {
+  border-color: color-mix(in srgb, var(--danger) 85%, black);
+  background: color-mix(in srgb, var(--danger) 85%, black);
+  color: #fff;
+}
 .project-delete .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .po-actions .btn { width: 26px; height: 26px; }
 .po-actions .icon { width: 14px; height: 14px; }

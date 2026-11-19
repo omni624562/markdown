@@ -631,9 +631,9 @@ async function switchTabs(scope: string): Promise<void> {
 
 /**
  * 關閉目前的專案：分頁收起來（和切換專案一樣記住，沒存的內容留在草稿裡，下次開啟這個專案時還原），
- * 換成一個空白分頁，檔案樹回到「開啟資料夾」的畫面。
+ * 換成一個空白分頁，檔案樹回到「開啟資料夾」的畫面。`quiet`：不顯示「已關閉」的通知（刪除專案時用）。
  */
-export async function closeProject(): Promise<void> {
+export async function closeProject(quiet = false): Promise<void> {
   const folder = app.workspaceRoot;
   if (!folder || !desktop) return;
   const name = app.projectUi?.current?.label ?? folder.name;
@@ -651,7 +651,7 @@ export async function closeProject(): Promise<void> {
   app.persistSession();
   app.renderTabs();
   await setWorkspace(null);
-  toast(t("已關閉「{name}」。分頁都記住了，下次開啟這個專案會還原", { name }));
+  if (!quiet) toast(t("已關閉「{name}」。分頁都記住了，下次開啟這個專案會還原", { name }));
 }
 
 export async function openRecentFolder(path: string): Promise<void> {
