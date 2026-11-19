@@ -927,7 +927,6 @@ function bridge(core: TauriCore, event: TauriEvent) {
      * 刪除專案：從清單移除；`trashFolder` 時把資料夾移到資源回收筒，原生端會先用系統的對話框再確認一次，
      * 使用者選「否」時回傳 false（什麼都沒做）。
      */
-    projectDeleteAsk: (path: string, trash: boolean, unsaved: boolean) => core.invoke<boolean | null>("project_delete_ask", { path, trash, unsaved }),
     projectDelete: (path: string, trashFolder: boolean) => core.invoke<void>("project_delete", { path, trashFolder }),
     /** 在 Codex 桌面版開啟專案（專案清單裡的本機資料夾）。 */
     projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),

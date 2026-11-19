@@ -198,7 +198,6 @@ mod tests {
         "projects_list",
         "project_update",
         "project_forget",
-        "project_delete_ask",
         "project_delete",
         "project_open_codex",
         "project_open_claude",

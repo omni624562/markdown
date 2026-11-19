@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{AppHandle, State, Window};
 
-use crate::confirm::Question;
 use crate::files::{display_name, path_string};
 use crate::trust::{ProjectMeta, Trust};
 
@@ -142,71 +141,6 @@ fn protected_folder(dir: &Path, system: &[PathBuf]) -> bool {
     dir.parent().is_none() || system.iter().any(|s| s == dir || s.starts_with(dir))
 }
 
-/// 刪除專案前要問的事：對話框的內容，以及下方「同時把資料夾移到資源回收筒」的勾選框
-/// （資料夾不在了、或是系統／使用者資料夾不能移時沒有勾選框，只從清單移除）。
-fn delete_question(
-    dir: &Path,
-    label: &str,
-    exists: bool,
-    system: &[PathBuf],
-    open: bool,
-    unsaved: bool,
-    terminals: usize,
-) -> (Question, Option<String>) {
-    let mut lines = vec![
-        path_string(dir),
-        tr!("會從專案清單移除；勾選下面的選項時，資料夾和裡面所有的檔案也會移到資源回收筒（可以還原），這個專案記住的分頁會一起清掉。"),
-    ];
-    let can_trash = exists && !protected_folder(dir, system);
-    if !can_trash {
-        lines[1] = tr!("會從專案清單移除，資料夾和裡面的檔案都不會動。");
-        if exists {
-            lines.push(tr!(
-                "「{name}」是系統或使用者資料夾，不能移到資源回收筒。",
-                name = display_name(dir)
-            ));
-        }
-    }
-    if open {
-        lines.push(tr!("這是目前開著的專案，會先關閉。"));
-    }
-    if can_trash && unsaved {
-        lines.push(tr!(
-            "這個專案有還沒存檔的分頁，移到資源回收筒後就找不到了。"
-        ));
-    }
-    if can_trash && terminals > 0 {
-        lines.push(tr!(
-            "移到資源回收筒時，在這個資料夾開著的 {n} 個終端機會一起關閉。",
-            n = terminals
-        ));
-    }
-    let question = Question::new(tr!("刪除專案「{name}」？", name = label), lines.join("\n"));
-    (
-        question,
-        can_trash.then(|| tr!("同時把資料夾移到資源回收筒（可以從回收筒還原）")),
-    )
-}
-
-/// 使用者在系統的對話框答應了把哪個資料夾移到資源回收筒（`project_delete` 用掉一次就清掉）。
-/// 網頁沒辦法代按系統的對話框，所以沒有這個答應，網頁直接呼叫 `project_delete` 也移不了資料夾。
-static APPROVED: parking_lot::Mutex<Option<(PathBuf, std::time::Instant)>> =
-    parking_lot::Mutex::new(None);
-/// 答應之後多久內有效（中間要先關閉開著的專案，可能要先處理還沒存檔的分頁）。
-const APPROVAL_TTL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-
-/// 這個資料夾剛剛答應過移到資源回收筒（用掉就清掉）。
-fn take_approval(dir: &Path) -> bool {
-    let mut approved = APPROVED.lock();
-    match approved.take() {
-        Some((d, at)) if d == dir && at.elapsed() < APPROVAL_TTL => true,
-        other => {
-            *approved = other;
-            false
-        }
-    }
-}
-
 /// 系統或使用者資料夾（不能移到資源回收筒）。
 fn system_folders(app: &AppHandle) -> Vec<PathBuf> {
     use tauri::Manager;
@@ -222,50 +156,6 @@ fn system_folders(app: &AppHandle) -> Vec<PathBuf> {
     .into_iter()
     .filter_map(Result::ok)
     .collect()
-}
-
-/// 刪除專案的確認：用系統的對話框問一次（網頁無法代按），「同時把資料夾移到資源回收筒」的勾選框也在裡面，
-/// 預設是 `trash`（網頁記住的上次選擇）。按「刪除」時回傳勾選框的狀態（是否要移到資源回收筒），取消時回傳 None。
-/// 要移到資源回收筒時記下這次的答應，接著呼叫 `project_delete` 才會移。
-#[tauri::command]
-pub async fn project_delete_ask(
-    app: AppHandle,
-    window: Window,
-    path: String,
-    trash: bool,
-    unsaved: bool,
-) -> Result<Option<bool>, String> {
-    use tauri::Manager;
-    let dir = PathBuf::from(&path);
-    let Some(meta) = app.state::<Trust>().project(&dir) else {
-        return Err(tr!("這個資料夾不在專案清單中"));
-    };
-    let label = ProjectInfo::from(meta).label;
-    let open = app
-        .state::<crate::workspace::Workspace>()
-        .root()
-        .is_some_and(|root| root == dir);
-    let terminals = app.state::<crate::ai::term::Terminals>().count_inside(&dir);
-    let (question, check) = delete_question(
-        &dir,
-        &label,
-        dir.exists(),
-        &system_folders(&app),
-        open,
-        unsaved,
-        terminals,
-    );
-    let can_trash = check.is_some();
-    let Some(checked) =
-        crate::confirm::choose(&window, question, tr!("刪除"), check.map(|c| (c, trash))).await
-    else {
-        return Ok(None);
-    };
-    let trash = can_trash && checked;
-    if trash {
-        *APPROVED.lock() = Some((dir, std::time::Instant::now()));
-    }
-    Ok(Some(trash))
 }
 
 /// 移到資源回收筒失敗後再試幾次：剛結束的終端機、防毒軟體或搜尋索引可能還短暫占用檔案。
@@ -296,7 +186,8 @@ fn move_to_trash(dir: &Path) -> Result<(), String> {
 
 /// 刪除專案：從專案清單移除；`trash_folder` 時把整個資料夾移到資源回收筒（可以從回收筒還原）。
 /// 只能刪專案清單上的資料夾；目前開著的專案要先關閉。沒有資源回收筒（例如網路磁碟）時回報錯誤，
-/// 不會改成直接刪除。移到資源回收筒前要先用 `project_delete_ask` 在系統的對話框答應過（網頁無法代按）。
+/// 不會改成直接刪除。確認在網頁的提示窗（輸入專案的資料夾名稱），只問這一次（使用者的選擇）；
+/// 原生端不再用系統的對話框另外問，資料夾移到資源回收筒後還能還原。
 #[tauri::command]
 pub async fn project_delete(
     app: AppHandle,
@@ -320,11 +211,6 @@ pub async fn project_delete(
             return Err(tr!(
                 "「{name}」是系統或使用者資料夾，不能移到資源回收筒；可以只從清單移除",
                 name = display_name(&dir)
-            ));
-        }
-        if !take_approval(&dir) {
-            return Err(tr!(
-                "要先在確認的對話框按「刪除」，才能把資料夾移到資源回收筒"
             ));
         }
         // 在這個資料夾啟動的終端機先結束，否則 Windows 不讓資料夾移走。
@@ -459,41 +345,6 @@ pub fn project_open_claude(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn delete_question_offers_the_recycle_bin_only_when_possible() {
-        let system = [PathBuf::from("/home/me")];
-        let dir = Path::new("/home/me/Documents/產品筆記");
-        let (q, check) = delete_question(dir, "產品", true, &system, false, false, 0);
-        assert_eq!(q.title, "刪除專案「產品」？");
-        assert!(q.message.contains(&path_string(dir)), "{}", q.message);
-        assert!(check.is_some_and(|c| c.contains("資源回收筒")));
-        assert!(!q.message.contains("終端機"), "{}", q.message);
-        // 開著的專案、沒存檔的分頁、終端機：都寫在內容裡。
-        let (q, _) = delete_question(dir, "產品", true, &system, true, true, 2);
-        assert!(q.message.contains("會先關閉"), "{}", q.message);
-        assert!(q.message.contains("還沒存檔"), "{}", q.message);
-        assert!(q.message.contains("2 個終端機會一起關閉"), "{}", q.message);
-        // 資料夾已經不在了：沒有東西要移，沒有勾選框。
-        let (q, check) = delete_question(dir, "產品", false, &system, false, true, 2);
-        assert!(check.is_none());
-        assert!(!q.message.contains("還沒存檔"), "{}", q.message);
-        // 系統資料夾不能移：沒有勾選框，說明原因。
-        let (q, check) =
-            delete_question(Path::new("/home"), "home", true, &system, false, false, 0);
-        assert!(check.is_none());
-        assert!(q.message.contains("不能移到資源回收筒"), "{}", q.message);
-    }
-
-    #[test]
-    fn approval_is_for_one_folder_and_used_once() {
-        let a = PathBuf::from("/home/me/Documents/產品");
-        let b = PathBuf::from("/home/me/Documents/Contoso");
-        *APPROVED.lock() = Some((a.clone(), std::time::Instant::now()));
-        assert!(!take_approval(&b), "答應的是別的資料夾");
-        assert!(take_approval(&a));
-        assert!(!take_approval(&a), "用過一次就沒了");
-    }
 
     #[test]
     fn system_folders_are_protected() {

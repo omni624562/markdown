@@ -83,15 +83,6 @@ impl Terminals {
         }
     }
 
-    /// 在 `dir`（或裡面的資料夾）啟動、還在執行的終端機數目。
-    pub fn count_inside(&self, dir: &Path) -> usize {
-        self.sessions
-            .lock()
-            .values()
-            .filter(|s| s.cwd.starts_with(dir))
-            .count()
-    }
-
     /// 結束在 `dir`（或裡面的資料夾）啟動的終端機，回傳結束了幾個。刪除專案前用：
     /// Windows 上只要有程式的目前資料夾在裡面，資料夾就移不到資源回收筒。
     /// 工作階段等程式真的結束後才移除（和使用者自己關閉時一樣，會送出 `term-exit`）。
