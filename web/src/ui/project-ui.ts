@@ -11,6 +11,7 @@ import { icon } from "./icons.ts";
 import { Picker } from "./picker.ts";
 import { t } from "../i18n.ts";
 import { toast } from "./toast.ts";
+import * as storage from "../storage.ts";
 
 export interface ProjectHooks {
   /** 目前開啟的資料夾路徑。 */
@@ -402,97 +403,28 @@ export class ProjectUi {
   }
 
   /**
-   * 刪除專案：從清單移除；勾選時把資料夾移到資源回收筒。要在提示窗輸入專案的資料夾名稱才能刪除，
-   * 免得刪錯。目前開著的專案先關閉再刪。
+   * 刪除專案：只問一次，用系統的對話框（網頁無法代按），「同時把資料夾移到資源回收筒」的勾選框也在裡面，
+   * 預設是上次的選擇。按「刪除」後，目前開著的專案先關閉再刪；取消時什麼都不做。
    */
   async deleteProject(p: Project): Promise<void> {
-    const folder = folderName(p.path);
     const here = this.#isCurrent(p);
-    const dialog = document.createElement("dialog");
-    dialog.className = "choice project-edit project-delete";
-    dialog.setAttribute("aria-labelledby", "pd-title");
-    const tr = {
-      title: t("刪除專案"),
-      lead: t("「{name}」會從專案清單移除。", { name: p.label }),
-      trash: t("同時把資料夾移到資源回收筒（可以從回收筒還原）"),
-      type: t("請輸入專案的資料夾名稱「{folder}」確認刪除", { folder }),
-      cancel: t("取消"),
-      del: t("刪除"),
-    };
-    dialog.innerHTML = `
-      <form method="dialog">
-        <h2 id="pd-title">${tr.title}</h2>
-        <p class="pd-lead"></p>
-        <p class="pe-path"></p>
-        <label class="pe-check"><input type="checkbox" name="trash" /> ${tr.trash}</label>
-        <p class="pd-note"></p>
-        <label class="pd-type"><span></span><input name="confirm" spellcheck="false" autocomplete="off" /></label>
-        <p class="dav-error" role="alert" hidden></p>
-        <div class="choice-actions">
-          <button type="button" class="btn" value="cancel">${tr.cancel}</button>
-          <button type="submit" class="btn btn-danger">${tr.del}</button>
-        </div>
-      </form>`;
-    const q = <T extends HTMLElement>(sel: string) => dialog.querySelector<T>(sel)!;
-    q(".pd-lead").textContent = tr.lead;
-    q(".pe-path").textContent = displayPath(p.path);
-    q(".pd-type span").textContent = tr.type;
-    const trash = q<HTMLInputElement>("input[name=trash]");
-    const confirm = q<HTMLInputElement>("input[name=confirm]");
-    const submit = q<HTMLButtonElement>("button[type=submit]");
-    const note = q(".pd-note");
-    const error = q(".dav-error");
-    const unsaved = !here && this.#h.unsaved(p.path);
-    const update = () => {
-      const lines = [
-        trash.checked
-          ? t("資料夾和裡面所有的檔案都會移到資源回收筒，這個專案記住的分頁也會一起清掉。")
-          : t("資料夾和裡面的檔案都不會動，之後再開啟這個資料夾就會重新加入。"),
-      ];
-      if (here) lines.push(t("這是目前開著的專案，會先關閉。"));
-      if (trash.checked && unsaved) lines.push(t("這個專案有還沒存檔的分頁，刪除後就找不到了。"));
-      note.textContent = lines.join("");
-      note.classList.toggle("warn", trash.checked);
-      // 輸入的名稱要和資料夾名稱一樣（不分大小寫、忽略前後空白）才能刪除。
-      submit.disabled = confirm.value.trim().toLowerCase() !== folder.toLowerCase();
-    };
-    trash.addEventListener("change", update);
-    confirm.addEventListener("input", update);
-    update();
-    q("[value=cancel]").addEventListener("click", () => dialog.close());
-    dialog.addEventListener("close", () => dialog.remove());
-    q("form").addEventListener("submit", (e) => {
-      e.preventDefault();
-      if (submit.disabled) return;
-      submit.disabled = true;
-      void (async () => {
-        try {
-          if (here) await this.#h.closeAndWait();
-          // 移到資源回收筒前原生端會用系統的對話框再問一次；選「否」時什麼都沒做，關掉提示窗就好。
-          const done = await this.#d.projectDelete(p.path, trash.checked);
-          dialog.close();
-          if (done !== false) {
-            if (trash.checked) forgetProjectSession(p.path);
-            toast(
-              trash.checked
-                ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label })
-                : t("已把「{name}」從專案清單移除", { name: p.label }),
-              { tone: "success" },
-            );
-          }
-        } catch (err) {
-          error.textContent = message(err);
-          error.hidden = false;
-          submit.disabled = false;
-        }
-        await this.refresh();
-        this.#renderOverview();
-        this.#h.changed();
-      })();
-    });
-    document.body.append(dialog);
-    dialog.showModal();
-    confirm.focus();
+    try {
+      const trash = await this.#d.projectDeleteAsk(p.path, loadTrashChoice(), !here && this.#h.unsaved(p.path));
+      if (trash === null) return;
+      saveTrashChoice(trash);
+      if (here) await this.#h.closeAndWait();
+      await this.#d.projectDelete(p.path, trash);
+      if (trash) forgetProjectSession(p.path);
+      toast(
+        trash ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label }) : t("已把「{name}」從專案清單移除", { name: p.label }),
+        { tone: "success" },
+      );
+    } catch (err) {
+      toast(message(err), { tone: "error", duration: 10000 });
+    }
+    await this.refresh();
+    this.#renderOverview();
+    this.#h.changed();
   }
 
   // ---- 專案設定 ------------------------------------------------------------
@@ -594,4 +526,13 @@ export class ProjectUi {
     dialog.showModal();
     name.focus();
   }
+}
+
+/** 刪除專案時「同時把資料夾移到資源回收筒」上次的選擇（系統對話框的勾選框預設值）。 */
+const TRASH_CHOICE = "project-delete-trash";
+function loadTrashChoice(): boolean {
+  return storage.load(TRASH_CHOICE) === "1";
+}
+function saveTrashChoice(on: boolean): void {
+  storage.save(TRASH_CHOICE, on ? "1" : "0");
 }
