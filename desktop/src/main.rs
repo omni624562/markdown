@@ -520,6 +520,7 @@ fn main() {
             projects::projects_list,
             projects::project_update,
             projects::project_forget,
+            projects::project_delete_ask,
             projects::project_delete,
             projects::project_open_codex,
             projects::project_open_claude,

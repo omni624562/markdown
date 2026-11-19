@@ -52,6 +52,8 @@ pub static EN: &[(&str, &str)] = &[
     ("路徑無效", "Invalid path."),
     ("無法建立暫存檔：{e}", "Couldn't create a temporary file: {e}"),
     ("這個資料夾不在專案清單中", "This folder isn't in the project list."),
+    ("確定", "OK"),
+    ("取消", "Cancel"),
     ("找不到資料夾「{path}」", "Couldn't find the folder \"{path}\"."),
     ("「{name}」已經存在", "\"{name}\" already exists."),
     ("「.github/workflows/{name}」已經存在，沒有覆蓋", "\".github/workflows/{name}\" already exists and wasn't overwritten."),
