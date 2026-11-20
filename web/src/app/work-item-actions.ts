@@ -34,6 +34,8 @@ import { reportError } from "./git-actions.ts";
 
 /** 每種工作項目可以設定的狀態（同一個專案、類型只讀一次）。 */
 const workItemStates = new Map<string, Loaded<string[]>>();
+/** 每個專案、類型的日期欄位（讀過一次就記住）。 */
+const workItemDateFields = new Map<string, Loaded<("startDate" | "finishDate" | "targetDate")[]>>();
 /** 每個專案的 Sprint（只讀一次）。 */
 const projectIterations = new Map<string, Loaded<Iteration[]>>();
 
@@ -48,6 +50,8 @@ function workItemEditing(item: AdoWorkItem): {
   const statesKey = `${item.project}|${item.kind}`;
   let states = workItemStates.get(statesKey);
   if (!states) workItemStates.set(statesKey, (states = lazy(() => desktop!.adoWorkItemStates(item.project, item.kind))));
+  let dateFields = workItemDateFields.get(statesKey);
+  if (!dateFields) workItemDateFields.set(statesKey, (dateFields = lazy(() => desktop!.adoWorkItemTypeDates(item.project, item.kind).catch(() => []))));
   let iterations = projectIterations.get(item.project);
   if (!iterations) projectIterations.set(item.project, (iterations = lazy(() => desktop!.adoIterations(item.project))));
 
@@ -118,6 +122,7 @@ function workItemEditing(item: AdoWorkItem): {
         editComment,
         states: () => states.load(),
         iterations: () => iterations.load(),
+        dateFields: () => dateFields.load(),
         me: () => app.ado?.account?.name ?? "",
         attach,
         id: item.id,

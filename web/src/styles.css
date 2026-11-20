@@ -4853,3 +4853,6 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 .wi-date-popover .wi-date-actions .btn:hover { background: var(--surface); }
 .wi-date-popover .wi-date-actions .btn-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
 .wi-date-popover .wi-date-actions .btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--fg)); }
+/* 「＋ 日期」：這個類型有、但還沒填的日期（虛線，和「＋ 標籤」一樣）。 */
+.issue-body .ado-facts .ado-fact.ado-fact-add { border: 1px dashed var(--border-strong); cursor: pointer; }
+.issue-body .ado-facts .ado-fact.ado-fact-add:hover { border-style: solid; color: var(--fg); }

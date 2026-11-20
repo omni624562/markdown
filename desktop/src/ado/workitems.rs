@@ -1644,6 +1644,49 @@ pub async fn ado_work_item_states(
     .await
 }
 
+/// 這個類型的工作項目有哪些日期欄位（`startDate`、`finishDate`、`targetDate`）：沒填的日期也能在 oMarker 新增。
+#[tauri::command]
+pub async fn ado_work_item_type_dates(
+    app: AppHandle,
+    project: String,
+    kind: String,
+) -> Result<Vec<String>, String> {
+    let (a, pat) = require(&app)?;
+    crate::io::blocking_for(TIMEOUT, move || {
+        let v = get(
+            &a.url,
+            &pat,
+            &format!(
+                "/{}/_apis/wit/workitemtypes/{}",
+                encode_segment(&project),
+                encode_segment(&kind)
+            ),
+            &tr!("讀取工作項目類型"),
+        )?;
+        Ok(type_dates(&v))
+    })
+    .await
+}
+
+/// 類型定義裡的日期欄位（`fields` 或舊版的 `fieldInstances`），依開始、完成、目標的順序。
+pub(super) fn type_dates(v: &Value) -> Vec<String> {
+    let names: Vec<&str> = ["fields", "fieldInstances"]
+        .iter()
+        .filter_map(|k| v.get(*k).and_then(Value::as_array))
+        .flatten()
+        .filter_map(|f| f.get("referenceName").and_then(Value::as_str))
+        .collect();
+    [
+        (START_DATE, "startDate"),
+        (FINISH_DATE, "finishDate"),
+        (TARGET_DATE, "targetDate"),
+    ]
+    .into_iter()
+    .filter(|(field, _)| names.iter().any(|n| n.eq_ignore_ascii_case(field)))
+    .map(|(_, key)| key.to_string())
+    .collect()
+}
+
 /// 狀態在流程裡的階段（狀態選單依這個排）：提議、進行中、已解決、已完成、已移除。
 fn stage_of_category(category: &str) -> u8 {
     match category {

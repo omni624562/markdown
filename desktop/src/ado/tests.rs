@@ -1735,3 +1735,18 @@ fn reads_the_revision_from_new_and_old_servers() {
     );
     assert_eq!(rev_of(&json!({"id": 1})), None);
 }
+
+#[test]
+fn type_dates_lists_the_date_fields_the_type_has() {
+    let v = json!({"fields": [
+        {"referenceName": "System.Title"},
+        {"referenceName": "Microsoft.VSTS.Scheduling.TargetDate"},
+        {"referenceName": "Microsoft.VSTS.Scheduling.StartDate"},
+    ]});
+    assert_eq!(type_dates(&v), ["startDate", "targetDate"]);
+    // 舊版伺服器：fieldInstances。
+    let old =
+        json!({"fieldInstances": [{"referenceName": "Microsoft.VSTS.Scheduling.FinishDate"}]});
+    assert_eq!(type_dates(&old), ["finishDate"]);
+    assert!(type_dates(&json!({})).is_empty());
+}

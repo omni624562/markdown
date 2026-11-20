@@ -2,12 +2,13 @@
  * 工作項目的開始、完成、目標日期：標題下的日期小標籤點一下，打開小視窗選日期，選了就存回 Azure DevOps；
  * 也可以清除。小視窗一律留在視窗內（ui/menu-place.ts）。
  *
- * 只處理工作項目上已經有值的日期（流程範本有這個欄位）：沒有值時看不出這個類型有沒有這個欄位，存了可能失敗。
+ * 還沒填的日期：先問這個類型有哪些日期欄位（流程範本不一定有），有的才在後面放「＋ 日期」，選了就新增。
  */
 import type { AdoWorkItemChange } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 import { placeMenu } from "../ui/menu-place.ts";
+import { setupMenu } from "../ui/menu.ts";
 import type { WorkItemEditHooks } from "./work-item-edit.ts";
 
 type DateField = "startDate" | "finishDate" | "targetDate";
@@ -43,11 +44,41 @@ export function editableDates(hero: HTMLElement, h: WorkItemEditHooks): void {
     button.setAttribute("aria-haspopup", "dialog");
     button.append(...chip.childNodes, icon("chevron-down"));
     chip.replaceWith(button);
-    button.addEventListener("click", () => openPicker(button, field, label, h));
+    button.addEventListener("click", () => openPicker(button, field, label, button.dataset.date ?? "", h));
   }
+  void addDateChip(hero, h);
 }
 
-function openPicker(button: HTMLElement, field: DateField, label: string, h: WorkItemEditHooks): void {
+/** 這個類型有、但還沒填的日期：放一個「＋ 日期」，選一個就打開選日期的小視窗。 */
+async function addDateChip(hero: HTMLElement, h: WorkItemEditHooks): Promise<void> {
+  const got = await h.dateFields().catch(() => [] as DateField[]);
+  const fields = Array.isArray(got) ? got : [];
+  const d = h.detail();
+  const missing = fields.filter((f) => !d?.[f]);
+  if (!missing.length || !hero.isConnected || hero.querySelector("#wi-add-date")) return;
+  const facts = hero.querySelector<HTMLElement>(".ado-facts");
+  if (!facts) return;
+  const add = document.createElement("button");
+  add.type = "button";
+  add.id = "wi-add-date";
+  add.className = "ado-fact ado-fact-muted ado-fact-add";
+  add.title = t("新增日期");
+  add.setAttribute("aria-label", t("新增日期"));
+  add.append(icon("plus"), t("日期"));
+  // 放在日期（或 Sprint）的後面、「更新於」的前面。
+  const after = [...facts.querySelectorAll<HTMLElement>('[data-field$="Date"], [data-field="iteration"]')].at(-1);
+  if (after) after.after(add);
+  else facts.append(add);
+  document.querySelector("div#wi-add-date-popover")?.remove();
+  setupMenu(add, null, () =>
+    missing.map((f) => {
+      const label = LABELS[f]();
+      return { label: t("{label}…", { label }), icon: "calendar-check", run: () => openPicker(add, f, label, "", h) };
+    }),
+  );
+}
+
+function openPicker(button: HTMLElement, field: DateField, label: string, current: string, h: WorkItemEditHooks): void {
   document.querySelector(`#wi-date-popover`)?.remove();
   const box = document.createElement("div");
   box.id = "wi-date-popover";
@@ -61,7 +92,7 @@ function openPicker(button: HTMLElement, field: DateField, label: string, h: Wor
   const input = document.createElement("input");
   input.type = "date";
   input.className = "wi-date-input";
-  input.value = button.dataset.date ?? "";
+  input.value = current;
   input.setAttribute("aria-label", label);
   const actions = document.createElement("div");
   actions.className = "wi-date-actions";
@@ -73,7 +104,9 @@ function openPicker(button: HTMLElement, field: DateField, label: string, h: Wor
   save.type = "button";
   save.className = "btn btn-primary";
   save.textContent = t("儲存");
-  actions.append(clear, save);
+  // 還沒填的日期（新增）沒有「清除」。
+  if (current) actions.append(clear);
+  actions.append(save);
   box.append(title, input, actions);
   document.body.append(box);
 
@@ -84,7 +117,7 @@ function openPicker(button: HTMLElement, field: DateField, label: string, h: Wor
   };
   save.addEventListener("click", () => {
     const day = input.value;
-    if (!day || day === button.dataset.date) return box.hidePopover();
+    if (!day || day === current) return box.hidePopover();
     const iso = dateToIso(day);
     if (iso) apply(iso, t("已把{label}改成 {date}", { label, date: day }));
   });
