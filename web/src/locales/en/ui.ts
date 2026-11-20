@@ -72,6 +72,9 @@ export const ui: Record<string, Translation> = {
   "{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）": "{version} has been downloaded. Restart to update (unsaved changes are kept).",
   "重新啟動並更新": "Restart and Update",
   "檢查中…": "Checking…",
+  "下載中…": "Downloading…",
+  "下載進度": "Download progress",
+  "正在下載 {version}（{percent}%）": "Downloading {version} ({percent}%)",
   "自動檢查更新": "Check for Updates Automatically",
   "更新管道": "Update Channel",
   "穩定版是確認過的版本；搶先版是每次修改後的最新版，比較快拿到新功能，也比較可能有問題":

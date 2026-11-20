@@ -136,6 +136,8 @@ export interface UpdateHooks {
   pending(): string | null;
   /** 正在檢查更新（按鈕暫時不能按）。 */
   checking(): boolean;
+  /** 正在下載的新版本與進度（百分比）；沒有在下載時是 null。 */
+  downloading(): { version: string; percent: number } | null;
   /** 更新狀態改變時呼叫 `fn`。 */
   onChange(fn: () => void): void;
   check(): void;
@@ -765,17 +767,35 @@ export class SettingsDialog {
       });
       const label = versionRow.querySelector("label")!;
       const hint = versionRow.querySelector("small")!;
+      // 下載中：說明下面一條細的進度條（和狀態列的百分比同步）。
+      const bar = document.createElement("div");
+      bar.className = "settings-progress";
+      bar.setAttribute("role", "progressbar");
+      bar.setAttribute("aria-label", t("下載進度"));
+      bar.hidden = true;
+      const fill = document.createElement("i");
+      bar.append(fill);
+      hint.after(bar);
       // 新版已經下載好時，版本列直接說明，按鈕改成「重新啟動並更新」。
       const refresh = async () => {
         const v = await update.version();
         const pending = update.pending();
+        const down = pending ? null : update.downloading();
         label.textContent = t("版本 {version}", { version: v.label });
         label.title = v.title;
-        hint.textContent = pending ? t("{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）", { version: pending }) : v.detail;
+        hint.textContent = pending
+          ? t("{version} 已下載完成，重新啟動即可更新（未存檔的內容會保留）", { version: pending })
+          : down
+            ? t("正在下載 {version}（{percent}%）", down)
+            : v.detail;
         hint.classList.toggle("settings-ready", !!pending);
-        const checking = !pending && update.checking();
-        checkBtn.textContent = pending ? t("重新啟動並更新") : checking ? t("檢查中…") : t("檢查更新");
-        checkBtn.disabled = checking;
+        bar.hidden = !down;
+        fill.style.width = `${down?.percent ?? 0}%`;
+        bar.setAttribute("aria-valuenow", String(down?.percent ?? 0));
+        // 下載中、檢查中：按鈕暫時不能按（下載完才換成「重新啟動並更新」）。
+        const checking = !pending && !down && update.checking();
+        checkBtn.textContent = pending ? t("重新啟動並更新") : down ? t("下載中…") : checking ? t("檢查中…") : t("檢查更新");
+        checkBtn.disabled = checking || !!down;
         checkBtn.classList.toggle("btn-primary", !!pending);
       };
       d.addEventListener("toggle", () => {

@@ -251,6 +251,10 @@ function createSettingsDialog(SettingsDialog: typeof import("../ui/settings-dial
           },
           pending: () => (app.updater!.state.kind === "ready" ? app.updater!.state.version : null),
           checking: () => app.updater!.checking,
+          downloading: () => {
+            const st = app.updater!.state;
+            return st.kind === "downloading" ? { version: st.version, percent: st.percent } : null;
+          },
           onChange: (fn) => void app.updater!.subscribe(fn),
           check: () => void app.updater!.check(),
           restart: () => app.updater!.restart(),
