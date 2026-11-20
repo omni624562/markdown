@@ -4837,3 +4837,15 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 
 /* 只給螢幕閱讀器（畫面上看不到）；見 ui/toast.ts 的 announce。 */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* 工作項目的日期（app/work-item-dates.ts）：點日期小標籤打開的小視窗。 */
+.wi-date-popover { position: fixed; display: flex; flex-direction: column; gap: 8px; min-width: 220px; padding: 8px 12px 12px; }
+.wi-date-popover .menu-head { padding: 2px 0; }
+.wi-date-input { height: 32px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); color: var(--fg); font: 14px var(--font-ui); color-scheme: light dark; }
+.wi-date-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wi-date-actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* 小視窗套用選單的外框，按鈕不要變成選單項目的樣子。 */
+.wi-date-popover .wi-date-actions .btn { width: auto; min-height: 30px; justify-content: center; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); }
+.wi-date-popover .wi-date-actions .btn:hover { background: var(--surface); }
+.wi-date-popover .wi-date-actions .btn-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
+.wi-date-popover .wi-date-actions .btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--fg)); }

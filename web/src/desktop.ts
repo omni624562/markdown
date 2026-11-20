@@ -401,6 +401,10 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   /** 區域、反覆項目（例如「產品\\前端」）。 */
   area: string | null;
   iteration: string | null;
+  /** 開始、完成、目標日期（ISO 8601；流程範本沒有這些欄位或沒有填時沒有）。 */
+  startDate?: string | null;
+  finishDate?: string | null;
+  targetDate?: string | null;
   tags: string[];
   /** 說明（HTML）。 */
   description: string | null;
@@ -444,6 +448,10 @@ export interface AdoWorkItemChange {
   /** 剩餘工時、已完成工時（小時）。 */
   remaining?: number;
   completed?: number;
+  /** 開始、完成、目標日期（ISO 8601）；空字串表示清除。 */
+  startDate?: string;
+  finishDate?: string;
+  targetDate?: string;
   /** 換上層（原本的上層拿掉）；0 表示移除上層。 */
   parent?: number;
   /** 加入、移除的關聯。 */

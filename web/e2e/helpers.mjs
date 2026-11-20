@@ -115,8 +115,9 @@ function fakeTauri(respond) {
  * `desktop` 是假原生端的回應（指令名稱 → 回傳值，或依序回傳的陣列）；不給就是網頁版。
  * `page: "terminal.html"` 開終端機的頁面（桌面版的終端機 webview），等 `ready` 選到的元素出現。
  */
-export async function open({ desktop, page: path = "index.html", ready = ".cm-editor .cm-content" } = {}) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "zh-TW" });
+export async function open({ desktop, page: path = "index.html", ready = ".cm-editor .cm-content", timezoneId } = {}) {
+  // `timezoneId`：測試和時區有關的顯示（例如工作項目的日期）時固定時區。
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "zh-TW", ...(timezoneId ? { timezoneId } : {}) });
   if (desktop) await context.addInitScript(fakeTauri, desktop);
   const page = await context.newPage();
   const errors = [];

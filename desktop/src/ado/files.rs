@@ -325,6 +325,9 @@ pub(super) fn detail_of(base: &str, v: &Value) -> Option<WorkItemDetail> {
         created_by: person(field(v, "System.CreatedBy")),
         reason: text("System.Reason"),
         iteration: text("System.IterationPath"),
+        start_date: text(super::workitems::START_DATE),
+        finish_date: text(super::workitems::FINISH_DATE),
+        target_date: text(super::workitems::TARGET_DATE),
         tags: field_str(v, "System.Tags")
             .split(';')
             .map(str::trim)
