@@ -35,6 +35,10 @@ pub struct WorkItemDetail {
     pub(super) reason: Option<String>,
     /// 反覆項目（例如「產品\Sprint 3」）；區域在 `item` 裡（清單也要用）。
     pub(super) iteration: Option<String>,
+    /// 開始、完成、目標日期（ISO 8601；流程範本沒有這些欄位或沒有填時是 None）。
+    pub(super) start_date: Option<String>,
+    pub(super) finish_date: Option<String>,
+    pub(super) target_date: Option<String>,
     pub(super) tags: Vec<String>,
     /// 說明（HTML，前端轉成 Markdown 顯示）。
     pub(super) description: Option<String>,
@@ -174,6 +178,9 @@ pub(super) const FIELDS: &str = "System.Id,System.Title,System.State,System.Work
 /// 優先順序欄位（清單排序用）；自訂的流程範本可能沒有。
 pub(super) const PRIORITY: &str = "Microsoft.VSTS.Common.Priority";
 pub(super) const REMAINING: &str = "Microsoft.VSTS.Scheduling.RemainingWork";
+pub(super) const START_DATE: &str = "Microsoft.VSTS.Scheduling.StartDate";
+pub(super) const FINISH_DATE: &str = "Microsoft.VSTS.Scheduling.FinishDate";
+pub(super) const TARGET_DATE: &str = "Microsoft.VSTS.Scheduling.TargetDate";
 pub(super) const COMPLETED: &str = "Microsoft.VSTS.Scheduling.CompletedWork";
 
 /// 讀清單時要的欄位，從多到少：流程範本沒有某個欄位時伺服器整個回錯誤（例如 Scrum 沒有已完成工時、
@@ -1751,6 +1758,10 @@ pub struct WorkItemChange {
     pub remaining: Option<f64>,
     /// 已完成工時（小時）。
     pub completed: Option<f64>,
+    /// 開始、完成、目標日期（ISO 8601）；空字串表示清除。
+    pub start_date: Option<String>,
+    pub finish_date: Option<String>,
+    pub target_date: Option<String>,
     /// 設定上層（換掉原本的上層）；0 表示移除上層。
     pub parent: Option<u64>,
     /// 加入的關聯（子項目、相關、前置、後續…）。
@@ -1896,6 +1907,15 @@ pub(super) fn check_change(change: &WorkItemChange) -> Result<(), String> {
     {
         return Err(tr!("工時要是 0 或正數"));
     }
+    let bad_date =
+        |d: &str| !d.trim().is_empty() && chrono::DateTime::parse_from_rfc3339(d.trim()).is_err();
+    if [&change.start_date, &change.finish_date, &change.target_date]
+        .into_iter()
+        .flatten()
+        .any(|d| bad_date(d))
+    {
+        return Err(tr!("日期的格式不對"));
+    }
     Ok(())
 }
 
@@ -1986,6 +2006,21 @@ pub(super) fn change_ops(change: &WorkItemChange, me: &str) -> Vec<Value> {
             ops.push(
                 serde_json::json!({ "op": "add", "path": format!("/fields/{field}"), "value": h }),
             );
+        }
+    }
+    for (field, date) in [
+        (START_DATE, &change.start_date),
+        (FINISH_DATE, &change.finish_date),
+        (TARGET_DATE, &change.target_date),
+    ] {
+        match date.as_deref().map(str::trim) {
+            Some("") => {
+                ops.push(serde_json::json!({ "op": "remove", "path": format!("/fields/{field}") }))
+            }
+            Some(d) => ops.push(
+                serde_json::json!({ "op": "add", "path": format!("/fields/{field}"), "value": d }),
+            ),
+            None => {}
         }
     }
     if let Some(comment) = change.comment.as_deref().filter(|c| !c.trim().is_empty()) {

@@ -87,6 +87,7 @@ pub static EN: &[(&str, &str)] = &[
     ("連不到 Azure DevOps 伺服器，請確認網路或 VPN 連線（{e}）", "Couldn't reach the Azure DevOps server. Check your network or VPN connection ({e})."),
     ("以「{name}」登入", "Signed in as \"{name}\""),
     ("工時要是 0 或正數", "Hours must be 0 or a positive number"),
+    ("日期的格式不對", "The date isn't in a valid format"),
     ("Azure DevOps Server 2022 或雲端版", "Azure DevOps Server 2022 or Azure DevOps Services"),
     ("TFS 2017 或更舊", "TFS 2017 or older"),
     ("伺服器版本", "Server version"),

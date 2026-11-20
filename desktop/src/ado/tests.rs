@@ -783,6 +783,25 @@ fn builds_work_item_field_changes() {
         ops[4],
         json!({"op": "add", "path": "/fields/System.Tags", "value": "UAT; a b; AI 聊天"})
     );
+    // 日期：設定完成日期、清除開始日期；格式不對的不送出。
+    let dates = WorkItemChange {
+        finish_date: Some("2026-12-03T16:00:00.000Z".into()),
+        start_date: Some(String::new()),
+        ..Default::default()
+    };
+    assert!(check_change(&dates).is_ok());
+    let ops = change_ops(&dates, "me");
+    assert!(ops
+        .contains(&json!({"op": "remove", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate"})));
+    assert!(ops.contains(&json!({"op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.FinishDate", "value": "2026-12-03T16:00:00.000Z"})));
+    assert!(!ops
+        .iter()
+        .any(|o| o["path"] == "/fields/Microsoft.VSTS.Scheduling.TargetDate"));
+    let bad = WorkItemChange {
+        finish_date: Some("12/4".into()),
+        ..Default::default()
+    };
+    assert!(check_change(&bad).is_err());
     // 空的標籤清單：清除所有標籤。
     let clear = WorkItemChange {
         tags: Some(vec![]),

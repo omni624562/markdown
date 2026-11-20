@@ -15,6 +15,7 @@ import { pasteImagesInto } from "./work-item-attach.ts";
 import { type Iteration, type LongField, iterationGroups, longFields, lossyHtml, parseTags } from "../work-item-fields.ts";
 import { applyMentions, mentionsIn } from "../mentions.ts";
 import { mentionPicker } from "./work-item-mentions.ts";
+import { editableDates } from "./work-item-dates.ts";
 
 export interface WorkItemEditHooks {
   /** 讀到的最新內容（還沒讀到是 null，這時不能改）。 */
@@ -227,6 +228,7 @@ export function enhanceWorkItem(body: HTMLElement, h: WorkItemEditHooks, cache: 
 
   editableTitle(hero, h);
   editableTags(hero, h);
+  editableDates(hero, h);
   editableLongFields(body, h);
   composeComment(body, h);
 }

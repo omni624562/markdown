@@ -968,6 +968,10 @@ export const ui: Record<string, Translation> = {
   "開始日期": "Start Date",
   "完成日期": "Finish Date",
   "目標日期": "Target Date",
+  // app/work-item-dates.ts
+  "清除日期": "Clear Date",
+  "已把{label}改成 {date}": "Changed {label} to {date}",
+  "已清除{label}": "Cleared {label}",
   "哪些頁面連到這一頁…": "Pages Linking Here…",
   "哪些頁面連到這一頁": "Pages linking here",
   "輸入頁面名稱或內文": "Type a page name or text",
