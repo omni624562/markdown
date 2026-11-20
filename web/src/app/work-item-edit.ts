@@ -28,6 +28,8 @@ export interface WorkItemEditHooks {
   states(): Promise<string[]>;
   /** 專案的 Sprint。 */
   iterations(): Promise<Iteration[]>;
+  /** 這個類型有哪些日期欄位（沒填的日期也能新增）。 */
+  dateFields(): Promise<("startDate" | "finishDate" | "targetDate")[]>;
   /** 登入的帳號名稱（指派給我、留言框的頭像用）。 */
   me(): string;
   /** 加入附件（上傳後掛到工作項目上）；成功時回傳 true（之後會重新讀取、重畫）。 */

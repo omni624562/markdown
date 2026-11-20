@@ -969,6 +969,8 @@ export const ui: Record<string, Translation> = {
   "完成日期": "Finish Date",
   "目標日期": "Target Date",
   // app/work-item-dates.ts
+  "新增日期": "Add a date",
+  "{label}…": "{label}…",
   "清除日期": "Clear Date",
   "已把{label}改成 {date}": "Changed {label} to {date}",
   "已清除{label}": "Cleared {label}",

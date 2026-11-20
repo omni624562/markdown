@@ -39,6 +39,7 @@ async function openItem(extra = {}) {
       ado_work_items: [[DETAIL]],
       ado_work_item: { ...DETAIL, ...extra },
       ado_work_item_update: null,
+      ado_work_item_type_dates: [["startDate", "finishDate"]],
     },
   });
   const { page } = opened;
@@ -76,4 +77,49 @@ test("完成日期顯示在 Sprint 旁邊；點一下改日期、存回 Azure De
   assert.equal(second.finishDate, "");
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+test("還沒填的日期：「＋ 日期」列出這個類型有、但沒填的日期，選了就新增（沒有「清除」）", async () => {
+  const { page, context, errors } = await openItem();
+  const add = page.locator("button#wi-add-date");
+  await add.waitFor();
+  await add.click();
+  const menu = page.locator("#wi-add-date-popover");
+  await menu.getByRole("menuitem").first().waitFor();
+  // 完成日期已經有了、這個類型沒有目標日期：只列開始日期。
+  assert.deepEqual(await menu.getByRole("menuitem").allTextContents(), ["開始日期…"]);
+  await menu.getByRole("menuitem", { name: "開始日期…" }).click();
+  const box = page.locator("#wi-date-popover");
+  await box.waitFor();
+  assert.equal(await box.locator("input[type=date]").inputValue(), "");
+  assert.equal(await box.getByRole("button", { name: "清除日期" }).count(), 0);
+  await box.locator("input[type=date]").fill("2026-11-27");
+  await box.getByRole("button", { name: "儲存" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_update"));
+  const [change] = (await calls(page)).filter((c) => c.cmd === "ado_work_item_update").map((c) => c.args.change);
+  assert.equal(change.startDate, "2026-11-26T16:00:00.000Z");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("類型沒有任何沒填的日期欄位：不放「＋ 日期」", async () => {
+  const again = await open({
+    timezoneId: "Asia/Taipei",
+    desktop: {
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      ado_work_items: [[DETAIL]],
+      ado_work_item: DETAIL,
+      ado_work_item_type_dates: [["finishDate"]],
+    },
+  });
+  await again.page.keyboard.press("Control+P");
+  await again.page.locator("dialog[open] input").first().fill("#42");
+  await again.page.locator("dialog[open] [role=option]").first().waitFor();
+  await again.page.keyboard.press("Enter");
+  await again.page.waitForSelector(".ado-hero");
+  await again.page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "ado_work_item_type_dates"));
+  await again.page.waitForTimeout(200);
+  assert.equal(await again.page.locator("button#wi-add-date").count(), 0);
+  assert.deepEqual(again.errors, []);
+  await again.context.close();
 });

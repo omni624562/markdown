@@ -1224,6 +1224,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<{ links: [number, number][]; items: AdoWorkItem[] }>("ado_work_item_children", { parents, search, filter }),
     /** 這個類型的工作項目可以設定的狀態。 */
     adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
+    /** 這個類型有哪些日期欄位（startDate、finishDate、targetDate）。 */
+    adoWorkItemTypeDates: (project: string, kind: string) =>
+      core.invoke<("startDate" | "finishDate" | "targetDate")[]>("ado_work_item_type_dates", { project, kind }),
     /** 建立工作項目（`description` 是 HTML）。 */
     adoWorkItemCreate: (item: {
       project: string;

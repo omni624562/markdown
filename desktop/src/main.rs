@@ -486,6 +486,7 @@ fn main() {
             ado::ado_attachment_open,
             ado::ado_attachment_save,
             ado::ado_work_item_states,
+            ado::ado_work_item_type_dates,
             ado::ado_work_item_update,
             ado::ado_comment_update,
             ado::ado_comment_delete,
