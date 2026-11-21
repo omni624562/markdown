@@ -13,7 +13,7 @@ import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { PROJECT_COLORS } from "../projects.ts";
 import * as storage from "../storage.ts";
-import { toast } from "../ui/toast.ts";
+import { toast, announce } from "../ui/toast.ts";
 import { checkComet, cometPresent } from "./comet-presence.ts";
 import { type CometForm, cometForm, cometSetupRunning, runCometSetup } from "./comet-setup.ts";
 import { app } from "./context.ts";
@@ -181,7 +181,7 @@ function build(): HTMLDialogElement {
         d.close();
         await switched;
         if (!isComet) {
-          toast(t("已建立專案「{name}」", { name: projectName }), { tone: "success" });
+          announce(t("已建立專案「{name}」", { name: projectName }));
         } else {
           toast(t("已建立專案「{name}」。這台電腦找不到 comet 指令，裝好 COMET CLI 之後，在終端機執行 comet setup。", { name: projectName }), {
             duration: 15000,

@@ -194,12 +194,13 @@ export async function loadWikiLatest(doc: Doc, latest?: { content: string; etag:
   app.renderTabs();
   renderWikiBar();
   renderWikiMine();
-  toast(
-    kept
-      ? t("已載入 Wiki 上的最新版。你的修改保留在上方的「我的修改」，可以複製或插入回去；按 Ctrl+Z 可以回到你原本的內容。")
-      : t("已載入 Wiki 上的最新版。"),
-    { tone: "success", duration: kept ? 10000 : 4000 },
-  );
+  // 內容換成最新版就看得到：只有保留了你的修改時才說明在哪裡。
+  if (kept)
+    toast(t("已載入 Wiki 上的最新版。你的修改保留在上方的「我的修改」，可以複製或插入回去；按 Ctrl+Z 可以回到你原本的內容。"), {
+      tone: "success",
+      duration: 10000,
+    });
+  else announce(t("已載入 Wiki 上的最新版。"));
 }
 
 interface WikiMine {

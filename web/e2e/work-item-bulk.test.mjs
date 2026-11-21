@@ -96,7 +96,8 @@ test("一起改：「選取」模式點一下就是選取；狀態和現在一�
   await dialog.locator("select").nth(2).selectOption("1");
   await dialog.locator("select").nth(3).selectOption("產品\\Sprint 1");
   await dialog.locator("button", { hasText: "套用" }).click();
-  await page.locator(".toast", { hasText: "已修改 2 個工作項目" }).waitFor();
+  // 畫面上就看得到結果：不跳通知，只念給螢幕閱讀器（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已修改 2 個工作項目");
   const sent = (await calls(page)).filter((c) => c.cmd === "ado_work_item_update").map((c) => c.args);
   assert.deepEqual(sent, [
     { id: 11, change: { priority: 1, iteration: "產品\\Sprint 1", rev: null } },

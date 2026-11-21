@@ -252,7 +252,7 @@ export async function createWikiPage(wiki: AdoWiki, parent: string | null): Prom
   if (!answer) return;
   const { path, title, body } = answer;
   await desktop!.adoWikiCreate(wiki, path, body);
-  toast(t("已建立 Wiki 頁面「{name}」", { name: title }), { tone: "success" });
+  announce(t("已建立 Wiki 頁面「{name}」", { name: title }));
   forgetListCopies("wiki");
   void wikiPanel?.refresh().then(() => wikiPanel?.select(path));
   await editWikiPage(wiki, path);
@@ -286,7 +286,7 @@ export async function deleteWikiPage(wiki: AdoWiki, path: string): Promise<void>
   ]);
   if (choice !== "delete") return;
   await desktop!.adoWikiDelete(wiki, path);
-  toast(t("已刪除 Wiki 頁面「{name}」", { name }), { tone: "success" });
+  announce(t("已刪除 Wiki 頁面「{name}」", { name }));
   // 開著的是這一頁或子頁面時關閉；圖示列上的捷徑一併拿掉。
   closeItemsWhere((key) => {
     const [kind, id, ...rest] = key.split(":");
@@ -316,5 +316,5 @@ export async function saveWikiPage(text: string, force: boolean): Promise<{ name
   app.persistSession();
   app.renderTabs();
   renderWikiBar();
-  toast(t("已存回 Wiki 頁面「{name}」", { name: pageName(target.path) }), { tone: "success" });
+  announce(t("已存回 Wiki 頁面「{name}」", { name: pageName(target.path) }));
 }

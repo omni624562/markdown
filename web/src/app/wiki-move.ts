@@ -5,7 +5,7 @@
  */
 import { type AdoWiki, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
-import { toast } from "../ui/toast.ts";
+import { toast, announce } from "../ui/toast.ts";
 import { isWikiShortcut } from "../wiki-shortcuts.ts";
 import { movedPaths, relinkText } from "../wiki-relink.ts";
 import { childPagePath, flattenPages, pageLinkResolver, pageName, wikiTitleProblem } from "../wiki-text.ts";
@@ -255,7 +255,9 @@ export async function moveWikiPage(wiki: AdoWiki, path: string, to?: WikiMoveTar
       : t("已把「{name}」搬到「{where}」", { name: pageName(newPath), where: parentPath(newPath) ? trail(parentPath(newPath)!) : t("最上層") });
   const parts = [what];
   if (done) parts.push(t("更新了 {n} 頁的連結", { n: done }));
-  toast(parts.join(t("，")), { tone: "success" });
+  // 樹上就看得到新位置：只有連帶更新了其他頁的連結時才跳通知。
+  if (done) toast(parts.join(t("，")), { tone: "success" });
+  else announce(what);
   if (failed.length) {
     toast(
       t("有 {n} 頁的連結沒有更新（{names}），請自己改一下", { n: failed.length, names: failed.slice(0, 3).map((p) => pageName(p)).join(t("、")) }),

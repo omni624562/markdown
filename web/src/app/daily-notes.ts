@@ -9,7 +9,7 @@ import { dayOf } from "../doc-stats-text.ts";
 import { t } from "../i18n.ts";
 import { basename, dirname } from "../paths.ts";
 import { fillTemplate } from "../templates.ts";
-import { toast } from "../ui/toast.ts";
+import { toast, announce } from "../ui/toast.ts";
 import { app } from "./context.ts";
 import { insertAtCursor } from "./image-paste.ts";
 import { openPath } from "./workspace-ui.ts";
@@ -86,7 +86,7 @@ export async function insertMyWorkItems(): Promise<void> {
     return;
   }
   insertAtCursor(`${workItemChecklist(items)}\n`);
-  toast(t("已插入 {n} 個工作項目", { n: items.length }));
+  announce(t("已插入 {n} 個工作項目", { n: items.length }));
 }
 
 /** 打開今天的筆記；還沒有就用範本建立、存檔，游標放在第一個待辦。 */

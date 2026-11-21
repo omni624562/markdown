@@ -102,7 +102,8 @@ test("把頁面拖到別的頁面中間：搬進去當子頁面（放最後）�
   assert.equal(await dialog.locator("select").inputValue(), "/產品", "放在拖到的那一頁底下");
   await dialog.locator(".wiki-move-relink", { hasText: "沒有頁面連到這裡" }).waitFor();
   await dialog.getByRole("button", { name: "搬移" }).click();
-  await p.locator(".toasts", { hasText: "已把「文件」搬到「產品」" }).waitFor();
+  // 畫面上就看得到結果：不跳通知，只念給螢幕閱讀器（ui/toast.ts 的 announce）。
+  await p.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已把「文件」搬到「產品」");
   const all = await calls(p);
   assert.deepEqual(all.find((c) => c.cmd === "ado_wiki_move").args.newPath, "/產品/文件");
   assert.equal(all.find((c) => c.cmd === "ado_wiki_move").args.newOrder, 2, "放在原本兩個子頁面後面");
