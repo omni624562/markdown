@@ -651,7 +651,7 @@ export async function closeProject(quiet = false): Promise<void> {
   app.persistSession();
   app.renderTabs();
   await setWorkspace(null);
-  if (!quiet) toast(t("已關閉「{name}」。分頁都記住了，下次開啟這個專案會還原", { name }));
+  if (!quiet) announce(t("已關閉「{name}」。分頁都記住了，下次開啟這個專案會還原", { name }));
 }
 
 export async function openRecentFolder(path: string): Promise<void> {
@@ -700,7 +700,7 @@ export async function uploadFiles(dir: string, files: File[]): Promise<void> {
     app.fileListCache = null;
     await app.fileTree.refresh([dir]);
   }
-  toast(done === 1 ? t("已上傳「{name}」", { name: files[0].name }) : t("已上傳 {n} 個檔案", { n: done }), { tone: "success" });
+  announce(done === 1 ? t("已上傳「{name}」", { name: files[0].name }) : t("已上傳 {n} 個檔案", { n: done }));
 }
 
 /** 選電腦上的檔案上傳到遠端資料夾。 */
@@ -880,7 +880,7 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
       app.fileListCache = null;
       app.renderTabs();
       await app.fileTree.refresh([dirname(entry.path)]);
-      toast(remote ? t("已刪除「{name}」", { name: entry.name }) : t("已把「{name}」移到資源回收筒", { name: entry.name }));
+      announce(remote ? t("已刪除「{name}」", { name: entry.name }) : t("已把「{name}」移到資源回收筒", { name: entry.name }));
       break;
     }
     case "reveal":

@@ -58,7 +58,8 @@ test("專案 → 新專案…：名稱不能用的字元馬上提示；建立後
   await dialog.getByLabel(/同時建立 Git 儲存庫/).check();
   await dialog.getByRole("radio", { name: "藍" }).check({ force: true });
   await create.click();
-  await page.locator(".toast", { hasText: "已建立專案「產品筆記」" }).waitFor();
+  // 畫面上就看得到結果：不跳通知，只念給螢幕閱讀器（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已建立專案「產品筆記」");
   assert.equal(await page.locator("dialog.new-project[open]").count(), 0);
   const all = await calls(page);
   assert.deepEqual(all.find((c) => c.cmd === "create_project").args, {
@@ -527,7 +528,8 @@ test("新專案：沒選「COMET 專案」時右邊的 COMET 設定變灰、不�
   await dialog.getByRole("radio", { name: /^筆記本/ }).check();
   await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
   await dialog.getByRole("button", { name: "建立並開啟" }).click();
-  await page.locator(".toast", { hasText: "已建立專案「產品筆記」" }).waitFor();
+  // 畫面上就看得到結果：不跳通知，只念給螢幕閱讀器（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已建立專案「產品筆記」");
   const again = await openFromMenu(page);
   assert.equal(await again.getByRole("radio", { name: /^筆記本/ }).isChecked(), true);
   assert.equal(await again.locator(".np-comet").evaluate((el) => el.inert), true);

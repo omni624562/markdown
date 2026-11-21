@@ -8,7 +8,7 @@ import { adoRepoNameFrom, isInsecureUrl } from "./ado-text.ts";
 import { t } from "./i18n.ts";
 import { askText, choose } from "./ui/choice.ts";
 import { Picker } from "./ui/picker.ts";
-import { toast } from "./ui/toast.ts";
+import { toast, announce } from "./ui/toast.ts";
 
 export interface AdoHooks {
   /** 下載完成後開啟資料夾。 */
@@ -102,7 +102,7 @@ export class Ado {
       // 換伺服器時在系統的確認對話框選了「否」：保留原本的連線。
       if (!account) return false;
       this.#account = account;
-      toast(t("已連線到 Azure DevOps：{name}", { name: account.name }), { tone: "success" });
+      announce(t("已連線到 Azure DevOps：{name}", { name: account.name }));
       this.#hooks.changed();
       return true;
     } catch (e) {
@@ -124,7 +124,7 @@ export class Ado {
     if (ok !== "go") return;
     await this.#d.adoDisconnect();
     this.#account = null;
-    toast(t("已中斷 Azure DevOps 連線"));
+    announce(t("已中斷 Azure DevOps 連線"));
     this.#hooks.changed();
   }
 

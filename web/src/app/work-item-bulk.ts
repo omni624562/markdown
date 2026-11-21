@@ -6,7 +6,7 @@ import { render as renderMarkdown } from "../../pkg/md_wasm.js";
 import { adoOnline } from "../ado-online.ts";
 import { type AdoWorkItem, type AdoWorkItemChange, desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
-import { toast } from "../ui/toast.ts";
+import { toast, announce } from "../ui/toast.ts";
 import { iterationGroups } from "../work-item-fields.ts";
 import { changeFor, commonStates } from "../work-item-bulk-model.ts";
 import { forgetListCopies } from "./offline-copies.ts";
@@ -155,7 +155,7 @@ export function bulkEditWorkItems(items: AdoWorkItem[], done: () => void): void 
       forgetListCopies("wi-");
       void workItemsPanel?.refresh(true);
       void issueView.reload();
-      if (!failed.length) toast(t("已修改 {n} 個工作項目", { n: changed }), { tone: "success" });
+      if (!failed.length) announce(t("已修改 {n} 個工作項目", { n: changed }));
       else
         toast(t("改好 {ok} 個，{fail} 個沒改成：{details}", { ok: changed, fail: failed.length, details: failed.join(t("；")) }), {
           tone: "error",

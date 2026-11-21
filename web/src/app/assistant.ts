@@ -913,7 +913,7 @@ async function saveNote(): Promise<void> {
     if (app.cur.fileHandle?.path !== path || app.editor.text) return;
     app.editor.replaceAll(text, { isolate: true });
     await app.save(false);
-    toast(t("已存成筆記「{name}」", { name: noteName(now) }), { tone: "success" });
+    announce(t("已存成筆記「{name}」", { name: noteName(now) }));
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), { tone: "error" });
   }

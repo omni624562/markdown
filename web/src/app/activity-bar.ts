@@ -239,7 +239,7 @@ export async function addActivityCommand(): Promise<void> {
     return;
   }
   setActivity({ activityCommands: [...list, id] });
-  toast(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: commands.get(id)?.title ?? id }), { tone: "success" });
+  announce(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: commands.get(id)?.title ?? id }));
 }
 
 /** 圖示列的右鍵選單：勾選要顯示的面板與按鈕、新增按鈕、到設定調整。 */
@@ -1111,7 +1111,7 @@ export function initActivityBar(): void {
       ]);
       if (ok !== "delete") return;
       app.settings.update({ templates: app.settings.value.templates.filter((x) => x.name !== tpl.name) });
-      toast(t("已刪除範本「{name}」", { name: tpl.name }));
+      announce(t("已刪除範本「{name}」", { name: tpl.name }));
     },
   });
 }

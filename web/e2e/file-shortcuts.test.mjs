@@ -59,7 +59,8 @@ test("分頁的右鍵選單「放到左側圖示列」：方塊上是檔名的�
   let menu = await tabMenu(page, "週報.md");
   assert.equal(await menu.locator("button", { hasText: "從左側圖示列移除" }).count(), 0);
   await menu.locator("button", { hasText: "放到左側圖示列" }).click();
-  await page.locator(".toast", { hasText: "已把「週報.md」放到左側圖示列" }).waitFor();
+  // 畫面上就看得到結果：不跳通知，只念給螢幕閱讀器（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已把「週報.md」放到左側圖示列");
   const sc = tile(page, WEEKLY);
   await sc.waitFor();
   assert.deepEqual(await saved(page), [{ file: WEEKLY }]);

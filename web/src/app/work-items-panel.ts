@@ -12,7 +12,7 @@ import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { type IssueSummary, type IssueGroup, type IssueTreeNode, shortDate, IssuesPanel } from "../ui/issues-panel.ts";
 import { MultiSelect } from "../ui/multi-select.ts";
-import { toast } from "../ui/toast.ts";
+import { toast, announce } from "../ui/toast.ts";
 import { WikiPanel } from "../ui/wiki-panel.ts";
 import { SHORTCUT_DRAG_TYPE, type Shortcut, parseShortcuts, migratePinned, isFileShortcut, isWikiShortcut, isWorkItemShortcut, placeShortcut, SHORTCUT_LIMIT, sameShortcut, shortcutInitial, shortcutHue, parseDraggedShortcut } from "../wiki-shortcuts.ts";
 import { kindKey } from "../work-item-colors.ts";
@@ -677,7 +677,7 @@ export function addBarShortcut(item: Shortcut, index?: number): void {
   }
   const added = !barShortcuts.some((s) => sameShortcut(s, item));
   setBarShortcuts(next);
-  if (added) toast(t("已把「{name}」放到左側圖示列：點一下開啟，右鍵可以移除。", { name: shortcutName(item) }), { tone: "success" });
+  if (added) announce(t("已把「{name}」放到左側圖示列：點一下開啟，右鍵可以移除。", { name: shortcutName(item) }));
 }
 
 export function removeBarShortcut(item: Shortcut): void {

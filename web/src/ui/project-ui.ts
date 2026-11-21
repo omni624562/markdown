@@ -10,7 +10,7 @@ import { cometBadge } from "./comet-badge.ts";
 import { icon } from "./icons.ts";
 import { Picker } from "./picker.ts";
 import { t } from "../i18n.ts";
-import { toast } from "./toast.ts";
+import { toast, announce } from "./toast.ts";
 import * as storage from "../storage.ts";
 
 export interface ProjectHooks {
@@ -556,7 +556,7 @@ export class ProjectUi {
           await this.refresh();
           this.#renderOverview();
           this.#h.changed();
-          toast(t("已把「{name}」改到 {path}", { name: moved.label, path: displayPath(moved.path) }), { tone: "success" });
+          announce(t("已把「{name}」改到 {path}", { name: moved.label, path: displayPath(moved.path) }));
         } catch (e) {
           error.hidden = false;
           error.textContent = message(e);

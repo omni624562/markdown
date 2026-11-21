@@ -13,7 +13,7 @@ import { DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { PALETTES } from "../palette.ts";
 import { Palette } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
-import { toast } from "../ui/toast.ts";
+import { toast, announce } from "../ui/toast.ts";
 import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { aiAppPresent } from "./ai-app-presence.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
@@ -784,7 +784,7 @@ export function initCommands(): void {
         try {
           const formatted = formatJson(app.editor.text);
           if (formatted !== app.editor.text) app.editor.replaceAll(formatted);
-          toast(t("已重新排版（可用 Ctrl+Z 復原）"), { tone: "success" });
+          announce(t("已重新排版（可用 Ctrl+Z 復原）"));
         } catch (e) {
           const err = app.preview.result?.error;
           toast(t("無法格式化：{error}", { error: e instanceof Error ? e.message : String(e) }), {
@@ -890,7 +890,7 @@ export function initCommands(): void {
           return;
         }
         app.editor.replaceAll(formatted);
-        toast(t("已對齊所有表格（可用 Ctrl+Z 復原）"), { tone: "success" });
+        announce(t("已對齊所有表格（可用 Ctrl+Z 復原）"));
       },
     },
     {
@@ -924,7 +924,7 @@ export function initCommands(): void {
         } else {
           app.editor.replaceAll(result);
         }
-        toast(t("已補上 {n} 個空格（可用 Ctrl+Z 復原）", { n: positions.length }), { tone: "success" });
+        announce(t("已補上 {n} 個空格（可用 Ctrl+Z 復原）", { n: positions.length }));
       },
     },
     {
