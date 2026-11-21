@@ -975,6 +975,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<string>("rename_entry", { path, newName }),
         () => core.invoke<string>("dav_rename", { path, newName }),
       ),
+    /** 把檔案或資料夾移到專案裡的另一個資料夾（只有本機的專案）；回傳移動後的路徑。 */
+    moveEntry: (path: string, dir: string) => core.invoke<string>("move_entry", { path, dir }),
     /** 從電腦上傳檔案到遠端資料夾；同名時自動加上編號，回傳上傳後的路徑。 */
     davUpload: (dir: string, name: string, data: ArrayBuffer) =>
       core.invoke<string>("dav_upload", new Uint8Array(data), {
