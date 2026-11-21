@@ -23,6 +23,8 @@ export interface FileTreeHandlers {
   menuItems?(entry: Entry): { label: string; when?: () => boolean; run(): void }[];
   /** 拖曳檔案或資料夾時帶的資料（例如拖到左側圖示列變成捷徑）；null 表示不能拖。 */
   dragData?(entry: Entry): Record<string, string> | null;
+  /** 在檔案樹裡把檔案或資料夾拖到另一個資料夾：移動（沒有這個時不能在樹裡拖來拖去）。 */
+  move?(entry: Entry, dir: string): void;
   /** 名稱後面的小標記（例如 COMET 的檔案標「C」）；`title` 是滑鼠移上去的說明。 */
   mark?(entry: Entry): { text: string; title: string } | null;
 }
@@ -39,6 +41,9 @@ const MENU: { action: TreeAction; label: string; dirOnly?: boolean; fileOnly?: b
   { action: "insert-link", label: t("插入連結到目前的文件"), fileOnly: true },
 ];
 
+/** 在檔案樹裡拖曳移動時帶的資料（被拖的路徑）。 */
+const TREE_DRAG_TYPE = "application/x-omarker-tree-path";
+
 export class FileTree {
   #el: HTMLElement;
   #handlers: FileTreeHandlers;
@@ -49,6 +54,8 @@ export class FileTree {
   /** Git 狀態：檔案路徑 → 標記（M、U、A、D、R、!），以及含有變更的資料夾。 */
   #status = new Map<string, string>();
   #changedDirs = new Set<string>();
+  /** 正在樹裡拖曳的檔案或資料夾（拖到另一個資料夾就移動）。 */
+  #dragging: Entry | null = null;
 
   constructor(el: HTMLElement, handlers: FileTreeHandlers) {
     this.#el = el;
@@ -57,16 +64,25 @@ export class FileTree {
     el.addEventListener("keydown", (e) => this.#onKey(e));
     this.#setupDrop();
     // 拖曳檔案（例如拖到左側圖示列）：資料由 `dragData` 決定，沒有就不能拖。
+    // 也可以拖到另一個資料夾移動（`move`）。
     el.addEventListener("dragstart", (e) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>(".tree-row");
-      const data = row && e.dataTransfer ? this.#handlers.dragData?.(this.#entryOf(row)) : null;
-      if (!data) {
+      if (!row || !e.dataTransfer) return;
+      const entry = this.#entryOf(row);
+      const data = this.#handlers.dragData?.(entry) ?? null;
+      const movable = this.#movable();
+      if (!data && !movable) {
         e.preventDefault();
         return;
       }
-      e.dataTransfer!.effectAllowed = "copy";
-      for (const [type, value] of Object.entries(data)) e.dataTransfer!.setData(type, value);
+      e.dataTransfer.effectAllowed = movable ? "copyMove" : "copy";
+      for (const [type, value] of Object.entries(data ?? {})) e.dataTransfer.setData(type, value);
+      if (movable) {
+        e.dataTransfer.setData(TREE_DRAG_TYPE, entry.path);
+        this.#dragging = entry;
+      }
     });
+    el.addEventListener("dragend", () => (this.#dragging = null));
 
     this.#menu = document.createElement("div");
     this.#menu.className = "menu";
@@ -96,6 +112,40 @@ export class FileTree {
       return el.dataset.dir ? path : dirname(path);
     };
     const clear = () => this.#el.querySelectorAll(".tree-drop").forEach((n) => n.classList.remove("tree-drop"));
+    // 在樹裡拖曳：放到資料夾（或檔案所在的資料夾、空白處＝專案的最上層）就移過去。
+    const moveTarget = (e: DragEvent): string | null => {
+      const from = this.#dragging;
+      if (!this.#root || !from || !e.dataTransfer?.types.includes(TREE_DRAG_TYPE)) return null;
+      const el = (e.target as HTMLElement).closest<HTMLElement>(".tree-row") ?? this.#el;
+      const dir = dirOf(el);
+      // 本來就在那裡、移到自己或自己底下：不能放。
+      if (dir === dirname(from.path) || dir === from.path || (from.isDir && isInside(dir, from.path))) return null;
+      return dir;
+    };
+    const mark = (dir: string) => {
+      const row = dir === this.#root!.path ? this.#el : this.#el.querySelector<HTMLElement>(`.tree-row[data-path="${CSS.escape(dir)}"]`);
+      row?.classList.add("tree-drop");
+    };
+    this.#el.addEventListener("dragover", (e) => {
+      if (!this.#dragging || !e.dataTransfer?.types.includes(TREE_DRAG_TYPE)) return;
+      e.stopPropagation();
+      clear();
+      const dir = moveTarget(e);
+      if (!dir) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      mark(dir);
+    });
+    this.#el.addEventListener("drop", (e) => {
+      const from = this.#dragging;
+      const dir = moveTarget(e);
+      if (!from || !e.dataTransfer?.types.includes(TREE_DRAG_TYPE)) return;
+      clear();
+      e.preventDefault();
+      e.stopPropagation();
+      this.#dragging = null;
+      if (dir) this.#handlers.move?.(from, dir);
+    });
     this.#el.addEventListener("dragover", (e) => {
       const el = target(e);
       if (!el) return;
@@ -124,12 +174,17 @@ export class FileTree {
     });
   }
 
+  /** 可以在樹裡拖曳移動：有 `move`、不是遠端資料夾。 */
+  #movable(): boolean {
+    return !!this.#handlers.move && !this.#handlers.remote?.();
+  }
+
   get root(): Entry | null {
     return this.#root;
   }
 
   /** 建立之後再加上的功能（各自的模組加上去，例如左側圖示列的檔案捷徑）。 */
-  extend(more: Pick<FileTreeHandlers, "menuItems" | "dragData">): void {
+  extend(more: Pick<FileTreeHandlers, "menuItems" | "dragData" | "move">): void {
     this.#handlers = { ...this.#handlers, ...more };
   }
 
@@ -326,7 +381,7 @@ export class FileTree {
     row.dataset.dir = entry.isDir ? "1" : "";
     row.title = entry.detail ? `${displayPath(entry.path)}\n${entry.detail}` : displayPath(entry.path);
     row.style.setProperty("--level", String(level));
-    row.draggable = !!this.#handlers.dragData?.(entry);
+    row.draggable = this.#movable() || !!this.#handlers.dragData?.(entry);
     if (entry.isDir) {
       row.setAttribute("aria-expanded", String(this.#expanded.has(entry.path)));
       row.append(icon("chevron-right"), icon("folder"));

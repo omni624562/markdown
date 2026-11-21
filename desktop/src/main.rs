@@ -534,6 +534,7 @@ fn main() {
             workspace::create_entry,
             workspace::create_workflow,
             workspace::rename_entry,
+            workspace::move_entry,
             workspace::trash_entry,
             workspace::reveal_entry,
             workspace::open_with_default,

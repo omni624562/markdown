@@ -757,6 +757,45 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
 }
 
 /**
+ * 在檔案樹把檔案或資料夾拖到另一個資料夾：移到那裡（名稱不變）。開著的分頁、左側圖示列的捷徑跟著換到新路徑，
+ * 再問要不要更新其他文件裡連到它的連結（和改名一樣）。
+ */
+export async function moveEntry(entry: Entry, dir: string): Promise<void> {
+  const d = desktop;
+  if (!d || !app.workspaceRoot || isRemote(entry.path)) return;
+  const comet = cometChangeWarning(entry.path, "move");
+  if (comet) {
+    const choice = await choose(t("要移動 COMET 的檔案嗎？"), comet, [
+      { id: "move", label: t("仍要移動"), danger: true },
+      { id: "cancel", label: t("取消"), primary: true },
+    ]);
+    if (choice !== "move") return;
+  }
+  const from = dirname(entry.path);
+  const before = await indexedDocs().catch(() => []);
+  app.fileListCache ??= await d.listFiles(app.workspaceRoot.path).catch(() => []);
+  const filesBefore = markdownFiles(app.fileListCache ?? []);
+  const to = await d.moveEntry(entry.path, dir);
+  if (to === entry.path) return;
+  app.stash();
+  for (const doc of app.docs) {
+    const moved = doc.path && rebase(doc.path, entry.path, to);
+    if (!moved) continue;
+    doc.path = moved;
+    doc.handle = desktopHandle(moved, basename(moved));
+  }
+  ({ name: app.cur.fileName, handle: app.cur.fileHandle } = app.active);
+  renameFileShortcuts(entry.path, to);
+  refreshCometGuards();
+  app.fileListCache = null;
+  app.persistSession();
+  renderSaveState();
+  app.renderTabs();
+  await app.fileTree?.refresh([from, dir]);
+  if (entry.isDir || /\.(md|markdown)$/i.test(entry.path)) await updateLinksAfterRename(entry.path, to, before, filesBefore);
+}
+
+/**
  * 在分頁上改已經存成檔案的文件：和檔案面板一樣，只能改目前開啟的資料夾（本機或遠端）裡的檔案；
  * 不行時說明原因，回傳 false。
  */
@@ -864,6 +903,8 @@ function rootEntry(): Entry | null {
 }
 
 export function initWorkspaceUi(): void {
+  // 檔案樹：拖到另一個資料夾就移動（本機的專案）。
+  app.fileTree?.extend({ move: (entry, dir) => void moveEntry(entry, dir).catch(reportError) });
   window.addEventListener("focus", () => {
     if (Date.now() - indexScannedAt < 60_000) return;
     app.indexStale = true;
