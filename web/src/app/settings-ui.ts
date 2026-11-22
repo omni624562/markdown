@@ -13,7 +13,7 @@ import { type Settings, FONT_SIZE_RANGE, termCheckLabel } from "../settings.ts";
 import * as storage from "../storage.ts";
 import { sureFixes } from "../terms.ts";
 import type { SettingsDialog } from "../ui/settings-dialog.ts";
-import { clampSidebarWidth, setupSidebarResize } from "../ui/sidebar-resize.ts";
+import { SIDEBAR_WIDTH, clampSidebarWidth, rightPanelMax, setupSidebarResize } from "../ui/sidebar-resize.ts";
 import { setupSplitter } from "../ui/splitter.ts";
 import { toast } from "../ui/toast.ts";
 import { versionLabel, versionDetail, versionTooltip } from "../updater.ts";
@@ -325,8 +325,10 @@ export function initSettingsUi(): void {
     [app.$("#sidebar"), "left", "sidebar-width", "--outline-width"],
     [app.$("aside#outline-right"), "right", "outline-right-width", "--outline-right-width"],
   ] as const) {
+    // 右側欄可以拉得比左邊寬（見 rightPanelMax）。
+    const max = side === "right" ? rightPanelMax : () => SIDEBAR_WIDTH.max;
     const saved = Number(storage.load(key));
-    if (saved) document.documentElement.style.setProperty(cssVar, `${clampSidebarWidth(saved)}px`);
+    if (saved) document.documentElement.style.setProperty(cssVar, `${clampSidebarWidth(saved, max())}px`);
     setupSidebarResize(
       app.workspace,
       side,
@@ -336,6 +338,7 @@ export function initSettingsUi(): void {
         storage.save(key, String(px));
         app.editor.view.requestMeasure();
       },
+      max,
     );
   }
   setupSplitter(app.$("#splitter"), app.workspace, app.splitRatio, (r) => {
