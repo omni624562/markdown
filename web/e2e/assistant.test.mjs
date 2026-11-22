@@ -224,6 +224,14 @@ test("版面：助理是右側欄的一頁（分頁列只到右側欄左邊）�
   const wide = (await page.locator("#outline-right").boundingBox()).width;
   assert.ok(Math.abs(wide - (box.width + 100)) <= 4, `width ${box.width} → ${wide}`);
   assert.equal(await page.evaluate(() => Object.keys(localStorage).some((k) => k.endsWith("outline-right-width"))), true);
+  // 可以拉得比左邊的側邊欄（560）寬：最多到視窗的 65%（1280 → 832）。
+  const g2 = await grip.boundingBox();
+  await page.mouse.move(g2.x + 3, g2.y + g2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(g2.x - 600, g2.y + g2.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const widest = (await page.locator("#outline-right").boundingBox()).width;
+  assert.ok(widest > 600 && widest <= 836, `widest ${widest}`);
   assert.deepEqual(errors, []);
   await context.close();
 });
