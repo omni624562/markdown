@@ -2096,6 +2096,12 @@ button.git-info:disabled { cursor: default; }
 }
 .git-files button:hover { background: var(--active-line); }
 .git-files button:disabled { cursor: default; opacity: 0.7; }
+/* 修改過的檔案右邊的「和上次提交比較」按鈕：一直看得到（淡色），滑鼠移上去才變深。 */
+.git-files li { display: flex; align-items: center; gap: 2px; }
+.git-files li > button:first-child { flex: 1; min-width: 0; }
+.git-files .git-file-diff { flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; color: var(--muted); }
+.git-files .git-file-diff:hover { color: var(--fg); }
+.git-files .git-file-diff .icon { width: 14px; height: 14px; }
 .git-file-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-file-dir { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .git-files b { flex: none; width: 1.2em; font: 600 11px var(--font-mono); text-align: center; }

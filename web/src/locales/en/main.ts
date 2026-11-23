@@ -404,6 +404,13 @@ export const main: Record<string, Translation> = {
 
   // 合併衝突、分支、Pull Request、GitHub Pages、Gist
   "合併衝突：「{name}」": "Merge Conflict: \"{name}\"",
+  "和上次提交的版本比較：「{name}」": "Compare with Last Commit: \"{name}\"",
+  "「改回上次提交」會把那一段換回上次提交時的內容，可以用 Ctrl+Z 復原；處理完記得存檔": "\"Revert to last commit\" puts that part back as it was in the last commit. You can undo with Ctrl+Z. Save when you're done.",
+  "改回上次提交": "Revert to last commit",
+  "目前的內容和上次提交時相同。": "The current content is the same as in the last commit.",
+  "{label}（點一下和上次提交比較）": "{label} (click to compare with the last commit)",
+  "和上次提交比較": "Compare with last commit",
+  "{name}：和上次提交比較": "{name}: compare with last commit",
   "每一段選「採用遠端」或「保留本機」，處理完存檔，再到原始碼控制按「完成合併」":
     "Choose \"Accept Remote\" or \"Keep Local\" for each chunk, save, then click \"Finish Merge\" in Source Control",
   "採用遠端": "Accept Remote",

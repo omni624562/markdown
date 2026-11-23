@@ -115,3 +115,53 @@ test("圖示列預設不釘 Git 歷史；之前釘過的照舊", async () => {
   assert.deepEqual(saved.errors, []);
   await saved.context.close();
 });
+
+test("變更清單：修改過的檔案點一下（或按右邊的「比較」）就和上次提交逐段比較；新檔案照常打開", async () => {
+  const status = {
+    ...STATUS,
+    changes: [
+      { path: "/notes/a.md", status: "modified" },
+      { path: "/notes/new.md", status: "untracked" },
+    ],
+  };
+  const files = {
+    "/notes/a.md": { path: "/notes/a.md", name: "a.md", text: "# 標題\n\n新的一段\n", encoding: "utf-8" },
+    "/notes/new.md": { path: "/notes/new.md", name: "new.md", text: "# 新檔案\n", encoding: "utf-8" },
+  };
+  const { page, context, errors } = await openGit({
+    github_account: null,
+    git_status: status,
+    git_fetch: status,
+    reopen_file: { $by: "path", values: files },
+    git_file_at: "# 標題\n\n舊的一段\n",
+  });
+  const row = page.locator("#git-host .git-files li", { hasText: "a.md" });
+  // 修改過的檔案右邊有看得到的「比較」按鈕；新檔案沒有（沒有上一版）。
+  const cmp = row.locator(".git-file-diff");
+  assert.equal(await cmp.isVisible(), true);
+  assert.equal(await cmp.getAttribute("aria-label"), "a.md：和上次提交比較");
+  assert.equal(await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator(".git-file-diff").count(), 0);
+
+  await row.locator("button").first().click();
+  const bar = page.locator("#review-bar");
+  await bar.getByText("和上次提交的版本比較：「a.md」").waitFor();
+  await bar.getByRole("button", { name: /改回上次提交/ }).first().waitFor();
+  assert.deepEqual(
+    (await calls(page)).filter((c) => c.cmd === "git_file_at").map((c) => c.args),
+    [{ path: "/notes/a.md", id: "HEAD" }],
+  );
+  // 「改回上次提交」：那一段換回上次提交時的內容。
+  await bar.getByRole("button", { name: /改回上次提交/ }).first().click();
+  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("舊的一段"));
+
+  // 新檔案：照常打開，不比較。
+  await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator("button").first().click();
+  await page.locator(".tab", { hasText: "new.md" }).first().waitFor();
+  assert.equal((await calls(page)).filter((c) => c.cmd === "git_file_at").length, 1);
+
+  // 右邊的「比較」按鈕和點檔名一樣。
+  await cmp.click();
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "git_file_at").length === 2);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

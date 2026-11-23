@@ -63,6 +63,8 @@ export interface GitPanelHooks {
   open(path: string): void;
   /** 開啟衝突的檔案並逐段比較（`theirs` 是都採用遠端時的內容）。 */
   resolve(path: string, theirs: string): void;
+  /** 修改過的檔案：打開並和最後一次提交的版本逐段比較。 */
+  compare(path: string): void;
   /** 切換或建立分支。 */
   switchBranch(): void;
   /** 建立 Pull Request。 */
@@ -358,12 +360,28 @@ export class GitPanel {
           Object.assign(document.createElement("b"), { textContent: MARK[c.status], title: LABEL[c.status](rel) }),
         );
         btn.disabled = c.status === "deleted";
+        // 修改過的檔案：點一下就和上次提交比較（新檔案沒有上一版，照常打開）。
+        const diff = c.status === "modified";
+        if (diff) btn.title = t("{label}（點一下和上次提交比較）", { label: btn.title });
         btn.addEventListener("click", () => {
           const theirs = this.#theirs.get(c.path);
           if (c.status === "conflicted" && theirs !== undefined) this.#hooks.resolve(c.path, theirs);
+          else if (diff) this.#hooks.compare(c.path);
           else this.#hooks.open(c.path);
         });
         li.append(btn);
+        // 看得到的「比較」按鈕（滑鼠移到列上或用鍵盤移到時都看得到）。
+        if (diff) {
+          const cmp = document.createElement("button");
+          cmp.type = "button";
+          cmp.className = "git-file-diff";
+          const label = t("和上次提交比較");
+          cmp.title = label;
+          cmp.setAttribute("aria-label", t("{name}：和上次提交比較", { name: baseName(rel) }));
+          cmp.append(icon("git-compare"));
+          cmp.addEventListener("click", () => this.#hooks.compare(c.path));
+          li.append(cmp);
+        }
         return li;
       }),
     );

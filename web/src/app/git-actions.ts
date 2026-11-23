@@ -58,6 +58,34 @@ export async function resolveMergeConflict(path: string, theirs: string): Promis
   showPanel("git", false);
 }
 
+/**
+ * 原始碼控制的變更清單點修改過的檔案：打開它，和最後一次提交的版本逐段比較（在本機比，和有沒有推送無關）。
+ * 比較的是編輯器裡目前的內容（包括還沒存檔的部分）；拿不到上一版（例如不是文字檔）時只打開檔案。
+ */
+export async function compareWithHead(path: string): Promise<void> {
+  if (!desktop) return;
+  const existing = app.tabForPath(path);
+  if (existing) app.activate(existing);
+  else await openPath(path);
+  if (app.cur.fileHandle?.path !== path) return;
+  let text: string;
+  try {
+    text = await desktop.gitFileAt(path, "HEAD");
+  } catch (e) {
+    logError("compareWithHead", e);
+    return;
+  }
+  if (app.cur.fileHandle?.path !== path) return;
+  if (app.review.active) app.review.finish();
+  const started = app.review.start(text, {
+    title: t("和上次提交的版本比較：「{name}」", { name: basename(path) }),
+    hint: t("「改回上次提交」會把那一段換回上次提交時的內容，可以用 Ctrl+Z 復原；處理完記得存檔"),
+    acceptLabel: t("改回上次提交"),
+    rejectLabel: t("保留目前"),
+  });
+  if (!started) toast(t("目前的內容和上次提交時相同。"));
+}
+
 type BranchChoice = { name: string; kind: "local" | "remote" | "new" };
 
 export async function switchBranch(): Promise<void> {
