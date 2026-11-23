@@ -115,3 +115,91 @@ test("圖示列預設不釘 Git 歷史；之前釘過的照舊", async () => {
   assert.deepEqual(saved.errors, []);
   await saved.context.close();
 });
+
+test("變更清單：修改過的檔案點一下（或按右邊的按鈕）就標出改了哪些地方：綠色是現在的、紅色是上次提交的；新檔案照常打開", async () => {
+  const status = {
+    ...STATUS,
+    changes: [
+      { path: "/notes/a.md", status: "modified" },
+      { path: "/notes/new.md", status: "untracked" },
+    ],
+  };
+  const files = {
+    "/notes/a.md": { path: "/notes/a.md", name: "a.md", text: "# 標題\n\n新的一段\n", encoding: "utf-8" },
+    "/notes/new.md": { path: "/notes/new.md", name: "new.md", text: "# 新檔案\n", encoding: "utf-8" },
+  };
+  const { page, context, errors } = await openGit({
+    github_account: null,
+    git_status: status,
+    git_fetch: status,
+    reopen_file: { $by: "path", values: files },
+    git_file_at: "# 標題\n\n舊的一段\n",
+  });
+  const row = page.locator("#git-host .git-files li", { hasText: "a.md" });
+  // 修改過的檔案右邊有看得到的「比較」按鈕；新檔案沒有（沒有上一版）。
+  const cmp = row.locator(".git-file-diff");
+  assert.equal(await cmp.isVisible(), true);
+  assert.equal(await cmp.getAttribute("aria-label"), "a.md：看改了哪些地方");
+  assert.equal(await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator(".git-file-diff").count(), 0);
+
+  await row.locator("button").first().click();
+  const bar = page.locator("#review-bar");
+  await bar.getByText("「a.md」改了哪些地方").waitFor();
+  assert.deepEqual(
+    (await calls(page)).filter((c) => c.cmd === "git_file_at").map((c) => c.args),
+    [{ path: "/notes/a.md", id: "HEAD" }],
+  );
+  // 文件本身還是現在的內容（綠色），上次提交的那一段標成紅色刪除；打開比較不會讓文件變成「沒存檔」。
+  const look = await page.evaluate(() => ({
+    inserted: [...document.querySelectorAll(".cm-changedLine")].map((el) => el.textContent),
+    deleted: [...document.querySelectorAll(".cm-deletedChunk")].map((el) => el.textContent),
+  }));
+  assert.ok(look.inserted.some((x) => x.includes("新的一段")), JSON.stringify(look));
+  assert.ok(look.deleted.some((x) => x.includes("舊的一段")), JSON.stringify(look));
+  assert.equal(await page.locator(".tab.active.dirty, .tab[aria-selected=true].dirty").count(), 0, "沒有變成沒存檔");
+  // 「改回去」：那一段換回上次提交時的內容。
+  await page.locator(".cm-deletedChunk").getByRole("button", { name: "改回去" }).click();
+  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("舊的一段") && !document.querySelector(".cm-content")?.textContent?.includes("新的一段"));
+
+  // 新檔案：照常打開，不比較。
+  await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator("button").first().click();
+  await page.locator(".tab", { hasText: "new.md" }).first().waitFor();
+  assert.equal((await calls(page)).filter((c) => c.cmd === "git_file_at").length, 1);
+
+  // 右邊的「比較」按鈕和點檔名一樣。
+  await cmp.click();
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "git_file_at").length === 2);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("設定成左右並排：左邊上次提交、右邊現在；「改回去」之後放回文件", async () => {
+  const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }] };
+  const { page, context, errors } = await openGit({
+    github_account: null,
+    git_status: status,
+    git_fetch: status,
+    load_settings: JSON.stringify({ gitCompareLayout: "side" }),
+    reopen_file: { path: "/notes/a.md", name: "a.md", text: "# 會議紀錄\n\n出席：王小明、李大同\n", encoding: "utf-8" },
+    git_file_at: "# 會議紀錄\n\n出席：王小明\n",
+  });
+  await page.locator("#git-host .git-file-diff").click();
+  const side = page.locator(".review-side");
+  await side.waitFor();
+  assert.deepEqual(await side.locator(".review-side-heads span").allTextContents(), ["上次提交時", "現在"]);
+  assert.equal(await page.locator("#editor").isVisible(), false, "編輯器先藏起來");
+  const [left, right] = await side.locator(".cm-editor").evaluateAll((els) => els.map((el) => el.querySelector(".cm-content").textContent));
+  assert.match(left, /出席：王小明$/);
+  assert.match(right, /李大同/);
+  assert.equal(await page.locator("#review-bar").getByRole("button", { name: "看完了" }).isVisible(), true);
+  // 「改回去」：右邊那一段換回上次提交的內容；全部處理完就收起並排，文件也換回去。
+  await side.getByRole("button", { name: "改回去" }).click();
+  await side.waitFor({ state: "detached" });
+  assert.equal(await page.locator("#editor").isVisible(), true);
+  await page.waitForFunction(() => {
+    const text = document.querySelector("#editor .cm-content")?.textContent ?? "";
+    return text.includes("出席：王小明") && !text.includes("李大同");
+  });
+  assert.deepEqual(errors, []);
+  await context.close();
+});

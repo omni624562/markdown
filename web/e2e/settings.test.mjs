@@ -76,7 +76,7 @@ test("設定（桌面版）：Git 與 GitHub 同一頁、Azure DevOps 一行排�
   // 一次性的動作（下載、上傳儲存庫、顯示工作項目）不放在設定裡；帳號的登入還在。
   await page.click("dialog[open] [role=tab]:has-text('Git 與 GitHub')");
   const git = await visibleLabels(page);
-  assert.deepEqual(git, ["自動同步", "同步頻率", "GitHub 帳號"]);
+  assert.deepEqual(git, ["自動同步", "同步頻率", "比較的方式", "GitHub 帳號"]);
   assert.ok(await page.locator("#setting-github").isVisible());
   for (const id of ["github-open", "github-publish", "ado-open", "ado-items"]) assert.equal(await page.locator(`#setting-${id}`).count(), 0, id);
 

@@ -97,6 +97,10 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["desktop", t("ChatGPT 桌面版")],
     ["web", t("網頁版（chatgpt.com）")],
   ],
+  gitCompareLayout: [
+    ["stacked", t("上下對照（預設）")],
+    ["side", t("左右並排")],
+  ],
   gitSyncMinutes: [
     ["5", t("每 {n} 分鐘", { n: 5 })],
     ["10", t("每 {n} 分鐘", { n: 10 })],
@@ -1242,6 +1246,14 @@ export class SettingsDialog {
           this.#control("gitAutoSync"),
         ),
         this.#row("gitSyncMinutes", t("同步頻率"), undefined, () => this.#control("gitSyncMinutes")),
+      ]),
+      ...this.#group(t("看改了哪些地方"), [
+        this.#row(
+          "gitCompareLayout",
+          t("比較的方式"),
+          t("原始碼控制的變更清單點修改過的檔案時：上下對照是在文件裡標出原本和現在；左右並排是左邊上次提交、右邊現在"),
+          () => this.#control("gitCompareLayout"),
+        ),
       ]),
       ...this.#group(t("帳號"), [accountRow]),
     );

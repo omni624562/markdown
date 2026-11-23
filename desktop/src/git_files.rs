@@ -108,8 +108,15 @@ pub fn history_at(file: &Path) -> Result<Vec<FileCommit>, String> {
 /// 檔案在某次提交時的內容。
 pub fn file_at(file: &Path, id: &str) -> Result<String, String> {
     let (repo, rel) = open_for(file)?;
-    let oid = Oid::from_str(id).map_err(|_| tr!("提交編號不正確"))?;
-    let commit = repo.find_commit(oid).map_err(|_| tr!("找不到這個提交"))?;
+    // `HEAD`：最後一次提交（原始碼控制的變更清單拿目前的內容和它比較）。
+    let commit = if id == "HEAD" {
+        repo.head()
+            .and_then(|h| h.peel_to_commit())
+            .map_err(|_| tr!("還沒有任何提交"))?
+    } else {
+        let oid = Oid::from_str(id).map_err(|_| tr!("提交編號不正確"))?;
+        repo.find_commit(oid).map_err(|_| tr!("找不到這個提交"))?
+    };
     let blob = blob_at(&commit, &rel)
         .and_then(|b| repo.find_blob(b).ok())
         .ok_or_else(|| tr!("這個版本沒有這個檔案"))?;
@@ -392,6 +399,9 @@ mod tests {
         assert_eq!(summaries, ["修改 a", "新增 a"]);
         assert_eq!(file_at(&dir.join("a.md"), &list[1].id).unwrap(), "一\n");
         assert!(file_at(&dir.join("b.md"), &list[1].id).is_err());
+        // `HEAD`：最後一次提交的內容（工作目錄改過也一樣）。
+        fs::write(dir.join("a.md"), "一\n二\n三\n").unwrap();
+        assert_eq!(file_at(&dir.join("a.md"), "HEAD").unwrap(), "一\n二\n");
         let _ = fs::remove_dir_all(&dir);
     }
 }
