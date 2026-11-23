@@ -2481,8 +2481,10 @@ button.git-info:disabled { cursor: default; }
 .side-body.workitems > * { flex: none; }
 /* 篩選太高（視窗很矮）也不會把清單擠不見：篩選自己捲動。 */
 .side-body.workitems > .workitems-filters { max-height: 55%; overflow-y: auto; }
-.side-body.workitems > .workitems-list { flex: 1 1 auto; min-height: 0; margin: 0 -8px; padding: 0 8px 12px; overflow-y: auto; border-top: 1px solid transparent; }
-.side-body.workitems > .workitems-list.scrolled { border-top-color: var(--border); }
+.side-body.workitems > .workitems-list,
+.side-body.workitems > .wiki-scroll { flex: 1 1 auto; min-height: 0; margin: 0 -8px; padding: 0 8px 12px; overflow-y: auto; border-top: 1px solid transparent; }
+.side-body.workitems > .workitems-list.scrolled,
+.side-body.workitems > .wiki-scroll.scrolled { border-top-color: var(--border); }
 /*
  * 清單上方的「N 個…」與排列方式、收合等按鈕：一直是一列。側邊欄窄時文字用「…」截短（滑鼠移上去看完整的），
  * 按鈕不換行也不被切掉。連不上伺服器、顯示存下的資料時（有「重試」）才讓文字換行。
