@@ -1,6 +1,6 @@
 [package]
 name = "md-android"
-version = "1.166.0"
+version = "1.167.0"
 edition = "2021"
 license = "MIT"
 description = "oMarker（Markdown 編輯器）Android 版（Tauri）"
