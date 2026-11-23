@@ -5,7 +5,7 @@
  * 所以面板最下面放一個到 Claude Console 的連結。
  */
 import { formatUsd } from "../assistant-text.ts";
-import { desktop } from "../desktop.ts";
+import { desktop, native } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { placeMenu } from "../ui/menu-place.ts";
 import { wasOpenOnPress } from "../ui/popover-toggle.ts";
@@ -69,7 +69,7 @@ function render(h: UsageHistory): void {
   );
   const link = el("button", "btn btn-small", t("打開 Claude Console"));
   link.type = "button";
-  link.addEventListener("click", () => void desktop?.openExternal(CONSOLE_URL));
+  link.addEventListener("click", () => (desktop ? void desktop.openExternal(CONSOLE_URL) : void window.open(CONSOLE_URL, "_blank")));
   notes.append(link);
 
   pop!.replaceChildren(head, grid, daysHead, days, notes);
@@ -97,7 +97,7 @@ function build(): HTMLElement {
 }
 
 async function open(): Promise<void> {
-  if (!desktop || !trigger) return;
+  if (!native || !trigger) return;
   pop ??= build();
   // 先顯示「讀取中…」，讀到了再換成內容（原生端只是讀一個小檔案，通常馬上就好）。
   pop.replaceChildren(el("h3", "", t("助理用量（估計）")), el("p", "usage-loading", t("讀取中…")));
@@ -106,7 +106,7 @@ async function open(): Promise<void> {
   place();
   pop.focus({ preventScroll: true });
   try {
-    const history = await desktop.assistantUsageHistory();
+    const history = await native.assistantUsageHistory();
     if (pop.matches(":popover-open")) render(history);
   } catch (e) {
     pop.replaceChildren(el("h3", "", t("助理用量（估計）")), el("p", "usage-loading", e instanceof Error ? e.message : String(e)));

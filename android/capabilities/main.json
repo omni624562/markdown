@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Android 版的主畫面。",
+  "windows": ["main"],
+  "permissions": ["core:app:default", "core:event:allow-listen", "core:event:allow-unlisten", "core:webview:default", "core:window:default"]
+}

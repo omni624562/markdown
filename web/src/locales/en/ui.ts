@@ -1309,6 +1309,20 @@ export const ui: Record<string, Translation> = {
   "助理：自訂動作…": "Assistant: Custom Actions…",
   "模型：{name}（按一下換）": "Model: {name} (click to change)",
   "送到 Anthropic・修改要按「套用」": "Sent to Anthropic · changes need Apply",
+  // app/phone.ts
+  "未存檔": "Unsaved",
+  "找不到符合的文件": "No matching documents",
+  "還沒有文件。按「新增」開始寫，或開啟手機裡的檔案。": "No documents yet. Tap Add to start writing, or open a file on your phone.",
+  "搜尋文件": "Search documents",
+  "從範本新增": "From template",
+  "最近": "Recent",
+  "回到文件清單": "Back to documents",
+  "列印": "Print",
+  "問助理…": "Ask the assistant…",
+  "關閉助理": "Close the assistant",
+  // mobile-files.ts
+  "「{name}」所在的位置（例如 OneDrive）不讓 oMarker 讀取。請在那個 App 裡把檔案設成離線可用，或先下載到手機再開啟。": "The place where “{name}” is stored (for example OneDrive) doesn't let oMarker read it. Make the file available offline in that app, or download it to your phone first.",
+  "「{name}」所在的位置（例如 OneDrive）不讓 oMarker 寫回去。內容還在 oMarker 裡，請用「另存新檔」存到手機或其他位置。": "The place where “{name}” is stored (for example OneDrive) doesn't let oMarker write to it. Your text is still in oMarker; use Save As to save it on your phone or elsewhere.",
   // 背景執行（settings-dialog.ts、app/background-checks.ts）
   "每 10 分鐘（預設）": "Every 10 minutes (default)",
   "每 15 分鐘": "Every 15 minutes",
@@ -1335,4 +1349,13 @@ export const ui: Record<string, Translation> = {
   "登入 Windows 時自動開啟 oMarker，縮在右下角的系統匣，在背景檢查工作項目與 Wiki；也可以在工作管理員的「啟動應用程式」停用":
     "Opens oMarker in the notification area when you sign in to Windows, checking work items and Wiki in the background. You can also turn it off under Startup apps in Task Manager.",
   "關閉設定": "Close settings",
+  // app/assistant-phone.ts
+  "附加檔案或圖片": "Attach a file or image",
+  "圖片或 PDF": "Images or PDFs",
+  "摘要、改寫、翻譯、轉成表格…": "Summarize, rewrite, translate, make a table…",
+  "估算這次的費用": "Estimate the cost",
+  "送出前算 token 數，不產生回答、不收費": "Counts tokens before sending; no answer, no charge",
+  "想得比較仔細，回答比較慢，費用也比較高": "Thinks more carefully; slower and costs more",
+  // ui/settings-phone.ts
+  "回到設定分類": "Back to settings",
 };

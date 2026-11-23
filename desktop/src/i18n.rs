@@ -83,6 +83,8 @@ macro_rules! tr {
 }
 
 #[cfg(test)]
+// Android 版共用這個檔案時不跑原始碼檢查，檢查用的小函式就用不到。
+#[cfg_attr(omarker_mobile, allow(dead_code))]
 mod tests {
     use super::*;
     use std::path::Path;
@@ -227,6 +229,8 @@ mod tests {
 
     /// 回給使用者的中文訊息都要經過 `tr!`，而且有英文翻譯；其他中文字串（例如送給 AI 的說明、
     /// 比對用的關鍵字）標上 `i18n-ignore`（同一行或上一行）。測試區塊（`#[cfg(test)]` 以下）與 `tests.rs` 不檢查。
+    // 檢查的是桌面版的原始碼（Android 版共用這個檔案時，CARGO_MANIFEST_DIR 是 android/，不檢查）。
+    #[cfg(not(omarker_mobile))]
     #[test]
     fn messages_are_translated() {
         let mut files = vec![];

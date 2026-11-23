@@ -48,6 +48,7 @@ import { initChatGpt } from "./chatgpt.ts";
 import { initTableCopy } from "./table-copy.ts";
 import { initAssistant } from "./assistant.ts";
 import { initAssistantButton } from "./assistant-button.ts";
+import { initPhone } from "./phone.ts";
 import { initBackgroundChecks } from "./background-checks.ts";
 import { app } from "./context.ts";
 import { exportName } from "./export-target.ts";
@@ -782,6 +783,7 @@ export function initActivityBar(): void {
   initTableCopy();
   initAssistant();
   initAssistantButton();
+  initPhone();
   initBackgroundChecks();
   headingMenu = formatMenuButton("fmt-heading", t("標題"), "heading", ["h1", "h2", "h3"]);
   insertMenu = formatMenuButton("fmt-insert", t("插入"), "plus", [

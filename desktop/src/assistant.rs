@@ -16,6 +16,8 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+// 批次處理要讀寫整個資料夾：Android 版（直接編譯這個檔案，見 android/src/lib.rs）沒有。
+#[cfg(not(omarker_mobile))]
 #[path = "assistant_batch.rs"]
 pub mod batch;
 
@@ -336,13 +338,17 @@ fn same_path(a: &str, b: &str) -> bool {
 }
 
 /// 設定與目前的資料夾允許送出嗎？（不允許時回傳原因）
-fn check(
+pub(crate) fn check(
     settings: &serde_json::Value,
     root: Option<&Path>,
     origin: Option<&str>,
 ) -> Result<(), String> {
     if settings["claudeApiEnabled"] != true {
         return Err(tr!("請先在設定開啟「Claude API 助理」"));
+    }
+    // Android 版沒有專案資料夾：不分專案，開了助理就能用（見 android/src/lib.rs）。
+    if cfg!(omarker_mobile) {
+        return Ok(());
     }
     let Some(root) = root else {
         return Err(tr!("請先開啟允許 AI 的專案資料夾"));
@@ -1112,6 +1118,8 @@ mod tests {
         );
     }
 
+    // Android 版不分專案（見 check），另外在 android/src/lib.rs 測。
+    #[cfg(not(omarker_mobile))]
     #[test]
     fn only_allowed_projects_can_send() {
         let root = Path::new("/home/me/筆記");
