@@ -1,6 +1,6 @@
 /**
  * 刪除專案：專案總覽的卡片、「☰」→「專案」→「刪除專案…」。只問一次：提示窗要輸入專案的資料夾名稱才能刪除，
- * 原生端不再用系統的對話框另外問；可以勾選同時把資料夾移到資源回收筒（記住上次的選擇）；
+ * 原生端不再用系統的對話框另外問；可以勾選同時把資料夾移到資源回收筒（預設不勾，也不記上次的選擇）；
  * 目前開著的專案按了「刪除」才關閉再刪。用假的原生端（見 helpers.mjs）。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
@@ -61,9 +61,9 @@ test("專案總覽：刪除要輸入資料夾名稱；勾選後資料夾移到�
   ]);
   // 只問一次：沒有另外的確認（原生端不再跳系統的對話框）。
   assert.equal((await calls(page)).some((c) => c.cmd === "project_delete_ask"), false);
-  // 下一次：「同時把資料夾移到資源回收筒」記住上次的選擇。
+  // 下一次：「同時把資料夾移到資源回收筒」一律不勾（不記上次的選擇，免得不小心連資料夾一起刪掉）。
   await overview.locator(".po-card", { hasText: "notes" }).locator(".po-delete").click();
-  assert.equal(await page.locator("dialog.project-delete[open]").getByLabel(/同時把資料夾移到資源回收筒/).isChecked(), true);
+  assert.equal(await page.locator("dialog.project-delete[open]").getByLabel(/同時把資料夾移到資源回收筒/).isChecked(), false);
   assert.deepEqual(errors, []);
   await context.close();
 });
