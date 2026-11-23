@@ -1258,6 +1258,8 @@ export const ui: Record<string, Translation> = {
   "PDF 第 {n} 頁：{quote}": "PDF page {n}: {quote}",
   "這一段在附上的 PDF 第 {n} 頁": "This passage is on page {n} of the attached PDF",
   "目前的文件裡找不到這一段原文（文件改過，或已經換到別份文件）": "This passage isn't in the current document (it was edited, or you switched to another document)",
+  "{name}：{quote}": "{name}: {quote}",
+  "找不到「{name}」（可能已經改名或刪除）": "Couldn't find \"{name}\" (it may have been renamed or deleted)",
   "{quote}（按一下跳到這一段）": "{quote} (click to jump to this passage)",
   "出處 {n}：{quote}": "Citation {n}: {quote}",
   "搜尋還沒做完，回答可能不完整；可以再問一次。": "The search didn't finish, so the answer may be incomplete. You can ask again.",
