@@ -204,6 +204,36 @@ test("設定成左右並排：左邊上次提交、右邊現在；「改回去�
   await context.close();
 });
 
+test("變更清單：「捨棄修改」換回上次提交的內容並存檔；通知上的「復原」拿回來", async () => {
+  const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }, { path: "/notes/new.md", status: "untracked" }] };
+  const { page, context, errors } = await openGit({
+    github_account: null,
+    git_status: status,
+    git_fetch: status,
+    reopen_file: { path: "/notes/a.md", name: "a.md", text: "# 會議紀錄\n\n下週三交報告。\n", encoding: "utf-8" },
+    git_file_at: "# 會議紀錄\n\n下週一交報告。\n",
+    save_file: { status: "saved" },
+  });
+  const row = page.locator("#git-host .git-files li", { hasText: "a.md" });
+  const discard = row.locator(".git-file-discard");
+  assert.equal(await discard.getAttribute("aria-label"), "a.md：捨棄修改");
+  assert.equal(await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator(".git-file-discard").count(), 0, "新檔案沒有上一版");
+  await discard.click();
+  const content = () => page.evaluate(() => document.querySelector("#editor .cm-content")?.textContent ?? "");
+  await page.waitForFunction(() => document.querySelector("#editor .cm-content")?.textContent?.includes("下週一"));
+  const saves = () => page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "save_file").map((c) => c.args.text ?? c.args.req?.text ?? JSON.stringify(c.args)));
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "save_file"));
+  assert.match((await saves()).at(-1), /下週一/);
+  const note = page.locator(".toast", { hasText: "已把「a.md」改回上次提交時的內容" });
+  await note.getByRole("button", { name: "復原" }).click();
+  await page.waitForFunction(() => document.querySelector("#editor .cm-content")?.textContent?.includes("下週三"));
+  assert.doesNotMatch(await content(), /下週一/);
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "save_file").length >= 2);
+  assert.match((await saves()).at(-1), /下週三/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("版本紀錄的比較和原始碼控制一樣：綠色是現在、紅色是舊版；設成左右並排時也是並排", async () => {
   for (const layout of ["stacked", "side"]) {
     const { page, context, errors } = await openGit({
