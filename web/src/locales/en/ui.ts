@@ -69,7 +69,7 @@ export const ui: Record<string, Translation> = {
   "上下對照（預設）": "Stacked (default)",
   "左右並排": "Side by side",
   "比較的方式": "Comparison layout",
-  "原始碼控制的變更清單點修改過的檔案時：上下對照是在文件裡標出原本和現在；左右並排是左邊上次提交、右邊現在": "When you click a modified file in Source Control: stacked marks the old and new text in the document; side by side shows the last commit on the left and now on the right.",
+  "原始碼控制的變更清單、提交歷史與版本紀錄的比較：上下對照是在文件裡標出原本和現在；左右並排是左邊舊的、右邊現在": "Comparisons from Source Control, commit history and version history: stacked marks the old and new text in the document; side by side shows the old version on the left and now on the right.",
   "恢復預設值": "Restore Defaults",
   "版本": "Version",
   "版本 {version}": "Version {version}",
