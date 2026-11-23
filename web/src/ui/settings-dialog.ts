@@ -1,3 +1,4 @@
+import { PHONE_HIDDEN_ROWS, PhoneSettings, isPhone } from "./settings-phone.ts";
 import {
   DEFAULTS,
   FONT_SIZE_RANGE,
@@ -37,6 +38,8 @@ export interface AiHooks {
   chatgptDesktop?(): boolean;
   /** 「Claude API 助理」那一頁的說明與內容（見 app/assistant-settings.ts）。 */
   assistant?(): { desc: string; content: HTMLElement[] } | null;
+  /** 只有 Claude API 助理（Android 版）：沒有 AI 協作（Claude Code、Codex）。 */
+  assistantOnly?: boolean;
 }
 
 const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
@@ -319,6 +322,8 @@ export class SettingsDialog {
   /** 重新整理 Git 與 Azure DevOps 頁的帳號狀態（登入、登出、連線後）。 */
   #refreshGit = () => {};
   #page = 0;
+  /** 手機版面的兩層設定（分類清單 → 那一頁）。 */
+  #phone: PhoneSettings | null = null;
   /** 依搜尋文字篩選選項（空白時回到分類頁）。 */
   #filter: (query: string) => void = () => {};
   /** 每一頁的舊名稱（見 #section）。 */
@@ -365,7 +370,12 @@ export class SettingsDialog {
       search.value = "";
       this.#filter("");
     });
-    header.append(h, search, close);
+    // 手機版面：左上角「←」（在分類清單時關閉設定，在某一頁時回到分類清單）；電腦版不顯示。
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "btn icon-only settings-back";
+    back.append(icon("arrow-left"));
+    header.append(back, h, search, close);
     d.append(header);
 
     // 左邊是分類，右邊一次只顯示一個分類的選項。
@@ -474,7 +484,8 @@ export class SettingsDialog {
     d.addEventListener("toggle", () => this.#refreshGit());
 
     body.append(this.#aboutSection(update, about, d));
-    this.#buildNav(nav, body);
+    const { tabs, sections } = this.#buildNav(nav, body);
+    this.#phone = new PhoneSettings({ dialog: d, title: h, back, search, tabs, sections, shown });
 
     d.addEventListener("click", (e) => {
       if (e.target === d) d.close();
@@ -496,12 +507,13 @@ export class SettingsDialog {
     // 焦點放在目前的分類上（不要一打開就把框框畫在「完成」按鈕上）。
     this.#dialog.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus();
     void this.#refreshTools();
+    this.#phone?.opened();
     if (page) {
       // 呼叫端可能傳中文原文或翻譯過的名稱，也可能是改名、合併前的舊名稱。
       const names = [page, t(page)];
       const tab = [...this.#dialog.querySelectorAll<HTMLButtonElement>("[role=tab]")].find((b) => {
         const section = this.#dialog.querySelector<HTMLElement>(`#${b.getAttribute("aria-controls")}`);
-        return [b.textContent ?? "", ...(section ? (this.#aliases.get(section) ?? []) : [])].some((n) => names.includes(n));
+        return [b.querySelector(".settings-tab-name")?.textContent ?? "", ...(section ? (this.#aliases.get(section) ?? []) : [])].some((n) => names.includes(n));
       });
       if (tab) {
         tab.click();
@@ -512,7 +524,7 @@ export class SettingsDialog {
   }
 
   /** 每個 section 成為左邊的一個分類；方向鍵上下切換。 */
-  #buildNav(nav: HTMLElement, body: HTMLElement): void {
+  #buildNav(nav: HTMLElement, body: HTMLElement): { tabs: HTMLButtonElement[]; sections: HTMLElement[] } {
     const sections = [...body.querySelectorAll<HTMLElement>(":scope > section")];
     const tabs = sections.map((section, i) => {
       const id = `settings-page-${i}`;
@@ -524,8 +536,15 @@ export class SettingsDialog {
       tab.id = `${id}-tab`;
       tab.setAttribute("aria-controls", id);
       section.setAttribute("aria-labelledby", tab.id);
-      tab.append(icon(section.dataset.icon ?? "settings"), section.querySelector("h3")?.textContent ?? "");
-      tab.addEventListener("click", () => show(i));
+      const name = document.createElement("span");
+      name.className = "settings-tab-name";
+      name.textContent = section.querySelector("h3")?.textContent ?? "";
+      tab.append(icon(section.dataset.icon ?? "settings"), name);
+      if (section.classList.contains("phone-hide")) tab.classList.add("phone-hide");
+      tab.addEventListener("click", () => {
+        show(i);
+        this.#phone?.entered();
+      });
       return tab;
     });
     const show = (i: number) => {
@@ -535,6 +554,8 @@ export class SettingsDialog {
         t.setAttribute("aria-selected", String(j === i));
         t.tabIndex = j === i ? 0 : -1;
       });
+      // 手機上分類排成一列可以左右捲：選到的那個捲進畫面裡。
+      tabs[i]?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
       body.scrollTop = 0;
     };
     nav.addEventListener("keydown", (e) => {
@@ -562,6 +583,7 @@ export class SettingsDialog {
       tabs.forEach((tab) => tab.setAttribute("aria-selected", "false"));
       body.scrollTop = 0;
     };
+    return { tabs, sections };
   }
 
   /** 卡片裡的選項都藏起來時（還沒連線、搜尋不到），卡片連同上方的小標題一起藏起來，不留一張空卡片。 */
@@ -580,6 +602,8 @@ export class SettingsDialog {
       "sparkles",
       t("使用你自己安裝並登入的 Claude Code 或 Codex。編輯器不會儲存帳號或金鑰；AI 提出的修改一律先標示差異，由你決定是否套用。"),
     );
+    // 手機版面不放：Claude Code／Codex 需要電腦版，「傳給 ChatGPT」也是電腦上的流程。
+    section.classList.add("phone-hide");
     // 傳給 ChatGPT：和上面的 AI 協作無關（不用開啟），網頁版也能用。
     const chatgpt = this.#group(t("傳給 ChatGPT"), [
       this.#row(
@@ -589,7 +613,7 @@ export class SettingsDialog {
         () => this.#control("chatgptSend"),
       ),
     ]);
-    if (!this.#ai) {
+    if (!this.#ai || this.#ai.assistantOnly) {
       const p = document.createElement("p");
       p.className = "settings-note";
       p.textContent = t("AI 協作（Claude Code／Codex）需要桌面版。");
@@ -724,7 +748,7 @@ export class SettingsDialog {
       desktopOpt.disabled = !found && gpt.value !== "desktop";
       desktopOpt.textContent = found ? t("ChatGPT 桌面版") : t("ChatGPT 桌面版（未偵測到）");
     }
-    if (!this.#ai) return;
+    if (!this.#ai || this.#ai.assistantOnly) return;
     const sel = this.#dialog.querySelector<HTMLSelectElement>("select[data-key=aiTool]");
     try {
       const found = await this.#ai.available();
@@ -1159,6 +1183,7 @@ export class SettingsDialog {
   #row(id: string, label: string, hint: string | undefined, control: () => HTMLElement): HTMLElement {
     const row = document.createElement("div");
     row.className = "settings-row";
+    if (PHONE_HIDDEN_ROWS.has(id)) row.classList.add("phone-hide");
     const text = document.createElement("div");
     const l = document.createElement("label");
     l.htmlFor = `setting-${id}`;
@@ -1251,7 +1276,7 @@ export class SettingsDialog {
         this.#row(
           "gitCompareLayout",
           t("比較的方式"),
-          t("原始碼控制的變更清單點修改過的檔案時：上下對照是在文件裡標出原本和現在；左右並排是左邊上次提交、右邊現在"),
+          t("原始碼控制的變更清單、提交歷史與版本紀錄的比較：上下對照是在文件裡標出原本和現在；左右並排是左邊舊的、右邊現在"),
           () => this.#control("gitCompareLayout"),
         ),
       ]),
@@ -1704,7 +1729,7 @@ export class SettingsDialog {
 
 /** 選項列看得到：沒有依狀態藏起來，也沒有被搜尋篩掉。 */
 function shown(row: HTMLElement): boolean {
-  return !row.hidden && !row.classList.contains("search-miss");
+  return !row.hidden && !row.classList.contains("search-miss") && !(isPhone() && row.classList.contains("phone-hide"));
 }
 
 /** 字型欄位用輸入的字型顯示；名稱不完整時退回介面字型。 */

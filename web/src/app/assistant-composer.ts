@@ -13,6 +13,8 @@ import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 /** 「＋」選單裡的開關（和輸入框上方的標籤是同一組狀態）。 */
 export interface ComposerToggle {
   label: string;
+  /** 一行說明（手機的「＋」選單顯示在名稱下面）。 */
+  hint?: string;
   icon: string;
   on: boolean;
   set(on: boolean): void;
@@ -48,7 +50,7 @@ function writeEntries(p: ComposerParts, withMain: boolean): MenuEntry[] {
   ];
 }
 
-export function initComposer(p: ComposerParts): { plus: HTMLButtonElement; suggest: HTMLElement } {
+export function initComposer(p: ComposerParts): { plus: HTMLButtonElement; more: HTMLButtonElement } {
   const plus = document.createElement("button");
   plus.type = "button";
   plus.id = "assistant-plus";
@@ -93,5 +95,5 @@ export function initComposer(p: ComposerParts): { plus: HTMLButtonElement; sugge
   list.append(more);
   suggest.append(hint, list);
   p.log.after(suggest);
-  return { plus, suggest };
+  return { plus, more };
 }

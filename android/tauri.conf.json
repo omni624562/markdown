@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "oMarker",
+  "version": "1.165.0",
+  "identifier": "io.github.omni624562.omarker",
+  "build": {
+    "frontendDist": "../web/dist",
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "../web" }
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [{ "title": "oMarker" }],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: https: http:",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "worker-src": "'self' blob:"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["../desktop/icons/icon.png"],
+    "android": { "minSdkVersion": 26 }
+  }
+}

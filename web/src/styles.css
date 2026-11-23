@@ -1483,6 +1483,21 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   .settings-nav button { flex: none; }
   .settings-body { padding: 18px 16px 24px; }
   .settings-row { flex-wrap: wrap; }
+  /* 開關固定在右邊，說明文字自己換行（不要被擠到開關下面）。 */
+  .settings-row:has(> .switch:last-child) { flex-wrap: nowrap; gap: 14px; }
+  /* 說明換成好幾行時，開關對齊名稱那一行（不要對齊整段的中間，看起來像掉到名稱下面）。 */
+  .settings-row:has(> .switch:last-child) { align-items: flex-start; }
+  .settings-row:has(> .switch:last-child) > .switch { margin-top: 1px; }
+  /* 手機：設定佔滿整個畫面；分類改成圖示在上、名稱在下的一列，可以左右捲。 */
+  .settings { width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; }
+  .settings header { gap: 10px; padding: 10px 12px 10px 16px; }
+  .settings-nav { gap: 2px; padding: 6px 8px; scrollbar-width: none; }
+  .settings-nav button { flex-direction: column; gap: 3px; min-width: 60px; max-width: 84px; padding: 6px 8px; font-size: 12px; line-height: 1.25; text-align: center; }
+  .settings-nav button .icon { width: 19px; height: 19px; }
+}
+/* 只用觸控（手機、平板沒接鍵盤滑鼠）：快速鍵的提示用不到。 */
+@media (hover: none) and (pointer: coarse) {
+  .start-page kbd, .start-tips .keyboard-only { display: none; }
 }
 .switch {
   flex: none;
@@ -2121,9 +2136,9 @@ button.git-info:disabled { cursor: default; }
 .git-file-check { flex: none; width: 15px; height: 15px; margin: 0 2px 0 6px; accent-color: var(--accent); cursor: pointer; }
 .git-changes-head { display: flex; align-items: center; gap: 4px; }
 .git-changes-head .git-file-check { margin-left: 6px; }
-.git-files .git-file-diff { flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; color: var(--muted); }
-.git-files .git-file-diff:hover { color: var(--fg); }
-.git-files .git-file-diff .icon { width: 14px; height: 14px; }
+.git-files :is(.git-file-diff, .git-file-discard) { flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; color: var(--muted); }
+.git-files :is(.git-file-diff, .git-file-discard):hover { color: var(--fg); }
+.git-files :is(.git-file-diff, .git-file-discard) .icon { width: 14px; height: 14px; }
 .git-file-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-file-dir { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .git-files b { flex: none; width: 1.2em; font: 600 11px var(--font-mono); text-align: center; }
@@ -4886,3 +4901,211 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 /* 「＋ 日期」：這個類型有、但還沒填的日期（虛線，和「＋ 標籤」一樣）。 */
 .issue-body .ado-facts .ado-fact.ado-fact-add { border: 1px dashed var(--border-strong); cursor: pointer; }
 .issue-body .ado-facts .ado-fact.ado-fact-add:hover { border-style: solid; color: var(--fg); }
+
+/* ---- 手機（Android 版、螢幕窄；app/phone.ts）：像筆記 App，不是縮小的電腦版 ---- */
+#phone-bar, #phone-fmt, #phone-home { display: none; }
+body.phone { grid-template-columns: minmax(0, 1fr); --editor-font-size: 17px; font-size: 15px; }
+body.phone :is(.topbar, .statusbar, .activity-bar, .sidebar, .tab-bar, .splitter, .side-editor-pane, #format-bar) { display: none !important; }
+body.phone .workspace { grid-template-areas: "editor" !important; grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; }
+body.phone .preview-pane { grid-area: editor; }
+body.phone .cm-content { padding-bottom: 72px; }
+/* 手機的螢幕窄：左右留白縮小，上面不必空那麼多。 */
+body.phone .cm-editor.cm-lp { --lp-pad: 18px; }
+body.phone .cm-editor.cm-lp .cm-content { padding-top: 16px; }
+body.phone .markdown-body { padding: 8px 22px 72px; font-size: 17px; line-height: 1.75; }
+
+/* 上方：← 文件名稱 ✦ ⋮，下面是「編輯／預覽」。 */
+body.phone #phone-bar { display: block; grid-row: 1; padding: 4px 6px 8px; background: var(--bg); }
+.phone-bar-row { display: flex; gap: 2px; align-items: center; }
+.phone-title { flex: 1; min-width: 0; overflow: hidden; padding-left: 4px; font-size: 17px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.phone-icon { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: none; color: var(--fg); cursor: pointer; }
+.phone-icon .icon { width: 22px; height: 22px; }
+.phone-icon:active { background: var(--active-line); }
+.phone-seg { display: flex; margin: 4px 10px 0; padding: 3px; border-radius: 18px; background: var(--surface); }
+.phone-seg button { display: flex; flex: 1; gap: 6px; align-items: center; justify-content: center; height: 34px; border: 0; border-radius: 15px; background: none; color: var(--muted); font: 500 14px var(--font-ui); }
+.phone-seg button .icon { width: 16px; height: 16px; }
+.phone-seg button[aria-pressed="true"] { background: var(--bg); color: var(--accent); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
+/* 首頁開著時編輯畫面的上方列不需要（首頁蓋住整個畫面）。 */
+body.phone-home-open #phone-bar { visibility: hidden; }
+
+/* 鍵盤上方的格式列：在編輯區打字時才出現。 */
+body.phone.phone-typing:not(.phone-home-open) #phone-fmt {
+  position: fixed;
+  right: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-around;
+  height: 50px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+#phone-fmt .phone-icon { width: 42px; height: 50px; border-radius: 0; }
+
+/* 首頁：文件清單。 */
+body.phone #phone-home:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: block;
+  overflow-y: auto;
+  padding-bottom: 110px;
+  background: var(--bg);
+}
+.phone-appbar { display: flex; align-items: center; padding: 14px 10px 6px 20px; }
+.phone-appbar h1 { flex: 1; margin: 0; font-size: 26px; font-weight: 700; }
+.phone-search-wrap { display: flex; gap: 10px; align-items: center; height: 48px; margin: 6px 16px 10px; padding: 0 16px; border-radius: 24px; background: var(--surface); color: var(--muted); }
+.phone-search-wrap .icon { width: 18px; height: 18px; }
+.phone-search { flex: 1; min-width: 0; border: 0; background: none; color: var(--fg); font: 16px var(--font-ui); outline: none; }
+.phone-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 4px; }
+.phone-chip { display: inline-flex; gap: 6px; align-items: center; height: 36px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--bg); color: var(--fg); font: 14px var(--font-ui); }
+.phone-chip .icon { width: 16px; height: 16px; color: var(--accent); }
+.phone-sec { margin: 14px 20px 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.phone-card-wrap { position: relative; margin: 0 16px 10px; }
+.phone-card { display: block; width: 100%; padding: 14px 48px 14px 16px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-raised); color: var(--fg); font: inherit; text-align: left; box-shadow: 0 1px 2px rgb(0 0 0 / 5%); }
+.phone-card:active { background: var(--active-line); }
+.phone-card b { display: block; overflow: hidden; margin-bottom: 4px; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.phone-card p { display: -webkit-box; overflow: hidden; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.phone-card small { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.phone-card small:empty { display: none; }
+.phone-card-close { position: absolute; top: 4px; right: 2px; color: var(--muted); }
+.phone-card-close .icon { width: 18px; height: 18px; }
+.phone-empty { margin: 24px 24px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.phone-fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 58px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  font: 600 16px var(--font-ui);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.phone-fab .icon { width: 22px; height: 22px; }
+
+/* 「⋮」：從下面拉起來的選單。 */
+.phone-sheet { position: fixed; inset: auto 0 0 0; width: 100%; max-width: none; margin: 0; padding: 8px 0 calc(14px + env(safe-area-inset-bottom)); border: 0; border-radius: 26px 26px 0 0; background: var(--surface-raised); color: var(--fg); }
+.phone-sheet::backdrop { background: rgb(0 0 0 / 32%); }
+.phone-grab { width: 36px; height: 4px; margin: 4px auto 12px; border-radius: 2px; background: var(--border-strong); }
+.phone-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 4px; padding: 0 12px 10px; border-bottom: 1px solid var(--border); }
+.phone-tile { display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 6px 0; border: 0; background: none; color: var(--fg); font: 12.5px var(--font-ui); }
+.phone-tile span { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 18px; background: var(--surface); color: var(--accent); }
+.phone-tile .icon { width: 22px; height: 22px; }
+.phone-rows { padding-top: 6px; }
+.phone-row { display: flex; gap: 18px; align-items: center; width: 100%; height: 52px; padding: 0 24px; border: 0; background: none; color: var(--fg); font: 16px var(--font-ui); text-align: left; }
+.phone-row .icon { width: 22px; height: 22px; color: var(--muted); }
+.phone-row:active, .phone-tile:active span { background: var(--active-line); }
+
+/* 助理：蓋住整個畫面（✦ 或返回鍵關閉）。 */
+body.phone .outline-right:not([hidden]) { position: fixed; inset: 0; z-index: 45; width: auto; max-width: none; border: 0; }
+/* 手機的助理：只有一頁，不需要右側欄的分頁；「←」關閉；字的大小在設定裡調，標題列不放 A↓A↑；說明小字拿掉，只留本月費用。 */
+body.phone .outline-right > .right-head { display: none; }
+body.phone .outline-right .assistant-title-text { display: inline; }
+body.phone .assistant-head .assistant-font, body.phone .assistant-note { display: none; }
+.phone-back { display: none; }
+body.phone .assistant-head .phone-back { display: grid; width: 40px; height: 40px; margin-left: -6px; }
+body.phone .assistant-foot { justify-content: flex-end; }
+body.phone .assistant-head { height: 54px; padding: 0 8px; }
+body.phone .assistant-head h2 { font-size: 17px; }
+body.phone .assistant-head h2 .icon { width: 18px; height: 18px; }
+/* 輸入框（app/assistant-composer.ts）：手機上字與按鈕放大，「＋」從下面拉起選單（app/assistant-phone.ts）。 */
+body.phone .assistant-foot { display: none; }
+body.phone .assistant-input { margin: 0 10px calc(8px + env(safe-area-inset-bottom)); border-radius: 22px; }
+body.phone .assistant-chips { gap: 6px; padding: 10px 12px 0; }
+body.phone .assistant-chip { gap: 6px; padding: 4px 4px 4px 10px; border-radius: 14px; font-size: 13.5px; }
+body.phone .assistant-chip:not(:has(.assistant-chip-x)) { padding-right: 10px; }
+body.phone .assistant-chip .icon { width: 15px; height: 15px; }
+body.phone .assistant-chip-x { width: 26px; height: 26px; border-radius: 13px; }
+body.phone .assistant-chip-x .icon { width: 14px; height: 14px; }
+body.phone .assistant-input textarea { min-height: 48px; padding: 10px 14px 6px; font-size: max(17px, var(--assistant-font, 13px)); }
+body.phone .assistant-quick { gap: 8px; padding: 4px 8px 8px; }
+body.phone .assistant-quick .assistant-plus { width: 40px; height: 40px; background: var(--surface-raised); }
+body.phone .assistant-plus .icon { width: 22px; height: 22px; }
+body.phone .assistant-quick .assistant-send { width: 42px; height: 42px; margin-left: auto; border-radius: 50%; }
+body.phone .assistant-send .icon { width: 20px; height: 20px; }
+/* 還沒開始對話：常用動作排成大按鈕，貼在輸入框上方。 */
+body.phone .assistant-log:empty + .assistant-suggest { gap: 12px; padding: 0 16px 16px; }
+body.phone .assistant-suggest p { font-size: 14px; }
+body.phone .assistant-suggest div { gap: 10px; }
+body.phone .assistant-suggest button { min-height: 44px; padding: 0 18px; border-radius: 22px; font-size: 16px; }
+body.phone .assistant-suggest button:active { background: var(--active-line); }
+/* 「＋」選單：每一列一個圖示、名稱與一行說明；開關在右邊。 */
+.assistant-sheet { max-height: 85dvh; overflow: auto; }
+.assistant-sheet .phone-row { height: auto; min-height: 56px; padding-block: 8px; }
+.assistant-sheet .phone-row > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.assistant-sheet .phone-row small { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-sheet .phone-row .switch { flex: none; pointer-events: none; }
+.assistant-sheet .phone-row.is-off { opacity: 0.6; }
+.assistant-sheet .assistant-sheet-back { font-weight: 600; border-bottom: 1px solid var(--border); }
+.assistant-sheet-usage { margin: 6px 24px 0; color: var(--muted); font-size: 13px; }
+.assistant-sheet-usage:empty { display: none; }
+
+/* ---- 手機的設定（ui/settings-phone.ts）----
+ * 像 Android 的設定 App：第一層是分類清單（名稱下面一行小字），點進去是那一頁，左上角「←」回來。 */
+.settings-back, .settings-tab-desc { display: none; }
+body.phone .settings header { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; padding: 8px 12px 8px 6px; }
+body.phone .settings-back { display: inline-flex; width: 40px; height: 40px; color: var(--fg); }
+body.phone .settings-back .icon { width: 22px; height: 22px; }
+body.phone .settings h2 { font-size: 19px; }
+body.phone .settings-close { display: none; }
+body.phone .settings .settings-search { grid-column: 1 / -1; width: auto; max-width: none; height: 40px; margin: 4px 6px 6px 10px; padding: 0 16px; border-radius: 20px; font-size: 15px; }
+body.phone .settings[data-phone-view="page"] .settings-search { display: none; }
+body.phone .settings .phone-hide, body.phone .settings .phone-empty { display: none !important; }
+body.phone .settings-layout { display: flex; flex-direction: column; }
+body.phone .settings[data-phone-view="list"] .settings-body,
+body.phone .settings:not([data-phone-view="list"]) .settings-nav { display: none; }
+body.phone .settings[data-phone-view="list"] .settings-nav {
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 0 24px;
+  overflow: auto;
+  border: 0;
+  background: var(--bg);
+}
+body.phone .settings[data-phone-view="list"] .settings-nav button {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  align-items: center;
+  min-width: 0;
+  max-width: none;
+  padding: 12px 18px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+}
+body.phone .settings[data-phone-view="list"] .settings-nav button .icon {
+  grid-row: 1 / 3;
+  box-sizing: content-box;
+  width: 20px;
+  height: 20px;
+  padding: 10px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+body.phone .settings[data-phone-view="list"] .settings-nav button:active { background: var(--active-line); }
+body.phone .settings-tab-desc { display: block; overflow: hidden; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+/* 頁面裡：標題已經在上方列，不再重複；選項不用卡片框，一列一列排，像手機的設定。 */
+body.phone .settings section > h3, body.phone .settings section > .settings-desc { display: none; }
+body.phone .settings-body { padding: 0 0 32px; background: var(--bg); }
+body.phone .settings section { max-width: none; }
+body.phone .settings-group { margin-top: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+body.phone .settings-group-title { margin: 18px 18px 2px; color: var(--accent); font-size: 13px; }
+body.phone .settings-row { min-height: 56px; padding: 12px 18px; }
+body.phone .settings-row + .settings-row { border-top: 0; }
+body.phone .settings-row label { font-size: 16px; font-weight: 400; }
+body.phone .settings-row small { font-size: 13px; }
+body.phone .settings-row select { height: 40px; font-size: 15px; }
+body.phone .settings[data-phone-view="search"] section > h3 { display: block; margin: 18px 18px 0; font-size: 15px; }

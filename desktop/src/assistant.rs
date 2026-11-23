@@ -16,6 +16,8 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+// 批次處理要讀寫整個資料夾：Android 版（直接編譯這個檔案，見 android/src/lib.rs）沒有。
+#[cfg(not(omarker_mobile))]
 #[path = "assistant_batch.rs"]
 pub mod batch;
 
@@ -336,13 +338,17 @@ fn same_path(a: &str, b: &str) -> bool {
 }
 
 /// 設定與目前的資料夾允許送出嗎？（不允許時回傳原因）
-fn check(
+pub(crate) fn check(
     settings: &serde_json::Value,
     root: Option<&Path>,
     origin: Option<&str>,
 ) -> Result<(), String> {
     if settings["claudeApiEnabled"] != true {
         return Err(tr!("請先在設定開啟「Claude API 助理」"));
+    }
+    // Android 版沒有專案資料夾：不分專案，開了助理就能用（見 android/src/lib.rs）。
+    if cfg!(omarker_mobile) {
+        return Ok(());
     }
     let Some(root) = root else {
         return Err(tr!("請先開啟允許 AI 的專案資料夾"));
@@ -394,6 +400,9 @@ pub struct ChatMessage {
     /// 目前的文件（一般問答）：送成可以標出處的 `document` 區塊，回答會指出根據的是哪一段。
     #[serde(default)]
     doc: Option<ChatDoc>,
+    /// 問整個專案時挑出的筆記：一篇一個可以標出處的 `document` 區塊，標題是筆記在專案裡的位置。
+    #[serde(default)]
+    notes: Vec<ChatDoc>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -406,8 +415,9 @@ pub struct ChatDoc {
 fn valid_docs(messages: &[ChatMessage]) -> bool {
     messages.iter().all(|m| {
         m.doc
-            .as_ref()
-            .is_none_or(|d| m.role == "user" && !d.text.trim().is_empty())
+            .iter()
+            .chain(&m.notes)
+            .all(|d| m.role == "user" && !d.text.trim().is_empty())
     })
 }
 
@@ -482,12 +492,15 @@ fn valid_messages(messages: &[ChatMessage]) -> bool {
 }
 
 fn request_body(m: &Model, req: &SendRequest, web: bool, fetch: &[String]) -> serde_json::Value {
-    let cite = req.messages.iter().any(|m| m.doc.is_some());
+    let cite = req
+        .messages
+        .iter()
+        .any(|m| m.doc.is_some() || !m.notes.is_empty());
     let messages: Vec<_> = req
         .messages
         .iter()
         .map(|msg| {
-            if msg.images.is_empty() && msg.doc.is_none() {
+            if msg.images.is_empty() && msg.doc.is_none() && msg.notes.is_empty() {
                 return serde_json::json!({ "role": msg.role, "content": msg.content });
             }
             // 圖片、PDF 放在文字前面；PDF 是 `document` 區塊。
@@ -507,7 +520,7 @@ fn request_body(m: &Model, req: &SendRequest, web: bool, fetch: &[String]) -> se
                     block
                 })
                 .collect();
-            if let Some(d) = &msg.doc {
+            for d in msg.doc.iter().chain(&msg.notes) {
                 blocks.push(serde_json::json!({
                     "type": "document",
                     "source": { "type": "text", "media_type": "text/plain", "data": d.text },
@@ -787,7 +800,12 @@ fn prepare(
             .messages
             .iter()
             .map(|x| {
-                x.content.chars().count() + x.doc.as_ref().map_or(0, |d| d.text.chars().count())
+                x.content.chars().count()
+                    + x.doc
+                        .iter()
+                        .chain(&x.notes)
+                        .map(|d| d.text.chars().count())
+                        .sum::<usize>()
             })
             .sum::<usize>();
     if chars > MAX_INPUT_CHARS {
@@ -1100,6 +1118,8 @@ mod tests {
         );
     }
 
+    // Android 版不分專案（見 check），另外在 android/src/lib.rs 測。
+    #[cfg(not(omarker_mobile))]
     #[test]
     fn only_allowed_projects_can_send() {
         let root = Path::new("/home/me/筆記");
@@ -1127,6 +1147,7 @@ mod tests {
             content: content.into(),
             images: vec![],
             doc: None,
+            notes: vec![],
         };
         assert!(valid_messages(&[m("user", "摘要")]));
         assert!(valid_messages(&[
@@ -1150,6 +1171,7 @@ mod tests {
                 content: "摘要".into(),
                 images: vec![],
                 doc: None,
+                notes: vec![],
             }],
             web_search: false,
             web_fetch: vec![],
@@ -1183,6 +1205,7 @@ mod tests {
             content: "這張圖在講什麼？".into(),
             images,
             doc: None,
+            notes: vec![],
         };
         let req = SendRequest {
             model: "claude-haiku-5-5".into(),
@@ -1230,6 +1253,7 @@ mod tests {
             content: "這份合約的重點？".into(),
             images,
             doc: None,
+            notes: vec![],
         };
         let req = SendRequest {
             model: "claude-sonnet-5-5".into(),
@@ -1420,6 +1444,7 @@ mod tests {
                 content: "整理 https://example.test/news 的重點".into(),
                 images: vec![],
                 doc: None,
+                notes: vec![],
             }],
             web_search: false,
             web_fetch: vec!["example.test".into()],
@@ -1512,6 +1537,7 @@ mod tests {
                 content: "這個方案有什麼風險？".into(),
                 images: vec![],
                 doc: None,
+                notes: vec![],
             }],
             web_search: false,
             web_fetch: vec![],
@@ -1543,6 +1569,7 @@ mod tests {
                 content: "摘要這份文件".into(),
                 images: vec![],
                 doc: None,
+                notes: vec![],
             }],
             web_search: true,
             web_fetch: vec![],
@@ -1583,6 +1610,7 @@ mod tests {
                     data: "JVBERi0xLjQ=".into(),
                 }],
                 doc,
+                notes: vec![],
             }],
             web_search: false,
             web_fetch: vec!["example.test".into()],
@@ -1626,6 +1654,40 @@ mod tests {
         });
         bad.messages[0].role = "assistant".into();
         assert!(!valid_docs(&bad.messages));
+    }
+
+    #[test]
+    fn project_notes_are_sent_as_one_citable_block_each() {
+        let note = |name: &str, text: &str| ChatDoc {
+            name: name.into(),
+            text: text.into(),
+        };
+        let req = SendRequest {
+            model: "claude-sonnet-5-5".into(),
+            system: String::new(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "NAS 怎麼備份？".into(),
+                images: vec![],
+                doc: None,
+                notes: vec![
+                    note("NAS 備份規劃.md", "每晚把照片備份到 NAS。"),
+                    note("筆記/電腦清單.md", "桌機一台、NAS 一台。"),
+                ],
+            }],
+            web_search: false,
+            web_fetch: vec![],
+            deep: false,
+        };
+        let m = model("claude-sonnet-5-5").unwrap();
+        let body = request_body(m, &req, false, &[]);
+        let content = &body["messages"][0]["content"];
+        assert_eq!(content[0]["type"], "document");
+        assert_eq!(content[0]["title"], "NAS 備份規劃.md");
+        assert_eq!(content[1]["title"], "筆記/電腦清單.md");
+        assert_eq!(content[1]["citations"]["enabled"], true);
+        assert_eq!(content[2]["type"], "text");
+        assert!(valid_docs(&req.messages));
     }
 
     #[test]

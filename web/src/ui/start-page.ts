@@ -25,7 +25,8 @@ export interface StartPageOptions {
   /** 「連線」：還沒連線的 Azure DevOps、GitHub（沒有就不顯示這一段）。 */
   connect: StartAction[];
   /** 下方的小提示：快速鍵與說明，點了就執行。 */
-  tips: { keys?: string; label: string; run?(): void }[];
+  /** `keyboard`：只對有鍵盤、滑鼠的裝置有用（快速鍵一覽、拖檔案），只用觸控時不顯示。 */
+  tips: { keys?: string; label: string; run?(): void; keyboard?: boolean }[];
   /** 「3 分鐘認識 oMarker」。 */
   tour?(): void;
 }
@@ -104,6 +105,7 @@ export function buildStartPage(o: StartPageOptions): HTMLElement {
       span.append(...children);
       tips.append(span);
     }
+    if (tip.keyboard) tips.lastElementChild!.classList.add("keyboard-only");
   }
   if (o.tour) {
     const tour = button("start-tour", icon("book-open-text"), t("3 分鐘認識 oMarker"));

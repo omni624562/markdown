@@ -65,6 +65,8 @@ export interface GitPanelHooks {
   resolve(path: string, theirs: string): void;
   /** 修改過的檔案：打開並和最後一次提交的版本逐段比較。 */
   compare(path: string): void;
+  /** 修改過的檔案：換回上次提交時的內容（可以復原）。 */
+  discard(path: string): void;
   /** 切換或建立分支。 */
   switchBranch(): void;
   /** 建立 Pull Request。 */
@@ -427,7 +429,14 @@ export class GitPanel {
           cmp.setAttribute("aria-label", t("{name}：看改了哪些地方", { name: baseName(rel) }));
           cmp.append(icon("git-compare"));
           cmp.addEventListener("click", () => this.#hooks.compare(c.path));
-          li.append(cmp);
+          const undo = document.createElement("button");
+          undo.type = "button";
+          undo.className = "git-file-discard";
+          undo.title = t("捨棄修改（改回上次提交時的內容，可以復原）");
+          undo.setAttribute("aria-label", t("{name}：捨棄修改", { name: baseName(rel) }));
+          undo.append(icon("undo-2"));
+          undo.addEventListener("click", () => this.#hooks.discard(c.path));
+          li.append(cmp, undo);
         }
         return li;
       }),
