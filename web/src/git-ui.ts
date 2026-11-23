@@ -384,7 +384,7 @@ export class GitPanel {
           cmp.addEventListener("click", () => this.#hooks.compare(c.path));
           const undo = document.createElement("button");
           undo.type = "button";
-          undo.className = "git-file-diff git-file-discard";
+          undo.className = "git-file-discard";
           undo.title = t("捨棄修改（改回上次提交時的內容，可以復原）");
           undo.setAttribute("aria-label", t("{name}：捨棄修改", { name: baseName(rel) }));
           undo.append(icon("undo-2"));
