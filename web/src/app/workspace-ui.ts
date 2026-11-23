@@ -49,6 +49,7 @@ import { autoSaveNow, autoSavePending } from "./autosave.ts";
 import { markdownFiles, updateLinksAfterRename } from "./wiki-links.ts";
 import { reloadDocs, reloadRemoteDocs } from "./desktop-startup.ts";
 import { renderSaveState, updateActiveHeading } from "./outline.ts";
+import { refreshHistory } from "./history-panel.ts";
 
 
 // 從其他程式切回來時，資料夾中的檔案可能改過了（其他程式直接改寫檔案時不一定有變動通知）。
@@ -199,6 +200,8 @@ export function refreshIndexPanels(delay = 0, { backlinks = true } = {}): void {
     if (app.sidePanel === "tasks") void tasksPanel.refresh();
     if (app.sidePanel === "tags") void tagsPanel.refresh();
     if (withBacklinks && (app.sidePanel === "outline" || outlineOnRight())) void renderBacklinks();
+    // 換了文件、存檔後：右側欄的「歷史」開著時重新列出這份檔案的版本。
+    if (withBacklinks && outlineOnRight()) void refreshHistory();
   }, delay);
 }
 

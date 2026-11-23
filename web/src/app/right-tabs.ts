@@ -1,15 +1,17 @@
 /**
- * 右側欄的分頁：大綱、反向連結、Wiki、助理放在同一欄（`aside#outline-right`），一次顯示一頁。
+ * 右側欄的分頁：大綱、反向連結、歷史、Wiki、助理放在同一欄（`aside#outline-right`），一次顯示一頁。
  * 分頁列是右側欄自己的第一列（和 VSCode 的右側欄一樣），不放在頂端列：頂端列右上角只留開關和視窗按鈕，
  * 分頁再多、右側欄再窄也不會被視窗按鈕擠掉。視窗不夠寬時右側欄是蓋在文件上的抽屜，分頁列一樣在最上面。
- * 哪些分頁有：大綱與反向連結（設定「大綱放在右邊」）、Wiki（Wiki 放在右側、連上 Azure DevOps）、
+ * 哪些分頁有：大綱、反向連結與歷史（設定「大綱放在右邊」；歷史只有桌面版）、Wiki（Wiki 放在右側、連上 Azure DevOps）、
  * 助理（設定開了 Claude API 助理）；選了哪一頁記住。
  */
+import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { ASSISTANT_MIN_WIDTH, RIGHT_TABS, type RightTab, parseRightTab, pickRightTab } from "../right-tabs-model.ts";
 import * as storage from "../storage.ts";
 import { assistantEnabled, assistantPanel, assistantShown } from "./assistant.ts";
 import { app } from "./context.ts";
+import { historyBox, refreshHistory } from "./history-panel.ts";
 import { wikiPanel } from "./work-items-panel.ts";
 import { outlinePlacedRight, renderBacklinks, wikiPlacedRight } from "./workspace-ui.ts";
 import { updateActiveHeading } from "./outline.ts";
@@ -32,6 +34,7 @@ let backlinksCount = 0;
 const LABELS: Record<RightTab, () => string> = {
   outline: () => t("大綱"),
   backlinks: () => t("反向連結"),
+  history: () => t("歷史"),
   wiki: () => "Wiki", // i18n-ignore
   assistant: () => t("助理"),
 };
@@ -39,7 +42,7 @@ const LABELS: Record<RightTab, () => string> = {
 /** 現在有哪些分頁（依左到右的順序）。 */
 export function availableRightTabs(): RightTab[] {
   const out: RightTab[] = [];
-  if (outlinePlacedRight()) out.push("outline", "backlinks");
+  if (outlinePlacedRight()) out.push("outline", "backlinks", ...(desktop ? (["history"] as const) : []));
   if (wikiPlacedRight()) out.push("wiki");
   if (assistantEnabled()) out.push("assistant");
   return out;
@@ -66,6 +69,7 @@ export function selectRightTab(tab: RightTab): void {
   if (rightTab() !== tab || app.$("aside#outline-right").hidden) return;
   if (tab === "outline") updateActiveHeading();
   else if (tab === "backlinks") void renderBacklinks();
+  else if (tab === "history") void refreshHistory();
   else if (tab === "wiki") wikiPanel?.shown();
   else assistantShown();
 }
@@ -188,6 +192,10 @@ export function syncRightTabs(): void {
   const outlineRight = outline.parentElement === right;
   const wikiRight = !!wiki && wiki.parentElement === right;
   placeBacklinks(outline, right, outlineRight);
+  // 歷史（桌面版、大綱在右側時）：放進右側欄；大綱移回左邊時拿掉。
+  const history = outlineRight && desktop ? historyBox() : null;
+  if (history && history.parentElement !== right) right.append(history);
+  else if (!history && document.querySelector(".right-history")) historyBox().remove();
   const available = availableRightTabs();
   const current = pickRightTab(saved, available);
   // 助理的面板第一次要顯示時才建立，之後一直留在右側欄裡。
@@ -205,10 +213,12 @@ export function syncRightTabs(): void {
   const panels: [RightTab, HTMLElement | null][] = [
     ["outline", outlineRight ? outline : null],
     ["backlinks", outlineRight ? backlinksBox : null],
+    ["history", history],
     ["wiki", wikiRight ? wiki : null],
     ["assistant", assistant],
   ];
   for (const [id, el] of panels) if (el) el.hidden = id !== current;
+  if (current === "history") void refreshHistory();
   placeActions([outline, wiki], current === "outline" && outlineRight ? outline : current === "wiki" && wikiRight ? wiki : null);
   right.dataset.tab = current ?? "";
   renderBadge();

@@ -312,6 +312,17 @@ kbd {
 .right-backlinks { display: flex; flex-direction: column; overflow: auto; padding: 4px 8px 8px; }
 .right-backlinks[hidden] { display: none; }
 .right-backlinks .backlinks { margin: 0; padding: 0; border: 0; }
+/* 右側欄的「歷史」（app/history-panel.ts）：存檔的版本與提交排在一起，新的在上面，點一下比較。 */
+.right-history { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; padding: 4px 8px 8px; }
+.right-history[hidden] { display: none; }
+.history-hint { margin: 2px 6px 6px; color: var(--subtle); font-size: 12px; }
+.history-list { margin: 0; padding: 0; list-style: none; }
+.history-item { display: flex; gap: 8px; align-items: flex-start; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--fg); font: 13px/1.45 var(--font-ui); text-align: left; cursor: pointer; }
+.history-item:hover, .history-item:focus-visible { background: var(--active-line); }
+.history-item > .icon { flex: none; width: 14px; height: 14px; margin-top: 3px; color: var(--muted); }
+.history-commit > .icon { color: var(--accent); }
+.history-text { display: flex; flex-direction: column; min-width: 0; }
+.history-text small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .right-backlinks .backlinks > h3 { display: none; }
 .right-backlinks .side-empty { margin: 8px 4px; color: var(--muted); font-size: 13px; }
 .outline-right > .right-head { display: flex; flex: none; gap: 4px; align-items: center; box-sizing: border-box; height: var(--tabbar-h); padding: 0 6px; border-bottom: 1px solid var(--border); }
@@ -688,6 +699,12 @@ kbd {
 .tree-row:hover { background: var(--active-line); }
 .tree-row[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
 .tree-row[aria-selected="true"] .icon { color: var(--accent); }
+/* 每一列右邊的「⋯」：滑鼠移到列上、選取或用鍵盤移到時才出現（選單的看得到的入口，右鍵是捷徑）。 */
+.tree-row > .tree-more { display: none; flex: none; order: 10; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 2px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }
+.tree-row:is(:hover, :focus-visible, [aria-selected="true"]) > .tree-more { display: inline-flex; }
+.tree-row > .tree-more:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
+.tree-row > .tree-more .icon { width: 14px; height: 14px; color: inherit; }
+@media (hover: none) { .tree-row > .tree-more { display: inline-flex; } }
 .tree-row:focus-visible { outline-offset: -2px; }
 .tree-editing { cursor: default; }
 .tree-input {
