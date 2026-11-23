@@ -1485,6 +1485,9 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   .settings-row { flex-wrap: wrap; }
   /* 開關固定在右邊，說明文字自己換行（不要被擠到開關下面）。 */
   .settings-row:has(> .switch:last-child) { flex-wrap: nowrap; gap: 14px; }
+  /* 說明換成好幾行時，開關對齊名稱那一行（不要對齊整段的中間，看起來像掉到名稱下面）。 */
+  .settings-row:has(> .switch:last-child) { align-items: flex-start; }
+  .settings-row:has(> .switch:last-child) > .switch { margin-top: 1px; }
   /* 手機：設定佔滿整個畫面；分類改成圖示在上、名稱在下的一列，可以左右捲。 */
   .settings { width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; }
   .settings header { gap: 10px; padding: 10px 12px 10px 16px; }
