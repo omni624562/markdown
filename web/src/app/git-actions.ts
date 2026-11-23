@@ -78,12 +78,17 @@ export async function compareWithHead(path: string): Promise<void> {
   if (app.cur.fileHandle?.path !== path) return;
   if (app.review.active) app.review.finish();
   // 上次提交的內容當基準、目前的內容不動：綠色是這次新增或改過的，紅色是上次提交時原本的樣子
-  // （和平常看到的「改了什麼」一樣，不會先把文件換掉）。
+  // （和平常看到的「改了什麼」一樣，不會先把文件換掉）。上下對照或左右並排照設定。
   const current = app.editor.view.state.doc.toString();
+  const side = app.settings.value.gitCompareLayout === "side";
   const started = app.review.start(current, {
     original: text,
+    layout: side ? "side" : "stacked",
+    sideLabels: [t("上次提交時"), t("現在")],
     title: t("「{name}」改了哪些地方", { name: basename(path) }),
-    hint: t("綠色是這次新增或改過的，紅色是上次提交時原本的樣子。哪一段不要了，按那一段的「改回去」"),
+    hint: side
+      ? t("左邊是上次提交時的樣子，右邊是現在；改過的地方標了顏色。哪一段不要了，按那一段的「改回去」")
+      : t("綠色是這次新增或改過的，紅色是上次提交時原本的樣子。哪一段不要了，按那一段的「改回去」"),
     acceptLabel: t("保留"),
     rejectLabel: t("改回去"),
   });

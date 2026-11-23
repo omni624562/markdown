@@ -172,3 +172,34 @@ test("變更清單：修改過的檔案點一下（或按右邊的按鈕）就�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("設定成左右並排：左邊上次提交、右邊現在；「改回去」之後放回文件", async () => {
+  const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }] };
+  const { page, context, errors } = await openGit({
+    github_account: null,
+    git_status: status,
+    git_fetch: status,
+    load_settings: JSON.stringify({ gitCompareLayout: "side" }),
+    reopen_file: { path: "/notes/a.md", name: "a.md", text: "# 會議紀錄\n\n出席：王小明、李大同\n", encoding: "utf-8" },
+    git_file_at: "# 會議紀錄\n\n出席：王小明\n",
+  });
+  await page.locator("#git-host .git-file-diff").click();
+  const side = page.locator(".review-side");
+  await side.waitFor();
+  assert.deepEqual(await side.locator(".review-side-heads span").allTextContents(), ["上次提交時", "現在"]);
+  assert.equal(await page.locator("#editor").isVisible(), false, "編輯器先藏起來");
+  const [left, right] = await side.locator(".cm-editor").evaluateAll((els) => els.map((el) => el.querySelector(".cm-content").textContent));
+  assert.match(left, /出席：王小明$/);
+  assert.match(right, /李大同/);
+  assert.equal(await page.locator("#review-bar").getByRole("button", { name: "看完了" }).isVisible(), true);
+  // 「改回去」：右邊那一段換回上次提交的內容；全部處理完就收起並排，文件也換回去。
+  await side.getByRole("button", { name: "改回去" }).click();
+  await side.waitFor({ state: "detached" });
+  assert.equal(await page.locator("#editor").isVisible(), true);
+  await page.waitForFunction(() => {
+    const text = document.querySelector("#editor .cm-content")?.textContent ?? "";
+    return text.includes("出席：王小明") && !text.includes("李大同");
+  });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
