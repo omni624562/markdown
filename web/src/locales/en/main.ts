@@ -404,6 +404,18 @@ export const main: Record<string, Translation> = {
 
   // 合併衝突、分支、Pull Request、GitHub Pages、Gist
   "合併衝突：「{name}」": "Merge Conflict: \"{name}\"",
+  "「{name}」改了哪些地方": "What Changed in \"{name}\"",
+  "綠色是這次新增或改過的，紅色是上次提交時原本的樣子。哪一段不要了，按那一段的「改回去」": "Green is what you added or changed; red is how it was in the last commit. To undo a part, click \"Change back\" on it.",
+  "改回去": "Change back",
+  "和上次提交時一樣，沒有改動。": "Same as the last commit; nothing changed.",
+  "{label}（點一下看改了哪些地方）": "{label} (click to see what changed)",
+  "看改了哪些地方": "See what changed",
+  "上次提交時": "Last commit",
+  "現在": "Now",
+  "看完了": "Done",
+  "新的": "New",
+  "左邊是上次提交時的樣子，右邊是現在；改過的地方標了顏色。哪一段不要了，按那一段的「改回去」": "The left side is the last commit and the right side is now; changes are highlighted. To undo a part, click \"Change back\" on it.",
+  "{name}：看改了哪些地方": "{name}: see what changed",
   "每一段選「採用遠端」或「保留本機」，處理完存檔，再到原始碼控制按「完成合併」":
     "Choose \"Accept Remote\" or \"Keep Local\" for each chunk, save, then click \"Finish Merge\" in Source Control",
   "採用遠端": "Accept Remote",

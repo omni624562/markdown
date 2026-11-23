@@ -838,6 +838,52 @@ fn rename_in(root: &Path, path: &Path, new_name: &str) -> Result<(PathBuf, PathB
     Ok((from, to))
 }
 
+/// 把檔案或資料夾移到同一個專案裡的另一個資料夾（檔案樹拖曳）。已開啟的檔案會沿用原本的狀態。
+#[tauri::command]
+pub async fn move_entry(app: AppHandle, path: String, dir: String) -> Result<String, String> {
+    crate::io::blocking(move || {
+        let root = app.state::<Workspace>().require_root()?;
+        let (from, to) = move_in(&root, Path::new(&path), Path::new(&dir))?;
+        if from != to {
+            app.state::<KnownFiles>().rename(&from, &to);
+            crate::history::on_rename(&app, &from, &to);
+            app.state::<Trust>().rename(&app, &from, &to);
+        }
+        Ok(path_string(&to))
+    })
+    .await
+}
+
+/// 在工作區 `root` 裡把 `path` 移到資料夾 `dir` 底下（名稱不變），回傳移動前後的路徑；
+/// 本來就在那個資料夾時不動。專案資料夾本身、`.git` 不能移，資料夾也不能移到它自己裡面。
+fn move_in(root: &Path, path: &Path, dir: &Path) -> Result<(PathBuf, PathBuf), String> {
+    let from = resolve_inside(root, path)?;
+    check_entry(root, &from, &tr!("不能移動專案資料夾本身"))?;
+    let dest = resolve_inside(root, dir)?;
+    if in_git_dir(&dest) {
+        return Err(git_locked());
+    }
+    if !fs::metadata(&dest).is_ok_and(|m| m.is_dir()) {
+        return Err(tr!("只能移到資料夾裡"));
+    }
+    let name = from.file_name().ok_or_else(|| tr!("路徑無效"))?;
+    let to = dest.join(name);
+    if from.parent() == Some(dest.as_path()) {
+        return Ok((from.clone(), from));
+    }
+    let lower = |p: &Path| p.to_string_lossy().to_lowercase();
+    if fs::metadata(&from).is_ok_and(|m| m.is_dir())
+        && Path::new(&lower(&dest)).starts_with(lower(&from))
+    {
+        return Err(tr!("不能把資料夾移到它自己裡面"));
+    }
+    if to.exists() {
+        return Err(tr!("「{name}」已經存在", name = display_name(&to)));
+    }
+    fs::rename(&from, &to).map_err(|e| crate::io::describe(&e, &tr!("無法移動")))?;
+    Ok((from, to))
+}
+
 /// 移到資源回收筒（可以從回收筒還原）。`.git` 和裡面的東西不行（見 [`check_entry`]）。
 #[tauri::command]
 pub async fn trash_entry(app: AppHandle, path: String) -> Result<(), String> {
@@ -1523,6 +1569,32 @@ mod tests {
         for name in [".github", "git", ".gitignore", "GIT~1", "a.git", ""] {
             assert!(!is_git_name(OsStr::new(name)), "{name}");
         }
+    }
+
+    #[test]
+    fn moves_into_folders_inside_the_project() {
+        let dir = temp_ws("move");
+        fs::create_dir_all(dir.join("旅行").join("日本")).unwrap();
+        fs::write(dir.join("筆記.md"), "# 筆記").unwrap();
+        let moved = |p: &Path, d: &Path| move_in(&dir, p, d).map(|(_, to)| to);
+        // 檔案移到資料夾裡。
+        let to = moved(&dir.join("筆記.md"), &dir.join("旅行")).unwrap();
+        assert_eq!(to, dir.join("旅行").join("筆記.md"));
+        assert!(to.exists() && !dir.join("筆記.md").exists());
+        // 本來就在那裡：不動。
+        assert_eq!(moved(&to, &dir.join("旅行")).unwrap(), to);
+        // 資料夾移回根目錄。
+        let back = moved(&dir.join("旅行").join("日本"), &dir).unwrap();
+        assert_eq!(back, dir.join("日本"));
+        // 資料夾不能移到自己裡面；同名的已經存在；不能移到檔案裡、.git 裡；專案本身不能移。
+        fs::create_dir_all(dir.join("日本").join("大阪")).unwrap();
+        assert!(moved(&dir.join("日本"), &dir.join("日本").join("大阪")).is_err());
+        fs::write(dir.join("README2.md"), "x").unwrap();
+        fs::write(dir.join("旅行").join("README2.md"), "y").unwrap();
+        assert!(moved(&dir.join("README2.md"), &dir.join("旅行")).is_err());
+        assert!(moved(&dir.join("README2.md"), &dir.join("旅行").join("筆記.md")).is_err());
+        assert!(moved(&dir.join("README2.md"), &dir.join(".git")).is_err());
+        assert!(moved(&dir, &dir.join("旅行")).is_err());
     }
 
     /// 檔案樹只列出文件；改名時檔案只能在文件與圖片之間改。

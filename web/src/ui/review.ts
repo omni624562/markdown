@@ -5,8 +5,8 @@
  * 做法是讓主編輯器暫時進入 unifiedMergeView：文件換成提議內容、原內容當作比較基準。
  * 接受一段＝保留新內容；拒絕一段＝還原成原內容。整個過程都在編輯器的復原紀錄裡。
  */
-import { getChunks, getOriginalDoc, unifiedMergeView } from "@codemirror/merge";
-import { Compartment, type Extension } from "@codemirror/state";
+import { getChunks, getOriginalDoc, MergeView, unifiedMergeView } from "@codemirror/merge";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 import { t } from "../i18n.ts";
 import { icon } from "./icons.ts";
@@ -26,6 +26,13 @@ export interface ReviewOptions {
   original?: string;
   /** 標記這次檢視的來源，讓呼叫端判斷是否要接續前一次（例如連續的外部修改）。 */
   source?: string;
+  /**
+   * `side`：左右並排（左邊是比較基準、唯讀，右邊是新內容），每一段只有「還原」按鈕；
+   * 結束時把右邊的內容放回編輯器。省略時是上下對照（在編輯器裡標出來）。
+   */
+  layout?: "stacked" | "side";
+  /** 左右並排時兩欄上方的標題（基準、新內容）。 */
+  sideLabels?: [string, string];
   /** 檢視結束時呼叫；`changed` 表示最後的內容是否和開始前不同。 */
   onFinish?: (result: { changed: boolean }) => void;
 }
@@ -50,6 +57,8 @@ export class Review {
   #compartment = new Compartment();
   #bar: HTMLElement;
   #active: (ReviewOptions & { before: string; original: string }) | null = null;
+  /** 左右並排時的比較畫面（蓋在編輯器上）。 */
+  #side: { merge: MergeView; host: HTMLElement } | null = null;
 
   constructor(bar: HTMLElement) {
     this.#bar = bar;
@@ -90,6 +99,11 @@ export class Review {
     const original = opts.original ?? before;
     if (original === proposed) return false;
     this.#active = { ...opts, before, original };
+    if (opts.layout === "side") {
+      this.#startSide(original, proposed, opts);
+      this.#renderBar();
+      return true;
+    }
     this.#view.dispatch({
       changes: { from: 0, to: before.length, insert: proposed },
       effects: this.#compartment.reconfigure(
@@ -115,6 +129,12 @@ export class Review {
   /** 全部還原成檢視前的內容並結束。 */
   rejectAll(): void {
     if (!this.#active) return;
+    if (this.#side) {
+      this.#setDoc(this.#active.original);
+      this.#closeSide(false);
+      this.finish();
+      return;
+    }
     const original = getOriginalDoc(this.#view.state).toString();
     this.#view.dispatch({
       changes: { from: 0, to: this.#view.state.doc.length, insert: original },
@@ -127,14 +147,77 @@ export class Review {
     const active = this.#active;
     if (!active) return;
     this.#active = null;
-    this.#view.dispatch({ effects: this.#compartment.reconfigure([]) });
+    if (this.#side) this.#closeSide(true);
+    else this.#view.dispatch({ effects: this.#compartment.reconfigure([]) });
     this.#bar.hidden = true;
     active.onFinish?.({ changed: this.#view.state.doc.toString() !== active.before });
   }
 
+  /** 左右並排：左邊唯讀的基準、右邊可以編輯的新內容，蓋在編輯器上（編輯器先藏起來）。 */
+  #startSide(original: string, proposed: string, opts: ReviewOptions): void {
+    const host = document.createElement("div");
+    host.className = "review-side";
+    const [left, right] = opts.sideLabels ?? [t("原本"), t("新的")];
+    const heads = document.createElement("div");
+    heads.className = "review-side-heads";
+    heads.append(
+      Object.assign(document.createElement("span"), { className: "review-side-old", textContent: left }),
+      Object.assign(document.createElement("span"), { className: "review-side-new", textContent: right }),
+    );
+    const body = document.createElement("div");
+    body.className = "review-side-body";
+    host.append(heads, body);
+    this.#bar.after(host);
+    this.#view.dom.closest<HTMLElement>(".editor-pane")?.classList.add("reviewing-side");
+    const rerender = EditorView.updateListener.of((u) => {
+      if (this.#active && u.docChanged) this.#renderBar();
+    });
+    const merge = new MergeView({
+      a: { doc: original, extensions: [EditorView.lineWrapping, EditorState.readOnly.of(true), EditorView.editable.of(false)] },
+      b: { doc: proposed, extensions: [EditorView.lineWrapping, rerender] },
+      parent: body,
+      revertControls: "a-to-b",
+      renderRevertControl: () => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "review-chunk-reject";
+        b.textContent = opts.rejectLabel ?? t("還原");
+        b.title = t("這一段維持原本的內容");
+        return b;
+      },
+      highlightChanges: true,
+      gutter: true,
+    });
+    this.#side = { merge, host };
+  }
+
+  /** 收起左右並排；`apply`：把右邊的內容放回編輯器。 */
+  #closeSide(apply: boolean): void {
+    const side = this.#side!;
+    this.#side = null;
+    if (apply) this.#setDoc(side.merge.b.state.doc.toString());
+    side.merge.destroy();
+    side.host.remove();
+    this.#view.dom.closest<HTMLElement>(".editor-pane")?.classList.remove("reviewing-side");
+  }
+
+  /** 換成 `text`：只換掉頭尾相同以外的部分（游標和捲動位置盡量不動）。 */
+  #setDoc(text: string): void {
+    const cur = this.#view.state.doc.toString();
+    if (text === cur) return;
+    let from = 0;
+    while (from < cur.length && from < text.length && cur[from] === text[from]) from++;
+    let end = 0;
+    while (end < cur.length - from && end < text.length - from && cur[cur.length - 1 - end] === text[text.length - 1 - end]) end++;
+    this.#view.dispatch({
+      changes: { from, to: cur.length - end, insert: text.slice(from, text.length - end) },
+      userEvent: "input.review",
+    });
+  }
+
   #renderBar(): void {
     const active = this.#active!;
-    const chunks = getChunks(this.#view.state)?.chunks ?? [];
+    const chunks = this.#side ? this.#side.merge.chunks : (getChunks(this.#view.state)?.chunks ?? []);
     if (chunks.length === 0) {
       // 每一段都處理完了。
       queueMicrotask(() => this.finish());
@@ -164,7 +247,7 @@ export class Review {
       actions.append(b);
     };
     mk(t("全部{label}", { label: active.rejectLabel ?? t("還原") }), () => this.rejectAll());
-    mk(t("全部{label}", { label: active.acceptLabel ?? t("保留新內容") }), () => this.acceptAll(), true);
+    mk(this.#side ? t("看完了") : t("全部{label}", { label: active.acceptLabel ?? t("保留新內容") }), () => this.acceptAll(), true);
     this.#bar.replaceChildren(msg, actions);
     this.#bar.hidden = false;
   }

@@ -1290,6 +1290,24 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   background: var(--accent-soft);
 }
+/* 左右並排的比較（ui/review.ts）：蓋在編輯器的位置，左邊上次提交（唯讀）、右邊現在。 */
+.editor-pane.reviewing-side > .editor-host { display: none; }
+.review-side { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.review-side-heads { display: grid; flex: none; grid-template-columns: 1fr 72px 1fr; border-bottom: 1px solid var(--border); font-size: 12.5px; font-weight: 600; }
+.review-side-heads span { padding: 6px 16px; }
+.review-side-heads span:last-child { grid-column: 3; }
+.review-side-old { color: var(--danger); }
+.review-side-new { color: var(--success); }
+.review-side-body { flex: 1; min-height: 0; overflow: auto; }
+.review-side-body .cm-mergeView { height: 100%; }
+.review-side-body .cm-editor { font-family: var(--font-ui); font-size: 14px; }
+/* 左邊（上次提交）用刪除的紅色，右邊（現在）照常是綠色。 */
+.review-side-body .cm-merge-a .cm-changedLine { background: var(--diff-del-line) !important; }
+.review-side-body .cm-merge-a .cm-changedText { background: var(--diff-del-text) !important; }
+.review-side-body .cm-merge-a .cm-changedLineGutter { background: var(--danger) !important; }
+/* 兩欄中間放「改回去」的欄：放得下按鈕文字。 */
+.review-side-body .cm-merge-revert { flex: none; width: 72px; padding: 0; border-left: 1px solid var(--border); border-right: 1px solid var(--border); background: var(--surface, transparent); }
+.review-side-body .cm-merge-revert button { position: absolute; left: 6px; right: 6px; width: auto; padding: 1px 0; border: 1px solid var(--danger); border-radius: 6px; background: var(--bg); color: var(--danger); font: 12px var(--font-ui); cursor: pointer; white-space: nowrap; }
 .review-bar p { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin: 0; }
 .review-bar .icon { color: var(--accent); }
 .review-hint { color: var(--muted); font-size: 12px; }
@@ -2108,6 +2126,12 @@ button.git-info:disabled { cursor: default; }
 }
 .git-files button:hover { background: var(--active-line); }
 .git-files button:disabled { cursor: default; opacity: 0.7; }
+/* 修改過的檔案右邊的「和上次提交比較」按鈕：一直看得到（淡色），滑鼠移上去才變深。 */
+.git-files li { display: flex; align-items: center; gap: 2px; }
+.git-files li > button:first-child { flex: 1; min-width: 0; }
+.git-files .git-file-diff { flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; color: var(--muted); }
+.git-files .git-file-diff:hover { color: var(--fg); }
+.git-files .git-file-diff .icon { width: 14px; height: 14px; }
 .git-file-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-file-dir { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .git-files b { flex: none; width: 1.2em; font: 600 11px var(--font-mono); text-align: center; }
@@ -2493,8 +2517,10 @@ button.git-info:disabled { cursor: default; }
 .side-body.workitems > * { flex: none; }
 /* 篩選太高（視窗很矮）也不會把清單擠不見：篩選自己捲動。 */
 .side-body.workitems > .workitems-filters { max-height: 55%; overflow-y: auto; }
-.side-body.workitems > .workitems-list { flex: 1 1 auto; min-height: 0; margin: 0 -8px; padding: 0 8px 12px; overflow-y: auto; border-top: 1px solid transparent; }
-.side-body.workitems > .workitems-list.scrolled { border-top-color: var(--border); }
+.side-body.workitems > .workitems-list,
+.side-body.workitems > .wiki-scroll { flex: 1 1 auto; min-height: 0; margin: 0 -8px; padding: 0 8px 12px; overflow-y: auto; border-top: 1px solid transparent; }
+.side-body.workitems > .workitems-list.scrolled,
+.side-body.workitems > .wiki-scroll.scrolled { border-top-color: var(--border); }
 /*
  * 清單上方的「N 個…」與排列方式、收合等按鈕：一直是一列。側邊欄窄時文字用「…」截短（滑鼠移上去看完整的），
  * 按鈕不換行也不被切掉。連不上伺服器、顯示存下的資料時（有「重試」）才讓文字換行。
@@ -2954,6 +2980,10 @@ button.git-info:disabled { cursor: default; }
 .release-notes ul { margin: 0 0 6px; padding-left: 1.3em; }
 .release-notes p { margin: 8px 0; }
 .settings-row small.settings-ready { color: var(--accent); font-weight: 600; }
+/* 下載新版的進度（設定 → 關於 → 更新）。 */
+.settings-progress { width: min(260px, 100%); height: 4px; margin-top: 6px; overflow: hidden; border-radius: 2px; background: var(--active-line); }
+.settings-progress i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+.settings-progress[hidden] { display: none; }
 
 /* ==== 一致的表單與對話框外觀（和設定視窗同一套標準） ====
  * 輸入框、下拉選單、勾選框、對話框的間距與圓角統一；下拉選單和勾選框不用系統預設的樣子。 */
@@ -3234,6 +3264,12 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .choice.project-delete .pd-note.warn { color: var(--danger); }
 .project-delete .pd-type span { font-weight: 400; }
 .project-delete .btn-danger:not(:disabled) { border-color: var(--danger); background: var(--danger); color: #fff; }
+/* 滑鼠移上去：一般按鈕的 hover 會把底色換成淺色（字還是白的，看起來整個變白），刪除按鈕改成深一點的紅。 */
+.project-delete .btn-danger:not(:disabled):hover, .project-delete .btn-danger:not(:disabled):focus-visible {
+  border-color: color-mix(in srgb, var(--danger) 85%, black);
+  background: color-mix(in srgb, var(--danger) 85%, black);
+  color: #fff;
+}
 .project-delete .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .po-actions .btn { width: 26px; height: 26px; }
 .po-actions .icon { width: 14px; height: 14px; }
@@ -4843,6 +4879,21 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 
 /* 只給螢幕閱讀器（畫面上看不到）；見 ui/toast.ts 的 announce。 */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* 工作項目的日期（app/work-item-dates.ts）：點日期小標籤打開的小視窗。 */
+.wi-date-popover { position: fixed; display: flex; flex-direction: column; gap: 8px; min-width: 220px; padding: 8px 12px 12px; }
+.wi-date-popover .menu-head { padding: 2px 0; }
+.wi-date-input { height: 32px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); color: var(--fg); font: 14px var(--font-ui); color-scheme: light dark; }
+.wi-date-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wi-date-actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* 小視窗套用選單的外框，按鈕不要變成選單項目的樣子。 */
+.wi-date-popover .wi-date-actions .btn { width: auto; min-height: 30px; justify-content: center; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); }
+.wi-date-popover .wi-date-actions .btn:hover { background: var(--surface); }
+.wi-date-popover .wi-date-actions .btn-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
+.wi-date-popover .wi-date-actions .btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--fg)); }
+/* 「＋ 日期」：這個類型有、但還沒填的日期（虛線，和「＋ 標籤」一樣）。 */
+.issue-body .ado-facts .ado-fact.ado-fact-add { border: 1px dashed var(--border-strong); cursor: pointer; }
+.issue-body .ado-facts .ado-fact.ado-fact-add:hover { border-style: solid; color: var(--fg); }
 
 /* ---- 手機（Android 版、螢幕窄；app/phone.ts）：像筆記 App，不是縮小的電腦版 ---- */
 #phone-bar, #phone-fmt, #phone-home { display: none; }

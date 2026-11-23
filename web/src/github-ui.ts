@@ -7,7 +7,7 @@ import { ago, repoNameFrom } from "./github-text.ts";
 import { t } from "./i18n.ts";
 import { askText, choose } from "./ui/choice.ts";
 import { Picker } from "./ui/picker.ts";
-import { toast } from "./ui/toast.ts";
+import { toast, announce } from "./ui/toast.ts";
 
 export interface GitHubHooks {
   /** 目前開啟的資料夾。 */
@@ -63,7 +63,7 @@ export class GitHub {
       const account = await this.#d.githubLoginWait();
       this.#account = account;
       dialog.close();
-      toast(t("已登入 GitHub：{login}", { login: account.login }), { tone: "success" });
+      announce(t("已登入 GitHub：{login}", { login: account.login }));
       this.#hooks.changed();
       return account;
     } catch (e) {
@@ -82,7 +82,7 @@ export class GitHub {
     if (ok !== "logout") return;
     await this.#d.githubLogout();
     this.#account = null;
-    toast(t("已登出 GitHub"));
+    announce(t("已登出 GitHub"));
     this.#hooks.changed();
   }
 

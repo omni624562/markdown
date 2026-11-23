@@ -402,6 +402,10 @@ export interface AdoWorkItemDetail extends AdoWorkItem {
   /** 區域、反覆項目（例如「產品\\前端」）。 */
   area: string | null;
   iteration: string | null;
+  /** 開始、完成、目標日期（ISO 8601；流程範本沒有這些欄位或沒有填時沒有）。 */
+  startDate?: string | null;
+  finishDate?: string | null;
+  targetDate?: string | null;
   tags: string[];
   /** 說明（HTML）。 */
   description: string | null;
@@ -445,6 +449,10 @@ export interface AdoWorkItemChange {
   /** 剩餘工時、已完成工時（小時）。 */
   remaining?: number;
   completed?: number;
+  /** 開始、完成、目標日期（ISO 8601）；空字串表示清除。 */
+  startDate?: string;
+  finishDate?: string;
+  targetDate?: string;
   /** 換上層（原本的上層拿掉）；0 表示移除上層。 */
   parent?: number;
   /** 加入、移除的關聯。 */
@@ -928,7 +936,7 @@ function bridge(core: TauriCore, event: TauriEvent) {
      * 刪除專案：從清單移除；`trashFolder` 時把資料夾移到資源回收筒，原生端會先用系統的對話框再確認一次，
      * 使用者選「否」時回傳 false（什麼都沒做）。
      */
-    projectDelete: (path: string, trashFolder: boolean) => core.invoke<boolean>("project_delete", { path, trashFolder }),
+    projectDelete: (path: string, trashFolder: boolean) => core.invoke<void>("project_delete", { path, trashFolder }),
     /** 在 Codex 桌面版開啟專案（專案清單裡的本機資料夾）。 */
     projectOpenCodex: (path: string) => core.invoke<void>("project_open_codex", { path }),
     /** 在 Claude 桌面版的 Claude Code 開啟專案（專案清單裡的本機資料夾）。 */
@@ -968,6 +976,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
         () => core.invoke<string>("rename_entry", { path, newName }),
         () => core.invoke<string>("dav_rename", { path, newName }),
       ),
+    /** 把檔案或資料夾移到專案裡的另一個資料夾（只有本機的專案）；回傳移動後的路徑。 */
+    moveEntry: (path: string, dir: string) => core.invoke<string>("move_entry", { path, dir }),
     /** 從電腦上傳檔案到遠端資料夾；同名時自動加上編號，回傳上傳後的路徑。 */
     davUpload: (dir: string, name: string, data: ArrayBuffer) =>
       core.invoke<string>("dav_upload", new Uint8Array(data), {
@@ -1217,6 +1227,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<{ links: [number, number][]; items: AdoWorkItem[] }>("ado_work_item_children", { parents, search, filter }),
     /** 這個類型的工作項目可以設定的狀態。 */
     adoWorkItemStates: (project: string, kind: string) => core.invoke<string[]>("ado_work_item_states", { project, kind }),
+    /** 這個類型有哪些日期欄位（startDate、finishDate、targetDate）。 */
+    adoWorkItemTypeDates: (project: string, kind: string) =>
+      core.invoke<("startDate" | "finishDate" | "targetDate")[]>("ado_work_item_type_dates", { project, kind }),
     /** 建立工作項目（`description` 是 HTML）。 */
     adoWorkItemCreate: (item: {
       project: string;

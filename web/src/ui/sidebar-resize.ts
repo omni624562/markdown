@@ -8,8 +8,13 @@ export const SIDEBAR_WIDTH = { min: 180, max: 560, default: 248 } as const;
 /** 「圓角區塊」樣式的把手（膠囊）的長度，和 styles.css 一致。 */
 const GRIP = 48;
 
-export function clampSidebarWidth(px: number): number {
-  return Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, px)));
+export function clampSidebarWidth(px: number, max: number = SIDEBAR_WIDTH.max): number {
+  return Math.round(Math.min(max, Math.max(SIDEBAR_WIDTH.min, px)));
+}
+
+/** 右側欄（大綱、助理）最寬可以到視窗的 65%：讀助理的長回答、表格時需要寬一點；至少和左邊一樣 560。 */
+export function rightPanelMax(): number {
+  return Math.max(SIDEBAR_WIDTH.max, Math.round(window.innerWidth * 0.65));
 }
 
 /**
@@ -21,6 +26,7 @@ export function setupSidebarResize(
   side: "left" | "right",
   get: () => number,
   set: (px: number) => void,
+  max: () => number = () => SIDEBAR_WIDTH.max,
 ): void {
   const handle = document.createElement("div");
   handle.className = `sidebar-resizer ${side}`;
@@ -30,9 +36,10 @@ export function setupSidebarResize(
   handle.setAttribute("aria-orientation", "vertical");
   handle.setAttribute("aria-label", t("調整側邊欄寬度（方向鍵調整，雙擊恢復）"));
   handle.setAttribute("aria-valuemin", String(SIDEBAR_WIDTH.min));
-  handle.setAttribute("aria-valuemax", String(SIDEBAR_WIDTH.max));
+  handle.setAttribute("aria-valuemax", String(max()));
   const apply = (px: number) => {
-    const w = clampSidebarWidth(px);
+    const w = clampSidebarWidth(px, max());
+    handle.setAttribute("aria-valuemax", String(max()));
     handle.setAttribute("aria-valuenow", String(w));
     set(w);
   };

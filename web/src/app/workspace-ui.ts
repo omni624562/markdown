@@ -631,9 +631,9 @@ async function switchTabs(scope: string): Promise<void> {
 
 /**
  * 關閉目前的專案：分頁收起來（和切換專案一樣記住，沒存的內容留在草稿裡，下次開啟這個專案時還原），
- * 換成一個空白分頁，檔案樹回到「開啟資料夾」的畫面。
+ * 換成一個空白分頁，檔案樹回到「開啟資料夾」的畫面。`quiet`：不顯示「已關閉」的通知（刪除專案時用）。
  */
-export async function closeProject(): Promise<void> {
+export async function closeProject(quiet = false): Promise<void> {
   const folder = app.workspaceRoot;
   if (!folder || !desktop) return;
   const name = app.projectUi?.current?.label ?? folder.name;
@@ -651,7 +651,7 @@ export async function closeProject(): Promise<void> {
   app.persistSession();
   app.renderTabs();
   await setWorkspace(null);
-  toast(t("已關閉「{name}」。分頁都記住了，下次開啟這個專案會還原", { name }));
+  if (!quiet) announce(t("已關閉「{name}」。分頁都記住了，下次開啟這個專案會還原", { name }));
 }
 
 export async function openRecentFolder(path: string): Promise<void> {
@@ -700,7 +700,7 @@ export async function uploadFiles(dir: string, files: File[]): Promise<void> {
     app.fileListCache = null;
     await app.fileTree.refresh([dir]);
   }
-  toast(done === 1 ? t("已上傳「{name}」", { name: files[0].name }) : t("已上傳 {n} 個檔案", { n: done }), { tone: "success" });
+  announce(done === 1 ? t("已上傳「{name}」", { name: files[0].name }) : t("已上傳 {n} 個檔案", { n: done }));
 }
 
 /** 選電腦上的檔案上傳到遠端資料夾。 */
@@ -754,6 +754,45 @@ export async function renameEntry(entry: Entry, name: string): Promise<void> {
   app.renderTabs();
   await app.fileTree?.refresh([parent]);
   if (local && (entry.isDir || /\.(md|markdown)$/i.test(entry.path))) await updateLinksAfterRename(entry.path, to, before, filesBefore);
+}
+
+/**
+ * 在檔案樹把檔案或資料夾拖到另一個資料夾：移到那裡（名稱不變）。開著的分頁、左側圖示列的捷徑跟著換到新路徑，
+ * 再問要不要更新其他文件裡連到它的連結（和改名一樣）。
+ */
+export async function moveEntry(entry: Entry, dir: string): Promise<void> {
+  const d = desktop;
+  if (!d || !app.workspaceRoot || isRemote(entry.path)) return;
+  const comet = cometChangeWarning(entry.path, "move");
+  if (comet) {
+    const choice = await choose(t("要移動 COMET 的檔案嗎？"), comet, [
+      { id: "move", label: t("仍要移動"), danger: true },
+      { id: "cancel", label: t("取消"), primary: true },
+    ]);
+    if (choice !== "move") return;
+  }
+  const from = dirname(entry.path);
+  const before = await indexedDocs().catch(() => []);
+  app.fileListCache ??= await d.listFiles(app.workspaceRoot.path).catch(() => []);
+  const filesBefore = markdownFiles(app.fileListCache ?? []);
+  const to = await d.moveEntry(entry.path, dir);
+  if (to === entry.path) return;
+  app.stash();
+  for (const doc of app.docs) {
+    const moved = doc.path && rebase(doc.path, entry.path, to);
+    if (!moved) continue;
+    doc.path = moved;
+    doc.handle = desktopHandle(moved, basename(moved));
+  }
+  ({ name: app.cur.fileName, handle: app.cur.fileHandle } = app.active);
+  renameFileShortcuts(entry.path, to);
+  refreshCometGuards();
+  app.fileListCache = null;
+  app.persistSession();
+  renderSaveState();
+  app.renderTabs();
+  await app.fileTree?.refresh([from, dir]);
+  if (entry.isDir || /\.(md|markdown)$/i.test(entry.path)) await updateLinksAfterRename(entry.path, to, before, filesBefore);
 }
 
 /**
@@ -841,7 +880,7 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
       app.fileListCache = null;
       app.renderTabs();
       await app.fileTree.refresh([dirname(entry.path)]);
-      toast(remote ? t("已刪除「{name}」", { name: entry.name }) : t("已把「{name}」移到資源回收筒", { name: entry.name }));
+      announce(remote ? t("已刪除「{name}」", { name: entry.name }) : t("已把「{name}」移到資源回收筒", { name: entry.name }));
       break;
     }
     case "reveal":
@@ -864,6 +903,8 @@ function rootEntry(): Entry | null {
 }
 
 export function initWorkspaceUi(): void {
+  // 檔案樹：拖到另一個資料夾就移動（本機的專案）。
+  app.fileTree?.extend({ move: (entry, dir) => void moveEntry(entry, dir).catch(reportError) });
   window.addEventListener("focus", () => {
     if (Date.now() - indexScannedAt < 60_000) return;
     app.indexStale = true;

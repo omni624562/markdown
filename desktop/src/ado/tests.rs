@@ -783,6 +783,25 @@ fn builds_work_item_field_changes() {
         ops[4],
         json!({"op": "add", "path": "/fields/System.Tags", "value": "UAT; a b; AI 聊天"})
     );
+    // 日期：設定完成日期、清除開始日期；格式不對的不送出。
+    let dates = WorkItemChange {
+        finish_date: Some("2026-12-03T16:00:00.000Z".into()),
+        start_date: Some(String::new()),
+        ..Default::default()
+    };
+    assert!(check_change(&dates).is_ok());
+    let ops = change_ops(&dates, "me");
+    assert!(ops
+        .contains(&json!({"op": "remove", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate"})));
+    assert!(ops.contains(&json!({"op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.FinishDate", "value": "2026-12-03T16:00:00.000Z"})));
+    assert!(!ops
+        .iter()
+        .any(|o| o["path"] == "/fields/Microsoft.VSTS.Scheduling.TargetDate"));
+    let bad = WorkItemChange {
+        finish_date: Some("12/4".into()),
+        ..Default::default()
+    };
+    assert!(check_change(&bad).is_err());
     // 空的標籤清單：清除所有標籤。
     let clear = WorkItemChange {
         tags: Some(vec![]),
@@ -1715,4 +1734,19 @@ fn reads_the_revision_from_new_and_old_servers() {
         Some(5)
     );
     assert_eq!(rev_of(&json!({"id": 1})), None);
+}
+
+#[test]
+fn type_dates_lists_the_date_fields_the_type_has() {
+    let v = json!({"fields": [
+        {"referenceName": "System.Title"},
+        {"referenceName": "Microsoft.VSTS.Scheduling.TargetDate"},
+        {"referenceName": "Microsoft.VSTS.Scheduling.StartDate"},
+    ]});
+    assert_eq!(type_dates(&v), ["startDate", "targetDate"]);
+    // 舊版伺服器：fieldInstances。
+    let old =
+        json!({"fieldInstances": [{"referenceName": "Microsoft.VSTS.Scheduling.FinishDate"}]});
+    assert_eq!(type_dates(&old), ["finishDate"]);
+    assert!(type_dates(&json!({})).is_empty());
 }

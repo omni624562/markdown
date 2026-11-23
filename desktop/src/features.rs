@@ -209,6 +209,7 @@ mod tests {
         "paths_exist",
         "create_entry",
         "rename_entry",
+        "move_entry",
         "trash_entry",
         "reveal_entry",
         "search",

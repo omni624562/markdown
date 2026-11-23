@@ -43,12 +43,18 @@ test("助理輸入框：下緣只有「＋」與送出；常用動作在對話�
   const toggles = menu.getByRole("menuitemradio");
   assert.deepEqual(await toggles.allTextContents(), ["目前的文件", "上網查", "問整個專案", "深入思考"]);
   assert.equal(await menu.getByRole("menuitemradio", { name: "目前的文件" }).getAttribute("aria-checked"), "true");
-  // 關掉目前的文件：標籤跟著拿掉，再打開回來。
-  await menu.getByRole("menuitemradio", { name: "目前的文件" }).click();
+  // 關掉目前的文件：標籤跟著拿掉；選單不關，打勾跟著換，可以接著打開回來。
+  const doc = menu.getByRole("menuitemradio", { name: "目前的文件" });
+  await doc.click();
   assert.equal(await panel.locator(".assistant-chip").count(), 0);
-  await panel.locator("#assistant-plus").click();
-  await menu.getByRole("menuitemradio", { name: "目前的文件" }).click();
+  assert.ok(await menu.isVisible(), "按開關不關掉選單");
+  assert.equal(await doc.getAttribute("aria-checked"), "false");
+  await doc.click();
   await panel.locator(".assistant-chip", { hasText: "行程" }).waitFor();
+  assert.equal(await doc.getAttribute("aria-checked"), "true");
+  // 按 Esc 關掉。
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "hidden" });
 
   // 送出後對話開始：常用動作收起來。
   await panel.locator("textarea").fill("這個行程順嗎？");

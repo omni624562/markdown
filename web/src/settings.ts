@@ -171,6 +171,8 @@ export interface Settings {
   /** 開啟的資料夾是 Git 儲存庫時，定時提交、拉取、推送。預設關閉。 */
   gitAutoSync: boolean;
   gitSyncMinutes: 5 | 10 | 30 | 60;
+  /** 原始碼控制「看改了哪些地方」：`stacked` 上下對照（在文件裡標出來，預設）、`side` 左右並排。 */
+  gitCompareLayout: "stacked" | "side";
   /** 左側圖示列：面板圖示的順序（沒列到的照預設順序排在後面）。 */
   activityOrder: string[];
   /** 左側圖示列：隱藏的面板圖示。 */
@@ -257,6 +259,7 @@ export const DEFAULTS: Readonly<Settings> = Object.freeze({
   updateChannel: "stable",
   gitAutoSync: false,
   gitSyncMinutes: 10,
+  gitCompareLayout: "stacked",
   activityOrder: [],
   // 圖示列預設只放常用的面板；待辦總覽、標籤收起來（圖示列按右鍵或設定裡可以打開）。
   activityHidden: ["tasks", "tags"],
@@ -411,6 +414,10 @@ export function sanitize(raw: unknown): { settings: Settings; problems: number }
   }
   bool("autoUpdate");
   bool("gitAutoSync");
+  if ("gitCompareLayout" in input) {
+    const v = input.gitCompareLayout;
+    if (v === "stacked" || v === "side") out.gitCompareLayout = v;
+  }
   if ("gitSyncMinutes" in input) {
     const m = input.gitSyncMinutes;
     if (m === 5 || m === 10 || m === 30 || m === 60) out.gitSyncMinutes = m;

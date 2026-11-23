@@ -14,7 +14,7 @@ import { ACTIVITY_LIMIT, FILES_HEAD_LIMIT } from "../settings.ts";
 import { checkAiApps } from "./ai-app-presence.ts";
 import { icon } from "../ui/icons.ts";
 import { onCommandPins, type MenuEntry } from "../ui/menu.ts";
-import { toast } from "../ui/toast.ts";
+import { toast, announce } from "../ui/toast.ts";
 import { floatingMenu, refreshActivityCommands } from "./activity-bar.ts";
 import { openPinManager } from "./pin-manager.ts";
 import { reportError } from "./git-actions.ts";
@@ -36,7 +36,9 @@ function toggleHead(id: string): void {
   const name = commands.get(id)?.title ?? id;
   // 沒開資料夾時看不到那一列：說明開了專案才會出現。
   const where = app.workspaceRoot ? t("已把「{name}」釘到檔案面板上方。", { name }) : t("已把「{name}」釘到檔案面板上方，開啟專案後就會出現。", { name });
-  toast(where, { tone: "success" });
+  // 看得到那一列時不另外跳通知；還沒開專案時說明開了才會出現。
+  if (app.workspaceRoot) announce(where);
+  else toast(where, { tone: "success" });
 }
 
 /** 釘到左側圖示列，或從那裡移除。 */
@@ -51,7 +53,7 @@ function toggleActivity(id: string): void {
     return;
   }
   app.settings.update({ activityCommands: [...list, id] });
-  toast(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: commands.get(id)?.title ?? id }), { tone: "success" });
+  announce(t("已把「{name}」放到圖示列，拖曳可以調整位置。", { name: commands.get(id)?.title ?? id }));
 }
 
 /** 釘選的選項：釘到檔案面板上方、左側圖示列（已經釘了的換成移除）。 */

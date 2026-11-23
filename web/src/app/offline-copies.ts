@@ -8,7 +8,7 @@ import { parseKept, type KeptPage, type OfflineRef, addImage, keep } from "../of
 import * as storage from "../storage.ts";
 import type { IssueOffline } from "../ui/issue-view.ts";
 import { Picker } from "../ui/picker.ts";
-import { toast } from "../ui/toast.ts";
+import { toast, announce } from "../ui/toast.ts";
 import { wikiMarkdown } from "../wiki-text.ts";
 import { CopyCache } from "../copy-cache.ts";
 export { type Freshness, freshnessOf, keepFreshness } from "../copy-cache.ts";
@@ -135,7 +135,7 @@ export function initOfflineCopies(): void {
           if (old) {
             saveKept(keptPages.filter((p) => p.key !== source.key));
             for (const key of [`page:${source.key}`, ...old.images]) void desktop!.offlineRelease(key).catch(() => {});
-            toast(t("已取消保留離線"));
+            announce(t("已取消保留離線"));
             return;
           }
           const ref = offlineRefs.get(source.key);

@@ -113,3 +113,21 @@ test("不是 PDF 的內容、超過 2 份：提示，不附上", async () => {
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("只附 PDF、沒打字：按送出照樣送出（請 Claude 看附上的檔案）；送過之後空白送出不會再送", async () => {
+  const { page, context, errors } = await setup();
+  await page.locator("#assistant-panel input[type=file]").setInputFiles(pdfFile("租約.pdf"));
+  await pdfChips(page).waitFor();
+  await page.locator("#assistant-panel .assistant-send").click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const [{ request }] = await sends(page);
+  assert.equal(request.messages[0].content.trim().endsWith("請看附上的檔案。"), true, request.messages[0].content);
+  assert.deepEqual(request.messages[0].images, [{ mediaType: "application/pdf", data: PDF.toString("base64") }]);
+  await reply(page, "這是一份租約。");
+  // PDF 還帶著，但已經送過：空白按送出不會再送一次。
+  await page.locator("#assistant-panel .assistant-send").click();
+  await page.waitForTimeout(200);
+  assert.equal((await sends(page)).length, 1);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

@@ -243,6 +243,18 @@ function decorateFields(body: HTMLElement): void {
   if (priority) fact(t("優先順序"), `P${priority}`).dataset.field = "priority";
   const iteration = text(t("反覆項目"));
   if (iteration) fact(t("反覆項目") + "\n" + iteration, icon("calendar"), lastSegment(iteration)).dataset.field = "iteration";
+  // 開始、完成、目標日期：有填的才顯示（點一下可以改，見 app/work-item-dates.ts）。
+  for (const [label, field] of [
+    [t("開始日期"), "startDate"],
+    [t("完成日期"), "finishDate"],
+    [t("目標日期"), "targetDate"],
+  ] as const) {
+    const date = text(label);
+    if (!date) continue;
+    const chip = fact(label + "\n" + date, icon("calendar-check"), `${label} ${date}`);
+    chip.dataset.field = field;
+    chip.dataset.date = date;
+  }
   const changed = parseFieldTime(text(t("最後更新")));
   if (changed !== null) {
     const chip = fact(t("最後更新") + "\n" + text(t("最後更新")), t("更新於 {ago}", { ago: timeAgo(changed) }));

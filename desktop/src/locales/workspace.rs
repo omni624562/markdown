@@ -16,6 +16,10 @@ pub static EN: &[(&str, &str)] = &[
     ("工作流程檔名必須是 .yml", "Workflow file names must end with .yml."),
     ("無法建立 .github/workflows 資料夾", "Couldn't create the .github/workflows folder"),
     ("不能重新命名專案資料夾本身", "You can't rename the project folder itself."),
+    ("不能移動專案資料夾本身", "You can't move the project folder itself."),
+    ("只能移到資料夾裡", "You can only move it into a folder."),
+    ("不能把資料夾移到它自己裡面", "You can't move a folder into itself."),
+    ("無法移動", "Couldn't move it"),
     ("不能刪除專案資料夾本身", "You can't delete the project folder itself."),
     (
         "「.git」是 Git 的資料夾，不能在 oMarker 裡建立、改名或刪除",
@@ -88,7 +92,4 @@ pub static EN: &[(&str, &str)] = &[
     ("每日筆記", "Daily Notes"),
     ("「{path}」已經存在，換一個名稱或位置", "\"{path}\" already exists. Choose another name or location."),
     ("無法建立資料夾「{name}」", "Couldn't create the folder \"{name}\""),
-    ("刪除專案", "Delete Project"),
-    ("要把「{path}」整個資料夾移到資源回收筒嗎？可以從資源回收筒還原。", "Move the entire folder \"{path}\" to the Recycle Bin? You can restore it from the Recycle Bin."),
-    ("在這個資料夾開著的 {n} 個終端機會一起關閉。", "{n} terminal(s) open in this folder will be closed too."),
 ];

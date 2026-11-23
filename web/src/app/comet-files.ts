@@ -52,14 +52,14 @@ export function cometTreeMark(entry: Entry): { text: string; title: string } | n
 // ---- 刪除、改名前的說明 ----------------------------------------------------------
 
 /** 刪除或改名 `path` 會動到 COMET 的檔案時，回傳確認對話框裡要加的說明；不會時回傳 null。 */
-export function cometChangeWarning(path: string, action: "trash" | "rename"): string | null {
+export function cometChangeWarning(path: string, action: "trash" | "rename" | "move"): string | null {
   const rel = projectRel(path);
   const items = rel ? cometAffected(rel) : [];
   if (!items.length) return null;
   const names = items.map((i) => t("「{name}」", { name: i })).join(t("、"));
-  return action === "trash"
-    ? t("{names}是 COMET 用到的檔案，刪除後 COMET 可能無法正常運作。", { names })
-    : t("{names}是 COMET 用到的檔案，改名後 COMET 可能找不到它，無法正常運作。", { names });
+  if (action === "trash") return t("{names}是 COMET 用到的檔案，刪除後 COMET 可能無法正常運作。", { names });
+  if (action === "move") return t("{names}是 COMET 用到的檔案，移動後 COMET 可能找不到它，無法正常運作。", { names });
+  return t("{names}是 COMET 用到的檔案，改名後 COMET 可能找不到它，無法正常運作。", { names });
 }
 
 // ---- 編輯器：唯讀與上方的說明 ----------------------------------------------------

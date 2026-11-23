@@ -184,7 +184,8 @@ test("今天的筆記：連上 Azure DevOps 時多一段指派給我、還沒結
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   await runCommand(page, "插入指派給我的工作項目");
-  await page.locator(".toast", { hasText: "已插入 2 個工作項目" }).waitFor();
+  // 畫面上就看得到結果：不跳通知，只念給螢幕閱讀器（ui/toast.ts 的 announce）。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已插入 2 個工作項目");
   const text = await page.evaluate(() => document.querySelector(".cm-content").textContent);
   assert.equal((text.match(/#12 修正登入/g) ?? []).length, 2);
   assert.deepEqual(errors, []);

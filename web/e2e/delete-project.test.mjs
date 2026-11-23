@@ -1,6 +1,7 @@
 /**
- * 刪除專案：專案總覽的卡片、「☰」→「專案」→「刪除專案…」。提示窗要輸入專案的資料夾名稱才能刪除；
- * 可以勾選同時把資料夾移到資源回收筒；目前開著的專案先關閉再刪。用假的原生端（見 helpers.mjs）。
+ * 刪除專案：專案總覽的卡片、「☰」→「專案」→「刪除專案…」。只問一次：提示窗要輸入專案的資料夾名稱才能刪除，
+ * 原生端不再用系統的對話框另外問；可以勾選同時把資料夾移到資源回收筒（預設不勾，也不記上次的選擇）；
+ * 目前開著的專案按了「刪除」才關閉再刪。用假的原生端（見 helpers.mjs）。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -42,31 +43,27 @@ test("專案總覽：刪除要輸入資料夾名稱；勾選後資料夾移到�
   assert.match(await dialog.locator(".pd-note").textContent(), /都會移到資源回收筒/);
   await dialog.locator("input[name=confirm]").fill(" cobalt ");
   assert.equal(await submit.isDisabled(), false);
+  // 滑鼠移上去還是紅底白字（以前一般按鈕的 hover 把底色換成淺色，整個變白）。
+  const bg = () => submit.evaluate((b) => getComputedStyle(b).backgroundColor);
+  const before = await bg();
+  await submit.hover();
+  const after = await bg();
+  // color-mix 算出來的顏色是 color(srgb 0~1 …)，其他是 rgb(0~255 …)。
+  const scale = after.startsWith("color(") ? 255 : 1;
+  const [r, g, b] = after.match(/[\d.]+/g).map((n) => Number(n) * scale);
+  assert.ok(r > 120 && g < 100 && b < 100, `hover 時的底色：${after}（原本 ${before}）`);
   await submit.click();
-  await page.locator(".toast", { hasText: "已刪除專案「鈷藍計畫」，資料夾移到資源回收筒了" }).waitFor();
+  await dialog.waitFor({ state: "detached" });
+  // 不另外跳「已刪除」的通知。
+  assert.equal(await page.locator(".toast").count(), 0);
   assert.deepEqual((await calls(page)).filter((c) => c.cmd === "project_delete").map((c) => c.args), [
     { path: "C:\\work\\cobalt", trashFolder: true },
   ]);
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-test("移到資源回收筒前原生端再問一次；選「否」時關掉提示窗，不顯示已刪除", async () => {
-  // 假的原生端回傳 false：使用者在系統的確認對話框選了「否」。
-  const { page, context, errors } = await open({ desktop: { ...DESKTOP, project_delete: false } });
-  const overview = await openOverview(page);
+  // 只問一次：沒有另外的確認（原生端不再跳系統的對話框）。
+  assert.equal((await calls(page)).some((c) => c.cmd === "project_delete_ask"), false);
+  // 下一次：「同時把資料夾移到資源回收筒」一律不勾（不記上次的選擇，免得不小心連資料夾一起刪掉）。
   await overview.locator(".po-card", { hasText: "notes" }).locator(".po-delete").click();
-  const dialog = page.locator("dialog.project-delete[open]");
-  await dialog.getByLabel(/同時把資料夾移到資源回收筒/).check();
-  await dialog.locator("input[name=confirm]").fill("notes");
-  await dialog.getByRole("button", { name: "刪除" }).click();
-  await dialog.waitFor({ state: "detached" });
-  // 提示窗是在原生端回答之後才關的；那時如果要顯示「已刪除」，也已經顯示了。
-  assert.deepEqual((await calls(page)).filter((c) => c.cmd === "project_delete").map((c) => c.args), [
-    { path: "C:\\work\\notes", trashFolder: true },
-  ]);
-  assert.equal(await page.locator(".toast", { hasText: /已刪除專案|從專案清單移除/ }).count(), 0);
-  assert.equal(await page.locator(".toast-error").count(), 0);
+  assert.equal(await page.locator("dialog.project-delete[open]").getByLabel(/同時把資料夾移到資源回收筒/).isChecked(), false);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -101,7 +98,9 @@ test("「☰」→「專案」→「刪除專案…」刪除目前的專案：�
   // 不分大小寫。
   await dialog.locator("input[name=confirm]").fill("NOTES");
   await dialog.getByRole("button", { name: "刪除" }).click();
-  await page.locator(".toast", { hasText: "已把「notes」從專案清單移除" }).waitFor();
+  await dialog.waitFor({ state: "detached" });
+  // 不跳「已刪除」或「已關閉」的通知。
+  assert.deepEqual(await page.locator(".toast").allTextContents(), []);
   const order = (await calls(page)).map((c) => c.cmd);
   assert.ok(order.includes("close_folder"));
   assert.ok(order.lastIndexOf("close_folder") < order.indexOf("project_delete"));

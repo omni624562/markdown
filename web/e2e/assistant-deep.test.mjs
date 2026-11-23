@@ -45,7 +45,10 @@ test("深入思考：預設關著；打開後送出的問題帶著 deep，標籤
   await item.click();
   await on.waitFor();
   assert.match(await on.getAttribute("title"), /比較慢.*費用也比較高/);
-  assert.equal(await page.locator("#assistant-panel textarea").evaluate((el) => el === document.activeElement), true, "焦點回到輸入框");
+  // 開關按了選單不關，可以接著切換別的；打勾跟著換。按 Esc 關掉。
+  assert.ok(await item.isVisible(), "選單還開著");
+  assert.equal(await item.getAttribute("aria-checked"), "true");
+  await page.keyboard.press("Escape");
   assert.equal((await ask(page, "有什麼風險？", 2)).deep, true);
   // 開著的時候下一題也是。
   assert.equal(await on.count(), 1);

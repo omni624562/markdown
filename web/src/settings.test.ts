@@ -146,6 +146,9 @@ test("分頁樣式：預設是卡片；只接受三種樣式", () => {
 });
 
 test("區塊樣式：預設是圓角區塊、留間隔；只接受圓角區塊與相連兩種", () => {
+  assert.equal(DEFAULTS.gitCompareLayout, "stacked");
+  assert.equal(sanitize({ gitCompareLayout: "side" }).settings.gitCompareLayout, "side");
+  assert.equal(sanitize({ gitCompareLayout: "diagonal" }).settings.gitCompareLayout, "stacked");
   assert.equal(DEFAULTS.panelStyle, "spaced");
   assert.equal(sanitize({ panelStyle: "joined" }).settings.panelStyle, "joined");
   const bad = sanitize({ panelStyle: "floating" });

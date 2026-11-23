@@ -10,7 +10,7 @@ import { cometBadge } from "./comet-badge.ts";
 import { icon } from "./icons.ts";
 import { Picker } from "./picker.ts";
 import { t } from "../i18n.ts";
-import { toast } from "./toast.ts";
+import { toast, announce } from "./toast.ts";
 
 export interface ProjectHooks {
   /** 目前開啟的資料夾路徑。 */
@@ -25,7 +25,7 @@ export interface ProjectHooks {
   aiAppInstalled(app: AiApp): boolean;
   /** 關閉目前的專案。 */
   close(): void;
-  /** 關閉目前的專案，等關好（刪除目前的專案前）。 */
+  /** 關閉目前的專案，等關好（刪除目前的專案前；不顯示「已關閉」的通知）。 */
   closeAndWait(): Promise<void>;
   remotes(): Promise<DavConnection[]>;
   openRemote(c: DavConnection): void;
@@ -402,8 +402,8 @@ export class ProjectUi {
   }
 
   /**
-   * 刪除專案：從清單移除；勾選時把資料夾移到資源回收筒。要在提示窗輸入專案的資料夾名稱才能刪除，
-   * 免得刪錯。目前開著的專案先關閉再刪。
+   * 刪除專案：從清單移除；勾選時把資料夾移到資源回收筒（記住上次的選擇）。要在提示窗輸入專案的資料夾名稱
+   * 才能刪除，免得刪錯；只問這一次。按了「刪除」才關閉目前開著的專案再刪。
    */
   async deleteProject(p: Project): Promise<void> {
     const folder = folderName(p.path);
@@ -468,18 +468,10 @@ export class ProjectUi {
       void (async () => {
         try {
           if (here) await this.#h.closeAndWait();
-          // 移到資源回收筒前原生端會用系統的對話框再問一次；選「否」時什麼都沒做，關掉提示窗就好。
-          const done = await this.#d.projectDelete(p.path, trash.checked);
+          await this.#d.projectDelete(p.path, trash.checked);
           dialog.close();
-          if (done !== false) {
-            if (trash.checked) forgetProjectSession(p.path);
-            toast(
-              trash.checked
-                ? t("已刪除專案「{name}」，資料夾移到資源回收筒了", { name: p.label })
-                : t("已把「{name}」從專案清單移除", { name: p.label }),
-              { tone: "success" },
-            );
-          }
+          // 不另外跳「已刪除」的通知：提示窗關掉、清單上少了這個專案就看得出來。
+          if (trash.checked) forgetProjectSession(p.path);
         } catch (err) {
           error.textContent = message(err);
           error.hidden = false;
@@ -561,7 +553,7 @@ export class ProjectUi {
           await this.refresh();
           this.#renderOverview();
           this.#h.changed();
-          toast(t("已把「{name}」改到 {path}", { name: moved.label, path: displayPath(moved.path) }), { tone: "success" });
+          announce(t("已把「{name}」改到 {path}", { name: moved.label, path: displayPath(moved.path) }));
         } catch (e) {
           error.hidden = false;
           error.textContent = message(e);
@@ -595,3 +587,4 @@ export class ProjectUi {
     name.focus();
   }
 }
+

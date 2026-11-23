@@ -16,6 +16,11 @@ export function inlineText(s: string): string {
     .replace(/([\\`*_[\]<>#|~])/g, "\\$1");
 }
 
+/** 只有日期（本地時間，例如 2026-12-04）：工作項目的開始、完成、目標日期。 */
+export function dateOnly(iso: string | null | undefined): string {
+  return dateTime(iso).slice(0, 10);
+}
+
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -140,6 +145,9 @@ export function workItemMarkdown(d: AdoWorkItemDetail): string {
     [t("專案"), inlineText(d.project)],
     [t("區域"), inlineText(d.area ?? "")],
     [t("反覆項目"), inlineText(d.iteration ?? "")],
+    [t("開始日期"), dateOnly(d.startDate)],
+    [t("完成日期"), dateOnly(d.finishDate)],
+    [t("目標日期"), dateOnly(d.targetDate)],
     [t("優先順序"), d.priority ? String(d.priority) : ""],
     [t("標籤"), d.tags.map(inlineText).join(t("、"))],
     [t("最後更新"), dateTime(d.changed)],

@@ -62,11 +62,12 @@ export function initComposer(p: ComposerParts): { plus: HTMLButtonElement; more:
     { label: t("附加圖片或 PDF…"), icon: "paperclip", run: p.attach },
     { label: t("估算這一題的費用"), icon: "calculator", run: p.count },
     "-",
-    ...p.toggles().map((tg) =>
-      tg.blocked
-        ? { label: t("{name}（要先在設定開啟）", { name: tg.label }), icon: tg.icon, run: tg.blocked }
-        : { label: tg.label, icon: tg.icon, checked: () => tg.on, run: () => tg.set(!tg.on) },
-    ),
+    ...p.toggles().map((tg): MenuEntry => {
+      if (tg.blocked) return { label: t("{name}（要先在設定開啟）", { name: tg.label }), icon: tg.icon, run: tg.blocked };
+      // 開關按了不關掉選單，可以連續切換好幾個。
+      let on = tg.on;
+      return { label: tg.label, icon: tg.icon, checked: () => on, keepOpen: true, run: () => tg.set((on = !on)) };
+    }),
     "-",
     { label: t("寫作動作"), icon: "pen-line", items: writeEntries(p, true) },
   ]);

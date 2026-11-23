@@ -323,7 +323,13 @@ export class WikiPanel<W extends WikiInfo> {
       if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(open), { once: true });
       else open();
     });
-    el.append(bar, searchRow, this.#status, this.#quick, this.#rootBar, this.#list, this.#content);
+    // 常用、樹狀目錄、內容搜尋的結果放在同一個會捲動的區塊：上面的 Wiki 選單與搜尋框留在原地，
+    // 展開頁面、清單變長時這裡出現捲軸（面板本身不捲，以前清單超出的部分直接被切掉）。
+    const scroll = document.createElement("div");
+    scroll.className = "wiki-scroll";
+    scroll.append(this.#quick, this.#rootBar, this.#list, this.#content);
+    scroll.addEventListener("scroll", () => scroll.classList.toggle("scrolled", scroll.scrollTop > 0), { passive: true });
+    el.append(bar, searchRow, this.#status, scroll);
     this.#updateFilter();
     // 把頁面拖到文件裡，插入 `[頁面名稱](網址)`。
     el.addEventListener("dragstart", (e) => {
