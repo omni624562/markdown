@@ -1,17 +1,30 @@
 /**
  * 助理回答的出處（畫面）：回答裡的 `[1]` 變成可以按的標記，按了就在編輯區選取那一段原文並捲過去；
- * 滑鼠停在上面看得到原文。PDF 的出處沒有地方可以跳，提示在第幾頁。
+ * 問整個專案時出處在別篇筆記：先打開那一篇再跳過去。滑鼠停在上面看得到原文。PDF 的出處沒有地方可以跳，提示在第幾頁。
  * 編號與找原文的規則在 assistant-cites.ts。
  */
 import { type Cite, citeList, citeSnippet, findCited } from "../assistant-cites.ts";
 import { t } from "../i18n.ts";
+import { resolvePath } from "../paths.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { docName } from "./doc-names.ts";
+import { openPath } from "./workspace-ui.ts";
+
+/** 問整個專案時送出的筆記（在專案裡的位置）：出處的標題是其中一篇時，按了就打開那一篇。 */
+const sentNotes = new Set<string>();
+export function rememberNotes(rels: readonly string[]): void {
+  for (const r of rels) sentNotes.add(r);
+}
+
+/** 出處在別篇筆記（問整個專案時送出的），不是目前這份文件。 */
+const otherNote = (c: Cite): boolean => !!c.title && !!app.workspaceRoot && sentNotes.has(c.title) && c.title !== docName(app.active);
 
 /** 出處清單裡的一行：文件的原文，或 PDF 的頁碼與原文。 */
 function label(c: Cite): string {
   const quote = t("「{text}」", { text: citeSnippet(c.text) });
   if (c.page) return t("PDF 第 {n} 頁：{quote}", { n: c.page, quote });
+  if (otherNote(c)) return t("{name}：{quote}", { name: c.title!.replace(/\.(md|markdown)$/i, ""), quote });
   return quote;
 }
 
@@ -20,11 +33,19 @@ export function citesMarkdown(list: readonly Cite[]): string {
   return citeList(list, t("出處"), label);
 }
 
-/** 在編輯區選取這個出處的原文並捲到畫面上。 */
-function jump(c: Cite): void {
+/** 在編輯區選取這個出處的原文並捲到畫面上（在別篇筆記時先打開那一篇）。 */
+async function jump(c: Cite): Promise<void> {
   if (c.page) {
     toast(t("這一段在附上的 PDF 第 {n} 頁", { n: c.page }));
     return;
+  }
+  if (otherNote(c)) {
+    try {
+      await openPath(resolvePath(app.workspaceRoot!.path, c.title!));
+    } catch {
+      toast(t("找不到「{name}」（可能已經改名或刪除）", { name: c.title! }));
+      return;
+    }
   }
   const view = app.editor.view;
   const range = findCited(view.state.doc.toString(), c);
@@ -63,7 +84,7 @@ export function linkCites(body: HTMLElement, list: readonly Cite[]): void {
       b.textContent = n![1];
       b.title = c.page ? label(c) : t("{quote}（按一下跳到這一段）", { quote: label(c) });
       b.setAttribute("aria-label", t("出處 {n}：{quote}", { n: n![1], quote: label(c) }));
-      b.addEventListener("click", () => jump(c));
+      b.addEventListener("click", () => void jump(c));
       out.push(b);
     }
     node.replaceWith(...out);
