@@ -11,7 +11,6 @@ import { icon } from "./icons.ts";
 import { Picker } from "./picker.ts";
 import { t } from "../i18n.ts";
 import { toast, announce } from "./toast.ts";
-import * as storage from "../storage.ts";
 
 export interface ProjectHooks {
   /** 目前開啟的資料夾路徑。 */
@@ -439,7 +438,6 @@ export class ProjectUi {
     q(".pe-path").textContent = displayPath(p.path);
     q(".pd-type span").textContent = tr.type;
     const trash = q<HTMLInputElement>("input[name=trash]");
-    trash.checked = loadTrashChoice();
     const confirm = q<HTMLInputElement>("input[name=confirm]");
     const submit = q<HTMLButtonElement>("button[type=submit]");
     const note = q(".pd-note");
@@ -469,7 +467,6 @@ export class ProjectUi {
       submit.disabled = true;
       void (async () => {
         try {
-          saveTrashChoice(trash.checked);
           if (here) await this.#h.closeAndWait();
           await this.#d.projectDelete(p.path, trash.checked);
           dialog.close();
@@ -591,11 +588,3 @@ export class ProjectUi {
   }
 }
 
-/** 刪除專案時「同時把資料夾移到資源回收筒」上次的選擇（系統對話框的勾選框預設值）。 */
-const TRASH_CHOICE = "project-delete-trash";
-function loadTrashChoice(): boolean {
-  return storage.load(TRASH_CHOICE) === "1";
-}
-function saveTrashChoice(on: boolean): void {
-  storage.save(TRASH_CHOICE, on ? "1" : "0");
-}
