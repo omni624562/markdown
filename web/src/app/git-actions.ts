@@ -59,7 +59,7 @@ export async function resolveMergeConflict(path: string, theirs: string): Promis
 }
 
 /**
- * 原始碼控制的變更清單點修改過的檔案：打開它，和最後一次提交的版本逐段比較（在本機比，和有沒有推送無關）。
+ * 原始碼控制的變更清單點修改過的檔案：打開它，標出和最後一次提交比起來改了哪些地方（在本機比，和有沒有推送無關）。
  * 比較的是編輯器裡目前的內容（包括還沒存檔的部分）；拿不到上一版（例如不是文字檔）時只打開檔案。
  */
 export async function compareWithHead(path: string): Promise<void> {
@@ -77,13 +77,17 @@ export async function compareWithHead(path: string): Promise<void> {
   }
   if (app.cur.fileHandle?.path !== path) return;
   if (app.review.active) app.review.finish();
-  const started = app.review.start(text, {
-    title: t("和上次提交的版本比較：「{name}」", { name: basename(path) }),
-    hint: t("「改回上次提交」會把那一段換回上次提交時的內容，可以用 Ctrl+Z 復原；處理完記得存檔"),
-    acceptLabel: t("改回上次提交"),
-    rejectLabel: t("保留目前"),
+  // 上次提交的內容當基準、目前的內容不動：綠色是這次新增或改過的，紅色是上次提交時原本的樣子
+  // （和平常看到的「改了什麼」一樣，不會先把文件換掉）。
+  const current = app.editor.view.state.doc.toString();
+  const started = app.review.start(current, {
+    original: text,
+    title: t("「{name}」改了哪些地方", { name: basename(path) }),
+    hint: t("綠色是這次新增或改過的，紅色是上次提交時原本的樣子。哪一段不要了，按那一段的「改回去」"),
+    acceptLabel: t("保留"),
+    rejectLabel: t("改回去"),
   });
-  if (!started) toast(t("目前的內容和上次提交時相同。"));
+  if (!started) toast(t("和上次提交時一樣，沒有改動。"));
 }
 
 type BranchChoice = { name: string; kind: "local" | "remote" | "new" };

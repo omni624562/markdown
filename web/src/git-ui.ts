@@ -360,9 +360,9 @@ export class GitPanel {
           Object.assign(document.createElement("b"), { textContent: MARK[c.status], title: LABEL[c.status](rel) }),
         );
         btn.disabled = c.status === "deleted";
-        // 修改過的檔案：點一下就和上次提交比較（新檔案沒有上一版，照常打開）。
+        // 修改過的檔案：點一下就標出和上次提交比起來改了哪些地方（新檔案沒有上一版，照常打開）。
         const diff = c.status === "modified";
-        if (diff) btn.title = t("{label}（點一下和上次提交比較）", { label: btn.title });
+        if (diff) btn.title = t("{label}（點一下看改了哪些地方）", { label: btn.title });
         btn.addEventListener("click", () => {
           const theirs = this.#theirs.get(c.path);
           if (c.status === "conflicted" && theirs !== undefined) this.#hooks.resolve(c.path, theirs);
@@ -375,9 +375,9 @@ export class GitPanel {
           const cmp = document.createElement("button");
           cmp.type = "button";
           cmp.className = "git-file-diff";
-          const label = t("和上次提交比較");
+          const label = t("看改了哪些地方");
           cmp.title = label;
-          cmp.setAttribute("aria-label", t("{name}：和上次提交比較", { name: baseName(rel) }));
+          cmp.setAttribute("aria-label", t("{name}：看改了哪些地方", { name: baseName(rel) }));
           cmp.append(icon("git-compare"));
           cmp.addEventListener("click", () => this.#hooks.compare(c.path));
           li.append(cmp);

@@ -116,7 +116,7 @@ test("圖示列預設不釘 Git 歷史；之前釘過的照舊", async () => {
   await saved.context.close();
 });
 
-test("變更清單：修改過的檔案點一下（或按右邊的「比較」）就和上次提交逐段比較；新檔案照常打開", async () => {
+test("變更清單：修改過的檔案點一下（或按右邊的按鈕）就標出改了哪些地方：綠色是現在的、紅色是上次提交的；新檔案照常打開", async () => {
   const status = {
     ...STATUS,
     changes: [
@@ -139,20 +139,27 @@ test("變更清單：修改過的檔案點一下（或按右邊的「比較」�
   // 修改過的檔案右邊有看得到的「比較」按鈕；新檔案沒有（沒有上一版）。
   const cmp = row.locator(".git-file-diff");
   assert.equal(await cmp.isVisible(), true);
-  assert.equal(await cmp.getAttribute("aria-label"), "a.md：和上次提交比較");
+  assert.equal(await cmp.getAttribute("aria-label"), "a.md：看改了哪些地方");
   assert.equal(await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator(".git-file-diff").count(), 0);
 
   await row.locator("button").first().click();
   const bar = page.locator("#review-bar");
-  await bar.getByText("和上次提交的版本比較：「a.md」").waitFor();
-  await bar.getByRole("button", { name: /改回上次提交/ }).first().waitFor();
+  await bar.getByText("「a.md」改了哪些地方").waitFor();
   assert.deepEqual(
     (await calls(page)).filter((c) => c.cmd === "git_file_at").map((c) => c.args),
     [{ path: "/notes/a.md", id: "HEAD" }],
   );
-  // 「改回上次提交」：那一段換回上次提交時的內容。
-  await bar.getByRole("button", { name: /改回上次提交/ }).first().click();
-  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("舊的一段"));
+  // 文件本身還是現在的內容（綠色），上次提交的那一段標成紅色刪除；打開比較不會讓文件變成「沒存檔」。
+  const look = await page.evaluate(() => ({
+    inserted: [...document.querySelectorAll(".cm-changedLine")].map((el) => el.textContent),
+    deleted: [...document.querySelectorAll(".cm-deletedChunk")].map((el) => el.textContent),
+  }));
+  assert.ok(look.inserted.some((x) => x.includes("新的一段")), JSON.stringify(look));
+  assert.ok(look.deleted.some((x) => x.includes("舊的一段")), JSON.stringify(look));
+  assert.equal(await page.locator(".tab.active.dirty, .tab[aria-selected=true].dirty").count(), 0, "沒有變成沒存檔");
+  // 「改回去」：那一段換回上次提交時的內容。
+  await page.locator(".cm-deletedChunk").getByRole("button", { name: "改回去" }).click();
+  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("舊的一段") && !document.querySelector(".cm-content")?.textContent?.includes("新的一段"));
 
   // 新檔案：照常打開，不比較。
   await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator("button").first().click();
