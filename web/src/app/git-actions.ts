@@ -22,7 +22,7 @@ import { moveWikiPage } from "./wiki-move.ts";
 import { adoNote, githubNote } from "./repo-sources.ts";
 import { gitPanel, publishToAdo, showAdo } from "./work-item-updates.ts";
 import { issuesRepo, wikiPanel } from "./work-items-panel.ts";
-import { selectAll, indentMore, indentLess } from "@codemirror/commands";
+import { selectAll, indentMore, indentLess, undo } from "@codemirror/commands";
 import { app } from "./context.ts";
 import { logError } from "../error-log.ts";
 import { insertMyWorkItems } from "./daily-notes.ts";
@@ -93,6 +93,37 @@ export async function compareWithHead(path: string): Promise<void> {
     rejectLabel: t("改回去"),
   });
   if (!started) toast(t("和上次提交時一樣，沒有改動。"));
+}
+
+/**
+ * 變更清單的「捨棄修改」：把檔案換回上次提交時的內容並存檔。改的是編輯器裡的內容，
+ * 所以可以用 Ctrl+Z 或通知上的「復原」拿回來（復原後再存一次）。
+ */
+export async function discardChanges(path: string): Promise<void> {
+  if (!desktop) return;
+  const existing = app.tabForPath(path);
+  if (existing) app.activate(existing);
+  else await openPath(path);
+  if (app.cur.fileHandle?.path !== path) return;
+  const text = await desktop.gitFileAt(path, "HEAD");
+  if (app.cur.fileHandle?.path !== path) return;
+  if (app.review.active) app.review.finish();
+  const view = app.editor.view;
+  if (view.state.doc.toString() === text) return;
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, userEvent: "input.discard" });
+  await app.save(false);
+  const tab = app.active;
+  toast(t("已把「{name}」改回上次提交時的內容", { name: basename(path) }), {
+    action: {
+      label: t("復原"),
+      run: () => {
+        if (!app.docs.includes(tab)) return;
+        app.activate(tab);
+        undo(app.editor.view);
+        void app.save(false).catch(reportError);
+      },
+    },
+  });
 }
 
 type BranchChoice = { name: string; kind: "local" | "remote" | "new" };
