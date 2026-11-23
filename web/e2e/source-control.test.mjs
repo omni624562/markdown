@@ -204,6 +204,47 @@ test("設定成左右並排：左邊上次提交、右邊現在；「改回去�
   await context.close();
 });
 
+test("只提交勾選的檔案：取消勾選的不提交，按鈕寫出幾個檔案；全部勾選時照舊提交全部", async () => {
+  const status = {
+    ...STATUS,
+    changes: [
+      { path: "/notes/a.md", status: "modified" },
+      { path: "/notes/b.md", status: "modified" },
+      { path: "/notes/new.md", status: "untracked" },
+    ],
+  };
+  const { page, context, errors } = await openGit({ github_account: null, git_status: status, git_fetch: status, git_commit: "abc1234 修改" });
+  const checks = page.locator("#git-host .git-files .git-file-check");
+  assert.equal(await checks.count(), 3);
+  assert.deepEqual(await checks.evaluateAll((els) => els.map((el) => el.checked)), [true, true, true], "預設全部勾選");
+  // 取消勾選 b.md：按鈕寫出提交 2 個檔案，提交說明的預設值也只算勾選的。
+  await page.getByRole("checkbox", { name: "提交「b.md」" }).uncheck();
+  const commit = page.locator("#git-host .git-actions button").first();
+  assert.equal(await commit.getAttribute("aria-label"), "提交（只提交勾選的 2 個檔案）");
+  assert.equal(await commit.locator(".git-count").textContent(), "2");
+  assert.equal(await page.locator("#git-host .git-changes-head .git-file-check").evaluate((el) => el.indeterminate), true);
+  assert.match(await page.locator("#git-host textarea").getAttribute("placeholder"), /更新 2 個檔案/);
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "提交「b.md」", "焦點留在勾選框");
+  await commit.click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "git_commit"));
+  let call = (await calls(page)).filter((c) => c.cmd === "git_commit").at(-1);
+  assert.deepEqual(call.args, { message: "更新 2 個檔案", paths: ["/notes/a.md", "/notes/new.md"] });
+  // 部分勾選時按全選：全部勾選；再按一次全部取消，提交按鈕停用；再勾回全部時照舊提交全部（不帶路徑）。
+  const all = page.locator("#git-host .git-changes-head .git-file-check");
+  await all.check();
+  assert.deepEqual(await checks.evaluateAll((els) => els.map((el) => el.checked)), [true, true, true]);
+  await all.uncheck();
+  assert.equal(await commit.isDisabled(), true);
+  await all.check();
+  assert.equal((await commit.textContent()).trim(), "提交");
+  assert.equal(await commit.getAttribute("aria-label"), null);
+  await commit.click();
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "git_commit").length === 2);
+  call = (await calls(page)).filter((c) => c.cmd === "git_commit").at(-1);
+  assert.deepEqual(call.args, { message: "更新 3 個檔案", paths: null });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
 test("變更清單：「捨棄修改」換回上次提交的內容並存檔；通知上的「復原」拿回來", async () => {
   const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }, { path: "/notes/new.md", status: "untracked" }] };
   const { page, context, errors } = await openGit({

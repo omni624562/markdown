@@ -395,7 +395,13 @@ pub(crate) fn signature(
 }
 
 /// 提交工作區資料夾內的所有變更（工作區是儲存庫的子資料夾時，只提交那個子資料夾）。
-pub fn commit_at(dir: &Path, message: &str, who: Option<&Identity>) -> Result<String, String> {
+/// `only`：只提交這幾個檔案（絕對路徑，變更清單裡勾選的），其他的變更留在工作區不提交。
+pub fn commit_at(
+    dir: &Path,
+    message: &str,
+    who: Option<&Identity>,
+    only: Option<&[String]>,
+) -> Result<String, String> {
     let message = message.trim();
     if message.is_empty() {
         return Err(tr!("請輸入提交說明"));
@@ -409,11 +415,16 @@ pub fn commit_at(dir: &Path, message: &str, who: Option<&Identity>) -> Result<St
         _ => "*".to_string(),
     };
     let mut index = repo.index().map_err(err)?;
-    index
-        .add_all([scope.as_str()], IndexAddOption::DEFAULT, None)
-        .map_err(err)?;
-    // add_all 不會記錄刪除的檔案。
-    index.update_all([scope.as_str()], None).map_err(err)?;
+    match only {
+        None => {
+            index
+                .add_all([scope.as_str()], IndexAddOption::DEFAULT, None)
+                .map_err(err)?;
+            // add_all 不會記錄刪除的檔案。
+            index.update_all([scope.as_str()], None).map_err(err)?;
+        }
+        Some(paths) => stage_only(&repo, &root, &dir, &mut index, paths)?,
+    }
     index.write().map_err(err)?;
     let tree_id = index.write_tree().map_err(err)?;
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
@@ -432,6 +443,69 @@ pub fn commit_at(dir: &Path, message: &str, who: Option<&Identity>) -> Result<St
         .map_err(|e| tr!("提交失敗：{e}", e = e.message()))?;
     let first = message.lines().next().unwrap_or_default();
     Ok(format!("{} {first}", &oid.to_string()[..7]))
+}
+
+/// 只把勾選的檔案放進這次的提交：從上次提交的內容開始，加入（或拿掉已經刪除的）這幾個檔案；
+/// 改名的檔案連舊的路徑一起拿掉。路徑必須在工作區資料夾裡。
+fn stage_only(
+    repo: &Repository,
+    root: &Path,
+    dir: &Path,
+    index: &mut git2::Index,
+    paths: &[String],
+) -> Result<(), String> {
+    if paths.is_empty() {
+        return Err(tr!("請勾選要提交的檔案"));
+    }
+    match repo.head().ok().and_then(|h| h.peel_to_tree().ok()) {
+        Some(tree) => index.read_tree(&tree).map_err(err)?,
+        None => index.clear().map_err(err)?,
+    }
+    let mut rels = Vec::new();
+    for p in paths {
+        let path = Path::new(p);
+        let rel = match (path.strip_prefix(dir), path.strip_prefix(root)) {
+            (Ok(_), Ok(rel)) if !rel.as_os_str().is_empty() => {
+                rel.to_string_lossy().replace('\\', "/")
+            }
+            _ => return Err(tr!("這個檔案不在目前的資料夾裡：{path}", path = p)),
+        };
+        rels.push(rel);
+    }
+    // 改名：新的路徑勾了，舊的路徑也要從提交裡拿掉。
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true)
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
+    if let Ok(statuses) = repo.statuses(Some(&mut opts)) {
+        for e in statuses.iter() {
+            for d in [e.head_to_index(), e.index_to_workdir()]
+                .into_iter()
+                .flatten()
+            {
+                let (Some(old), Some(new)) = (d.old_file().path(), d.new_file().path()) else {
+                    continue;
+                };
+                let (old, new) = (
+                    old.to_string_lossy().to_string(),
+                    new.to_string_lossy().to_string(),
+                );
+                if old != new && rels.contains(&new) && !rels.contains(&old) {
+                    rels.push(old);
+                }
+            }
+        }
+    }
+    for rel in &rels {
+        let rel_path = Path::new(rel);
+        if root.join(rel_path).is_file() {
+            index.add_path(rel_path).map_err(err)?;
+        } else {
+            // 已經刪除的檔案：從提交裡拿掉（本來就不在上次提交裡也沒關係）。
+            let _ = index.remove_path(rel_path);
+        }
+    }
+    Ok(())
 }
 
 // ---- 遠端 -------------------------------------------------------------------
@@ -860,7 +934,7 @@ pub fn publish_at(
         }
     }
     drop(repo);
-    match commit_at(dir, &tr!("初始版本"), who) {
+    match commit_at(dir, &tr!("初始版本"), who, None) {
         Ok(_) => {}
         Err(e) if e == tr!("沒有需要提交的變更") => {}
         Err(e) => return Err(e),
@@ -916,10 +990,14 @@ pub async fn git_fetch(app: AppHandle, background: Option<bool>) -> Result<Statu
 }
 
 #[tauri::command]
-pub async fn git_commit(app: AppHandle, message: String) -> Result<String, String> {
+pub async fn git_commit(
+    app: AppHandle,
+    message: String,
+    paths: Option<Vec<String>>,
+) -> Result<String, String> {
     let dir = workspace_root(&app)?;
     let who = identity_for(&app, &dir);
-    crate::io::blocking(move || commit_at(&dir, &message, who.as_ref())).await
+    crate::io::blocking(move || commit_at(&dir, &message, who.as_ref(), paths.as_deref())).await
 }
 
 #[tauri::command]
@@ -1111,22 +1189,22 @@ mod tests {
         let dir = temp("commit");
         init(&dir);
         assert_eq!(
-            commit_at(&dir, "  ", Some(&me())).unwrap_err(),
+            commit_at(&dir, "  ", Some(&me()), None).unwrap_err(),
             "請輸入提交說明"
         );
         assert_eq!(
-            commit_at(&dir, "空的", Some(&me())).unwrap_err(),
+            commit_at(&dir, "空的", Some(&me()), None).unwrap_err(),
             "沒有需要提交的變更"
         );
         fs::write(dir.join("a.md"), "a\n").unwrap();
         fs::write(dir.join("b.md"), "b\n").unwrap();
         // 沒有 Git 設定也沒有登入：提示登入。
         if Repository::open(&dir).unwrap().signature().is_err() {
-            assert!(commit_at(&dir, "第一版", None)
+            assert!(commit_at(&dir, "第一版", None, None)
                 .unwrap_err()
                 .contains("登入"));
         }
-        assert!(commit_at(&dir, "第一版", Some(&me()))
+        assert!(commit_at(&dir, "第一版", Some(&me()), None)
             .unwrap()
             .ends_with(" 第一版"));
         assert!(status_at(&dir).changes.is_empty());
@@ -1134,8 +1212,70 @@ mod tests {
         let s = status_at(&dir);
         assert_eq!(s.changes.len(), 1);
         assert_eq!(s.changes[0].status, FileStatus::Deleted);
-        commit_at(&dir, "刪掉 b", Some(&me())).unwrap();
+        commit_at(&dir, "刪掉 b", Some(&me()), None).unwrap();
         assert!(status_at(&dir).changes.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn commits_only_the_selected_files() {
+        let dir = temp("commit-only");
+        init(&dir);
+        fs::write(dir.join("a.md"), "a\n").unwrap();
+        fs::write(dir.join("b.md"), "b\n").unwrap();
+        fs::write(dir.join("d.md"), "d\n").unwrap();
+        commit_at(&dir, "第一版", Some(&me()), None).unwrap();
+        fs::write(dir.join("a.md"), "a2\n").unwrap();
+        fs::write(dir.join("b.md"), "b2\n").unwrap();
+        fs::write(dir.join("c.md"), "c\n").unwrap();
+        fs::remove_file(dir.join("d.md")).unwrap();
+        let path_of = |name: &str| {
+            status_at(&dir)
+                .changes
+                .into_iter()
+                .find(|c| c.path.ends_with(name))
+                .unwrap()
+                .path
+        };
+        let (a, d) = (path_of("a.md"), path_of("d.md"));
+        // 沒勾任何檔案：不提交。
+        assert_eq!(
+            commit_at(&dir, "空", Some(&me()), Some(&[])).unwrap_err(),
+            "請勾選要提交的檔案"
+        );
+        // 只提交 a 和刪掉的 d：b 的修改、新的 c 留在工作區。
+        commit_at(&dir, "只改 a", Some(&me()), Some(&[a, d])).unwrap();
+        let mut left: Vec<_> = status_at(&dir)
+            .changes
+            .into_iter()
+            .map(|c| {
+                (
+                    Path::new(&c.path)
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                    c.status,
+                )
+            })
+            .collect();
+        left.sort_by(|x, y| x.0.cmp(&y.0));
+        assert_eq!(
+            left,
+            [
+                ("b.md".to_string(), FileStatus::Modified),
+                ("c.md".to_string(), FileStatus::Untracked)
+            ]
+        );
+        assert_eq!(fs::read_to_string(dir.join("b.md")).unwrap(), "b2\n");
+        // 資料夾外面的路徑不收。
+        let outside = std::env::temp_dir()
+            .join("別的.md")
+            .to_string_lossy()
+            .to_string();
+        assert!(commit_at(&dir, "外面", Some(&me()), Some(&[outside]))
+            .unwrap_err()
+            .contains("不在目前的資料夾裡"));
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1176,7 +1316,7 @@ mod tests {
         fs::remove_dir_all(&b).unwrap();
         clone(&remote, &b);
         fs::write(b.join("週報.md"), "# 週報\n\nb 的修改\n").unwrap();
-        commit_at(&b, "b 的修改", Some(&me())).unwrap();
+        commit_at(&b, "b 的修改", Some(&me()), None).unwrap();
         assert_eq!(push_at(&b, &none).unwrap(), "已推送");
         // 檢查遠端：知道遠端多了 1 個提交，但檔案還沒變。
         assert_eq!(status_at(&a).branch.unwrap().behind, 0);
@@ -1199,10 +1339,10 @@ mod tests {
 
         // 兩邊改同一行：推送被拒、拉取時衝突 → 取消，檔案維持原樣。
         fs::write(b.join("週報.md"), "# 週報\n\nb 又改了\n").unwrap();
-        commit_at(&b, "b 第二次", Some(&me())).unwrap();
+        commit_at(&b, "b 第二次", Some(&me()), None).unwrap();
         push_at(&b, &none).unwrap();
         fs::write(a.join("週報.md"), "# 週報\n\na 也改了\n").unwrap();
-        commit_at(&a, "a 的修改", Some(&me())).unwrap();
+        commit_at(&a, "a 的修改", Some(&me()), None).unwrap();
         assert!(push_at(&a, &none).unwrap_err().contains("先拉取"));
         assert_eq!(
             pull_at(&a, &none, Some(&me())).unwrap_err(),
@@ -1216,9 +1356,9 @@ mod tests {
         fs::remove_dir_all(&c).unwrap();
         clone(&remote, &c);
         fs::write(c.join("另一份.md"), "c\n").unwrap();
-        commit_at(&c, "c 新增檔案", Some(&me())).unwrap();
+        commit_at(&c, "c 新增檔案", Some(&me()), None).unwrap();
         fs::write(b.join("週報.md"), "# 週報\n\nb 第三次\n").unwrap();
-        commit_at(&b, "b 第三次", Some(&me())).unwrap();
+        commit_at(&b, "b 第三次", Some(&me()), None).unwrap();
         push_at(&b, &none).unwrap();
         assert!(pull_at(&c, &none, Some(&me())).unwrap().contains("合併"));
         assert_eq!(push_at(&c, &none).unwrap(), "已推送");
