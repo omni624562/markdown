@@ -77,7 +77,6 @@ pub static EN: &[(&str, &str)] = &[
     ("另存新檔", "Save As"),
     ("提交編號不正確", "Invalid commit ID."),
     ("找不到這個提交", "Couldn't find this commit."),
-    ("還沒有任何提交", "There are no commits yet."),
     (
         "這個版本沒有這個檔案",
         "This file doesn't exist in this version.",
