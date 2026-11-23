@@ -325,6 +325,51 @@ fn upstream_of(repo: &Repository, refname: &str) -> Option<(String, Oid)> {
     Some((up.trim_start_matches("refs/remotes/").to_string(), oid))
 }
 
+/// 目前分支追蹤的遠端分支上的提交（還沒有追蹤的遠端分支時是 None）。
+pub(crate) fn upstream_commit(repo: &Repository) -> Option<git2::Commit<'_>> {
+    let head = repo.head().ok()?;
+    let (_, oid) = upstream_of(repo, head.name().ok()?)?;
+    repo.find_commit(oid).ok()
+}
+
+/// 已經提交、還沒推送的檔案：遠端分支和目前的提交比起來有改的檔案（只列工作區資料夾裡的）。
+pub fn unpushed_at(dir: &Path) -> Result<Vec<Change>, String> {
+    let repo = open(dir)?;
+    let root = workdir(&repo)?;
+    let dir = dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let Some(up) = upstream_commit(&repo) else {
+        return Ok(vec![]);
+    };
+    let head = repo.head().and_then(|h| h.peel_to_commit()).map_err(err)?;
+    let (up_tree, head_tree) = (up.tree().map_err(err)?, head.tree().map_err(err)?);
+    let mut diff = repo
+        .diff_tree_to_tree(Some(&up_tree), Some(&head_tree), None)
+        .map_err(err)?;
+    diff.find_similar(None).map_err(err)?;
+    let mut out = Vec::new();
+    for d in diff.deltas() {
+        let status = match d.status() {
+            git2::Delta::Added | git2::Delta::Copied => FileStatus::Added,
+            git2::Delta::Deleted => FileStatus::Deleted,
+            git2::Delta::Renamed => FileStatus::Renamed,
+            git2::Delta::Modified | git2::Delta::Typechange => FileStatus::Modified,
+            _ => continue,
+        };
+        let Some(rel) = d.new_file().path().or_else(|| d.old_file().path()) else {
+            continue;
+        };
+        let abs = root.join(rel);
+        if abs.starts_with(&dir) {
+            out.push(Change {
+                path: path_string(&abs),
+                status,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(out)
+}
+
 fn origin_url(repo: &Repository) -> Option<String> {
     repo.find_remote("origin")
         .ok()?
@@ -957,6 +1002,13 @@ pub async fn git_status(app: AppHandle) -> Result<Status, String> {
 }
 
 /// 一個檔案的 Git 狀態：存檔後只更新這一個，不必重新掃描整個資料夾（大儲存庫要掃很久）。
+/// 已經提交、還沒推送的檔案（原始碼控制面板的「還沒推送」）。
+#[tauri::command]
+pub async fn git_unpushed(app: AppHandle) -> Result<Vec<Change>, String> {
+    let dir = workspace_root(&app)?;
+    crate::io::blocking(move || unpushed_at(&dir)).await
+}
+
 /// 沒有變更時回傳 None；檔案不在儲存庫裡時回傳錯誤（前端改成重新整理全部）。
 #[tauri::command]
 pub async fn git_status_file(app: AppHandle, path: String) -> Result<Option<Change>, String> {
@@ -1343,6 +1395,15 @@ mod tests {
         push_at(&b, &none).unwrap();
         fs::write(a.join("週報.md"), "# 週報\n\na 也改了\n").unwrap();
         commit_at(&a, "a 的修改", Some(&me()), None).unwrap();
+        // 還沒推送的檔案：和遠端分支比起來改了週報；遠端的版本是上次拉取時的內容。
+        let unpushed = unpushed_at(&a).unwrap();
+        assert_eq!(unpushed.len(), 1);
+        assert!(unpushed[0].path.ends_with("週報.md"));
+        assert_eq!(unpushed[0].status, FileStatus::Modified);
+        assert_eq!(
+            crate::git_files::file_at(Path::new(&unpushed[0].path), "UPSTREAM").unwrap(),
+            "# 週報\n\nb 的修改\n"
+        );
         assert!(push_at(&a, &none).unwrap_err().contains("先拉取"));
         assert_eq!(
             pull_at(&a, &none, Some(&me())).unwrap_err(),

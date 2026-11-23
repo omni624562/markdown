@@ -17,6 +17,7 @@ pub static EN: &[(&str, &str)] = &[
     ("已把「{name}」合併進「{current}」", "Merged \"{name}\" into \"{current}\"."),
     ("目前的分支已經有一樣的內容，沒有需要套用的修改", "The current branch already has the same content. There's nothing to apply."),
     ("還沒有任何提交", "There are no commits yet."),
+    ("這個分支沒有對應的遠端分支", "This branch has no matching remote branch."),
     ("無法自動撤銷：之後的提交又改了同一個地方。可以在這個提交的檔案上按「和目前的檔案比較」逐段還原", "Couldn't revert automatically: later commits changed the same place. Use \"Compare with Current File\" on this commit's files to restore section by section."),
     ("撤銷「{summary}」\n\n撤銷提交 {id}。", "Revert \"{summary}\"\n\nThis reverts commit {id}."),
     ("已撤銷「{summary}」", "Reverted \"{summary}\"."),

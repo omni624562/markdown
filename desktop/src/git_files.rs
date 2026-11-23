@@ -108,8 +108,11 @@ pub fn history_at(file: &Path) -> Result<Vec<FileCommit>, String> {
 /// 檔案在某次提交時的內容。
 pub fn file_at(file: &Path, id: &str) -> Result<String, String> {
     let (repo, rel) = open_for(file)?;
-    // `HEAD`：最後一次提交（原始碼控制的變更清單拿目前的內容和它比較）。
-    let commit = if id == "HEAD" {
+    // `HEAD`：最後一次提交（原始碼控制的變更清單拿目前的內容和它比較）；
+    // `UPSTREAM`：遠端分支上的版本（還沒推送的提交和遠端比較）。
+    let commit = if id == "UPSTREAM" {
+        crate::git::upstream_commit(&repo).ok_or_else(|| tr!("這個分支沒有對應的遠端分支"))?
+    } else if id == "HEAD" {
         repo.head()
             .and_then(|h| h.peel_to_commit())
             .map_err(|_| tr!("還沒有任何提交"))?

@@ -204,6 +204,36 @@ test("設定成左右並排：左邊上次提交、右邊現在；「改回去�
   await context.close();
 });
 
+test("還沒推送：列出已提交、還沒推送的檔案；修改過的點一下和遠端上的版本比較", async () => {
+  // STATUS 的分支領先遠端 2 個提交（origin/main）。
+  const status = { ...STATUS, changes: [] };
+  const { page, context, errors } = await openGit({
+    github_account: { login: "me", id: 1, name: null },
+    git_status: status,
+    git_fetch: status,
+    git_unpushed: [[
+      { path: "/notes/a.md", status: "modified" },
+      { path: "/notes/new.md", status: "added" },
+    ]],
+    reopen_file: { path: "/notes/a.md", name: "a.md", text: "# 會議紀錄\n\n下週三交報告。\n", encoding: "utf-8" },
+    git_file_at: "# 會議紀錄\n\n下週一交報告。\n",
+  });
+  const head = page.locator("#git-host .git-unpushed-head");
+  await head.waitFor();
+  assert.equal(await head.textContent(), "還沒推送（2 個提交）");
+  const rows = page.locator("#git-host .git-unpushed li");
+  assert.equal(await rows.count(), 2);
+  assert.equal(await rows.nth(1).locator(".git-file-diff").count(), 0, "新增的檔案沒有遠端的版本可比");
+  await rows.first().locator(".git-file-diff").click();
+  await page.locator("#review-bar").getByText("「a.md」和遠端比起來改了哪些地方").waitFor();
+  const call = (await calls(page)).filter((c) => c.cmd === "git_file_at").at(-1);
+  assert.deepEqual(call.args, { path: "/notes/a.md", id: "UPSTREAM" });
+  const deleted = await page.evaluate(() => [...document.querySelectorAll(".cm-deletedChunk")].map((el) => el.textContent).join(""));
+  assert.match(deleted, /下週一/, "紅色是遠端上的樣子");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("只提交勾選的檔案：取消勾選的不提交，按鈕寫出幾個檔案；全部勾選時照舊提交全部", async () => {
   const status = {
     ...STATUS,
@@ -245,6 +275,7 @@ test("只提交勾選的檔案：取消勾選的不提交，按鈕寫出幾個�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
 test("變更清單：「捨棄修改」換回上次提交的內容並存檔；通知上的「復原」拿回來", async () => {
   const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }, { path: "/notes/new.md", status: "untracked" }] };
   const { page, context, errors } = await openGit({
@@ -271,6 +302,15 @@ test("變更清單：「捨棄修改」換回上次提交的內容並存檔；�
   assert.doesNotMatch(await content(), /下週一/);
   await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "save_file").length >= 2);
   assert.match((await saves()).at(-1), /下週三/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("沒有領先遠端時不讀、不顯示「還沒推送」", async () => {
+  const status = { ...STATUS, branch: { ...STATUS.branch, ahead: 0 } };
+  const { page, context, errors } = await openGit({ github_account: null, git_status: status, git_fetch: status });
+  assert.equal(await page.locator("#git-host .git-unpushed-head").count(), 0);
+  assert.equal((await calls(page)).some((c) => c.cmd === "git_unpushed"), false);
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -61,9 +61,10 @@ export async function resolveMergeConflict(path: string, theirs: string): Promis
 
 /**
  * 原始碼控制的變更清單點修改過的檔案：打開它，標出和最後一次提交比起來改了哪些地方（在本機比，和有沒有推送無關）。
+ * `upstream`（遠端分支的名稱，例如 `origin/main`）：改成和遠端分支上的版本比較（「還沒推送」清單）。
  * 比較的是編輯器裡目前的內容（包括還沒存檔的部分）；拿不到上一版（例如不是文字檔）時只打開檔案。
  */
-export async function compareWithHead(path: string): Promise<void> {
+export async function compareWithHead(path: string, upstream: string | null = null): Promise<void> {
   if (!desktop) return;
   const existing = app.tabForPath(path);
   if (existing) app.activate(existing);
@@ -71,16 +72,19 @@ export async function compareWithHead(path: string): Promise<void> {
   if (app.cur.fileHandle?.path !== path) return;
   let text: string;
   try {
-    text = await desktop.gitFileAt(path, "HEAD");
+    text = await desktop.gitFileAt(path, upstream ? "UPSTREAM" : "HEAD");
   } catch (e) {
     logError("compareWithHead", e);
     return;
   }
   if (app.cur.fileHandle?.path !== path) return;
+  const when = upstream ? t("遠端（{name}）上", { name: upstream }) : t("上次提交時");
   compareWithOld(text, {
-    title: t("「{name}」改了哪些地方", { name: basename(path) }),
-    when: t("上次提交時"),
-    same: t("和上次提交時一樣，沒有改動。"),
+    title: upstream
+      ? t("「{name}」和遠端比起來改了哪些地方", { name: basename(path) })
+      : t("「{name}」改了哪些地方", { name: basename(path) }),
+    when,
+    same: upstream ? t("和遠端一樣，沒有改動。") : t("和上次提交時一樣，沒有改動。"),
   });
 }
 
