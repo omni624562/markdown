@@ -65,6 +65,8 @@ export interface GitPanelHooks {
   resolve(path: string, theirs: string): void;
   /** 修改過的檔案：打開並和最後一次提交的版本逐段比較。 */
   compare(path: string): void;
+  /** 還沒推送的檔案：打開並和遠端分支（`upstream`）上的版本比較。 */
+  compareRemote(path: string, upstream: string): void;
   /** 切換或建立分支。 */
   switchBranch(): void;
   /** 建立 Pull Request。 */
@@ -120,6 +122,8 @@ export class GitPanel {
   #message: HTMLTextAreaElement;
   /** 這次合併中，每個衝突檔案「都採用遠端」的內容（重新開啟程式後就沒有了）。 */
   #theirs = new Map<string, string>();
+  /** 已經提交、還沒推送的檔案（領先遠端時才讀）。 */
+  #unpushed: GitChange[] = [];
   /** 面板標題列的按鈕（和其他面板一樣放在標題旁邊）：Git 歷史、建立 PR、立刻檢查遠端。 */
   #head: HTMLElement;
   #historyButton: HTMLButtonElement;
@@ -208,6 +212,13 @@ export class GitPanel {
       } catch {
         this.#status = null;
       }
+    }
+    // 有還沒推送的提交：讀出是哪幾個檔案（可以和遠端比較）。
+    const ahead = this.#status?.branch?.upstream ? this.#status.branch.ahead : 0;
+    try {
+      this.#unpushed = (ahead ? await this.#d.gitUnpushed() : null) ?? [];
+    } catch {
+      this.#unpushed = [];
     }
     this.#apply();
     if (Date.now() - this.#lastFetch > FETCH_INTERVAL) void this.#fetchRemote();
@@ -387,7 +398,49 @@ export class GitPanel {
     );
 
     const hint = s.merging ? this.#mergeBox(changes) : this.#syncHint(s);
-    this.#host.replaceChildren(...(hint ? [hint] : []), branch, this.#message, actions, head, list);
+    this.#host.replaceChildren(...(hint ? [hint] : []), branch, this.#message, actions, head, list, ...this.#unpushedList(s, root));
+  }
+
+  /** 「還沒推送」：已經提交、還沒推送的檔案；修改過的點一下和遠端上的版本比較。 */
+  #unpushedList(s: GitStatus, root: string): HTMLElement[] {
+    const upstream = s.branch?.upstream;
+    if (!upstream || !s.branch?.ahead || !this.#unpushed.length) return [];
+    const head = document.createElement("h3");
+    head.className = "git-changes-head git-unpushed-head";
+    head.textContent = t("還沒推送（{n} 個提交）", { n: s.branch.ahead });
+    head.title = t("已經提交、還沒推送到 {name} 的檔案", { name: upstream });
+    const list = document.createElement("ul");
+    list.className = "git-files git-unpushed";
+    for (const c of this.#unpushed) {
+      const rel = c.path.startsWith(root) ? c.path.slice(root.length + 1) : c.path;
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.status = c.status;
+      const dir = rel.includes("/") || rel.includes("\\") ? rel.slice(0, rel.length - baseName(rel).length - 1) : "";
+      btn.append(
+        Object.assign(document.createElement("span"), { className: "git-file-name", textContent: baseName(rel) }),
+        Object.assign(document.createElement("span"), { className: "git-file-dir", textContent: dir }),
+        Object.assign(document.createElement("b"), { textContent: MARK[c.status], title: LABEL[c.status](rel) }),
+      );
+      btn.disabled = c.status === "deleted";
+      const diff = c.status === "modified";
+      btn.title = diff ? t("{label}（點一下和遠端比較）", { label: LABEL[c.status](rel) }) : LABEL[c.status](rel);
+      btn.addEventListener("click", () => (diff ? this.#hooks.compareRemote(c.path, upstream) : this.#hooks.open(c.path)));
+      li.append(btn);
+      if (diff) {
+        const cmp = document.createElement("button");
+        cmp.type = "button";
+        cmp.className = "git-file-diff";
+        cmp.title = t("和遠端比較");
+        cmp.setAttribute("aria-label", t("{name}：和遠端比較", { name: baseName(rel) }));
+        cmp.append(icon("git-compare"));
+        cmp.addEventListener("click", () => this.#hooks.compareRemote(c.path, upstream));
+        li.append(cmp);
+      }
+      list.append(li);
+    }
+    return [head, list];
   }
 
   /** 正在合併：說明怎麼處理，並提供「完成合併」「放棄合併」。 */

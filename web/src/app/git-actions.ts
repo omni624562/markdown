@@ -60,9 +60,10 @@ export async function resolveMergeConflict(path: string, theirs: string): Promis
 
 /**
  * 原始碼控制的變更清單點修改過的檔案：打開它，標出和最後一次提交比起來改了哪些地方（在本機比，和有沒有推送無關）。
+ * `upstream`（遠端分支的名稱，例如 `origin/main`）：改成和遠端分支上的版本比較（「還沒推送」清單）。
  * 比較的是編輯器裡目前的內容（包括還沒存檔的部分）；拿不到上一版（例如不是文字檔）時只打開檔案。
  */
-export async function compareWithHead(path: string): Promise<void> {
+export async function compareWithHead(path: string, upstream: string | null = null): Promise<void> {
   if (!desktop) return;
   const existing = app.tabForPath(path);
   if (existing) app.activate(existing);
@@ -70,29 +71,36 @@ export async function compareWithHead(path: string): Promise<void> {
   if (app.cur.fileHandle?.path !== path) return;
   let text: string;
   try {
-    text = await desktop.gitFileAt(path, "HEAD");
+    text = await desktop.gitFileAt(path, upstream ? "UPSTREAM" : "HEAD");
   } catch (e) {
     logError("compareWithHead", e);
     return;
   }
   if (app.cur.fileHandle?.path !== path) return;
   if (app.review.active) app.review.finish();
-  // 上次提交的內容當基準、目前的內容不動：綠色是這次新增或改過的，紅色是上次提交時原本的樣子
+  // 上次提交（或遠端分支上）的內容當基準、目前的內容不動：綠色是之後新增或改過的，紅色是原本的樣子
   // （和平常看到的「改了什麼」一樣，不會先把文件換掉）。上下對照或左右並排照設定。
+  const when = upstream ? t("遠端（{name}）上", { name: upstream }) : t("上次提交時");
   const current = app.editor.view.state.doc.toString();
   const side = app.settings.value.gitCompareLayout === "side";
   const started = app.review.start(current, {
     original: text,
     layout: side ? "side" : "stacked",
-    sideLabels: [t("上次提交時"), t("現在")],
-    title: t("「{name}」改了哪些地方", { name: basename(path) }),
-    hint: side
-      ? t("左邊是上次提交時的樣子，右邊是現在；改過的地方標了顏色。哪一段不要了，按那一段的「改回去」")
-      : t("綠色是這次新增或改過的，紅色是上次提交時原本的樣子。哪一段不要了，按那一段的「改回去」"),
+    sideLabels: [when, t("現在")],
+    title: upstream
+      ? t("「{name}」和遠端比起來改了哪些地方", { name: basename(path) })
+      : t("「{name}」改了哪些地方", { name: basename(path) }),
+    hint: upstream
+      ? side
+        ? t("左邊是遠端上的樣子，右邊是現在；改過的地方標了顏色。哪一段不要了，按那一段的「改回去」")
+        : t("綠色是還沒推送到遠端的新增或修改，紅色是遠端上原本的樣子。哪一段不要了，按那一段的「改回去」")
+      : side
+        ? t("左邊是上次提交時的樣子，右邊是現在；改過的地方標了顏色。哪一段不要了，按那一段的「改回去」")
+        : t("綠色是這次新增或改過的，紅色是上次提交時原本的樣子。哪一段不要了，按那一段的「改回去」"),
     acceptLabel: t("保留"),
     rejectLabel: t("改回去"),
   });
-  if (!started) toast(t("和上次提交時一樣，沒有改動。"));
+  if (!started) toast(upstream ? t("和遠端一樣，沒有改動。") : t("和上次提交時一樣，沒有改動。"));
 }
 
 type BranchChoice = { name: string; kind: "local" | "remote" | "new" };

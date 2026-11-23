@@ -1375,6 +1375,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** `background`：背景的自動檢查，只連到 GitHub 與已連線的 Azure DevOps。 */
     gitFetch: (background = false) => core.invoke<GitStatus>("git_fetch", { background }),
     /** 一個檔案的 Git 狀態（存檔後只更新這一個）；沒有變更時是 null。 */
+    /** 已經提交、還沒推送的檔案（和遠端分支比起來有改的）。 */
+    gitUnpushed: () => core.invoke<GitChange[]>("git_unpushed"),
     gitStatusFile: (path: string) => core.invoke<GitChange | null>("git_status_file", { path }),
     gitPush: () => core.invoke<string>("git_push"),
     historyList: (path: string) => core.invoke<FileVersion[]>("history_list", { path }),

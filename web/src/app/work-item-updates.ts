@@ -252,6 +252,7 @@ export function initWorkItemUpdates(): void {
           open: (path) => void openPath(path).catch(reportError),
           resolve: (path, theirs) => void resolveMergeConflict(path, theirs).catch(reportError),
           compare: (path) => void compareWithHead(path).catch(reportError),
+          compareRemote: (path, upstream) => void compareWithHead(path, upstream).catch(reportError),
           switchBranch: () => void switchBranch().catch(reportError),
           createPr: () => void createPullRequest().catch(reportError),
           history: () => void openGitHistory().catch(reportError),
