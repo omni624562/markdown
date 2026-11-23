@@ -8,6 +8,7 @@ import { t } from "../i18n.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { app } from "./context.ts";
+import { compareWithOld } from "./compare-old.ts";
 import { reportError } from "./git-actions.ts";
 import { storeName } from "./offline-drive.ts";
 import { gitPanel } from "./work-item-updates.ts";
@@ -44,14 +45,12 @@ export function initFileHistory(): void {
 async function compareWithVersion(v: FileVersion & { path: string }): Promise<void> {
   if (!desktop || app.cur.fileHandle?.path !== v.path) return;
   const text = await desktop.historyRead(v.path, v.id);
-  if (app.review.active) app.review.finish();
-  const started = app.review.start(text, {
-    title: t("與 {version} 的版本比較", { version: versionTitle(v.id) }),
-    hint: t("「採用舊版」會把那一段換回舊版的內容，可以用 Ctrl+Z 復原；處理完記得存檔"),
-    acceptLabel: t("採用舊版"),
-    rejectLabel: t("保留目前"),
+  if (app.cur.fileHandle?.path !== v.path) return;
+  compareWithOld(text, {
+    title: t("和 {version} 的版本比較：改了哪些地方", { version: versionTitle(v.id) }),
+    when: t("{version} 的版本", { version: versionTitle(v.id) }),
+    same: t("這個版本和目前的內容相同。"),
   });
-  if (!started) toast(t("這個版本和目前的內容相同。"));
 }
 
 // ---- Git：檔案的提交歷史、網頁連結 --------------------------------------------
@@ -59,14 +58,12 @@ async function compareWithVersion(v: FileVersion & { path: string }): Promise<vo
 export async function compareWithCommit(c: FileCommit & { path: string }): Promise<void> {
   if (!desktop || app.cur.fileHandle?.path !== c.path) return;
   const text = await desktop.gitFileAt(c.path, c.id);
-  if (app.review.active) app.review.finish();
-  const started = app.review.start(text, {
-    title: t("與提交 {commit}（{summary}）的版本比較", { commit: c.short, summary: c.summary }),
-    hint: t("「採用這一版」會把那一段換回這次提交時的內容，可以用 Ctrl+Z 復原；處理完記得存檔"),
-    acceptLabel: t("採用這一版"),
-    rejectLabel: t("保留目前"),
+  if (app.cur.fileHandle?.path !== c.path) return;
+  compareWithOld(text, {
+    title: t("和提交 {commit}（{summary}）比較：改了哪些地方", { commit: c.short, summary: c.summary }),
+    when: t("提交 {commit} 時", { commit: c.short }),
+    same: t("這次提交時的內容和目前相同。"),
   });
-  if (!started) toast(t("這次提交時的內容和目前相同。"));
 }
 
 /** 目前檔案在 GitHub／Azure DevOps 網頁上的網址；有選取文字時標示那幾行。 */

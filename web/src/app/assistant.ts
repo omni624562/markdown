@@ -58,7 +58,7 @@ import { availableRightTabs, selectRightTab } from "./right-tabs.ts";
 import { app } from "./context.ts";
 import { cometLocked, unlockComet } from "./comet-files.ts";
 import { type Cite, appendMarks, citeMarks } from "../assistant-cites.ts";
-import { citesMarkdown, linkCites } from "./assistant-cites.ts";
+import { citesMarkdown, linkCites, rememberNotes } from "./assistant-cites.ts";
 import { docName as tabName } from "./doc-names.ts";
 import { issueView } from "./wiki-edit.ts";
 import { settingsDialog } from "./settings-ui.ts";
@@ -687,17 +687,23 @@ async function send(question: string, action: AssistantAction | null = null, cou
   };
   // 一般問答：目前的文件送成可以標出處的區塊（回答會指出根據的是哪一段）；會改文件的動作照舊放在訊息裡。
   const citeDoc = mode === "answer" && ctx.doc?.text.trim() ? ctx.doc : null;
-  const content = userContent(question, citeDoc ? { ...ctx, doc: null } : ctx);
+  // 問整個專案：筆記也送成可以標出處的區塊（一篇一個），按出處就能打開那篇、跳到那一段。
+  const content = userContent(question, { ...ctx, doc: citeDoc ? null : ctx.doc, notes: undefined });
   const system = systemPrompt(mode, project);
   const model = app.settings.value.claudeModel;
   const images = attached.map(({ mediaType, data }) => ({ mediaType, data }));
   const documents = pdfs.map(({ mediaType, data }) => ({ mediaType, data }));
   const pdfChars = pdfs.reduce((n, p) => n + p.pages * PDF_PAGE_CHARS, 0);
-  if (!(await confirmFirst(content.length + (citeDoc?.text.length ?? 0) + system.length + images.length * IMAGE_CHARS + pdfChars, model))) return;
+  const noteChars = notes?.reduce((n, x) => n + x.text.length, 0) ?? 0;
+  if (!(await confirmFirst(content.length + (citeDoc?.text.length ?? 0) + noteChars + system.length + images.length * IMAGE_CHARS + pdfChars, model))) return;
   // 會改文件的動作不接續之前的對話（只看這一次的內容）。
   const messages = conversation(mode === "answer" ? history : [], content);
   if (images.length) messages[messages.length - 1] = { ...messages[messages.length - 1], images };
   if (citeDoc) messages[messages.length - 1] = { ...messages[messages.length - 1], doc: citeDoc };
+  if (notes?.length) {
+    messages[messages.length - 1] = { ...messages[messages.length - 1], notes: notes.map((n) => ({ name: n.rel, text: n.text })) };
+    rememberNotes(notes.map((n) => n.rel));
+  }
   // PDF 附在這次對話的第一則訊息：之後接著問時前面的內容一樣，可以從快取讀取（比較便宜）。
   if (documents.length) messages[0] = { ...messages[0], images: [...documents, ...(messages[0].images ?? [])] };
   // 上網查只用在一般問答，而且設定裡要允許。

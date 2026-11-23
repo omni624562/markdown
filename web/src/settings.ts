@@ -171,7 +171,7 @@ export interface Settings {
   /** 開啟的資料夾是 Git 儲存庫時，定時提交、拉取、推送。預設關閉。 */
   gitAutoSync: boolean;
   gitSyncMinutes: 5 | 10 | 30 | 60;
-  /** 原始碼控制「看改了哪些地方」：`stacked` 上下對照（在文件裡標出來，預設）、`side` 左右並排。 */
+  /** 和舊版本比較「改了哪些地方」（原始碼控制、提交歷史、版本紀錄）：`stacked` 上下對照（在文件裡標出來，預設）、`side` 左右並排。 */
   gitCompareLayout: "stacked" | "side";
   /** 左側圖示列：面板圖示的順序（沒列到的照預設順序排在後面）。 */
   activityOrder: string[];

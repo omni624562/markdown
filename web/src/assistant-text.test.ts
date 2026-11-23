@@ -150,14 +150,17 @@ test("問整個專案：依問題挑出相關的筆記，超過字數上限就�
   ];
   const picked = pickNotes(notes, "NAS 備份怎麼做");
   assert.deepEqual(picked.map((n) => n.name), ["NAS 備份規劃", "電腦清單"]);
+  // 專案裡的位置（送出時當文件標題，按出處時打開這個檔案）。
+  assert.deepEqual(picked.map((n) => n.rel), ["NAS 備份規劃.md", "電腦清單.md"]);
   // 一篇都沒對到時照名稱順序全部送（在上限內）。
   assert.equal(pickNotes(notes, "天氣").length, 3);
   // 字數上限：第二篇放不下就停；太長的只送前面一段。
   const small = pickNotes(notes, "NAS 備份", { total: 20, perNote: 10 });
   assert.deepEqual(small.map((n) => n.text), ["每晚把照片備份到 N\n…"]);
-  assert.match(systemPrompt("answer", true), /\[\[筆記名稱\]\]/);
-  assert.doesNotMatch(systemPrompt("answer"), /<note>/);
-  assert.equal(userContent("問", { doc: null, selection: "", notes: [{ name: "a\"b", text: "內容" }] }), "<note name=\"a'b\">\n內容\n</note>\n\n問");
+  // 筆記送成可以標出處的文件：系統提示說明附上的文件是專案的筆記。
+  assert.match(systemPrompt("answer", true), /附上的文件是使用者專案裡的筆記/);
+  assert.doesNotMatch(systemPrompt("answer"), /專案裡的筆記/);
+  assert.equal(userContent("問", { doc: null, selection: "", notes: [{ name: "a\"b", rel: "a.md", text: "內容" }] }), "<note name=\"a'b\">\n內容\n</note>\n\n問");
 });
 
 test("今日簡報：只列還沒完成的待辦，有截止日的依日期在前，寫出在哪份筆記與負責人", () => {

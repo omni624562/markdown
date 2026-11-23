@@ -1276,7 +1276,7 @@ export class SettingsDialog {
         this.#row(
           "gitCompareLayout",
           t("比較的方式"),
-          t("原始碼控制的變更清單點修改過的檔案時：上下對照是在文件裡標出原本和現在；左右並排是左邊上次提交、右邊現在"),
+          t("原始碼控制的變更清單、提交歷史與版本紀錄的比較：上下對照是在文件裡標出原本和現在；左右並排是左邊舊的、右邊現在"),
           () => this.#control("gitCompareLayout"),
         ),
       ]),

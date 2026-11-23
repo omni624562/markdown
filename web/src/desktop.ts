@@ -714,6 +714,8 @@ export interface AssistantMessage {
   images?: AssistantImage[];
   /** 目前的文件（一般問答）：送成可以標出處的區塊，回答會指出根據的是哪一段。 */
   doc?: { name: string; text: string };
+  /** 問整個專案時挑出的筆記：一篇一個可以標出處的區塊，標題是筆記在專案裡的位置。 */
+  notes?: { name: string; text: string }[];
 }
 
 /** 助理的一個批次（見 desktop/src/assistant_batch.rs）。 */
