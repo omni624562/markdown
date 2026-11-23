@@ -2,6 +2,7 @@
  * 桌面版（Tauri）專用的橋接：原生對話框、資料夾工作區、檔案監看、全文搜尋、圖片存檔、AI 協作。
  * 在一般瀏覽器裡 `desktop` 為 null，其餘程式碼照常走網頁 API。
  */
+import { isMobileApp } from "./platform.ts";
 import type { UsageHistory } from "./usage-summary.ts";
 import type { DocInfo } from "./doc-index.ts";
 import type { FileRef } from "./links.ts";
@@ -713,6 +714,8 @@ export interface AssistantMessage {
   images?: AssistantImage[];
   /** 目前的文件（一般問答）：送成可以標出處的區塊，回答會指出根據的是哪一段。 */
   doc?: { name: string; text: string };
+  /** 問整個專案時挑出的筆記：一篇一個可以標出處的區塊，標題是筆記在專案裡的位置。 */
+  notes?: { name: string; text: string }[];
 }
 
 /** 助理的一個批次（見 desktop/src/assistant_batch.rs）。 */
@@ -1369,7 +1372,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<string>("ado_wiki_attach", { projectId: w.projectId, wikiId: w.wikiId, name, ext, data }),
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
-    gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
+    /** `paths`：只提交這幾個檔案（變更清單裡勾選的）；省略時提交全部。 */
+    gitCommit: (message: string, paths?: string[]) => core.invoke<string>("git_commit", { message, paths: paths ?? null }),
     gitPull: () => core.invoke<string>("git_pull"),
     /** 只向遠端抓取最新的提交（不合併），回傳更新後的狀態（知道遠端多了幾個提交）。 */
     /** `background`：背景的自動檢查，只連到 GitHub 與已連線的 Azure DevOps。 */
@@ -1436,5 +1440,13 @@ function offlineAware(core: TauriCore): TauriCore {
   };
 }
 
+// Android 版也有 `window.__TAURI__`，但沒有桌面版的原生指令：當成網頁版（見 platform.ts）。
 export const desktop: Desktop | null =
-  typeof window !== "undefined" && window.__TAURI__ ? bridge(offlineAware(window.__TAURI__.core), window.__TAURI__.event) : null;
+  typeof window !== "undefined" && window.__TAURI__ && !isMobileApp ? bridge(offlineAware(window.__TAURI__.core), window.__TAURI__.event) : null;
+
+/**
+ * 有原生端的殼（桌面版或 Android 版）。Android 版的原生端只有 Claude API 助理（`assistant_*`）與 `save_settings`
+ * （android/src/lib.rs）；其他指令只有桌面版有，所以其他功能照舊看 `desktop`。
+ */
+export const native: Desktop | null =
+  desktop ?? (typeof window !== "undefined" && window.__TAURI__ && isMobileApp ? bridge(window.__TAURI__.core, window.__TAURI__.event) : null);

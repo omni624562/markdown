@@ -234,6 +234,78 @@ test("還沒推送：列出已提交、還沒推送的檔案；修改過的點�
   await context.close();
 });
 
+test("只提交勾選的檔案：取消勾選的不提交，按鈕寫出幾個檔案；全部勾選時照舊提交全部", async () => {
+  const status = {
+    ...STATUS,
+    changes: [
+      { path: "/notes/a.md", status: "modified" },
+      { path: "/notes/b.md", status: "modified" },
+      { path: "/notes/new.md", status: "untracked" },
+    ],
+  };
+  const { page, context, errors } = await openGit({ github_account: null, git_status: status, git_fetch: status, git_commit: "abc1234 修改" });
+  const checks = page.locator("#git-host .git-files .git-file-check");
+  assert.equal(await checks.count(), 3);
+  assert.deepEqual(await checks.evaluateAll((els) => els.map((el) => el.checked)), [true, true, true], "預設全部勾選");
+  // 取消勾選 b.md：按鈕寫出提交 2 個檔案，提交說明的預設值也只算勾選的。
+  await page.getByRole("checkbox", { name: "提交「b.md」" }).uncheck();
+  const commit = page.locator("#git-host .git-actions button").first();
+  assert.equal(await commit.getAttribute("aria-label"), "提交（只提交勾選的 2 個檔案）");
+  assert.equal(await commit.locator(".git-count").textContent(), "2");
+  assert.equal(await page.locator("#git-host .git-changes-head .git-file-check").evaluate((el) => el.indeterminate), true);
+  assert.match(await page.locator("#git-host textarea").getAttribute("placeholder"), /更新 2 個檔案/);
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "提交「b.md」", "焦點留在勾選框");
+  await commit.click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "git_commit"));
+  let call = (await calls(page)).filter((c) => c.cmd === "git_commit").at(-1);
+  assert.deepEqual(call.args, { message: "更新 2 個檔案", paths: ["/notes/a.md", "/notes/new.md"] });
+  // 部分勾選時按全選：全部勾選；再按一次全部取消，提交按鈕停用；再勾回全部時照舊提交全部（不帶路徑）。
+  const all = page.locator("#git-host .git-changes-head .git-file-check");
+  await all.check();
+  assert.deepEqual(await checks.evaluateAll((els) => els.map((el) => el.checked)), [true, true, true]);
+  await all.uncheck();
+  assert.equal(await commit.isDisabled(), true);
+  await all.check();
+  assert.equal((await commit.textContent()).trim(), "提交");
+  assert.equal(await commit.getAttribute("aria-label"), null);
+  await commit.click();
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "git_commit").length === 2);
+  call = (await calls(page)).filter((c) => c.cmd === "git_commit").at(-1);
+  assert.deepEqual(call.args, { message: "更新 3 個檔案", paths: null });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("變更清單：「捨棄修改」換回上次提交的內容並存檔；通知上的「復原」拿回來", async () => {
+  const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }, { path: "/notes/new.md", status: "untracked" }] };
+  const { page, context, errors } = await openGit({
+    github_account: null,
+    git_status: status,
+    git_fetch: status,
+    reopen_file: { path: "/notes/a.md", name: "a.md", text: "# 會議紀錄\n\n下週三交報告。\n", encoding: "utf-8" },
+    git_file_at: "# 會議紀錄\n\n下週一交報告。\n",
+    save_file: { status: "saved" },
+  });
+  const row = page.locator("#git-host .git-files li", { hasText: "a.md" });
+  const discard = row.locator(".git-file-discard");
+  assert.equal(await discard.getAttribute("aria-label"), "a.md：捨棄修改");
+  assert.equal(await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator(".git-file-discard").count(), 0, "新檔案沒有上一版");
+  await discard.click();
+  const content = () => page.evaluate(() => document.querySelector("#editor .cm-content")?.textContent ?? "");
+  await page.waitForFunction(() => document.querySelector("#editor .cm-content")?.textContent?.includes("下週一"));
+  const saves = () => page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "save_file").map((c) => c.args.text ?? c.args.req?.text ?? JSON.stringify(c.args)));
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "save_file"));
+  assert.match((await saves()).at(-1), /下週一/);
+  const note = page.locator(".toast", { hasText: "已把「a.md」改回上次提交時的內容" });
+  await note.getByRole("button", { name: "復原" }).click();
+  await page.waitForFunction(() => document.querySelector("#editor .cm-content")?.textContent?.includes("下週三"));
+  assert.doesNotMatch(await content(), /下週一/);
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "save_file").length >= 2);
+  assert.match((await saves()).at(-1), /下週三/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("沒有領先遠端時不讀、不顯示「還沒推送」", async () => {
   const status = { ...STATUS, branch: { ...STATUS.branch, ahead: 0 } };
   const { page, context, errors } = await openGit({ github_account: null, git_status: status, git_fetch: status });
@@ -241,4 +313,42 @@ test("沒有領先遠端時不讀、不顯示「還沒推送」", async () => {
   assert.equal((await calls(page)).some((c) => c.cmd === "git_unpushed"), false);
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+test("版本紀錄的比較和原始碼控制一樣：綠色是現在、紅色是舊版；設成左右並排時也是並排", async () => {
+  for (const layout of ["stacked", "side"]) {
+    const { page, context, errors } = await openGit({
+      github_account: null,
+      load_settings: JSON.stringify({ gitCompareLayout: layout }),
+      reopen_file: { path: "/notes/a.md", name: "a.md", text: "# 會議紀錄\n\n下週三交報告。\n", encoding: "utf-8" },
+      history_list: [[{ id: Date.UTC(2026, 10, 20, 2, 0), kind: "save", size: 30 }]],
+      history_read: "# 會議紀錄\n\n下週一交報告。\n",
+    });
+    // 打開檔案（拿不到上次提交的內容時只打開，不比較）。
+    await page.locator("#git-host .git-files li", { hasText: "a.md" }).locator("button").first().click();
+    await page.locator(".tab", { hasText: "a.md" }).first().waitFor();
+    await page.keyboard.press("Control+Shift+P");
+    await page.keyboard.type("版本紀錄");
+    await page.keyboard.press("Enter");
+    await page.locator("dialog.palette[open][aria-label=\"版本紀錄\"] [role=option]").first().click();
+    const bar = page.locator("#review-bar");
+    await bar.getByText("改了哪些地方").waitFor();
+    if (layout === "side") {
+      const side = page.locator(".review-side");
+      await side.waitFor();
+      const heads = await side.locator(".review-side-heads span").allTextContents();
+      assert.match(heads[0], /的版本$/);
+      assert.equal(heads[1], "現在");
+    } else {
+      const look = await page.evaluate(() => ({
+        inserted: [...document.querySelectorAll(".cm-changedLine")].map((el) => el.textContent).join(""),
+        deleted: [...document.querySelectorAll(".cm-deletedChunk")].map((el) => el.textContent).join(""),
+      }));
+      assert.match(look.inserted, /下週三/, "綠色是現在");
+      assert.match(look.deleted, /下週一/, "紅色是舊版");
+      assert.equal(await bar.getByRole("button", { name: "全部改回去" }).isVisible(), true);
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });

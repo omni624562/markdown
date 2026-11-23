@@ -19,7 +19,7 @@ import { app } from "./context.ts";
 import { openPath, panelAvailable, setWikiRight, showPanel, wikiRightWanted } from "./workspace-ui.ts";
 import { initOfflineBanner } from "./offline-banner.ts";
 import { commands } from "./commands.ts";
-import { compareWithHead, createPullRequest, reportError, resolveMergeConflict, switchBranch } from "./git-actions.ts";
+import { compareWithHead, createPullRequest, discardChanges, reportError, resolveMergeConflict, switchBranch } from "./git-actions.ts";
 import { issueView } from "./wiki-edit.ts";
 import { openWorkItemById } from "./quick-open.ts";
 import { refreshActivityCommands } from "./activity-bar.ts";
@@ -253,6 +253,7 @@ export function initWorkItemUpdates(): void {
           resolve: (path, theirs) => void resolveMergeConflict(path, theirs).catch(reportError),
           compare: (path) => void compareWithHead(path).catch(reportError),
           compareRemote: (path, upstream) => void compareWithHead(path, upstream).catch(reportError),
+          discard: (path) => void discardChanges(path).catch(reportError),
           switchBranch: () => void switchBranch().catch(reportError),
           createPr: () => void createPullRequest().catch(reportError),
           history: () => void openGitHistory().catch(reportError),

@@ -1095,7 +1095,7 @@ mod tests {
 
     fn write_commit(dir: &Path, file: &str, text: &str, msg: &str) -> String {
         fs::write(dir.join(file), text).unwrap();
-        crate::git::commit_at(dir, msg, Some(&me())).unwrap();
+        crate::git::commit_at(dir, msg, Some(&me()), None).unwrap();
         head_oid(&Repository::open(dir).unwrap())
             .unwrap()
             .to_string()

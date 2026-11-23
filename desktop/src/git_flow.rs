@@ -475,7 +475,7 @@ mod tests {
     }
 
     fn commit_all(dir: &Path, msg: &str) {
-        crate::git::commit_at(dir, msg, Some(&me())).unwrap();
+        crate::git::commit_at(dir, msg, Some(&me()), None).unwrap();
     }
 
     /// 建立 origin 與本機兩份副本，兩邊改到同一行，再讓本機抓到 origin 的提交。

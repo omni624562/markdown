@@ -407,7 +407,7 @@ test("附圖片：在輸入框貼上圖片變成小標籤，送出時圖片附�
   await context.close();
 });
 
-test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]] 點了會打開那份筆記", async () => {
+test("問整個專案：相關的筆記一篇一個可以標出處的區塊；按出處編號就打開那篇筆記、選取那一段", async () => {
   const docs = [
     { path: `${ROOT}\\NAS 備份規劃.md`, rel: "NAS 備份規劃.md", mtime: 1, info: { tasks: [], tags: [], links: [] } },
     { path: `${ROOT}\\家用網路.md`, rel: "家用網路.md", mtime: 1, info: { tasks: [], tags: [], links: [] } },
@@ -415,10 +415,12 @@ test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]]
   const d = desktop({ ...ON, assistantConfirmed: [ROOT] });
   d.scan_docs = [docs];
   const [nas, net] = docs.map((x) => x.path);
+  const NAS = "# NAS 備份規劃\n\n每晚把照片備份到 NAS。\n";
   d.read_docs = {
     $by: "paths",
-    values: { [`${nas},${net}`]: ["每晚把照片備份到 NAS。", "路由器在客廳。"], [`${net},${nas}`]: ["路由器在客廳。", "每晚把照片備份到 NAS。"] },
+    values: { [`${nas},${net}`]: [NAS, "路由器在客廳。"], [`${net},${nas}`]: ["路由器在客廳。", NAS] },
   };
+  d.reopen_file = { $by: "path", values: { [nas]: { path: nas, name: "NAS 備份規劃.md", text: NAS, encoding: "utf-8" } } };
   const { page, context, errors } = await open({ desktop: d });
   await openProject(page);
   await page.keyboard.press("Control+N");
@@ -434,14 +436,25 @@ test("問整個專案：送出和問題相關的筆記，回答裡的 [[出處]]
   await panel.locator("textarea").press("Enter");
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
   const [{ request }] = await sends(page);
-  assert.match(request.messages[0].content, /<note name="NAS 備份規劃">\n每晚把照片備份到 NAS。\n<\/note>/);
-  assert.doesNotMatch(request.messages[0].content, /路由器/);
-  assert.match(request.system, /\[\[筆記名稱\]\]/);
+  // 筆記不放在訊息文字裡，而是一篇一個區塊，標題是在專案裡的位置。
+  const last = request.messages.at(-1);
+  assert.deepEqual(last.notes, [{ name: "NAS 備份規劃.md", text: NAS }]);
+  assert.doesNotMatch(last.content, /<note|路由器/);
+  assert.match(request.system, /附上的文件是使用者專案裡的筆記/);
   assert.match(await panel.locator(".assistant-scope").textContent(), /根據專案裡 1 篇筆記/);
-  await reply(page, "每晚自動備份 [[NAS 備份規劃]]。");
-  const cite = panel.locator(".assistant-answer a[data-wikilink]");
-  await cite.waitFor();
-  assert.equal(await cite.textContent(), "NAS 備份規劃");
+  await page.evaluate(() => {
+    const id = window.__fake.calls.filter((c) => c.cmd === "assistant_send").at(-1).args.id;
+    window.__fake.emit("assistant-run", { kind: "delta", id, text: "每晚自動備份。" });
+    window.__fake.emit("assistant-run", { kind: "cite", id, cites: [{ text: "每晚把照片備份到 NAS。", title: "NAS 備份規劃.md", start: 12, page: null }] });
+    window.__fake.emit("assistant-run", { kind: "done", id, usd: 0.01, monthUsd: 0.43, stop: null });
+  });
+  const answer = panel.locator(".assistant-assistant").last();
+  await answer.locator("li").first().waitFor();
+  // 出處清單寫出是哪一篇筆記。
+  assert.deepEqual(await answer.locator("li").allTextContents(), ["1 NAS 備份規劃：「每晚把照片備份到 NAS。」"]);
+  await answer.locator("p .assistant-cite").first().click();
+  await page.locator(".tab", { hasText: "NAS 備份規劃.md" }).first().waitFor();
+  await page.waitForFunction(() => window.getSelection().toString() === "每晚把照片備份到 NAS。");
   assert.deepEqual(errors, []);
   await context.close();
 });

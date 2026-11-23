@@ -1256,8 +1256,8 @@ function renderEmptyState(text: string): void {
     tips: [
       { keys: keysOf("quick-open"), label: t("找檔案"), run: run("quick-open") },
       { keys: keysOf("palette"), label: t("所有指令"), run: run("palette") },
-      { keys: keysOf("show-shortcuts"), label: t("快速鍵一覽"), run: () => showShortcuts() },
-      { label: t("把檔案拖進視窗就能開啟") },
+      { keys: keysOf("show-shortcuts"), label: t("快速鍵一覽"), run: () => showShortcuts(), keyboard: true },
+      { label: t("把檔案拖進視窗就能開啟"), keyboard: true },
     ],
     tour: () => openWelcome(),
   });

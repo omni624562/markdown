@@ -5,6 +5,8 @@ pub static EN: &[(&str, &str)] = &[
     ("這個儲存庫正在合併：請先在原始碼控制面板處理完衝突並按「完成合併」，或按「放棄合併」", "This repository is in the middle of a merge. Resolve the conflicts in the Source Control panel and click \"Finish Merge\", or click \"Abort Merge\"."),
     ("提交需要你的名字與 Email：請先到設定的 GitHub 頁「用 GitHub 登入」，或到 Azure DevOps 頁連線", "Committing requires your name and email. Click \"Sign In with GitHub\" on the GitHub page in Settings, or connect on the Azure DevOps page."),
     ("請輸入提交說明", "Enter a commit message."),
+    ("請勾選要提交的檔案", "Select the files to commit."),
+    ("這個檔案不在目前的資料夾裡：{path}", "This file isn't in the current folder: {path}"),
     ("提交失敗：{e}", "Commit failed: {e}"),
     ("目前只支援 HTTPS 的遠端網址（例如 https://github.com/…）。這個儲存庫的遠端是：{url}", "Only HTTPS remote URLs are supported (for example https://github.com/…). This repository's remote is: {url}"),
     ("需要登入", "Sign-in required."),

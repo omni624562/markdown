@@ -3,6 +3,8 @@
  * 支援 File System Access API 的瀏覽器（Chrome、Edge）可以直接寫回原檔；
  * 其他瀏覽器則退回「選擇檔案」與「下載」。
  */
+import { mobileSaveBytes } from "./mobile-files.ts";
+import { isMobileApp } from "./platform.ts";
 import { type DesktopFile, desktop } from "./desktop.ts";
 import { t } from "./i18n.ts";
 import { type DocKind, KINDS, OPEN_ACCEPT, notTextReason } from "./kinds.ts";
@@ -197,6 +199,8 @@ export async function download(filename: string, content: string, type: string):
     });
     return saved.status === "saved";
   }
+  // Android 版的 WebView 下載連結沒有作用：改用系統的存檔對話框。
+  if (isMobileApp) return (await mobileSaveBytes(filename, new TextEncoder().encode(content))) !== null;
   const url = URL.createObjectURL(new Blob([content], { type: `${type};charset=utf-8` }));
   const a = document.createElement("a");
   a.href = url;
@@ -223,6 +227,7 @@ export async function downloadBytes(filename: string, bytes: Uint8Array, type: s
     const ext = filename.slice(filename.lastIndexOf("."));
     return desktop.exportBinary(filename, bytesToBase64(bytes), filterName, [ext], saveDirectory());
   }
+  if (isMobileApp) return mobileSaveBytes(filename, bytes);
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
   const a = document.createElement("a");
   a.href = url;

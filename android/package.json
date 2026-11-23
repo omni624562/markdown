@@ -1,0 +1,11 @@
+{
+  "name": "omarker-android",
+  "private": true,
+  "description": "只為了固定 Tauri 命令列工具的版本（編 Android 版時 Gradle 會呼叫它）。",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}

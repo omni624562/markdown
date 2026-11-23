@@ -3,7 +3,8 @@
  * 金鑰交給原生端存進 Windows 認證管理員，這裡只顯示有沒有設定。
  */
 import { MODEL_LABELS, formatUsd, listed, toggled } from "../assistant-text.ts";
-import { type Project, desktop } from "../desktop.ts";
+import { type Project, native } from "../desktop.ts";
+import { isMobileApp } from "../platform.ts";
 import { t } from "../i18n.ts";
 import { ASSISTANT_ACTION_LIMITS, ASSISTANT_FONT_RANGE, type AssistantCustomAction, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFAULT_SETTINGS } from "../settings.ts";
 import { askText } from "../ui/choice.ts";
@@ -137,7 +138,8 @@ function customActionsEditor(): { box: HTMLElement; render: () => void } {
 
 /** 設定裡「Claude API 助理」那一頁的說明與選項。 */
 export function assistantSettings(): { desc: string; content: HTMLElement[] } | null {
-  const d = desktop;
+  // 桌面版與 Android 版（原生端有助理）才有這一頁。
+  const d = native;
   if (!d) return null;
   const s = () => app.settings.value;
   const desc = t("用你自己的 Claude API 金鑰，在右側的助理問問題、摘要、改寫、翻譯。只在私人電腦使用，公司電腦請保持關閉；Azure DevOps 的內容一律不會送出。");
@@ -246,7 +248,10 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
       }),
     );
   };
-  const refreshProjects = async () => renderProjects(await d.projects().catch(() => []));
+  // Android 版沒有專案資料夾：不分專案（不列出專案清單）。
+  const refreshProjects = async () => {
+    if (!isMobileApp) renderProjects(await d.projects().catch(() => []));
+  };
 
   const web = switchInput(s().claudeWebSearch, (on) => app.settings.update({ claudeWebSearch: on }));
   web.dataset.key = "claudeWebSearch";
@@ -259,9 +264,7 @@ export function assistantSettings(): { desc: string; content: HTMLElement[] } | 
     row("assistantFontSize", t("字級"), t("助理側欄的字；在助理裡也可以按 Ctrl+=、Ctrl+-"), font),
     row("claudeMonthlyLimit", t("每月上限"), t("這個月估計的費用到了上限就停止送出"), limitBox, used),
     row("claudeWebSearch", t("允許上網查資料"), t("按「上網查」的那一題才搜尋（每次約 US$0.01）；也會讀問題裡的網址"), web),
-    projectsTitle,
-    projects,
-    projectsHint,
+    ...(isMobileApp ? [] : [projectsTitle, projects, projectsHint]),
     custom.box,
   );
   card.append(

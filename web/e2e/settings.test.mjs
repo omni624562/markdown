@@ -221,6 +221,29 @@ test("設定（桌面版）：在系統的確認對話框拒絕開啟 AI 協作�
   await context.close();
 });
 
+test("設定（手機寬度）：佔滿整個畫面、開關留在右邊不被說明擠下去、選到的分類捲進畫面", async () => {
+  const { page, context, errors } = await open({ desktop: {} });
+  await page.setViewportSize({ width: 412, height: 915 });
+  await desktopCommand(page, "設定");
+  const dialog = page.locator("dialog[open].settings");
+  await dialog.waitFor();
+  const box = await dialog.boundingBox();
+  assert.ok(box.x <= 1 && box.y <= 1 && box.width >= 411 && box.height >= 914, JSON.stringify(box));
+  // 「Git 與 GitHub」的說明很長：開關仍然和名稱同一行，在右邊。
+  const row = page.locator("dialog[open] .settings-row", { has: page.locator("label", { hasText: "Git 與 GitHub" }) });
+  const label = await row.locator("label").first().boundingBox();
+  const sw = await row.locator(".switch").boundingBox();
+  assert.ok(sw.y < label.y + label.height, `開關掉到下一行：${JSON.stringify({ label, sw })}`);
+  assert.ok(sw.x > box.width / 2, `開關不在右邊：${JSON.stringify(sw)}`);
+  // 分類排成一列可以左右捲：點最後一個，它整個在畫面裡。
+  const last = page.locator("dialog[open] [role=tab]").last();
+  await last.click();
+  const tab = await last.boundingBox();
+  assert.ok(tab.x >= 0 && tab.x + tab.width <= 412 + 1, JSON.stringify(tab));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("設定改了就套用：右上角只有關閉（✕），沒有「完成」", async () => {
   const { page, context, errors } = await open();
   await runCommand(page, "設定");
