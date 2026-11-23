@@ -120,6 +120,8 @@ export class GitPanel {
   #message: HTMLTextAreaElement;
   /** 這次合併中，每個衝突檔案「都採用遠端」的內容（重新開啟程式後就沒有了）。 */
   #theirs = new Map<string, string>();
+  /** 變更清單裡取消勾選的檔案（這次不提交）；預設全部勾選。 */
+  #unchecked = new Set<string>();
   /** 面板標題列的按鈕（和其他面板一樣放在標題旁邊）：Git 歷史、建立 PR、立刻檢查遠端。 */
   #head: HTMLElement;
   #historyButton: HTMLButtonElement;
@@ -319,18 +321,33 @@ export class GitPanel {
     sync.append(pull, push);
     branch.append(info, sync);
 
-    // 提交
+    // 提交（只提交勾選的檔案）
     const root = this.#hooks.root() ?? "";
-    this.#message.placeholder = changes.length
-      ? t("提交說明（留空就用「{message}」）", { message: defaultMessage(changes, baseName) })
-      : t("沒有需要提交的變更");
+    for (const p of this.#unchecked) if (!changes.some((c) => c.path === p)) this.#unchecked.delete(p);
+    const picked = this.#picked();
+    this.#message.placeholder = !changes.length
+      ? t("沒有需要提交的變更")
+      : picked.length
+        ? t("提交說明（留空就用「{message}」）", { message: defaultMessage(picked, baseName) })
+        : t("勾選要提交的檔案");
     this.#message.disabled = this.#busy || !changes.length || s.merging;
     const actions = document.createElement("div");
     actions.className = "git-actions";
     const commit = this.#button(t("提交"), "git-commit-horizontal", () => this.commit(false));
     const commitPush = this.#button(t("提交並推送"), "arrow-up-from-line", () => this.commit(true));
-    for (const el of [commit, commitPush]) el.disabled = this.#busy || !changes.length || s.merging;
+    for (const el of [commit, commitPush]) el.disabled = this.#busy || !picked.length || s.merging;
     commit.title = t("提交（Ctrl+Enter）");
+    // 只勾了一部分：按鈕旁邊標出要提交幾個檔案（和拉取、推送的數字一樣）。
+    if (picked.length && picked.length < changes.length) {
+      for (const [el, label] of [
+        [commit, t("提交")],
+        [commitPush, t("提交並推送")],
+      ] as const) {
+        el.append(count(picked.length));
+        el.setAttribute("aria-label", t("{label}（只提交勾選的 {n} 個檔案）", { label, n: picked.length }));
+      }
+      commit.title = t("只提交勾選的 {n} 個檔案（Ctrl+Enter）", { n: picked.length });
+    }
     if (signIn) {
       commitPush.disabled = true;
       commitPush.title = t("登入 GitHub 才能推送；可以先按「提交」，登入後再推送。");
@@ -343,11 +360,41 @@ export class GitPanel {
     head.className = "git-changes-head";
     head.textContent = changes.length ? t("變更（{n}）", { n: changes.length }) : t("沒有變更");
     if (changes.some((c) => c.status === "conflicted")) head.textContent += t("・有衝突");
+    // 全選：勾了一部分時是「部分勾選」的樣子。
+    if (changes.length && !s.merging) {
+      const all = document.createElement("input");
+      all.type = "checkbox";
+      all.className = "git-file-check";
+      all.checked = picked.length === changes.length;
+      all.indeterminate = picked.length > 0 && picked.length < changes.length;
+      all.setAttribute("aria-label", t("全部提交"));
+      all.title = t("全部勾選或全部取消");
+      all.addEventListener("change", () => {
+        this.#unchecked = all.checked ? new Set() : new Set(changes.map((c) => c.path));
+        this.#rerenderKeeping(null);
+      });
+      head.prepend(all);
+    }
     const list = document.createElement("ul");
     list.className = "git-files";
     list.append(
       ...changes.map((c) => {
         const li = document.createElement("li");
+        if (!s.merging) {
+          const check = document.createElement("input");
+          check.type = "checkbox";
+          check.className = "git-file-check";
+          check.checked = !this.#unchecked.has(c.path);
+          check.dataset.path = c.path;
+          check.setAttribute("aria-label", t("提交「{name}」", { name: baseName(c.path) }));
+          check.title = t("勾選的檔案才會提交");
+          check.addEventListener("change", () => {
+            if (check.checked) this.#unchecked.delete(c.path);
+            else this.#unchecked.add(c.path);
+            this.#rerenderKeeping(c.path);
+          });
+          li.append(check);
+        }
         const btn = document.createElement("button");
         btn.type = "button";
         btn.dataset.status = c.status;
@@ -498,6 +545,18 @@ export class GitPanel {
     return !!s.remote && /^https:\/\/github\.com\//i.test(s.remote) && !this.#github.account;
   }
 
+  /** 變更清單裡勾選的檔案（這次要提交的）。 */
+  #picked(): GitChange[] {
+    return (this.#status?.changes ?? []).filter((c) => !this.#unchecked.has(c.path));
+  }
+
+  /** 勾選框改了之後重畫，焦點放回同一個勾選框（用鍵盤勾的時候不會跳走）。 */
+  #rerenderKeeping(path: string | null): void {
+    this.#render();
+    const sel = path === null ? ".git-changes-head .git-file-check" : `.git-file-check[data-path="${CSS.escape(path)}"]`;
+    this.#host.querySelector<HTMLInputElement>(sel)?.focus();
+  }
+
   #button(label: string, iconName: string, run: () => Promise<void>): HTMLButtonElement {
     const el = document.createElement("button");
     el.type = "button";
@@ -609,9 +668,16 @@ export class GitPanel {
       toast(t("沒有需要提交的變更。"));
       return;
     }
-    const message = this.#message.value.trim() || defaultMessage(changes, baseName);
+    const picked = this.#picked();
+    if (!picked.length) {
+      toast(t("勾選要提交的檔案"));
+      return;
+    }
+    const message = this.#message.value.trim() || defaultMessage(picked, baseName);
+    // 全部勾選：照舊提交整個資料夾；只勾一部分：只提交那幾個檔案。
+    const paths = picked.length < changes.length ? picked.map((c) => c.path) : undefined;
     const ok = await this.#run(t("提交失敗"), async () => {
-      const summary = await this.#d.gitCommit(message);
+      const summary = await this.#d.gitCommit(message, paths);
       return t("已提交：{summary}", { summary });
     });
     if (!ok) return;

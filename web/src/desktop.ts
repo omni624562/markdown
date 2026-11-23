@@ -1369,7 +1369,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
       core.invoke<string>("ado_wiki_attach", { projectId: w.projectId, wikiId: w.wikiId, name, ext, data }),
     adoWikiImage: (w: AdoWiki, path: string) =>
       core.invoke<string>("ado_wiki_image", { projectId: w.projectId, repositoryId: w.repositoryId, path, version: w.version }),
-    gitCommit: (message: string) => core.invoke<string>("git_commit", { message }),
+    /** `paths`：只提交這幾個檔案（變更清單裡勾選的）；省略時提交全部。 */
+    gitCommit: (message: string, paths?: string[]) => core.invoke<string>("git_commit", { message, paths: paths ?? null }),
     gitPull: () => core.invoke<string>("git_pull"),
     /** 只向遠端抓取最新的提交（不合併），回傳更新後的狀態（知道遠端多了幾個提交）。 */
     /** `background`：背景的自動檢查，只連到 GitHub 與已連線的 Azure DevOps。 */
