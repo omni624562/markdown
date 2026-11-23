@@ -1,11 +1,11 @@
 /**
- * 右側欄的分頁（大綱、反向連結、Wiki、助理）：哪些分頁有、現在選哪一頁（不碰畫面，方便測試）。
+ * 右側欄的分頁（大綱、反向連結、歷史、Wiki、助理）：哪些分頁有、現在選哪一頁（不碰畫面，方便測試）。
  */
 
-export type RightTab = "outline" | "backlinks" | "wiki" | "assistant";
+export type RightTab = "outline" | "backlinks" | "history" | "wiki" | "assistant";
 
 /** 分頁由左到右的順序。 */
-export const RIGHT_TABS: readonly RightTab[] = ["outline", "backlinks", "wiki", "assistant"];
+export const RIGHT_TABS: readonly RightTab[] = ["outline", "backlinks", "history", "wiki", "assistant"];
 
 /** 助理分頁至少要這麼寬才好用（右側欄預設 248px 是給大綱的）。 */
 export const ASSISTANT_MIN_WIDTH = 340;

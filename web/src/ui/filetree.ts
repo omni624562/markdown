@@ -400,6 +400,21 @@ export class FileTree {
       row.append(abbr);
       row.title += `\n${mark.title}`;
     }
+    // 看得到的選單入口（右鍵是捷徑）：滑鼠移到列上或選取時出現「⋯」，點了打開同一份選單。
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "tree-more";
+    more.tabIndex = -1;
+    more.title = t("更多動作（重新命名、歷史…）");
+    more.setAttribute("aria-label", t("{name} 的更多動作", { name: entry.name }));
+    more.append(icon("ellipsis"));
+    more.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.#focus(row);
+      const r = more.getBoundingClientRect();
+      this.#showMenu(entry, r.left, r.bottom + 2);
+    });
+    row.append(more);
     this.#decorate(row);
     row.addEventListener("click", () => {
       this.#focus(row);

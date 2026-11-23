@@ -42,7 +42,7 @@ export function initFileHistory(): void {
   });
 }
 
-async function compareWithVersion(v: FileVersion & { path: string }): Promise<void> {
+export async function compareWithVersion(v: FileVersion & { path: string }): Promise<void> {
   if (!desktop || app.cur.fileHandle?.path !== v.path) return;
   const text = await desktop.historyRead(v.path, v.id);
   if (app.cur.fileHandle?.path !== v.path) return;

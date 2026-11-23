@@ -1,6 +1,8 @@
 import type { Translation } from "../en.ts";
 
 export const ui: Record<string, Translation> = {
+  "更多動作（重新命名、歷史…）": "More actions (rename, history…)",
+  "{name} 的更多動作": "More actions for {name}",
   // settings-dialog.ts
   "介面語言": "Language",
   "切換後會重新載入介面，開著的分頁和沒存的內容都會保留": "The window reloads after switching; open tabs and unsaved changes are kept.",

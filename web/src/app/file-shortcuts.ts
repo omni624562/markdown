@@ -15,6 +15,8 @@ import { app } from "./context.ts";
 import { selectedItemId } from "./item-tabs.ts";
 import { addBarShortcut, barShortcuts, removeBarShortcut, setBarShortcuts } from "./work-items-panel.ts";
 import { openPath } from "./workspace-ui.ts";
+import { reportError } from "./git-actions.ts";
+import { showHistoryOf } from "./history-panel.ts";
 
 /** 可以放到圖示列的檔案（桌面版、本機的檔案）；網頁版、遠端資料夾的檔案、還沒存成檔案的文件是 null。 */
 export function fileShortcut(path: string | null | undefined): FileShortcut | null {
@@ -126,7 +128,14 @@ const dragData = (path: string | null): Record<string, string> | null => {
 export function initFileShortcuts(): void {
   // 檔案樹：檔案的右鍵選單、拖到圖示列（資料夾不行）。
   app.fileTree?.extend({
-    menuItems: (entry: Entry) => (entry.isDir ? batchMenuItems(entry) : menuEntries(() => entry.path)),
+    menuItems: (entry: Entry) =>
+      entry.isDir
+        ? batchMenuItems(entry)
+        : [
+            // 存檔的版本與 Git 提交：打開檔案、切到右側欄的「歷史」。
+            { label: t("歷史（存檔版本、提交）…"), when: () => !!desktop, run: () => void showHistoryOf(entry.path).catch(reportError) },
+            ...menuEntries(() => entry.path),
+          ],
     dragData: (entry: Entry) => (entry.isDir ? null : dragData(entry.path)),
   });
   // 文件的分頁：拖到圖示列。

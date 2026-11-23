@@ -130,11 +130,11 @@ test("右側欄沒東西可放（助理的設定關閉、大綱在左邊）時�
   await context.close();
 });
 
-test("相連樣式、大綱放右邊：分頁列有大綱、反向連結、助理，三欄的標題列在同一列，視窗按鈕在右上角", async () => {
+test("相連樣式、大綱放右邊：分頁列有大綱、反向連結、歷史、助理，三欄的標題列在同一列，視窗按鈕在右上角", async () => {
   const { page, context, errors } = await open({ desktop: desktop({ panelStyle: "joined", outlineRight: true }) });
   await start(page);
   await page.locator("#outline-right:not([hidden]) #panel-outline").waitFor();
-  assert.deepEqual(await page.locator("#outline-right .right-tab:not([hidden]) .right-tab-label").allTextContents(), ["大綱", "反向連結", "助理"]);
+  assert.deepEqual(await page.locator("#outline-right .right-tab:not([hidden]) .right-tab-label").allTextContents(), ["大綱", "反向連結", "歷史", "助理"]);
   await page.locator("#outline-right .right-tab[data-tab='assistant']").click();
   await page.locator("#outline-right #assistant-panel:not([hidden])").waitFor();
   const g = await geometry(page);

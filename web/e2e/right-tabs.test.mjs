@@ -60,10 +60,10 @@ const tab = (page, id) => page.locator(`#outline-right .right-tab[data-tab="${id
 const selected = async (page, id) => (await tab(page, id).getAttribute("aria-selected")) === "true";
 const shownTabs = (page) => page.locator("#outline-right .right-tab:not([hidden]) .right-tab-label").allTextContents();
 
-test("分頁列在右側欄最上面：大綱、反向連結（有數字）、Wiki；一次顯示一頁，點一下切換，重新載入後還記得；左右鍵切換", async () => {
+test("分頁列在右側欄最上面：大綱、反向連結（有數字）、歷史、Wiki；一次顯示一頁，點一下切換，重新載入後還記得；左右鍵切換", async () => {
   const { page, context, errors } = await setup();
   await page.locator('#outline-right .right-tab[data-tab="backlinks"] .right-tab-badge', { hasText: "2" }).waitFor();
-  assert.deepEqual(await shownTabs(page), ["大綱", "反向連結", "Wiki"]);
+  assert.deepEqual(await shownTabs(page), ["大綱", "反向連結", "歷史", "Wiki"]);
   assert.equal(await selected(page, "outline"), true, "預設是大綱");
   assert.equal(await page.locator("#outline-right #panel-outline").isVisible(), true);
   assert.equal(await page.locator("#outline-right #panel-wiki").isVisible(), false, "Wiki 那一頁藏著");
@@ -87,8 +87,8 @@ test("分頁列在右側欄最上面：大綱、反向連結（有數字）、Wi
   // 鍵盤：焦點在分頁上按 ← 切到前一頁。
   await tab(page, "wiki").focus();
   await page.keyboard.press("ArrowLeft");
-  assert.equal(await selected(page, "backlinks"), true);
-  assert.equal(await page.evaluate(() => document.activeElement?.dataset.tab), "backlinks");
+  assert.equal(await selected(page, "history"), true);
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.tab), "history");
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -112,9 +112,9 @@ test("Wiki 在右側欄：圖示列不顯示 Wiki；看著別頁時用「Azure D
   await context.close();
 });
 
-test("只有大綱在右側：兩個分頁（大綱、反向連結）；大綱移回左邊時標題列恢復、反向連結回到大綱底下", async () => {
+test("只有大綱在右側：三個分頁（大綱、反向連結、歷史）；大綱移回左邊時標題列恢復、反向連結回到大綱底下", async () => {
   const { page, context, errors } = await setup({ wikiRight: false });
-  assert.deepEqual(await shownTabs(page), ["大綱", "反向連結"]);
+  assert.deepEqual(await shownTabs(page), ["大綱", "反向連結", "歷史"]);
   assert.equal(await page.locator("#side-tab-wiki").isVisible(), true, "Wiki 在左邊的側邊欄");
   // 設定關掉「大綱放在右邊」：右側欄沒有分頁就整個收起；大綱回到左邊，標題列有名稱，反向連結在大綱底下。
   await runCommand(page, "設定");

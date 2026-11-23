@@ -7,7 +7,8 @@ test("記住的分頁：認得的照用，不認得的當成沒記", () => {
   assert.equal(parseRightTab("assistant"), "assistant");
   assert.equal(parseRightTab("bogus"), null);
   assert.equal(parseRightTab(null), null);
-  assert.deepEqual(RIGHT_TABS, ["outline", "backlinks", "wiki", "assistant"]);
+  assert.deepEqual(RIGHT_TABS, ["outline", "backlinks", "history", "wiki", "assistant"]);
+  assert.equal(parseRightTab("history"), "history");
 });
 
 test("選哪一頁：記住的還在就用；不在了用第一個不是助理的；只剩助理時不自動打開", () => {
