@@ -94,6 +94,27 @@ test("同一句中文只出現在一個翻譯檔", () => {
   assert.deepEqual(dup, []);
 });
 
+/**
+ * 桌面版原生端（`desktop/src/locales/*.rs`）的翻譯也不能重複：Rust 的 `cargo test` 也會檢查，
+ * 但要編譯整個桌面版、常常要等到 CI 的 Windows 才發現；這裡讀原始碼，`npm test` 就擋下來。
+ */
+test("桌面版原生端的翻譯：同一句中文只出現一次", () => {
+  const dir = join(SRC, "../../desktop/src/locales");
+  const seen = new Map<string, string>();
+  const dup: string[] = [];
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".rs") && f !== "mod.rs")) {
+    const text = readFileSync(join(dir, file), "utf8");
+    // 每一項是 `("中文", "English")`，可能分成好幾行；只取括號後面的第一個字串（中文原文）。
+    for (const m of text.matchAll(/\(\s*"((?:[^"\\]|\\.)*)"\s*,/g)) {
+      const k = m[1];
+      if (seen.has(k)) dup.push(`${k}（${seen.get(k)}、${file}）`);
+      seen.set(k, file);
+    }
+  }
+  assert.ok(seen.size > 100, `讀到 ${seen.size} 句`);
+  assert.deepEqual(dup, []);
+});
+
 test("跟隨系統：中文（任何地區）用繁體中文，其他用英文", () => {
   assert.equal(resolveLang(null, ["zh-TW"]), "zh-TW");
   assert.equal(resolveLang("system", ["zh-CN", "en"]), "zh-TW");
