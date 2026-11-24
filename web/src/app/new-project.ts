@@ -262,8 +262,8 @@ export async function newProject(kind?: ProjectKind): Promise<void> {
   q<HTMLInputElement>("input[name=name]").value = "";
   const parent = q<HTMLInputElement>("input[name=parent]");
   if (!parent.value) parent.value = (await desktop.projectDefaultParent().catch(() => null)) ?? "";
-  // 預設不建立 Git 儲存庫（需要的人再勾）。
-  q<HTMLInputElement>("input[name=git]").checked = false;
+  // 預設建立 Git 儲存庫（之後才能看改了哪些地方、推送到 GitHub／Azure DevOps）；不需要的人再取消。
+  q<HTMLInputElement>("input[name=git]").checked = true;
   q<HTMLInputElement>("input[name=color][value='']").checked = true;
   q<HTMLInputElement>("input[name=name]").dispatchEvent(new Event("input"));
   d.showModal();

@@ -134,6 +134,8 @@ test("變更清單：修改過的檔案點一下（或按右邊的按鈕）就�
     git_fetch: status,
     reopen_file: { $by: "path", values: files },
     git_file_at: "# 標題\n\n舊的一段\n",
+    // 這一項看上下對照的顏色（預設是左右並排）。
+    load_settings: JSON.stringify({ gitCompareLayout: "stacked" }),
   });
   const row = page.locator("#git-host .git-files li", { hasText: "a.md" });
   // 修改過的檔案右邊有看得到的「比較」按鈕；新檔案沒有（沒有上一版）。
@@ -217,6 +219,7 @@ test("還沒推送：列出已提交、還沒推送的檔案；修改過的點�
     ]],
     reopen_file: { path: "/notes/a.md", name: "a.md", text: "# 會議紀錄\n\n下週三交報告。\n", encoding: "utf-8" },
     git_file_at: "# 會議紀錄\n\n下週一交報告。\n",
+    load_settings: JSON.stringify({ gitCompareLayout: "stacked" }),
   });
   const head = page.locator("#git-host .git-unpushed-head");
   await head.waitFor();

@@ -24,6 +24,8 @@ const desktop = {
   history_read: "# 會議紀錄\n\n下週二交報告。\n",
   git_file_history: [[{ id: "a1b2c3d4e5", short: "a1b2c3d", summary: "補上出席名單", author: "王小明", time: Math.floor((NOW - 86_400_000) / 1000) }]],
   git_file_at: "# 會議紀錄\n\n下週一交報告。\n",
+  // 這裡看上下對照的紅色那一段（預設是左右並排）。
+  load_settings: JSON.stringify({ gitCompareLayout: "stacked" }),
 };
 const row = (page, path) => page.locator(`#file-tree .tree-row[data-path="${path}"]`);
 
