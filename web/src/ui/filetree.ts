@@ -19,6 +19,8 @@ export interface FileTreeHandlers {
   remote?(): boolean;
   /** 從電腦拖曳檔案到資料夾（只有遠端資料夾會用到）。 */
   dropFiles?(dir: string, files: File[]): void;
+  /** 檔案（不是資料夾）的選單由外面提供（和原始碼控制共用同一份）：打開了回傳 true，否則用內建的選單。 */
+  fileMenu?(entry: Entry, x: number, y: number): boolean;
   /** 右鍵選單最後多加的項目（例如「放到左側圖示列」）；`when` 回傳 false 時不列出。 */
   menuItems?(entry: Entry): { label: string; when?: () => boolean; run(): void }[];
   /** 拖曳檔案或資料夾時帶的資料（例如拖到左側圖示列變成捷徑）；null 表示不能拖。 */
@@ -184,7 +186,7 @@ export class FileTree {
   }
 
   /** 建立之後再加上的功能（各自的模組加上去，例如左側圖示列的檔案捷徑）。 */
-  extend(more: Pick<FileTreeHandlers, "menuItems" | "dragData" | "move">): void {
+  extend(more: Pick<FileTreeHandlers, "menuItems" | "dragData" | "move" | "fileMenu">): void {
     this.#handlers = { ...this.#handlers, ...more };
   }
 
@@ -524,6 +526,7 @@ export class FileTree {
   }
 
   #showMenu(entry: Entry, x: number, y: number): void {
+    if (!entry.isDir && this.#handlers.fileMenu?.(entry, x, y)) return;
     const remote = !!this.#handlers.remote?.();
     const items: { label: string; key?: string; run(): void }[] = [
       ...MENU.filter((m) => {

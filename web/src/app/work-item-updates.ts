@@ -16,12 +16,11 @@ import { createWorkItemDialog } from "./new-work-item.ts";
 import { forgetListCopies, refreshKeptPages, withOfflineCopy } from "./offline-copies.ts";
 import { workItemsPanel, wikiPanel, issuesPanel, renderUnseenLine } from "./work-items-panel.ts";
 import { app } from "./context.ts";
-import { openPath, panelAvailable, setWikiRight, showPanel, treeAction, wikiRightWanted } from "./workspace-ui.ts";
-import { showHistoryOf } from "./history-panel.ts";
-import { basename } from "../paths.ts";
+import { openPath, panelAvailable, setWikiRight, showPanel, wikiRightWanted } from "./workspace-ui.ts";
+import { showFileMenu } from "./file-menu.ts";
 import { initOfflineBanner } from "./offline-banner.ts";
 import { commands } from "./commands.ts";
-import { compareWithHead, createPullRequest, discardChanges, reportError, resolveMergeConflict, switchBranch } from "./git-actions.ts";
+import { compareWithHead, createPullRequest, reportError, resolveMergeConflict, switchBranch } from "./git-actions.ts";
 import { issueView } from "./wiki-edit.ts";
 import { openWorkItemById } from "./quick-open.ts";
 import { refreshActivityCommands } from "./activity-bar.ts";
@@ -255,18 +254,7 @@ export function initWorkItemUpdates(): void {
           resolve: (path, theirs) => void resolveMergeConflict(path, theirs).catch(reportError),
           compare: (path) => void compareWithHead(path).catch(reportError),
           compareRemote: (path, upstream) => void compareWithHead(path, upstream).catch(reportError),
-          discard: (path) => void discardChanges(path).catch(reportError),
-          fileHistory: (path) => void showHistoryOf(path).catch(reportError),
-          reveal: (path) => {
-            showPanel("files");
-            void app.fileTree?.setActive(path);
-          },
-          trash: (path) => void treeAction("trash", { path, name: basename(path), isDir: false }).then(() => gitPanel?.refresh()),
-          restore: (path) =>
-            void desktop!
-              .gitRestore(path)
-              .then(() => gitPanel?.refresh())
-              .catch(reportError),
+          fileMenu: (path, x, y) => showFileMenu(path, "scm", x, y),
           switchBranch: () => void switchBranch().catch(reportError),
           createPr: () => void createPullRequest().catch(reportError),
           history: () => void openGitHistory().catch(reportError),
