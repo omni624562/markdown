@@ -2153,9 +2153,13 @@ button.git-info:disabled { cursor: default; }
 .git-file-check { flex: none; width: 15px; height: 15px; margin: 0 2px 0 6px; accent-color: var(--accent); cursor: pointer; }
 .git-changes-head { display: flex; align-items: center; gap: 4px; }
 .git-changes-head .git-file-check { margin-left: 6px; }
-.git-files :is(.git-file-diff, .git-file-discard) { flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; color: var(--muted); }
-.git-files :is(.git-file-diff, .git-file-discard):hover { color: var(--fg); }
-.git-files :is(.git-file-diff, .git-file-discard) .icon { width: 14px; height: 14px; }
+.git-files :is(.git-file-diff, .git-file-more) { flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; color: var(--muted); }
+.git-files :is(.git-file-diff, .git-file-more):hover { color: var(--fg); }
+.git-files :is(.git-file-diff, .git-file-more) .icon { width: 14px; height: 14px; }
+/* 「⋯」和檔案面板一樣：滑鼠移到列上或用鍵盤移到時才出現；觸控螢幕一直顯示。 */
+.git-files .git-file-more { visibility: hidden; }
+.git-files li:is(:hover, :focus-within) .git-file-more { visibility: visible; }
+@media (hover: none) { .git-files .git-file-more { visibility: visible; } }
 .git-file-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-file-dir { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .git-files b { flex: none; width: 1.2em; font: 600 11px var(--font-mono); text-align: center; }

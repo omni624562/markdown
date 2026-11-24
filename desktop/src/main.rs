@@ -570,6 +570,7 @@ fn main() {
             git::git_status,
             git::git_status_file,
             git::git_unpushed,
+            git::git_restore,
             git::git_commit,
             git::git_pull,
             git::git_fetch,

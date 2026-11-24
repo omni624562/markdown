@@ -1381,6 +1381,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     /** 一個檔案的 Git 狀態（存檔後只更新這一個）；沒有變更時是 null。 */
     /** 已經提交、還沒推送的檔案（和遠端分支比起來有改的）。 */
     gitUnpushed: () => core.invoke<GitChange[]>("git_unpushed"),
+    /** 刪除（或改過）的檔案換回上次提交時的內容。 */
+    gitRestore: (path: string) => core.invoke<void>("git_restore", { path }),
     gitStatusFile: (path: string) => core.invoke<GitChange | null>("git_status_file", { path }),
     gitPush: () => core.invoke<string>("git_push"),
     historyList: (path: string) => core.invoke<FileVersion[]>("history_list", { path }),
