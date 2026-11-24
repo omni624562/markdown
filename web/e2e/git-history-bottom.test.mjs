@@ -63,3 +63,17 @@ test("Git 歷史在編輯區下方：文件照常顯示、沒有紅線、標題�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("起始頁（沒有分頁列）時打開 Git 歷史：一樣在起始頁下方、和編輯區同寬，不會跑到右下角", async () => {
+  const { page, context, errors } = await open({ desktop: { ...desktop, reopen_file: null } });
+  await page.locator("#side-tab-git").click();
+  await page.locator('#panel-git button[aria-label="Git 歷史（線圖）"]').click();
+  const pane = page.locator(".history-pane");
+  await pane.getByText("補上出席名單").waitFor();
+  const editor = await page.locator(".editor-pane").boundingBox();
+  const box = await pane.boundingBox();
+  assert.ok(Math.abs(box.x - editor.x) < 2 && Math.abs(box.width - editor.width) < 2, `和編輯區同寬：${JSON.stringify({ editor, box })}`);
+  assert.ok(box.y >= editor.y + editor.height - 1, "在下方");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

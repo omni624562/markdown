@@ -4130,6 +4130,13 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
     "activity sidebar history history history outline";
   grid-template-rows: var(--tabbar-h) minmax(120px, 1fr) var(--gh-height, 40%);
 }
+/* 起始頁（沒有分頁列）時也一樣多一列給 Git 歷史（起始頁的規則會換掉整個格線，這裡要一起寫）。 */
+.workspace.history-open:has(> .tab-bar.blank:not(.has-items)) {
+  grid-template-areas:
+    "activity sidebar editor splitter preview outline"
+    "activity sidebar editor splitter preview outline"
+    "activity sidebar history history history outline";
+}
 .workspace > .issue-pane.history-pane { position: relative; grid-area: history; overflow: visible; border-top: 1px solid var(--panel-line, var(--border)); }
 [data-panel-style="spaced"] .workspace > .issue-pane.history-pane { margin-top: 6px; border-top: 1px solid var(--panel-line); border-radius: var(--panel-radius); }
 [data-panel-style="spaced"] .workspace.history-open > :is(.editor-pane, .preview-pane, .issue-pane:not(.history-pane)) { border-bottom: 1px solid var(--panel-line); }
