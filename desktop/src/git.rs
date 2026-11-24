@@ -1302,7 +1302,9 @@ mod tests {
         restore_at(&dir, &a).unwrap();
         // Windows 上 Git 的 core.autocrlf 會把換行換成 CRLF（和一般的 git checkout 一樣）。
         assert_eq!(
-            fs::read_to_string(dir.join("a.md")).unwrap().replace("\r\n", "\n"),
+            fs::read_to_string(dir.join("a.md"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "a\n"
         );
         assert!(status_at(&dir).changes.is_empty());
