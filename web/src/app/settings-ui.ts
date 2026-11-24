@@ -105,6 +105,8 @@ export function applySettings(s: Readonly<Settings>, changed?: (keyof Settings)[
       });
     }
   }
+  // 比較的方式：正在比較時馬上換成新的方式（不用關掉重開）。
+  if (changed.includes("gitCompareLayout")) app.review.relayout(s.gitCompareLayout);
   if (changed.includes("editorFontSize")) {
     for (const ed of editors) ed.view.requestMeasure();
     app.terminal?.applyFont();

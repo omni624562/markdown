@@ -400,6 +400,36 @@ test("變更清單每一列的「⋯」（右鍵同一份）：依檔案狀態�
   await context.close();
 });
 
+test("比較中改「比較的方式」：馬上換成新的方式（左右並排 ↔ 上下對照）", async () => {
+  const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }] };
+  const { page, context, errors } = await openGit({
+    github_account: null,
+    git_status: status,
+    git_fetch: status,
+    load_settings: JSON.stringify({ gitCompareLayout: "side" }),
+    reopen_file: { path: "/notes/a.md", name: "a.md", text: "# 會議紀錄\n\n出席：王小明、李大同\n\n下週三交報告。\n", encoding: "utf-8" },
+    git_file_at: "# 會議紀錄\n\n出席：王小明\n\n下週一交報告。\n",
+  });
+  await page.locator("#git-host .git-file-diff").click();
+  await page.locator(".review-side").waitFor();
+  // 打開設定改成上下對照：左右並排收起來，文件裡直接標出紅綠。
+  await page.keyboard.press("Control+,");
+  await page.locator("dialog[open].settings [role=tab]", { hasText: "Git 與 GitHub" }).click();
+  await page.locator("#setting-gitCompareLayout").selectOption("stacked");
+  await page.locator(".review-side").waitFor({ state: "detached" });
+  await page.keyboard.press("Escape");
+  await page.locator("#review-bar").getByText("改了哪些地方").waitFor();
+  await page.waitForFunction(() => document.querySelectorAll(".cm-deletedChunk").length > 0);
+  // 再改回左右並排：又是兩欄。
+  await page.keyboard.press("Control+,");
+  await page.locator("dialog[open].settings [role=tab]", { hasText: "Git 與 GitHub" }).click();
+  await page.locator("#setting-gitCompareLayout").selectOption("side");
+  await page.locator(".review-side").waitFor();
+  assert.equal(await page.locator("#editor").isVisible(), false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("檔案面板的選單和原始碼控制共用：修改過的檔案也有「看改了哪些地方」「捨棄修改」，順序一樣", async () => {
   const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }] };
   const { page, context, errors } = await openGit({ github_account: null, git_status: status, git_fetch: status });

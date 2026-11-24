@@ -121,6 +121,22 @@ export class Review {
     return true;
   }
 
+  /**
+   * 比較中改了「比較的方式」設定：照新的方式重新顯示同一個比較（目前的內容與已經改回去的段落都保留）。
+   * 只有本來就指定了 `layout` 的比較（和舊版本比較）會換；其他的差異檢視一律上下對照，不受影響。
+   */
+  relayout(layout: "stacked" | "side"): void {
+    const active = this.#active;
+    if (!active?.layout || active.layout === layout) return;
+    // 先清掉進行中的狀態：拿掉比較時編輯器會更新，不能被當成「每一段都處理完了」而結束新的比較。
+    this.#active = null;
+    // 目前的內容先放回編輯器（左右並排時是右邊；上下對照時文件本來就是目前的內容），再用同樣的基準重新開始。
+    if (this.#side) this.#closeSide(true);
+    else this.#view.dispatch({ effects: this.#compartment.reconfigure([]) });
+    this.#bar.hidden = true;
+    this.start(this.#view.state.doc.toString(), { ...active, layout });
+  }
+
   /** 保留目前所有的新內容並結束。 */
   acceptAll(): void {
     this.finish();
