@@ -362,7 +362,12 @@ test("變更清單每一列的「⋯」（右鍵同一份）：依檔案狀態�
       { path: "/notes/old.md", status: "deleted" },
     ],
   };
-  const { page, context, errors } = await openGit({ github_account: null, git_status: status, git_fetch: status });
+  const { page, context, errors } = await openGit({
+    github_account: null,
+    git_status: status,
+    git_fetch: status,
+    list_dir: { $by: "path", values: { "/notes": [{ name: "a.md", path: "/notes/a.md", isDir: false }, { name: "new.md", path: "/notes/new.md", isDir: false }] } },
+  });
   const li = (name) => page.locator("#git-host .git-files li", { hasText: name });
   const menu = async (name, how) => {
     if (how === "right") await li(name).click({ button: "right" });
@@ -371,16 +376,18 @@ test("變更清單每一列的「⋯」（右鍵同一份）：依檔案狀態�
       assert.equal(await li(name).locator(".git-file-more").isVisible(), true, "滑鼠移上去出現「⋯」");
       await li(name).locator(".git-file-more").click();
     }
-    const pop = page.locator("#git-file-menu-popover");
+    const pop = page.locator("#file-menu-popover");
     await pop.locator("[role=menuitem]").first().waitFor();
     const items = await pop.locator("[role=menuitem]").allTextContents();
     await page.keyboard.press("Escape");
     return items.map((x) => x.trim());
   };
-  assert.deepEqual(await menu("a.md"), ["看改了哪些地方", "開啟", "歷史（存檔版本、提交）…", "在檔案面板中顯示", "複製路徑", "捨棄修改…"]);
-  assert.deepEqual(await menu("a.md", "right"), ["看改了哪些地方", "開啟", "歷史（存檔版本、提交）…", "在檔案面板中顯示", "複製路徑", "捨棄修改…"], "右鍵和「⋯」同一份");
-  assert.deepEqual(await menu("new.md"), ["開啟", "在檔案面板中顯示", "複製路徑", "移到資源回收筒…"]);
-  assert.deepEqual(await menu("old.md"), ["復原這個檔案（拿回上次提交的版本）", "複製路徑"]);
+  // 和檔案面板共用同一份選單（看 → 找 → 改 → 刪）。
+  const modified = ["開啟", "看改了哪些地方", "歷史（存檔版本、提交）…", "在檔案面板中顯示", "在檔案總管中顯示", "複製路徑", "插入連結到目前的文件", "捨棄修改…", "移到資源回收筒…"];
+  assert.deepEqual(await menu("a.md"), modified);
+  assert.deepEqual(await menu("a.md", "right"), modified, "右鍵和「⋯」同一份");
+  assert.deepEqual(await menu("new.md"), ["開啟", "歷史（存檔版本、提交）…", "在檔案面板中顯示", "在檔案總管中顯示", "複製路徑", "插入連結到目前的文件", "移到資源回收筒…"]);
+  assert.deepEqual(await menu("old.md"), ["複製路徑", "復原這個檔案（拿回上次提交的版本）"]);
   // 刪除的檔案：復原。
   await li("old.md").locator(".git-file-more").click({ force: true });
   await page.getByRole("menuitem", { name: "復原這個檔案（拿回上次提交的版本）" }).click();
@@ -416,6 +423,26 @@ test("比較中改「比較的方式」：馬上換成新的方式（左右並�
   await page.locator("#setting-gitCompareLayout").selectOption("side");
   await page.locator(".review-side").waitFor();
   assert.equal(await page.locator("#editor").isVisible(), false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("檔案面板的選單和原始碼控制共用：修改過的檔案也有「看改了哪些地方」「捨棄修改」，順序一樣", async () => {
+  const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }] };
+  const { page, context, errors } = await openGit({ github_account: null, git_status: status, git_fetch: status });
+  await page.locator("#side-tab-files").click();
+  const row = page.locator('#file-tree .tree-row[data-path="/notes/a.md"]');
+  await row.hover();
+  await row.locator(".tree-more").click();
+  const pop = page.locator("#file-menu-popover");
+  await pop.locator("[role=menuitem]").first().waitFor();
+  const items = (await pop.locator("[role=menuitem]").allTextContents()).map((x) => x.trim());
+  assert.deepEqual(items.slice(0, 5), ["看改了哪些地方", "歷史（存檔版本、提交）…", "在檔案總管中顯示", "複製路徑", "插入連結到目前的文件"]);
+  assert.equal(items[5], "重新命名");
+  assert.deepEqual(items.slice(-2), ["捨棄修改…", "移到資源回收筒…"]);
+  // 選單有圖示、刪除是紅色。
+  assert.ok(await pop.locator("[role=menuitem] .icon").count() >= items.length - 1);
+  assert.match(await pop.locator("[role=menuitem]", { hasText: "移到資源回收筒" }).getAttribute("class"), /danger/);
   assert.deepEqual(errors, []);
   await context.close();
 });
