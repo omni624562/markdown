@@ -73,7 +73,7 @@ import { clearOffline, isOffline, offline, renderOffline, resolveConflict, showO
 import { initWikiHistory } from "./app/wiki-history.ts";
 import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
 import { openRemoteLink, remoteCard, remoteLinkOf, initAdoLinks } from "./app/ado-links.ts";
-import { historyView, initGitHistory } from "./app/git-history.ts";
+import { initGitHistory } from "./app/git-history.ts";
 import { buildFormatBar, initNewWorkItem } from "./app/new-work-item.ts";
 import { markBarShortcuts, renderAdoTab, renderIssuesTab, wikiPanel, workItemsPanel, initWorkItemsPanel } from "./app/work-items-panel.ts";
 import { initAdoStatus } from "./app/ado-status.ts";
@@ -2017,9 +2017,8 @@ initSideBySide();
 mainEditor.view.dom.addEventListener("focusin", () => focusPane("main"));
 
 function activate(doc: Doc): void {
-  // 點分頁（包括目前的分頁）就回到文件，收起工作項目等（分頁留著；並排顯示時留在右邊）與 Git 歷史。
+  // 點分頁（包括目前的分頁）就回到文件，收起工作項目等（分頁留著；並排顯示時留在右邊）；Git 歷史在下方，照常開著。
   if (!issueSide) hideItem();
-  historyView?.close();
   // 並排的其中一份文件已經關掉（例如切換專案）：先關閉並排。
   if (paneDocs.side && (!docs.includes(paneDocs.side) || !docs.includes(paneDocs.main))) closeSide();
   // 另一邊顯示的文件：換到那一邊（同一份文件不會在兩邊各開一個）。
@@ -2479,7 +2478,6 @@ function setView(mode: ViewMode): void {
   // 分割、只看預覽要用到右半邊：先關閉並排。
   if (paneDocs.side && (mode === "split" || mode === "preview")) closeSide();
   if (!issueSide) hideItem();
-  historyView?.close();
   chooseView(mode);
   applyLayout();
   // 預覽之前沒有顯示、內容是舊的：現在補畫。

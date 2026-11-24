@@ -972,7 +972,7 @@ button.start-tip:hover, button.start-tip:focus-visible { background: var(--activ
 }
 .view-switch-icons .view-switch .label { display: none; }
 /* 工作項目、Wiki 頁面、Git 歷史蓋住編輯區時，檢視切換用不到（按了反而會關掉那個畫面）：拿掉，位置讓給內容的摘要。並排顯示時編輯區還在，照常顯示。 */
-body:has(.workspace.issue-open:not(.issue-side), .workspace.history-open) .view-switch { display: none; }
+body:has(.workspace.issue-open:not(.issue-side)) .view-switch { display: none; }
 /* 起始頁不是文件：檢視切換、游標位置、字數、存檔狀態都用不到，開始打字後才出現（文件類型留著，可以先選要寫哪一種）。 */
 body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-cursor, #status-stats, #status-save) { display: none; }
 @media (pointer: coarse) {
@@ -3672,9 +3672,7 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
  * Git 歷史蓋住編輯區時，分頁列上原本選取的文件分頁變淡（目前看的不是它）。
  * 工作項目、Wiki 頁面有自己的分頁，選取時和文件分頁一樣（上方藍線、和下面的內容連成一片），不變淡。
  */
-body:has(.workspace.history-open) .tab[aria-selected="true"],
 body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-selected="true"] { background: transparent; color: var(--muted); box-shadow: none; }
-body:has(.workspace.history-open) .tab[aria-selected="true"]::before,
 body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-selected="true"]::before { color: inherit; opacity: 0.55; }
 /* 蓋住編輯區時：選取的分頁就標出正在看哪一個，內容上方不再畫整條來源顏色的線；標頭和分頁同底色，連成一片。 */
 .workspace.issue-open:not(.issue-side) > .issue-pane:not(.history-pane) { border-top: 0; }
@@ -4117,9 +4115,32 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 
 /* ---- Git 歷史（線圖） ----
  * 左邊是線圖與提交清單（只畫看得到的列），右邊是選取的提交內容與差異。 */
-.workspace.history-open > .editor-pane,
-.workspace.history-open > .splitter,
-.workspace.history-open > .preview-pane { display: none; }
+/*
+ * Git 歷史放在編輯區下方（文件和提交上下對照）：工作區多一列，高度由上緣的把手拖曳調整（--gh-height）。
+ * 不畫來源顏色的線（紅色看起來像出錯），和其他區塊一樣用一般的邊線；兩塊之間留一點間隔，把手就在間隔裡。
+ */
+.workspace.history-open {
+  grid-template-areas:
+    "activity sidebar tabs tabs tabs outline"
+    "activity sidebar editor splitter preview outline"
+    "activity sidebar history history history outline";
+  grid-template-rows: var(--tabbar-h) minmax(120px, 1fr) var(--gh-height, 40%);
+}
+.workspace > .issue-pane.history-pane { position: relative; grid-area: history; overflow: visible; border-top: 1px solid var(--panel-line, var(--border)); }
+[data-panel-style="spaced"] .workspace > .issue-pane.history-pane { margin-top: 6px; border-top: 1px solid var(--panel-line); border-radius: var(--panel-radius); }
+[data-panel-style="spaced"] .workspace.history-open > :is(.editor-pane, .preview-pane, .issue-pane:not(.history-pane)) { border-bottom: 1px solid var(--panel-line); }
+.history-pane > .gh-split { position: absolute; top: -7px; right: 0; left: 0; z-index: 4; display: flex; align-items: center; justify-content: center; height: 8px; cursor: row-resize; touch-action: none; }
+.history-pane > .gh-split:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gh-grip { width: 36px; height: 3px; border-radius: 2px; background: var(--border-strong); }
+.gh-split:hover .gh-grip { background: var(--accent); }
+.history-pane > .gh-head { flex-wrap: nowrap; gap: 8px; padding: 4px 8px 4px 12px; border-radius: inherit; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.history-pane > .gh-body { overflow: hidden; border-radius: 0 0 var(--panel-radius, 0) var(--panel-radius, 0); }
+.gh-heading { display: flex; flex: none; gap: 8px; align-items: center; min-width: 0; }
+.gh-title { margin: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.gh-branch { max-width: 160px; padding: 0 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 12px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.history-pane > .gh-head .issue-actions { flex: 1; flex-wrap: nowrap; justify-content: flex-end; min-width: 0; }
+.history-pane > .gh-head :is(.gh-scope, .gh-search) { height: 28px; }
+.history-pane > .gh-head .gh-search { flex: 0 1 240px; min-width: 80px; }
 .history-pane {
   --gh-0: light-dark(#2f6fd6, #61afef);
   --gh-1: light-dark(#c2410c, #e5a46b);

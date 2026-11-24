@@ -6,7 +6,6 @@ import { t } from "../i18n.ts";
 import { icon } from "../ui/icons.ts";
 import type { IssueFact } from "../ui/issue-view.ts";
 import { app } from "./context.ts";
-import { historyView } from "./git-history.ts";
 import { hideItem } from "./item-tabs.ts";
 
 /** 正在看的工作項目等內容的摘要（狀態、留言數…），顯示在狀態列右邊。 */
@@ -22,8 +21,9 @@ function renderStatusView(): void {
   const issuePane = app.$(".issue-pane:not(.history-pane)");
   // 並排顯示時編輯區還在，狀態列照常顯示文件的資訊。
   const issueOpen = app.workspace.classList.contains("issue-open") && !app.workspace.classList.contains("issue-side");
-  const historyOpen = app.workspace.classList.contains("history-open");
-  const viewing = issueOpen || historyOpen;
+  // Git 歷史在編輯區下方、文件照常顯示：狀態列照常顯示文件的資訊（不用「回到文件」）。
+  const historyOpen = false;
+  const viewing = issueOpen;
   app.$(".statusbar").classList.toggle("viewing", viewing);
   statusView.hidden = !viewing;
   if (!viewing) return;
@@ -47,7 +47,6 @@ function renderStatusView(): void {
   back.title = t("回到編輯中的文件（Esc）；工作項目等的分頁留著，點分頁就切換回來");
   back.addEventListener("click", () => {
     hideItem();
-    historyView?.close();
     app.editor.view.focus();
   });
   const facts = document.createElement("span");

@@ -18,7 +18,6 @@ import { timeAgo, versionTitle } from "../history-label.ts";
 import { t } from "../i18n.ts";
 import { askText, choose } from "./choice.ts";
 import { icon } from "./icons.ts";
-import { sourceBadge } from "./issue-view.ts";
 import { placeMenu } from "./menu-place.ts";
 import * as storage from "../storage.ts";
 import { toast } from "./toast.ts";
@@ -146,12 +145,11 @@ export class GitHistory {
     pane.setAttribute("aria-label", t("Git 歷史"));
     pane.tabIndex = -1;
 
+    // 標題列一行：標題、目前的分支、篩選、搜尋、按鈕（Git 歷史在編輯區下方，多留空間給提交清單）。
     const head = el("header", "issue-head gh-head");
-    const heading = el("div", "issue-heading");
-    this.#branchLabel = el("span", "issue-label");
-    const meta = el("div", "issue-meta");
-    meta.append(sourceBadge(t("Git 儲存庫"), "git-branch"), this.#branchLabel);
-    heading.append(meta, el("h2", "issue-title", t("Git 歷史")));
+    const heading = el("div", "gh-heading");
+    this.#branchLabel = el("span", "gh-branch");
+    heading.append(el("h2", "gh-title", t("Git 歷史")), this.#branchLabel);
     this.#scope = el("select", "gh-scope");
     this.#scope.setAttribute("aria-label", t("顯示哪些分支"));
     this.#scope.append(new Option(t("所有分支"), "all"), new Option(t("目前的分支"), "head"));
@@ -228,6 +226,7 @@ export class GitHistory {
     new ResizeObserver(() => this.#paint()).observe(this.#list);
     workspace.querySelector(".outline-right")?.before(pane) ?? workspace.append(pane);
     this.#pane = pane;
+    this.#setupHeight(pane);
   }
 
   get isOpen(): boolean {
@@ -249,6 +248,62 @@ export class GitHistory {
     this.#workspace.classList.add("history-open");
     await this.reload();
     this.#list.focus();
+  }
+
+  /**
+   * Git 歷史在編輯區下方：上緣的把手上下拖曳調整高度（方向鍵也可以），雙擊恢復預設；高度會記住。
+   * 文件和 Git 歷史各至少留 120px。
+   */
+  #setupHeight(pane: HTMLElement): void {
+    const KEY = "git-history-height";
+    const MIN = 120;
+    const handle = el("div", "gh-split");
+    handle.role = "separator";
+    handle.tabIndex = 0;
+    handle.title = t("拖曳調整高度（雙擊恢復）");
+    handle.setAttribute("aria-orientation", "horizontal");
+    handle.setAttribute("aria-label", t("調整 Git 歷史的高度（方向鍵調整，雙擊恢復）"));
+    handle.append(el("span", "gh-grip"));
+    const ws = this.#workspace;
+    const clamp = (px: number) => Math.round(Math.max(MIN, Math.min(px, ws.clientHeight - MIN - 40)));
+    const apply = (px: number | null, save = true) => {
+      if (px === null) {
+        ws.style.removeProperty("--gh-height");
+        if (save) storage.remove(KEY);
+        return;
+      }
+      const h = clamp(px);
+      ws.style.setProperty("--gh-height", `${h}px`);
+      handle.setAttribute("aria-valuenow", String(h));
+      if (save) storage.save(KEY, String(h));
+    };
+    const saved = Number(storage.load(KEY));
+    if (saved > 0) ws.style.setProperty("--gh-height", `${saved}px`);
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      document.body.classList.add("resizing");
+      const startY = e.clientY;
+      const startH = pane.getBoundingClientRect().height;
+      // 往上拖是變高。
+      const move = (ev: PointerEvent) => apply(startH - (ev.clientY - startY), false);
+      const up = () => {
+        handle.removeEventListener("pointermove", move);
+        document.body.classList.remove("resizing");
+        apply(pane.getBoundingClientRect().height);
+      };
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", up, { once: true });
+      handle.addEventListener("pointercancel", up, { once: true });
+    });
+    handle.addEventListener("dblclick", () => apply(null));
+    handle.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      apply(pane.getBoundingClientRect().height + (e.key === "ArrowUp" ? 24 : -24));
+    });
+    pane.prepend(handle);
   }
 
   /**
@@ -340,7 +395,9 @@ export class GitHistory {
     this.#more = false;
     this.#second = null;
     const status = this.#h.status();
-    this.#branchLabel.textContent = status?.branch ? t("目前在「{branch}」", { branch: status.branch.name }) : "";
+    this.#branchLabel.textContent = status?.branch?.name ?? "";
+    this.#branchLabel.title = status?.branch ? t("目前在「{branch}」", { branch: status.branch.name }) : "";
+    this.#branchLabel.hidden = !status?.branch;
     const changes = status?.changes.length ?? 0;
     this.#inner.replaceChildren(el("div", "gh-loading", t("讀取中…")));
     await this.#loadMore(seq, changes);
