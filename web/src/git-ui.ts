@@ -11,6 +11,7 @@ import { currentLang, t } from "./i18n.ts";
 import { samePath } from "./links.ts";
 import { icon } from "./ui/icons.ts";
 import { choose } from "./ui/choice.ts";
+import { type MenuEntry, setupMenu } from "./ui/menu.ts";
 import { toast } from "./ui/toast.ts";
 
 const MARK: Record<GitChange["status"], string> = {
@@ -69,6 +70,14 @@ export interface GitPanelHooks {
   compareRemote(path: string, upstream: string): void;
   /** 修改過的檔案：換回上次提交時的內容（可以復原）。 */
   discard(path: string): void;
+  /** 打開檔案、右側欄切到「歷史」（存檔版本、提交）。 */
+  fileHistory(path: string): void;
+  /** 在檔案面板裡標出這個檔案。 */
+  reveal(path: string): void;
+  /** 新檔案：移到資源回收筒（和檔案面板一樣先確認）。 */
+  trash(path: string): void;
+  /** 刪除的檔案：拿回上次提交的版本。 */
+  restore(path: string): void;
   /** 切換或建立分支。 */
   switchBranch(): void;
   /** 建立 Pull Request。 */
@@ -126,6 +135,9 @@ export class GitPanel {
   #theirs = new Map<string, string>();
   /** 已經提交、還沒推送的檔案（領先遠端時才讀）。 */
   #unpushed: GitChange[] = [];
+  /** 變更清單每一列的「⋯」選單：放在點的位置的隱形按鈕，`#menuChange` 是選單針對的檔案。 */
+  #menuAnchor: HTMLButtonElement | null = null;
+  #menuChange: GitChange | null = null;
   /** 變更清單裡取消勾選的檔案（這次不提交）；預設全部勾選。 */
   #unchecked = new Set<string>();
   /** 面板標題列的按鈕（和其他面板一樣放在標題旁邊）：Git 歷史、建立 PR、立刻檢查遠端。 */
@@ -440,15 +452,27 @@ export class GitPanel {
           cmp.setAttribute("aria-label", t("{name}：看改了哪些地方", { name: baseName(rel) }));
           cmp.append(icon("git-compare"));
           cmp.addEventListener("click", () => this.#hooks.compare(c.path));
-          const undo = document.createElement("button");
-          undo.type = "button";
-          undo.className = "git-file-discard";
-          undo.title = t("捨棄修改（改回上次提交時的內容，可以復原）");
-          undo.setAttribute("aria-label", t("{name}：捨棄修改", { name: baseName(rel) }));
-          undo.append(icon("undo-2"));
-          undo.addEventListener("click", () => this.#hooks.discard(c.path));
-          li.append(cmp, undo);
+          li.append(cmp);
         }
+        // 每一列右邊的「⋯」（滑鼠移上去或選取時出現；右鍵是同一份選單）：依檔案狀態列出能做的事。
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "git-file-more";
+        more.title = t("更多動作");
+        more.setAttribute("aria-label", t("{name} 的更多動作", { name: baseName(rel) }));
+        more.append(icon("ellipsis"));
+        more.addEventListener("click", () => {
+          const r = more.getBoundingClientRect();
+          this.#openMenu(c, r.left, r.bottom + 2);
+        });
+        li.append(more);
+        li.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          const show = () => this.#openMenu(c, e.clientX, e.clientY);
+          // Linux 在按下右鍵時就觸發 contextmenu：等放開再開，免得放開時被當成點在選單外而關掉。
+          if (e.buttons & 2) window.addEventListener("pointerup", () => setTimeout(show), { once: true });
+          else show();
+        });
         return li;
       }),
     );
@@ -605,6 +629,59 @@ export class GitPanel {
   /** 遠端在 GitHub、還沒登入：拉取與推送都會失敗。 */
   #needsSignIn(s: GitStatus): boolean {
     return !!s.remote && /^https:\/\/github\.com\//i.test(s.remote) && !this.#github.account;
+  }
+
+  /** 打開某一列的選單（「⋯」或右鍵）。 */
+  #openMenu(c: GitChange, x: number, y: number): void {
+    if (!this.#menuAnchor) {
+      const a = document.createElement("button");
+      a.type = "button";
+      a.className = "insert-anchor";
+      a.tabIndex = -1;
+      a.id = "git-file-menu";
+      document.body.append(a);
+      setupMenu(a, null, () => this.#menuEntries());
+      this.#menuAnchor = a;
+    }
+    this.#menuChange = c;
+    Object.assign(this.#menuAnchor.style, { left: `${x}px`, top: `${y}px`, width: "0px", height: "0px" });
+    if (!document.getElementById("git-file-menu-popover")?.matches(":popover-open")) this.#menuAnchor.click();
+  }
+
+  /** 選單的項目：修改過的、新的、刪除的檔案各自能做的事。 */
+  #menuEntries(): MenuEntry[] {
+    const c = this.#menuChange;
+    if (!c) return [];
+    const h = this.#hooks;
+    const p = c.path;
+    const copy: MenuEntry = {
+      label: t("複製路徑"),
+      icon: "copy",
+      run: () => void navigator.clipboard.writeText(p).then(() => toast(t("已複製路徑"))),
+    };
+    const reveal: MenuEntry = { label: t("在檔案面板中顯示"), icon: "folder-open", run: () => h.reveal(p) };
+    if (c.status === "deleted") {
+      return [{ label: t("復原這個檔案（拿回上次提交的版本）"), icon: "undo-2", run: () => h.restore(p) }, "-", copy];
+    }
+    if (c.status === "untracked" || c.status === "added") {
+      return [
+        { label: t("開啟"), icon: "file-text", run: () => h.open(p) },
+        reveal,
+        copy,
+        "-",
+        { label: t("移到資源回收筒…"), icon: "trash", danger: true, run: () => h.trash(p) },
+      ];
+    }
+    return [
+      ...(c.status === "modified" ? [{ label: t("看改了哪些地方"), icon: "git-compare", run: () => h.compare(p) } as MenuEntry] : []),
+      { label: t("開啟"), icon: "file-text", run: () => h.open(p) },
+      { label: t("歷史（存檔版本、提交）…"), icon: "history", run: () => h.fileHistory(p) },
+      reveal,
+      copy,
+      ...(c.status === "modified"
+        ? ["-" as const, { label: t("捨棄修改…"), icon: "undo-2", danger: true, run: () => h.discard(p) } as MenuEntry]
+        : []),
+    ];
   }
 
   /** 變更清單裡勾選的檔案（這次要提交的）。 */

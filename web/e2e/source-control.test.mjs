@@ -276,7 +276,7 @@ test("只提交勾選的檔案：取消勾選的不提交，按鈕寫出幾個�
   await context.close();
 });
 
-test("變更清單：「捨棄修改」換回上次提交的內容並存檔；通知上的「復原」拿回來", async () => {
+test("變更清單：「⋯」選單的「捨棄修改」換回上次提交的內容並存檔；通知上的「復原」拿回來", async () => {
   const status = { ...STATUS, changes: [{ path: "/notes/a.md", status: "modified" }, { path: "/notes/new.md", status: "untracked" }] };
   const { page, context, errors } = await openGit({
     github_account: null,
@@ -287,10 +287,10 @@ test("變更清單：「捨棄修改」換回上次提交的內容並存檔；�
     save_file: { status: "saved" },
   });
   const row = page.locator("#git-host .git-files li", { hasText: "a.md" });
-  const discard = row.locator(".git-file-discard");
-  assert.equal(await discard.getAttribute("aria-label"), "a.md：捨棄修改");
-  assert.equal(await page.locator("#git-host .git-files li", { hasText: "new.md" }).locator(".git-file-discard").count(), 0, "新檔案沒有上一版");
-  await discard.click();
+  // 「捨棄修改」在每一列的「⋯」選單裡（會改掉內容，不放在一點就中的位置）。
+  await row.hover();
+  await row.locator(".git-file-more").click();
+  await page.getByRole("menuitem", { name: "捨棄修改…" }).click();
   const content = () => page.evaluate(() => document.querySelector("#editor .cm-content")?.textContent ?? "");
   await page.waitForFunction(() => document.querySelector("#editor .cm-content")?.textContent?.includes("下週一"));
   const saves = () => page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "save_file").map((c) => c.args.text ?? c.args.req?.text ?? JSON.stringify(c.args)));
@@ -351,4 +351,41 @@ test("版本紀錄的比較和原始碼控制一樣：綠色是現在、紅色�
     assert.deepEqual(errors, []);
     await context.close();
   }
+});
+
+test("變更清單每一列的「⋯」（右鍵同一份）：依檔案狀態列出能做的事；刪除的檔案可以拿回上次提交的版本", async () => {
+  const status = {
+    ...STATUS,
+    changes: [
+      { path: "/notes/a.md", status: "modified" },
+      { path: "/notes/new.md", status: "untracked" },
+      { path: "/notes/old.md", status: "deleted" },
+    ],
+  };
+  const { page, context, errors } = await openGit({ github_account: null, git_status: status, git_fetch: status });
+  const li = (name) => page.locator("#git-host .git-files li", { hasText: name });
+  const menu = async (name, how) => {
+    if (how === "right") await li(name).click({ button: "right" });
+    else {
+      await li(name).hover();
+      assert.equal(await li(name).locator(".git-file-more").isVisible(), true, "滑鼠移上去出現「⋯」");
+      await li(name).locator(".git-file-more").click();
+    }
+    const pop = page.locator("#git-file-menu-popover");
+    await pop.locator("[role=menuitem]").first().waitFor();
+    const items = await pop.locator("[role=menuitem]").allTextContents();
+    await page.keyboard.press("Escape");
+    return items.map((x) => x.trim());
+  };
+  assert.deepEqual(await menu("a.md"), ["看改了哪些地方", "開啟", "歷史（存檔版本、提交）…", "在檔案面板中顯示", "複製路徑", "捨棄修改…"]);
+  assert.deepEqual(await menu("a.md", "right"), ["看改了哪些地方", "開啟", "歷史（存檔版本、提交）…", "在檔案面板中顯示", "複製路徑", "捨棄修改…"], "右鍵和「⋯」同一份");
+  assert.deepEqual(await menu("new.md"), ["開啟", "在檔案面板中顯示", "複製路徑", "移到資源回收筒…"]);
+  assert.deepEqual(await menu("old.md"), ["復原這個檔案（拿回上次提交的版本）", "複製路徑"]);
+  // 刪除的檔案：復原。
+  await li("old.md").locator(".git-file-more").click({ force: true });
+  await page.getByRole("menuitem", { name: "復原這個檔案（拿回上次提交的版本）" }).click();
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "git_restore"));
+  assert.deepEqual((await calls(page)).filter((c) => c.cmd === "git_restore").map((c) => c.args), [{ path: "/notes/old.md" }]);
+  assert.deepEqual(errors, []);
+  await context.close();
 });

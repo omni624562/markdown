@@ -490,6 +490,21 @@ pub fn commit_at(
     Ok(format!("{} {first}", &oid.to_string()[..7]))
 }
 
+/// 把檔案換回上次提交時的內容（原始碼控制裡刪除的檔案「復原這個檔案」）。路徑必須在工作區資料夾裡。
+pub fn restore_at(dir: &Path, file: &str) -> Result<(), String> {
+    let repo = open(dir)?;
+    let root = workdir(&repo)?;
+    let dir = dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let path = Path::new(file);
+    let rel = match (path.strip_prefix(&dir), path.strip_prefix(&root)) {
+        (Ok(_), Ok(rel)) if !rel.as_os_str().is_empty() => rel.to_path_buf(),
+        _ => return Err(tr!("這個檔案不在目前的資料夾裡：{path}", path = file)),
+    };
+    let mut co = git2::build::CheckoutBuilder::new();
+    co.force().path(&rel);
+    repo.checkout_head(Some(&mut co)).map_err(err)
+}
+
 /// 只把勾選的檔案放進這次的提交：從上次提交的內容開始，加入（或拿掉已經刪除的）這幾個檔案；
 /// 改名的檔案連舊的路徑一起拿掉。路徑必須在工作區資料夾裡。
 fn stage_only(
@@ -1002,6 +1017,13 @@ pub async fn git_status(app: AppHandle) -> Result<Status, String> {
 }
 
 /// 一個檔案的 Git 狀態：存檔後只更新這一個，不必重新掃描整個資料夾（大儲存庫要掃很久）。
+/// 把刪除（或改過）的檔案換回上次提交時的內容。
+#[tauri::command]
+pub async fn git_restore(app: AppHandle, path: String) -> Result<(), String> {
+    let dir = workspace_root(&app)?;
+    crate::io::blocking(move || restore_at(&dir, &path)).await
+}
+
 /// 已經提交、還沒推送的檔案（原始碼控制面板的「還沒推送」）。
 #[tauri::command]
 pub async fn git_unpushed(app: AppHandle) -> Result<Vec<Change>, String> {
@@ -1266,6 +1288,25 @@ mod tests {
         assert_eq!(s.changes[0].status, FileStatus::Deleted);
         commit_at(&dir, "刪掉 b", Some(&me()), None).unwrap();
         assert!(status_at(&dir).changes.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn restores_a_deleted_file_from_the_last_commit() {
+        let dir = temp("restore");
+        init(&dir);
+        fs::write(dir.join("a.md"), "a\n").unwrap();
+        commit_at(&dir, "第一版", Some(&me()), None).unwrap();
+        fs::remove_file(dir.join("a.md")).unwrap();
+        let a = status_at(&dir).changes[0].path.clone();
+        restore_at(&dir, &a).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("a.md")).unwrap(), "a\n");
+        assert!(status_at(&dir).changes.is_empty());
+        let outside = std::env::temp_dir()
+            .join("別的.md")
+            .to_string_lossy()
+            .to_string();
+        assert!(restore_at(&dir, &outside).is_err());
         let _ = fs::remove_dir_all(dir);
     }
 
