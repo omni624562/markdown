@@ -53,8 +53,8 @@ test("專案 → 新專案…：名稱不能用的字元馬上提示；建立後
   assert.equal(await dialog.locator(".dav-error").isHidden(), true);
   assert.equal(await dialog.locator(".np-preview").textContent(), `會建立「${ROOT}」`);
   await dialog.getByRole("radio", { name: /^筆記本/ }).check();
-  // 預設不勾「同時建立 Git 儲存庫」；勾了才建立。
-  assert.equal(await dialog.getByLabel(/同時建立 Git 儲存庫/).isChecked(), false);
+  // 預設勾「同時建立 Git 儲存庫」（之後才能看改了哪些地方、推送）。
+  assert.equal(await dialog.getByLabel(/同時建立 Git 儲存庫/).isChecked(), true);
   await dialog.getByLabel(/同時建立 Git 儲存庫/).check();
   await dialog.getByRole("radio", { name: "藍" }).check({ force: true });
   await create.click();
@@ -91,14 +91,14 @@ test("新專案：「瀏覽…」換位置；建立失敗（資料夾已經存�
   await page.waitForFunction((p) => document.querySelector("dialog.new-project input[name=parent]")?.value === p, PICKED);
   await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
   assert.equal(await dialog.locator(".np-preview").textContent(), `會建立「${PICKED}\\產品筆記」`);
-  assert.equal(await dialog.getByLabel(/同時建立 Git 儲存庫/).isChecked(), false);
+  assert.equal(await dialog.getByLabel(/同時建立 Git 儲存庫/).isChecked(), true);
   await dialog.getByRole("button", { name: "建立並開啟" }).click();
   await dialog.locator(".dav-error", { hasText: exists }).waitFor();
   assert.equal(await dialog.getByRole("button", { name: "建立並開啟" }).isDisabled(), false);
   const args = (await calls(page)).find((c) => c.cmd === "create_project").args;
   assert.equal(args.parent, PICKED);
   assert.equal(args.notebook, false);
-  assert.equal(args.git, false);
+  assert.equal(args.git, true, "預設建立 Git 儲存庫");
   assert.equal((await calls(page)).some((c) => c.cmd === "project_update"), false);
   // 取消再打開：名稱清空、位置留著上次選的。
   await dialog.getByRole("button", { name: "取消" }).click();
@@ -246,7 +246,7 @@ test("COMET 專案：從 Azure DevOps 帶入設定，在對話框裡執行 comet
   assert.equal(await section.locator("input[name=nc-assigned]").isHidden(), true);
   await section.locator("select[name=nc-team]").selectOption("t2");
   await dialog.getByRole("textbox", { name: "專案名稱" }).fill("產品筆記");
-  // 勾了「同時建立 Git 儲存庫」（預設不勾）：多一步建立 Git 儲存庫。
+  // 勾著「同時建立 Git 儲存庫」（預設就勾）：多一步建立 Git 儲存庫。
   await dialog.getByLabel(/同時建立 Git 儲存庫/).check();
   const create = dialog.getByRole("button", { name: "建立並設定" });
   await page.waitForFunction(() => !document.querySelector("dialog.new-project button[type=submit]")?.disabled);
@@ -438,8 +438,8 @@ test("COMET 專案：oMarker 沒有連線 Azure DevOps 時貼上 Sprint 網址",
       sprintUrl: "https://ado.test/tfs/DefaultCollection/產品/_sprints/taskboard/Contoso/產品/Sprint%2012",
     },
   ]);
-  // 沒勾「查詢我的工作」就沒有那一步；「同時建立 Git 儲存庫」預設不勾，也沒有那一步。
-  assert.deepEqual(await dialog.locator(".nc-steps li").allTextContents(), ["建立資料夾與 README.md", "執行 comet setup"]);
+  // 沒勾「查詢我的工作」就沒有那一步；「同時建立 Git 儲存庫」預設勾著，多一步建立 Git 儲存庫。
+  assert.deepEqual(await dialog.locator(".nc-steps li").allTextContents(), ["建立資料夾與 README.md", "建立 Git 儲存庫", "執行 comet setup"]);
   assert.deepEqual(errors, []);
   await context.close();
 });

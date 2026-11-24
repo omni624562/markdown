@@ -266,7 +266,9 @@ export function initWorkItemUpdates(): void {
             const key = status?.repo ? `${b?.name}|${b?.ahead}|${b?.behind}|${status.changes.length}|${status.merging}` : "";
             if (key !== app.gitHistoryKey) {
               app.gitHistoryKey = key;
-              historyView?.refresh();
+              // 關掉資料夾、換到不是 Git 儲存庫的資料夾：Git 歷史一起收起來（不留一塊「還沒有開啟資料夾」）。
+              if (!status?.repo) historyView?.close();
+              else historyView?.refresh();
             }
             refreshActivityCommands();
             app.renderFolderBranch(status);
