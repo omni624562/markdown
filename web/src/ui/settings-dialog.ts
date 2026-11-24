@@ -101,8 +101,8 @@ const SELECT_OPTIONS: Partial<Record<keyof Settings, [string, string][]>> = {
     ["web", t("網頁版（chatgpt.com）")],
   ],
   gitCompareLayout: [
-    ["stacked", t("上下對照（預設）")],
-    ["side", t("左右並排")],
+    ["side", t("左右並排（預設）")],
+    ["stacked", t("上下對照")],
   ],
   gitSyncMinutes: [
     ["5", t("每 {n} 分鐘", { n: 5 })],
