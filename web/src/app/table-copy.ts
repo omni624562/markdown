@@ -11,7 +11,7 @@ import { writeRichClipboard } from "./activity-bar.ts";
 import { app } from "./context.ts";
 
 export async function copyTable(markdown: string): Promise<void> {
-  if (await writeRichClipboard(markdown)) toast(t("已複製表格，可以貼到 Word、Outlook、Teams"), { tone: "success" });
+  if (await writeRichClipboard(markdown)) toast(t("已複製表格，可以貼到 Word、Outlook、Teams"), { tone: "success", duration: 1500 });
 }
 
 /** 複製游標所在的表格。 */

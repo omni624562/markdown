@@ -20,7 +20,7 @@ import { askText, choose } from "./choice.ts";
 import { icon } from "./icons.ts";
 import { placeMenu } from "./menu-place.ts";
 import * as storage from "../storage.ts";
-import { toast } from "./toast.ts";
+import { copied, toast } from "./toast.ts";
 
 const ROW = 32;
 const LANE = 14;
@@ -872,7 +872,7 @@ export class GitHistory {
   async #copy(text: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
-      toast(t("已複製"));
+      copied();
     } catch {
       toast(t("無法複製到剪貼簿"), { tone: "error" });
     }

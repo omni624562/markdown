@@ -1,6 +1,6 @@
 /**
  * 在預覽拖動段落調整順序（app/preview-drag.ts）：滑鼠移到段落、標題、清單項目上，左邊出現把手，
- * 拖到別的位置放開就搬過去，原始 Markdown 跟著改；通知上的「復原」（或 Ctrl+Z）還原。
+ * 拖到別的位置放開就搬過去，原始 Markdown 跟著改；按 Ctrl+Z 還原（畫面上看得到搬過去了，不跳通知）。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -59,14 +59,15 @@ async function dragBlock(page, from, to, after = false) {
   await page.mouse.up();
 }
 
-test("拖標題：整個章節（標題到下一個標題前）搬到別的標題前面；通知上的「復原」還原", async () => {
+test("拖標題：整個章節（標題到下一個標題前）搬到別的標題前面；不跳通知，Ctrl+Z 還原", async () => {
   const { page, context, errors } = await setup();
   await dragBlock(page, "#preview h2:has-text('第三天')", "#preview h2:has-text('第一天')");
   await page.waitForFunction(() => document.querySelector("#preview h2")?.textContent.includes("第三天"));
   const after = await text(page);
   assert.ok(after.indexOf("## 第三天") < after.indexOf("## 第一天"), after);
   assert.match(after, /## 第三天\n\n回家。\n\n## 第一天/, "章節內容跟著走、前後留空白行");
-  await page.locator(".toast button", { hasText: "復原" }).click();
+  assert.equal(await page.locator(".toast").count(), 0, "不跳通知");
+  await page.keyboard.press("Control+Z");
   await page.waitForFunction(() => document.querySelector("#preview h2")?.textContent.includes("第一天"));
   assert.equal((await text(page)).trim(), DOC.trim());
   assert.deepEqual(errors, []);
@@ -141,7 +142,7 @@ test("把手前幾次出現時旁邊有說明「拖這裡可以調整順序」�
   await para("第一段").hover();
   const handle = page.locator("#preview-scroller .preview-drag-handle");
   await handle.dragTo(para("第三段"), { targetPosition: { x: 20, y: 20 } });
-  await page.locator(".toast", { hasText: "已調整順序" }).waitFor();
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已調整順序");
   await page.mouse.move(5, 5);
   await para("第二段").hover();
   await page.waitForTimeout(900);

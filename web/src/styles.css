@@ -5158,3 +5158,6 @@ body.phone .settings-row label { font-size: 16px; font-weight: 400; }
 body.phone .settings-row small { font-size: 13px; }
 body.phone .settings-row select { height: 40px; font-size: 15px; }
 body.phone .settings[data-phone-view="search"] section > h3 { display: block; margin: 18px 18px 0; font-size: 15px; }
+
+/* 按了「複製」：按鈕上打一個勾（取代「已複製」通知，見 ui/toast.ts 的 copied）。 */
+.just-copied::after { content: "✓"; margin-inline-start: 4px; color: var(--success); font-weight: 600; }

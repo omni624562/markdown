@@ -49,7 +49,7 @@ import { ASSISTANT_FONT_RANGE, CLAUDE_MODELS, type ClaudeModel, DEFAULTS as DEFA
 import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { setupMenu } from "../ui/menu.ts";
-import { announce, toast } from "../ui/toast.ts";
+import { announce, copied, toast } from "../ui/toast.ts";
 import { openUrl } from "./activity-bar.ts";
 import { wikiTarget } from "../plugins/doc-links.ts";
 import { openWiki } from "./wiki-links.ts";
@@ -399,7 +399,7 @@ function cardButton(label: string, run: () => void, primary = false): HTMLButton
 async function copy(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
-    toast(t("已複製"), { tone: "success" });
+    copied();
   } catch {
     toast(t("無法複製到剪貼簿"), { tone: "error" });
   }
@@ -1035,7 +1035,7 @@ export function changeAssistantFont(delta: number): void {
   const now = app.settings.value.assistantFontSize;
   const size = delta === 0 ? DEFAULT_SETTINGS.assistantFontSize : Math.min(ASSISTANT_FONT_RANGE.max, Math.max(ASSISTANT_FONT_RANGE.min, now + delta));
   if (size === now) {
-    if (delta) toast(delta > 0 ? t("已經是最大的字級（{size}px）", { size }) : t("已經是最小的字級（{size}px）", { size }));
+    if (delta) announce(delta > 0 ? t("已經是最大的字級（{size}px）", { size }) : t("已經是最小的字級（{size}px）", { size }));
     return;
   }
   app.settings.update({ assistantFontSize: size });

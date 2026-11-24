@@ -8,7 +8,7 @@ import { compressImage, formatBytes } from "../image-compress.ts";
 import { markdownUrl } from "../paths.ts";
 import type { PreviewPlugin } from "../preview.ts";
 import type { WikiTarget } from "../session.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { imageRepoPath } from "../wiki-text.ts";
 import { app } from "./context.ts";
 import { offlineImage } from "./offline-copies.ts";
@@ -123,9 +123,7 @@ export async function insertImages(original: File[]): Promise<void> {
   }
   if (app.active !== doc) return; // 存圖片時使用者切換了分頁
   insertAtCursor(links.join("\n"));
-  toast(files.length > 1 ? t("已把 {n} 張圖片存到 assets 資料夾", { n: files.length }) : t("已把圖片存到 assets 資料夾"), {
-    tone: "success",
-  });
+  announce(files.length > 1 ? t("已把 {n} 張圖片存到 assets 資料夾", { n: files.length }) : t("已把圖片存到 assets 資料夾"));
 }
 
 /** Wiki 附件接受的圖片格式。 */
@@ -155,9 +153,7 @@ async function insertWikiImages(files: File[]): Promise<void> {
   }
   if (app.active !== doc) return; // 上傳時使用者切換了分頁
   insertAtCursor(links.join("\n"));
-  toast(links.length > 1 ? t("已把 {n} 張圖片上傳到 Wiki，存回頁面後別人就看得到", { n: links.length }) : t("已把圖片上傳到 Wiki，存回頁面後別人就看得到"), {
-    tone: "success",
-  });
+  announce(links.length > 1 ? t("已把 {n} 張圖片上傳到 Wiki，存回頁面後別人就看得到", { n: links.length }) : t("已把圖片上傳到 Wiki，存回頁面後別人就看得到"));
 }
 
 /** 編輯中的 Wiki 頁面裡的圖片（存在 Wiki 的 Git 儲存庫裡，要帶權杖才讀得到）。 */

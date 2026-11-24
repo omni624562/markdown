@@ -58,7 +58,7 @@ async function dragBlock(page, from, to, after = false) {
   await page.mouse.up();
 }
 
-test("即時預覽：拖標題整節搬到別的標題前面；通知上的「復原」還原", async () => {
+test("即時預覽：拖標題整節搬到別的標題前面；不跳通知，Ctrl+Z 還原", async () => {
   const { page, context, errors } = await setup();
   await dragBlock(page, "第三天", "第一天");
   await page.waitForFunction(() => {
@@ -66,7 +66,8 @@ test("即時預覽：拖標題整節搬到別的標題前面；通知上的「�
     return t.indexOf("第三天") < t.indexOf("第一天");
   });
   assert.match(await text(page), /第三天\n\n回家。\n\n(## )?第一天/);
-  await page.locator(".toast button", { hasText: "復原" }).click();
+  assert.equal(await page.locator(".toast").count(), 0, "不跳通知");
+  await page.keyboard.press("Control+Z");
   await page.waitForFunction(() => {
     const t = [...document.querySelectorAll(".cm-line")].map((l) => l.textContent).join("\n");
     return t.indexOf("第一天") < t.indexOf("第三天");

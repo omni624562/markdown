@@ -5,7 +5,7 @@ import { type AdoWiki, type AdoWikiChange, desktop } from "../desktop.ts";
 import { versionTitle } from "../history-label.ts";
 import { t } from "../i18n.ts";
 import { Picker } from "../ui/picker.ts";
-import { toast } from "../ui/toast.ts";
+import { copied, toast } from "../ui/toast.ts";
 import { myChanges } from "../wiki-coedit.ts";
 import { inPageScope, pageName, revisionNote } from "../wiki-text.ts";
 import { chatgptButton } from "./chatgpt.ts";
@@ -104,7 +104,7 @@ async function showWikiRevision(r: WikiRevisionItem): Promise<void> {
   const gpt = chatgptButton(() => text, (label, run) => button(label, run));
   actions.append(
     button(t("複製這一版的內容"), () => {
-      void navigator.clipboard.writeText(text).then(() => toast(t("已複製"), { tone: "success", duration: 1500 }));
+      void navigator.clipboard.writeText(text).then(() => copied());
     }),
     ...(gpt ? [gpt] : []),
     button(t("和目前的內容比較"), () => {

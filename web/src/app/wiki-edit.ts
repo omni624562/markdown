@@ -16,7 +16,7 @@ import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
 import { icon } from "../ui/icons.ts";
 import { IssueView } from "../ui/issue-view.ts";
-import { announce, toast } from "../ui/toast.ts";
+import { announce, copied, toast } from "../ui/toast.ts";
 import { type WikiPageInfo, myChanges } from "../wiki-coedit.ts";
 import { isWikiShortcut } from "../wiki-shortcuts.ts";
 import { pageName, wikiMarkdown, wikiPageLink } from "../wiki-text.ts";
@@ -244,7 +244,7 @@ export function renderWikiMine(): void {
   const copy = async (text: string, item?: HTMLElement) => {
     await navigator.clipboard.writeText(text);
     item?.classList.add("used");
-    toast(t("已複製"), { tone: "success", duration: 1500 });
+    copied();
   };
 
   const head = document.createElement("header");
@@ -457,7 +457,7 @@ export function toggleIssueSide(): void {
   issueSide = !issueSide;
   storage.save("issue-side", issueSide ? "1" : "");
   app.applyLayout();
-  toast(issueSide ? t("已改成並排顯示：文件在左邊，工作項目等內容在右邊") : t("已改成佔滿整個區域：點分頁切換文件與工作項目"));
+  announce(issueSide ? t("已改成並排顯示：文件在左邊，工作項目等內容在右邊") : t("已改成佔滿整個區域：點分頁切換文件與工作項目"));
 }
 
 export // 在 init 時建立。

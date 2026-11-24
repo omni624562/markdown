@@ -60,13 +60,9 @@ test("「預覽」模式在大綱拖曳章節：焦點留在大綱的標題上�
   await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "丙");
   assert.equal(await headings(page), "# 丙# 甲# 乙");
   assert.equal(await page.evaluate(() => !!document.activeElement?.closest("#outline-list")), true, "焦點在大綱上（和實際操作一樣）");
-  // 和在預覽拖動段落一樣跳出通知；按通知上的「復原」還原，再拖一次用 Ctrl+Z。
-  const undoBtn = page.locator(".toast", { hasText: "已調整順序" }).locator("button", { hasText: "復原" });
-  await undoBtn.click();
-  await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "甲");
-  assert.equal(await doc(page), DOC);
-  await link(page, "丙").dragTo(link(page, "甲"), { targetPosition: { x: 10, y: 2 } });
-  await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "丙");
+  // 畫面上看得到搬過去了：不跳通知，只讓螢幕閱讀器念「已調整順序」；按 Ctrl+Z 還原。
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已調整順序");
+  assert.equal(await page.locator(".toast").count(), 0, "不跳通知");
   await page.keyboard.press("Control+Z");
   await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "甲");
   assert.equal(await doc(page), DOC);
@@ -92,7 +88,7 @@ test("輸入框裡的 Ctrl+Z 是輸入框自己的：文件不變", async () => 
   await context.close();
 });
 
-test("「☰」→「編輯」有看得到的復原、重做（標著快速鍵）；復原一大步時說明復原了什麼", async () => {
+test("「☰」→「編輯」有看得到的復原、重做（標著快速鍵）；復原一大步時（給螢幕閱讀器）說明復原了什麼", async () => {
   const { page, context, errors } = await setup();
   await link(page, "甲").focus();
   await page.keyboard.press("Alt+ArrowDown");
@@ -107,11 +103,12 @@ test("「☰」→「編輯」有看得到的復原、重做（標著快速鍵�
   await undoItem.click();
   await page.waitForFunction(() => document.querySelector("#outline-list a[data-index]")?.textContent === "甲");
   assert.equal(await doc(page), DOC);
-  await page.locator(".toast", { hasText: "已復原：調整順序" }).waitFor();
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已復原：調整順序");
+  assert.equal(await page.locator(".toast").count(), 0, "文件改回去看得到，不跳通知");
   // 在編輯區裡按 Ctrl+Y 重做（編輯器自己處理的按鍵）：一樣說明。
   await page.click(".cm-content", { position: { x: 4, y: 4 } });
   await page.keyboard.press("Control+Y");
-  await page.locator(".toast", { hasText: "已重做：調整順序" }).waitFor();
+  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已重做：調整順序");
   assert.equal(await headings(page), "# 乙# 甲# 丙");
   // 一般打字的復原不跳通知。
   await page.keyboard.type("字");
