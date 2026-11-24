@@ -1410,6 +1410,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
 
     /** 本機圖片在預覽中可以使用的網址（原生端的 mdimg 協定，只提供工作區與已開啟檔案資料夾內的圖片）。 */
     fileUrl: (path: string) => core.convertFileSrc(path, "mdimg"),
+    /** 存檔留下的版本寫好了（版本在背景寫入，存檔回來時可能還沒寫好）。 */
+    onHistoryChanged: (fn: (path: string) => void) => event.listen<string>("history-changed", (e) => fn(e.payload)),
     onFileChanged: (fn: (p: { path: string; text: string }) => void) =>
       event.listen<{ path: string; text: string }>("file-changed", (e) => fn(e.payload)),
     /** 又開了一次 exe（例如在檔案總管雙擊另一個檔案）：在原本的視窗開啟。 */

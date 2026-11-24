@@ -19,6 +19,8 @@ let box: HTMLElement | null = null;
 /** 最後一次讀取的檔案與順序（換檔案、存檔後重讀；舊的回應不蓋掉新的）。 */
 let loading = 0;
 
+let changedTimer = 0;
+
 /** 「歷史」分頁的內容（第一次用到才建立）。 */
 export function historyBox(): HTMLElement {
   if (box) return box;
@@ -26,6 +28,11 @@ export function historyBox(): HTMLElement {
   box.className = "right-history";
   box.setAttribute("role", "tabpanel");
   box.setAttribute("aria-label", t("歷史"));
+  // 存檔留下的新版本寫好時馬上更新清單（自動存檔、手動存檔都一樣），連續存檔合併成一次。
+  void desktop?.onHistoryChanged(() => {
+    clearTimeout(changedTimer);
+    changedTimer = window.setTimeout(() => void refreshHistory(), 150);
+  });
   return box;
 }
 

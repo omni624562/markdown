@@ -62,7 +62,7 @@ test("編碼與換行：Big5 的檔案照原本的編碼；可以用其他編碼
   await dialog.waitFor();
   assert.match(await dialog.textContent(), /Shift_JIS 編碼，存不了這幾個字：😀/);
   await dialog.locator("button", { hasText: "改存成 UTF-8" }).click();
-  await page.locator(".toast", { hasText: "已存檔" }).waitFor();
+  await page.waitForFunction(() => window.__fake.calls.filter((c) => c.cmd === "save_file").length === 2);
   const log = await calls(page);
   assert.deepEqual(log.filter((c) => c.cmd === "set_file_format").map((c) => c.args), [{ path: OLD, encoding: "utf-8", bom: false }]);
   assert.equal(log.filter((c) => c.cmd === "save_file").length, 2, "改成 UTF-8 後再存一次");
