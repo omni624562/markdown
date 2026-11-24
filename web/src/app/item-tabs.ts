@@ -21,7 +21,6 @@ import type { IssueSource, IssueViewState } from "../ui/issue-view.ts";
 import type { TabInfo } from "../ui/tabbar.ts";
 import type { ItemShortcut } from "../wiki-shortcuts.ts";
 import { app } from "./context.ts";
-import { historyView } from "./git-history.ts";
 import { offlineRefs } from "./offline-copies.ts";
 import { issueView } from "./wiki-edit.ts";
 import { openBarShortcut } from "./work-items-panel.ts";
@@ -138,7 +137,6 @@ function stashShown(): void {
 }
 
 async function showTab(tab: ItemTab, state = tab.state): Promise<void> {
-  historyView?.close();
   if (!state) {
     // 從上次還原、還沒開過：重新開啟（讀到後依 key 找回這個分頁）。
     if (tab.ref) await openBarShortcut(tab.ref);
@@ -156,7 +154,6 @@ async function showTab(tab: ItemTab, state = tab.state): Promise<void> {
  * - 其他（側邊欄清單、Ctrl+P、圖示列捷徑）：已經開著就切過去，否則新開一個分頁。
  */
 export function openItem(source: IssueSource): Promise<void> {
-  historyView?.close();
   // 指定了位置（例如 Wiki 頁面結束編輯，換回閱讀）：新開的分頁放在那裡。
   const near = besideNext;
   besideNext = undefined;

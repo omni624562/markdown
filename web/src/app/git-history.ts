@@ -24,8 +24,8 @@ async function gitHistory(): Promise<GitHistory | null> {
   historyView = new GitHistory(app.$(".workspace"), desktop, {
     status: () => panel.status,
     hasUnsaved: () => app.docs.some((d) => d.dirty),
+    // Git 歷史在編輯區下方：打開檔案、提交時照常開著，上下對照。
     async openFile(path) {
-      historyView?.close();
       await openPath(path);
     },
     async compareWithCurrent(path, c) {
@@ -44,7 +44,6 @@ async function gitHistory(): Promise<GitHistory | null> {
     pull: () => panel.pull(),
     push: () => panel.push(),
     commit() {
-      historyView?.close();
       showPanel("git");
       panel.focusMessage();
     },
