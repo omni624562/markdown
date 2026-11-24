@@ -81,3 +81,29 @@ test("右鍵是同一份選單；換到別的檔案時「歷史」跟著換", as
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("存檔後「歷史」馬上重新列出版本，存回原本的檔案不跳「已存檔」通知", async () => {
+  const d = {
+    ...desktop,
+    save_file: { status: "saved", path: "/notes/會議紀錄.md", name: "會議紀錄.md" },
+  };
+  const { page, context, errors } = await open({ desktop: d });
+  await row(page, "/notes/會議紀錄.md").waitFor();
+  await row(page, "/notes/會議紀錄.md").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "歷史（存檔版本、提交）…" }).click();
+  const panel = page.locator("aside#outline-right .right-history");
+  await panel.locator(".history-save").first().waitFor();
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("End");
+  await page.keyboard.insertText("補充");
+  await page.keyboard.press("Control+s");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "save_file"));
+  // 原生端寫好版本後送出事件，清單馬上重新讀取。
+  const before = (await calls(page)).filter((c) => c.cmd === "history_list").length;
+  await page.evaluate(() => window.__fake.emit("history-changed", "/notes/會議紀錄.md"));
+  await page.waitForFunction((n) => window.__fake.calls.filter((c) => c.cmd === "history_list").length > n, before);
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator(".toast", { hasText: "已存檔" }).count(), 0, "存回原檔不跳通知");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

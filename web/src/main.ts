@@ -2314,7 +2314,8 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   if (!out) return;
   if (out.status === "conflict") return { name: out.name, diskText: out.diskText };
   if (out.status === "unencodable") return out;
-  cur.fileHandle = fileSaved(cur.fileHandle?.path, out.handle); // 新檔案：檔案樹要自己更新
+  const before = cur.fileHandle?.path;
+  cur.fileHandle = fileSaved(before, out.handle); // 新檔案：檔案樹要自己更新
   // 另存成本機檔案之後，這個分頁就是那個檔案，不再對應 Wiki 頁面。
   if (out.handle) active.wiki = undefined;
   active.missing = false;
@@ -2327,7 +2328,9 @@ async function saveNow(saveAs: boolean, force: boolean): Promise<{ name: string;
   gitPanel?.refreshSoon(300);
   setBaseline(text, true);
   setFileName(out.name);
-  toast(out.handle ? t("已存檔為「{name}」", { name: out.name }) : t("已下載「{name}」", { name: out.name }), { tone: "success" });
+  // 存回原本的檔案不跳通知（分頁上的圓點消失就代表存好了）；存成新檔案、下載才說存到哪裡。
+  if (!out.handle) toast(t("已下載「{name}」", { name: out.name }), { tone: "success" });
+  else if (saveAs || out.handle.path !== before) toast(t("已存檔為「{name}」", { name: out.name }), { tone: "success" });
 }
 
 initOfflineDrive();

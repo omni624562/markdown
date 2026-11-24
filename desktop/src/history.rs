@@ -27,7 +27,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::files::{decode, KnownFiles};
 use crate::trust::Trust;
@@ -335,6 +335,7 @@ pub fn maintain(app: &AppHandle) {
 }
 
 struct Job {
+    app: AppHandle,
     root: PathBuf,
     path: PathBuf,
     before: Option<String>,
@@ -357,6 +358,8 @@ static QUEUE: LazyLock<Mutex<Sender<Job>>> = LazyLock::new(|| {
                 // i18n-ignore：記錄檔
                 eprintln!("無法保存版本記錄：{e}");
             }
+            // 通知前端：右側欄的「歷史」開著這個檔案時重新列出。
+            let _ = job.app.emit("history-changed", job.path.to_string_lossy());
         }
     });
     Mutex::new(tx)
@@ -376,6 +379,7 @@ pub fn on_save(app: &AppHandle, path: &Path, disk_before: Option<&[u8]>, text: &
         .map(|b| decode(b).0)
         .filter(|before| before != text);
     let job = Job {
+        app: app.clone(),
         root,
         path: path.to_path_buf(),
         before,
