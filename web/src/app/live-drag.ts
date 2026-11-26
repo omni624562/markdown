@@ -13,6 +13,7 @@ import { app } from "./context.ts";
 import { watchDragHandle } from "./drag-hint.ts";
 import { outlineHeadings } from "./outline-list.ts";
 import { type DragKind, type DragTarget, commitMove, dragEnabled, makeHandle, moveText } from "./preview-drag.ts";
+import { posAt } from "../editor-pos.ts";
 
 /** 編輯區裡一塊可以搬的東西。 */
 interface Block {
@@ -190,7 +191,7 @@ export function initLiveDrag(): void {
     if (handle!.contains(e.target as Node)) return;
     const v = view();
     if (!live() || !v.contentDOM.contains(e.target as Node)) return hide();
-    const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+    const pos = posAt(v, e.clientX, e.clientY);
     const block = pos === null ? null : blockAt(v.state, pos);
     if (!block) return hide();
     if (hovered && hovered.node.from === block.node.from && hovered.node.to === block.node.to) return;
