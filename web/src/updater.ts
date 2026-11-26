@@ -10,7 +10,7 @@ import { notesForVersion } from "./release-notes.ts";
 import type { SettingsStore } from "./settings.ts";
 import * as storage from "./storage.ts";
 import { showRelease } from "./ui/release-dialog.ts";
-import { toast } from "./ui/toast.ts";
+import { announce, toast } from "./ui/toast.ts";
 
 const FIRST_CHECK_DELAY = 8000;
 /** 手動檢查超過這個時間還沒結果，就說明還在連線（公司網路可能要等比較久）。 */
@@ -166,7 +166,7 @@ export class Updater {
     }
     // 上一次檢查還沒結果時不再送出（連按、指令面板重複執行）。
     if (this.#checking) {
-      toast(t("正在檢查更新…"));
+      announce(t("正在檢查更新…"));
       return;
     }
     this.#checking = true;

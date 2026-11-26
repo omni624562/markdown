@@ -736,7 +736,7 @@ export async function copyRich(): Promise<void> {
     selected
       ? t("已複製選取範圍的格式文字，可以貼到 Word、Outlook、Teams")
       : t("已複製整份文件的格式文字，可以貼到 Word、Outlook、Teams"),
-    { tone: "success" },
+    { tone: "success", duration: 1500 },
   );
   app.editor.view.focus();
 }
@@ -774,7 +774,7 @@ export async function copyDiagram(svg: string): Promise<void> {
     toast(t("無法把流程圖複製成圖片。"), { tone: "error" });
     return;
   }
-  toast(t("已把流程圖複製成圖片"), { tone: "success" });
+  toast(t("已把流程圖複製成圖片"), { tone: "success", duration: 1500 });
 }
 
 export function initActivityBar(): void {
@@ -953,12 +953,9 @@ export function initActivityBar(): void {
       dragging = null;
       dropOutside = false;
       if (removed) {
-        // 拖出去放開：移除，提示裡可以復原（放回原本的位置）。
-        const before = barShortcuts;
+        // 拖出去放開：移除（圖示當場消失，不另外跳通知）。
         removeBarShortcut(removed);
-        toast(t("已從左側圖示列移除「{name}」", { name: shortcutName(removed) }), {
-          action: { label: t("復原"), run: () => setBarShortcuts(before) },
-        });
+        announce(t("已從左側圖示列移除「{name}」", { name: shortcutName(removed) }));
       } else if (fromWiki) {
         setBarShortcuts([...shortcutBar.querySelectorAll<HTMLElement>(".activity-wiki-page")].map((b) => barShortcuts[Number(b.dataset.index)]));
       } else if (fromTabs) {

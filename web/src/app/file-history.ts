@@ -90,5 +90,5 @@ export async function copyWebLink(): Promise<void> {
   const url = await webLink();
   if (!url) return;
   await navigator.clipboard.writeText(url);
-  toast(url.includes("#L") || url.includes("&line=") ? t("已複製連結（含選取的行號）") : t("已複製連結"));
+  toast(url.includes("#L") || url.includes("&line=") ? t("已複製連結（含選取的行號）") : t("已複製連結"), { duration: 1500 });
 }

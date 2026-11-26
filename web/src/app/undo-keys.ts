@@ -6,7 +6,7 @@
 import { redo, undo } from "@codemirror/commands";
 import type { Text } from "@codemirror/state";
 import { t } from "../i18n.ts";
-import { toast } from "../ui/toast.ts";
+import { announce as speak } from "../ui/toast.ts";
 import { app } from "./context.ts";
 
 /** 有自己的 Ctrl+Z 的地方：輸入框、編輯區（包括並排編輯的另一個編輯器）、選單與清單。 */
@@ -24,7 +24,7 @@ const MAX_STEPS = 30;
 
 /**
  * 執行一個一步就能復原的改動，並記下它的名稱（`label`，例如「調整順序」）。之後復原、重做到這一步時，
- * 跳出「已復原：調整順序」，使用者才知道一次回去的那一大步是什麼。
+ * 螢幕閱讀器念出「已復原：調整順序」（畫面上看得到文件改回去了，不跳通知），使用者才知道一次回去的那一大步是什麼。
  */
 export function labelStep(label: string, apply: () => void): void {
   const before = app.editor.view.state.doc;
@@ -41,8 +41,8 @@ function announce(before: Text, after: Text): void {
   const same = (a: Text, b: Text) => a === b || (a.length === b.length && a.eq(b));
   for (let i = steps.length - 1; i >= 0; i--) {
     const step = steps[i];
-    if (same(step.after, before) && same(step.before, after)) return void toast(t("已復原：{what}", { what: step.label }));
-    if (same(step.before, before) && same(step.after, after)) return void toast(t("已重做：{what}", { what: step.label }));
+    if (same(step.after, before) && same(step.before, after)) return void speak(t("已復原：{what}", { what: step.label }));
+    if (same(step.before, before) && same(step.after, after)) return void speak(t("已重做：{what}", { what: step.label }));
   }
 }
 

@@ -306,7 +306,7 @@ export function initCommands(): void {
       when: () => !app.menuItemTab() && !!app.tabPath(app.menuTab()),
       async run() {
         await navigator.clipboard.writeText(displayPath(app.tabPath(app.menuTab())!));
-        toast(t("已複製路徑"));
+        toast(t("已複製路徑"), { duration: 1500 });
       },
     },
     {
@@ -626,7 +626,7 @@ export function initCommands(): void {
           return;
         }
         await navigator.clipboard.writeText(result.html);
-        toast(t("已複製 HTML 到剪貼簿"), { tone: "success" });
+        toast(t("已複製 HTML 到剪貼簿"), { tone: "success", duration: 1500 });
       },
     },
     {

@@ -891,7 +891,7 @@ export async function treeAction(action: TreeAction, entry: Entry): Promise<void
       break;
     case "copy-path":
       await navigator.clipboard.writeText(entry.path);
-      toast(t("已複製路徑"));
+      toast(t("已複製路徑"), { duration: 1500 });
       break;
     case "insert-link":
       // 相對於目前文件的 Markdown 連結（沒有文件時是完整路徑）；圖片用圖片語法。

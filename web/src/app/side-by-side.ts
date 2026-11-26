@@ -25,8 +25,9 @@ export function openBeside(doc: Doc): void {
     return;
   }
   if (doc === app.paneDocs.main) {
+    // 已經在左邊：直接到左邊那份。
     if (app.paneDocs.side) {
-      toast(t("「{name}」已經在左邊了。", { name: docName(doc) }));
+      app.focusPane("main", true);
       return;
     }
     const i = app.docs.indexOf(doc);

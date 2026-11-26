@@ -12,13 +12,13 @@ import { t } from "../i18n.ts";
 import { parseSourcepos } from "../scroll-sync.ts";
 import { moveSection, sectionRange } from "../sections.ts";
 import { icon } from "../ui/icons.ts";
-import { toast } from "../ui/toast.ts";
+import { announce } from "../ui/toast.ts";
 import { app } from "./context.ts";
 import { watchDragHandle } from "./drag-hint.ts";
 import { initLiveDrag } from "./live-drag.ts";
 import { initPreviewHint } from "./preview-hint.ts";
 import { outlineHeadings } from "./outline-list.ts";
-import { labelStep, undoDoc } from "./undo-keys.ts";
+import { labelStep } from "./undo-keys.ts";
 
 export type DragKind = "section" | "item" | "block";
 type Kind = DragKind;
@@ -162,9 +162,9 @@ export function commitMove(out: string): void {
   movedToast();
 }
 
-/** 「已調整順序」的通知，上面有「復原」（在預覽、即時預覽拖動段落，或在大綱拖曳章節之後）。 */
+/** 調整了順序（在預覽、即時預覽拖動段落，或在大綱拖曳章節之後）：畫面上看得到，不跳通知，只讓螢幕閱讀器念出來（Ctrl+Z 可以復原）。 */
 export function movedToast(): void {
-  toast(t("已調整順序"), { action: { label: t("復原"), run: () => void undoDoc() } });
+  announce(t("已調整順序"));
 }
 
 /** 「⋮⋮」把手（預覽、即時預覽各一個）。 */

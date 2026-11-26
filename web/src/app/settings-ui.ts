@@ -15,7 +15,7 @@ import { sureFixes } from "../terms.ts";
 import type { SettingsDialog } from "../ui/settings-dialog.ts";
 import { SIDEBAR_WIDTH, clampSidebarWidth, rightPanelMax, setupSidebarResize } from "../ui/sidebar-resize.ts";
 import { setupSplitter } from "../ui/splitter.ts";
-import { toast } from "../ui/toast.ts";
+import { announce, toast } from "../ui/toast.ts";
 import { versionLabel, versionDetail, versionTooltip } from "../updater.ts";
 import { applyActivityLayout, openUrl, openWelcome, openChangelog, panelOrder, PANEL_LABELS, PANEL_ICONS, addActivityCommand } from "./activity-bar.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
@@ -51,7 +51,7 @@ const DOC_LINE_HEIGHT: Record<Settings["docLineHeight"], string> = { compact: "1
 export function changeFontSize(delta: number): void {
   const size = Math.min(FONT_SIZE_RANGE.max, Math.max(FONT_SIZE_RANGE.min, app.settings.value.editorFontSize + delta));
   if (size === app.settings.value.editorFontSize) {
-    toast(delta > 0 ? t("已經是最大的字級（{size}px）", { size }) : t("已經是最小的字級（{size}px）", { size }));
+    announce(delta > 0 ? t("已經是最大的字級（{size}px）", { size }) : t("已經是最小的字級（{size}px）", { size }));
     return;
   }
   app.settings.update({ editorFontSize: size });

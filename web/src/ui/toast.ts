@@ -1,4 +1,5 @@
 /** 非阻斷式通知，取代 alert()。可附一個動作按鈕（例如「復原」）。 */
+import { t } from "../i18n.ts";
 
 export interface ToastAction {
   label: string;
@@ -118,4 +119,15 @@ export function announce(message: string): void {
   spoken.textContent = "";
   // 換一個畫面再填：同一句連續出現時螢幕閱讀器也會再念一次。
   requestAnimationFrame(() => (spoken.textContent = message));
+}
+
+/**
+ * 按了「複製」按鈕：不跳通知，按鈕上打一個勾一秒半（螢幕閱讀器念「已複製」）。
+ * 從選單、指令面板複製（沒有看得到的按鈕）的仍然用 {@link toast}。
+ */
+export function copied(button: Element | null = document.activeElement): void {
+  announce(t("已複製"));
+  if (!(button instanceof HTMLElement) || !button.matches("button, [role=menuitem]")) return;
+  button.classList.add("just-copied");
+  window.setTimeout(() => button.classList.remove("just-copied"), 1500);
 }
