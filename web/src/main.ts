@@ -111,6 +111,7 @@ import { initErrorHandling } from "./app/error-handling.ts";
 import { refreshRepoNotes, repoSources } from "./app/repo-sources.ts";
 
 import { type ViewMode, applyViewSwitch, chooseView, currentView } from "./view-modes.ts";
+import { posAt } from "./editor-pos.ts";
 type ThemePref = "system" | "light" | "dark";
 
 /** 範例文件（英文介面用英文版）。 */
@@ -1050,7 +1051,7 @@ function editorOptions(): EditorOptions {
         contextmenu(e, v) {
           // 右鍵選單：剪下、複製、貼上、格式、插入符號、縮排，以及 AI。
           // 點在選取範圍外時，先把游標移到點的位置（和一般編輯器一樣）。
-          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+          const pos = posAt(v, e.clientX, e.clientY);
           const { from, to } = v.state.selection.main;
           if (pos !== null && (pos < from || pos > to)) v.dispatch({ selection: { anchor: pos } });
           e.preventDefault();
@@ -1065,7 +1066,7 @@ function editorOptions(): EditorOptions {
           if (!e.dataTransfer?.files.length) return false;
           // 檔案交給視窗的 drop 處理（文字檔開新分頁、圖片插入），不讓編輯器把檔案內容當成文字插入。
           // 圖片要插入在放開的位置，先把游標移過去。
-          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+          const pos = posAt(v, e.clientX, e.clientY);
           if (pos !== null && imageFiles(e.dataTransfer.files).length) v.dispatch({ selection: { anchor: pos } });
           return true;
         },

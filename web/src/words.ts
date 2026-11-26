@@ -5,6 +5,7 @@
  */
 import { EditorSelection, type EditorState, type Extension, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { posAt } from "./editor-pos.ts";
 
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Bopomofo}]/u;
 
@@ -92,12 +93,12 @@ const doubleClick = EditorView.mouseSelectionStyle.of((view, event) => {
   if (event.detail !== 2 || event.button !== 0 || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
     return null;
   }
-  const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  const pos = posAt(view, event.clientX, event.clientY);
   let start = pos === null ? null : lineWord(view.state, pos);
   if (!start) return null;
   return {
     get(cur) {
-      const p = view.posAtCoords({ x: cur.clientX, y: cur.clientY });
+      const p = posAt(view, cur.clientX, cur.clientY);
       const s = start!;
       if (p === null) return EditorSelection.create([EditorSelection.range(s.from, s.to)]);
       const w = lineWord(view.state, p) ?? { from: p, to: p };
