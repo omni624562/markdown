@@ -156,6 +156,7 @@ mod tests {
         "probe_path",
         "open_external",
         "open_with_default",
+        "read_office",
         "set_title",
         "set_ui_zoom",
         "custom_title_bar",

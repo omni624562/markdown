@@ -12,7 +12,7 @@ import { logError } from "../error-log.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
-  kind: "ado" | "github" | "wiki" | "repo" | "image" | "pdf";
+  kind: "ado" | "github" | "wiki" | "repo" | "image" | "pdf" | "office";
   icon: string;
   text: string;
 }

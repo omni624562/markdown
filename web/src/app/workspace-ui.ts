@@ -10,7 +10,8 @@ import { fromDesktop, desktopHandle } from "../files.ts";
 import { t } from "../i18n.ts";
 import { backlinks } from "../links.ts";
 import { dirname, rebase, basename, isInside } from "../paths.ts";
-import { isImageName, isPdfName } from "../kinds.ts";
+import { isImageName, isPdfName, officeKind } from "../kinds.ts";
+import { showOffice } from "./office-view.ts";
 import { showPdf } from "./pdf-view.ts";
 import { fileLink } from "../file-link.ts";
 import { imageMarkdown } from "../image-markdown.ts";
@@ -675,6 +676,18 @@ export async function openPath(path: string, line?: number, column?: number): Pr
   // PDF：在分頁裡用內建的 PDF 檢視器顯示（遠端資料夾裡的 PDF 讀不到，照舊交給預設的程式）。
   if (isPdfName(path) && desktop) {
     if (!isRemote(path)) return showPdf(path);
+    await desktop.openWithDefault(path);
+    announce(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
+    return;
+  }
+  // Word：在分頁裡唯讀檢視；Excel、PowerPoint 先交給預設的程式。遠端資料夾裡的讀不到，提示下載。
+  const office = officeKind(path);
+  if (office && desktop) {
+    if (isRemote(path)) {
+      toast(t("遠端資料夾裡的 Office 文件要先下載到電腦再開啟。"));
+      return;
+    }
+    if (office === "word") return showOffice(path);
     await desktop.openWithDefault(path);
     announce(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
     return;

@@ -91,17 +91,25 @@ pub fn is_doc_or_image(path: &Path) -> bool {
             .is_some_and(|e| crate::images::ALLOWED.contains(&e.to_ascii_lowercase().as_str()))
 }
 
-/// PDF：檔案樹會列出，點了用系統預設的程式開啟（oMarker 不顯示 PDF）。
+/// PDF：檔案樹會列出，點了在分頁裡用內建的 PDF 檢視器顯示。
 pub fn is_pdf(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
-/// 檔案樹列出的檔案：文件與圖片（[`is_doc_or_image`]）和 PDF（[`is_pdf`]）。
+/// Word、Excel、PowerPoint 文件（.docx、.xlsx、.pptx）：檔案樹會列出，點了在分頁裡唯讀檢視（前端解析內容）。
+/// 舊格式（.doc、.xls、.ppt）不列出。
+pub fn is_office(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "docx" | "xlsx" | "pptx"))
+}
+
+/// 檔案樹列出的檔案：文件與圖片（[`is_doc_or_image`]）、PDF（[`is_pdf`]）和 Office 文件（[`is_office`]）。
 /// 搜尋、待辦與標籤的索引、監看仍只看文件（[`is_doc`]）。
 pub fn is_listed(path: &Path) -> bool {
-    is_doc_or_image(path) || is_pdf(path)
+    is_doc_or_image(path) || is_pdf(path) || is_office(path)
 }
 
 /// 名稱是 `.git`（不分大小寫）。Windows 會去掉結尾的點與空白，`:` 之後是替代資料流，
@@ -936,16 +944,51 @@ pub async fn open_with_default(app: AppHandle, path: String) -> Result<(), Strin
     .await
 }
 
-/// 可以交給預設程式開啟的檔案：PDF，而且位置符合 [`reveal_target`] 的規則。
+/// 可以交給預設程式開啟的檔案：PDF 與 Office 文件，而且位置符合 [`reveal_target`] 的規則。
 fn open_target(
     root: Option<&Path>,
     path: &Path,
     opened: impl Fn(&Path) -> bool,
 ) -> Result<PathBuf, String> {
-    if !is_pdf(path) {
-        return Err(tr!("只有 PDF 可以用預設的程式開啟"));
+    if !is_pdf(path) && !is_office(path) {
+        return Err(tr!(
+            "只有 PDF 與 Word、Excel、PowerPoint 文件可以用預設的程式開啟"
+        ));
     }
     reveal_target(root, path, opened)
+}
+
+/// 分頁裡檢視的 Office 文件最大多大。
+const MAX_OFFICE_BYTES: u64 = 100 * 1024 * 1024;
+
+/// 讀取 Office 文件（.docx、.xlsx、.pptx）的內容，給分頁唯讀檢視。只讀目前資料夾裡、開過的檔案
+/// （和 [`open_with_default`] 一樣的規則），或剛下載到暫存資料夾的工作項目附件。
+#[tauri::command]
+pub async fn read_office(app: AppHandle, path: String) -> Result<tauri::ipc::Response, String> {
+    crate::io::blocking(move || {
+        let path = Path::new(&path);
+        if !is_office(path) {
+            return Err(tr!("只能讀取 Word、Excel、PowerPoint 文件"));
+        }
+        let target = if crate::ado::is_downloaded_attachment(path) {
+            path.to_path_buf()
+        } else {
+            let root = app.state::<Workspace>().root();
+            reveal_target(root.as_deref(), path, |p| crate::files::may_reopen(&app, p))?
+        };
+        let bytes = crate::files::read_capped(&target, MAX_OFFICE_BYTES)
+            .map_err(|e| {
+                crate::io::describe(&e, &tr!("無法讀取「{name}」", name = display_name(&target)))
+            })?
+            .ok_or_else(|| {
+                tr!(
+                    "「{name}」超過 100 MB，請用預設的程式開啟",
+                    name = display_name(&target)
+                )
+            })?;
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
 }
 
 /// 「在檔案總管中顯示」可以選取的位置：目前開啟的資料夾內的項目，或使用者開過的檔案
@@ -1516,11 +1559,28 @@ mod tests {
     }
 
     #[test]
-    fn tree_lists_docs_images_and_pdfs_only() {
-        for name in ["筆記.md", "圖片.PNG", "報告.pdf", "簡報.Pdf"] {
+    fn tree_lists_docs_images_pdfs_and_office_files_only() {
+        for name in [
+            "筆記.md",
+            "圖片.PNG",
+            "報告.pdf",
+            "簡報.Pdf",
+            "規格書.docx",
+            "預算.XLSX",
+            "簡報.pptx",
+        ] {
             assert!(is_listed(Path::new(name)), "{name}");
         }
-        for name in ["程式.exe", "封裝.zip", "報告.docx", "捷徑.lnk", "pdf"] {
+        for name in [
+            "程式.exe",
+            "封裝.zip",
+            "舊版.doc",
+            "舊版.xls",
+            "捷徑.lnk",
+            "pdf",
+            "規格書.docx.exe",
+            "docx",
+        ] {
             assert!(!is_listed(Path::new(name)), "{name}");
         }
         assert!(is_pdf(Path::new("C:\\Users\\me\\報告.PDF")));
@@ -1540,6 +1600,10 @@ mod tests {
         let outside = std::env::temp_dir().join("md-ws-open-default-out.pdf");
         assert!(open_target(Some(&dir), &outside, |_| false).is_err());
         assert!(open_target(Some(&dir), &dir.join("沒有.pdf"), |_| false).is_err());
+        // Office 文件也可以交給預設的程式。
+        let docx = dir.join("規格書.docx");
+        fs::write(&docx, "PK").unwrap();
+        assert_eq!(open_target(Some(&dir), &docx, |_| false), Ok(docx.clone()));
     }
 
     #[test]

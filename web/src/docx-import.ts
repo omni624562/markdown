@@ -41,7 +41,8 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-export async function docxToMarkdown(data: ArrayBuffer, saveImage: SaveImage): Promise<ImportResult> {
+/** Word 檔用 mammoth 轉成 HTML（圖片交給 `saveImage` 決定網址）；`html` 還沒整理過，顯示前要經過 office-html.ts 的白名單。 */
+export async function docxToHtml(data: ArrayBuffer, saveImage: SaveImage): Promise<{ html: string; messages: { type: string; message: string }[] }> {
   const size = zipUncompressedSize(data);
   if (size === null) throw new Error(t("這不是有效的 Word（.docx）檔案"));
   if (size > MAX_UNCOMPRESSED) throw new Error(t("這個 Word 檔解壓縮後太大，可能是損毀或惡意的檔案，已取消匯入"));
@@ -55,7 +56,12 @@ export async function docxToMarkdown(data: ArrayBuffer, saveImage: SaveImage): P
       }),
     },
   );
-  const markdown = htmlToMarkdown(result.value, { keepImages: true });
+  return { html: result.value, messages: result.messages };
+}
+
+export async function docxToMarkdown(data: ArrayBuffer, saveImage: SaveImage): Promise<ImportResult> {
+  const result = await docxToHtml(data, saveImage);
+  const markdown = htmlToMarkdown(result.html, { keepImages: true });
   const warnings = result.messages
     .filter((m) => m.type === "warning")
     .map((m) => m.message)
