@@ -150,6 +150,13 @@ fn format_node<'a>(
     }
     // 段落裡的錨點 `<a id="…"></a>`（目錄的連結跳到這裡）：整理後輸出；緊接著的 `</a>` 已經一起輸出了。
     if let NodeValue::HtmlInline(ref literal) = node.data().value {
+        // 段落裡的圖片 `<img src="media/圖.png" style="width:6in">`（Word 轉出來的文件常見）：整理後輸出。
+        if is_img_tag(literal) {
+            if entering {
+                context.write_str(&crate::raw_html::clean(literal))?;
+            }
+            return Ok(ChildRendering::HTML);
+        }
         if entering && is_anchor_open(literal) {
             let close = node.next_sibling().filter(
                 |n| matches!(n.data().value, NodeValue::HtmlInline(ref l) if is_anchor_close(l)),
@@ -168,6 +175,15 @@ fn format_node<'a>(
         }
     }
     format_node_default(context, node, entering)
+}
+
+/// 一個完整的 `<img …>` 標籤。
+fn is_img_tag(literal: &str) -> bool {
+    let t = literal.trim();
+    t.len() > 5
+        && t[..4].eq_ignore_ascii_case("<img")
+        && t[4..].starts_with(|c: char| c.is_whitespace() || c == '/')
+        && t.ends_with('>')
 }
 
 /// 只有 `id`／`name` 的 `<a …>`（沒有 href，只是讓連結跳到這裡的錨點）。
