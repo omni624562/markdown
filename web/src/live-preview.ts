@@ -318,6 +318,26 @@ class MathWidget extends WidgetType {
   }
 }
 
+/** HTML 裡的圖片：相對路徑換成載入得到的網址（和 Markdown 圖片一樣）。 */
+function loadImages(el: HTMLElement, view: EditorView, opts: LivePreviewOptions): void {
+  for (const img of el.querySelectorAll("img")) {
+    const src = img.getAttribute("src");
+    if (!src) continue;
+    img.removeAttribute("src");
+    const show = (url: string | null) => {
+      if (url) img.src = url;
+      view.requestMeasure();
+    };
+    try {
+      const url = opts.imageUrl(src, view);
+      if (url instanceof Promise) url.then(show, () => show(null));
+      else show(url);
+    } catch {
+      show(null);
+    }
+  }
+}
+
 /**
  * 文件裡直接寫的 HTML 區塊（例如從 Word、Confluence 轉出來的 `<table>…</table>`）：畫成和預覽一樣的樣子。
  * HTML 由核心整理過（只留安全的標籤與屬性，見 crates/md-core/src/raw_html.rs）；點一下顯示原始碼。
@@ -337,25 +357,37 @@ class HtmlWidget extends WidgetType {
     const el = document.createElement("div");
     el.className = "cm-lp-block cm-lp-html markdown-body";
     el.innerHTML = this.html;
-    // 相對路徑的圖片換成載入得到的網址（和 Markdown 圖片一樣）。
-    for (const img of el.querySelectorAll("img")) {
-      const src = img.getAttribute("src");
-      if (!src) continue;
-      img.removeAttribute("src");
-      const show = (url: string | null) => {
-        if (url) img.src = url;
-        view.requestMeasure();
-      };
-      try {
-        const url = this.opts.imageUrl(src, view);
-        if (url instanceof Promise) url.then(show, () => show(null));
-        else show(url);
-      } catch {
-        show(null);
-      }
-    }
+    loadImages(el, view, this.opts);
     revealOnClick(view, el);
     return el;
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+/** 段落裡的 `<img>`（整理過的 HTML，見 renderedHtml）：只取出圖片，排在文字中間。 */
+class InlineHtmlWidget extends WidgetType {
+  readonly html: string;
+  readonly opts: LivePreviewOptions;
+  constructor(html: string, opts: LivePreviewOptions) {
+    super();
+    this.html = html;
+    this.opts = opts;
+  }
+  eq(other: InlineHtmlWidget): boolean {
+    return other.html === this.html;
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-lp-html-inline";
+    const box = document.createElement("template");
+    box.innerHTML = this.html;
+    const img = box.content.querySelector("img");
+    if (img) span.append(img);
+    loadImages(span, view, this.opts);
+    revealOnClick(view, span);
+    return span;
   }
   ignoreEvent(): boolean {
     return true;
@@ -1031,14 +1063,25 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
         case "HTMLBlock":
           return false;
         case "HTMLTag": {
+          // 段落裡的圖片 `<img src="media/圖.png" style="width:6in">`：游標不在這一行時畫出圖片。
+          if (IMG_TAG.test(doc.sliceString(from, Math.min(to, from + 5))) && !lineActive(from)) {
+            decos.push(Decoration.replace({ widget: new InlineHtmlWidget(renderedHtml(doc.sliceString(from, to), opts).html, opts) }).range(from, to));
+            return;
+          }
           const tag = parseTag(doc.sliceString(from, to));
           if (tag) htmlTags.push({ ...tag, from, to, parent: node.parent?.from ?? -1 });
           return;
         }
         case "Paragraph": {
-          // 只有錨點 `<a id="…"></a>`（目錄的連結跳到這裡）的段落：畫面上沒有東西，淡化顯示原始碼（和 HTML 註解一樣）。
-          if (to - from < 300 && ANCHOR_ONLY.test(doc.sliceString(from, to))) {
-            for (let l = doc.lineAt(from).number; l <= doc.lineAt(to).number; l++) decos.push(lineClass("cm-lp-comment").range(doc.line(l).from));
+          // 只有錨點 `<a id="…"></a>`（目錄的連結跳到這裡）的段落：畫面上沒有東西（和預覽一樣），
+          // 游標不在這一行時藏起來，只留一點空隙；游標移過去時淡化顯示原始碼，可以編輯。
+          if (to - from < 300 && oneLine(from, to) && ANCHOR_ONLY.test(doc.sliceString(from, to))) {
+            const lineFrom = doc.lineAt(from).from;
+            if (lineActive(from)) decos.push(lineClass("cm-lp-comment").range(lineFrom));
+            else {
+              hide(from, to);
+              decos.push(lineClass("cm-lp-anchor").range(lineFrom));
+            }
             return false;
           }
           if (!mathOn) return;
@@ -1132,6 +1175,9 @@ export interface InlineTag {
 }
 
 /** `<u>`、`</mark>` 這種不帶屬性的格式標籤。 */
+/** `<img` 開頭的標籤。 */
+const IMG_TAG = /^<img[\s/]/i;
+
 /** 只有一個錨點（`<a id="…"></a>`、`<a name="…"></a>`，沒有 href）。 */
 const ANCHOR_ONLY = /^\s*<a\s+(?![^>]*href)[^>]*\b(id|name)\s*=[^>]*>\s*<\/a>\s*$/i;
 

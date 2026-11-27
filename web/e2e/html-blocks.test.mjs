@@ -41,8 +41,11 @@ test("即時預覽：HTML 表格畫成表格（空行拆開的也合成一張）
   assert.equal(await box.locator("ol").getAttribute("type"), "1");
   assert.equal(await box.locator("[onerror]").count(), 0, "事件屬性拿掉");
   assert.equal(await page.evaluate(() => window.__pwned), undefined, "沒有執行");
-  // 只有錨點的那一行：畫面上沒有東西，淡化顯示原始碼。
-  assert.equal(await page.locator(".cm-line.cm-lp-comment", { hasText: '<a id="資源配置"></a>' }).count(), 1);
+  // 只有錨點的那一行：畫面上沒有東西，游標不在時整行藏起來（只留一點空隙）。
+  const anchor = page.locator(".cm-line.cm-lp-anchor");
+  assert.equal(await anchor.count(), 1);
+  assert.equal((await anchor.textContent()).trim(), "", "看不到 <a id>");
+  assert.ok((await anchor.boundingBox()).height < 10, "只留一點空隙");
   // 點表格：游標移進去，顯示原始碼。
   await box.locator("td").first().click();
   await page.locator(".cm-line", { hasText: "<colgroup>" }).waitFor();
@@ -58,6 +61,29 @@ test("預覽：HTML 表格照樣畫出來，危險的內容拿掉", async () => 
   assert.deepEqual(await table.locator("th").allTextContents(), ["修訂時間", "修訂紀錄"]);
   assert.equal(await page.locator("#preview [onerror]").count(), 0);
   assert.equal(await page.locator('#preview a[id="資源配置"]').count(), 1, "錨點留著，目錄的連結跳得到");
+  assert.equal(await page.evaluate(() => window.__pwned), undefined);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("段落裡的 <img>：預覽、即時預覽都畫出圖片（危險的屬性拿掉），游標移過去顯示原始碼", async () => {
+  const opened = await open();
+  const { page, context, errors } = opened;
+  await page.locator(".cm-content").focus();
+  await page.keyboard.insertText('## 2.7. 資料流程圖\n\n<img src="data:image/png;base64,iVBORw0KGgo=" style="width:6.88194in;height:3.5in" onerror="window.__pwned=1" />\n> 各 API 的說明\n\n文字 <img src="https://ado.test/a.png" alt="圖"> 文字\n\n最後一行');
+  await page.click('.statusbar [data-view="live"]');
+  await page.keyboard.press("Control+End");
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator(".cm-content img:not(.cm-widgetBuffer)").count(), 2, "兩張圖片都畫出來");
+  assert.equal(await page.locator(".cm-content [onerror]").count(), 0);
+  assert.equal(await page.locator(".cm-line", { hasText: "<img" }).count(), 0, "看不到 <img 原始碼");
+  // 點段落裡的圖片：游標移過去，顯示原始碼。
+  await page.locator(".cm-lp-html-inline").last().dispatchEvent("mousedown", { button: 0 });
+  await page.locator(".cm-line", { hasText: '<img src="https://ado.test/a.png"' }).waitFor();
+  await page.click('.statusbar [data-view="preview"]');
+  await page.locator("#preview img").first().waitFor({ state: "attached" });
+  assert.equal(await page.locator("#preview img").count(), 2);
+  assert.equal(await page.locator("#preview [onerror]").count(), 0);
   assert.equal(await page.evaluate(() => window.__pwned), undefined);
   assert.deepEqual(errors, []);
   await context.close();

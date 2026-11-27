@@ -2264,6 +2264,9 @@ button.git-info:disabled { cursor: default; }
 /* 文件裡直接寫的 HTML 區塊（見 live-preview.ts 的 HtmlWidget）：寬表格可以左右捲動。 */
 .cm-lp-html { overflow-x: auto; }
 .cm-lp-html table { margin: 0; }
+.cm-lp-html img, .cm-lp-html-inline img { max-width: 100%; height: auto; }
+/* 只有錨點 `<a id="…"></a>` 的行：游標不在時藏起來，只留一點空隙。 */
+.cm-editor.cm-lp .cm-line.cm-lp-anchor { font-size: 4px; line-height: 4px; }
 .cm-lp-math-block { text-align: center; }
 .cm-lp-math { cursor: pointer; }
 /* 預覽中的表格（plugins/tables.ts）：短的儲存格、日期與數字不從中間斷開；表格因此放不下時左右捲動。

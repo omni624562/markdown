@@ -388,6 +388,18 @@ mod tests {
     }
 
     #[test]
+    fn inline_images_render_safely() {
+        let html = r("## 2.7. 資料流程圖\n\n<img src=\"media/資料流程圖.png\" style=\"width:6.88194in;height:3.5in\" />\n> 說明").html;
+        assert!(html.contains("<img src=\"media/資料流程圖.png\""), "{html}");
+        assert!(html.contains("width: 6.88194in"), "{html}");
+        let html = r("文字 <img src=\"a.png\" onerror=\"alert(1)\"> 文字").html;
+        assert!(html.contains("<img src=\"a.png\">"), "{html}");
+        assert!(!html.contains("onerror"), "{html}");
+        let html = r("文字 <img src=\"javascript:alert(1)\"> 文字").html;
+        assert!(!html.contains("javascript"), "{html}");
+    }
+
+    #[test]
     fn inline_anchors_are_kept_for_toc_links() {
         let html = r("<a id=\"資源配置\"></a>\n\n## 1.4. 資源配置").html;
         assert!(html.contains("<a id=\"資源配置\""), "{html}");
