@@ -680,17 +680,13 @@ export async function openPath(path: string, line?: number, column?: number): Pr
     announce(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
     return;
   }
-  // Word：在分頁裡唯讀檢視；Excel、PowerPoint 先交給預設的程式。遠端資料夾裡的讀不到，提示下載。
-  const office = officeKind(path);
-  if (office && desktop) {
+  // Word、Excel、PowerPoint：在分頁裡唯讀檢視。遠端資料夾裡的讀不到，提示下載。
+  if (officeKind(path) && desktop) {
     if (isRemote(path)) {
       toast(t("遠端資料夾裡的 Office 文件要先下載到電腦再開啟。"));
       return;
     }
-    if (office === "word") return showOffice(path);
-    await desktop.openWithDefault(path);
-    announce(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
-    return;
+    return showOffice(path);
   }
   const existing = app.tabForPath(path);
   if (existing) app.activate(existing);

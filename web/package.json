@@ -33,6 +33,7 @@
     "highlight.js": "^11.11.1",
     "katex": "^0.19.1",
     "lucide": "^1.68.0",
+    "jszip": "3.10.2",
     "mammoth": "1.13.0",
     "mermaid": "^12.3.0",
     "opencc-js": "^1.4.2",
