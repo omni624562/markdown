@@ -67,7 +67,7 @@ export function openAttachment(href: string): boolean {
   } else if (kind === "image") {
     showImage(link.name, desktop!.adoImage(link.url));
   } else if (kind === "save") {
-    toast(t("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP 與 Word、Excel、PowerPoint 文件。需要的話請用「另存新檔」，確認來源可信再開啟。", { name: link.name }), {
+    toast(t("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP、Word、Excel、PowerPoint 文件與 Outlook 郵件。需要的話請用「另存新檔」，確認來源可信再開啟。", { name: link.name }), {
       tone: "error",
       action: { label: t("另存新檔"), run: () => saveAttachment(href) },
     });

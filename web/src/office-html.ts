@@ -6,7 +6,7 @@
 const TAGS = new Set([
   "p", "h1", "h2", "h3", "h4", "h5", "h6", "br", "hr", "blockquote", "pre", "code",
   "strong", "b", "em", "i", "u", "s", "del", "sup", "sub", "mark", "span", "div", "small",
-  "ul", "ol", "li", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
+  "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
   "a", "img", "section", "header", "figure", "figcaption",
 ]);
 const ATTRS: Record<string, readonly string[]> = {

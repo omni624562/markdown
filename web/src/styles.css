@@ -5194,3 +5194,11 @@ body.phone .settings[data-phone-view="search"] section > h3 { display: block; ma
 .office-slide li.office-level-1 { margin-left: 1.5em; }
 .office-slide li.office-level-2 { margin-left: 3em; }
 .office-slide li.office-level-3, .office-slide li.office-level-4 { margin-left: 4.5em; }
+.office-mail-head { border-bottom: 1px solid var(--border); margin-bottom: 12px; padding-bottom: 8px; }
+.office-mail-head h2 { margin: 0 0 8px; }
+.office-mail-head dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
+.office-mail-head dt { color: var(--subtle); }
+.office-mail-head dd { margin: 0; overflow-wrap: anywhere; }
+.office-mail-text { white-space: pre-wrap; }
+.office-mail-attachments { list-style: none; padding: 0; }
+.office-mail-attachments li { display: flex; align-items: center; gap: 6px; }
