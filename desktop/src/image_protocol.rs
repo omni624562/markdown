@@ -5,7 +5,8 @@
 //! 文件裡一張 `\\attacker\share\a.png` 的圖片就會讓 Windows 連到對方的 SMB 伺服器，
 //! 洩漏使用者的 NTLM 雜湊。這裡的規則：
 //!
-//! - 只提供圖片（依副檔名），回應帶正確的 Content-Type，並限制大小；
+//! - 只提供圖片與 PDF（依副檔名），回應帶正確的 Content-Type，並限制大小；
+//!   PDF 給分頁裡的 PDF 檢視器（`<iframe>`）用，只允許 app 自己的頁面內嵌；
 //! - 只提供目前工作區、以及已開啟的檔案所在資料夾（含子資料夾）內的檔案；
 //! - 先只用字串判斷路徑是否在允許的資料夾內，通過之後才碰檔案系統。
 //!   UNC、`\\?\`、裝置路徑只有在允許的資料夾本身就在同一個位置時才會通過；
@@ -24,6 +25,9 @@ use crate::workspace::Workspace;
 pub const SCHEME: &str = "mdimg";
 /// 單張圖片最大多大。
 const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
+/// PDF 最大多大（掃描檔可能比圖片大很多）。
+const MAX_PDF_BYTES: u64 = 256 * 1024 * 1024;
+const PDF: &str = "application/pdf";
 /// 最多記住幾個已開啟檔案的資料夾（太多時忘掉最舊的）。
 const MAX_ROOTS: usize = 200;
 
@@ -58,6 +62,7 @@ fn mime_type(ext: &str) -> Option<&'static str> {
         "bmp" => "image/bmp",
         "avif" => "image/avif",
         "ico" => "image/x-icon",
+        "pdf" => PDF,
         _ => return None,
     })
 }
@@ -107,7 +112,7 @@ fn precheck<'a>(
 }
 
 /// 通過字串檢查之後：解析符號連結確認實際位置，再讀檔。
-fn load(path: &Path, roots: &[PathBuf]) -> Result<Vec<u8>, Reject> {
+fn load(path: &Path, roots: &[PathBuf], max: u64) -> Result<Vec<u8>, Reject> {
     let real = dunce::canonicalize(path).map_err(|e| classify(&e))?;
     let inside = roots.iter().any(|root| {
         dunce::canonicalize(root)
@@ -121,10 +126,10 @@ fn load(path: &Path, roots: &[PathBuf]) -> Result<Vec<u8>, Reject> {
     if !meta.is_file() {
         return Err(Reject::NotFound);
     }
-    if meta.len() > MAX_IMAGE_BYTES {
+    if meta.len() > max {
         return Err(Reject::TooLarge);
     }
-    crate::files::read_capped(&real, MAX_IMAGE_BYTES)
+    crate::files::read_capped(&real, max)
         .map_err(|e| classify(&e))?
         .ok_or(Reject::TooLarge)
 }
@@ -155,10 +160,15 @@ fn response(
         .status(status)
         .header(header::CACHE_CONTROL, "no-cache")
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-        // 直接開啟這個網址時（例如 SVG），不執行任何指令碼。
+        // 直接開啟這個網址時（例如 SVG），不執行任何指令碼。PDF 交給內建的 PDF 檢視器
+        // （sandbox 會讓檢視器打不開），改成只允許 app 自己的頁面用 `<iframe>` 內嵌。
         .header(
             header::CONTENT_SECURITY_POLICY,
-            "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; sandbox",
+            if mime == Some(PDF) {
+                "default-src 'none'; frame-ancestors tauri://localhost http://tauri.localhost https://tauri.localhost"
+            } else {
+                "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; sandbox"
+            },
         );
     if let Some(mime) = mime {
         b = b.header(header::CONTENT_TYPE, mime);
@@ -214,7 +224,12 @@ pub fn handle(app: AppHandle, request: Request<Vec<u8>>, responder: UriSchemeRes
             }
         };
         let head = request.method() == "HEAD";
-        let result = crate::io::blocking(move || Ok(load(Path::new(&path), &inside))).await;
+        let max = if mime == PDF {
+            MAX_PDF_BYTES
+        } else {
+            MAX_IMAGE_BYTES
+        };
+        let result = crate::io::blocking(move || Ok(load(Path::new(&path), &inside, max))).await;
         let reply = match result {
             Ok(Ok(bytes)) => response(
                 StatusCode::OK,
@@ -239,6 +254,8 @@ mod tests {
         let ok = |p: &str| precheck(p, &roots, true).map(|(m, _)| m);
         assert_eq!(ok(r"C:\Users\me\筆記\assets\a.png"), Ok("image/png"));
         assert_eq!(ok(r"c:/users/me/筆記/assets/A.JPG"), Ok("image/jpeg"));
+        // PDF：給分頁裡的 PDF 檢視器。
+        assert_eq!(ok(r"C:\Users\me\筆記\規格書.PDF"), Ok("application/pdf"));
         // 不是圖片、不在允許的資料夾內。
         assert_eq!(ok(r"C:\Users\me\筆記\a.md"), Err(Reject::Forbidden));
         assert_eq!(ok(r"C:\Users\me\.ssh\id_rsa"), Err(Reject::Forbidden));
@@ -286,16 +303,19 @@ mod tests {
         std::fs::write(dir.join("筆記/a.png"), b"png").unwrap();
         std::fs::write(dir.join("外面.png"), b"secret").unwrap();
         let roots = [dir.join("筆記")];
-        assert_eq!(load(&dir.join("筆記/a.png"), &roots).unwrap(), b"png");
         assert_eq!(
-            load(&dir.join("筆記/沒有.png"), &roots),
+            load(&dir.join("筆記/a.png"), &roots, MAX_IMAGE_BYTES).unwrap(),
+            b"png"
+        );
+        assert_eq!(
+            load(&dir.join("筆記/沒有.png"), &roots, MAX_IMAGE_BYTES),
             Err(Reject::NotFound)
         );
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(dir.join("外面.png"), dir.join("筆記/連結.png")).unwrap();
             assert_eq!(
-                load(&dir.join("筆記/連結.png"), &roots),
+                load(&dir.join("筆記/連結.png"), &roots, MAX_IMAGE_BYTES),
                 Err(Reject::Forbidden)
             );
         }

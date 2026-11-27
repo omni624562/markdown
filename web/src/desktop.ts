@@ -1310,6 +1310,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoAttachmentText: (url: string) => core.invoke<string>("ado_attachment_text", { url }),
     /** 附件下載到暫存資料夾，標上「從網際網路下載」，用預設的程式開啟（只開允許清單裡的類型）。 */
     adoAttachmentOpen: (url: string, name: string) => core.invoke<void>("ado_attachment_open", { url, name }),
+    /** 附件下載到暫存資料夾，讓 oMarker 的分頁可以檢視（PDF）；回傳檔案位置。 */
+    adoAttachmentView: (url: string, name: string) => core.invoke<string>("ado_attachment_view", { url, name }),
     /** 附件另存新檔；按取消時回傳 null。 */
     adoAttachmentSave: (url: string, name: string) => core.invoke<string | null>("ado_attachment_save", { url, name }),
     /** Git 儲存庫裡的圖片，回傳 data: 網址（儲存庫檔案內容裡的相對路徑圖片）。 */

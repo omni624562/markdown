@@ -11,6 +11,7 @@ import { t } from "../i18n.ts";
 import { backlinks } from "../links.ts";
 import { dirname, rebase, basename, isInside } from "../paths.ts";
 import { isImageName, isPdfName } from "../kinds.ts";
+import { showPdf } from "./pdf-view.ts";
 import { fileLink } from "../file-link.ts";
 import { imageMarkdown } from "../image-markdown.ts";
 import { insertAtCursor } from "./image-paste.ts";
@@ -671,8 +672,9 @@ export async function openRecentFolder(path: string): Promise<void> {
 export async function openPath(path: string, line?: number, column?: number): Promise<void> {
   // 圖片不是文字檔：在唯讀的分頁裡檢視。
   if (isImageName(path)) return showImage(path);
-  // PDF 不在 oMarker 裡顯示：交給系統預設的程式。
+  // PDF：在分頁裡用內建的 PDF 檢視器顯示（遠端資料夾裡的 PDF 讀不到，照舊交給預設的程式）。
   if (isPdfName(path) && desktop) {
+    if (!isRemote(path)) return showPdf(path);
     await desktop.openWithDefault(path);
     announce(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
     return;

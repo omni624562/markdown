@@ -120,17 +120,17 @@ test("附件：PDF 直接開啟；.rdp 這類不在允許清單裡的類型（�
     ],
   };
   const { page, context, errors } = await open({
-    desktop: { ...desktop, ado_work_item: detail, ado_attachment_save: "C:\\Users\\me\\Downloads\\遠端.rdp" },
+    desktop: {
+      ...desktop,
+      ado_work_item: detail,
+      ado_attachment_save: "C:\\Users\\me\\Downloads\\遠端.rdp",
+      ado_attachment_view: "C:\\Users\\me\\AppData\\Local\\Temp\\omarker-attachments\\0a1b\\規格書.pdf",
+    },
   });
   await openItem(page);
   const names = async (cmd) => (await calls(page)).filter((c) => c.cmd === cmd).map((c) => c.args.name);
   const count = (cmd, n) => page.waitForFunction(([cmd, n]) => window.__fake.calls.filter((c) => c.cmd === cmd).length === n, [cmd, n]);
   const tiles = page.locator(".ado-att");
-
-  // PDF：點小方塊就下載後用預設的程式開啟。
-  await tiles.filter({ hasText: "規格書.pdf" }).click();
-  await count("ado_attachment_open", 1);
-  assert.deepEqual(await names("ado_attachment_open"), ["規格書.pdf"]);
 
   // .rdp：小方塊寫明只能另存，點了是另存新檔。
   const rdpTile = tiles.filter({ hasText: "遠端.rdp" });
@@ -147,7 +147,17 @@ test("附件：PDF 直接開啟；.rdp 這類不在允許清單裡的類型（�
   await tip.locator("button", { hasText: "另存新檔" }).click();
   await count("ado_attachment_save", 2);
   assert.deepEqual(await names("ado_attachment_save"), ["遠端.rdp", "遠端.rdp."]);
-  assert.deepEqual(await names("ado_attachment_open"), ["規格書.pdf"], "只有 PDF 直接開啟");
+  assert.deepEqual(await names("ado_attachment_open"), [], "不在允許清單裡的不直接開啟");
+
+  // PDF：點小方塊就下載，在分頁裡用內建的 PDF 檢視器顯示；「用預設的程式開啟」重新下載後交給 Windows。
+  await tiles.filter({ hasText: "規格書.pdf" }).click();
+  await count("ado_attachment_view", 1);
+  assert.deepEqual(await names("ado_attachment_view"), ["規格書.pdf"]);
+  await page.locator(".pdf-view iframe.pdf-view-frame").waitFor({ state: "attached" });
+  await page.locator(".pdf-view-external").click();
+  await count("ado_attachment_open", 1);
+  assert.deepEqual(await names("ado_attachment_open"), ["規格書.pdf"]);
+
   assert.deepEqual(errors, []);
   await context.close();
 });

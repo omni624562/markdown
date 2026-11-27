@@ -1,5 +1,6 @@
 /**
- * 檔案面板的 PDF：點一下交給系統預設的程式開啟（不當成文字檔讀）；右鍵「插入連結到目前的文件」插入相對路徑的連結。
+ * 檔案面板的 PDF：點一下在分頁裡用內建的 PDF 檢視器顯示（不當成文字檔讀），上方有「用預設的程式開啟」；
+ * 右鍵「插入連結到目前的文件」插入相對路徑的連結。
  * 先執行 `npm run build`，再 `npm run test:e2e`。
  */
 import assert from "node:assert/strict";
@@ -11,7 +12,7 @@ const at = (name) => `${ROOT}\\${name}`;
 const entry = (name) => ({ name, path: at(name), isDir: false });
 const row = (page, name) => page.locator(`#file-tree .tree-row[data-path="${at(name).replace(/\\/g, "\\\\")}"]`);
 
-test("點 PDF：用預設的程式開啟；右鍵可以插入連結", async () => {
+test("點 PDF：在分頁裡顯示（內建的 PDF 檢視器），可以改用預設的程式開啟；右鍵可以插入連結", async () => {
   const { page, context, errors } = await open({
     desktop: {
       startup_target: { kind: "folder", path: ROOT, name: "產品筆記" },
@@ -20,11 +21,15 @@ test("點 PDF：用預設的程式開啟；右鍵可以插入連結", async () =
     },
   });
   await row(page, "報告.pdf").click();
+  const frame = page.locator(".pdf-view iframe.pdf-view-frame");
+  await frame.waitFor({ state: "attached" });
+  assert.match(decodeURIComponent(await frame.getAttribute("src")), /報告\.pdf$/, "用 mdimg 協定載入這個 PDF");
+  assert.equal(await page.locator("#tab-bar .tab[aria-selected=true] .tab-name").textContent(), "報告.pdf");
+  assert.equal((await page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "open_with_default" || c.cmd === "reopen_file"))).length, 0, "不當成文字檔讀、也不交給外部程式");
+  // 「用預設的程式開啟」：交給 Windows。
+  await page.locator(".pdf-view-external").click();
   await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "open_with_default"));
-  const calls = await page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "open_with_default" || c.cmd === "reopen_file").map((c) => [c.cmd, c.args.path]));
-  assert.deepEqual(calls, [["open_with_default", at("報告.pdf")]]);
-  // 結果在畫面上看得到：不跳通知，只給螢幕閱讀器念（ui/toast.ts 的 announce）。
-  await page.waitForFunction((s) => document.querySelector(".sr-only[role=status]")?.textContent.includes(s), "已用預設的程式開啟「報告.pdf」");
+  assert.deepEqual(await page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "open_with_default").map((c) => c.args.path)), [at("報告.pdf")]);
 
   // 先開 README，再從右鍵插入 PDF 的連結：路徑相對於 README。
   await row(page, "README.md").click();
