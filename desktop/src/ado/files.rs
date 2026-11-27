@@ -257,9 +257,7 @@ async fn download_to_temp(
         let bytes = download_attachment(&url, &pat)?;
         let mut rand = [0u8; 8];
         getrandom::fill(&mut rand).map_err(|e| e.to_string())?;
-        let dir = std::env::temp_dir()
-            .join("omarker-attachments")
-            .join(format!("{:016x}", u64::from_le_bytes(rand)));
+        let dir = attachments_dir().join(format!("{:016x}", u64::from_le_bytes(rand)));
         fs::create_dir_all(&dir)
             .map_err(|e| crate::io::describe(&e, &tr!("無法建立暫存資料夾")))?;
         let path = dir.join(&file);
@@ -270,7 +268,24 @@ async fn download_to_temp(
     .await
 }
 
-/// 在 oMarker 的分頁裡檢視附件（PDF）：下載到暫存資料夾，允許分頁讀取那個資料夾（`mdimg:` 協定），回傳檔案位置。
+/// 附件下載到的暫存資料夾。
+fn attachments_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("omarker-attachments")
+}
+
+/// 是剛下載到暫存資料夾的附件嗎（`omarker-attachments\<亂數>\檔名`，實際位置也要在裡面）。
+pub fn is_downloaded_attachment(path: &Path) -> bool {
+    let (Ok(real), Ok(base)) = (
+        dunce::canonicalize(path),
+        dunce::canonicalize(attachments_dir()),
+    ) else {
+        return false;
+    };
+    real.parent().and_then(Path::parent) == Some(base.as_path())
+}
+
+/// 在 oMarker 的分頁裡檢視附件（PDF、Office 文件）：下載到暫存資料夾，允許分頁讀取那個資料夾
+/// （PDF 用 `mdimg:` 協定，Office 文件用 `read_office`），回傳檔案位置。
 #[tauri::command]
 pub async fn ado_attachment_view(
     app: AppHandle,

@@ -41,9 +41,17 @@ export function isTextFileName(name: string): boolean {
   return dot > 0 && TEXT_EXTENSIONS.includes(name.slice(dot + 1).toLowerCase());
 }
 
-/** PDF：檔案面板會列出，點了用系統預設的程式開啟（oMarker 不顯示 PDF）。 */
+/** PDF：檔案面板會列出，點了在分頁裡用內建的 PDF 檢視器顯示。 */
 export function isPdfName(name: string): boolean {
   return /\.pdf$/i.test(name);
+}
+
+/** Office 文件（和桌面版 desktop/src/workspace.rs 的 is_office 一致）：檔案面板會列出，點了在分頁裡唯讀檢視。 */
+export type OfficeKind = "word" | "excel" | "powerpoint";
+export function officeKind(name: string): OfficeKind | null {
+  const m = /\.(docx|xlsx|pptx)$/i.exec(name);
+  if (!m) return null;
+  return ({ docx: "word", xlsx: "excel", pptx: "powerpoint" } as const)[m[1].toLowerCase() as "docx" | "xlsx" | "pptx"];
 }
 
 /** 檔案面板會列出、可以在分頁裡檢視的圖片（和桌面版 desktop/src/images.rs 的 ALLOWED 一致）。 */

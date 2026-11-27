@@ -83,8 +83,11 @@ function fakeTauri(respond) {
         const queue = queues.get(cmd);
         if (!queue) return cmd in DEFAULTS ? DEFAULTS[cmd] : null;
         const next = queue.length > 1 ? queue.shift() : queue[0];
+        // `{ $base64: "…" }`：回傳二進位內容（ArrayBuffer，例如讀取 Word 檔）。
+        const bytes = (v) => (v && typeof v === "object" && "$base64" in v ? Uint8Array.from(atob(v.$base64), (c) => c.charCodeAt(0)).buffer : v);
         // `{ $by: "id", values: { 42: … } }`：依參數決定回應（例如依工作項目編號）。
-        if (next && typeof next === "object" && "$by" in next) return next.values[String(args?.[next.$by])] ?? null;
+        if (next && typeof next === "object" && "$by" in next) return bytes(next.values[String(args?.[next.$by])] ?? null);
+        if (next && typeof next === "object" && "$base64" in next) return bytes(next);
         // `{ $delay: 毫秒, value }`：慢一點才回應（模擬伺服器很慢）；`{ $error: 訊息 }`：失敗（模擬連不上）。
         if (next && typeof next === "object" && "$delay" in next) {
           await new Promise((r) => setTimeout(r, next.$delay));

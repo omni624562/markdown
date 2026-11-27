@@ -5173,3 +5173,10 @@ body.phone .settings[data-phone-view="search"] section > h3 { display: block; ma
 .pdf-view-bar { display: flex; justify-content: flex-end; }
 .pdf-view-external { display: inline-flex; align-items: center; gap: 6px; }
 .pdf-view-frame { flex: 1; width: 100%; min-height: 70vh; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+
+/* Office 文件的分頁（app/office-view.ts）。 */
+.office-view-bar { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
+.office-view-bar button { display: inline-flex; align-items: center; gap: 6px; }
+.office-view-content img { max-width: 100%; height: auto; }
+.office-view-content table { display: block; overflow-x: auto; }
+.office-view-error { color: var(--danger); }

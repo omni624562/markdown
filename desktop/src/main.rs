@@ -485,6 +485,7 @@ fn main() {
             ado::ado_attachment_text,
             ado::ado_attachment_open,
             ado::ado_attachment_view,
+            workspace::read_office,
             ado::ado_attachment_save,
             ado::ado_work_item_states,
             ado::ado_work_item_type_dates,

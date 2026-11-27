@@ -26,6 +26,8 @@ import { app } from "./context.ts";
 import { askNewWikiPage } from "./wiki-new-page.ts";
 import { backlinkWarning } from "./wiki-backlinks.ts";
 import { showPdf } from "./pdf-view.ts";
+import { showOffice } from "./office-view.ts";
+import { officeKind } from "../kinds.ts";
 
 
 export const repoImagesPlugin: PreviewPlugin = {
@@ -69,6 +71,15 @@ export function openAttachment(href: string): boolean {
       tone: "error",
       action: { label: t("另存新檔"), run: () => saveAttachment(href) },
     });
+  } else if (officeKind(link.name) === "word") {
+    // Word、Excel、PowerPoint：下載後在分頁裡唯讀檢視。
+    toast(t("正在下載「{name}」…", { name: link.name }));
+    void desktop!
+      .adoAttachmentView(link.url, link.name)
+      .then((path) =>
+        showOffice(path, { label: t("附件"), linkable: false, openExternally: () => desktop!.adoAttachmentOpen(link.url, link.name) }),
+      )
+      .catch(reportError);
   } else if (/\.pdf$/i.test(link.name)) {
     // PDF：下載後在分頁裡檢視；「用預設的程式開啟」重新下載後交給 Windows。
     toast(t("正在下載「{name}」…", { name: link.name }));
