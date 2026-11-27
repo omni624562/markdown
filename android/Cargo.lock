@@ -1793,7 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "md-android"
-version = "1.168.3"
+version = "1.169.0"
 dependencies = [
  "chrono",
  "parking_lot 0.13.0",
