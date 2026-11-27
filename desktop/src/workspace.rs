@@ -98,12 +98,15 @@ pub fn is_pdf(path: &Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
-/// Word、Excel、PowerPoint 文件（.docx、.xlsx、.pptx）：檔案樹會列出，點了在分頁裡唯讀檢視（前端解析內容）。
-/// 舊格式（.doc、.xls、.ppt）不列出。
+/// Word、Excel、PowerPoint 文件（.docx、.xlsx、.pptx）與 Outlook 郵件（.msg）：檔案樹會列出，
+/// 點了在分頁裡唯讀檢視（前端解析內容）。舊格式（.doc、.xls、.ppt）不列出。
 pub fn is_office(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "docx" | "xlsx" | "pptx"))
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        matches!(
+            e.to_ascii_lowercase().as_str(),
+            "docx" | "xlsx" | "pptx" | "msg"
+        )
+    })
 }
 
 /// 檔案樹列出的檔案：文件與圖片（[`is_doc_or_image`]）、PDF（[`is_pdf`]）和 Office 文件（[`is_office`]）。
@@ -952,7 +955,7 @@ fn open_target(
 ) -> Result<PathBuf, String> {
     if !is_pdf(path) && !is_office(path) {
         return Err(tr!(
-            "只有 PDF 與 Word、Excel、PowerPoint 文件可以用預設的程式開啟"
+            "只有 PDF、Word、Excel、PowerPoint 文件與 Outlook 郵件可以用預設的程式開啟"
         ));
     }
     reveal_target(root, path, opened)
@@ -968,7 +971,7 @@ pub async fn read_office(app: AppHandle, path: String) -> Result<tauri::ipc::Res
     crate::io::blocking(move || {
         let path = Path::new(&path);
         if !is_office(path) {
-            return Err(tr!("只能讀取 Word、Excel、PowerPoint 文件"));
+            return Err(tr!("只能讀取 Word、Excel、PowerPoint 文件與 Outlook 郵件"));
         }
         let target = if crate::ado::is_downloaded_attachment(path) {
             path.to_path_buf()

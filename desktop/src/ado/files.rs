@@ -118,7 +118,7 @@ const ATTACHMENT_LIMIT: u64 = 200 * 1024 * 1024;
 /// Office 會先用受保護的檢視開啟。前端 `web/src/attachments.ts` 的 `OPENABLE` 要一起改。
 const OPENABLE: &[&str] = &[
     "pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp", "txt", "md", "csv", "log", "json", "docx",
-    "xlsx", "pptx", "doc", "xls", "ppt", "zip",
+    "xlsx", "pptx", "doc", "xls", "ppt", "zip", "msg",
 ];
 
 /// 附件檔名照 Windows 的方式看到的副檔名（小寫）：結尾的點和空白會被去掉（`a.exe.` 就是 `a.exe`），
@@ -251,7 +251,7 @@ async fn download_to_temp(
     let file = safe_file_name(&name);
     // 原本的檔名與實際存檔的檔名都要是允許的類型。
     if !opens_directly(&name) || !opens_directly(&file) {
-        return Err(tr!("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP 與 Word、Excel、PowerPoint 文件。需要的話請用「另存新檔」，確認來源可信再開啟。", name = file));
+        return Err(tr!("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP、Word、Excel、PowerPoint 文件與 Outlook 郵件。需要的話請用「另存新檔」，確認來源可信再開啟。", name = file));
     }
     crate::io::blocking_for(Duration::from_secs(300), move || {
         let bytes = download_attachment(&url, &pat)?;

@@ -2,7 +2,7 @@
  * 工作項目的附件：網址、大小的顯示，以及點一下要怎麼開（不碰畫面，方便測試）。
  * - 文字檔：在 oMarker 開成唯讀分頁。
  * - 圖片：在 oMarker 裡放大檢視。
- * - PDF、Office 文件、ZIP 等允許清單裡的類型：下載後用 Windows 預設的程式開啟。
+ * - PDF、Office 文件、Outlook 郵件、ZIP 等允許清單裡的類型：下載後用 Windows 預設的程式開啟（PDF、Office、郵件改在分頁裡檢視）。
  * - 其他檔案：為了安全只能另存新檔。
  */
 import { isReadableFileName } from "./repo-links.ts";
@@ -16,7 +16,7 @@ const IMAGE = /\.(png|jpe?g|gif|webp|bmp)$/i;
  * 和原生端 `OPENABLE` 一樣：可以下載後直接用預設的程式開啟的副檔名（允許清單；其他的只能另存新檔）。
  * 這裡只用來決定畫面上怎麼做，真正把關的是原生端。
  */
-const OPENABLE = new Set(["pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp", "txt", "md", "csv", "log", "json", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "zip"]);
+const OPENABLE = new Set(["pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp", "txt", "md", "csv", "log", "json", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "zip", "msg"]);
 
 /**
  * 和原生端 `attachment_ext` 一樣，照 Windows 的方式看副檔名（小寫）：去掉結尾的點和空白，看最後一個點之後；

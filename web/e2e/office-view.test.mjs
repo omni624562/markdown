@@ -148,3 +148,28 @@ test("PowerPoint 檔：逐張投影片列出標題、文字（照縮排）、表
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Outlook 郵件（.msg）：主旨、寄件人、收件人、副本、HTML 內文（內嵌圖片、危險內容拿掉）與附件清單", async () => {
+  const { mailFile } = await import("./msg-fixture.mjs");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  const { page, context, errors } = await open({
+    desktop: {
+      startup_target: { kind: "folder", path: ROOT, name: "產品筆記" },
+      list_dir: { $by: "path", values: { [ROOT]: [entry("上線時程確認.msg")] } },
+      read_office: { $base64: mailFile({ png }) },
+    },
+  });
+  await row(page, "上線時程確認.msg").click();
+  const view = page.locator(".office-view .office-view-content");
+  await view.locator(".office-mail-head h2").waitFor();
+  assert.equal(await view.locator(".office-mail-head h2").textContent(), "上線時程確認");
+  const fields = await view.locator(".office-mail-head dt, .office-mail-head dd").allTextContents();
+  assert.deepEqual(fields, ["寄件人", "王小明 <ming@ado.test>", "收件人", "李大同 <datong@ado.test>", "副本", "陳小華 <hua@ado.test>"]);
+  assert.equal(await view.locator(".office-mail-body b").textContent(), "上線時程");
+  assert.match(await view.locator(".office-mail-body img").getAttribute("src"), /^data:image\/png;base64,/, "cid: 內嵌圖片換成 data:");
+  assert.equal(await view.locator('.office-mail-body a[href^="javascript"]').count(), 0);
+  assert.equal(await view.locator(".office-mail-body script, .office-mail-body style").count(), 0);
+  assert.deepEqual(await view.locator(".office-mail-attachments li").allTextContents(), ["規格書.pdf（21 B）"], "內嵌圖片不重複列在附件");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

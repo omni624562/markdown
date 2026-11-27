@@ -1,5 +1,5 @@
 /**
- * 在 oMarker 的分頁裡唯讀檢視 Office 文件（Word .docx、Excel .xlsx、PowerPoint .pptx）：原生端只讀出檔案內容（`read_office`，
+ * 在 oMarker 的分頁裡唯讀檢視 Office 文件（Word .docx、Excel .xlsx、PowerPoint .pptx）與 Outlook 郵件（.msg）：原生端只讀出檔案內容（`read_office`，
  * 只限工作區、開過的檔案與下載的附件），在這裡轉成 HTML，經過白名單（office-html.ts）再顯示。
  * 分頁上方有「用預設的程式開啟」；Word 另外可以「轉成 Markdown 編輯」（開成新分頁，存檔時再選位置），
  * Excel 每個工作表一個頁籤，可以複製表格或轉成 Markdown 表格。
@@ -11,6 +11,7 @@ import { cleanOfficeHtml } from "../office-html.ts";
 import type { Sheet } from "../office-read.ts";
 import { basename, dirname, relativePath } from "../paths.ts";
 import { fileLink } from "../file-link.ts";
+import { fileSize } from "../attachments.ts";
 import { bytesToBase64 } from "../files.ts";
 import { icon } from "../ui/icons.ts";
 import { announce, copied } from "../ui/toast.ts";
@@ -28,14 +29,16 @@ export interface OfficeOptions {
   linkable?: boolean;
 }
 
-const NAMES: Record<OfficeKind, string> = { word: "Word", excel: "Excel", powerpoint: "PowerPoint" };
-const ICONS: Record<OfficeKind, string> = { word: "file-text", excel: "file-spreadsheet", powerpoint: "presentation" };
+const NAMES: Record<OfficeKind, string> = { word: "Word", excel: "Excel", powerpoint: "PowerPoint", mail: "Outlook" };
+const ICONS: Record<OfficeKind, string> = { word: "file-text", excel: "file-spreadsheet", powerpoint: "presentation", mail: "mail" };
+
 
 /** 讀好的內容：Word 是 mammoth 轉出的 HTML，Excel 是工作表，PowerPoint 是投影片的 HTML（都還沒經過白名單）。 */
 type Content =
   | { kind: "word"; html: string }
   | { kind: "excel"; sheets: Sheet[]; table(sheet: Sheet): HTMLTableElement; limit: { rows: number; cols: number } }
-  | { kind: "powerpoint"; html: string };
+  | { kind: "powerpoint"; html: string }
+  | { kind: "mail"; html: string; attachments: { name: string; size: number }[] };
 
 /** 讀好的內容（同一個分頁切換回來時不必重讀、重轉）；從檔案面板重新開啟時重讀。 */
 const rendered = new Map<string, Promise<Content>>();
@@ -58,6 +61,11 @@ async function render(kind: OfficeKind, data: ArrayBuffer): Promise<Content> {
     empty.textContent = t("這份文件沒有內容。");
     return { kind, html: empty.outerHTML };
   }
+  if (kind === "mail") {
+    // 郵件的讀取（msgreader）用到才載入。
+    const { readMsg } = await import("../mail-read.ts");
+    return { kind, ...readMsg(data) };
+  }
   // Excel、PowerPoint 的讀取（含 JSZip）用到才載入。
   const { readXlsx, readPptx, sheetTable, MAX_ROWS, MAX_COLS } = await import("../office-read.ts");
   if (kind === "excel") return { kind, sheets: await readXlsx(data), table: sheetTable, limit: { rows: MAX_ROWS, cols: MAX_COLS } };
@@ -67,6 +75,21 @@ async function render(kind: OfficeKind, data: ArrayBuffer): Promise<Content> {
 
 /** 畫出讀好的內容。 */
 function show(content: Content, box: HTMLElement, name: string): void {
+  if (content.kind === "mail") {
+    box.replaceChildren(cleanOfficeHtml(content.html));
+    if (content.attachments.length) {
+      const list = document.createElement("ul");
+      list.className = "office-mail-attachments";
+      for (const a of content.attachments) {
+        const li = document.createElement("li");
+        li.append(icon("paperclip"), document.createTextNode(a.size ? t("{name}（{size}）", { name: a.name, size: fileSize(a.size) }) : a.name));
+        list.append(li);
+      }
+      const title = Object.assign(document.createElement("h3"), { textContent: t("附件（{n} 個，要用預設的程式開啟才能取出）", { n: content.attachments.length }) });
+      box.append(title, list);
+    }
+    return;
+  }
   if (content.kind !== "excel") {
     box.replaceChildren(cleanOfficeHtml(content.html));
     return;
