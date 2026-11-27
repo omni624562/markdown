@@ -71,7 +71,7 @@ export function openAttachment(href: string): boolean {
       tone: "error",
       action: { label: t("另存新檔"), run: () => saveAttachment(href) },
     });
-  } else if (officeKind(link.name) === "word") {
+  } else if (officeKind(link.name)) {
     // Word、Excel、PowerPoint：下載後在分頁裡唯讀檢視。
     toast(t("正在下載「{name}」…", { name: link.name }));
     void desktop!

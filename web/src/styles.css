@@ -5180,3 +5180,17 @@ body.phone .settings[data-phone-view="search"] section > h3 { display: block; ma
 .office-view-content img { max-width: 100%; height: auto; }
 .office-view-content table { display: block; overflow-x: auto; }
 .office-view-error { color: var(--danger); }
+.office-sheet-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.office-sheet-tabs button { border: none; border-bottom: 2px solid transparent; background: none; padding: 4px 10px; border-radius: 0; }
+.office-sheet-tabs button[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+.office-sheet-tools { display: flex; gap: 8px; margin-bottom: 8px; }
+.office-sheet-tools button { display: inline-flex; align-items: center; gap: 6px; }
+.office-sheet { overflow: auto; }
+.office-sheet table { display: table; font-variant-numeric: tabular-nums; white-space: pre-wrap; }
+.office-sheet-note { color: var(--subtle); font-size: 0.9em; }
+.office-slide { border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; margin: 0 0 16px; }
+.office-slide > small { color: var(--subtle); }
+.office-slide li { white-space: pre-wrap; }
+.office-slide li.office-level-1 { margin-left: 1.5em; }
+.office-slide li.office-level-2 { margin-left: 3em; }
+.office-slide li.office-level-3, .office-slide li.office-level-4 { margin-left: 4.5em; }
