@@ -19,7 +19,8 @@ const CSP = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'none'",
-  "frame-src 'none'",
+  // 桌面版的 PDF 分頁用 <iframe> 顯示 `mdimg:` 協定提供的 PDF（只提供工作區與已開啟檔案資料夾裡的檔案）。
+  "frame-src mdimg: http://mdimg.localhost",
 ].join("; ");
 
 const csp: Plugin = {

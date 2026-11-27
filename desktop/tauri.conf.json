@@ -33,7 +33,7 @@
         "object-src": "'none'",
         "base-uri": "'self'",
         "form-action": "'none'",
-        "frame-src": "'none'"
+        "frame-src": "mdimg: http://mdimg.localhost"
       },
       "assetProtocol": {
         "enable": false

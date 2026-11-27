@@ -237,12 +237,14 @@ fn download_attachment(url: &str, pat: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))
 }
 
-/// 直接開啟附件：下載到暫存資料夾（每次一個亂數命名的資料夾），標上「從網際網路下載」，
-/// 再用 Windows 預設的程式開啟。只開允許清單裡的檔案類型（[`OPENABLE`]），其他的只能另存新檔。
-#[tauri::command]
-pub async fn ado_attachment_open(app: AppHandle, url: String, name: String) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-    let (a, pat) = require(&app)?;
+/// 附件下載到暫存資料夾（每次一個亂數命名的資料夾）並標上「從網際網路下載」，回傳檔案位置。
+/// 只接受允許清單裡的檔案類型（[`OPENABLE`]）。
+async fn download_to_temp(
+    app: &AppHandle,
+    url: String,
+    name: String,
+) -> Result<std::path::PathBuf, String> {
+    let (a, pat) = require(app)?;
     if !attachment_url(&url, &a.url) {
         return Err(tr!("只能讀取 Azure DevOps 伺服器上的附件"));
     }
@@ -251,7 +253,7 @@ pub async fn ado_attachment_open(app: AppHandle, url: String, name: String) -> R
     if !opens_directly(&name) || !opens_directly(&file) {
         return Err(tr!("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP 與 Word、Excel、PowerPoint 文件。需要的話請用「另存新檔」，確認來源可信再開啟。", name = file));
     }
-    let path = crate::io::blocking_for(Duration::from_secs(300), move || {
+    crate::io::blocking_for(Duration::from_secs(300), move || {
         let bytes = download_attachment(&url, &pat)?;
         let mut rand = [0u8; 8];
         getrandom::fill(&mut rand).map_err(|e| e.to_string())?;
@@ -265,7 +267,29 @@ pub async fn ado_attachment_open(app: AppHandle, url: String, name: String) -> R
         mark_downloaded(&path);
         Ok(path)
     })
-    .await?;
+    .await
+}
+
+/// 在 oMarker 的分頁裡檢視附件（PDF）：下載到暫存資料夾，允許分頁讀取那個資料夾（`mdimg:` 協定），回傳檔案位置。
+#[tauri::command]
+pub async fn ado_attachment_view(
+    app: AppHandle,
+    url: String,
+    name: String,
+) -> Result<String, String> {
+    let path = download_to_temp(&app, url, name).await?;
+    if let Some(dir) = path.parent() {
+        app.state::<crate::image_protocol::ImageRoots>().allow(dir);
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// 直接開啟附件：下載到暫存資料夾（每次一個亂數命名的資料夾），標上「從網際網路下載」，
+/// 再用 Windows 預設的程式開啟。只開允許清單裡的檔案類型（[`OPENABLE`]），其他的只能另存新檔。
+#[tauri::command]
+pub async fn ado_attachment_open(app: AppHandle, url: String, name: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = download_to_temp(&app, url, name).await?;
     app.opener()
         .open_path(path.to_string_lossy(), None::<&str>)
         .map_err(|e| tr!("無法開啟附件：{e}", e = e))
