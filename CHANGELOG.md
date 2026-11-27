@@ -2,6 +2,14 @@
 
 每一版的改動。版本號規則見 [VERSIONING.md](VERSIONING.md)。
 
+## 1.170.0 — 2026-11-27
+
+### 新功能
+
+- Excel（.xlsx）與 PowerPoint（.pptx）也直接開在 oMarker 的分頁裡唯讀檢視：Excel 每個工作表一個頁籤，顯示數字、日期、百分比與合併儲存格，可以複製表格或轉成 Markdown 表格；PowerPoint 逐張列出投影片的標題、文字、表格與圖片。工作項目的 Excel、PowerPoint 附件也一樣。
+- Word 檔（.docx）直接開在 oMarker 的分頁裡唯讀檢視（標題、粗體、表格、清單、圖片），不必另開 Word；分頁上方有「用預設的程式開啟」和「轉成 Markdown 編輯」。檔案面板會列出 Word、Excel、PowerPoint 檔，工作項目的 Word 附件也一樣開在分頁裡。
+- PDF 直接開在 oMarker 的分頁裡（用 Windows 內建的 PDF 檢視器，可以搜尋、縮放、列印、翻頁），不必另開程式。檔案面板點 PDF、工作項目的 PDF 附件都一樣；分頁上方有「用預設的程式開啟」。
+
 ## 1.169.2 — 2026-11-27
 
 ### 修正
