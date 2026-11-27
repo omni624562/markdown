@@ -105,6 +105,37 @@ class BulletWidget extends WidgetType {
   }
 }
 
+/** 字元代碼換成的字（`&emsp;` → 全形空白）。 */
+class EntityWidget extends WidgetType {
+  readonly char: string;
+  constructor(char: string) {
+    super();
+    this.char = char;
+  }
+  eq(other: EntityWidget): boolean {
+    return other.char === this.char;
+  }
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-lp-entity";
+    span.textContent = this.char;
+    return span;
+  }
+}
+
+const entities = new Map<string, string | null>();
+/** `&emsp;`、`&#8195;`、`&#x2003;` 換成實際的字；認不得的回傳 null（照原文顯示）。 */
+export function decodeEntity(code: string): string | null {
+  let hit = entities.get(code);
+  if (hit === undefined) {
+    const box = document.createElement("textarea");
+    box.innerHTML = code;
+    hit = box.value !== code && box.value.length > 0 ? box.value : null;
+    entities.set(code, hit);
+  }
+  return hit;
+}
+
 class CheckboxWidget extends WidgetType {
   readonly checked: boolean;
   constructor(checked: boolean) {
@@ -901,6 +932,13 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
         case "Escape":
           if (!lineActive(from)) hide(from, from + 1);
           return;
+        case "Entity": {
+          // `&emsp;`、`&nbsp;`、`&lt;` 之類的字元代碼：游標不在這一行時顯示成實際的字（和預覽一樣）。
+          if (lineActive(from)) return;
+          const char = decodeEntity(doc.sliceString(from, to));
+          if (char !== null) decos.push(Decoration.replace({ widget: new EntityWidget(char) }).range(from, to));
+          return;
+        }
         case "Link":
         case "Autolink": {
           const url = node.getChild("URL");
