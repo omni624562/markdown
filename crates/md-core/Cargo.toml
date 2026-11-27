@@ -9,6 +9,7 @@ comrak = { version = "0.59", default-features = false }
 serde_json = { version = "1.0.154", features = ["preserve_order", "arbitrary_precision"] }
 unicode-width = "0.2.2"
 serde = { version = "1", features = ["derive"], optional = true }
+ammonia = "4"
 
 [features]
 serde = ["dep:serde"]

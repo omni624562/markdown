@@ -7,6 +7,7 @@
 mod html;
 mod json;
 mod markdown;
+mod raw_html;
 mod spacing;
 mod stats;
 mod table;
@@ -301,7 +302,8 @@ mod tests {
             "<details><summary>a</summary><script>alert(1)</script>\n</details>",
         ] {
             let html = r(src).html;
-            for bad in ["onerror", "onclick", "style=", "<img", "<div", "<script"] {
+            // 夾帶的 HTML 區塊整理後照樣輸出（見 raw_html.rs），但事件、樣式、圖片的 onerror、script 都拿掉。
+            for bad in ["onerror", "onclick", "style=", "<img", "<script"] {
                 assert!(!html.contains(bad), "{src}: {html}");
             }
         }
@@ -363,8 +365,38 @@ mod tests {
         // 開頭標籤沒有結尾時，不能影響後面的段落
         let out = r("<u>第一段\n\n第二段");
         assert!(!out.html.contains("<u>"));
-        // 區塊層級的 HTML 仍然不輸出
-        assert!(!r("<div>\n<u>x</u>\n</div>").html.contains("<div"));
+        // 區塊層級的 HTML 整理成安全的 HTML 輸出（見 raw_html.rs），事件、危險的樣式拿掉
+        let html = r("<div onclick=\"x\">\n<u>x</u>\n</div>").html;
+        assert!(
+            html.contains("<div><u>x</u></div>") || html.contains("<div>\n<u>x</u>\n</div>"),
+            "{html}"
+        );
+        assert!(!html.contains("onclick"), "{html}");
+    }
+
+    #[test]
+    fn html_tables_render_and_blank_lines_do_not_split_them() {
+        let html = r("# 修訂紀錄\n\n<table>\n<thead>\n<tr><th style=\"text-align: center;\">修訂時間</th></tr>\n</thead>\n\n<tbody>\n<tr><td>王小明</td></tr>\n</tbody>\n</table>\n\n後面的段落").html;
+        assert_eq!(html.matches("<table>").count(), 1, "{html}");
+        assert!(
+            html.contains("<th style=\"text-align: center\">修訂時間</th>"),
+            "{html}"
+        );
+        assert!(html.contains("<td>王小明</td>"), "{html}");
+        assert!(html.contains("<p>後面的段落</p>"), "{html}");
+        assert!(!html.contains("raw HTML omitted"), "{html}");
+    }
+
+    #[test]
+    fn inline_anchors_are_kept_for_toc_links() {
+        let html = r("<a id=\"資源配置\"></a>\n\n## 1.4. 資源配置").html;
+        assert!(html.contains("<a id=\"資源配置\""), "{html}");
+        assert!(!html.contains("raw HTML omitted"), "{html}");
+        // 帶 href 或事件的不是錨點：照舊不輸出
+        let html = r("<a href=\"javascript:alert(1)\" id=\"x\"></a> 文字").html;
+        assert!(!html.contains("javascript"), "{html}");
+        let html = r("<a id=\"x\" onclick=\"alert(1)\"></a> 文字").html;
+        assert!(!html.contains("onclick"), "{html}");
     }
 
     #[test]

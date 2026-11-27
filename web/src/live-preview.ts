@@ -20,7 +20,7 @@ export interface LivePreviewOptions {
   /** 圖片的網址（相對路徑換成可載入的網址）；回傳 null 表示無法顯示。 */
   /** 圖片的網址；`view` 是要顯示圖片的編輯器（並排編輯時，相對路徑依那一邊的文件）。 */
   imageUrl(src: string, view?: EditorView): string | null | Promise<string | null>;
-  /** 表格的 Markdown 轉成 HTML（由 Rust 核心產生，已移除危險內容）。 */
+  /** 表格的 Markdown、文件裡直接寫的 HTML 區塊轉成 HTML（由 Rust 核心產生，已移除危險內容）。 */
   renderTable(markdown: string): string;
   /** 直接編輯表格後重新對齊（依中文字寬）；回傳 undefined 時照原樣。 */
   formatTable?(markdown: string): string | undefined;
@@ -286,6 +286,69 @@ class MathWidget extends WidgetType {
     return true;
   }
 }
+
+/**
+ * 文件裡直接寫的 HTML 區塊（例如從 Word、Confluence 轉出來的 `<table>…</table>`）：畫成和預覽一樣的樣子。
+ * HTML 由核心整理過（只留安全的標籤與屬性，見 crates/md-core/src/raw_html.rs）；點一下顯示原始碼。
+ */
+class HtmlWidget extends WidgetType {
+  readonly html: string;
+  readonly opts: LivePreviewOptions;
+  constructor(html: string, opts: LivePreviewOptions) {
+    super();
+    this.html = html;
+    this.opts = opts;
+  }
+  eq(other: HtmlWidget): boolean {
+    return other.html === this.html;
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "cm-lp-block cm-lp-html markdown-body";
+    el.innerHTML = this.html;
+    // 相對路徑的圖片換成載入得到的網址（和 Markdown 圖片一樣）。
+    for (const img of el.querySelectorAll("img")) {
+      const src = img.getAttribute("src");
+      if (!src) continue;
+      img.removeAttribute("src");
+      const show = (url: string | null) => {
+        if (url) img.src = url;
+        view.requestMeasure();
+      };
+      try {
+        const url = this.opts.imageUrl(src, view);
+        if (url instanceof Promise) url.then(show, () => show(null));
+        else show(url);
+      } catch {
+        show(null);
+      }
+    }
+    revealOnClick(view, el);
+    return el;
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+/** HTML 區塊整理後的結果（同一段 HTML 不必每次重新整理）。`visible` 是畫面上有沒有東西（只有 `<a id>` 錨點時沒有）。 */
+const htmlCache = new Map<string, { html: string; visible: boolean }>();
+function renderedHtml(text: string, opts: LivePreviewOptions): { html: string; visible: boolean } {
+  let hit = htmlCache.get(text);
+  if (!hit) {
+    const html = opts.renderTable(text);
+    const box = document.createElement("template");
+    box.innerHTML = html;
+    const visible = !!box.content.textContent?.trim() || !!box.content.querySelector("img, hr, table");
+    hit = { html, visible };
+    if (htmlCache.size > 200) htmlCache.clear();
+    htmlCache.set(text, hit);
+  }
+  return hit;
+}
+
+/** 可收合區塊、註解另外處理，不畫成 HTML 元件。 */
+const DETAILS_LINE = /^\s*<\/?(details|summary)\b/im;
 
 /** 即時預覽裡展開、收合可收合區塊（`<details>`），值是區塊第一行的開頭位置。 */
 const detailsToggle = StateEffect.define<number>();
@@ -625,11 +688,13 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): Blocks {
   const search = tableSearch(state);
   const decos: Range<Decoration>[] = [];
   const htmlLines: { number: number; text: string }[] = [];
+  const htmlRanges: [number, number][] = [];
   syntaxTree(state).iterate({
     enter: ({ name, from, to }) => {
       switch (name) {
         case "HTMLBlock":
           for (let l = doc.lineAt(from).number; l <= doc.lineAt(to).number; l++) htmlLines.push({ number: l, text: doc.line(l).text });
+          htmlRanges.push([from, to]);
           return false;
         case "Document":
         case "Blockquote":
@@ -677,7 +742,43 @@ function buildBlocks(state: EditorState, opts: LivePreviewOptions): Blocks {
     },
   });
   if (htmlLines.length) detailsBlocks(state, detailsRegions(htmlLines), decos, blocks, rangeActive);
+  if (htmlRanges.length) htmlBlocks(state, htmlRanges, opts, decos, blocks, rangeActive);
   return { set: Decoration.set(decos, true), blocks };
+}
+
+/**
+ * HTML 區塊畫成元件。連續的幾塊（中間只隔空行，例如表格裡有空行時會被拆開）合成一塊；
+ * 游標在裡面時顯示原始碼。畫面上沒有東西的（只有 `<a id="…"></a>` 錨點）淡化顯示原始碼。
+ */
+function htmlBlocks(
+  state: EditorState,
+  ranges: [number, number][],
+  opts: LivePreviewOptions,
+  decos: Range<Decoration>[],
+  blocks: [number, number][],
+  rangeActive: (from: number, to: number) => boolean,
+): void {
+  const doc = state.doc;
+  const groups: [number, number][] = [];
+  for (const [from, to] of ranges) {
+    const last = groups.at(-1);
+    if (last && !doc.sliceString(last[1], from).trim()) last[1] = to;
+    else groups.push([from, to]);
+  }
+  for (const [from, rawTo] of groups) {
+    const to = doc.lineAt(rawTo).to;
+    const text = doc.sliceString(from, to);
+    if (DETAILS_LINE.test(text) || text.trimStart().startsWith("<!--")) continue;
+    const { html, visible } = renderedHtml(text, opts);
+    if (!visible) {
+      for (let l = doc.lineAt(from).number; l <= doc.lineAt(to).number; l++) decos.push(Decoration.line({ class: "cm-lp-comment" }).range(doc.line(l).from));
+      continue;
+    }
+    blocks.push([from, to]);
+    if (!rangeActive(from, to) && doc.lineAt(from).from === from) {
+      decos.push(Decoration.replace({ widget: new HtmlWidget(html, opts), block: true }).range(from, to));
+    }
+  }
 }
 
 /**
@@ -897,6 +998,11 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
           return;
         }
         case "Paragraph": {
+          // 只有錨點 `<a id="…"></a>`（目錄的連結跳到這裡）的段落：畫面上沒有東西，淡化顯示原始碼（和 HTML 註解一樣）。
+          if (to - from < 300 && ANCHOR_ONLY.test(doc.sliceString(from, to))) {
+            for (let l = doc.lineAt(from).number; l <= doc.lineAt(to).number; l++) decos.push(lineClass("cm-lp-comment").range(doc.line(l).from));
+            return false;
+          }
           if (!mathOn) return;
           const text = doc.sliceString(from, to);
           // 整段 `$$…$$` 由 buildBlocks 畫成區塊公式。
@@ -988,6 +1094,9 @@ export interface InlineTag {
 }
 
 /** `<u>`、`</mark>` 這種不帶屬性的格式標籤。 */
+/** 只有一個錨點（`<a id="…"></a>`、`<a name="…"></a>`，沒有 href）。 */
+const ANCHOR_ONLY = /^\s*<a\s+(?![^>]*href)[^>]*\b(id|name)\s*=[^>]*>\s*<\/a>\s*$/i;
+
 export function parseTag(text: string): Pick<InlineTag, "name" | "closing"> | null {
   const m = /^<(\/?)([a-z]+)\s*>$/i.exec(text);
   const name = m?.[2].toLowerCase() as FormatTag | undefined;

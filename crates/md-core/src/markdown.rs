@@ -92,7 +92,8 @@ pub fn image_urls(markdown: &str) -> Vec<String> {
     })
 }
 
-/// 輸出 HTML：原始 HTML 區塊一律不輸出，只有可收合區塊（`<details>`、`<summary>…</summary>`、`</details>`）例外。
+/// 輸出 HTML：可收合區塊（`<details>`、`<summary>…</summary>`、`</details>`）另外處理；
+/// 其他 HTML 區塊整理成安全的 HTML（見 raw_html.rs）。
 fn format_node<'a>(
     context: &mut Context<()>,
     node: Node<'a>,
@@ -112,8 +113,84 @@ fn format_node<'a>(
             }
             return Ok(ChildRendering::HTML);
         }
+        // 其他 HTML 區塊：連續的幾塊（中間只隔空行，例如表格裡有空行時會被拆開）合在一起，整理成安全的 HTML 再輸出。
+        if entering && !follows_raw_html(node) {
+            let mut literal = block.literal.clone();
+            let mut next = node.next_sibling();
+            while let Some(n) = next.filter(|n| is_raw_html(n)) {
+                if let NodeValue::HtmlBlock(ref b) = n.data().value {
+                    literal.push('\n');
+                    literal.push_str(&b.literal);
+                }
+                next = n.next_sibling();
+            }
+            // 包一層，預覽捲動同步用得到原文的行號。
+            context.cr()?;
+            if context.options.render.sourcepos {
+                let start = node.data().sourcepos.start;
+                let end = next
+                    .and_then(|n| n.previous_sibling())
+                    .unwrap_or(node)
+                    .data()
+                    .sourcepos
+                    .end;
+                write!(
+                    context,
+                    "<div class=\"md-html\" data-sourcepos=\"{}:{}-{}:{}\">",
+                    start.line, start.column, end.line, end.column
+                )?;
+            } else {
+                context.write_str("<div class=\"md-html\">")?;
+            }
+            context.write_str(&crate::raw_html::clean(&literal))?;
+            context.write_str("</div>")?;
+            context.cr()?;
+        }
+        return Ok(ChildRendering::HTML);
+    }
+    // 段落裡的錨點 `<a id="…"></a>`（目錄的連結跳到這裡）：整理後輸出；緊接著的 `</a>` 已經一起輸出了。
+    if let NodeValue::HtmlInline(ref literal) = node.data().value {
+        if entering && is_anchor_open(literal) {
+            let close = node.next_sibling().filter(
+                |n| matches!(n.data().value, NodeValue::HtmlInline(ref l) if is_anchor_close(l)),
+            );
+            if close.is_some() {
+                context.write_str(&crate::raw_html::clean(&format!("{literal}</a>")))?;
+                return Ok(ChildRendering::HTML);
+            }
+        }
+        if is_anchor_close(literal)
+            && node.previous_sibling().is_some_and(
+                |n| matches!(n.data().value, NodeValue::HtmlInline(ref l) if is_anchor_open(l)),
+            )
+        {
+            return Ok(ChildRendering::HTML);
+        }
     }
     format_node_default(context, node, entering)
+}
+
+/// 只有 `id`／`name` 的 `<a …>`（沒有 href，只是讓連結跳到這裡的錨點）。
+fn is_anchor_open(literal: &str) -> bool {
+    let lower = literal.trim().to_ascii_lowercase();
+    lower.starts_with("<a ")
+        && lower.ends_with('>')
+        && !lower.contains("href")
+        && (lower.contains("id=") || lower.contains("name="))
+}
+
+fn is_anchor_close(literal: &str) -> bool {
+    literal.trim().eq_ignore_ascii_case("</a>")
+}
+
+/// 不是可收合區塊的 HTML 區塊。
+fn is_raw_html<'a>(node: Node<'a>) -> bool {
+    matches!(node.data().value, NodeValue::HtmlBlock(ref b) if details_parts(&b.literal).is_none())
+}
+
+/// 前一塊也是 HTML 區塊：已經和前一塊一起輸出了。
+fn follows_raw_html<'a>(node: Node<'a>) -> bool {
+    node.previous_sibling().is_some_and(is_raw_html)
 }
 
 /// 區塊裡夾帶的 Markdown（標籤和內容之間沒有空行時，整段會被當成同一個 HTML 區塊）：照一般規則渲染。
