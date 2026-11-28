@@ -14,7 +14,7 @@ import { PALETTES } from "../palette.ts";
 import { Palette } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast, announce } from "../ui/toast.ts";
-import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, exportDocx, startSlideshow, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
+import { templatePicker, saveAsTemplate, deleteTemplatePicker, openWelcome, openChangelog, exportDocx, importDocx, copyRich, insertToc, openInsertMenu } from "./activity-bar.ts";
 import { aiAppPresent } from "./ai-app-presence.ts";
 import { showShortcuts } from "./shortcuts-dialog.ts";
 import { openDailyNote, openNeighborNote } from "./daily-notes.ts";
@@ -636,24 +636,6 @@ export function initCommands(): void {
       icon: "file-type",
       when: () => app.cur.kind === "markdown",
       run: () => exportDocx(),
-    },
-    {
-      id: "slideshow",
-      title: t("簡報模式：從頭播放"),
-      group: t("檢視"),
-      icon: "presentation",
-      keys: "F5",
-      when: () => app.cur.kind === "markdown",
-      run: () => startSlideshow(false),
-    },
-    {
-      id: "slideshow-here",
-      title: t("簡報模式：從目前這一頁播放"),
-      group: t("檢視"),
-      icon: "presentation",
-      keys: "Shift-F5",
-      when: () => app.cur.kind === "markdown",
-      run: () => startSlideshow(true),
     },
     {
       id: "import-docx",
