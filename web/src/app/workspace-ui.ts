@@ -223,15 +223,16 @@ export let wikiRightWanted = storage.load("wiki-right") === "1";
 export function wikiPlacedRight(): boolean {
   return wikiRightWanted && !!app.ado?.account && wideQuery.matches && !app.narrowQuery.matches;
 }
-/** 視窗不夠寬（900px 以下）時右側欄不佔一欄，改成蓋在文件上的抽屜（這時只有助理會放在右側欄）。 */
+/** 視窗不夠寬（900px 以下）時右側欄不佔一欄，改成蓋在文件上的抽屜（這時只有助理、歷史會放在右側欄）。 */
 export const drawerQuery = matchMedia("(max-width: 900px)");
 /** 右側欄是一欄而且開著、有東西可以看（大綱、Wiki，或使用者打開過的助理；見 app/right-tabs.ts）。 */
 export function rightColumnOn(): boolean {
   return app.rightOutlineShown && !drawerQuery.matches && rightTab() !== null;
 }
-/** 視窗不夠寬：右側欄是蓋在文件上的抽屜（只有助理會這樣開）。 */
+/** 視窗不夠寬：右側欄是蓋在文件上的抽屜（只有助理、歷史會這樣開）。 */
 export function rightDrawerOn(): boolean {
-  return app.rightOutlineShown && drawerQuery.matches && rightTab() === "assistant";
+  const tab = rightTab();
+  return app.rightOutlineShown && drawerQuery.matches && (tab === "assistant" || tab === "history");
 }
 
 /** 把 Wiki 面板移到右側或移回左邊。 */

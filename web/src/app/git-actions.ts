@@ -30,7 +30,8 @@ import { insertMyWorkItems } from "./daily-notes.ts";
 import { TERMINAL_KEYS, commands } from "./commands.ts";
 import { addActivityCommand, startAiTool, symbolPicker } from "./activity-bar.ts";
 import { addClaudeWorkflow, aiPicker, sendSelectionToAi, terminalAiReady } from "./ai-terminal.ts";
-import { copyWebLink, historyPicker, openOnWeb } from "./file-history.ts";
+import { copyWebLink, openOnWeb } from "./file-history.ts";
+import { showHistoryOf } from "./history-panel.ts";
 import { issueView } from "./wiki-edit.ts";
 import { openPath, showPanel } from "./workspace-ui.ts";
 import { reloadDoc } from "./desktop-startup.ts";
@@ -551,11 +552,14 @@ export function initGitActions(): void {
     },
     {
       id: "history",
-      title: t("版本紀錄…"),
+      title: t("歷史（存檔版本、提交）…"),
       group: t("檔案"),
       icon: "history",
       when: () => !!desktop && !!app.cur.fileHandle?.path,
-      run: () => historyPicker.open(),
+      run: () => {
+        const path = app.cur.fileHandle?.path;
+        if (path) void showHistoryOf(path).catch(reportError);
+      },
     },
     {
       id: "check-update",

@@ -4897,7 +4897,7 @@ body:has(.workspace.issue-open:not(.issue-side)) .tab:not(.tab-item)[aria-select
 }
 .assistant-action-mode:hover { border-color: var(--subtle); color: var(--fg); }
 .assistant-dependents .quick-action-add { width: calc(100% - 24px); margin: 0 12px 12px; }
-/* 視窗不夠寬（900px 以下，app/workspace-ui.ts 的 drawerQuery）：右側欄（只會是助理）變成從右邊滑出來的抽屜，蓋在文件上（左邊有陰影），Esc 收起（app/right-tabs.ts 加 .right-drawer）。
+/* 視窗不夠寬（900px 以下，app/workspace-ui.ts 的 drawerQuery）：右側欄（只會是助理、歷史）變成從右邊滑出來的抽屜，蓋在文件上（左邊有陰影），Esc 收起（app/right-tabs.ts 加 .right-drawer）。
    從標題列下面開始，不蓋住右側欄開關（◨）和視窗按鈕。 */
 .outline-right.right-drawer,
 [data-panel-style="spaced"] .outline-right.right-drawer {

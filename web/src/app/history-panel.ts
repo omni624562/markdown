@@ -33,6 +33,18 @@ export function historyBox(): HTMLElement {
     clearTimeout(changedTimer);
     changedTimer = window.setTimeout(() => void refreshHistory(), 150);
   });
+  // 視窗不夠寬時右側欄是蓋在文件上的抽屜：選了要比較的版本、按 Esc 就收起來（比較畫在底下的文件上）。
+  const closeDrawer = async (): Promise<void> => {
+    const { drawerQuery, setRightOutline } = await import("./workspace-ui.ts");
+    if (drawerQuery.matches && app.rightOutlineShown) setRightOutline(false);
+  };
+  box.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest(".history-item")) void closeDrawer();
+  });
+  box.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    void closeDrawer().then(() => app.editor.view.focus());
+  });
   return box;
 }
 
@@ -105,21 +117,16 @@ function row(path: string, item: Item): HTMLElement {
 }
 
 /**
- * 檔案樹的「歷史…」：打開那份檔案，右側欄切到「歷史」。
- * 右側欄放不下（視窗窄、大綱不放在右邊）時改用「版本紀錄」清單。
+ * 檔案樹的「歷史…」、指令「歷史（存檔版本、提交）…」：打開那份檔案，右側欄切到「歷史」
+ * （視窗窄時右側欄是蓋在文件上的抽屜）。
  */
 export async function showHistoryOf(path: string): Promise<void> {
   const { openPath, setRightOutline } = await import("./workspace-ui.ts");
-  const { availableRightTabs, selectRightTab } = await import("./right-tabs.ts");
-  const { historyPicker } = await import("./file-history.ts");
+  const { selectRightTab } = await import("./right-tabs.ts");
   const existing = app.tabForPath(path);
   if (existing) app.activate(existing);
   else await openPath(path);
   if (app.cur.fileHandle?.path !== path) return;
-  if (!availableRightTabs().includes("history")) {
-    historyPicker.open();
-    return;
-  }
   if (!app.rightOutlineShown) setRightOutline(true);
   selectRightTab("history");
 }
