@@ -477,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "md-cli"
-version = "1.171.0"
+version = "1.172.0"
 dependencies = [
  "clap",
  "md-core",
@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "md-core"
-version = "1.171.0"
+version = "1.172.0"
 dependencies = [
  "ammonia",
  "comrak",
@@ -496,14 +496,14 @@ dependencies = [
 
 [[package]]
 name = "md-docx"
-version = "1.171.0"
+version = "1.172.0"
 dependencies = [
  "md-core",
 ]
 
 [[package]]
 name = "md-text"
-version = "1.171.0"
+version = "1.172.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "md-wasm"
-version = "1.171.0"
+version = "1.172.0"
 dependencies = [
  "md-core",
  "md-text",
