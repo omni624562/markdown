@@ -375,7 +375,6 @@ export const ui: Record<string, Translation> = {
   "還不支援在 oMarker 裡檢視這種檔案": "This kind of file can't be viewed in oMarker yet",
   "轉成 Markdown 編輯": "Convert to Markdown to Edit",
   "沒辦法在 oMarker 裡顯示「{name}」：{error}。可以用預設的程式開啟。": "Can't show \"{name}\" in oMarker: {error}. You can open it with the default app.",
-  "遠端資料夾裡的 Office 文件要先下載到電腦再開啟。": "Office documents in remote folders must be downloaded before opening.",
   "這份活頁簿沒有可以顯示的工作表。": "This workbook has no sheets to show.",
   "只顯示前 {rows} 列、{cols} 欄；完整內容請用預設的程式開啟。": "Showing only the first {rows} rows and {cols} columns. Open it with the default app to see everything.",
   "這個工作表是空的。": "This sheet is empty.",

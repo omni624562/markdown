@@ -1144,6 +1144,37 @@ pub async fn dav_peek(path: String, dav: State<'_, Dav>) -> Result<String, Strin
     Ok(decode(&bytes).0)
 }
 
+/// 遠端資料夾裡的 PDF、Office 文件、郵件：下載到本機的暫存資料夾給分頁檢視，回傳檔案位置。
+#[tauri::command]
+pub async fn dav_view_file(
+    app: tauri::AppHandle,
+    path: String,
+    dav: State<'_, Dav>,
+) -> Result<String, String> {
+    use tauri::Manager;
+    let (session, rel) = dav.resolve(&path)?;
+    let name = rel.rsplit('/').next().unwrap_or_default().to_string();
+    let p = std::path::Path::new(&name);
+    if !crate::workspace::is_pdf(p) && !crate::workspace::is_office(p) {
+        return Err(tr!(
+            "只能在分頁裡檢視 PDF 與 Word、Excel、PowerPoint 文件、Outlook 郵件"
+        ));
+    }
+    let (bytes, _) = crate::io::timed(async move {
+        session
+            .client
+            .get(&rel)
+            .await
+            .map_err(|e| e.message(&tr!("無法讀取檔案")))
+    })
+    .await?;
+    let saved = crate::io::blocking(move || crate::ado::save_for_viewing(&name, bytes)).await?;
+    if let Some(dir) = saved.parent() {
+        app.state::<crate::image_protocol::ImageRoots>().allow(dir);
+    }
+    Ok(saved.to_string_lossy().into_owned())
+}
+
 /// 讀取遠端的圖片（給預覽顯示），回傳 data: 網址。
 #[tauri::command]
 pub async fn dav_image(path: String, dav: State<'_, Dav>) -> Result<String, String> {

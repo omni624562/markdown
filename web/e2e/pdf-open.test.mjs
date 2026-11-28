@@ -81,3 +81,27 @@ test("重新開啟程式：PDF 分頁還在，點了重新顯示", async () => {
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("遠端資料夾（SSH）裡的 PDF：下載到本機暫存資料夾後開成檢視分頁，再點一次不重新下載", async () => {
+  const REMOTE = "ssh://cd34/筆記/報告.pdf";
+  const TEMP = "C:\\Users\\me\\AppData\\Local\\Temp\\omarker-attachments\\0a1b\\報告.pdf";
+  const { page, context, errors } = await open({
+    desktop: {
+      startup_target: { kind: "folder", path: "ssh://cd34/筆記", name: "筆記" },
+      dav_list: { $by: "path", values: { "ssh://cd34/筆記": [{ name: "報告.pdf", path: REMOTE, isDir: false }] } },
+      dav_list_files: [[]],
+      scan_docs: [[]],
+      dav_view_file: TEMP,
+    },
+  });
+  const item = page.locator("#file-tree .tree-row", { hasText: "報告.pdf" });
+  await item.click();
+  const frame = page.locator(".pdf-view iframe.pdf-view-frame");
+  await frame.waitFor({ state: "attached" });
+  assert.match(decodeURIComponent(await frame.getAttribute("src")), /omarker-attachments.*報告\.pdf$/);
+  await item.click();
+  await page.waitForTimeout(200);
+  assert.deepEqual(await page.evaluate(() => window.__fake.calls.filter((c) => c.cmd === "dav_view_file").map((c) => c.args.path)), [REMOTE]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

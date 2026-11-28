@@ -1086,6 +1086,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     davForget: (id: string) => core.invoke<void>("dav_forget", { id }),
     /** 遠端圖片（預覽用），回傳 data: 網址。 */
     davImage: (path: string) => core.invoke<string>("dav_image", { path }),
+    /** 遠端資料夾裡的 PDF、Office 文件、郵件下載到本機暫存資料夾給分頁檢視；回傳本機的位置。 */
+    davViewFile: (path: string) => core.invoke<string>("dav_view_file", { path }),
     /** 關掉了遠端檔案的分頁：不再檢查它有沒有被改過。 */
     davClose: (path: string) => core.invoke<void>("dav_close", { path }),
 
