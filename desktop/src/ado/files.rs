@@ -271,7 +271,22 @@ fn write_temp(file: &str, bytes: Vec<u8>) -> Result<std::path::PathBuf, String> 
     Ok(path)
 }
 
-/// 前端手上的檔案內容（郵件裡的附件、遠端資料夾下載的檔案；`data` 是 Base64）寫進暫存資料夾給分頁檢視：
+/// 下載好的內容（例如遠端資料夾裡的檔案）寫進暫存資料夾給分頁檢視：只接受 PDF 與 Office 文件、郵件。
+pub fn save_for_viewing(name: &str, bytes: Vec<u8>) -> Result<std::path::PathBuf, String> {
+    let file = safe_file_name(name);
+    let viewable = |n: &str| {
+        let p = Path::new(n);
+        opens_directly(n) && (crate::workspace::is_pdf(p) || crate::workspace::is_office(p))
+    };
+    if !viewable(name) || !viewable(&file) {
+        return Err(tr!(
+            "只能在分頁裡檢視 PDF 與 Word、Excel、PowerPoint 文件、Outlook 郵件"
+        ));
+    }
+    write_temp(&file, bytes)
+}
+
+/// 前端手上的檔案內容（郵件裡的附件；`data` 是 Base64）寫進暫存資料夾給分頁檢視：
 /// 只接受 PDF 與 Office 文件、郵件，一樣標上「從網際網路下載」，回傳檔案位置。
 #[tauri::command]
 pub async fn view_temp_file(app: AppHandle, name: String, data: String) -> Result<String, String> {

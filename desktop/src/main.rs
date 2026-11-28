@@ -568,6 +568,7 @@ fn main() {
             dav::dav_delete,
             dav::dav_save_image,
             dav::dav_image,
+            dav::dav_view_file,
             dav::dav_close,
             dav::dav_peek,
             dav::dav_probe,

@@ -669,24 +669,31 @@ export async function openRecentFolder(path: string): Promise<void> {
   }
 }
 
+/** 這次開過的遠端 PDF、Office 文件：遠端路徑 → 下載到本機暫存資料夾的位置。 */
+const remoteViewed = new Map<string, Promise<string>>();
+
 /** 開啟（或切換到）指定路徑的檔案，可再跳到指定的行與欄。 */
 export async function openPath(path: string, line?: number, column?: number): Promise<void> {
   // 圖片不是文字檔：在唯讀的分頁裡檢視。
   if (isImageName(path)) return showImage(path);
-  // PDF：在分頁裡用內建的 PDF 檢視器顯示（遠端資料夾裡的 PDF 讀不到，照舊交給預設的程式）。
-  if (isPdfName(path) && desktop) {
-    if (!isRemote(path)) return showPdf(path);
-    await desktop.openWithDefault(path);
-    announce(t("已用預設的程式開啟「{name}」", { name: basename(path) }));
-    return;
-  }
-  // Word、Excel、PowerPoint：在分頁裡唯讀檢視。遠端資料夾裡的讀不到，提示下載。
-  if (officeKind(path) && desktop) {
+  // PDF、Word、Excel、PowerPoint、郵件：在分頁裡唯讀檢視。遠端資料夾（WebDAV、SSH）裡的先下載到暫存資料夾。
+  if ((isPdfName(path) || officeKind(path)) && desktop) {
+    const d = desktop;
+    let local = path;
+    const opts: { label?: string; linkable?: boolean; openExternally?: () => Promise<void> } = {};
     if (isRemote(path)) {
-      toast(t("遠端資料夾裡的 Office 文件要先下載到電腦再開啟。"));
-      return;
+      // 同一份遠端檔案這次開過就用下載好的那一份（切換分頁、再點一次不重新下載）。
+      let got = remoteViewed.get(path);
+      if (!got) {
+        const progress = toast(t("正在下載「{name}」…", { name: basename(path) }), { duration: 60000 });
+        got = d.davViewFile(path).finally(() => progress.dismiss());
+        remoteViewed.set(path, got);
+        got.catch(() => remoteViewed.delete(path));
+      }
+      local = await got;
+      Object.assign(opts, { label: displayPath(dirname(path)), linkable: false, openExternally: () => d.openWithDefault(local) });
     }
-    return showOffice(path);
+    return isPdfName(path) ? showPdf(local, opts) : showOffice(local, opts);
   }
   const existing = app.tabForPath(path);
   if (existing) app.activate(existing);
