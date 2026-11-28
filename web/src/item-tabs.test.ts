@@ -111,3 +111,18 @@ test("拖曳改分頁順序：文件與項目分頁都能移動，項目分頁�
   assert.equal(reorderTabs(docs, items, "a", "a", true), null);
   assert.equal(reorderTabs([{ id: "p", pinned: true }, ...docs], items, "a", "p", true), null);
 });
+
+test("檢視本機檔案的分頁（圖片、PDF、Office）也會存下來；暫存資料夾裡的附件、路徑不對的不存", async () => {
+  const { viewedFile } = await import("./item-tabs.ts");
+  assert.equal(viewedFile("pdf:C:\\Users\\me\\筆記\\報告.pdf"), "C:\\Users\\me\\筆記\\報告.pdf");
+  assert.equal(viewedFile("office:/home/me/notes/預算.xlsx"), "/home/me/notes/預算.xlsx");
+  assert.equal(viewedFile("pdf:C:\\Users\\me\\AppData\\Local\\Temp\\omarker-attachments\\0a1b\\規格書.pdf"), null);
+  assert.equal(viewedFile("ado:123"), null);
+  assert.equal(viewedFile("pdf:..\\x.pdf"), null);
+  const raw = JSON.stringify([
+    { key: "pdf:C:\\Users\\me\\筆記\\報告.pdf", name: "報告.pdf", origin: "pdf", after: null },
+    { key: "office:relative.docx", name: "relative.docx", origin: "office" },
+    { key: "image:C:\\Users\\me\\筆記\\圖.png", name: "圖.png", origin: "pdf" },
+  ]);
+  assert.deepEqual(parseSavedItemTabs(raw), [{ key: "pdf:C:\\Users\\me\\筆記\\報告.pdf", name: "報告.pdf", title: "報告.pdf", origin: "pdf", ref: null, after: null, pinned: false }]);
+});

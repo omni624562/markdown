@@ -15,6 +15,7 @@ import {
   neighborAfterClose,
   parseSavedItemTabs,
   placeNewItem,
+  viewedFile,
 } from "../item-tabs.ts";
 import * as storage from "../storage.ts";
 import type { IssueSource, IssueViewState } from "../ui/issue-view.ts";
@@ -79,7 +80,7 @@ export let shownItem: ItemTab | null = null;
 
 function persist(): void {
   const saved: SavedItemTab[] = itemTabs
-    .filter((tab): tab is ItemTab & { ref: ItemShortcut; origin: "ado" | "wiki" } => !!tab.ref && (tab.origin === "ado" || tab.origin === "wiki"))
+    .filter((tab): tab is ItemTab & { origin: SavedItemTab["origin"] } => (!!tab.ref && (tab.origin === "ado" || tab.origin === "wiki")) || viewedFile(tab.key) !== null)
     .slice(0, SAVED_ITEM_TABS_LIMIT)
     .map(({ key, name, title, origin, ref, after, pinned }) => ({ key, name, title, origin, ref, after, pinned }));
   storage.save("item-tabs", JSON.stringify(saved));
@@ -140,6 +141,11 @@ async function showTab(tab: ItemTab, state = tab.state): Promise<void> {
   if (!state) {
     // 從上次還原、還沒開過：重新開啟（讀到後依 key 找回這個分頁）。
     if (tab.ref) await openBarShortcut(tab.ref);
+    else {
+      // 檢視本機檔案的分頁（圖片、PDF、Office 文件）：依路徑重新開啟。
+      const file = viewedFile(tab.key);
+      if (file) await (await import("./workspace-ui.ts")).openPath(file);
+    }
     return;
   }
   if (tab !== shownItem) stashShown();

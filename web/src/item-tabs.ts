@@ -4,7 +4,7 @@
  */
 
 import { kindKey } from "./work-item-colors.ts";
-import { type ItemShortcut, isFileShortcut, isWorkItemShortcut, toShortcut } from "./wiki-shortcuts.ts";
+import { type ItemShortcut, isFileShortcut, isShortcutFile, isWorkItemShortcut, toShortcut } from "./wiki-shortcuts.ts";
 
 /** 關掉 `closing` 之後切到哪一個分頁：右邊那一個，最右邊時改左邊；沒有其他分頁時回傳 null。 */
 export function neighborAfterClose(ids: readonly string[], closing: string): string | null {
@@ -102,15 +102,28 @@ function firstOf(items: readonly ItemPlacing[], after: string | null): number {
   return i < 0 ? items.length : i;
 }
 
-/** 存下來、下次開啟時還原的分頁（只有工作項目與 Wiki 頁面，其他的不知道怎麼重新開啟）。 */
+/** 在分頁裡檢視的本機檔案（圖片、PDF、Office 文件與郵件）：分頁的 key 是 `類型:路徑`。 */
+export const FILE_ORIGINS = ["image", "pdf", "office"] as const;
+export type FileOrigin = (typeof FILE_ORIGINS)[number];
+
+/** 檢視本機檔案的分頁 key（`pdf:C:\…\a.pdf`）裡的路徑；不是這種分頁、或是下載到暫存資料夾的附件時回傳 null。 */
+export function viewedFile(key: string): string | null {
+  const at = key.indexOf(":");
+  const path = key.slice(at + 1);
+  if (at < 0 || !(FILE_ORIGINS as readonly string[]).includes(key.slice(0, at))) return null;
+  return isShortcutFile(path) && !/[\\/]omarker-attachments[\\/]/i.test(path) ? path : null;
+}
+
+/** 存下來、下次開啟時還原的分頁（工作項目、Wiki 頁面，以及檢視本機檔案的分頁；其他的不知道怎麼重新開啟）。 */
 export interface SavedItemTab {
   key: string;
   name: string;
   /** 滑鼠提示，例如「Task 123：標題」。 */
   title: string;
-  /** 來源（`ado`、`wiki`），決定圖示。 */
-  origin: "ado" | "wiki";
-  ref: ItemShortcut;
+  /** 來源（`ado`、`wiki`、`image`、`pdf`、`office`），決定圖示。 */
+  origin: "ado" | "wiki" | FileOrigin;
+  /** 工作項目、Wiki 頁面怎麼重新開啟；檢視檔案的分頁沒有（路徑在 key 裡）。 */
+  ref: ItemShortcut | null;
   /** 接在哪個文件分頁後面（null 是一般分頁的最前面）。 */
   after: string | null;
   pinned: boolean;
@@ -133,16 +146,18 @@ export function parseSavedItemTabs(raw: string | null): SavedItemTab[] {
   for (const x of v) {
     if (!x || typeof x !== "object") continue;
     const o = x as Record<string, unknown>;
-    const ref = toShortcut(o.ref);
-    if (!ref || isFileShortcut(ref) || typeof o.key !== "string" || typeof o.name !== "string" || (o.origin !== "ado" && o.origin !== "wiki")) continue;
+    if (typeof o.key !== "string" || typeof o.name !== "string") continue;
+    const file = (FILE_ORIGINS as readonly unknown[]).includes(o.origin) && o.key.startsWith(`${String(o.origin)}:`) && viewedFile(o.key) !== null;
+    const ref = file ? null : toShortcut(o.ref);
+    if (!file && (!ref || isFileShortcut(ref) || (o.origin !== "ado" && o.origin !== "wiki"))) continue;
     if (out.some((t) => t.key === o.key)) continue;
     const pinned = o.pinned === true;
     out.push({
       key: o.key,
       name: o.name,
       title: typeof o.title === "string" ? o.title : o.name,
-      origin: o.origin,
-      ref,
+      origin: o.origin as SavedItemTab["origin"],
+      ref: ref as ItemShortcut | null,
       after: typeof o.after === "string" ? o.after : null,
       pinned,
     });
