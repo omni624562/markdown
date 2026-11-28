@@ -61,3 +61,23 @@ test("文件裡連到 PDF 的相對路徑連結：點了開成檢視分頁", asy
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("重新開啟程式：PDF 分頁還在，點了重新顯示", async () => {
+  const { page, context, errors } = await open({
+    desktop: {
+      startup_target: { kind: "folder", path: ROOT, name: "產品筆記" },
+      list_dir: { $by: "path", values: { [ROOT]: [entry("README.md"), entry("報告.pdf")] } },
+    },
+  });
+  await row(page, "報告.pdf").click();
+  await page.locator(".pdf-view iframe.pdf-view-frame").waitFor({ state: "attached" });
+  await page.reload();
+  const tab = page.locator("#tab-bar .tab", { hasText: "報告.pdf" });
+  await tab.waitFor();
+  await tab.click();
+  const frame = page.locator(".pdf-view iframe.pdf-view-frame");
+  await frame.waitFor({ state: "attached" });
+  assert.match(decodeURIComponent(await frame.getAttribute("src")), /報告\.pdf$/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
