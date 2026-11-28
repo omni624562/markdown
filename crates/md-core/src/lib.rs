@@ -341,14 +341,12 @@ mod tests {
         for src in [
             "<u style=\"color:red\">x</u>",
             "<u onclick=alert(1)>x</u>",
-            "<span>x</span>",
             "<u>沒有結尾",
             "<u>交錯<mark></u></mark>",
         ] {
             let out = r(src);
             assert!(!out.html.contains("style="), "{src}: {}", out.html);
             assert!(!out.html.contains("onclick"), "{src}: {}", out.html);
-            assert!(!out.html.contains("<span"), "{src}: {}", out.html);
             assert_eq!(
                 out.html.matches("<u>").count(),
                 out.html.matches("</u>").count(),
@@ -418,6 +416,39 @@ mod tests {
             r(&out).html.contains("<td>初版</td>"),
             "轉出來的是看得懂的表格"
         );
+    }
+
+    #[test]
+    fn styled_inline_tags_are_kept_safely() {
+        let html = r("請注意 <span style=\"color: red; position: fixed\">**紅字**</span>、<font color=\"#c00\">重點</font> 與 <a href=\"https://ado.test/wiki\">連結</a>。").html;
+        assert!(
+            html.contains("<span style=\"color: red\"><strong>紅字</strong></span>"),
+            "{html}"
+        );
+        assert!(html.contains("<font color=\"#c00\">重點</font>"), "{html}");
+        assert!(
+            html.contains("<a href=\"https://ado.test/wiki\" rel=\"noopener noreferrer\">連結</a>"),
+            "{html}"
+        );
+        assert!(!html.contains("position"), "{html}");
+        // 危險的、沒有成對的照舊不輸出。
+        for src in [
+            "<span onclick=\"alert(1)\">x</span>",
+            "<a href=\"javascript:alert(1)\">x</a>",
+            "<span style=\"background: url(https://ado.test/x.png)\">x</span>",
+            "<span style=\"color: red\">沒有結尾",
+            "<script>alert(1)</script>",
+        ] {
+            let html = r(src).html;
+            for bad in ["onclick", "javascript", "url(", "<script"] {
+                assert!(!html.contains(bad), "{src}: {html}");
+            }
+            assert_eq!(
+                html.matches("<span").count(),
+                html.matches("</span>").count(),
+                "{src}: {html}"
+            );
+        }
     }
 
     #[test]
