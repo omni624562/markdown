@@ -119,6 +119,66 @@ fn safe_style(style: &str) -> String {
     out.join("; ")
 }
 
+/// 整理過的 HTML 表格（[`clean`] 的輸出：標籤成對、屬性有引號）轉成 Markdown 的表格，給匯出 Word 用。
+/// 第一列當標題；儲存格裡的段落、清單項目、換行用 `<br>` 分開，其他標籤拿掉；合併儲存格不展開。
+/// 沒有表格時回傳 None。
+pub(crate) fn table_to_markdown(html: &str) -> Option<String> {
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut cell: Option<String> = None;
+    let mut rest = html;
+    let brk = |cell: &mut Option<String>| {
+        if let Some(c) = cell {
+            if !c.trim().is_empty() && !c.ends_with("<br>") {
+                c.push_str("<br>");
+            }
+        }
+    };
+    while let Some(lt) = rest.find('<') {
+        if let Some(c) = cell.as_mut() {
+            c.push_str(&rest[..lt].replace('|', "\\|").replace(['\n', '\r'], " "));
+        }
+        let Some(gt) = rest[lt..].find('>') else {
+            break;
+        };
+        let tag = rest[lt + 1..lt + gt].trim().to_ascii_lowercase();
+        let name = tag
+            .trim_start_matches('/')
+            .split([' ', '/'])
+            .next()
+            .unwrap_or("");
+        let closing = tag.starts_with('/');
+        match (name, closing) {
+            ("tr", false) => rows.push(Vec::new()),
+            ("td" | "th", false) => cell = Some(String::new()),
+            ("td" | "th", true) => {
+                if let (Some(c), Some(row)) = (cell.take(), rows.last_mut()) {
+                    let c = c.trim().trim_end_matches("<br>").trim().to_string();
+                    row.push(c);
+                }
+            }
+            ("br", _) | ("p" | "li" | "div", true) => brk(&mut cell),
+            ("li", false) => {
+                if let Some(c) = cell.as_mut() {
+                    c.push_str("• ");
+                }
+            }
+            _ => {}
+        }
+        rest = &rest[lt + gt + 1..];
+    }
+    rows.retain(|r| !r.is_empty());
+    let width = rows.iter().map(Vec::len).max()?;
+    let line = |r: &[String]| {
+        let cells: Vec<&str> = (0..width)
+            .map(|i| r.get(i).map_or("", String::as_str))
+            .collect();
+        format!("| {} |", cells.join(" | "))
+    };
+    let mut out = vec![line(&rows[0]), format!("|{}", " --- |".repeat(width))];
+    out.extend(rows[1..].iter().map(|r| line(r)));
+    Some(out.join("\n"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,5 +237,15 @@ mod tests {
             clean("<a href=\"https://ado.test/wiki\">Wiki</a> <a href=\"docs/說明.md\">說明</a>");
         assert!(html.contains("href=\"https://ado.test/wiki\""), "{html}");
         assert!(html.contains("href=\"docs/說明.md\""), "{html}");
+    }
+
+    #[test]
+    fn converts_html_tables_to_markdown_tables() {
+        let html = clean("<table><thead><tr><th style=\"text-align: center;\"><strong>修訂時間</strong></th><th>修訂紀錄</th></tr></thead><tbody><tr><td>2026/07/21</td><td><ul><li><p>初版</p></li><li>A|B</li></ul></td></tr><tr><td>只有一格</td></tr></tbody></table>");
+        assert_eq!(
+            table_to_markdown(&html).unwrap(),
+            "| 修訂時間 | 修訂紀錄 |\n| --- | --- |\n| 2026/07/21 | • 初版<br>• A\\|B |\n| 只有一格 |  |"
+        );
+        assert_eq!(table_to_markdown("<p>沒有表格</p>"), None);
     }
 }

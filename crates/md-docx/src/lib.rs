@@ -728,6 +728,8 @@ fn numbering(ordered: &[(u32, usize)]) -> String {
 
 /// 把 Markdown 轉成 .docx 檔的內容。
 pub fn markdown_to_docx(markdown: &str, opts: &Options) -> Vec<u8> {
+    // 文件裡直接寫的 HTML 表格先換成 Markdown 的表格（其他 HTML 區塊照舊不輸出）。
+    let markdown = &md_core::html_tables_to_markdown(markdown);
     md_core::with_document(markdown, |root| {
         let mut anchorizer = Anchorizer::new();
         let heading_ids: Vec<String> = root

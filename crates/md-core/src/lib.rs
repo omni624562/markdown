@@ -16,7 +16,7 @@ mod table;
 pub use comrak;
 use html::escape_html;
 pub use json::format_json;
-pub use markdown::{image_urls, with_document};
+pub use markdown::{html_tables_to_markdown, image_urls, with_document};
 pub use spacing::{add_spacing, spacing_positions};
 pub use stats::{count_text, Stats};
 pub use table::{format_all_tables, format_table};
@@ -397,6 +397,27 @@ mod tests {
         assert!(!html.contains("onerror"), "{html}");
         let html = r("文字 <img src=\"javascript:alert(1)\"> 文字").html;
         assert!(!html.contains("javascript"), "{html}");
+    }
+
+    #[test]
+    fn html_tables_become_markdown_tables_for_word_export() {
+        let md = "# 修訂紀錄\n\n<table>\n<thead>\n<tr><th>時間</th><th>紀錄</th></tr>\n</thead>\n\n<tbody>\n<tr><td>2026/07/21</td><td>初版</td></tr>\n</tbody>\n</table>\n\n後面的段落\n\n<div>不是表格</div>\n";
+        let out = html_tables_to_markdown(md);
+        assert!(
+            out.contains("| 時間 | 紀錄 |\n| --- | --- |\n| 2026/07/21 | 初版 |"),
+            "{out}"
+        );
+        assert!(!out.contains("<table>"), "{out}");
+        assert!(
+            out.contains("# 修訂紀錄")
+                && out.contains("後面的段落")
+                && out.contains("<div>不是表格</div>"),
+            "{out}"
+        );
+        assert!(
+            r(&out).html.contains("<td>初版</td>"),
+            "轉出來的是看得懂的表格"
+        );
     }
 
     #[test]

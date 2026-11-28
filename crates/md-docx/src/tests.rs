@@ -171,3 +171,14 @@ fn footnotes_and_alerts() {
     assert!(doc.contains("註腳內容"));
     assert!(doc.contains(">Note<") && doc.contains("提示內容"));
 }
+
+#[test]
+fn html_tables_are_exported_as_tables() {
+    let doc = document("# 修訂紀錄\n\n<table>\n<thead>\n<tr><th>修訂時間</th><th>修訂紀錄</th></tr>\n</thead>\n<tbody>\n<tr><td>2026/07/21</td><td>初版</td></tr>\n</tbody>\n</table>\n\n後面的段落\n");
+    assert!(
+        doc.contains("<w:tbl>") && doc.contains("修訂時間") && doc.contains("初版"),
+        "{doc}"
+    );
+    assert!(doc.contains("後面的段落"));
+    assert!(!doc.contains("&lt;table"), "{doc}");
+}

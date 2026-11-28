@@ -77,6 +77,47 @@ pub fn with_document<R>(markdown: &str, f: impl for<'a> FnOnce(Node<'a>) -> R) -
     f(root)
 }
 
+/// 文件裡直接寫的 HTML 表格（`<table>…</table>` 區塊）換成 Markdown 的表格，其他內容照原樣。
+/// 匯出 Word 用：Word 的轉換只認得 Markdown 的表格。
+pub fn html_tables_to_markdown(markdown: &str) -> String {
+    // 連續的 HTML 區塊（中間只隔空行）合成一段：(開始行, 結束行, 內容)，行號從 1 開始。
+    let groups: Vec<(usize, usize, String)> = with_document(markdown, |root| {
+        let mut groups: Vec<(usize, usize, String)> = Vec::new();
+        let mut open = false;
+        for node in root.children() {
+            let data = node.data();
+            match data.value {
+                NodeValue::HtmlBlock(ref b) if details_parts(&b.literal).is_none() => {
+                    let (start, end) = (data.sourcepos.start.line, data.sourcepos.end.line);
+                    match groups.last_mut().filter(|_| open) {
+                        Some(g) => {
+                            g.1 = end;
+                            g.2.push('\n');
+                            g.2.push_str(&b.literal);
+                        }
+                        None => groups.push((start, end, b.literal.clone())),
+                    }
+                    open = true;
+                }
+                _ => open = false,
+            }
+        }
+        groups
+    });
+    let mut lines: Vec<String> = markdown.lines().map(str::to_string).collect();
+    for (start, end, html) in groups.into_iter().rev() {
+        let Some(table) = crate::raw_html::table_to_markdown(&crate::raw_html::clean(&html)) else {
+            continue;
+        };
+        if start == 0 || end > lines.len() || start > end {
+            continue;
+        }
+        // HTML 區塊的最後一行可能是空行（區塊以空行結束）：留一行空行和後面的內容分開。
+        lines.splice(start - 1..end, [String::new(), table, String::new()]);
+    }
+    lines.join("\n")
+}
+
 /// 文件中的圖片網址（照文件裡寫的，依出現順序、不重複）。
 pub fn image_urls(markdown: &str) -> Vec<String> {
     with_document(markdown, |root| {
