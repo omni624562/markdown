@@ -17,7 +17,7 @@ import { autoSymbols } from "./auto-symbols.ts";
 import { refreshLivePreview } from "./live-preview.ts";
 import { proofread } from "./proofread.ts";
 import { spellcheck } from "./spellcheck.ts";
-import { type DocKind, KINDS, isTextFileName } from "./kinds.ts";
+import { type DocKind, KINDS, isImageName, isTextFileName, isViewerDoc } from "./kinds.ts";
 import { basename, dirname, localImagePath, resolvePath } from "./paths.ts";
 import { HtmlPreview, isHtmlName } from "./html-preview.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
@@ -1332,6 +1332,7 @@ async function followLink(href: string): Promise<void> {
     return;
   }
   const target = resolvePath(dirname(base), rel);
+  if (isImageName(target) || isViewerDoc(target)) return openPath(target);
   if (!/\.(md|markdown|txt|json)$/i.test(target)) {
     toast(t("只能在編輯器中開啟 Markdown、純文字與 JSON 檔。"));
     return;

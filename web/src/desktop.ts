@@ -843,6 +843,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     openFile: () => core.invoke<DesktopFile | null>("open_file"),
     /** 拖進視窗的檔案（依代號與順序）用原本的路徑開啟；拿不到路徑時是 null。 */
     droppedFile: (id: string, index: number) => core.invoke<DesktopFile | null>("dropped_file", { id, index }),
+    /** 拖進來的 PDF、Office 文件、郵件：回傳路徑給分頁檢視（拿不到路徑或不是這些類型時是 null）。 */
+    droppedViewPath: (id: string, index: number) => core.invoke<string | null>("dropped_view_path", { id, index }),
     reopenFile: (path: string) =>
       route(
         path,
@@ -1312,6 +1314,9 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoAttachmentOpen: (url: string, name: string) => core.invoke<void>("ado_attachment_open", { url, name }),
     /** 讀取 Office 文件（.docx、.xlsx、.pptx）的內容給分頁檢視（只限工作區、開過的檔案與下載的附件）。 */
     readOffice: (path: string) => core.invoke<ArrayBuffer>("read_office", { path }),
+    /** 儲存庫裡的 PDF、Office 文件、郵件（例如 Wiki 的附件）下載到暫存資料夾給分頁檢視；回傳檔案位置。 */
+    adoRepoFileView: (project: string, repo: string, path: string, version: string | null) =>
+      core.invoke<string>("ado_repo_file_view", { projectId: project, repositoryId: repo, path, version }),
     /** 附件下載到暫存資料夾，讓 oMarker 的分頁可以檢視（PDF、Office 文件）；回傳檔案位置。 */
     adoAttachmentView: (url: string, name: string) => core.invoke<string>("ado_attachment_view", { url, name }),
     /** 附件另存新檔；按取消時回傳 null。 */

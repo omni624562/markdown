@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use tauri::{AppHandle, State, Webview};
+use tauri::{AppHandle, Manager, State, Webview};
 
 use crate::files::OpenedFile;
 use crate::trust::Trust;
@@ -238,6 +238,41 @@ pub async fn dropped_file(
     let opened = crate::files::read_in_background(&app, path.clone()).await?;
     trust.add_file(&app, &path);
     Ok(Some(opened))
+}
+
+/// 拖進來的第 `index` 個檔案是 PDF 或 Office 文件、郵件時，回傳它的路徑給分頁檢視（並記成開過的檔案，
+/// 分頁才讀得到）；不是這些類型、或這個平台拿不到路徑時回傳 `None`，前端照原本的方式處理。
+#[tauri::command]
+pub async fn dropped_view_path(
+    app: AppHandle,
+    dropped: State<'_, Dropped>,
+    trust: State<'_, Trust>,
+    id: String,
+    index: usize,
+) -> Result<Option<String>, String> {
+    if !cfg!(windows) || !valid_id(&id) {
+        return Ok(None);
+    }
+    let mut found = None;
+    for _ in 0..40 {
+        if let Some(path) = dropped.get(&id, index) {
+            found = Some(path);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let Some(Ok(path)) = found else {
+        return Ok(None);
+    };
+    let viewable = crate::workspace::is_pdf(&path) || crate::workspace::is_office(&path);
+    if !viewable || !path.is_file() {
+        return Ok(None);
+    }
+    trust.add_file(&app, &path);
+    if let Some(dir) = path.parent() {
+        app.state::<crate::image_protocol::ImageRoots>().allow(dir);
+    }
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 #[cfg(test)]

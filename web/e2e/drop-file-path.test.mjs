@@ -126,3 +126,18 @@ test("一次拖好幾個檔案：每一個都開起來；有路徑的照路徑�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("拖進來的 PDF：和檔案面板一樣開成檢視分頁（不當成文字讀）", async () => {
+  const pdf = "C:\\Users\\me\\Downloads\\規格書.pdf";
+  const { page, context, errors } = await open({ desktop: { dropped_view_path: pdf } });
+  await page.evaluate(() => {
+    window.chrome = { ...(window.chrome ?? {}), webview: { postMessageWithAdditionalObjects: () => {} } };
+  });
+  await dropFile(page, "規格書.pdf", "%PDF-1.4");
+  const frame = page.locator(".pdf-view iframe.pdf-view-frame");
+  await frame.waitFor({ state: "attached" });
+  assert.match(decodeURIComponent(await frame.getAttribute("src")), /規格書\.pdf$/);
+  assert.equal((await calls(page)).filter((c) => c.cmd === "dropped_file").length, 0, "不當成文字檔開");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

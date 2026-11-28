@@ -1,5 +1,5 @@
 /**
- * 拖曳開檔：把檔案拖進視窗就開啟（Markdown、文字檔、Word 文件、圖片）。
+ * 拖曳開檔：把檔案拖進視窗就開啟（Markdown、文字檔、圖片；PDF、Office 文件、郵件開成檢視分頁）。
  * 拖的是選取的文字（從預覽、編輯區、其他程式）時不管它：放到助理的輸入框、編輯區、搜尋框等可以輸入的地方，
  * 由瀏覽器（編輯區由 CodeMirror）照常放進去；放在其他地方不做任何事（不會因為拖了一個連結而整個視窗被導走）。
  */
@@ -11,7 +11,9 @@ import { imageFiles, insertImages } from "./image-paste.ts";
 import { dropOnWorkItem, overWorkItem } from "./work-item-attach.ts";
 import { overAssistantInput } from "./assistant.ts";
 import { app } from "./context.ts";
+import { isViewerDoc } from "../kinds.ts";
 import { importDocxData } from "./activity-bar.ts";
+import { openPath } from "./workspace-ui.ts";
 import { reportError } from "./git-actions.ts";
 
 
@@ -72,8 +74,16 @@ export function initFileDrop(): void {
     }
     const opened: string[] = [];
     for (const file of docs.slice(0, MAX_DROPPED)) {
-      if (/\.docx$/i.test(file.name)) {
-        await importDocxData(file.name, await file.arrayBuffer(), null).catch(reportError);
+      // PDF、Office 文件、郵件：和檔案面板一樣在分頁裡檢視（要拿得到路徑）。
+      if (isViewerDoc(file.name)) {
+        const path = id ? await desktop!.droppedViewPath(id, files.indexOf(file)).catch(() => null) : null;
+        if (path) {
+          await openPath(path).catch(reportError);
+          continue;
+        }
+        // 拿不到路徑（網頁版、其他平台）：Word 轉成 Markdown 開啟，其他的沒辦法顯示。
+        if (/\.docx$/i.test(file.name)) await importDocxData(file.name, await file.arrayBuffer(), null).catch(reportError);
+        else toast(t("「{name}」要從檔案面板開啟（拿不到檔案的位置）。", { name: file.name }));
         continue;
       }
       if (id) {

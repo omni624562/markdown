@@ -13,6 +13,7 @@ pub static EN: &[(&str, &str)] = &[
     ("{what}失敗：伺服器上找不到這個附件（可能已經刪除）", "{what} failed: The attachment wasn't found on the server (it may have been deleted)."),
     ("附件", "attachment"),
     ("無法建立暫存資料夾", "Couldn't create a temporary folder"),
+    ("只能在分頁裡檢視 PDF 與 Word、Excel、PowerPoint 文件、Outlook 郵件", "Only PDFs, Word, Excel and PowerPoint documents and Outlook messages can be viewed in a tab"),
     ("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP、Word、Excel、PowerPoint 文件與 Outlook 郵件。需要的話請用「另存新檔」，確認來源可信再開啟。", "\"{name}\" isn't opened directly for safety. Only PDFs, images, text files, ZIP files, Word, Excel, and PowerPoint documents, and Outlook messages open directly. Use \"Save As\" if you need it, and open it only if you trust the source."),
     ("無法開啟附件：{e}", "Couldn't open the attachment: {e}"),
     ("另存附件", "Save Attachment"),
