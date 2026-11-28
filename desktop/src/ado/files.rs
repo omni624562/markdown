@@ -271,6 +271,37 @@ fn write_temp(file: &str, bytes: Vec<u8>) -> Result<std::path::PathBuf, String> 
     Ok(path)
 }
 
+/// 前端手上的檔案內容（郵件裡的附件、遠端資料夾下載的檔案；`data` 是 Base64）寫進暫存資料夾給分頁檢視：
+/// 只接受 PDF 與 Office 文件、郵件，一樣標上「從網際網路下載」，回傳檔案位置。
+#[tauri::command]
+pub async fn view_temp_file(app: AppHandle, name: String, data: String) -> Result<String, String> {
+    use base64::Engine;
+    let file = safe_file_name(&name);
+    let viewable = |n: &str| {
+        let p = Path::new(n);
+        opens_directly(n) && (crate::workspace::is_pdf(p) || crate::workspace::is_office(p))
+    };
+    if !viewable(&name) || !viewable(&file) {
+        return Err(tr!(
+            "只能在分頁裡檢視 PDF 與 Word、Excel、PowerPoint 文件、Outlook 郵件"
+        ));
+    }
+    if data.len() as u64 > ATTACHMENT_LIMIT / 3 * 4 + 4 {
+        return Err(tr!("「{name}」太大了，沒辦法在分頁裡檢視", name = file));
+    }
+    let saved = crate::io::blocking(move || {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data.as_bytes())
+            .map_err(|_| tr!("檔案內容無效"))?;
+        write_temp(&file, bytes)
+    })
+    .await?;
+    if let Some(dir) = saved.parent() {
+        app.state::<crate::image_protocol::ImageRoots>().allow(dir);
+    }
+    Ok(saved.to_string_lossy().into_owned())
+}
+
 /// 在 oMarker 的分頁裡檢視儲存庫裡的檔案（例如 Wiki 的附件 `/.attachments/規格書.pdf`）：只接受 PDF 與
 /// Office 文件、郵件，下載到暫存資料夾後回傳檔案位置。
 #[tauri::command]

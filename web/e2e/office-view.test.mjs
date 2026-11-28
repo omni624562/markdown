@@ -157,6 +157,7 @@ test("Outlook 郵件（.msg）：主旨、寄件人、收件人、副本、HTML 
       startup_target: { kind: "folder", path: ROOT, name: "產品筆記" },
       list_dir: { $by: "path", values: { [ROOT]: [entry("上線時程確認.msg")] } },
       read_office: { $base64: mailFile({ png }) },
+      view_temp_file: "C:\\Users\\me\\AppData\\Local\\Temp\\omarker-attachments\\0a1b\\規格書.pdf",
     },
   });
   await row(page, "上線時程確認.msg").click();
@@ -170,6 +171,12 @@ test("Outlook 郵件（.msg）：主旨、寄件人、收件人、副本、HTML 
   assert.equal(await view.locator('.office-mail-body a[href^="javascript"]').count(), 0);
   assert.equal(await view.locator(".office-mail-body script, .office-mail-body style").count(), 0);
   assert.deepEqual(await view.locator(".office-mail-attachments li").allTextContents(), ["規格書.pdf（21 B）"], "內嵌圖片不重複列在附件");
+  // 點附件：存到暫存資料夾後開成檢視分頁。
+  await view.locator(".office-mail-open", { hasText: "規格書.pdf" }).click();
+  await page.locator(".pdf-view iframe.pdf-view-frame").waitFor({ state: "attached" });
+  const sent = await page.evaluate(() => window.__fake.calls.find((c) => c.cmd === "view_temp_file").args);
+  assert.equal(sent.name, "規格書.pdf");
+  assert.equal(Buffer.from(sent.data, "base64").toString("utf8"), "%PDF-1.4 假的內容");
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -9,6 +9,8 @@ import { t } from "./i18n.ts";
 export interface MailAttachment {
   name: string;
   size: number;
+  /** 附件的內容（點開時才讀）。 */
+  content(): Uint8Array;
 }
 
 export interface Mail {
@@ -71,7 +73,7 @@ export function readMsg(data: ArrayBuffer): Mail {
   const inline = new Map<string, string>();
   for (const a of info.attachments ?? []) {
     if (a.innerMsgContent) {
-      attachments.push({ name: (a.name || a.subject || t("郵件")) + ".msg", size: a.contentLength ?? 0 });
+      attachments.push({ name: (a.name || a.subject || t("郵件")) + ".msg", size: a.contentLength ?? 0, content: () => reader.getAttachment(a).content });
       continue;
     }
     const name = a.fileName || a.fileNameShort || a.name || t("附件");
@@ -85,7 +87,7 @@ export function readMsg(data: ArrayBuffer): Mail {
         // 讀不到的內嵌圖片照樣列在附件裡。
       }
     }
-    attachments.push({ name, size: a.contentLength ?? 0, cid });
+    attachments.push({ name, size: a.contentLength ?? 0, cid, content: () => reader.getAttachment(a).content });
   }
 
   const body = el("div");
@@ -108,5 +110,5 @@ export function readMsg(data: ArrayBuffer): Mail {
   }
   const out = el("div");
   out.append(head, body);
-  return { html: out.innerHTML, attachments: attachments.filter((a) => !a.cid || !used.has(a.cid)).map(({ name, size }) => ({ name, size })) };
+  return { html: out.innerHTML, attachments: attachments.filter((a) => !a.cid || !used.has(a.cid)).map(({ name, size, content }) => ({ name, size, content })) };
 }
