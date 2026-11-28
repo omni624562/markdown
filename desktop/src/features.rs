@@ -157,6 +157,7 @@ mod tests {
         "open_external",
         "open_with_default",
         "read_office",
+        "view_temp_file",
         "set_title",
         "set_ui_zoom",
         "custom_title_bar",

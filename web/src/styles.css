@@ -5202,3 +5202,5 @@ body.phone .settings[data-phone-view="search"] section > h3 { display: block; ma
 .office-mail-text { white-space: pre-wrap; }
 .office-mail-attachments { list-style: none; padding: 0; }
 .office-mail-attachments li { display: flex; align-items: center; gap: 6px; }
+.office-mail-open { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 2px 4px; color: var(--accent); cursor: pointer; }
+.office-mail-open:hover { text-decoration: underline; }

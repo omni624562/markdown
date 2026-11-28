@@ -1314,6 +1314,8 @@ function bridge(core: TauriCore, event: TauriEvent) {
     adoAttachmentOpen: (url: string, name: string) => core.invoke<void>("ado_attachment_open", { url, name }),
     /** 讀取 Office 文件（.docx、.xlsx、.pptx）的內容給分頁檢視（只限工作區、開過的檔案與下載的附件）。 */
     readOffice: (path: string) => core.invoke<ArrayBuffer>("read_office", { path }),
+    /** 手上的檔案內容（郵件裡的附件、遠端資料夾下載的檔案；Base64）寫到暫存資料夾給分頁檢視；回傳檔案位置。 */
+    viewTempFile: (name: string, data: string) => core.invoke<string>("view_temp_file", { name, data }),
     /** 儲存庫裡的 PDF、Office 文件、郵件（例如 Wiki 的附件）下載到暫存資料夾給分頁檢視；回傳檔案位置。 */
     adoRepoFileView: (project: string, repo: string, path: string, version: string | null) =>
       core.invoke<string>("ado_repo_file_view", { projectId: project, repositoryId: repo, path, version }),

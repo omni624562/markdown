@@ -6,7 +6,8 @@
  */
 import { desktop } from "../desktop.ts";
 import { t } from "../i18n.ts";
-import { type OfficeKind, officeKind } from "../kinds.ts";
+import { type OfficeKind, isImageName, isPdfName, isViewerDoc, officeKind } from "../kinds.ts";
+import type { MailAttachment } from "../mail-read.ts";
 import { cleanOfficeHtml } from "../office-html.ts";
 import type { Sheet } from "../office-read.ts";
 import { basename, dirname, relativePath } from "../paths.ts";
@@ -38,7 +39,7 @@ type Content =
   | { kind: "word"; html: string }
   | { kind: "excel"; sheets: Sheet[]; table(sheet: Sheet): HTMLTableElement; limit: { rows: number; cols: number } }
   | { kind: "powerpoint"; html: string }
-  | { kind: "mail"; html: string; attachments: { name: string; size: number }[] };
+  | { kind: "mail"; html: string; attachments: MailAttachment[] };
 
 /** 讀好的內容（同一個分頁切換回來時不必重讀、重轉）；從檔案面板重新開啟時重讀。 */
 const rendered = new Map<string, Promise<Content>>();
@@ -73,6 +74,24 @@ async function render(kind: OfficeKind, data: ArrayBuffer): Promise<Content> {
   return { kind, html: slides.map((s) => s.outerHTML).join("") };
 }
 
+const IMAGE_TYPES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", bmp: "image/bmp" };
+
+/** 點郵件裡的附件：圖片放大檢視；PDF、Office 文件、郵件存到暫存資料夾後開成檢視分頁。 */
+async function openMailAttachment(a: MailAttachment, mail: string): Promise<void> {
+  const d = desktop;
+  if (!d) return;
+  const data = bytesToBase64(a.content());
+  const ext = a.name.slice(a.name.lastIndexOf(".") + 1).toLowerCase();
+  if (IMAGE_TYPES[ext]) {
+    const { openLightbox } = await import("../ui/lightbox.ts");
+    openLightbox(`data:${IMAGE_TYPES[ext]};base64,${data}`, a.name);
+    return;
+  }
+  const path = await d.viewTempFile(a.name, data);
+  const opts = { label: t("「{name}」的附件", { name: mail }), linkable: false, openExternally: () => d.openWithDefault(path) };
+  await (isPdfName(a.name) ? (await import("./pdf-view.ts")).showPdf(path, opts) : showOffice(path, opts));
+}
+
 /** 畫出讀好的內容。 */
 function show(content: Content, box: HTMLElement, name: string): void {
   if (content.kind === "mail") {
@@ -82,10 +101,23 @@ function show(content: Content, box: HTMLElement, name: string): void {
       list.className = "office-mail-attachments";
       for (const a of content.attachments) {
         const li = document.createElement("li");
-        li.append(icon("paperclip"), document.createTextNode(a.size ? t("{name}（{size}）", { name: a.name, size: fileSize(a.size) }) : a.name));
+        const text = a.size ? t("{name}（{size}）", { name: a.name, size: fileSize(a.size) }) : a.name;
+        // 圖片、PDF、Office 文件、郵件可以直接點開；其他類型要用預設的程式開啟郵件才能取出。
+        if (isImageName(a.name) || isViewerDoc(a.name)) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "office-mail-open";
+          b.title = t("開啟「{name}」", { name: a.name });
+          b.append(icon("paperclip"), document.createTextNode(text));
+          b.addEventListener("click", () => void openMailAttachment(a, name).catch(reportError));
+          li.append(b);
+        } else {
+          li.title = t("這種附件要用預設的程式開啟郵件才能取出");
+          li.append(icon("paperclip"), document.createTextNode(text));
+        }
         list.append(li);
       }
-      const title = Object.assign(document.createElement("h3"), { textContent: t("附件（{n} 個，要用預設的程式開啟才能取出）", { n: content.attachments.length }) });
+      const title = Object.assign(document.createElement("h3"), { textContent: t("附件（{n}）", { n: content.attachments.length }) });
       box.append(title, list);
     }
     return;

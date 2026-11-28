@@ -487,6 +487,7 @@ fn main() {
             ado::ado_attachment_open,
             ado::ado_attachment_view,
             ado::ado_repo_file_view,
+            ado::view_temp_file,
             workspace::read_office,
             ado::ado_attachment_save,
             ado::ado_work_item_states,
