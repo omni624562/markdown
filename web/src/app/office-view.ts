@@ -40,7 +40,7 @@ type Content =
   | { kind: "word"; html: string }
   | { kind: "excel"; sheets: Sheet[]; table(sheet: Sheet): HTMLTableElement; limit: { rows: number; cols: number } }
   | { kind: "powerpoint"; html: string }
-  | { kind: "mail"; html: string; attachments: MailAttachment[] };
+  | { kind: "mail"; subject: string; text: string; html: string; attachments: MailAttachment[] };
 
 /** 讀好的內容（同一個分頁切換回來時不必重讀、重轉）；從檔案面板重新開啟時重讀。 */
 const rendered = new Map<string, Promise<Content>>();
@@ -257,6 +257,15 @@ export function showOffice(path: string, opts: OfficeOptions = {}): Promise<void
       load().then(
         (data) => {
           show(data, content, name);
+          // 郵件：連上 Azure DevOps 時可以用主旨和內文建立工作項目。
+          if (data.kind === "mail" && app.ado?.account && !bar.querySelector(".office-view-workitem")) {
+            bar.append(
+              barButton("square-plus", t("建立工作項目"), "office-view-workitem", async () => {
+                const { createWorkItemDialog } = await import("./new-work-item.ts");
+                createWorkItemDialog({ title: data.subject, description: data.text });
+              }),
+            );
+          }
           if (viewedFile(key)) viewedText.set(key, { name, text: plainText(data) });
         },
         (e) => {
