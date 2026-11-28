@@ -43,6 +43,7 @@ mod login;
 mod navigation;
 mod new_project;
 mod notify;
+mod office_text;
 mod offline;
 mod pdf;
 mod projects;
