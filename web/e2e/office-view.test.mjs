@@ -180,3 +180,26 @@ test("Outlook 郵件（.msg）：主旨、寄件人、收件人、副本、HTML 
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("資料夾搜尋：搜得到 Word 檔裡的文字（不顯示行號），點了開成檢視分頁", async () => {
+  const hit = { line: 2, text: "上線時程由王小明確認", ranges: [[0, 4]], column: 1 };
+  const { page, context, errors } = await open({
+    desktop: {
+      startup_target: { kind: "folder", path: ROOT, name: "產品筆記" },
+      list_dir: { $by: "path", values: { [ROOT]: [entry("系統設計書.docx")] } },
+      search: { files: [{ rel: "系統設計書.docx", path: at("系統設計書.docx"), matches: [hit] }], total: 1, truncated: false },
+      read_office: { $base64: await wordFile() },
+    },
+  });
+  await page.locator("#side-tab-search").click();
+  await page.fill("#search-input", "上線時程");
+  const result = page.locator("#search-host .search-hit");
+  await result.waitFor();
+  assert.equal(await result.locator(".search-line").textContent(), "", "Office 文件沒有行號");
+  assert.equal(await result.locator("mark").textContent(), "上線時程");
+  await result.click();
+  await page.locator(".office-view .office-view-content h1").waitFor();
+  assert.equal(await page.locator("#tab-bar .tab[aria-selected=true] .tab-name").textContent(), "系統設計書.docx");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

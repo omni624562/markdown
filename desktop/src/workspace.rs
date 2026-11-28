@@ -1138,7 +1138,7 @@ fn shift_ranges(ranges: Vec<(usize, usize)>, by: usize) -> Vec<(usize, usize)> {
     ranges.into_iter().map(|(s, e)| (s + by, e + by)).collect()
 }
 
-/// 在指定資料夾中搜尋文字（遵守 .gitignore，只搜尋文件檔）。
+/// 在指定資料夾中搜尋文字（遵守 .gitignore，只搜尋文件檔，以及 Office 文件、郵件裡的文字）。
 /// `cancelled()` 回傳 true 時停下來，回傳空的結果（已經有新的搜尋了）。
 /// 用多個執行緒同時走訪、搜尋（大資料夾快很多），結果依相對路徑排序。
 pub fn search_dir(
@@ -1180,31 +1180,62 @@ pub fn search_dir(
             let Ok(entry) = entry else {
                 return WalkState::Continue;
             };
-            if !entry.file_type().is_some_and(|t| t.is_file()) || !is_doc(entry.path()) {
+            if !entry.file_type().is_some_and(|t| t.is_file()) {
+                return WalkState::Continue;
+            }
+            let office = is_office(entry.path());
+            if !office && !is_doc(entry.path()) {
                 return WalkState::Continue;
             }
             let mut matches = Vec::new();
-            let _ = searcher.search_path(
-                &matcher,
-                entry.path(),
-                UTF8(|line_number, line| {
-                    use grep_matcher::Matcher;
+            // Office 文件與郵件：先取出文字（一段一行），再一行一行比對。
+            if office {
+                use grep_matcher::Matcher;
+                for (i, line) in crate::office_text::lines(entry.path()).iter().enumerate() {
                     let mut ranges = Vec::new();
-                    matcher.find_iter(line.as_bytes(), |m| {
+                    let _ = matcher.find_iter(line.as_bytes(), |m| {
                         ranges.push((m.start(), m.end()));
                         true
-                    })?;
+                    });
+                    if ranges.is_empty() {
+                        continue;
+                    }
                     let (text, ranges, column) = excerpt(line, &ranges);
                     matches.push(LineMatch {
-                        line: line_number,
+                        line: i as u64 + 1,
                         text,
                         ranges,
                         column,
                     });
-                    let so_far = total.load(AtomicOrdering::Relaxed) + matches.len();
-                    Ok(so_far < MAX_MATCHES && !cancelled())
-                }),
-            );
+                    if total.load(AtomicOrdering::Relaxed) + matches.len() >= MAX_MATCHES
+                        || cancelled()
+                    {
+                        break;
+                    }
+                }
+            } else {
+                let _ = searcher.search_path(
+                    &matcher,
+                    entry.path(),
+                    UTF8(|line_number, line| {
+                        use grep_matcher::Matcher;
+                        let mut ranges = Vec::new();
+                        matcher.find_iter(line.as_bytes(), |m| {
+                            ranges.push((m.start(), m.end()));
+                            true
+                        })?;
+                        let (text, ranges, column) = excerpt(line, &ranges);
+                        matches.push(LineMatch {
+                            line: line_number,
+                            text,
+                            ranges,
+                            column,
+                        });
+                        let so_far = total.load(AtomicOrdering::Relaxed) + matches.len();
+                        Ok(so_far < MAX_MATCHES && !cancelled())
+                    }),
+                );
+            }
             if matches.is_empty() {
                 return WalkState::Continue;
             }
@@ -1947,6 +1978,43 @@ mod tests {
         assert!(validate_name("問題?.md").is_err());
         assert!(validate_name("  ").is_err());
         assert!(validate_name("結尾.").is_err());
+    }
+
+    #[test]
+    fn folder_search_finds_text_inside_office_files() {
+        let dir = std::env::temp_dir().join(format!("md-office-search-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let xml = r#"<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>第一段</w:t></w:r></w:p><w:p><w:r><w:t>上線時程由王小明確認</w:t></w:r></w:p></w:body></w:document>"#;
+        std::fs::write(
+            dir.join("規格書.docx"),
+            crate::office_text::tests::zip(&[("word/document.xml", xml, true)]),
+        )
+        .unwrap();
+        std::fs::write(dir.join("筆記.md"), "和上線時程無關的一行\n").unwrap();
+        std::fs::write(dir.join("壞掉.xlsx"), b"not a zip").unwrap();
+        let r = search_dir(&dir, "上線時程", false, false, &|| false).unwrap();
+        let found: Vec<(String, u64, String)> = r
+            .files
+            .iter()
+            .flat_map(|f| {
+                f.matches
+                    .iter()
+                    .map(move |m| (f.rel.clone(), m.line, m.text.clone()))
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [
+                ("筆記.md".to_string(), 1, "和上線時程無關的一行".to_string()),
+                (
+                    "規格書.docx".to_string(),
+                    2,
+                    "上線時程由王小明確認".to_string()
+                ),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -5,6 +5,7 @@ import type { ReplaceResult, SearchResult } from "../desktop.ts";
 import { t } from "../i18n.ts";
 import { choose } from "./choice.ts";
 import { icon } from "./icons.ts";
+import { isViewerDoc } from "../kinds.ts";
 
 export interface SearchHandlers {
   search(query: string, caseSensitive: boolean, regex: boolean): Promise<SearchResult>;
@@ -201,7 +202,8 @@ export class SearchPanel {
           b.className = "search-hit";
           const ln = document.createElement("span");
           ln.className = "search-line";
-          ln.textContent = String(m.line);
+          // Office 文件、郵件是取出文字後比對的，沒有行號。
+          ln.textContent = isViewerDoc(f.path) ? "" : String(m.line);
           b.append(ln);
           const text = document.createElement("span");
           let pos = 0;
