@@ -318,7 +318,7 @@ test("沒有領先遠端時不讀、不顯示「還沒推送」", async () => {
   await context.close();
 });
 
-test("版本紀錄的比較和原始碼控制一樣：綠色是現在、紅色是舊版；設成左右並排時也是並排", async () => {
+test("存檔版本的比較和原始碼控制一樣：綠色是現在、紅色是舊版；設成左右並排時也是並排", async () => {
   for (const layout of ["stacked", "side"]) {
     const { page, context, errors } = await openGit({
       github_account: null,
@@ -330,10 +330,11 @@ test("版本紀錄的比較和原始碼控制一樣：綠色是現在、紅色�
     // 打開檔案（拿不到上次提交的內容時只打開，不比較）。
     await page.locator("#git-host .git-files li", { hasText: "a.md" }).locator("button").first().click();
     await page.locator(".tab", { hasText: "a.md" }).first().waitFor();
+    // 指令打開右側欄的「歷史」，點存檔的版本。
     await page.keyboard.press("Control+Shift+P");
-    await page.keyboard.type("版本紀錄");
+    await page.keyboard.type("歷史（存檔版本");
     await page.keyboard.press("Enter");
-    await page.locator("dialog.palette[open][aria-label=\"版本紀錄\"] [role=option]").first().click();
+    await page.locator("aside#outline-right .right-history .history-save").first().click();
     const bar = page.locator("#review-bar");
     await bar.getByText("改了哪些地方").waitFor();
     if (layout === "side") {

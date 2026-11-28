@@ -93,7 +93,7 @@ import { markdownFiles, openWiki, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
 import { docName, docTooltip, renumber, saveFileName } from "./app/doc-names.ts";
 import { wikiLinkPages, workItemIdCompletion } from "./app/quick-open.ts";
-import { availableRightTabs } from "./app/right-tabs.ts";
+import { rightSideUsable } from "./app/right-tabs.ts";
 import { initDocStats, renderStats } from "./app/doc-stats.ts";
 import { provideApp } from "./app/context.ts";
 import { initMainMenu } from "./app/main-menu.ts";
@@ -101,7 +101,6 @@ import { initTitleSearch, renderTitleSearch } from "./app/title-search.ts";
 import { initPreviewDrag } from "./app/preview-drag.ts";
 import { initUndoKeys } from "./app/undo-keys.ts";
 import { closeSide, initSideBySide, refreshOtherPane, renderPaneHeads } from "./app/side-by-side.ts";
-import { initFileHistory } from "./app/file-history.ts";
 import { initStatusView } from "./app/status-view.ts";
 import { autoSaveNow, autoSavePending, exclusiveSave, resumeAutoSave, scheduleDiskSave } from "./app/autosave.ts";
 import { forgetOutlineCollapse, initOutlineList, renderOutline } from "./app/outline-list.ts";
@@ -2294,7 +2293,6 @@ initOfflineDrive();
 initCommands();
 initAiTerminal();
 
-initFileHistory();
 
 initGitActions();
 initErrorHandling();
@@ -2414,7 +2412,7 @@ function applyLayout(): void {
   applyViewSwitch(document, cur.kind, effective, cur.fileName);
   // 標題列右上角的右側欄開關（◨）：右側欄沒有任何分頁時藏起來。
   const rightToggle = $("[data-command='toggle-outline-right']");
-  rightToggle.hidden = availableRightTabs().length === 0;
+  rightToggle.hidden = !rightSideUsable();
   $(".top-actions").hidden = rightToggle.hidden;
   if (rightToggle.getAttribute("aria-pressed") !== String(rightOutlineShown)) {
     rightToggle.setAttribute("aria-pressed", String(rightOutlineShown));

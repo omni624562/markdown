@@ -107,3 +107,55 @@ test("存檔後「歷史」馬上重新列出版本，存回原本的檔案不�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("大綱放在左邊時「歷史」一樣開在右側欄：平常不多出右側欄，從指令打開才出現", async () => {
+  const d = { ...desktop, load_settings: JSON.stringify({ gitCompareLayout: "stacked", outlineRight: false }) };
+  const { page, context, errors } = await open({ desktop: d });
+  await row(page, "/notes/會議紀錄.md").waitFor();
+  assert.equal(await page.locator("aside#outline-right").isVisible(), false, "還沒打開過歷史：沒有右側欄");
+  assert.equal(await page.locator("[data-command='toggle-outline-right']").isVisible(), false, "也沒有右側欄的開關");
+  await row(page, "/notes/會議紀錄.md").click();
+  await page.waitForFunction(() => document.querySelector("#tab-bar .tab[aria-selected=true] .tab-name")?.textContent === "會議紀錄.md");
+  await page.keyboard.press("Control+Shift+P");
+  await page.keyboard.type("歷史（存檔版本");
+  await page.keyboard.press("Enter");
+  const panel = page.locator("aside#outline-right .right-history");
+  await panel.locator(".history-save").first().waitFor();
+  assert.equal(await page.locator("aside#outline-right").isVisible(), true);
+  // 右側欄只有「歷史」這一頁（大綱在左邊）；開關出現，可以收起來。
+  assert.deepEqual(
+    await page.locator("aside#outline-right [role=tab]:not([hidden])").evaluateAll((els) => els.map((el) => el.dataset.tab)),
+    ["history"],
+  );
+  await page.locator("[data-command='toggle-outline-right']").click();
+  assert.equal(await page.locator("aside#outline-right").isVisible(), false);
+  assert.equal(await page.locator("dialog.palette[open]").count(), 0, "不再跳出版本紀錄的清單");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("視窗很窄時「歷史」是蓋在文件上的抽屜：選了版本就收起來開始比較，Esc 也能收起", async () => {
+  const { page, context, errors } = await open({ desktop, viewport: { width: 760, height: 700 } });
+  await page.keyboard.press("Control+p");
+  await page.keyboard.type("會議紀錄");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelector("#tab-bar .tab[aria-selected=true] .tab-name")?.textContent === "會議紀錄.md");
+  const openHistory = async () => {
+    await page.keyboard.press("Control+Shift+P");
+    await page.keyboard.type("歷史（存檔版本");
+    await page.keyboard.press("Enter");
+    await page.locator("aside#outline-right.right-drawer .right-history .history-save").first().waitFor();
+  };
+  await openHistory();
+  const box = await page.locator("aside#outline-right").boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 760, "抽屜在視窗裡");
+  await page.locator("aside#outline-right .history-save").first().focus();
+  await page.keyboard.press("Escape");
+  await page.locator("aside#outline-right").waitFor({ state: "hidden" });
+  await openHistory();
+  await page.locator("aside#outline-right .history-save").first().click();
+  await page.locator("#review-bar").getByText("改了哪些地方").waitFor();
+  await page.locator("aside#outline-right").waitFor({ state: "hidden" });
+  assert.deepEqual(errors, []);
+  await context.close();
+});

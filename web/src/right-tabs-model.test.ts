@@ -20,3 +20,10 @@ test("選哪一頁：記住的還在就用；不在了用第一個不是助理�
   assert.equal(pickRightTab("outline", ["assistant"]), null);
   assert.equal(pickRightTab(null, []), null);
 });
+
+test("歷史：大綱不在右邊時也有，但要使用者自己打開（記住的是它才顯示）", () => {
+  assert.equal(pickRightTab(null, ["history"]), null);
+  assert.equal(pickRightTab("outline", ["history", "assistant"]), null);
+  assert.equal(pickRightTab("history", ["history", "assistant"]), "history");
+  assert.equal(pickRightTab(null, ["history", "wiki"]), "wiki");
+});

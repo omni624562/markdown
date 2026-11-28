@@ -1365,7 +1365,7 @@ export function toggleAssistant(open = !assistantOpen()): void {
     selectRightTab("assistant");
     return;
   }
-  const other = availableRightTabs().find((tab) => tab !== "assistant");
+  const other = availableRightTabs().find((tab) => tab !== "assistant" && tab !== "history");
   if (other && !drawerQuery.matches) selectRightTab(other);
   else setRightOutline(false);
   app.editor.view.focus();

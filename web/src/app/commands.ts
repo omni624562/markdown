@@ -29,7 +29,7 @@ import { canConvertToTable, convertSelectionToTable } from "./table-paste.ts";
 import { copyTableAtCursor } from "./table-copy.ts";
 import { openTablePicker } from "./table-picker.ts";
 import { viewsFor } from "../view-modes.ts";
-import { availableRightTabs } from "./right-tabs.ts";
+import { rightSideUsable } from "./right-tabs.ts";
 import { type TableEdit, inTable } from "../table.ts";
 import { exportPdf } from "./pdf-export.ts";
 import { settingsDialog, fixTerms, convertToTraditional, changeFontSize } from "./settings-ui.ts";
@@ -966,11 +966,11 @@ export function initCommands(): void {
     },
     {
       id: "toggle-outline-right",
-      title: t("顯示／隱藏右側欄（大綱、反向連結、Wiki、助理）"),
+      title: t("顯示／隱藏右側欄（大綱、反向連結、歷史、Wiki、助理）"),
       group: t("檢視"),
       icon: "panel-right",
       keys: "Mod-Alt-b",
-      when: () => availableRightTabs().length > 0,
+      when: () => rightSideUsable(),
       run: () => setRightOutline(!app.rightOutlineShown),
     },
     ...(["system", "light", "dark"] as const).map(

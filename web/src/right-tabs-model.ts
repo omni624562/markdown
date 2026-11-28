@@ -16,10 +16,11 @@ export function parseRightTab(raw: string | null): RightTab | null {
 }
 
 /**
- * 現在要顯示哪一頁：記住的那一頁還在就用它；不在了就用第一個不是助理的分頁；
- * 只剩助理時回傳 null（助理要使用者自己打開，不會因為設定開了就自動冒出來）。
+ * 現在要顯示哪一頁：記住的那一頁還在就用它；不在了就用第一個不是助理、也不是歷史的分頁；
+ * 只剩助理、歷史時回傳 null（這兩頁要使用者自己打開：助理不會因為設定開了就自動冒出來，
+ * 大綱放在左邊的人也不會因為有「歷史」就多出一個右側欄）。
  */
 export function pickRightTab(saved: RightTab | null, available: readonly RightTab[]): RightTab | null {
   if (saved && available.includes(saved)) return saved;
-  return available.find((tab) => tab !== "assistant") ?? null;
+  return available.find((tab) => tab !== "assistant" && tab !== "history") ?? null;
 }

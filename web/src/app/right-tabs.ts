@@ -42,10 +42,20 @@ const LABELS: Record<RightTab, () => string> = {
 /** 現在有哪些分頁（依左到右的順序）。 */
 export function availableRightTabs(): RightTab[] {
   const out: RightTab[] = [];
-  if (outlinePlacedRight()) out.push("outline", "backlinks", ...(desktop ? (["history"] as const) : []));
+  if (outlinePlacedRight()) out.push("outline", "backlinks");
+  // 歷史：桌面版都有（大綱放在左邊、視窗很窄時也開得出來），但要使用者自己打開（見 pickRightTab）。
+  if (desktop) out.push("history");
   if (wikiPlacedRight()) out.push("wiki");
   if (assistantEnabled()) out.push("assistant");
   return out;
+}
+
+/**
+ * 右側欄有沒有東西可以開關（標題列的「◨」、指令）：有正在顯示的分頁，或有歷史以外的分頁。
+ * 只有「歷史」而且沒打開過時不算：它從檔案的「歷史…」打開，不用為它多放一個開關。
+ */
+export function rightSideUsable(): boolean {
+  return rightTab() !== null || availableRightTabs().some((tab) => tab !== "history");
 }
 
 /** 現在要顯示的分頁；右側欄沒東西（或只有還沒打開過的助理）時 null。 */
@@ -192,10 +202,9 @@ export function syncRightTabs(): void {
   const outlineRight = outline.parentElement === right;
   const wikiRight = !!wiki && wiki.parentElement === right;
   placeBacklinks(outline, right, outlineRight);
-  // 歷史（桌面版、大綱在右側時）：放進右側欄；大綱移回左邊時拿掉。
-  const history = outlineRight && desktop ? historyBox() : null;
+  // 歷史（桌面版）：一直放在右側欄裡。
+  const history = desktop ? historyBox() : null;
   if (history && history.parentElement !== right) right.append(history);
-  else if (!history && document.querySelector(".right-history")) historyBox().remove();
   const available = availableRightTabs();
   const current = pickRightTab(saved, available);
   // 助理的面板第一次要顯示時才建立，之後一直留在右側欄裡。
