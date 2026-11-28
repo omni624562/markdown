@@ -238,8 +238,6 @@ export const main: Record<string, Translation> = {
   "文件有格式錯誤，修正後才能複製。": "The document has syntax errors. Fix them before copying.",
   "已複製 HTML 到剪貼簿": "HTML copied to the clipboard.",
   "匯出成 Word 檔（.docx）": "Export as Word (.docx)",
-  "簡報模式：從頭播放": "Presentation Mode: Start from Beginning",
-  "簡報模式：從目前這一頁播放": "Presentation Mode: Start from Current Slide",
   "匯入 Word 文件（.docx）…": "Import Word Document (.docx)…",
   "複製為格式文字（貼到 Word、Outlook、Teams）": "Copy as Formatted Text (for Word, Outlook, Teams)",
   "修正兩國用語、錯字與標點（整份文件）": "Fix Mainland China Terms, Typos and Punctuation (Whole Document)",
@@ -536,10 +534,7 @@ export const main: Record<string, Translation> = {
   "今天的日期": "Today's Date",
   "釘選分頁": "Pin Tab",
 
-  // 簡報、Word 匯入匯出、目錄
-  "文件是空的，沒有可以播放的內容。": "The document is empty; there's nothing to present.",
-  "用一行 --- 把內容分成多頁；沒有分隔線時，每個一級、二級標題各一頁。":
-    "Use a line with --- to split the content into slides. Without separators, each level 1 and level 2 heading starts a new slide.",
+  // Word 匯入匯出、目錄
   "Word 文件": "Word Document",
   "正在轉換「{name}」…": "Converting \"{name}\"…",
   "{n} 張圖片的格式不支援（例如 EMF 向量圖），沒有匯入": [

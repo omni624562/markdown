@@ -28,7 +28,6 @@ import { openLightbox } from "../ui/lightbox.ts";
 import { type MenuEntry, setupMenu } from "../ui/menu.ts";
 import { sortByGroup } from "../ui/palette.ts";
 import { Picker } from "../ui/picker.ts";
-import { Slideshow, splitSlides, slideAtLine } from "../ui/slideshow.ts";
 import type { SymbolPicker } from "../ui/symbol-picker.ts";
 import { announce, toast } from "../ui/toast.ts";
 import { setupWindowControls } from "../ui/window-controls.ts";
@@ -495,29 +494,6 @@ export const symbolPicker = {
   },
 };
 
-let slideshow: Slideshow | null = null;
-
-/** 簡報模式：用預覽的內容（公式、流程圖都畫好了）切成一頁一頁播放。 */
-export async function startSlideshow(fromCursor: boolean): Promise<void> {
-  app.renderNow(true);
-  // 等流程圖等非同步的外掛畫完。
-  await new Promise((r) => setTimeout(r, 120));
-  const slides = splitSlides(app.previewEl);
-  if (!slides.length) {
-    toast(t("文件是空的，沒有可以播放的內容。"));
-    return;
-  }
-  slideshow ??= new Slideshow({
-    onLink: (href) => void app.followLink(href).catch(reportError),
-    // 桌面版用原生的視窗全螢幕（Windows 上網頁的全螢幕在最大化的視窗下面會留一條黑邊）。
-    fullscreen: desktop ? (on) => desktop!.windowFullscreen(on) : undefined,
-  });
-  const line = app.editor.view.state.doc.lineAt(app.editor.view.state.selection.main.head).number;
-  slideshow.open(slides, fromCursor ? slideAtLine(slides, line) : 0, () => app.editor.view.focus());
-  if (slides.length === 1 && !app.editor.text.includes("\n---")) {
-    toast(t("用一行 --- 把內容分成多頁；沒有分隔線時，每個一級、二級標題各一頁。"), { duration: 6000 });
-  }
-}
 
 /** 讓使用者選一個檔案（網頁版）。 */
 function pickFile(accept: string): Promise<File | null> {

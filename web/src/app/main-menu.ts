@@ -48,7 +48,7 @@ export function initMainMenu(): void {
       icon: "download",
       items: ["export-pdf", "export-docx", "export-html", "print", "-", "copy-rich", "-", "import-docx"],
     },
-    { label: t("文件工具"), icon: "wand-sparkles", items: ["doc-stats", "history", "save-as-template", "-", "fix-terms", "check-links", "s2t", "-", "slideshow"] },
+    { label: t("文件工具"), icon: "wand-sparkles", items: ["doc-stats", "history", "save-as-template", "-", "fix-terms", "check-links", "s2t"] },
     "-",
     { label: t("AI 與終端機"), icon: "sparkles", items: ["toggle-terminal", "start-claude", "start-codex", "-", "ai-settings"] },
     { label: t("外觀"), icon: "sun", items: ["theme-system", "theme-light", "theme-dark", "-", "choose-palette"] },
