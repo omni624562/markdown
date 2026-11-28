@@ -9,6 +9,8 @@ export interface ErrorEntry {
   where: string;
   message: string;
   stack: string | null;
+  /** 診斷用的補充說明（不含文件內容，例如出錯那一行的結構）。 */
+  detail?: string;
 }
 
 /** 最多記幾筆（太舊的先丟掉）。 */
@@ -28,12 +30,13 @@ export function errorMessage(e: unknown): string {
 }
 
 /** 記下一個錯誤；回傳記下的那一筆。 */
-export function logError(where: string, e: unknown, now: number = Date.now()): ErrorEntry {
+export function logError(where: string, e: unknown, now: number = Date.now(), detail?: string): ErrorEntry {
   const entry: ErrorEntry = {
     at: now,
     where,
     message: errorMessage(e),
     stack: e instanceof Error && e.stack ? e.stack : null,
+    ...(detail ? { detail } : {}),
   };
   entries.push(entry);
   if (entries.length > ERROR_LOG_LIMIT) entries.splice(0, entries.length - ERROR_LOG_LIMIT);
@@ -62,6 +65,7 @@ export function errorLogText(header: string[] = [], list: readonly ErrorEntry[] 
   for (const e of list) {
     lines.push(`[${new Date(e.at).toISOString()}] ${e.where}: ${e.message}`);
     if (e.stack) lines.push(...e.stack.split("\n").slice(0, 8).map((l) => `    ${l.trim()}`));
+    if (e.detail) lines.push(...e.detail.split("\n").map((l) => `    ${l}`));
   }
   return lines.join("\n");
 }
