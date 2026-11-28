@@ -86,7 +86,7 @@ test("分頁上的字：工作項目加編號與類型，Wiki 頁面提示完整
     name: "安裝",
     title: "P.wiki › 產品 › 說明 › 安裝",
   });
-  // 不知道 Wiki 名稱時只列路徑；沒有對應的捷徑（GitHub issue、附件）維持原樣。
+  // 不知道 Wiki 名稱時只列路徑；沒有對應的捷徑（附件）維持原樣。
   assert.equal(itemTabText("A", "x", { wiki: "w1", wikiName: "", path: "/A" }).title, "A");
   assert.deepEqual(itemTabText("#3 問題", "GitHub：#3", null), { name: "#3 問題", title: "GitHub：#3" });
 });

@@ -6,7 +6,6 @@ export const html: Record<string, Translation> = {
   "更多功能": "More Actions",
   "側邊欄": "Sidebar",
   "待辦總覽": "Tasks",
-  "Issues（GitHub）": "Issues (GitHub)",
   "側邊欄內容": "Sidebar Content",
   "專案的檔案": "Project Files",
   "原始碼控制": "Source Control",

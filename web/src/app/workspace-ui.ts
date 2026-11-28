@@ -36,7 +36,7 @@ import { commands } from "./commands.ts";
 import { reportError } from "./git-actions.ts";
 import { searchPanel } from "./git-history.ts";
 import { gitPanel } from "./work-item-updates.ts";
-import { wikiPanel, workItemsPanel, issuesPanel, renderIssuesTab } from "./work-items-panel.ts";
+import { wikiPanel, workItemsPanel } from "./work-items-panel.ts";
 import type { Doc, SidePanel } from "../main.ts";
 import { renderFilesHeadPins } from "./pin-commands.ts";
 import { app } from "./context.ts";
@@ -339,7 +339,6 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
   const requested = panel;
   if (panel === "git" && app.$("#side-tab-git").hidden) panel = "files";
   if ((panel === "workitems" || panel === "wiki") && app.$(`#side-tab-${panel}`).hidden) panel = "files";
-  if (panel === "issues" && app.$("#side-tab-issues").hidden) panel = "files";
   // 不能用而改開檔案時不記住（下次啟動仍然開原本要的面板）。
   pendingPanel = panel === requested ? null : requested;
   // 大綱在右邊時一直顯示，不用切換左邊的側邊欄。
@@ -377,7 +376,6 @@ export function showPanel(panel: SidePanel, reveal = true, focusInput = false): 
   if (panel === "outline") updateActiveHeading();
   if (panel === "workitems") workItemsPanel?.shown();
   if (panel === "wiki") wikiPanel?.shown();
-  if (panel === "issues") issuesPanel?.shown();
   if (panel === "search" && app.searchStale) {
     app.searchStale = false;
     searchPanel?.rerun();
@@ -593,7 +591,6 @@ export async function setWorkspace(folder: Folder | null): Promise<void> {
   await app.fileTree?.setActive(app.treeActive);
   await renderFilesEmpty();
   void gitPanel?.refresh();
-  void renderIssuesTab();
   assistantContextChanged();
   batchFolderChanged();
 }

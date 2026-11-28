@@ -91,18 +91,6 @@ pub static EN: &[(&str, &str)] = &[
         "Open the folder that contains the file first.",
     ),
     (
-        "請先開啟連到 GitHub 的資料夾",
-        "Open a folder that's connected to GitHub first.",
-    ),
-    (
-        "這個資料夾還沒有連到 GitHub",
-        "This folder isn't connected to GitHub yet.",
-    ),
-    (
-        "這個資料夾不是連到 GitHub 的儲存庫",
-        "This folder isn't a repository connected to GitHub.",
-    ),
-    (
         "這個檔案不在 Git 儲存庫裡",
         "This file isn't in a Git repository.",
     ),

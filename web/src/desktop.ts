@@ -668,24 +668,6 @@ export interface StatCommit {
   offset: number;
 }
 
-export interface GitHubIssue {
-  number: number;
-  title: string;
-  state: string;
-  labels: string[];
-  author: string;
-  comments: number;
-  updated: string | null;
-  webUrl: string;
-}
-
-export interface GitHubIssueDetail extends GitHubIssue {
-  assignees: string[];
-  /** 內容（Markdown）。 */
-  body: string;
-  commentList: { author: string; created: string | null; body: string }[];
-}
-
 export interface FileVersion {
   /** 保存時間（Unix 毫秒）。 */
   id: number;
@@ -1157,9 +1139,6 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitFileHistory: (path: string) => core.invoke<FileCommit[]>("git_file_history", { path }),
     gitFileAt: (path: string, id: string) => core.invoke<string>("git_file_at", { path, id }),
     gitWebUrl: (path: string, from?: number, to?: number) => core.invoke<string>("git_web_url", { path, from, to }),
-    githubIssues: (search: string) => core.invoke<GitHubIssue[]>("github_issues", { search }),
-    githubIssue: (number: number) => core.invoke<GitHubIssueDetail>("github_issue", { number }),
-    githubWorkspaceRepo: () => core.invoke<string | null>("github_workspace_repo"),
     gitLog: (skip: number, limit: number, all: boolean, path: string | null, text: string | null) =>
       core.invoke<LogPage>("git_log", { skip, limit, all, path, text }),
     gitCommitDetail: (id: string) => core.invoke<CommitDetail>("git_commit_detail", { id }),
@@ -1189,11 +1168,6 @@ function bridge(core: TauriCore, event: TauriEvent) {
     gitMergeAbort: () => core.invoke<string>("git_merge_abort"),
     gitCreatePr: (title: string, body: string, newBranch: string | null) =>
       core.invoke<string>("git_create_pr", { title, body, newBranch }),
-    /** 網站是公開的，原生端會用系統的對話框再確認一次；使用者選「否」時是 null。 */
-    githubPages: () => core.invoke<string | null>("github_pages"),
-    /** 公開的 Gist 原生端會用系統的對話框再確認一次；使用者選「否」時是 null。 */
-    githubGist: (fileName: string, content: string, description: string, isPublic: boolean) =>
-      core.invoke<string | null>("github_gist", { fileName, content, description, public: isPublic }),
     adoAccount: () => core.invoke<AdoAccount | null>("ado_account"),
     /** 連線狀態（狀態列用）。 */
     adoPing: () =>

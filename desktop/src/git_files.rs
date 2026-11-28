@@ -290,21 +290,6 @@ pub async fn git_web_url(
     crate::io::blocking(move || link_at(&file, lines)).await
 }
 
-/// 目前開啟的資料夾連到的 GitHub 儲存庫（擁有者、名稱）。
-pub fn workspace_github_repo(app: &AppHandle) -> Result<(String, String), String> {
-    let root = app
-        .state::<Workspace>()
-        .root()
-        .ok_or_else(|| tr!("請先開啟連到 GitHub 的資料夾"))?;
-    let repo = crate::git::open(&root)?;
-    let remote = repo
-        .find_remote("origin")
-        .ok()
-        .and_then(|r| r.url().ok().map(str::to_string))
-        .ok_or_else(|| tr!("這個資料夾還沒有連到 GitHub"))?;
-    github_repo(&remote).ok_or_else(|| tr!("這個資料夾不是連到 GitHub 的儲存庫"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

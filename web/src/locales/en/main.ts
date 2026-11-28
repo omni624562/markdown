@@ -71,19 +71,12 @@ export const main: Record<string, Translation> = {
   "切換專案（{keys}）": "Switch Project ({keys})",
   "開啟資料夾或切換專案": "Open a Folder or Switch Projects",
 
-  // 工作項目、Issues
+  // 工作項目
   "已插入「#{id}」的連結": "Inserted a link to \"#{id}\".",
   "找到 {n} 個工作項目": ["{n} work item found", "{n} work items found"],
   "{n} 個指派給你、還沒結束的工作項目": "{n} open work items assigned to you",
   "找不到符合的工作項目": "No matching work items",
   "目前沒有指派給你、還沒結束的工作項目": "No open work items are assigned to you",
-  "搜尋 issue，或輸入編號": "Search issues or enter a number",
-  "{n} 則留言": ["{n} comment", "{n} comments"],
-  "找到 {n} 個 issue": ["{n} issue found", "{n} issues found"],
-  "還沒關閉的 issue（{n}）": "Open issues ({n})",
-  "找不到符合的 issue": "No matching issues",
-  "目前沒有還沒關閉的 issue": "No open issues",
-  "Issues（{repo}）": "Issues ({repo})",
   "原始碼控制（Git），{n} 個變更": ["Source Control (Git), {n} change", "Source Control (Git), {n} changes"],
   "還沒有開啟資料夾": "No folder is open",
 
@@ -393,7 +386,7 @@ export const main: Record<string, Translation> = {
   "已複製連結（含選取的行號）": "Link copied (with the selected line numbers).",
   "已複製連結": "Link copied.",
 
-  // 合併衝突、分支、Pull Request、GitHub Pages、Gist
+  // 合併衝突、分支、Pull Request
   "合併衝突：「{name}」": "Merge Conflict: \"{name}\"",
   "「{name}」改了哪些地方": "What Changed in \"{name}\"",
   "改回去": "Change back",
@@ -449,23 +442,7 @@ export const main: Record<string, Translation> = {
   "正在推送並建立 Pull Request…": "Pushing and creating the pull request…",
   "由 oMarker 建立": "Created with oMarker",
   "已建立 Pull Request": "Pull request created.",
-  "發佈成網站（GitHub Pages）": "Publish as Website (GitHub Pages)",
-  "會把這個儲存庫預設分支的內容發佈成網站，所有人都看得到（就算儲存庫是私人的）。Markdown 會自動轉成網頁，README.md 或 index.md 是首頁。第一次發佈大約要一兩分鐘才看得到。":
-    "This publishes the default branch of this repository as a website that anyone can see (even if the repository is private). Markdown is turned into web pages automatically, and README.md or index.md is the home page. The first publish takes a minute or two to appear.",
-  "發佈": "Publish",
-  "正在設定 GitHub Pages…": "Setting up GitHub Pages…",
-  "網站網址：{url}（之後推送就會自動更新）": "Site URL: {url} (updates automatically when you push)",
   "開啟網站": "Open Website",
-  "沒有內容可以分享。": "There's nothing to share.",
-  "分享成 Gist": "Share as Gist",
-  "會把整份「{name}」上傳到你的 GitHub Gist，產生一個可以分享的網址。":
-    "This uploads all of \"{name}\" to your GitHub Gist and creates a link you can share.",
-  "會把選取的內容上傳到你的 GitHub Gist，產生一個可以分享的網址。":
-    "This uploads the selected content to your GitHub Gist and creates a link you can share.",
-  "公開（所有人都找得到）": "Public (anyone can find it)",
-  "秘密（知道網址的人才看得到）": "Secret (only people with the link can see it)",
-  "正在上傳…": "Uploading…",
-  "已分享成 Gist，網址已複製": "Shared as a Gist. The link was copied.",
   "「{name}」被外部程式修改了": "\"{name}\" was changed by another app",
   "逐段檢查改了哪裡；選「還原」後記得存檔": "Review what changed chunk by chunk. If you choose \"Restore\", remember to save.",
   "保留": "Keep",
@@ -483,8 +460,6 @@ export const main: Record<string, Translation> = {
   "Git：切換或建立分支…": "Git: Switch or Create Branch…",
   "Git：建立 Pull Request…": "Git: Create Pull Request…",
   "Git：完成合併": "Git: Finish Merge",
-  "GitHub：發佈成網站（GitHub Pages）…": "GitHub: Publish as Website (GitHub Pages)…",
-  "GitHub：分享成 Gist…": "GitHub: Share as Gist…",
   "Azure DevOps：下載儲存庫…": "Azure DevOps: Download Repository…",
   "Azure DevOps：把這個資料夾上傳到 Azure DevOps…": "Azure DevOps: Upload This Folder to Azure DevOps…",
   "Azure DevOps：工作項目": "Azure DevOps: Work Items",

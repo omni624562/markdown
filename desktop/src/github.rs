@@ -194,8 +194,8 @@ pub async fn github_login_start(app: AppHandle) -> Result<DeviceCode, String> {
     let v = crate::io::blocking_for(Duration::from_secs(30), move || {
         form(
             "https://github.com/login/device/code",
-            // repo：儲存庫、issue、PR、Pages；gist：分享成 Gist。
-            &format!("client_id={id}&scope=repo%20gist"),
+            // repo：儲存庫、PR。
+            &format!("client_id={id}&scope=repo"),
             &tr!("登入"),
         )
     })
@@ -280,12 +280,12 @@ pub async fn github_login_wait(app: AppHandle, window: Window) -> Result<Account
 }
 
 /// 登入完成、記住權杖前要問的話。網頁看得到要輸入的代碼：被注入的網頁可以把代碼交給別人，
-/// 讓對方用自己的帳號授權，之後上傳、分享就會送到那個帳號。所以由使用者確認帳號名稱。
+/// 讓對方用自己的帳號授權，之後上傳就會送到那個帳號。所以由使用者確認帳號名稱。
 fn login_question(login: &str) -> Question {
     Question::new(
         tr!("登入 GitHub"),
         tr!(
-            "要用 GitHub 帳號「{login}」登入 oMarker 嗎？之後上傳、分享成 Gist 都會用這個帳號。只有在你自己剛剛在瀏覽器授權時才選「是」。",
+            "要用 GitHub 帳號「{login}」登入 oMarker 嗎？之後上傳、建立 Pull Request 都會用這個帳號。只有在你自己剛剛在瀏覽器授權時才選「是」。",
             login = login
         ),
     )
@@ -489,7 +489,7 @@ pub async fn github_publish(
     .await
 }
 
-// ---- 建立 PR、GitHub Pages、Gist ----------------------------------------------
+// ---- 建立 PR ----------------------------------------------
 
 /// 送出 JSON；回傳狀態碼與內容（4xx 也回傳，讓呼叫端依狀態碼說明）。
 fn api_send(
@@ -631,374 +631,9 @@ pub(crate) fn create_pull(
     ))
 }
 
-/// 開啟 GitHub Pages 前要問的話（網站一定是公開的）。
-fn pages_question(login: &str, owner: &str, name: &str) -> Question {
-    Question::new(
-        tr!("發佈成網站（GitHub Pages）"),
-        tr!(
-            "要用 GitHub 帳號「{login}」開啟 GitHub Pages，把儲存庫「{repo}」預設分支的內容發佈成公開的網站嗎？就算儲存庫是私人的，所有人也都看得到這個網站。",
-            login = login,
-            repo = format!("{owner}/{name}")
-        ),
-    )
-}
-
-/// 用 GitHub Pages 把儲存庫發佈成網站（從預設分支的根目錄），回傳網站網址。
-/// 網站是公開的，先用系統的對話框確認；使用者選「否」時回傳 `None`。
-#[tauri::command]
-pub async fn github_pages(app: AppHandle, window: Window) -> Result<Option<String>, String> {
-    let token = require_token(&app)?;
-    let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
-    let question = pages_question(&login_name(&app), &owner, &name);
-    if !crate::confirm::confirm(&window, Some(question)).await {
-        return Ok(None);
-    }
-    crate::io::blocking_for(Duration::from_secs(60), move || {
-        let what = &tr!("發佈網站");
-        let branch = default_branch(&token, &owner, &name)?;
-        let (code, v) = api_send(
-            &token,
-            "POST",
-            &format!("/repos/{owner}/{name}/pages"),
-            &serde_json::json!({ "source": { "branch": branch, "path": "/" } }),
-            what,
-        )?;
-        let url = match code {
-            201 => v
-                .get("html_url")
-                .and_then(|x| x.as_str())
-                .map(str::to_string),
-            // 已經開啟過：讀出目前的網址。
-            409 => api_get(&token, &format!("/repos/{owner}/{name}/pages"), what)
-                .ok()
-                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-                .and_then(|p| p.get("html_url")?.as_str().map(str::to_string)),
-            422 => {
-                return Err(tr!(
-                    "{what}失敗：私人儲存庫需要 GitHub 付費方案才能使用 GitHub Pages（{msg}）",
-                    msg = github_message(&v),
-                    what = what
-                ))
-            }
-            403 | 404 => {
-                return Err(tr!(
-                    "{what}失敗：沒有權限設定這個儲存庫的 GitHub Pages（{msg}）",
-                    msg = github_message(&v),
-                    what = what
-                ))
-            }
-            _ => {
-                return Err(tr!(
-                    "{what}失敗：GitHub 回應 {code}（{msg}）",
-                    msg = github_message(&v),
-                    what = what,
-                    code = code
-                ))
-            }
-        };
-        Ok(Some(url.unwrap_or_else(|| {
-            format!("https://{owner}.github.io/{name}/")
-        })))
-    })
-    .await
-}
-
-/// 分享成 Gist 前要問的話：只有公開的 Gist 要問（秘密 Gist 要知道網址才看得到）。
-fn gist_question(login: &str, file_name: &str, public: bool) -> Option<Question> {
-    public.then(|| {
-        Question::new(
-            tr!("公開分享成 Gist"),
-            tr!(
-                "要用 GitHub 帳號「{login}」把「{name}」公開分享成 Gist 嗎？所有人都找得到、看得到內容。",
-                login = login,
-                name = file_name
-            ),
-        )
-    })
-}
-
-/// 把文字分享成 Gist，回傳網址。`public` 為 false 時是秘密 Gist（知道網址的人才看得到）。
-/// 公開的 Gist 先用系統的對話框確認；使用者選「否」時回傳 `None`。
-#[tauri::command]
-pub async fn github_gist(
-    app: AppHandle,
-    window: Window,
-    file_name: String,
-    content: String,
-    description: String,
-    public: bool,
-) -> Result<Option<String>, String> {
-    let token = require_token(&app)?;
-    if content.trim().is_empty() {
-        return Err(tr!("沒有內容可以分享"));
-    }
-    let file_name = file_name
-        .trim()
-        .replace(['/', '\\'], "-")
-        .chars()
-        .take(100)
-        .collect::<String>();
-    let file_name = if file_name.is_empty() {
-        tr!("筆記.md")
-    } else {
-        file_name
-    };
-    let question = gist_question(&login_name(&app), &file_name, public);
-    if !crate::confirm::confirm(&window, question).await {
-        return Ok(None);
-    }
-    crate::io::blocking_for(Duration::from_secs(60), move || {
-        let what = &tr!("分享成 Gist");
-        let (code, v) = api_send(
-            &token,
-            "POST",
-            "/gists",
-            &serde_json::json!({
-                "description": description,
-                "public": public,
-                "files": { file_name: { "content": content } },
-            }),
-            what,
-        )?;
-        match code {
-            201 => v
-                .get("html_url")
-                .and_then(|x| x.as_str())
-                .map(|u| Some(u.to_string()))
-                .ok_or_else(|| tr!("{what}失敗：GitHub 的回應不正確", what = what)),
-            // 1.8.0 以前登入的權杖沒有 gist 權限。
-            403 | 404 => Err(tr!(
-                "{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 GitHub 頁按「重新登入」",
-                what = what
-            )),
-            _ => Err(tr!(
-                "{what}失敗：GitHub 回應 {code}（{msg}）",
-                msg = github_message(&v),
-                what = what,
-                code = code
-            )),
-        }
-    })
-    .await
-}
-
-// ---- Issues -----------------------------------------------------------------
-
-#[derive(Serialize, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Issue {
-    number: u64,
-    title: String,
-    state: String,
-    labels: Vec<String>,
-    author: String,
-    comments: u64,
-    updated: Option<String>,
-    web_url: String,
-}
-
-#[derive(Serialize, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct IssueComment {
-    author: String,
-    created: Option<String>,
-    body: String,
-}
-
-#[derive(Serialize, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct IssueDetail {
-    #[serde(flatten)]
-    issue: Issue,
-    assignees: Vec<String>,
-    body: String,
-    comment_list: Vec<IssueComment>,
-}
-
-fn login_of(v: &serde_json::Value) -> String {
-    v.get("login")
-        .and_then(|x| x.as_str())
-        .unwrap_or_default()
-        .to_string()
-}
-
-/// GitHub 的 issue 清單也會包含 PR（有 `pull_request` 欄位），這裡只留下 issue。
-fn issue_of(v: &serde_json::Value) -> Option<Issue> {
-    if v.get("pull_request").is_some() {
-        return None;
-    }
-    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
-    Some(Issue {
-        number: v.get("number")?.as_u64()?,
-        title: s("title").unwrap_or_default(),
-        state: s("state").unwrap_or_default(),
-        labels: v
-            .get("labels")
-            .and_then(|x| x.as_array())
-            .map(|l| {
-                l.iter()
-                    .filter_map(|x| x.get("name").and_then(|n| n.as_str()).map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default(),
-        author: v.get("user").map(login_of).unwrap_or_default(),
-        comments: v.get("comments").and_then(|x| x.as_u64()).unwrap_or(0),
-        updated: s("updated_at"),
-        web_url: s("html_url")?,
-    })
-}
-
-fn json(text: &str, what: &str) -> Result<serde_json::Value, String> {
-    serde_json::from_str(text).map_err(|e| tr!("{what}失敗：{e}", what = what, e = e))
-}
-
-/// 目前資料夾的 GitHub 儲存庫的 issue：搜尋文字空白時是還沒關閉的，數字是編號，其他搜尋標題與內容。
-#[tauri::command]
-pub async fn github_issues(app: AppHandle, search: String) -> Result<Vec<Issue>, String> {
-    let token = require_token(&app)?;
-    let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
-    crate::io::blocking_for(Duration::from_secs(60), move || {
-        let q = search.trim().trim_start_matches('#').to_string();
-        let what = &tr!("讀取 issue");
-        if !q.is_empty() && q.chars().all(|c| c.is_ascii_digit()) {
-            let v = json(
-                &api_get(&token, &format!("/repos/{owner}/{name}/issues/{q}"), what).or_else(
-                    |e| {
-                        if e.contains("404") {
-                            Ok("{}".into())
-                        } else {
-                            Err(e)
-                        }
-                    },
-                )?,
-                what,
-            )?;
-            return Ok(issue_of(&v).into_iter().collect());
-        }
-        if q.is_empty() {
-            let v = json(
-                &api_get(
-                    &token,
-                    &format!("/repos/{owner}/{name}/issues?state=open&sort=updated&per_page=100"),
-                    what,
-                )?,
-                what,
-            )?;
-            return Ok(v
-                .as_array()
-                .map(|l| l.iter().filter_map(issue_of).collect())
-                .unwrap_or_default());
-        }
-        let query = crate::git_files::encode(&format!("repo:{owner}/{name} is:issue {q}"));
-        let v = json(
-            &api_get(
-                &token,
-                &format!("/search/issues?q={query}&sort=updated&per_page=50"),
-                what,
-            )?,
-            what,
-        )?;
-        Ok(v.get("items")
-            .and_then(|x| x.as_array())
-            .map(|l| l.iter().filter_map(issue_of).collect())
-            .unwrap_or_default())
-    })
-    .await
-}
-
-/// 一個 issue 的內容與最近的留言（最多 30 則）。
-#[tauri::command]
-pub async fn github_issue(app: AppHandle, number: u64) -> Result<IssueDetail, String> {
-    let token = require_token(&app)?;
-    let (owner, name) = crate::git_files::workspace_github_repo(&app)?;
-    crate::io::blocking_for(Duration::from_secs(60), move || {
-        let what = &tr!("讀取 issue");
-        let v = json(
-            &api_get(
-                &token,
-                &format!("/repos/{owner}/{name}/issues/{number}"),
-                what,
-            )?,
-            what,
-        )?;
-        let issue = issue_of(&v).ok_or_else(|| tr!("讀取 issue 失敗：這個編號是 Pull Request"))?;
-        let comments = if issue.comments > 0 {
-            json(
-                &api_get(
-                    &token,
-                    &format!("/repos/{owner}/{name}/issues/{number}/comments?per_page=30"),
-                    what,
-                )?,
-                what,
-            )?
-        } else {
-            serde_json::Value::Null
-        };
-        Ok(IssueDetail {
-            assignees: v
-                .get("assignees")
-                .and_then(|x| x.as_array())
-                .map(|l| l.iter().map(login_of).collect())
-                .unwrap_or_default(),
-            body: v
-                .get("body")
-                .and_then(|x| x.as_str())
-                .unwrap_or_default()
-                .to_string(),
-            comment_list: comments
-                .as_array()
-                .map(|l| {
-                    l.iter()
-                        .map(|c| IssueComment {
-                            author: c.get("user").map(login_of).unwrap_or_default(),
-                            created: c
-                                .get("created_at")
-                                .and_then(|x| x.as_str())
-                                .map(str::to_string),
-                            body: c
-                                .get("body")
-                                .and_then(|x| x.as_str())
-                                .unwrap_or_default()
-                                .to_string(),
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-            issue,
-        })
-    })
-    .await
-}
-
-/// 目前資料夾是不是連到 GitHub 的儲存庫（前端決定要不要顯示 Issues）。
-#[tauri::command]
-pub fn github_workspace_repo(app: AppHandle) -> Option<String> {
-    crate::git_files::workspace_github_repo(&app)
-        .ok()
-        .map(|(o, n)| format!("{o}/{n}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn skips_pull_requests_in_issue_lists() {
-        let list: serde_json::Value = serde_json::from_str(
-            r#"[{"number":3,"title":"錯字","state":"open","labels":[{"name":"文件"}],"user":{"login":"a"},"comments":2,"updated_at":"2026-10-22T00:00:00Z","html_url":"https://github.com/o/r/issues/3"},
-               {"number":4,"title":"PR","pull_request":{},"html_url":"x"}]"#,
-        )
-        .unwrap();
-        let issues: Vec<Issue> = list
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(issue_of)
-            .collect();
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].labels, ["文件"]);
-        assert_eq!(issues[0].author, "a");
-    }
 
     #[test]
     fn identity_uses_noreply_email() {
@@ -1120,14 +755,8 @@ mod tests {
     }
 
     #[test]
-    fn only_public_gists_and_pages_are_confirmed() {
+    fn login_question_names_the_account() {
         assert!(login_question("wang").message.contains("「wang」"));
-        assert_eq!(gist_question("wang", "會議.md", false), None);
-        let q = gist_question("wang", "會議.md", true).unwrap();
-        assert!(q.message.contains("「wang」") && q.message.contains("「會議.md」"));
-        let q = pages_question("wang", "contoso", "產品筆記");
-        assert!(q.message.contains("「wang」"), "{}", q.message);
-        assert!(q.message.contains("「contoso/產品筆記」"), "{}", q.message);
     }
 
     #[test]

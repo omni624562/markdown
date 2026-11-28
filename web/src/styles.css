@@ -1693,7 +1693,6 @@ body:has(.workspace.start-open:not(.issue-open)) :is(.view-switch, #status-curso
 /* 工作項目類型的顏色：沒有預設、也沒有自訂的類型用灰色；有顏色的類型由設定產生的規則蓋過（:root 開頭，權重較高）。 */
 [data-wi-kind] { --kind: light-dark(#64748b, #94a3b8); }
 .tab-icon { flex: none; width: 14px; height: 14px; color: light-dark(#0b6bcb, #4ea1f3); opacity: 0.9; }
-.tab[data-origin="github"] .tab-icon { color: var(--fg); opacity: 0.7; }
 .tab[data-origin="repo"] .tab-icon { color: light-dark(#c2410c, #fb923c); }
 /* 工作項目的分頁：圖示用類型的顏色（Bug 紅、Task 黃、User Story 藍…，設定裡可以改）。 */
 .tab[data-wi-kind] .tab-icon { color: var(--kind); opacity: 1; }
@@ -3596,7 +3595,7 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 .cm-editor .cm-panels .find-count.find-none { color: var(--danger); }
 .cm-editor .cm-panels .find-panel .find-btn[name="close"] { position: static; margin-left: auto; }
 
-/* ---- 工作項目、GitHub issue 的唯讀檢視（蓋在編輯區與預覽上面） ---- */
+/* ---- 工作項目、Wiki 頁面的唯讀檢視（蓋在編輯區與預覽上面） ---- */
 .issue-pane {
   grid-column: editor-start / preview-end;
   grid-row: 2;
@@ -3635,10 +3634,9 @@ input[type="checkbox"].cm-lp-checkbox:not(:checked):not(:hover) { border-color: 
 /* 不是本機檔案的內容：上方一條來源顏色的細條，標頭有來源與「唯讀」標籤。 */
 .issue-pane { --source: var(--accent); border-top: 3px solid var(--source); }
 .issue-pane[data-source="ado"], .issue-pane[data-source="wiki"], .issue-pane[data-source="repo"] { --source: light-dark(#0b6bcb, #4ea1f3); }
-.issue-pane[data-source="github"] { --source: light-dark(#8250df, #a371f7); }
 .issue-pane[data-source="git"] { --source: light-dark(#d1491f, #f0784f); }
 .issue-meta { display: flex; gap: 6px; align-items: center; min-width: 0; margin-bottom: 2px; }
-/* 來源（Azure DevOps、GitHub…）：位置前面一個來源顏色的小圖示，滑鼠提示寫名稱。 */
+/* 來源（Azure DevOps 工作項目、Wiki…）：位置前面一個來源顏色的小圖示，滑鼠提示寫名稱。 */
 .issue-origin { display: inline-flex; flex: none; color: var(--source); }
 .issue-origin .icon { width: 14px; height: 14px; }
 .source-badge {

@@ -31,7 +31,6 @@ pub static EN: &[(&str, &str)] = &[
     ("{what}失敗：GitHub 回應 {code}（{msg}）", "{what} failed: GitHub responded with {code} ({msg})"),
     ("{what}失敗：無法連線到 GitHub（{e}）", "{what} failed: Couldn't connect to GitHub ({e})"),
     ("{what}失敗：GitHub 的回應不正確", "{what} failed: GitHub returned an unexpected response."),
-    ("讀取 issue", "Loading issues"),
     ("目前在預設分支「{base}」上，請先建立新分支再建立 Pull Request", "You're on the default branch \"{base}\". Create a new branch before creating a pull request."),
     ("網路磁碟無法連線", "Network drive unreachable"),
     ("{offline}：{what}（{e}）", "{offline}: {what} ({e})"),

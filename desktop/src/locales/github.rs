@@ -1,4 +1,4 @@
-//! GitHub：登入、儲存庫、issue、Pull Request、工作流程。
+//! GitHub：登入、儲存庫、Pull Request、工作流程。
 
 pub static EN: &[(&str, &str)] = &[
     ("GitHub 登入已過期，請重新登入", "Your GitHub sign-in has expired. Sign in again."),
@@ -20,23 +20,12 @@ pub static EN: &[(&str, &str)] = &[
     ("讀取儲存庫", "Loading the repository"),
     ("讀取儲存庫失敗：{e}", "Couldn't load the repository: {e}"),
     ("{what}失敗：「{branch}」和「{base}」沒有差異，或 GitHub 不接受（{msg}）", "{what} failed: \"{branch}\" and \"{base}\" have no differences, or GitHub didn't accept the request ({msg})"),
-    ("發佈網站", "Publishing the website"),
-    ("{what}失敗：私人儲存庫需要 GitHub 付費方案才能使用 GitHub Pages（{msg}）", "{what} failed: Private repositories need a paid GitHub plan to use GitHub Pages ({msg})"),
-    ("{what}失敗：沒有權限設定這個儲存庫的 GitHub Pages（{msg}）", "{what} failed: You don't have permission to set up GitHub Pages for this repository ({msg})"),
-    ("沒有內容可以分享", "There's no content to share."),
     ("筆記.md", "Note.md"),
-    ("分享成 Gist", "Sharing as a Gist"),
-    ("{what}失敗：目前的 GitHub 登入沒有 Gist 權限。請到設定的 GitHub 頁按「重新登入」", "{what} failed: Your current GitHub sign-in doesn't have Gist permission. Click \"Sign In Again\" on the GitHub page in Settings."),
-    ("讀取 issue 失敗：這個編號是 Pull Request", "Couldn't load the issue: This number is a pull request."),
     ("公開到 GitHub", "Publish Publicly on GitHub"),
     ("要在 GitHub 帳號「{login}」建立公開的儲存庫「{name}」，並上傳「{folder}」資料夾裡所有的檔案和版本紀錄嗎？所有人都看得到。", "Create the public repository \"{name}\" in the GitHub account \"{login}\" and upload all files and the full history of the \"{folder}\" folder? Everyone will be able to see it."),
     ("這個資料夾原本的遠端 origin「{origin}」會改成新的儲存庫。", "This folder's current origin remote \"{origin}\" will be changed to the new repository."),
     ("上傳到 GitHub", "Upload to GitHub"),
     ("「{folder}」資料夾原本的遠端 origin 是「{origin}」。要改成 GitHub 帳號「{login}」新的私人儲存庫「{name}」，並上傳所有的檔案和版本紀錄嗎？", "The origin remote of the \"{folder}\" folder is currently \"{origin}\". Change it to the new private repository \"{name}\" in the GitHub account \"{login}\" and upload all files and the full history?"),
-    ("發佈成網站（GitHub Pages）", "Publish as Website (GitHub Pages)"),
-    ("要用 GitHub 帳號「{login}」開啟 GitHub Pages，把儲存庫「{repo}」預設分支的內容發佈成公開的網站嗎？就算儲存庫是私人的，所有人也都看得到這個網站。", "Turn on GitHub Pages with the GitHub account \"{login}\" and publish the default branch of \"{repo}\" as a public website? Everyone can see the website, even if the repository is private."),
     ("登入 GitHub", "Sign In to GitHub"),
-    ("要用 GitHub 帳號「{login}」登入 oMarker 嗎？之後上傳、分享成 Gist 都會用這個帳號。只有在你自己剛剛在瀏覽器授權時才選「是」。", "Sign in to oMarker with the GitHub account \"{login}\"? Uploads and gists will use this account. Choose Yes only if you just authorized it in your browser yourself."),
-    ("公開分享成 Gist", "Share as a Public Gist"),
-    ("要用 GitHub 帳號「{login}」把「{name}」公開分享成 Gist 嗎？所有人都找得到、看得到內容。", "Share \"{name}\" as a public gist with the GitHub account \"{login}\"? Anyone can find it and see its contents."),
+    ("要用 GitHub 帳號「{login}」登入 oMarker 嗎？之後上傳、建立 Pull Request 都會用這個帳號。只有在你自己剛剛在瀏覽器授權時才選「是」。", "Sign in to oMarker with the GitHub account \"{login}\"? Uploads and pull requests will use this account. Choose Yes only if you just authorized it in your browser yourself."),
 ];

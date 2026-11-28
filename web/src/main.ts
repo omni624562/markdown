@@ -75,7 +75,7 @@ import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
 import { remoteCard, remoteLinkOf, initAdoLinks } from "./app/ado-links.ts";
 import { initGitHistory } from "./app/git-history.ts";
 import { buildFormatBar, initNewWorkItem } from "./app/new-work-item.ts";
-import { markBarShortcuts, renderAdoTab, renderIssuesTab, wikiPanel, workItemsPanel, initWorkItemsPanel } from "./app/work-items-panel.ts";
+import { markBarShortcuts, renderAdoTab, wikiPanel, workItemsPanel, initWorkItemsPanel } from "./app/work-items-panel.ts";
 import { initAdoStatus } from "./app/ado-status.ts";
 import { gitPanel, initWorkItemUpdates } from "./app/work-item-updates.ts";
 import { reportError, showExternalChanges, switchBranch, initGitActions } from "./app/git-actions.ts";
@@ -1572,8 +1572,8 @@ function renameDoc(id: string, name: string): void {
 
 // ---- 側邊欄：檔案、大綱、搜尋 ---------------------------------------------
 
-export type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "issues" | "workitems" | "wiki" | "git";
-const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "issues", "workitems", "wiki", "git"];
+export type SidePanel = "files" | "outline" | "search" | "tasks" | "tags" | "workitems" | "wiki" | "git";
+const SIDE_PANELS: SidePanel[] = ["files", "outline", "search", "tasks", "tags", "workitems", "wiki", "git"];
 const sideTabs = [...document.querySelectorAll<HTMLButtonElement>(".activity-tabs [role=tab]")];
 /** 前幾版的「Azure DevOps」面板（裡面切換工作項目與 Wiki）；現在拆成「工作項目」「Wiki」兩個面板。 */
 const LEGACY_ADO_PANEL = "ado";
@@ -1682,7 +1682,6 @@ const github = desktop && features.git
       },
       changed: () => {
         void gitPanel?.refresh();
-        void renderIssuesTab();
         settingsDialog.refresh();
         renderEmptyState(editor.text);
         refreshRepoNotes();
@@ -1722,7 +1721,7 @@ void Promise.all([ado?.ready(), github?.ready()]).then(() => {
 let wikiListCache: Promise<AdoWiki[]> | null = null;
 initAdoLinks();
 
-// ---- 工作項目、GitHub issue：開在主要區域的唯讀檢視 ------------------------------
+// ---- 工作項目、Wiki 頁面：開在主要區域的唯讀檢視 ------------------------------
 
 /** 工作項目內文裡的圖片放在 Azure DevOps 伺服器上，要帶權杖才讀得到：改由原生端讀取。 */
 const adoImagesPlugin: PreviewPlugin = {

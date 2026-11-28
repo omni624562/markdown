@@ -846,7 +846,7 @@ export function initCommands(): void {
       title: t("工作項目：刪除目前的工作項目…"),
       group: "Azure DevOps",
       icon: "trash",
-      // 顯示中的是工作項目（Wiki 頁面、GitHub Issue 沒有這個動作）。
+      // 顯示中的是工作項目（Wiki 頁面沒有這個動作）。
       when: () => !!issueView.deleteShown,
       run: () => issueView.deleteShown?.(),
     },

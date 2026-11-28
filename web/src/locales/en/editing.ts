@@ -264,7 +264,6 @@ export const editing: Record<string, Translation> = {
   "優先順序": "Priority",
   "{label}：{title}": "{label}: {title}",
   "工作項目說明": "Description",
-  "開啟中": "Open",
   "建立者": "Created By",
   "最後更新": "Last Updated",
   "留言（{n}）": ["Comment ({n})", "Comments ({n})"],
