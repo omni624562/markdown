@@ -17,8 +17,8 @@ import { autoSymbols } from "./auto-symbols.ts";
 import { refreshLivePreview } from "./live-preview.ts";
 import { proofread } from "./proofread.ts";
 import { spellcheck } from "./spellcheck.ts";
-import { type DocKind, KINDS, isImageName, isTextFileName, isViewerDoc } from "./kinds.ts";
-import { basename, dirname, localImagePath, resolvePath } from "./paths.ts";
+import { type DocKind, KINDS, isTextFileName } from "./kinds.ts";
+import { basename, dirname, localImagePath } from "./paths.ts";
 import { HtmlPreview, isHtmlName } from "./html-preview.ts";
 import { highlightPlugin } from "./plugins/highlight.ts";
 import { localImagesPlugin } from "./plugins/local-images.ts";
@@ -72,7 +72,7 @@ import { pasteLink } from "./app/paste-link.ts";
 import { clearOffline, isOffline, offline, renderOffline, resolveConflict, showOffline, initOfflineDrive } from "./app/offline-drive.ts";
 import { initWikiHistory } from "./app/wiki-history.ts";
 import { offlineImage, initOfflineCopies } from "./app/offline-copies.ts";
-import { openRemoteLink, remoteCard, remoteLinkOf, initAdoLinks } from "./app/ado-links.ts";
+import { remoteCard, remoteLinkOf, initAdoLinks } from "./app/ado-links.ts";
 import { initGitHistory } from "./app/git-history.ts";
 import { buildFormatBar, initNewWorkItem } from "./app/new-work-item.ts";
 import { markBarShortcuts, renderAdoTab, renderIssuesTab, wikiPanel, workItemsPanel, initWorkItemsPanel } from "./app/work-items-panel.ts";
@@ -87,7 +87,8 @@ import { type ClosedItem, closeItem, closeItems, docClosing, findItemTab, focuse
 import { checkWikiNewer, issueSide, renderWikiBar, renderWikiMine, rerenderIssue, wikiCheckedAt, wikiNewer, initWikiEdit } from "./app/wiki-edit.ts";
 import { commands, initCommands } from "./app/commands.ts";
 import { NOT_CONNECTED, canRenameFile, closeProject, fileSaved, openPath, openRecentFolder, openRemote, openTag, renameEntry, rightColumnOn, pendingPanel, placeOutline, refreshIndexPanels, renderFilesEmpty, setWorkspace, showPanel, suggestReconnect, treeAction, uploadFiles, initWorkspaceUi } from "./app/workspace-ui.ts";
-import { openRepoFileLink, saveWikiPage } from "./app/ado-files.ts";
+import { saveWikiPage } from "./app/ado-files.ts";
+import { followLink } from "./app/follow-link.ts";
 import { markdownFiles, openWiki, wikiExists } from "./app/wiki-links.ts";
 import { renderSaveState, updateActiveHeading, initOutline, markBlankTab, onlyBlankDoc } from "./app/outline.ts";
 import { docName, docTooltip, renumber, saveFileName } from "./app/doc-names.ts";
@@ -1296,52 +1297,6 @@ function scrollToAnchor(id: string): void {
   const heading = preview.result?.headings.find((h) => h.id === id);
   if (heading && view !== "preview") editor.reveal(heading.line);
   if (previewVisible()) document.getElementById(id)?.scrollIntoView({ block: "start" });
-}
-
-function decodeHref(part: string): string {
-  try {
-    return decodeURIComponent(part);
-  } catch {
-    return part;
-  }
-}
-
-/** 點預覽中的連結：錨點在文件內捲動、外部網址用瀏覽器開啟、相對路徑的文件開成分頁。 */
-async function followLink(href: string): Promise<void> {
-  if (href.startsWith("#")) {
-    scrollToAnchor(decodeHref(href.slice(1)));
-    return;
-  }
-  if (/^(https?:|mailto:)/i.test(href)) {
-    // 連到 Azure DevOps 儲存庫裡的 Markdown 等文字檔：在 oMarker 裡閱讀，不下載。
-    if (openRepoFileLink(href)) return;
-    // 連到工作項目、Wiki 頁面的連結在 oMarker 裡開啟（讀不到就照舊用瀏覽器）。
-    if (await openRemoteLink(href)) return;
-    if (desktop) await desktop.openExternal(href);
-    else window.open(href, "_blank", "noopener,noreferrer");
-    return;
-  }
-  // 其他協定（file: 等）一律不處理。
-  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("//")) return;
-  const hashAt = href.indexOf("#");
-  const rel = decodeHref(hashAt >= 0 ? href.slice(0, hashAt) : href);
-  const anchor = hashAt >= 0 ? decodeHref(href.slice(hashAt + 1)) : "";
-  const base = cur.fileHandle?.path;
-  if (!desktop || !base) {
-    toast(desktop ? t("存檔之後才能開啟相對路徑的連結。") : t("網頁版無法開啟相對路徑的檔案，請改用桌面版。"));
-    return;
-  }
-  const target = resolvePath(dirname(base), rel);
-  if (isImageName(target) || isViewerDoc(target)) return openPath(target);
-  if (!/\.(md|markdown|txt|json)$/i.test(target)) {
-    toast(t("只能在編輯器中開啟 Markdown、純文字與 JSON 檔。"));
-    return;
-  }
-  await openPath(target);
-  if (anchor) {
-    renderNow();
-    scrollToAnchor(anchor);
-  }
 }
 
 /** 使用者按過「載入遠端圖片」的分頁（只限這次開啟期間）。 */
