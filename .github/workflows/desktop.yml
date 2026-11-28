@@ -1,7 +1,7 @@
 name: Desktop
 
 # 編譯 Windows 免安裝執行檔（omarker.exe）。
-# - 每次 PR、每次合併到 main 都會建置並產生 Artifact（需登入 GitHub 才能下載），方便測試；合併不會升版。
+# - 每次 PR 都會測試、檢查並把程式開起來（不編發佈版）；每次合併到 main 都會建置並產生 Artifact（需登入 GitHub 才能下載），方便測試；合併不會升版。
 # - 發佈：在 Actions → Desktop 按「Run workflow」（main），依累積的 changes/ 片段升一個版本，
 #   更新公開的「最新版」Release（不用登入就能下載），程式的自動更新才會看到新版。
 #   版本號的 Release（v1.2.3）也由發佈時建立；推送 v* 標籤不會觸發建置或發佈。
@@ -70,7 +70,7 @@ jobs:
     # PR、推送到 main 不跑 version（被略過），照常建置。
     if: ${{ !failure() && !cancelled() }}
     runs-on: windows-latest
-    # 發佈時不用快取、全部重新編譯，大約 25 分鐘；PR 更快。卡住時不要等到 GitHub 預設的 6 小時。
+    # 發佈時不用快取、全部重新編譯，大約 25 分鐘；PR 不編發佈版，更快。卡住時不要等到 GitHub 預設的 6 小時。
     timeout-minutes: 60
     env:
       WASM_PACK: "0.15.0"
@@ -194,7 +194,10 @@ jobs:
         shell: bash
         run: echo "MD_EDITOR_DATE=$(TZ=Asia/Taipei date +%Y-%m-%d)" >> "$GITHUB_ENV"
 
+      # PR 不編發佈版（要十幾分鐘，佔整個工作快一半）：前面已經跑過測試、Clippy，也用除錯版真的把程式開起來檢查過。
+      # 發佈版在合併到 main 之後與發佈時照常編，只有發佈版才會出的編譯問題在那裡擋下來。
       - name: 編譯執行檔
+        if: github.event_name != 'pull_request'
         working-directory: desktop
         env:
           # 自動更新用：比較流水號判斷新舊。
@@ -206,10 +209,12 @@ jobs:
 
       # Cargo 套件名稱沿用 md-editor（避免動到設定與鑰匙圈等內部名稱），發佈時的檔名用 omarker.exe。
       - name: 改成發佈用的檔名
+        if: github.event_name != 'pull_request'
         working-directory: desktop/target/release
         run: Copy-Item md-editor.exe omarker.exe
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name != 'pull_request'
         with:
           name: omarker-windows-x64
           path: desktop/target/release/omarker.exe
