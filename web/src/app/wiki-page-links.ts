@@ -11,7 +11,8 @@ import { isImageName, isMarkdownName, isReadableFileName } from "../repo-links.t
 import { toast } from "../ui/toast.ts";
 import { flattenPages, imageRepoPath, resolvePageLink } from "../wiki-text.ts";
 import { wikiPageTree } from "./ado-links.ts";
-import { showImage, showRepoFile } from "./ado-files.ts";
+import { isViewerDoc } from "../kinds.ts";
+import { showImage, showRepoFile, viewRepoDoc } from "./ado-files.ts";
 import { reportError } from "./git-actions.ts";
 import { wikiPanel } from "./work-items-panel.ts";
 import { showWikiPage } from "./wiki-edit.ts";
@@ -45,6 +46,11 @@ export function followWikiLink(wiki: AdoWiki, current: string, href: string): bo
   const imageName = image?.slice(image.lastIndexOf("/") + 1) ?? "";
   if (image && isImageName(imageName) && desktop) {
     showImage(decoded(imageName), desktop.adoWikiImage(wiki, image));
+    return true;
+  }
+  // Wiki 裡的 PDF、Office 文件、郵件（通常是 `/.attachments/…`）：下載後在分頁裡檢視。
+  if (image && isViewerDoc(imageName) && desktop) {
+    viewRepoDoc(wiki.projectId, wiki.repositoryId, image, wiki.version ?? null, decoded(imageName));
     return true;
   }
   // 左側面板顯示的就是這個 Wiki：直接用它的頁面樹（最新的）。

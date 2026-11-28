@@ -222,3 +222,26 @@ test("Wiki 頁面裡連到圖片（附件、儲存庫的圖片網址）：在 oM
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Wiki 頁面裡連到 PDF 附件（/.attachments/…、儲存庫的網址）：下載後開成檢視分頁，不開瀏覽器", async () => {
+  const DOCS = ["# 規格", "", "- [規格書](/.attachments/規格書.pdf)", "- [另一份](http://ado/c/Contoso/_apis/git/repositories/r1/items?path=%2F.attachments%2F附錄.pdf)", ""].join("\n");
+  const TEMP = "C:\\Users\\me\\AppData\\Local\\Temp\\omarker-attachments\\0a1b\\規格書.pdf";
+  const { page: p, context, errors } = await open({
+    desktop: {
+      ...desktop,
+      ado_wiki_page: { $by: "path", values: { ...desktop.ado_wiki_page.values, "/IRIS專區/COBALT": page(DOCS) } },
+      ado_repo_file_view: TEMP,
+    },
+  });
+  await p.click("#side-tab-wiki");
+  await p.locator("#wiki-host li", { has: p.locator('.wiki-page[data-path="/IRIS專區"]') }).locator(".wiki-toggle").first().click();
+  await p.click('#wiki-host .wiki-page[data-path="/IRIS專區/COBALT"]');
+  await p.waitForFunction(() => document.querySelector(".issue-body h1:not([data-added])")?.textContent === "規格");
+  await clickLink(p, "規格書");
+  await p.locator(".pdf-view iframe.pdf-view-frame").waitFor({ state: "attached" });
+  const asked = (await calls(p)).filter((c) => c.cmd === "ado_repo_file_view").map((c) => [c.args.repositoryId, c.args.path]);
+  assert.deepEqual(asked, [["r1", "/.attachments/規格書.pdf"]]);
+  assert.deepEqual(await externals(p), []);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

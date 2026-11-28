@@ -58,6 +58,12 @@ export function parseRepoFileLink(href: string, base: string): RepoFileLink | nu
  * 連到伺服器上的圖片：工作項目的附件、儲存庫（含 Wiki 的儲存庫）裡的圖片，
  * 包括 Git 的網頁網址（`/_git/儲存庫?path=…`）與 API 的網址（`/_apis/git/repositories/…/items?path=…`）。
  */
+/** 連到伺服器上儲存庫裡的 PDF、Office 文件、郵件（例如 Wiki 的附件）。 */
+export function parseViewerLink(href: string, base: string): RepoFileLink | null {
+  const link = serverFileLink(href, base, (name) => /\.(pdf|docx|xlsx|pptx|msg)$/i.test(name));
+  return link?.kind === "git" ? link : null;
+}
+
 export function parseImageLink(href: string, base: string): RepoFileLink | null {
   return serverFileLink(href, base, isImageName);
 }

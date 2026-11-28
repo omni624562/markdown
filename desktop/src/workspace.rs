@@ -930,9 +930,16 @@ fn reveal_now(app: &AppHandle, path: &str) -> Result<(), String> {
 pub async fn open_with_default(app: AppHandle, path: String) -> Result<(), String> {
     crate::io::blocking(move || {
         let root = app.state::<Workspace>().root();
-        let target = open_target(root.as_deref(), Path::new(&path), |p| {
-            crate::files::may_reopen(&app, p)
-        })?;
+        // 剛下載到暫存資料夾的附件（已經標上「從網際網路下載」）也可以交給預設的程式。
+        let downloaded = crate::ado::is_downloaded_attachment(Path::new(&path))
+            && (is_pdf(Path::new(&path)) || is_office(Path::new(&path)));
+        let target = if downloaded {
+            PathBuf::from(&path)
+        } else {
+            open_target(root.as_deref(), Path::new(&path), |p| {
+                crate::files::may_reopen(&app, p)
+            })?
+        };
         use tauri_plugin_opener::OpenerExt;
         app.opener()
             .open_path(target.to_string_lossy(), None::<&str>)

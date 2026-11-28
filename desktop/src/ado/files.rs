@@ -254,18 +254,66 @@ async fn download_to_temp(
         return Err(tr!("「{name}」為了安全不直接開啟：直接開啟的只有 PDF、圖片、文字檔、ZIP、Word、Excel、PowerPoint 文件與 Outlook 郵件。需要的話請用「另存新檔」，確認來源可信再開啟。", name = file));
     }
     crate::io::blocking_for(Duration::from_secs(300), move || {
-        let bytes = download_attachment(&url, &pat)?;
-        let mut rand = [0u8; 8];
-        getrandom::fill(&mut rand).map_err(|e| e.to_string())?;
-        let dir = attachments_dir().join(format!("{:016x}", u64::from_le_bytes(rand)));
-        fs::create_dir_all(&dir)
-            .map_err(|e| crate::io::describe(&e, &tr!("無法建立暫存資料夾")))?;
-        let path = dir.join(&file);
-        fs::write(&path, bytes).map_err(|e| crate::io::describe(&e, &tr!("無法寫入檔案")))?;
-        mark_downloaded(&path);
-        Ok(path)
+        write_temp(&file, download_attachment(&url, &pat)?)
     })
     .await
+}
+
+/// 下載的內容寫進暫存資料夾（每次一個亂數命名的資料夾）並標上「從網際網路下載」。
+fn write_temp(file: &str, bytes: Vec<u8>) -> Result<std::path::PathBuf, String> {
+    let mut rand = [0u8; 8];
+    getrandom::fill(&mut rand).map_err(|e| e.to_string())?;
+    let dir = attachments_dir().join(format!("{:016x}", u64::from_le_bytes(rand)));
+    fs::create_dir_all(&dir).map_err(|e| crate::io::describe(&e, &tr!("無法建立暫存資料夾")))?;
+    let path = dir.join(file);
+    fs::write(&path, bytes).map_err(|e| crate::io::describe(&e, &tr!("無法寫入檔案")))?;
+    mark_downloaded(&path);
+    Ok(path)
+}
+
+/// 在 oMarker 的分頁裡檢視儲存庫裡的檔案（例如 Wiki 的附件 `/.attachments/規格書.pdf`）：只接受 PDF 與
+/// Office 文件、郵件，下載到暫存資料夾後回傳檔案位置。
+#[tauri::command]
+pub async fn ado_repo_file_view(
+    app: AppHandle,
+    project_id: String,
+    repository_id: String,
+    path: String,
+    version: Option<String>,
+) -> Result<String, String> {
+    let (a, pat) = require(&app)?;
+    let name = path.rsplit('/').next().unwrap_or_default().to_string();
+    let file = safe_file_name(&name);
+    let viewable = |n: &str| {
+        let p = Path::new(n);
+        opens_directly(n) && (crate::workspace::is_pdf(p) || crate::workspace::is_office(p))
+    };
+    if !viewable(&name) || !viewable(&file) {
+        return Err(tr!(
+            "只能在分頁裡檢視 PDF 與 Word、Excel、PowerPoint 文件、Outlook 郵件"
+        ));
+    }
+    let saved = crate::io::blocking_for(Duration::from_secs(300), move || {
+        let mut url = format!(
+            "{}/{}/_apis/git/repositories/{}/items?path={}&download=true&api-version={API_VERSION}",
+            a.url,
+            encode_segment(&project_id),
+            encode_segment(&repository_id),
+            encode_segment(&path)
+        );
+        if let Some(v) = version.filter(|v| !v.is_empty()) {
+            url.push_str(&format!(
+                "&versionDescriptor.version={}",
+                encode_segment(&v)
+            ));
+        }
+        write_temp(&file, fetch_bytes(&url, &pat)?)
+    })
+    .await?;
+    if let Some(dir) = saved.parent() {
+        app.state::<crate::image_protocol::ImageRoots>().allow(dir);
+    }
+    Ok(saved.to_string_lossy().into_owned())
 }
 
 /// 附件下載到的暫存資料夾。

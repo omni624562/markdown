@@ -6,7 +6,7 @@ import { desktop, type AdoWiki } from "../desktop.ts";
 import { timeAgo } from "../history-label.ts";
 import { t, currentLang } from "../i18n.ts";
 import type { PreviewPlugin } from "../preview.ts";
-import { resolveRepoPath, parseImageLink, parseRepoFileLink, type RepoFileLink, repoFileUrl, isMarkdownName, fenceLanguage, isReadableFileName } from "../repo-links.ts";
+import { fenceLanguage, isMarkdownName, isReadableFileName, parseImageLink, parseRepoFileLink, parseViewerLink, repoFileUrl, resolveRepoPath, type RepoFileLink } from "../repo-links.ts";
 import { saveDraft } from "../session.ts";
 import * as storage from "../storage.ts";
 import { choose } from "../ui/choice.ts";
@@ -96,6 +96,18 @@ export function openAttachment(href: string): boolean {
   return true;
 }
 
+/** 儲存庫裡的 PDF、Office 文件、郵件（例如 Wiki 的附件）：下載後在分頁裡檢視。 */
+export function viewRepoDoc(project: string, repo: string, path: string, version: string | null, name: string): void {
+  toast(t("正在下載「{name}」…", { name }));
+  void desktop!
+    .adoRepoFileView(project, repo, path, version)
+    .then((local) => {
+      const opts = { label: t("附件"), linkable: false, openExternally: () => desktop!.openWithDefault(local) };
+      return /\.pdf$/i.test(name) ? showPdf(local, opts) : showOffice(local, opts);
+    })
+    .catch(reportError);
+}
+
 /** 附件另存新檔。 */
 export function saveAttachment(href: string): void {
   const base = app.ado?.account?.url;
@@ -120,6 +132,11 @@ export function openRepoFileLink(href: string): boolean {
       image.name,
       image.kind === "attachment" ? desktop.adoImage(image.url) : desktop.adoRepoImage(image.project, image.repo, image.path, image.version),
     );
+    return true;
+  }
+  const doc = parseViewerLink(href, base);
+  if (doc?.kind === "git") {
+    viewRepoDoc(doc.project, doc.repo, doc.path, doc.version, doc.name);
     return true;
   }
   const link = parseRepoFileLink(href, base);

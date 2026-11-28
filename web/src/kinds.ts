@@ -54,6 +54,11 @@ export function officeKind(name: string): OfficeKind | null {
   return ({ docx: "word", xlsx: "excel", pptx: "powerpoint", msg: "mail" } as const)[m[1].toLowerCase() as "docx" | "xlsx" | "pptx" | "msg"];
 }
 
+/** PDF 或 Office 文件、郵件：在分頁裡唯讀檢視的檔案。 */
+export function isViewerDoc(name: string): boolean {
+  return isPdfName(name) || officeKind(name) !== null;
+}
+
 /** 檔案面板會列出、可以在分頁裡檢視的圖片（和桌面版 desktop/src/images.rs 的 ALLOWED 一致）。 */
 export const IMAGE_EXTENSIONS: readonly string[] = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"];
 

@@ -165,6 +165,7 @@ mod tests {
         "open_file",
         "reopen_file",
         "dropped_file",
+        "dropped_view_path",
         "project_default_parent",
         "pick_project_parent",
         "create_project",

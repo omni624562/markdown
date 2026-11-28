@@ -42,3 +42,22 @@ test("點 PDF：在分頁裡顯示（內建的 PDF 檢視器），可以改用�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("文件裡連到 PDF 的相對路徑連結：點了開成檢視分頁", async () => {
+  const { page, context, errors } = await open({
+    desktop: {
+      startup_target: { kind: "folder", path: ROOT, name: "產品筆記" },
+      list_dir: { $by: "path", values: { [ROOT]: [entry("README.md"), entry("報告.pdf")] } },
+      reopen_file: { $by: "path", values: { [at("README.md")]: { path: at("README.md"), name: "README.md", text: "# 產品筆記\n\n[看報告](報告.pdf)\n", encoding: "utf-8" } } },
+    },
+  });
+  await row(page, "README.md").click();
+  await page.click('.statusbar [data-view="preview"]');
+  await page.locator("#preview a", { hasText: "看報告" }).click();
+  const frame = page.locator(".pdf-view iframe.pdf-view-frame");
+  await frame.waitFor({ state: "attached" });
+  assert.match(decodeURIComponent(await frame.getAttribute("src")), /報告\.pdf$/);
+  assert.equal(await page.locator(".toast", { hasText: "只能在編輯器中開啟" }).count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
