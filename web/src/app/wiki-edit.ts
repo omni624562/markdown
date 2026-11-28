@@ -34,7 +34,7 @@ import { openWikiHistory } from "./wiki-history.ts";
 import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
 import { workItemOpened } from "./work-item-updates.ts";
-import { barShortcuts, toggleWikiShortcut, wikiPanel, workItemsPanel, issuesPanel, markBarShortcuts } from "./work-items-panel.ts";
+import { barShortcuts, toggleWikiShortcut, wikiPanel, workItemsPanel, markBarShortcuts } from "./work-items-panel.ts";
 import type { Doc } from "../main.ts";
 import { chatgptButton, chatgptIssueHooks } from "./chatgpt.ts";
 import { app } from "./context.ts";
@@ -553,7 +553,6 @@ export function initWikiEdit(): void {
       const [kind, id, ...rest] = source.key.split(":");
       if (kind === "ado") workItemOpened(Number(id));
       workItemsPanel?.select(kind === "ado" ? Number(id) : null);
-      issuesPanel?.select(kind === "github" ? Number(id) : null);
       // Wiki 頁面：在樹上標出來（另一個 Wiki 或還沒讀到時，讀到後再標）。
       if (kind === "wiki") wikiPanel?.reveal(id, rest.join(":"));
       else wikiPanel?.select(null);
@@ -572,7 +571,6 @@ export function initWikiEdit(): void {
       renderOutline(app.docHeadings);
       updateActiveHeading();
       workItemsPanel?.select(null);
-      issuesPanel?.select(null);
       wikiPanel?.select(null);
     },
   });

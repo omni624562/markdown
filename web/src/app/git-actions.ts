@@ -1,15 +1,14 @@
 /**
- * Git：合併衝突、分支、Pull Request；GitHub Pages、Gist。
+ * Git：合併衝突、分支、Pull Request。
  */
 import { batchCommandReady, openBatchList, runBatchCommand } from "./assistant-batch.ts";
 import { ASSISTANT_ACTIONS } from "../assistant-text.ts";
 import { assistantEnabled, assistantOpen, openAssistantMore, runAssistantAction, toggleAssistant } from "./assistant.ts";
 import type { Command } from "../commands.ts";
 import { desktop, isRemote } from "../desktop.ts";
-import { stem } from "../files.ts";
 import { t } from "../i18n.ts";
 import { basename } from "../paths.ts";
-import { askText, choose } from "../ui/choice.ts";
+import { askText } from "../ui/choice.ts";
 import { Picker } from "../ui/picker.ts";
 import { toast } from "../ui/toast.ts";
 import { compareWithOld } from "./compare-old.ts";
@@ -22,7 +21,7 @@ import { openWikiBacklinks } from "./wiki-backlinks.ts";
 import { moveWikiPage } from "./wiki-move.ts";
 import { adoNote, githubNote } from "./repo-sources.ts";
 import { gitPanel, publishToAdo, showAdo } from "./work-item-updates.ts";
-import { issuesRepo, wikiPanel } from "./work-items-panel.ts";
+import { wikiPanel } from "./work-items-panel.ts";
 import { selectAll, indentMore, indentLess, undo } from "@codemirror/commands";
 import { app } from "./context.ts";
 import { logError } from "../error-log.ts";
@@ -218,74 +217,6 @@ export async function createPullRequest(): Promise<void> {
   }
 }
 
-/** 用 GitHub Pages 把資料夾發佈成網站。 */
-async function publishPages(): Promise<void> {
-  if (!desktop) return;
-  const ok = await choose(
-    t("發佈成網站（GitHub Pages）"),
-    t("會把這個儲存庫預設分支的內容發佈成網站，所有人都看得到（就算儲存庫是私人的）。Markdown 會自動轉成網頁，README.md 或 index.md 是首頁。第一次發佈大約要一兩分鐘才看得到。"),
-    [
-      { id: "cancel", label: t("取消") },
-      { id: "go", label: t("發佈"), primary: true },
-    ],
-  );
-  if (ok !== "go") return;
-  const wait = toast(t("正在設定 GitHub Pages…"), { duration: 60000 });
-  try {
-    const url = await desktop.githubPages();
-    wait.dismiss();
-    // 在系統的確認對話框選了「否」。
-    if (!url) return;
-    toast(t("網站網址：{url}（之後推送就會自動更新）", { url: url.replace(/^https:\/\//, "") }), {
-      tone: "success",
-      duration: 20000,
-      action: { label: t("開啟網站"), run: () => void desktop!.openExternal(url) },
-    });
-  } catch (e) {
-    wait.dismiss();
-    reportError(e);
-  }
-}
-
-/** 把選取的內容（沒有選取時是整份文件）分享成 Gist。 */
-async function shareGist(): Promise<void> {
-  if (!desktop) return;
-  const sel = app.editor.view.state.selection.main;
-  const content = sel.empty ? app.editor.text : app.editor.view.state.sliceDoc(sel.from, sel.to);
-  if (!content.trim()) {
-    toast(t("沒有內容可以分享。"));
-    return;
-  }
-  const visibility = await choose(
-    t("分享成 Gist"),
-    sel.empty
-      ? t("會把整份「{name}」上傳到你的 GitHub Gist，產生一個可以分享的網址。", { name: app.cur.fileName })
-      : t("會把選取的內容上傳到你的 GitHub Gist，產生一個可以分享的網址。"),
-    [
-      { id: "cancel", label: t("取消") },
-      { id: "public", label: t("公開（所有人都找得到）") },
-      { id: "secret", label: t("秘密（知道網址的人才看得到）"), primary: true },
-    ],
-  );
-  if (visibility !== "public" && visibility !== "secret") return;
-  const wait = toast(t("正在上傳…"), { duration: 60000 });
-  try {
-    const url = await desktop.githubGist(app.cur.fileName, content, stem(app.cur.fileName), visibility === "public");
-    wait.dismiss();
-    // 在系統的確認對話框選了「否」。
-    if (!url) return;
-    await navigator.clipboard.writeText(url).catch(() => {});
-    toast(t("已分享成 Gist，網址已複製"), {
-      tone: "success",
-      duration: 15000,
-      action: { label: t("在瀏覽器開啟"), run: () => void desktop!.openExternal(url) },
-    });
-  } catch (e) {
-    wait.dismiss();
-    reportError(e);
-  }
-}
-
 /** 外部修改後，以修改前的版本為基準逐段標示（A4）。沒有差異時回傳 false。 */
 export function showExternalChanges(original: string, current: string): boolean {
   return app.review.start(current, {
@@ -397,8 +328,6 @@ export function initGitActions(): void {
         ["git-branch-switch", t("Git：切換或建立分支…"), "git-branch", () => void switchBranch().catch(reportError), () => !!gitPanel?.status?.repo && !gitPanel.status.merging],
         ["git-create-pr", t("Git：建立 Pull Request…"), "git-pull-request", () => void createPullRequest().catch(reportError), () => !!gitPanel?.status?.remote],
         ["git-merge-finish", t("Git：完成合併"), "git-merge", () => void gitPanel?.finishMerge(), () => !!gitPanel?.status?.merging],
-        ["github-pages", t("GitHub：發佈成網站（GitHub Pages）…"), "globe", () => void publishPages(), () => !!app.github?.account && !!issuesRepo],
-        ["github-gist", t("GitHub：分享成 Gist…"), "share-2", () => void shareGist(), () => !!app.github?.account],
       ] as const
     ).map(
       ([id, title, iconName, run, when]): Command => ({

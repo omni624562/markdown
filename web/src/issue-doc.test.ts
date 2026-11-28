@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
-import { byRecent, demoteHeadings, githubIssueMarkdown, inlineText, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
+import type { AdoWorkItemDetail, AdoWorkItemRelation } from "./desktop.ts";
+import { byRecent, demoteHeadings, inlineText, issueFileName, workItemIdOf, workItemMarkdown } from "./issue-doc.ts";
 import { findMatches } from "./ui/issue-view.ts";
 
 const item: AdoWorkItemDetail = {
@@ -102,27 +102,6 @@ test("工作項目：標題跳脫、欄位表、說明與重現步驟轉成 Mark
 test("工作項目沒有說明與留言時不列出空的段落", () => {
   const md = workItemMarkdown({ ...item, description: null, details: null, comments: [], kind: "Task" });
   assert.doesNotMatch(md, /## /);
-});
-
-test("GitHub issue", () => {
-  const d: GitHubIssueDetail = {
-    number: 7,
-    title: "加上 | 分隔",
-    state: "closed",
-    labels: ["bug"],
-    author: "omni",
-    comments: 1,
-    updated: null,
-    webUrl: "https://github.com/o/r/issues/7",
-    assignees: [],
-    body: "內容 **粗體**",
-    commentList: [{ author: "bot", created: null, body: "好" }],
-  };
-  const md = githubIssueMarkdown(d);
-  assert.match(md, /^# #7 加上 \\\| 分隔/);
-  assert.match(md, /\| 狀態 \| 已關閉 \|/);
-  assert.match(md, /## 內容\n\n內容 \*\*粗體\*\*/);
-  assert.match(md, /### bot\n\n好/);
 });
 
 test("跳脫與檔名", () => {

@@ -14,7 +14,7 @@ import { DEFAULT_WORK_ITEM_FILTER, workItemFilterKey } from "../work-item-filter
 import { openGitHistory, historyView } from "./git-history.ts";
 import { createWorkItemDialog } from "./new-work-item.ts";
 import { forgetListCopies, refreshKeptPages, withOfflineCopy } from "./offline-copies.ts";
-import { workItemsPanel, wikiPanel, issuesPanel, renderUnseenLine } from "./work-items-panel.ts";
+import { workItemsPanel, wikiPanel, renderUnseenLine } from "./work-items-panel.ts";
 import { app } from "./context.ts";
 import { openPath, panelAvailable, setWikiRight, showPanel, wikiRightWanted } from "./workspace-ui.ts";
 import { showFileMenu } from "./file-menu.ts";
@@ -171,7 +171,7 @@ export function showAdo(panel: "workitems" | "wiki"): void {
 const adoNew = document.createElement("button");
 
 /**
- * 網路恢復或切回視窗時，重新讀取上次失敗的工作項目、Wiki、Issues 與開著的內容
+ * 網路恢復或切回視窗時，重新讀取上次失敗的工作項目、Wiki 與開著的內容
  * （面板沒開著的，下次打開時本來就會重讀）。
  */
 let lastAutoRetry = 0;
@@ -181,7 +181,6 @@ function retryRemoteLoads(force = false): void {
   lastAutoRetry = now;
   if (app.sidePanel === "workitems") workItemsPanel?.retryFailed();
   if (app.sidePanel === "wiki") wikiPanel?.retryFailed();
-  if (app.sidePanel === "issues") issuesPanel?.retryFailed();
   issueView.retryFailed();
 }
 

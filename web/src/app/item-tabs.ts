@@ -1,5 +1,5 @@
 /**
- * 工作項目、Wiki 頁面、GitHub issue 等唯讀內容的分頁：和文件的分頁排在同一列，新的放在目前分頁的右邊，
+ * 工作項目、Wiki 頁面等唯讀內容的分頁：和文件的分頁排在同一列，新的放在目前分頁的右邊，
  * 也可以固定；右鍵選單、Ctrl+Tab、Ctrl+Shift+T、Ctrl+P 和文件一樣。
  * 從側邊欄清單、Ctrl+P、圖示列捷徑開的，每一項各自一個分頁（已經開著就切過去）；
  * 分頁內容裡的連結（不管連到 Wiki 頁面還是工作項目）都在同一個分頁往下走，可以按「上一頁」回來。
@@ -33,7 +33,7 @@ export interface ItemTab {
   name: string;
   /** 滑鼠提示，例如「Task 123：標題」。 */
   title: string;
-  /** 來源（`ado`、`wiki`、`github`、`repo`）。 */
+  /** 來源（`ado`、`wiki`、`repo`）。 */
   origin: string;
   icon: string;
   /** 上次顯示時的狀態；從上次還原、還沒開過的是 null。 */
@@ -56,7 +56,7 @@ export interface ClosedItem {
   ref: ItemShortcut | null;
 }
 
-const ORIGIN_ICONS: Record<string, string> = { ado: "square-kanban", wiki: "book-open-text", github: "circle-dot", repo: "git-branch", image: "image", pdf: "file-text", office: "file-text" };
+const ORIGIN_ICONS: Record<string, string> = { ado: "square-kanban", wiki: "book-open-text", repo: "git-branch", image: "image", pdf: "file-text", office: "file-text" };
 
 let seq = 0;
 const newId = () => `item-${Date.now().toString(36)}-${++seq}`;

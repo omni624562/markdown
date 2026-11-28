@@ -134,7 +134,6 @@ export const common: Record<string, Translation> = {
   "新": "New",
   "上次看過之後的新留言": "New since you last viewed this item",
   "驗收條件": "Acceptance Criteria",
-  "已關閉": "Closed",
   "專案": "Project",
   "指派給": "Assigned To",
   "狀態": "State",

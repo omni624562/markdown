@@ -31,7 +31,6 @@ function renderStatusView(): void {
   const names: Record<string, string> = {
     wiki: "Azure DevOps Wiki",
     ado: t("Azure DevOps 工作項目"),
-    github: "GitHub Issue",
     git: t("Git 歷史"),
   };
   const label = document.createElement("span");

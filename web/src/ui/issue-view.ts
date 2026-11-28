@@ -1,5 +1,5 @@
 /**
- * 工作項目、GitHub issue 開在主要區域的唯讀檢視（蓋在編輯區與預覽上面，或並排在右邊）：
+ * 工作項目、Wiki 頁面開在主要區域的唯讀檢視（蓋在編輯區與預覽上面，或並排在右邊）：
  * 上方是位置、標題與動作（最常用的一個用文字按鈕，其他用圖示，少用的放在分頁的右鍵選單），
  * 內容由預覽同一套流程顯示。Ctrl+F 在內容中尋找，Esc 回到文件。
  * 每一項是分頁列上的一個分頁（app/item-tabs.ts）；這個檢視一次顯示一個，切換分頁時換上那個分頁的狀態。
@@ -12,7 +12,7 @@ import { logError } from "../error-log.ts";
 
 /** 內容從哪裡來：標頭用顏色、圖示與文字標示（看得出不是本機的檔案）。 */
 export interface IssueOrigin {
-  kind: "ado" | "github" | "wiki" | "repo" | "image" | "pdf" | "office";
+  kind: "ado" | "wiki" | "repo" | "image" | "pdf" | "office";
   icon: string;
   text: string;
 }

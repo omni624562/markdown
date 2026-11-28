@@ -49,7 +49,7 @@ desktop/src/  桌面版（Tauri 2）：沿用網頁介面，補上原生端的�
                 images.rs（貼上圖片）、image_protocol.rs（預覽的本機圖片 mdimg:）、pdf.rs（直接匯出 PDF）、fonts.rs
   Git           git.rs（狀態、提交、拉取、推送；libgit2）、git_flow.rs（分支、合併衝突）、
                 git_log.rs（提交歷史與線圖）、git_files.rs（單一檔案的歷史、網頁網址）
-  遠端與帳號    github.rs（GitHub 登入、儲存庫、Issues）、ado/（Azure DevOps：儲存庫、工作項目、Wiki）、
+  遠端與帳號    github.rs（GitHub 登入、儲存庫、建立 PR）、ado/（Azure DevOps：儲存庫、工作項目、Wiki）、
                 dav/（遠端資料夾：mod.rs 共用的 RemoteFs、輪詢與指令，webdav.rs WebDAV 用戶端，ssh.rs SSH／SFTP）、
                 offline.rs（工作項目與 Wiki 的離線副本）、secrets.rs（Windows 認證管理員）、notify.rs（系統通知）
   AI 協作       ai/term.rs（內嵌終端機）、ai/view.rs（終端機專用的 webview）、ai/mcp.rs（編輯器 MCP 伺服器）、
@@ -82,7 +82,7 @@ web/src/      網頁介面（桌面版也用同一份）
                 自己交給 Rust 的 Channel，主畫面收不到（兩個 webview 的權限分開，見 desktop/capabilities/）
   AI 與更新     ai.ts（AI 協作：MCP 狀態同步、提議、執行指令的同意流程、AI 快速動作）、ci-workflow.ts、updater.ts、
                 release-notes.ts
-  ui/           分頁列、檔案樹、搜尋、待辦總覽、標籤、Issues、Wiki、簡報、圖片放大、匯出 PDF 選項、終端機（xterm.js）、
+  ui/           分頁列、檔案樹、搜尋、待辦總覽、標籤、工作項目清單、Wiki、簡報、圖片放大、匯出 PDF 選項、終端機（xterm.js）、
                 指令面板與快速開啟、選單、通知、差異檢視、Git 歷史、設定、WebDAV 與 SSH 連線、專案、圖示（lucide）
   locales/      英文介面的翻譯（用語對照見 locales/README.md）
 ```

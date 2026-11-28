@@ -1,5 +1,5 @@
 /**
- * 側邊欄的議題清單：Azure DevOps 的工作項目、GitHub 的 Issues 共用。
+ * 側邊欄的議題清單：Azure DevOps 的工作項目用。
  * 可以搜尋或輸入編號、用篩選列縮小範圍；點一下在主要區域開啟內容。
  */
 import { type Freshness, freshnessOf } from "../copy-cache.ts";

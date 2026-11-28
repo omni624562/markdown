@@ -1,5 +1,5 @@
 /**
- * 側邊欄的 Azure DevOps 面板：工作項目、Wiki、GitHub Issues，以及釘在上方的捷徑。
+ * 側邊欄的 Azure DevOps 面板：工作項目、Wiki，以及釘在上方的捷徑。
  */
 import { leaves, progressOf } from "../work-item-progress.ts";
 import { progressBar, progressByHours, progressNumbers, progressTooltip, setProgressByHours } from "../ui/progress-bar.ts";
@@ -7,7 +7,6 @@ import { workItemLink } from "../ado-text.ts";
 import { setBounded } from "../bounded.ts";
 import { type AdoTeamIteration, type AdoWorkItem, desktop, type AdoWorkItemFilter, type AdoWiki } from "../desktop.ts";
 import { t } from "../i18n.ts";
-import { issueFileName, githubIssueMarkdown } from "../issue-doc.ts";
 import * as storage from "../storage.ts";
 import { icon } from "../ui/icons.ts";
 import { type IssueSummary, type IssueGroup, type IssueTreeNode, shortDate, IssuesPanel } from "../ui/issues-panel.ts";
@@ -35,7 +34,7 @@ import {
   workItemFilterKey,
 } from "../work-item-filter.ts";
 import { markOf } from "../workitem-seen.ts";
-import { peekWorkItem, insertIssueLink } from "./ado-links.ts";
+import { peekWorkItem } from "./ado-links.ts";
 import { pingAdo } from "./ado-status.ts";
 import { forgetListCopies, keepFreshness, withOfflineCopy } from "./offline-copies.ts";
 import { favoriteWikis } from "./favorite-lists.ts";
@@ -49,7 +48,7 @@ import { drawFileShortcut, fileShortcut, fileShortcutShown, initFileShortcuts, o
 import { basename } from "../paths.ts";
 import { initFilterCollapse } from "./filter-collapse.ts";
 import { commands } from "./commands.ts";
-import { createWikiPage, showIssue } from "./ado-files.ts";
+import { createWikiPage } from "./ado-files.ts";
 import { groupItems, showWorkItem } from "./work-item-actions.ts";
 import { issueView, showWikiPage } from "./wiki-edit.ts";
 import { noteWorkItems, pollWorkItems, renderAdoBadge, workItemSeen } from "./work-item-updates.ts";
@@ -827,25 +826,6 @@ const shortcutDragOver = (e: DragEvent) => {
 export // 在 init 時建立。
 let wikiPanel: WikiPanel<AdoWiki> | null;
 
-/** GitHub Issues：目前開啟的資料夾連到 GitHub、而且已經登入時才顯示。 */
-export // 在 init 時建立。
-let issuesPanel: IssuesPanel<IssueSummary> | null;
-
-export let issuesRepo: string | null = null;
-export async function renderIssuesTab(): Promise<void> {
-  const repo = desktop && app.github?.account ? await desktop.githubWorkspaceRepo().catch(() => null) : null;
-  if (repo !== issuesRepo) {
-    issuesRepo = repo;
-    issuesPanel?.reset();
-    if (app.sidePanel === "issues" && repo) issuesPanel?.shown();
-  }
-  const tab = app.$("#side-tab-issues");
-  tab.hidden = !repo;
-  tab.title = repo ? t("Issues（{repo}）", { repo }) : "Issues";
-  if (tab.hidden) panelUnavailable("issues");
-  else panelAvailable("issues");
-}
-
 /** 連線到 Azure DevOps 後才顯示「工作項目」「Wiki」圖示。 */
 export function renderAdoTab(): void {
   for (const panel of ["workitems", "wiki"] as const) {
@@ -1101,46 +1081,5 @@ export function initWorkItemsPanel(): void {
         },
       })
     : null;
-  issuesPanel = desktop
-    ? new IssuesPanel(app.$("#issues-host"), {
-        placeholder: t("搜尋 issue，或輸入編號"),
-        link: (item) => workItemLink(item),
-        list: async (search) =>
-          (await desktop!.githubIssues(search)).map((i) => ({
-            ...i,
-            id: i.number,
-            // 已關閉的才標狀態（清單預設只列開啟中的）。
-            state: i.state === "closed" ? t("已關閉") : "",
-            meta: [
-              `#${i.number}`,
-              i.labels.join(t("、")),
-              i.comments ? t("{n} 則留言", { n: i.comments }) : "",
-              shortDate(i.updated),
-            ]
-              .filter(Boolean)
-              .join("・"),
-          })),
-        view: (item) =>
-          void showIssue({
-            key: `github:${item.id}`,
-            origin: { kind: "github", icon: "circle-dot", text: "GitHub Issue" },
-            label: `#${item.id}`,
-            title: item.title,
-            webUrl: item.webUrl,
-            fileName: issueFileName(`#${item.id}`, item.title),
-            load: async () => githubIssueMarkdown(await desktop!.githubIssue(item.id)),
-            insertLink: () => insertIssueLink(item),
-          }),
-        status: (n, search) =>
-          n
-            ? search
-              ? t("找到 {n} 個 issue", { n })
-              : t("還沒關閉的 issue（{n}）", { n })
-            : search
-              ? t("找不到符合的 issue")
-              : t("目前沒有還沒關閉的 issue"),
-      })
-    : null;
-  app.$("#issues-refresh").addEventListener("click", () => void issuesPanel?.refresh());
   initFilterCollapse();
 }

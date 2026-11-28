@@ -1,10 +1,10 @@
 /**
- * 把 Azure DevOps 工作項目、GitHub issue 整理成一份 Markdown：開在主要區域的唯讀檢視，
+ * 把 Azure DevOps 工作項目整理成一份 Markdown：開在主要區域的唯讀檢視，
  * 以及「複製成 Markdown 文件」都用這一份。工作項目的 HTML 轉成 Markdown 後，
  * 由預覽同一套流程顯示（Rust 端會移除原始 HTML 與危險的連結）。
  */
 import { fileSize, withFileName } from "./attachments.ts";
-import type { AdoWorkItemAttachment, AdoWorkItemDetail, AdoWorkItemRelation, GitHubIssueDetail } from "./desktop.ts";
+import type { AdoWorkItemAttachment, AdoWorkItemDetail, AdoWorkItemRelation } from "./desktop.ts";
 import { htmlToMarkdown } from "./html-paste.ts";
 import { t } from "./i18n.ts";
 
@@ -178,27 +178,6 @@ export { type StateTone, stateTone } from "./work-item-state.ts";
 export function workItemIdOf(href: string): number | null {
   const m = /\/_workitems\/edit\/(\d+)\/?(?:[?#]|$)/i.exec(href);
   return m ? Number(m[1]) : null;
-}
-
-/** GitHub issue 的 Markdown（內容本來就是 Markdown）。 */
-export function githubIssueMarkdown(d: GitHubIssueDetail): string {
-  const fields = fieldTable([
-    [t("狀態"), d.state === "closed" ? t("已關閉") : t("開啟中")],
-    [t("建立者"), inlineText(d.author)],
-    [t("指派給"), d.assignees.map(inlineText).join(t("、"))],
-    [t("標籤"), d.labels.map(inlineText).join(t("、"))],
-    [t("最後更新"), dateTime(d.updated)],
-  ]);
-  const comments = d.commentList.map((c) => `${commentHeading(c.author, c.created)}\n\n${c.body.trim()}`);
-  return [
-    `# #${d.number} ${inlineText(d.title)}`,
-    fields,
-    webLink(d.webUrl),
-    section(t("內容"), d.body),
-    section(t("留言（{n}）", { n: d.commentList.length }), comments.join("\n\n")),
-  ]
-    .filter(Boolean)
-    .join("\n\n");
 }
 
 /** 「複製成 Markdown 文件」的檔名：「Bug 123 修正登入.md」，去掉檔名不能用的字元。 */

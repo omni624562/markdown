@@ -50,7 +50,7 @@ let errorAction: ((message: string) => ToastAction | undefined) | null = null;
 
 /**
  * 錯誤通知自動附上的按鈕（例如「GitHub 登入已過期」附上「重新登入」）。
- * 錯誤訊息來自很多地方（拉取、推送、Issues、Gist…），在這裡統一處理，不用每個地方各自加。
+ * 錯誤訊息來自很多地方（拉取、推送、工作項目…），在這裡統一處理，不用每個地方各自加。
  */
 export function setErrorAction(fn: (message: string) => ToastAction | undefined): void {
   errorAction = fn;

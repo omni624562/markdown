@@ -23,7 +23,7 @@ import { reportIssue } from "./version-info.ts";
 import { reportError } from "./git-actions.ts";
 import { buildFormatBar } from "./new-work-item.ts";
 import { gitPanel } from "./work-item-updates.ts";
-import { renderAdoTab, renderIssuesTab } from "./work-items-panel.ts";
+import { renderAdoTab } from "./work-items-panel.ts";
 import { kindColorCss } from "../work-item-colors.ts";
 import type { ViewUpdate } from "@codemirror/view";
 import type { ViewMode } from "../view-modes.ts";
@@ -314,7 +314,6 @@ export function initSettingsUi(): void {
   void app.github?.ready().then(() => {
     settingsDialog.refresh();
     void gitPanel?.refresh();
-    void renderIssuesTab();
   });
   document.querySelectorAll<HTMLButtonElement>(".segmented [data-view]").forEach((btn) => {
     const mode = btn.dataset.view as ViewMode;
