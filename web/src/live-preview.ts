@@ -914,6 +914,7 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
   const withSpace = (to: number) => (doc.sliceString(to, to + 1) === " " ? to + 1 : to);
   const mathOn = !!opts.renderMath && (opts.mathEnabled?.() ?? true);
   const htmlTags: InlineTag[] = [];
+  const styledTags: StyledTag[] = [];
   const noInline: [number, number][] = [];
   // 畫面上可能有好幾段可見範圍（中間有摺疊）：同一個節點只處理一次。
   const seen = new Set<string>();
@@ -1070,6 +1071,11 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
           }
           const tag = parseTag(doc.sliceString(from, to));
           if (tag) htmlTags.push({ ...tag, from, to, parent: node.parent?.from ?? -1 });
+          else {
+            // 帶樣式的 `<span style="color: red">`、`<font color="red">`：成對時套用樣式（見下面）。
+            const styled = STYLED_TAG.exec(doc.sliceString(from, to));
+            if (styled) styledTags.push({ name: styled[2].toLowerCase(), closing: styled[1] === "/", from, to, parent: node.parent?.from ?? -1 });
+          }
           return;
         }
         case "Paragraph": {
@@ -1155,6 +1161,15 @@ function build(state: EditorState, opts: LivePreviewOptions, ranges: readonly { 
     hide(close.from, close.to);
     if (close.from > open.to) decos.push(tagMarks[open.name].range(open.to, close.from));
   }
+  // `<span style>`、`<font color>`：樣式由核心整理過（只留顏色、粗細等安全的屬性）才套用。
+  for (const [open, close] of pairTags(styledTags)) {
+    if (touches(open.from, close.to) || close.from <= open.to || !oneLine(open.from, close.to)) continue;
+    const style = safeStyle(doc.sliceString(open.from, open.to), open.name, opts);
+    if (!style) continue;
+    hide(open.from, open.to);
+    hide(close.from, close.to);
+    decos.push(Decoration.mark({ attributes: { style } }).range(open.to, close.from));
+  }
   return Decoration.set(decos, true);
 }
 
@@ -1165,13 +1180,33 @@ const tagMarks = Object.fromEntries(FORMAT_TAGS.map((t) => [t, Decoration.mark({
   Decoration
 >;
 
-export interface InlineTag {
-  name: FormatTag;
+export interface InlineTag<N extends string = FormatTag> {
+  name: N;
   closing: boolean;
   from: number;
   to: number;
   /** 所在的上層節點（只配對同一層的標籤）。 */
   parent: number;
+}
+
+type StyledTag = InlineTag<string>;
+/** `<span …>`、`</span>`、`<font …>`、`</font>`。 */
+const STYLED_TAG = /^<(\/?)(span|font)\b[^>]*>$/i;
+
+const styleCache = new Map<string, string>();
+/** 開頭標籤整理後的樣式（`color: red`）；沒有可以用的樣式時是空的。 */
+function safeStyle(tag: string, name: string, opts: LivePreviewOptions): string {
+  let hit = styleCache.get(tag);
+  if (hit === undefined) {
+    const box = document.createElement("template");
+    box.innerHTML = opts.renderTable(`${tag}x</${name}>`);
+    const el = box.content.querySelector(name);
+    const color = el?.getAttribute("color");
+    hit = [el?.getAttribute("style") ?? "", color && /^[#\w]+$/.test(color) ? `color: ${color}` : ""].filter(Boolean).join("; ");
+    if (styleCache.size > 500) styleCache.clear();
+    styleCache.set(tag, hit);
+  }
+  return hit;
 }
 
 /** `<u>`、`</mark>` 這種不帶屬性的格式標籤。 */
@@ -1188,9 +1223,9 @@ export function parseTag(text: string): Pick<InlineTag, "name" | "closing"> | nu
 }
 
 /** 依文件順序配對：同一層、同名、正確巢狀的開頭與結尾標籤。 */
-export function pairTags(tags: InlineTag[]): [InlineTag, InlineTag][] {
-  const pairs: [InlineTag, InlineTag][] = [];
-  const stacks = new Map<number, InlineTag[]>();
+export function pairTags<N extends string>(tags: InlineTag<N>[]): [InlineTag<N>, InlineTag<N>][] {
+  const pairs: [InlineTag<N>, InlineTag<N>][] = [];
+  const stacks = new Map<number, InlineTag<N>[]>();
   for (const tag of tags) {
     const stack = stacks.get(tag.parent) ?? [];
     stacks.set(tag.parent, stack);

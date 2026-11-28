@@ -522,6 +522,67 @@ fn allow_formatting_tags<'a>(arena: &'a Arena<'a>, root: Node<'a>) {
             start.detach();
             end.detach();
         }
+        allow_styled_tags(parent);
+    }
+}
+
+/// 可以帶屬性的行內標籤（`<span style="color: red">`、`<font color="red">`、`<a href="…">`…）。
+const STYLED_TAGS: &[&str] = &[
+    "span", "font", "a", "small", "kbd", "code", "strong", "b", "em", "i", "s", "del",
+];
+
+/// 行內 HTML 標籤的名稱與是不是結尾標籤（可以帶屬性）。
+fn inline_tag(literal: &str) -> Option<(bool, String)> {
+    let inner = literal.trim().strip_prefix('<')?.strip_suffix('>')?;
+    let (closing, rest) = match inner.strip_prefix('/') {
+        Some(r) => (true, r),
+        None => (false, inner),
+    };
+    let name: String = rest
+        .chars()
+        .take_while(char::is_ascii_alphanumeric)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    (!name.is_empty() && !rest.trim_end().ends_with('/')).then_some((closing, name))
+}
+
+/// 段落裡成對的行內標籤（[`STYLED_TAGS`]）：開頭的標籤整理成安全的寫法（只留允許的屬性，見 raw_html.rs）
+/// 再輸出，中間的 Markdown 照常處理。沒有成對的、不在清單裡的照舊不輸出。
+fn allow_styled_tags<'a>(parent: Node<'a>) {
+    let mut open: Vec<(String, Node<'a>)> = Vec::new();
+    let mut pairs: Vec<(Node<'a>, Node<'a>, String)> = Vec::new();
+    for child in parent.children() {
+        let tag = match child.data().value {
+            NodeValue::HtmlInline(ref literal) => inline_tag(literal),
+            _ => None,
+        };
+        let Some((closing, name)) = tag else { continue };
+        if !STYLED_TAGS.contains(&name.as_str()) {
+            continue;
+        }
+        if !closing {
+            open.push((name, child));
+        } else if open.last().is_some_and(|(n, _)| *n == name) {
+            let (_, start) = open.pop().unwrap();
+            pairs.push((start, child, name));
+        }
+    }
+    for (start, end, name) in pairs {
+        let literal = match start.data().value {
+            NodeValue::HtmlInline(ref l) => l.clone(),
+            _ => continue,
+        };
+        let close = format!("</{name}>");
+        let cleaned = crate::raw_html::clean(&format!("{literal}{close}"));
+        // 整理後還是同一個標籤才輸出（被拿掉的就照舊不輸出）。
+        let Some(head) = cleaned
+            .strip_suffix(&close)
+            .filter(|h| h.starts_with(&format!("<{name}")))
+        else {
+            continue;
+        };
+        start.data_mut().value = NodeValue::Raw(head.to_string());
+        end.data_mut().value = NodeValue::Raw(close);
     }
 }
 

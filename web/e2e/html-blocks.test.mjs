@@ -88,3 +88,30 @@ test("段落裡的 <img>：預覽、即時預覽都畫出圖片（危險的屬�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("段落裡的 <span style>、<font color>：預覽、即時預覽都套用顏色（危險的樣式拿掉），游標移進去顯示原始碼", async () => {
+  const { page, context, errors } = await open();
+  await page.locator(".cm-content").focus();
+  await page.keyboard.insertText('請注意 <span style="color: red; position: fixed">紅字</span> 與 <font color="#c00">重點</font>。\n\n最後一行');
+  await page.click('.statusbar [data-view="live"]');
+  await page.keyboard.press("Control+End");
+  await page.waitForTimeout(300);
+  const first = page.locator(".cm-line").first();
+  assert.equal(await first.textContent(), "請注意 紅字 與 重點。", "看不到標籤");
+  const styles = await first.locator("[style]").evaluateAll((els) => els.map((e) => [e.textContent, getComputedStyle(e).color, getComputedStyle(e).position]));
+  assert.deepEqual(styles, [
+    ["紅字", "rgb(255, 0, 0)", "static"],
+    ["重點", "rgb(204, 0, 0)", "static"],
+  ]);
+  // 游標移進那一組標籤裡才顯示原始碼（和 <mark> 一樣），同一行其他地方照樣顯示排版。
+  await page.keyboard.press("Control+Home");
+  for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(() => document.querySelector(".cm-line")?.textContent.includes("<span style="));
+  await page.click('.statusbar [data-view="preview"]');
+  const span = page.locator("#preview span[style]");
+  await span.waitFor();
+  assert.equal(await span.getAttribute("style"), "color: red");
+  assert.equal(await page.locator('#preview font[color="#c00"]').textContent(), "重點");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

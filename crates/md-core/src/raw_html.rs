@@ -2,7 +2,7 @@
 //!
 //! 預覽在桌面版裡可以呼叫本機功能，所以不能照抄別人傳來的 HTML：`<script>`、`on…` 事件、`javascript:` 連結、
 //! `<iframe>`、`<style>` 等一律拿掉，只放行排版用的標籤（表格、清單、段落、文字格式、連結、圖片）。
-//! `style` 只留 `text-align`、`vertical-align`、`width`，讓欄寬與置中照原樣顯示。
+//! `style` 只留對齊、寬度與文字的顏色、粗細、斜體、底線（值只能是簡單的字，不能有 `url(` 之類）。
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -56,6 +56,7 @@ const TAGS: &[&str] = &[
     "small",
     "code",
     "kbd",
+    "font",
     // 連結與圖片
     "a",
     "img",
@@ -77,6 +78,7 @@ static CLEANER: LazyLock<Builder<'static>> = LazyLock::new(|| {
             ("col", HashSet::from(["span", "width"])),
             ("colgroup", HashSet::from(["span"])),
             ("details", HashSet::from(["open"])),
+            ("font", HashSet::from(["color"])),
         ]))
         .url_schemes(HashSet::from(["http", "https", "mailto"]))
         .link_rel(Some("noopener noreferrer"))
@@ -104,13 +106,23 @@ fn safe_style(style: &str) -> String {
         };
         let name = name.trim().to_ascii_lowercase();
         let value = value.trim();
-        if !matches!(name.as_str(), "text-align" | "vertical-align" | "width") {
+        if !matches!(
+            name.as_str(),
+            "text-align"
+                | "vertical-align"
+                | "width"
+                | "color"
+                | "background-color"
+                | "font-weight"
+                | "font-style"
+                | "text-decoration"
+        ) {
             continue;
         }
         if value.is_empty()
             || !value
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '%' | '.' | '-' | ' '))
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '%' | '.' | '-' | ' ' | '#'))
         {
             continue;
         }
