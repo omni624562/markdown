@@ -203,3 +203,33 @@ test("資料夾搜尋：搜得到 Word 檔裡的文字（不顯示行號），�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Claude API 助理：正在看專案裡的 Word 檔時可以問，內容當成目前的文件送出；工作項目的附件不送", async () => {
+  const project = { path: ROOT, label: "產品筆記", name: null, color: "green", group: null, pinned: false, lastOpened: 0 };
+  const { page, context, errors } = await open({
+    desktop: {
+      load_settings: JSON.stringify({ claudeApiEnabled: true, assistantProjects: [ROOT], assistantConfirmed: [ROOT] }),
+      projects_list: [[project]],
+      startup_target: { kind: "folder", path: ROOT, name: "產品筆記" },
+      list_dir: { $by: "path", values: { [ROOT]: [entry("系統設計書.docx")] } },
+      read_office: { $base64: await wordFile() },
+      assistant_key_status: true,
+      assistant_usage: { month: "2026-11", usd: 0, limit: 10 },
+    },
+  });
+  await row(page, "系統設計書.docx").click();
+  await page.locator(".office-view .office-view-content h1").waitFor();
+  await page.keyboard.press("Control+Shift+L");
+  const panel = page.locator("#assistant-panel");
+  await panel.waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll("#assistant-panel .assistant-chip")].some((c) => c.textContent.includes("系統設計書.docx")));
+  await panel.locator(".assistant-input textarea").fill("這份文件在講什麼？");
+  await panel.locator(".assistant-input textarea").press("Enter");
+  await page.waitForFunction(() => window.__fake.calls.some((c) => c.cmd === "assistant_send"));
+  const { request } = await page.evaluate(() => window.__fake.calls.find((c) => c.cmd === "assistant_send").args);
+  assert.equal(request.messages[0].doc.name, "系統設計書.docx");
+  assert.match(request.messages[0].doc.text, /系統設計書\n粗體的說明，一般文字。/);
+  assert.match(request.messages[0].doc.text, /代碼\t說明/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
