@@ -19,6 +19,7 @@ import { announce, copied } from "../ui/toast.ts";
 import { app } from "./context.ts";
 import { reportError } from "./git-actions.ts";
 import { insertAtCursor } from "./image-paste.ts";
+import { viewedFile } from "../item-tabs.ts";
 import { openItem } from "./item-tabs.ts";
 
 export interface OfficeOptions {
@@ -90,6 +91,29 @@ async function openMailAttachment(a: MailAttachment, mail: string): Promise<void
   const path = await d.viewTempFile(a.name, data);
   const opts = { label: t("「{name}」的附件", { name: mail }), linkable: false, openExternally: () => d.openWithDefault(path) };
   await (isPdfName(a.name) ? (await import("./pdf-view.ts")).showPdf(path, opts) : showOffice(path, opts));
+}
+
+/**
+ * 檢視分頁裡的文字（key 是分頁的 key）：助理讀正在看的 Office 文件、郵件時用。
+ * 只記本機專案裡的檔案（下載到暫存資料夾的 Azure DevOps 附件不記，那些內容不送給 AI）。
+ */
+const viewedText = new Map<string, { name: string; text: string }>();
+
+/** 分頁 `key` 顯示的 Office 文件、郵件的文字；不是這種分頁、還沒讀好或不是本機專案的檔案時回傳 null。 */
+export function officeText(key: string | null): { name: string; text: string } | null {
+  return (key && viewedText.get(key)) || null;
+}
+
+/** 讀好的內容換成純文字（Excel 每個工作表一段，儲存格用 Tab 分開）。 */
+function plainText(content: Content): string {
+  if (content.kind === "excel") return content.sheets.map((s) => `[${s.name}]\n${sheetTsv(s)}`).join("\n\n");
+  const box = document.createElement("div");
+  box.append(cleanOfficeHtml(content.html));
+  // 表格：一列一行、儲存格用 Tab 分開（格子裡的段落接成一行）。
+  for (const el of box.querySelectorAll("td, th")) el.textContent = `${(el.textContent ?? "").trim().replace(/\s*\n\s*/g, " ")}\t`;
+  for (const el of box.querySelectorAll("p, h1, h2, h3, h4, h5, h6, li, tr, dt, dd, br, section")) el.append("\n");
+  const text = (box.textContent ?? "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return content.kind === "mail" && content.attachments.length ? `${text}\n\n${content.attachments.map((a) => a.name).join("\n")}` : text;
 }
 
 /** 畫出讀好的內容。 */
@@ -231,7 +255,10 @@ export function showOffice(path: string, opts: OfficeOptions = {}): Promise<void
       content.textContent = t("讀取中…");
       body.replaceChildren(bar, content);
       load().then(
-        (data) => show(data, content, name),
+        (data) => {
+          show(data, content, name);
+          if (viewedFile(key)) viewedText.set(key, { name, text: plainText(data) });
+        },
         (e) => {
           content.replaceChildren(
             Object.assign(document.createElement("p"), {

@@ -382,6 +382,8 @@ export const ui: Record<string, Translation> = {
   "這不是有效的 {what} 檔案": "This isn't a valid {what} file",
   "這個檔案解壓縮後太大，可能是損毀或惡意的檔案": "This file is too large when uncompressed; it may be damaged or malicious",
   "第 {n} 張": "Slide {n}",
+  "這個檢視分頁的內容助理讀不到（只讀得到專案裡的 Word、Excel、PowerPoint 與郵件；PDF 請用附件）。": "The assistant can't read this viewer tab (only Word, Excel, PowerPoint and messages in the project; attach PDFs instead).",
+  "「{name}」是唯讀的，只能問問題，不能用會改文件的動作。": "\"{name}\" is read-only: you can ask questions but not run actions that change the document.",
   "「{name}」要從檔案面板開啟（拿不到檔案的位置）。": "Open \"{name}\" from the file panel (its location isn't available).",
   "這種附件要用預設的程式開啟郵件才能取出": "Open the message with the default app to get this kind of attachment",
   "「{name}」的附件": "Attachment of \"{name}\"",

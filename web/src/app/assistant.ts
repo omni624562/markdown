@@ -62,6 +62,9 @@ import { citesMarkdown, linkCites, rememberNotes } from "./assistant-cites.ts";
 import { docName as tabName } from "./doc-names.ts";
 import { issueView } from "./wiki-edit.ts";
 import { settingsDialog } from "./settings-ui.ts";
+import { viewedFile } from "../item-tabs.ts";
+import { isInside } from "../paths.ts";
+import { officeText } from "./office-view.ts";
 
 
 interface Pending {
@@ -168,7 +171,13 @@ function blocked(): { message: string; action?: { label: string; run: () => void
   if (hasKey === false) {
     return { message: t("還沒有輸入 Claude API 金鑰。"), action: { label: t("打開設定"), run: () => settingsDialog.open(t("Claude API 助理")) } };
   }
-  if (issueView.shownKey || app.active.wiki) {
+  // 正在看專案裡的 Office 文件、郵件：可以問（內容當成目前的文件送出）。其他檢視分頁的內容不送。
+  if (issueView.shownKey && !viewedDoc()) {
+    return viewedFile(issueView.shownKey)
+      ? { message: t("這個檢視分頁的內容助理讀不到（只讀得到專案裡的 Word、Excel、PowerPoint 與郵件；PDF 請用附件）。") }
+      : { message: t("這裡是 Azure DevOps／GitHub 的內容，不會送給 AI。") };
+  }
+  if (app.active.wiki && !issueView.shownKey) {
     return { message: t("這裡是 Azure DevOps／GitHub 的內容，不會送給 AI。") };
   }
   // Android 版沒有專案資料夾：不分專案，開了助理、有金鑰就能用。
@@ -187,13 +196,23 @@ function blocked(): { message: string; action?: { label: string; run: () => void
   return null;
 }
 
+/** 正在看的檢視分頁是專案資料夾裡的 Office 文件、郵件時，它的名稱與文字；否則是 null。 */
+function viewedDoc(): { name: string; text: string } | null {
+  const key = issueView.shownKey;
+  const path = key ? viewedFile(key) : null;
+  const root = app.workspaceRoot?.path;
+  return path && root && isInside(path, root) ? officeText(key) : null;
+}
+
 function selection(): { from: number; to: number; text: string } {
+  // 檢視分頁沒有編輯區的選取範圍。
+  if (viewedDoc()) return { from: 0, to: 0, text: "" };
   const r = app.editor.view.state.selection.main;
   return { from: r.from, to: r.to, text: app.editor.view.state.sliceDoc(r.from, r.to) };
 }
 
 function docName(): string {
-  return tabName(app.active);
+  return viewedDoc()?.name ?? tabName(app.active);
 }
 
 /** 這次會送出的內容（標籤，可以拿掉目前的文件）。 */
@@ -657,6 +676,11 @@ async function send(question: string, action: AssistantAction | null = null, cou
     );
   }
   const mode = action?.mode ?? "answer";
+  const viewed = viewedDoc();
+  if (viewed && mode !== "answer") {
+    toast(t("「{name}」是唯讀的，只能問問題，不能用會改文件的動作。", { name: viewed.name }));
+    return;
+  }
   // 問整個專案（一般問答才用）：挑出和問題相關的筆記。
   let notes: NoteText[] | undefined;
   const project = askProject && mode === "answer";
@@ -679,7 +703,7 @@ async function send(question: string, action: AssistantAction | null = null, cou
     tasks = { today: todayLabel(new Date()), list: briefingTasks(docs.map((d) => ({ rel: d.rel, tasks: d.info.tasks }))) };
   }
   const ctx = {
-    doc: includeDoc && !action?.needsTasks ? { name: docName(), text: app.editor.text } : null,
+    doc: includeDoc && !action?.needsTasks ? { name: docName(), text: viewed?.text ?? app.editor.text } : null,
     selection: action?.needsTasks ? "" : sel.text,
     index,
     notes,
