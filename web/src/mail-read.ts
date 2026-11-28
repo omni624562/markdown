@@ -14,6 +14,10 @@ export interface MailAttachment {
 }
 
 export interface Mail {
+  /** 主旨（沒有時是空的）。 */
+  subject: string;
+  /** 純文字內文。 */
+  text: string;
   html: string;
   attachments: MailAttachment[];
 }
@@ -110,5 +114,5 @@ export function readMsg(data: ArrayBuffer): Mail {
   }
   const out = el("div");
   out.append(head, body);
-  return { html: out.innerHTML, attachments: attachments.filter((a) => !a.cid || !used.has(a.cid)).map(({ name, size, content }) => ({ name, size, content })) };
+  return { subject: info.subject ?? "", text: (info.body || body.textContent || "").trim(), html: out.innerHTML, attachments: attachments.filter((a) => !a.cid || !used.has(a.cid)).map(({ name, size, content }) => ({ name, size, content })) };
 }

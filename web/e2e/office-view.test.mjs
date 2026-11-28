@@ -233,3 +233,27 @@ test("Claude API 助理：正在看專案裡的 Word 檔時可以問，內容當
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("郵件分頁：連上 Azure DevOps 時可以用主旨和內文建立工作項目", async () => {
+  const { mailFile } = await import("./msg-fixture.mjs");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  const { page, context, errors } = await open({
+    desktop: {
+      startup_target: { kind: "folder", path: ROOT, name: "產品筆記" },
+      list_dir: { $by: "path", values: { [ROOT]: [entry("上線時程確認.msg")] } },
+      read_office: { $base64: mailFile({ png }) },
+      ado_account: { url: "https://ado.test/c", name: "王小明" },
+      ado_work_item_filters: { projects: ["產品"], kinds: ["Task", "Bug"] },
+    },
+  });
+  await row(page, "上線時程確認.msg").click();
+  const button = page.locator(".office-view-bar .office-view-workitem");
+  await button.waitFor();
+  await button.click();
+  const dialog = page.locator("dialog.wi-create[open]");
+  await dialog.waitFor();
+  assert.equal(await dialog.locator("input[type=text], input:not([type])").first().inputValue(), "上線時程確認");
+  assert.match(await dialog.locator("textarea").inputValue(), /大家好，上線時程如下。/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
